@@ -1,3 +1,6 @@
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -35,19 +38,12 @@
     --radius: 0.5rem;
 
     --sidebar-background: 0 0% 98%;
-
     --sidebar-foreground: 240 5.3% 26.1%;
-
     --sidebar-primary: 240 5.9% 10%;
-
     --sidebar-primary-foreground: 0 0% 98%;
-
     --sidebar-accent: 240 4.8% 95.9%;
-
     --sidebar-accent-foreground: 240 5.9% 10%;
-
     --sidebar-border: 220 13% 91%;
-
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
@@ -96,6 +92,32 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-gray-100 text-foreground font-['Inter',sans-serif];
+  }
+}
+
+@layer components {
+  .sidebar-gradient {
+    @apply bg-gradient-to-b from-innov-blue to-innov-purple;
+  }
+  
+  .card-hover {
+    @apply transition-all duration-200 hover:shadow-lg hover:-translate-y-1;
+  }
+  
+  .sidebar-link {
+    @apply flex items-center gap-3 px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-all;
+  }
+  
+  .sidebar-link.active {
+    @apply bg-white/20 text-white font-medium;
+  }
+  
+  .stat-card {
+    @apply bg-white p-4 rounded-xl shadow flex items-center gap-4 card-hover;
+  }
+  
+  .stat-card-icon {
+    @apply p-3 rounded-lg text-white;
   }
 }
