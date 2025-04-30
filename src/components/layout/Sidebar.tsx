@@ -19,7 +19,8 @@ import {
   Edit
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 type SidebarLink = {
   icon: React.ElementType;
@@ -50,12 +51,20 @@ const sidebarLinks: SidebarLink[] = [
 export default function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const currentPath = window.location.pathname;
+  const isMobile = useIsMobile();
+
+  // Auto-collapse on mobile devices
+  useEffect(() => {
+    if (isMobile) {
+      setIsCollapsed(true);
+    }
+  }, [isMobile]);
 
   return (
     <div 
       className={cn(
-        "sidebar-gradient min-h-screen flex flex-col transition-all duration-300",
-        isCollapsed ? "w-20" : "w-64"
+        "sidebar-gradient min-h-screen flex flex-col transition-all duration-300 z-50",
+        isCollapsed ? "w-16" : "w-64"
       )}
     >
       {/* Logo */}
@@ -63,12 +72,12 @@ export default function Sidebar() {
         <div className={cn("flex items-center", isCollapsed && "justify-center w-full")}>
           {!isCollapsed && (
             <>
-              <span className="text-white font-bold text-2xl">Innov</span>
-              <span className="text-white font-bold text-2xl ml-1">Play</span>
+              <span className="text-white font-bold text-xl md:text-2xl">Innov</span>
+              <span className="text-white font-bold text-xl md:text-2xl ml-1">Play</span>
             </>
           )}
           {isCollapsed && (
-            <span className="text-white font-bold text-2xl">IP</span>
+            <span className="text-white font-bold text-xl md:text-2xl">IP</span>
           )}
         </div>
         <button 
@@ -81,7 +90,7 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="mt-6 flex-1 overflow-y-auto">
-        <ul className="space-y-1 px-3">
+        <ul className="space-y-1 px-2 md:px-3">
           {sidebarLinks.map((link) => (
             <li key={link.href}>
               <Link

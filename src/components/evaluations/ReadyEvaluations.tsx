@@ -87,24 +87,27 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
         {filteredEvaluations.length > 0 ? (
           filteredEvaluations.map((evaluation) => (
-            <Card key={evaluation.id}>
+            <Card key={evaluation.id} className="h-full flex flex-col">
               <CardHeader>
-                <CardTitle>{evaluation.title}</CardTitle>
+                <CardTitle className="text-base md:text-lg">{evaluation.title}</CardTitle>
                 <CardDescription>
                   {evaluation.subject} | {evaluation.grade}
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="flex-grow">
                 <p className="text-sm text-gray-500">{evaluation.description}</p>
                 <p className="text-sm font-medium mt-2">
                   {evaluation.questionCount} questões
                 </p>
               </CardContent>
               <CardFooter>
-                <Button onClick={() => onUseEvaluation(evaluation)}>
+                <Button 
+                  onClick={() => onUseEvaluation(evaluation)}
+                  className="w-full sm:w-auto"
+                >
                   Usar Avaliação
                 </Button>
               </CardFooter>

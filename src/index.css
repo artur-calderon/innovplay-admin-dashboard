@@ -94,6 +94,17 @@
   body {
     @apply bg-gray-100 text-foreground font-['Inter',sans-serif];
   }
+  
+  /* Hide scrollbars for Chrome, Safari and Opera */
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Hide scrollbars for IE, Edge and Firefox */
+  .hide-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
 }
 
 @layer components {
@@ -106,7 +117,7 @@
   }
   
   .sidebar-link {
-    @apply flex items-center gap-3 px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-all;
+    @apply flex items-center gap-3 px-3 sm:px-4 py-2 sm:py-3 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-all;
   }
   
   .sidebar-link.active {
@@ -114,10 +125,67 @@
   }
   
   .stat-card {
-    @apply bg-white p-4 rounded-xl shadow flex items-center gap-4 card-hover;
+    @apply bg-white p-3 sm:p-4 rounded-xl shadow flex items-center gap-3 sm:gap-4 card-hover;
   }
   
   .stat-card-icon {
-    @apply p-3 rounded-lg text-white;
+    @apply p-2 sm:p-3 rounded-lg text-white;
+  }
+
+  /* Responsive table enhancements */
+  @media (max-width: 640px) {
+    .responsive-table {
+      display: block;
+      width: 100%;
+    }
+    
+    .responsive-table thead {
+      display: none;
+    }
+    
+    .responsive-table tbody {
+      display: block;
+      width: 100%;
+    }
+    
+    .responsive-table tr {
+      display: block;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.5rem;
+    }
+    
+    .responsive-table td {
+      display: flex;
+      justify-content: space-between;
+      text-align: right;
+      border-bottom: none;
+      padding: 0.5rem 0;
+    }
+    
+    .responsive-table td::before {
+      content: attr(data-label);
+      font-weight: 500;
+      text-align: left;
+    }
+  }
+  
+  /* Responsive dialogs */
+  .responsive-dialog {
+    width: 95%;
+    max-width: 500px;
+  }
+
+  /* Responsive grid */
+  .responsive-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
   }
 }
