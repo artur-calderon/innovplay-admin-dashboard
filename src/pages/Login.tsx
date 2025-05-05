@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { User, Lock, Eye, EyeOff } from "lucide-react";
+import { useAuth } from "@/context/authContext";
 
 export default function Login() {
   const [matricula, setMatricula] = useState("");
@@ -14,6 +15,8 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  const {login, user} = useAuth();
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,19 +29,9 @@ export default function Login() {
       });
       return;
     }
+    login(matricula, senha)
     
-    // Simulação de login bem-sucedido
-    toast({
-      title: "Login realizado com sucesso!",
-      description: "Redirecionando para o painel...",
-    });
-    
-    // Redirecionar para o dashboard após um breve delay
-    setTimeout(() => {
-      navigate("/");
-    }, 1500);
   };
-
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
       {/* Lado esquerdo (roxo) */}

@@ -16,11 +16,18 @@ import {
   Trophy,
   Tv
 } from "lucide-react";
+import { useAuth } from "@/context/authContext";
 
 const Index = () => {
+
+  const {user} = useAuth();
+
   return (
     <Layout>
-      <h1 className="text-3xl font-bold mb-6">Painel Administrativo</h1>
+      <div className="w-full flex justify-between text-xl">
+        <h1 className="text-3xl font-bold mb-6">Painel Administrativo</h1>
+        <span>Bem vindo! {user.nome ? user.nome : "Aluno"}</span>
+      </div>
       
       {/* Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

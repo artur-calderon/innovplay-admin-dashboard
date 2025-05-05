@@ -26,10 +26,15 @@ import { Label } from "@/components/ui/label";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { api } from "@/lib/api";
+
 
 // Form schema for student data
 const studentSchema = z.object({
   fullName: z.string().min(3, "Nome muito curto").max(100),
+  email:z.string().email("Email inválido"),
+  senha:z.string(),
+  matricula:z.string(),
   birthDate: z.string().nonempty("Data de nascimento é obrigatória"),
   grade: z.string().nonempty("Série é obrigatória"),
   class: z.string().nonempty("Turma é obrigatória"),
@@ -116,24 +121,32 @@ export default function Students() {
     }).format(date);
   };
 
-  const handleAddStudent = (data: StudentFormData) => {
+  const handleAddStudent = async (data: StudentFormData) => {
     const newStudent = {
-      id: (students.length + 1).toString(),
-      fullName: data.fullName,
-      grade: data.grade,
-      class: data.class,
+      nome: data.fullName,
+      email: data.email,
+      senha:data.senha,
+      matricula: data.matricula,
       birthDate: data.birthDate,
-      registrationDate: new Date().toISOString().split("T")[0],
+      // registrationDate: new Date().toISOString().split("T")[0],
     };
+    console.log(data)
+    await api.post("/alunos/", newStudent).then((res) => {
+      console.log(res)
+      toast({ 
+        title: "Aluno adicionado",
+        description: `${data.fullName} foi adicionado com sucesso.`,
+      });
+    }).catch(e =>{
+      console.log(e)
+      toast({
+        title:"Erro ao adicionar o aluno!",
+      })
+    })
 
-    setStudents([...students, newStudent]);
+    // setStudents([...students, newStudent]);
     setIsAddDialogOpen(false);
     resetAdd();
-
-    toast({
-      title: "Aluno adicionado",
-      description: `${data.fullName} foi adicionado com sucesso.`,
-    });
   };
 
   const handleEditStudent = (data: StudentFormData) => {
@@ -230,6 +243,44 @@ export default function Students() {
                     />
                     {errorsAdd.fullName && (
                       <p className="text-sm text-red-500">{errorsAdd.fullName.message}</p>
+                    )}
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="matricula">Número de Matrícula</Label>
+                    <Input
+                      id="matricula"
+                      {...registerAdd("matricula")}
+                      placeholder="Número de Matrícula"
+                    />
+                    {errorsAdd.matricula && (
+                      <p className="text-sm text-red-500">{errorsAdd.matricula.message}</p>
+                    )}
+                  </div>
+
+                   <div className="space-y-2">
+                    <Label htmlFor="email">E-mail</Label>
+                    <Input
+                      id="email"
+                      {...registerAdd("email")}
+                      placeholder="Email do aluno"
+                      type="email"
+                    />
+                    {errorsAdd.email && (
+                      <p className="text-sm text-red-500">{errorsAdd.email.message}</p>
+                    )}
+                  </div>
+
+                   <div className="space-y-2">
+                    <Label htmlFor="password">Senha</Label>
+                    <Input
+                      id="password"
+                      {...registerAdd("senha")}
+                      placeholder="Senha do aluno"
+                      type="password"
+                    />
+                    {errorsAdd.senha && (
+                      <p className="text-sm text-red-500">{errorsAdd.senha.message}</p>
                     )}
                   </div>
 
