@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Layout from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,9 +35,12 @@ const studentSchema = z.object({
   email:z.string().email("Email inválido"),
   senha:z.string(),
   matricula:z.string(),
-  birthDate: z.string().nonempty("Data de nascimento é obrigatória"),
+  birthDate: z.coerce.date({
+    required_error: "Data de nascimento é obrigatória",
+    invalid_type_error: "Data de nascimento inválida",
+  }),
   grade: z.string().nonempty("Série é obrigatória"),
-  class: z.string().nonempty("Turma é obrigatória"),
+  course: z.string().nonempty("Curso é obrigatório"),
 });
 
 type StudentFormData = z.infer<typeof studentSchema>;
@@ -86,13 +89,42 @@ const mockStudents = [
   },
 ];
 
+interface CoursesType{
+  id:string,
+  name:string
+}
+
 export default function Students() {
   const [students, setStudents] = useState(mockStudents);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState("");
+
+  const [courses, setCourses] = useState([])
+  const [selectedCourse, setSelectedCourse] = useState<CoursesType>({
+    id:"",
+    name:""
+  });
+  const [grades, setGrades] = useState([]);
+
   const { toast } = useToast();
+
+  useEffect(()=>{
+    api.get("/education_stages").then((res)=>{
+      setCourses(res.data)
+    }).catch(e=>{console.log(e)})
+  },[])
+
+  useEffect(()=>{
+    if(selectedCourse){
+      api.get(`/education_stages/${selectedCourse}`).then(res => {
+        setGrades(res.data)
+      }).catch(e => console.log(e))
+    }
+  },[selectedCourse])
+
+
 
   const {
     register: registerAdd,
@@ -121,6 +153,7 @@ export default function Students() {
     }).format(date);
   };
 
+
   const handleAddStudent = async (data: StudentFormData) => {
     const newStudent = {
       nome: data.fullName,
@@ -128,11 +161,12 @@ export default function Students() {
       senha:data.senha,
       matricula: data.matricula,
       birthDate: data.birthDate,
+      education_stage_id:data.course,
+      grade_id:data.grade
       // registrationDate: new Date().toISOString().split("T")[0],
     };
     console.log(data)
     await api.post("/alunos/", newStudent).then((res) => {
-      console.log(res)
       toast({ 
         title: "Aluno adicionado",
         description: `${data.fullName} foi adicionado com sucesso.`,
@@ -225,7 +259,7 @@ export default function Students() {
                   <Plus className="mr-2 h-4 w-4" /> Adicionar Aluno
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[500px] w-[95%] max-w-full sm:w-auto">
+              <DialogContent className="sm:max-w-[900px] w-[95%] max-w-full sm:w-auto">
                 <DialogHeader>
                   <DialogTitle>Adicionar Novo Aluno</DialogTitle>
                   <DialogDescription>
@@ -296,32 +330,48 @@ export default function Students() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="add-grade">Série</Label>
-                      <Input
-                        id="add-grade"
-                        {...registerAdd("grade")}
-                        placeholder="Ex: 5º Ano"
-                      />
-                      {errorsAdd.grade && (
-                        <p className="text-sm text-red-500">{errorsAdd.grade.message}</p>
-                      )}
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="add-class">Turma</Label>
-                      <Input
-                        id="add-class"
-                        {...registerAdd("class")}
-                        placeholder="Ex: A"
-                      />
-                      {errorsAdd.class && (
-                        <p className="text-sm text-red-500">{errorsAdd.class.message}</p>
-                      )}
-                    </div>
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Curso */}
+                  <div className="space-y-2">
+                    <Label htmlFor="add-course">Curso</Label>
+                    <select
+                      id="add-course"
+                      {...registerAdd("course")}
+                      className="w-full p-2 border rounded-md"
+                      onChange={e => setSelectedCourse(e.target.value)}
+                    >
+                      <option value="">Selecione um curso</option>
+                      {courses.map((course) => (
+                        <option key={course.id} value={course.id}>
+                          {course.name}
+                        </option>
+                      ))}
+                    </select>
+                    {errorsAdd.course && (
+                      <p className="text-sm text-red-500">{errorsAdd.course.message}</p>
+                    )}
                   </div>
 
+                  {/* Série */}
+                  <div className="space-y-2">
+                    <Label htmlFor="add-grade">Série</Label>
+                    <select
+                      id="add-grade"
+                      {...registerAdd("grade")}
+                      className="w-full p-2 border rounded-md"
+                    >
+                      <option value="">Selecione uma série</option>
+                      {grades.map((grade) => (
+                        <option key={grade.id} value={grade.id}>
+                          {grade.name}
+                        </option>
+                      ))}
+                    </select>
+                    {errorsAdd.grade && (
+                      <p className="text-sm text-red-500">{errorsAdd.grade.message}</p>
+                    )}
+                  </div>
+                </div>
                   <div className="flex justify-end gap-2 pt-4">
                     <Button
                       type="button"
