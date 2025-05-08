@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import Layout from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
@@ -25,6 +24,8 @@ import { EvaluationForm } from "@/components/evaluations/EvaluationForm";
 import { ReadyEvaluations } from "@/components/evaluations/ReadyEvaluations";
 import { QuestionBank } from "@/components/evaluations/QuestionBank";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/authContext";
+import StudentEvaluations from "@/components/evaluations/StudentEvaluations";
 
 // Mock data for evaluations
 const mockEvaluations = [
@@ -63,6 +64,7 @@ const mockEvaluations = [
 ];
 
 export default function Evaluations() {
+  const { user } = useAuth();
   const [evaluations, setEvaluations] = useState(mockEvaluations);
   const [activeTab, setActiveTab] = useState("ready");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -141,6 +143,16 @@ export default function Evaluations() {
     });
   };
 
+  // Conditionally render teacher view or student view based on user role
+  if (user.role === "aluno") {
+    return (
+      <Layout>
+        <StudentEvaluations />
+      </Layout>
+    );
+  }
+
+  // Default view for teachers and admins
   return (
     <Layout>
       <div className="container mx-auto px-2 md:px-4 py-4 md:py-6">
