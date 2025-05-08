@@ -41,6 +41,7 @@ const studentSchema = z.object({
   }),
   grade: z.string().nonempty("Série é obrigatória"),
   course: z.string().nonempty("Curso é obrigatório"),
+  classroom: z.string().optional(), // Added classroom field to schema
 });
 
 type StudentFormData = z.infer<typeof studentSchema>;
@@ -51,7 +52,7 @@ const mockStudents = [
     id: "1",
     fullName: "Ana Silva",
     grade: "5º Ano",
-    class: "A",
+    classroom: "A", // Changed from class to classroom
     birthDate: "2012-05-10",
     registrationDate: "2022-02-15",
   },
@@ -59,7 +60,7 @@ const mockStudents = [
     id: "2",
     fullName: "Pedro Santos",
     grade: "7º Ano",
-    class: "B",
+    classroom: "B", // Changed from class to classroom
     birthDate: "2010-08-22",
     registrationDate: "2021-03-10",
   },
@@ -67,7 +68,7 @@ const mockStudents = [
     id: "3",
     fullName: "Mariana Costa",
     grade: "9º Ano",
-    class: "A",
+    classroom: "A", // Changed from class to classroom
     birthDate: "2008-11-15",
     registrationDate: "2020-01-30",
   },
@@ -75,7 +76,7 @@ const mockStudents = [
     id: "4",
     fullName: "João Oliveira",
     grade: "4º Ano",
-    class: "C",
+    classroom: "C", // Changed from class to classroom
     birthDate: "2014-02-28",
     registrationDate: "2023-01-05",
   },
@@ -83,15 +84,15 @@ const mockStudents = [
     id: "5",
     fullName: "Camila Fernandes",
     grade: "8º Ano",
-    class: "D",
+    classroom: "D", // Changed from class to classroom
     birthDate: "2009-07-17",
     registrationDate: "2021-02-18",
   },
 ];
 
 interface CoursesType{
-  id:string,
-  name:string
+  id: string;
+  name: string;
 }
 
 export default function Students() {
@@ -101,7 +102,7 @@ export default function Students() {
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
-  const [courses, setCourses] = useState([])
+  const [courses, setCourses] = useState<CoursesType[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<CoursesType>({
     id:"",
     name:""
@@ -117,14 +118,12 @@ export default function Students() {
   },[])
 
   useEffect(()=>{
-    if(selectedCourse){
-      api.get(`/education_stages/${selectedCourse}`).then(res => {
+    if(selectedCourse.id){
+      api.get(`/education_stages/${selectedCourse.id}`).then(res => {
         setGrades(res.data)
       }).catch(e => console.log(e))
     }
   },[selectedCourse])
-
-
 
   const {
     register: registerAdd,
@@ -153,32 +152,45 @@ export default function Students() {
     }).format(date);
   };
 
-
   const handleAddStudent = async (data: StudentFormData) => {
+    // Convert birthDate to string for consistency with mockStudents
+    const birthDateString = data.birthDate.toISOString().split("T")[0];
+    
     const newStudent = {
-      nome: data.fullName,
-      email: data.email,
-      senha:data.senha,
-      matricula: data.matricula,
-      birthDate: data.birthDate,
-      education_stage_id:data.course,
-      grade_id:data.grade
-      // registrationDate: new Date().toISOString().split("T")[0],
+      id: `${students.length + 1}`,
+      fullName: data.fullName,
+      grade: data.grade,
+      classroom: data.classroom || "A", // Using classroom instead of class
+      birthDate: birthDateString,
+      registrationDate: new Date().toISOString().split("T")[0],
     };
-    console.log(data)
-    await api.post("/alunos/", newStudent).then((res) => {
+
+    // API call stays the same
+    try {
+      await api.post("/alunos/", {
+        nome: data.fullName,
+        email: data.email,
+        senha: data.senha,
+        matricula: data.matricula,
+        birthDate: data.birthDate,
+        education_stage_id: data.course,
+        grade_id: data.grade
+      });
+      
+      // Update local state
+      setStudents([...students, newStudent]);
+      
       toast({ 
         title: "Aluno adicionado",
         description: `${data.fullName} foi adicionado com sucesso.`,
       });
-    }).catch(e =>{
-      console.log(e)
+    } catch (e) {
+      console.log(e);
       toast({
-        title:"Erro ao adicionar o aluno!",
-      })
-    })
+        title: "Erro ao adicionar o aluno!",
+      });
+    }
 
-    // setStudents([...students, newStudent]);
     setIsAddDialogOpen(false);
     resetAdd();
   };
@@ -186,14 +198,19 @@ export default function Students() {
   const handleEditStudent = (data: StudentFormData) => {
     if (!selectedStudent) return;
 
+    // Convert birthDate to string for consistency
+    const birthDateString = typeof data.birthDate === 'string' 
+      ? data.birthDate 
+      : data.birthDate.toISOString().split("T")[0];
+
     const updatedStudents = students.map((student) =>
       student.id === selectedStudent.id
         ? {
             ...student,
             fullName: data.fullName,
             grade: data.grade,
-            class: data.class,
-            birthDate: data.birthDate,
+            classroom: data.classroom || student.classroom, // Using classroom instead of class
+            birthDate: birthDateString,
           }
         : student
     );
@@ -228,8 +245,18 @@ export default function Students() {
       fullName: student.fullName,
       birthDate: student.birthDate,
       grade: student.grade,
-      class: student.class,
+      classroom: student.classroom, // Using classroom instead of class
+      email: "",
+      senha: "",
+      matricula: "",
+      course: "",
     });
+  };
+
+  const handleCourseChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const courseId = e.target.value;
+    const selectedCourseObj = courses.find(course => course.id === courseId) || { id: "", name: "" };
+    setSelectedCourse(selectedCourseObj);
   };
 
   const filteredStudents = students.filter((student) =>
@@ -338,7 +365,7 @@ export default function Students() {
                       id="add-course"
                       {...registerAdd("course")}
                       className="w-full p-2 border rounded-md"
-                      onChange={e => setSelectedCourse(e.target.value)}
+                      onChange={handleCourseChange}
                     >
                       <option value="">Selecione um curso</option>
                       {courses.map((course) => (
@@ -372,6 +399,20 @@ export default function Students() {
                     )}
                   </div>
                 </div>
+
+                {/* Turma field */}
+                <div className="space-y-2">
+                  <Label htmlFor="add-classroom">Turma</Label>
+                  <Input
+                    id="add-classroom"
+                    {...registerAdd("classroom")}
+                    placeholder="Turma do aluno (ex: A, B, C)"
+                  />
+                  {errorsAdd.classroom && (
+                    <p className="text-sm text-red-500">{errorsAdd.classroom.message}</p>
+                  )}
+                </div>
+
                   <div className="flex justify-end gap-2 pt-4">
                     <Button
                       type="button"
@@ -409,7 +450,7 @@ export default function Students() {
                   <TableRow key={student.id}>
                     <TableCell className="font-medium">{student.fullName}</TableCell>
                     <TableCell className="hidden sm:table-cell">{student.grade}</TableCell>
-                    <TableCell className="hidden md:table-cell">{student.class}</TableCell>
+                    <TableCell className="hidden md:table-cell">{student.classroom}</TableCell>
                     <TableCell className="hidden lg:table-cell">
                       {formatDate(student.registrationDate)}
                     </TableCell>
@@ -489,14 +530,14 @@ export default function Students() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="edit-class">Turma</Label>
+                    <Label htmlFor="edit-classroom">Turma</Label>
                     <Input
-                      id="edit-class"
-                      {...registerEdit("class")}
-                      defaultValue={selectedStudent.class}
+                      id="edit-classroom"
+                      {...registerEdit("classroom")}
+                      defaultValue={selectedStudent.classroom}
                     />
-                    {errorsEdit.class && (
-                      <p className="text-sm text-red-500">{errorsEdit.class.message}</p>
+                    {errorsEdit.classroom && (
+                      <p className="text-sm text-red-500">{errorsEdit.classroom.message}</p>
                     )}
                   </div>
                 </div>
