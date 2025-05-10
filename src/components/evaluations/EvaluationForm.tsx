@@ -2,6 +2,8 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import Layout from "../layout/Layout";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Form,
   FormControl,
@@ -15,6 +17,16 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Trash2 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+
+import ReactQuill from 'react-quill'
+import 'react-quill/dist/quill.snow.css'
+
+// Importação do Quill e registro do módulo
+import Quill from 'quill'
+import ImageResize from 'quill-image-resize-module-react'
+import { Link } from "react-router-dom";
+
+Quill.register('modules/imageResize', ImageResize)
 
 // Form schema
 const evaluationSchema = z.object({
@@ -62,6 +74,25 @@ export function EvaluationForm({ initialValues, onSubmit }: EvaluationFormProps)
       questions: questions,
     },
   });
+
+  const modules = {
+    toolbar: [
+        [{ header: [1, 2, false] }],
+        ['bold', 'italic', 'underline', 'strike'],
+        [{ list: 'ordered' }, { list: 'bullet' }],
+        ['link', 'image'],
+        ['clean']
+      ],
+      imageResize: {
+        modules: [ 'Resize', 'DisplaySize', 'Toolbar' ]
+      }
+  
+  }
+
+const formats = [
+  'header', 'bold', 'italic', 'underline', 'strike',
+  'list', 'bullet', 'link', 'image'
+]
 
   // Available subject options
   const subjectOptions = [
@@ -121,9 +152,17 @@ export function EvaluationForm({ initialValues, onSubmit }: EvaluationFormProps)
   };
 
   return (
+    <>
     <Form {...form}>
+       <Card className="p-7">
+        <CardHeader>
+          <CardTitle>Criar Avaliação Manualmente</CardTitle>
+          <CardDescription>
+            Crie uma nova avaliação inserindo manualmente as questões
+          </CardDescription>
+        </CardHeader>
       <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 w-full">
           <FormField
             control={form.control}
             name="title"
@@ -209,14 +248,14 @@ export function EvaluationForm({ initialValues, onSubmit }: EvaluationFormProps)
                     <Trash2 className="h-4 w-4 text-red-500" />
                   </Button>
                   
-                  <div className="mb-4">
+                  <div className="mb-8 h-auto">
                     <label className="block text-sm font-medium mb-1">Questão {qIndex + 1}</label>
-                    <Textarea
-                      value={question.text}
-                      onChange={(e) => updateQuestion(qIndex, "text", e.target.value)}
-                      placeholder="Digite o enunciado da questão"
-                      className="min-h-[100px]"
-                    />
+                    <ReactQuill value={question.text} className="w-[100%] h-auto "
+                      modules={modules}
+                      formats={formats}
+                      
+                      />
+                    
                   </div>
                   
                   <div className="space-y-2">
@@ -259,12 +298,16 @@ export function EvaluationForm({ initialValues, onSubmit }: EvaluationFormProps)
         </div>
 
         <div className="flex justify-end gap-2 pt-4">
-          <Button type="button" variant="outline" onClick={() => form.reset()}>
-            Cancelar
-          </Button>
+          <Link to={'/app/avaliacoes'}>
+            <Button type="button" variant="outline" onClick={() => form.reset()}>
+              Cancelar
+            </Button>
+          </Link>
           <Button type="submit">Salvar</Button>
         </div>
       </form>
+    </Card>
     </Form>
+    </>
   );
 }

@@ -30,37 +30,16 @@ type SidebarLink = {
   role:string[];
 };
 
-const sidebarLinks: SidebarLink[] = [
-  { icon: LayoutDashboard, label: "Painel", href: "/" , role:["admin", "professor","aluno"]},
-  { icon: Users, label: "Alunos", href: "/alunos" , role:["admin", "professor"]},
-  { icon: List, label: "Avaliações", href: "/avaliacoes",role:["admin", "professor", "aluno"] },
-  { icon: CalendarDays, label: "Agenda", href: "/agenda",role:["admin", "professor", "aluno"] },
-  { icon: Gamepad, label: "Jogos", href: "/jogos",role:["admin", "professor", "aluno"] },
-  { icon: Tv, label: "Play TV", href: "/play-tv",role:["admin", "professor", "aluno"] },
-  { icon: Headset, label: "Plantão Online", href: "/plantao",role:["admin", "professor"] },
-  { icon: Ticket, label: "Cartão Resposta", href: "/cartao-resposta",role:["admin", "professor"] },
-  { icon: Award, label: "Certificados", href: "/certificados",role:["admin", "professor", "aluno"] },
-  { icon: Trophy, label: "Competições", href: "/competicoes",role:["admin", "professor", "aluno"] },
-  { icon: Award, label: "Olimpíadas", href: "/olimpiadas" ,role:["admin", "professor", "aluno"]},
-  { icon: School, label: "Escolas", href: "/escolas" ,role:["admin", "professor"]},
-  { icon: User, label: "Usuários", href: "/usuarios",role:["admin"] },
-  { icon: Edit, label: "Editar Perfil", href: "/perfil" ,role:["admin", "professor", "aluno"]},
-  { icon: Bell, label: "Avisos", href: "/avisos",role:["admin", "professor", "aluno"] },
-  { icon: Settings, label: "Configurações", href: "/configuracoes",role:["admin", "professor", "aluno"] },
-  { icon: LogOut, label: "Sair", href: "/logout",role:["admin", "professor", "aluno"] },
-];
 
 
-const menuProfessor = sidebarLinks.filter(menu => menu.role.includes("professor"))
-const menuAdmin = sidebarLinks.filter(menu => menu.role.includes("admin"))
-const menuAluno = sidebarLinks.filter(menu => menu.role.includes("aluno"))
-const menuDiretor = sidebarLinks.filter(menu => menu.role.includes("diretor"))
+
 
 
 export default function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const currentPath = window.location.pathname;
   const isMobile = useIsMobile();
+
 
   const navigate = useNavigate()
   const {logout, user} = useAuth()
@@ -72,7 +51,31 @@ export default function Sidebar() {
     
   }
 
+  const sidebarLinks: SidebarLink[] = [
+  { icon: LayoutDashboard, label: "Painel", href: `${user.role === 'aluno'? "/aluno" : "/app" }` , role:["admin", "professor","aluno"]},
+  { icon: Users, label: "Alunos", href:"/app/alunos" , role:["admin", "professor"]},
+  { icon: List, label: "Avaliações", href:`${user.role === 'aluno'? "/aluno/avaliacoes" : "/app/avaliacoes" }` ,role:["admin", "professor", "aluno"] },
+  { icon: CalendarDays, label: "Agenda", href: `${user.role === 'aluno'? "/aluno/agenda" : "/app/agenda" }`,role:["admin", "professor", "aluno"] },
+  { icon: Gamepad, label: "Jogos", href: `${user.role === 'aluno'? "/aluno/jogos" : "/app/jogos" }`,role:["admin", "professor", "aluno"] },
+  { icon: Tv, label: "Play TV", href: `${user.role === 'aluno'? "/aluno/play-tv" : "/app/play-tv" }`,role:["admin", "professor", "aluno"] },
+  { icon: Headset, label: "Plantão Online", href: "/app/plantao",role:["admin", "professor"] },
+  { icon: Ticket, label: "Cartão Resposta", href: "/app/cartao-resposta",role:["admin", "professor"] },
+  { icon: Award, label: "Certificados", href:`${user.role === 'aluno'? "/aluno/certificados" : "/app/certificados" }`,role:["admin", "professor", "aluno"] },
+  { icon: Trophy, label: "Competições", href: `${user.role === 'aluno'? "/aluno/competicoes" : "/app/competicoes" }`,role:["admin", "professor", "aluno"] },
+  { icon: Award, label: "Olimpíadas", href: `${user.role === 'aluno'? "/aluno/olimpiadas" : "/app/olimpiadas" }` ,role:["admin", "professor", "aluno"]},
+  { icon: School, label: "Escolas", href: "/app/escolas" ,role:["admin", "professor"]},
+  { icon: User, label: "Usuários", href: "/app/usuarios",role:["admin"] },
+  { icon: Edit, label: "Editar Perfil", href:`${user.role === 'aluno'? "/aluno/perfil" : "/app/perfil" }` ,role:["admin", "professor", "aluno"]},
+  { icon: Bell, label: "Avisos", href:`${user.role === 'aluno'? "/aluno/avisos" : "/app/avisos" }`,role:["admin", "professor", "aluno"] },
+  { icon: Settings, label: "Configurações", href: "/app/configuracoes",role:["admin", "professor"] },
+  { icon: LogOut, label: "Sair", href: "/logout",role:["admin", "professor", "aluno"] },
+];
 
+
+const menuProfessor = sidebarLinks.filter(menu => menu.role.includes("professor"))
+const menuAdmin = sidebarLinks.filter(menu => menu.role.includes("admin"))
+const menuAluno = sidebarLinks.filter(menu => menu.role.includes("aluno"))
+const menuDiretor = sidebarLinks.filter(menu => menu.role.includes("diretor"))
 
 function RenderMenu({ user, currentPath, isCollapsed, handleLogout }) {
   let menu = [];

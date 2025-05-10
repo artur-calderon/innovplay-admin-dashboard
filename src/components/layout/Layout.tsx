@@ -3,12 +3,13 @@ import { ReactNode, useState, useEffect } from "react";
 import Sidebar from "./Sidebar";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Outlet } from "react-router-dom";
 
 type LayoutProps = {
   children: ReactNode;
 };
 
-export default function Layout({ children }: LayoutProps) {
+export default function Layout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
@@ -58,7 +59,7 @@ export default function Layout({ children }: LayoutProps) {
 
       {/* Main content area */}
       <main className="flex-1 p-4 md:p-6 overflow-y-auto pt-16 md:pt-6">
-        {children}
+        <Outlet/>
       </main>
     </div>
   );

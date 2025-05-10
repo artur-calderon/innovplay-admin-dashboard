@@ -3,6 +3,7 @@ import Layout from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Eye, Pencil, Trash2 } from "lucide-react";
+import { Link } from "react-router-dom";
 import {
   Table,
   TableBody,
@@ -154,7 +155,7 @@ export default function Evaluations() {
 
   // Default view for teachers and admins
   return (
-    <Layout>
+    <>
       <div className="container mx-auto px-2 md:px-4 py-4 md:py-6">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-xl md:text-2xl font-bold">Avaliações</h1>
@@ -179,19 +180,22 @@ export default function Evaluations() {
                   Crie uma nova avaliação inserindo manualmente as questões
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                  <DialogTrigger asChild>
+              <CardContent >
+                <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen} >
+                  <Link to="/app/criar-avaliacao">
                     <Button>
                       <Plus className="mr-2 h-4 w-4" /> Criar Nova Avaliação
                     </Button>
+
+                  </Link>
+                  {/* <DialogTrigger asChild>
                   </DialogTrigger>
-                  <DialogContent className="sm:max-w-[650px] w-[95%] max-w-full sm:w-auto">
+                  <DialogContent className="sm:max-w-[650px] w-[105%]  max-w-full sm:w-auto">
                     <DialogHeader>
                       <DialogTitle>Criar Nova Avaliação</DialogTitle>
                     </DialogHeader>
                     <EvaluationForm onSubmit={handleCreateEvaluation} />
-                  </DialogContent>
+                  </DialogContent> */}
                 </Dialog>
               </CardContent>
             </Card>
@@ -267,6 +271,6 @@ export default function Evaluations() {
           </DialogContent>
         </Dialog>
       </div>
-    </Layout>
+    </>
   );
 }

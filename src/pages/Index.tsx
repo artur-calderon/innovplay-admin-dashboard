@@ -23,7 +23,7 @@ const Index = () => {
   const {user} = useAuth();
 
   return (
-    <Layout>
+    <>
       <div className="w-full flex justify-between text-xl">
         <h1 className="text-3xl font-bold mb-6">Painel Administrativo</h1>
         <span>Bem vindo! {user.nome ? user.nome : "Aluno"}</span>
@@ -115,7 +115,7 @@ const Index = () => {
       <div className="mb-8">
         <QuestionsTable />
       </div>
-    </Layout>
+    </>
   );
 };
 

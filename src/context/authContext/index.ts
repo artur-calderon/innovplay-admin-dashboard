@@ -15,7 +15,8 @@ interface AuthContext{
     user:User,
     loading: boolean,
     login: (matricula:string, senha:string) => void,
-    logout: () => Promise<void>
+    logout: () => Promise<void>,
+    setUser: (user:User) => void
 }
 
 
@@ -31,7 +32,9 @@ export const useAuth =  create<AuthContext>((set) =>{
             tenant_id:''
 
         },
-
+        setUser:(user)=>{
+            set({user})
+        },
         login: async (matricula: string, senha: string) => {
             set({ loading: true })
             try
