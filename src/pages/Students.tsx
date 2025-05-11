@@ -27,6 +27,8 @@ import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { api } from "@/lib/api";
+import { useParams } from "react-router-dom";
+import { useDataContext } from "@/context/dataContext";
 
 
 // Form schema for student data
@@ -41,89 +43,95 @@ const studentSchema = z.object({
   }),
   grade: z.string().nonempty("Série é obrigatória"),
   course: z.string().nonempty("Curso é obrigatório"),
-  classroom: z.string().optional(), // Added classroom field to schema
 });
 
 type StudentFormData = z.infer<typeof studentSchema>;
 
-// Mock data for students
-const mockStudents = [
-  {
-    id: "1",
-    fullName: "Ana Silva",
-    grade: "5º Ano",
-    classroom: "A", // Changed from class to classroom
-    birthDate: "2012-05-10",
-    registrationDate: "2022-02-15",
-  },
-  {
-    id: "2",
-    fullName: "Pedro Santos",
-    grade: "7º Ano",
-    classroom: "B", // Changed from class to classroom
-    birthDate: "2010-08-22",
-    registrationDate: "2021-03-10",
-  },
-  {
-    id: "3",
-    fullName: "Mariana Costa",
-    grade: "9º Ano",
-    classroom: "A", // Changed from class to classroom
-    birthDate: "2008-11-15",
-    registrationDate: "2020-01-30",
-  },
-  {
-    id: "4",
-    fullName: "João Oliveira",
-    grade: "4º Ano",
-    classroom: "C", // Changed from class to classroom
-    birthDate: "2014-02-28",
-    registrationDate: "2023-01-05",
-  },
-  {
-    id: "5",
-    fullName: "Camila Fernandes",
-    grade: "8º Ano",
-    classroom: "D", // Changed from class to classroom
-    birthDate: "2009-07-17",
-    registrationDate: "2021-02-18",
-  },
-];
-
 interface CoursesType{
-  id: string;
-  name: string;
+  id:string,
+  name:string
+}
+
+interface StudentType {
+  id:string;
+  nome:string;
+  matricula:string;
+  brith_date:string;
+  education_stage_id:string;
+  grade_id:string;
 }
 
 export default function Students() {
-  const [students, setStudents] = useState(mockStudents);
+  const [students, setStudents] = useState([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
-  const [courses, setCourses] = useState<CoursesType[]>([]);
+  const [courses, setCourses] = useState([])
   const [selectedCourse, setSelectedCourse] = useState<CoursesType>({
     id:"",
     name:""
   });
-  const [grades, setGrades] = useState([]);
+  const [gradesByStage, setGradesByStage] = useState([]);
+  const [grades, setGrades] = useState([])
+  const [reloadAlunos, setReloadAlunos] = useState(false);
+  const [escolaAtual, setEscolaAtual] = useState([])
 
   const { toast } = useToast();
+  const {id} = useParams()
+  const {escolas} = useDataContext()
+
+
+  useEffect(()=>{
+    if(escolas.length > 0){
+      escolas.map(escola => setEscolaAtual(escola))
+    }
+  },[escolas])
+
+  useEffect(()=>{
+  api.get(`/alunos/escola/${id}`).then((res)=>{
+      setStudents(res.data)
+    }).catch(e => console.log(e))
+  },[reloadAlunos,id])
 
   useEffect(()=>{
     api.get("/education_stages").then((res)=>{
       setCourses(res.data)
     }).catch(e=>{console.log(e)})
+
+    api.get("/grades").then(res=>{
+      setGrades(res.data)
+    }).catch(e => console.log(e))
   },[])
 
   useEffect(()=>{
-    if(selectedCourse.id){
-      api.get(`/education_stages/${selectedCourse.id}`).then(res => {
-        setGrades(res.data)
+    if(selectedCourse){
+      api.get(`/education_stages/${selectedCourse}`).then(res => {
+        setGradesByStage(res.data)
       }).catch(e => console.log(e))
     }
   },[selectedCourse])
+
+
+  function returnEducationStage(id:string){
+    if(courses.length > 0){
+      const atualCourse =  courses.filter(course => course.id === id)
+      return atualCourse[0].name
+    }else {
+      return "Carregando..."
+    }
+  }
+
+  function returnGrade(id:string){
+    if(grades.length > 0){
+      const atualGrade = grades.filter(grade => grade.id === id)
+      return atualGrade[0].name
+    }else{
+      return "Carregando..."
+    }
+  }
+
 
   const {
     register: registerAdd,
@@ -152,122 +160,99 @@ export default function Students() {
     }).format(date);
   };
 
-  const handleAddStudent = async (data: StudentFormData) => {
-    // Convert birthDate to string for consistency with mockStudents
-    const birthDateString = data.birthDate.toISOString().split("T")[0];
-    
-    const newStudent = {
-      id: `${students.length + 1}`,
-      fullName: data.fullName,
-      grade: data.grade,
-      classroom: data.classroom || "A", // Using classroom instead of class
-      birthDate: birthDateString,
-      registrationDate: new Date().toISOString().split("T")[0],
-    };
 
-    // API call stays the same
-    try {
-      await api.post("/alunos/", {
-        nome: data.fullName,
-        email: data.email,
-        senha: data.senha,
-        matricula: data.matricula,
-        birthDate: data.birthDate,
-        education_stage_id: data.course,
-        grade_id: data.grade
-      });
-      
-      // Update local state
-      setStudents([...students, newStudent]);
-      
+  const handleAddStudent = async (data: StudentFormData) => {
+    const newStudent = {
+      nome: data.fullName,
+      email: data.email,
+      senha:data.senha,
+      matricula: data.matricula,
+      birth_date: data.birthDate,
+      education_stage_id:data.course,
+      grade_id:data.grade
+      // registrationDate: new Date().toISOString().split("T")[0],
+    };
+    await api.post("/alunos/", newStudent).then((res) => {
       toast({ 
         title: "Aluno adicionado",
         description: `${data.fullName} foi adicionado com sucesso.`,
       });
-    } catch (e) {
-      console.log(e);
+    }).catch(e =>{
+      console.log(e)
       toast({
-        title: "Erro ao adicionar o aluno!",
-      });
-    }
+        title:"Erro ao adicionar o aluno!",
+      })
+    })
 
+    // setStudents([...students, newStudent]);
     setIsAddDialogOpen(false);
     resetAdd();
+    setReloadAlunos(prev => !prev)
   };
 
-  const handleEditStudent = (data: StudentFormData) => {
+  const handleEditStudent = async (data: StudentFormData) => {
     if (!selectedStudent) return;
+    console.log(data)
+    const editedStudent = {
+      nome: data.fullName,
+      email: data.email,
+      senha:data.senha,
+      matricula: data.matricula,
+      birth_date: data.birthDate,
+      education_stage_id:data.course,
+      grade_id:data.grade
+    };
 
-    // Convert birthDate to string for consistency
-    const birthDateString = typeof data.birthDate === 'string' 
-      ? data.birthDate 
-      : data.birthDate.toISOString().split("T")[0];
-
-    const updatedStudents = students.map((student) =>
-      student.id === selectedStudent.id
-        ? {
-            ...student,
-            fullName: data.fullName,
-            grade: data.grade,
-            classroom: data.classroom || student.classroom, // Using classroom instead of class
-            birthDate: birthDateString,
-          }
-        : student
-    );
-
-    setStudents(updatedStudents);
+    await api.put(`/alunos/${selectedStudent.id}`,editedStudent)
     setIsEditDialogOpen(false);
     setSelectedStudent(null);
     resetEdit();
-
+    setReloadAlunos(prev => !prev)
     toast({
       title: "Aluno atualizado",
       description: `${data.fullName} foi atualizado com sucesso.`,
     });
   };
 
-  const handleDeleteStudent = (id: string) => {
-    const studentToDelete = students.find((student) => student.id === id);
-    const updatedStudents = students.filter((student) => student.id !== id);
-    setStudents(updatedStudents);
-
-    toast({
-      title: "Aluno removido",
-      description: `${studentToDelete?.fullName} foi removido com sucesso.`,
-      variant: "destructive",
-    });
+  const handleDeleteStudent = async (id: string) => {
+    await api.delete(`/alunos/${id}`).then(res => {
+      console.log(res)
+      toast({
+        title: "Aluno removido",
+        variant: "destructive",
+      });
+      setReloadAlunos(prev => !prev)
+    }).catch(e => {
+      toast({
+        title:"Aluno não encontrado!",
+        description:`${e}`
+      })
+    })
   };
 
   const openEditDialog = (student: any) => {
+    console.log(student)
     setSelectedStudent(student);
     setIsEditDialogOpen(true);
     resetEdit({
       fullName: student.fullName,
       birthDate: student.birthDate,
       grade: student.grade,
-      classroom: student.classroom, // Using classroom instead of class
-      email: "",
-      senha: "",
-      matricula: "",
-      course: "",
+      course: student.education_stage_id,
     });
   };
 
-  const handleCourseChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const courseId = e.target.value;
-    const selectedCourseObj = courses.find(course => course.id === courseId) || { id: "", name: "" };
-    setSelectedCourse(selectedCourseObj);
-  };
 
   const filteredStudents = students.filter((student) =>
-    student.fullName.toLowerCase().includes(searchTerm.toLowerCase())
+    student.nome.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  
   return (
-    <Layout>
+    <>
       <div className="container mx-auto px-2 md:px-4 py-4 md:py-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-          <h1 className="text-xl md:text-2xl font-bold">Alunos</h1>
+          <h1 className="text-xl md:text-2xl font-bold">Alunos da escola {escolaAtual.id === id ? escolaAtual.nome : "Carregando..."}</h1>
 
           <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
             <div className="relative flex-grow">
@@ -365,7 +350,7 @@ export default function Students() {
                       id="add-course"
                       {...registerAdd("course")}
                       className="w-full p-2 border rounded-md"
-                      onChange={handleCourseChange}
+                      onChange={e => setSelectedCourse(e.target.value)}
                     >
                       <option value="">Selecione um curso</option>
                       {courses.map((course) => (
@@ -388,7 +373,7 @@ export default function Students() {
                       className="w-full p-2 border rounded-md"
                     >
                       <option value="">Selecione uma série</option>
-                      {grades.map((grade) => (
+                      {gradesByStage.map((grade) => (
                         <option key={grade.id} value={grade.id}>
                           {grade.name}
                         </option>
@@ -399,20 +384,6 @@ export default function Students() {
                     )}
                   </div>
                 </div>
-
-                {/* Turma field */}
-                <div className="space-y-2">
-                  <Label htmlFor="add-classroom">Turma</Label>
-                  <Input
-                    id="add-classroom"
-                    {...registerAdd("classroom")}
-                    placeholder="Turma do aluno (ex: A, B, C)"
-                  />
-                  {errorsAdd.classroom && (
-                    <p className="text-sm text-red-500">{errorsAdd.classroom.message}</p>
-                  )}
-                </div>
-
                   <div className="flex justify-end gap-2 pt-4">
                     <Button
                       type="button"
@@ -439,8 +410,8 @@ export default function Students() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[250px]">Nome Completo</TableHead>
-                  <TableHead className="hidden sm:table-cell">Série</TableHead>
-                  <TableHead className="hidden md:table-cell">Turma</TableHead>
+                  <TableHead className="hidden sm:table-cell">Curso</TableHead>
+                  <TableHead className="hidden md:table-cell">Série</TableHead>
                   <TableHead className="hidden lg:table-cell">Data de Cadastro</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
@@ -448,11 +419,11 @@ export default function Students() {
               <TableBody>
                 {filteredStudents.map((student) => (
                   <TableRow key={student.id}>
-                    <TableCell className="font-medium">{student.fullName}</TableCell>
-                    <TableCell className="hidden sm:table-cell">{student.grade}</TableCell>
-                    <TableCell className="hidden md:table-cell">{student.classroom}</TableCell>
+                    <TableCell className="font-medium">{student.nome}</TableCell>
+                    <TableCell className="hidden sm:table-cell">{returnEducationStage(student.education_stage_id)}</TableCell>
+                    <TableCell className="hidden md:table-cell">{returnGrade(student.grade_id)}</TableCell>
                     <TableCell className="hidden lg:table-cell">
-                      {formatDate(student.registrationDate)}
+                      {formatDate(student.criado_em)}
                     </TableCell>
                     <TableCell className="text-right space-x-1">
                       <Button variant="ghost" size="sm">
@@ -492,52 +463,106 @@ export default function Students() {
             {selectedStudent && (
               <form onSubmit={handleSubmitEdit(handleEditStudent)} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="edit-name">Nome Completo</Label>
-                  <Input
-                    id="edit-name"
-                    {...registerEdit("fullName")}
-                    defaultValue={selectedStudent.fullName}
-                  />
-                  {errorsEdit.fullName && (
-                    <p className="text-sm text-red-500">{errorsEdit.fullName.message}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="edit-birthDate">Data de Nascimento</Label>
-                  <Input
-                    id="edit-birthDate"
-                    type="date"
-                    {...registerEdit("birthDate")}
-                    defaultValue={selectedStudent.birthDate}
-                  />
-                  {errorsEdit.birthDate && (
-                    <p className="text-sm text-red-500">{errorsEdit.birthDate.message}</p>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-grade">Série</Label>
+                    <Label htmlFor="edit-name">Nome Completo</Label>
                     <Input
-                      id="edit-grade"
-                      {...registerEdit("grade")}
-                      defaultValue={selectedStudent.grade}
+                      id="edit-name"
+                      {...registerEdit("fullName")}
+                      placeholder="Nome completo do aluno"
                     />
-                    {errorsEdit.grade && (
-                      <p className="text-sm text-red-500">{errorsEdit.grade.message}</p>
+                    {errorsAdd.fullName && (
+                      <p className="text-sm text-red-500">{errorsAdd.fullName.message}</p>
+                    )}
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="matricula">Número de Matrícula</Label>
+                    <Input
+                      id="matricula"
+                      {...registerEdit("matricula")}
+                      placeholder="Número de Matrícula"
+                    />
+                    {errorsAdd.matricula && (
+                      <p className="text-sm text-red-500">{errorsAdd.matricula.message}</p>
+                    )}
+                  </div>
+
+                   <div className="space-y-2">
+                    <Label htmlFor="email">E-mail</Label>
+                    <Input
+                      id="email"
+                      {...registerEdit("email")}
+                      placeholder="Email do aluno"
+                      type="email"
+                    />
+                    {errorsAdd.email && (
+                      <p className="text-sm text-red-500">{errorsAdd.email.message}</p>
+                    )}
+                  </div>
+
+                   <div className="space-y-2">
+                    <Label htmlFor="password">Senha</Label>
+                    <Input
+                      id="password"
+                      {...registerEdit("senha")}
+                      placeholder="Senha do aluno"
+                      type="password"
+                    />
+                    {errorsAdd.senha && (
+                      <p className="text-sm text-red-500">{errorsAdd.senha.message}</p>
                     )}
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="edit-classroom">Turma</Label>
+                    <Label htmlFor="add-birthDate">Data de Nascimento</Label>
                     <Input
-                      id="edit-classroom"
-                      {...registerEdit("classroom")}
-                      defaultValue={selectedStudent.classroom}
+                      id="add-birthDate"
+                      type="date"
+                      {...registerEdit("birthDate")}
                     />
-                    {errorsEdit.classroom && (
-                      <p className="text-sm text-red-500">{errorsEdit.classroom.message}</p>
+                    {errorsAdd.birthDate && (
+                      <p className="text-sm text-red-500">{errorsAdd.birthDate.message}</p>
+                    )}
+                  </div>
+
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Curso */}
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-course">Curso</Label>
+                    <select
+                      id="edit-course"
+                      {...registerEdit("course")}
+                      className="w-full p-2 border rounded-md"
+                      onChange={e => setSelectedCourse(e.target.value)}
+                    >
+                      <option value="">Selecione um curso</option>
+                      {courses.map((course) => (
+                        <option key={course.id} value={course.id}>
+                          {course.name}
+                        </option>
+                      ))}
+                    </select>
+                    {errorsAdd.course && (
+                      <p className="text-sm text-red-500">{errorsAdd.course.message}</p>
+                    )}
+                  </div>
+
+                  {/* Série */}
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-grade">Série</Label>
+                    <select
+                      id="edit-grade"
+                      {...registerEdit("grade")}
+                      className="w-full p-2 border rounded-md"
+                    >
+                      <option value="">Selecione uma série</option>
+                      {gradesByStage.map((grade) => (
+                        <option key={grade.id} value={grade.id}>
+                          {grade.name}
+                        </option>
+                      ))}
+                    </select>
+                    {errorsAdd.grade && (
+                      <p className="text-sm text-red-500">{errorsAdd.grade.message}</p>
                     )}
                   </div>
                 </div>
@@ -560,6 +585,6 @@ export default function Students() {
           </DialogContent>
         </Dialog>
       </div>
-    </Layout>
+    </>
   );
 }

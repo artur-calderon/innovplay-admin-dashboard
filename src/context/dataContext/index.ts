@@ -97,7 +97,8 @@ interface DataProps {
     grades: GradesProp,
     educationStages: EducationStageProps,
     municipios: MunicipioProps,
-    alunos: AlunnoProps
+    alunos: AlunnoProps,
+    getEscolas:() => void;
 }
 
 export const useDataContext = create<DataProps>(set => {
@@ -188,6 +189,17 @@ export const useDataContext = create<DataProps>(set => {
             } catch (error) {
                 toast.error("Erro ao receber avaliacoes", error)
             }
-        }
+        },
+
+        getEscolas:async ()=>{
+            try
+            {
+                const response = await api.get("/escolas")
+                set({escolas:response.data})
+
+            }catch(e){
+              toast.error("Erro ao buscar escolas!",e)  
+            }
+        },
     }
 })

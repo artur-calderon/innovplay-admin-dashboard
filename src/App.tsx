@@ -14,9 +14,14 @@ import { useAuth } from "./context/authContext";
 import { useEffect, useState } from "react";
 import { api } from "./lib/api";
 import EmBreve from "./pages/EmBreve";
-import { EvaluationForm } from "./components/evaluations/EvaluationForm";
+// import { EvaluationForm } from "./components/evaluations/EvaluationForm";
+import Alunos from './pages/Alunos'
 import Layout from "./components/layout/Layout";
 import StudentEvaluations from "./components/evaluations/StudentEvaluations";
+import CreateEvaluation from "./pages/CreateEvaluation";
+import Users from "./pages/Users";
+import Schools from "./pages/Schools";
+import Profile from "./pages/Profile";
 
 const queryClient = new QueryClient();
 
@@ -74,7 +79,7 @@ const App = () =>{
                     <Route path="/aluno/competicoes" element={<EmBreve />} />
                     <Route path="/aluno/olimpiadas" element={<EmBreve />} />
                     <Route path="/aluno/escolas" element={<EmBreve />} />
-                    <Route path="/aluno/perfil" element={<EmBreve />} />
+                    <Route path="/aluno/perfil" element={<Profile />} />
                     <Route path="/aluno/avisos" element={<EmBreve />} />
                 </Route>
               )
@@ -84,8 +89,10 @@ const App = () =>{
               user.role != 'aluno' && (
                 <Route path="/app" element={<Layout/>}>
                   <Route index element={<Index/>}/>
-                  <Route path="/app/alunos" element={<Students />} />
+                  <Route path="/app/alunos" element={<Alunos/>} />
+                  <Route path="/app/alunos/:id" element={<Students/>} />
                   <Route path="/app/avaliacoes" element={<Evaluations />} />
+                  <Route path="/app/criar-avaliacao" element={<CreateEvaluation />} />
                   <Route path="/app/agenda" element={<EmBreve />} />
                   <Route path="/app/jogos" element={<EmBreve />} />
                   <Route path="/app/play-tv" element={<EmBreve />} />
@@ -94,11 +101,11 @@ const App = () =>{
                   <Route path="/app/certificados" element={<EmBreve />} />
                   <Route path="/app/competicoes" element={<EmBreve />} />
                   <Route path="/app/olimpiadas" element={<EmBreve />} />
-                  <Route path="/app/escolas" element={<EmBreve />} />
-                  <Route path="/app/usuarios" element={<EmBreve />} />
-                  <Route path="/app/perfil" element={<EmBreve />} />
+                  <Route path="/app/escolas" element={<Schools />} />
+                  <Route path="/app/usuarios" element={<Users />} />
+                  <Route path="/app/perfil" element={<Profile />} />
                   <Route path="/app/avisos" element={<EmBreve />} />
-                  <Route path="/app/criar-avaliacao" element={<EvaluationForm onSubmit={null}/>} />
+                  {/* <Route path="/app/criar-avaliacao" element={<EvaluationForm onSubmit={null}/>} /> */}
                   <Route path="/app/configuracoes" element={<EmBreve />} />
                 </Route>
               )

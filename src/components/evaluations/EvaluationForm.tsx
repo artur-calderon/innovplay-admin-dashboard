@@ -1,9 +1,7 @@
-
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import Layout from "../layout/Layout";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import React from "react";
+import { z } from "zod";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Form,
   FormControl,
@@ -12,166 +10,155 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { useForm } from "react-hook-form";
-import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Plus, Trash2 } from "lucide-react";
-import { Textarea } from "@/components/ui/textarea";
-
-import ReactQuill from 'react-quill'
-import 'react-quill/dist/quill.snow.css'
-
-// Importação do Quill e registro do módulo
-import Quill from 'quill'
-import ImageResize from 'quill-image-resize-module-react'
-import { Link } from "react-router-dom";
-
-Quill.register('modules/imageResize', ImageResize)
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { ArrowRight } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Badge } from "@/components/ui/badge";
+import { Check, X } from "lucide-react";
 
 // Form schema
-const evaluationSchema = z.object({
-  title: z.string().min(3, "Título precisa ter no mínimo 3 caracteres"),
-  subject: z.string().min(1, "Selecione uma disciplina"),
-  grade: z.string().min(1, "Selecione uma série"),
-  questions: z.array(
-    z.object({
-      text: z.string().min(5, "A questão precisa ter no mínimo 5 caracteres"),
-      options: z.array(z.string()).optional(),
-      answer: z.string().optional(),
-    })
-  ).optional(),
+const evaluationFormSchema = z.object({
+  name: z.string().min(3, "O nome deve ter no mínimo 3 caracteres"),
+  school: z.string().min(1, "Selecione uma escola"),
+  subject: z.string().min(1, "Selecione uma matéria"),
+  classes: z.array(z.string()).min(1, "Selecione pelo menos uma turma"),
 });
 
-type EvaluationFormValues = z.infer<typeof evaluationSchema>;
+type EvaluationFormValues = z.infer<typeof evaluationFormSchema>;
+
+// Mock data
+const schools = [
+  "Escola Municipal João da Silva",
+  "Colégio Estadual Maria Santos",
+  "Instituto Federal de Educação",
+  "Escola Técnica de Artes",
+  "Centro Educacional Novo Horizonte"
+];
+
+const subjects = [
+  "Matemática",
+  "Português",
+  "Ciências",
+  "História",
+  "Geografia",
+  "Física",
+  "Química",
+  "Biologia",
+  "Inglês",
+  "Artes",
+  "Educação Física"
+];
+
+const classes = [
+  "1º Ano A",
+  "1º Ano B",
+  "2º Ano A",
+  "2º Ano B",
+  "3º Ano A",
+  "3º Ano B",
+  "4º Ano A",
+  "4º Ano B",
+  "5º Ano A",
+  "5º Ano B",
+  "6º Ano A",
+  "6º Ano B",
+  "7º Ano A",
+  "7º Ano B",
+  "8º Ano A",
+  "8º Ano B",
+  "9º Ano A",
+  "9º Ano B",
+];
 
 interface EvaluationFormProps {
-  initialValues?: {
-    title: string;
-    subject: string;
-    grade: string;
-    questions?: Array<{
-      text: string;
-      options?: string[];
-      answer?: string;
-    }>;
-  };
-  onSubmit: (values: EvaluationFormValues) => void;
+  onSubmit: (data: any) => void;
+  initialValues?: any;
 }
 
-export function EvaluationForm({ initialValues, onSubmit }: EvaluationFormProps) {
-  const [questions, setQuestions] = useState<Array<{
-    text: string;
-    options?: string[];
-    answer?: string;
-  }>>(initialValues?.questions || []);
-
+export default function EvaluationForm({ onSubmit, initialValues }: EvaluationFormProps) {
   const form = useForm<EvaluationFormValues>({
-    resolver: zodResolver(evaluationSchema),
-    defaultValues: {
-      title: initialValues?.title || "",
-      subject: initialValues?.subject || "",
-      grade: initialValues?.grade || "",
-      questions: questions,
+    resolver: zodResolver(evaluationFormSchema),
+    defaultValues: initialValues || {
+      name: "",
+      school: "",
+      subject: "",
+      classes: [],
     },
   });
 
-  const modules = {
-    toolbar: [
-        [{ header: [1, 2, false] }],
-        ['bold', 'italic', 'underline', 'strike'],
-        [{ list: 'ordered' }, { list: 'bullet' }],
-        ['link', 'image'],
-        ['clean']
-      ],
-      imageResize: {
-        modules: [ 'Resize', 'DisplaySize', 'Toolbar' ]
-      }
-  
-  }
-
-const formats = [
-  'header', 'bold', 'italic', 'underline', 'strike',
-  'list', 'bullet', 'link', 'image'
-]
-
-  // Available subject options
-  const subjectOptions = [
-    "Matemática",
-    "Português",
-    "Ciências",
-    "História",
-    "Geografia",
-    "Inglês",
-    "Artes",
-    "Educação Física",
-  ];
-
-  // Available grade options
-  const gradeOptions = [
-    "1º Ano", "2º Ano", "3º Ano", "4º Ano", "5º Ano",
-    "6º Ano", "7º Ano", "8º Ano", "9º Ano", 
-    "1º Ensino Médio", "2º Ensino Médio", "3º Ensino Médio"
-  ];
-
-  const addQuestion = () => {
-    const newQuestions = [...questions, { text: "", options: ["", "", "", ""], answer: "" }];
-    setQuestions(newQuestions);
-    form.setValue("questions", newQuestions);
-  };
-
-  const removeQuestion = (index: number) => {
-    const newQuestions = questions.filter((_, i) => i !== index);
-    setQuestions(newQuestions);
-    form.setValue("questions", newQuestions);
-  };
-
-  const updateQuestion = (index: number, field: string, value: string) => {
-    const newQuestions = [...questions];
-    (newQuestions[index] as any)[field] = value;
-    setQuestions(newQuestions);
-    form.setValue("questions", newQuestions);
-  };
-
-  const updateOption = (questionIndex: number, optionIndex: number, value: string) => {
-    const newQuestions = [...questions];
-    if (!newQuestions[questionIndex].options) {
-      newQuestions[questionIndex].options = ["", "", "", ""];
-    }
-    newQuestions[questionIndex].options![optionIndex] = value;
-    setQuestions(newQuestions);
-    form.setValue("questions", newQuestions);
-  };
-
   const handleSubmit = (values: EvaluationFormValues) => {
-    // Ensure questions array is included
-    const finalValues = {
+    // Generate a mock ID for the created evaluation
+    const evaluationWithId = {
       ...values,
-      questions: questions,
+      id: `eval-${Math.random().toString(36).substr(2, 9)}`,
+      createdAt: new Date().toISOString(),
     };
-    onSubmit(finalValues);
+    
+    onSubmit(evaluationWithId);
+  };
+
+  const selectedClasses = form.watch("classes") || [];
+  
+  const handleToggleClass = (classItem: string) => {
+    const current = form.getValues("classes") || [];
+    
+    if (current.includes(classItem)) {
+      form.setValue("classes", current.filter(c => c !== classItem));
+    } else {
+      form.setValue("classes", [...current, classItem]);
+    }
   };
 
   return (
-    <>
     <Form {...form}>
-       <Card className="p-7">
-        <CardHeader>
-          <CardTitle>Criar Avaliação Manualmente</CardTitle>
-          <CardDescription>
-            Crie uma nova avaliação inserindo manualmente as questões
-          </CardDescription>
-        </CardHeader>
-      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 w-full">
+      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+        <FormField
+          control={form.control}
+          name="name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Nome da Avaliação</FormLabel>
+              <FormControl>
+                <Input placeholder="Ex: Avaliação de Matemática - 1º Bimestre" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <FormField
             control={form.control}
-            name="title"
+            name="school"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Título da avaliação</FormLabel>
-                <FormControl>
-                  <Input placeholder="Título da avaliação" {...field} />
-                </FormControl>
+                <FormLabel>Escola</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione uma escola" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {schools.map((school) => (
+                      <SelectItem key={school} value={school}>
+                        {school}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <FormMessage />
               </FormItem>
             )}
@@ -182,20 +169,21 @@ const formats = [
             name="subject"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Disciplina</FormLabel>
-                <FormControl>
-                  <select 
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    {...field}
-                  >
-                    <option value="">Selecione a disciplina</option>
-                    {subjectOptions.map((subject) => (
-                      <option key={subject} value={subject}>
+                <FormLabel>Matéria</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione uma matéria" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {subjects.map((subject) => (
+                      <SelectItem key={subject} value={subject}>
                         {subject}
-                      </option>
+                      </SelectItem>
                     ))}
-                  </select>
-                </FormControl>
+                  </SelectContent>
+                </Select>
                 <FormMessage />
               </FormItem>
             )}
@@ -204,110 +192,71 @@ const formats = [
 
         <FormField
           control={form.control}
-          name="grade"
+          name="classes"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Série</FormLabel>
-              <FormControl>
-                <select 
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  {...field}
-                >
-                  <option value="">Selecione a série</option>
-                  {gradeOptions.map((grade) => (
-                    <option key={grade} value={grade}>
-                      {grade}
-                    </option>
-                  ))}
-                </select>
-              </FormControl>
-              <FormMessage />
+              <FormLabel>Turmas</FormLabel>
+              <div className="space-y-2">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-between"
+                    >
+                      {selectedClasses.length === 0
+                        ? "Selecionar turmas..."
+                        : `${selectedClasses.length} turma${selectedClasses.length > 1 ? "s" : ""} selecionada${selectedClasses.length > 1 ? "s" : ""}`}
+                      <span className="sr-only">Toggle classes popover</span>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-4" align="start">
+                    <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                      {classes.map((classItem) => (
+                        <div
+                          key={classItem}
+                          className={`flex cursor-pointer items-center rounded-md border p-2 ${
+                            selectedClasses.includes(classItem)
+                              ? "border-primary bg-primary/10"
+                              : "hover:border-primary/50"
+                          }`}
+                          onClick={() => handleToggleClass(classItem)}
+                        >
+                          <div className="flex-grow text-sm">{classItem}</div>
+                          {selectedClasses.includes(classItem) && <Check className="ml-2 h-4 w-4 text-primary" />}
+                        </div>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+
+                <div className="flex flex-wrap gap-2">
+                  {selectedClasses.length > 0 ? (
+                    selectedClasses.map((classItem) => (
+                      <Badge key={classItem} variant="secondary">
+                        {classItem}
+                        <X
+                          className="ml-1 h-3 w-3 cursor-pointer hover:text-destructive"
+                          onClick={() => handleToggleClass(classItem)}
+                        />
+                      </Badge>
+                    ))
+                  ) : (
+                    <div className="text-sm text-muted-foreground">Nenhuma turma selecionada</div>
+                  )}
+                </div>
+                <FormMessage />
+              </div>
             </FormItem>
           )}
         />
 
-        <div className="my-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-medium">Questões</h3>
-            <Button type="button" onClick={addQuestion}>
-              <Plus className="mr-2 h-4 w-4" /> Adicionar Questão
-            </Button>
-          </div>
-
-          {questions.length > 0 ? (
-            <div className="space-y-6">
-              {questions.map((question, qIndex) => (
-                <div key={qIndex} className="p-4 border rounded-lg relative">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeQuestion(qIndex)}
-                    className="absolute top-2 right-2"
-                  >
-                    <Trash2 className="h-4 w-4 text-red-500" />
-                  </Button>
-                  
-                  <div className="mb-8 h-auto">
-                    <label className="block text-sm font-medium mb-1">Questão {qIndex + 1}</label>
-                    <ReactQuill value={question.text} className="w-[100%] h-auto "
-                      modules={modules}
-                      formats={formats}
-                      
-                      />
-                    
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium">Alternativas</label>
-                    {question.options?.map((option, oIndex) => (
-                      <div key={oIndex} className="flex items-center gap-2">
-                        <span className="w-6 text-center">{String.fromCharCode(65 + oIndex)})</span>
-                        <Input
-                          value={option}
-                          onChange={(e) => updateOption(qIndex, oIndex, e.target.value)}
-                          placeholder={`Alternativa ${String.fromCharCode(65 + oIndex)}`}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                  
-                  <div className="mt-4">
-                    <label className="block text-sm font-medium mb-1">Resposta Correta</label>
-                    <select
-                      value={question.answer || ""}
-                      onChange={(e) => updateQuestion(qIndex, "answer", e.target.value)}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <option value="">Selecione a resposta correta</option>
-                      {question.options?.map((_, oIndex) => (
-                        <option key={oIndex} value={String.fromCharCode(65 + oIndex)}>
-                          {String.fromCharCode(65 + oIndex)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-gray-500">
-              Nenhuma questão adicionada ainda. Clique em "Adicionar Questão" para começar.
-            </div>
-          )}
-        </div>
-
-        <div className="flex justify-end gap-2 pt-4">
-          <Link to={'/app/avaliacoes'}>
-            <Button type="button" variant="outline" onClick={() => form.reset()}>
-              Cancelar
-            </Button>
-          </Link>
-          <Button type="submit">Salvar</Button>
+        <div className="flex justify-end">
+          <Button type="submit" className="flex items-center">
+            Próximo
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
         </div>
       </form>
-    </Card>
     </Form>
-    </>
   );
 }
