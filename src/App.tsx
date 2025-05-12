@@ -31,7 +31,7 @@ const App = () =>{
   const navigate = useNavigate()
 
   useEffect(()=>{
-    api.get('/persist-user').then(res =>{
+    api.get('/persist-user/').then(res =>{
       setUser(res.data.usuario)
     }).catch(e => {
       console.log(e)
