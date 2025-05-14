@@ -30,22 +30,6 @@ const App = () =>{
   const {user, setUser} = useAuth();
   const navigate = useNavigate()
 
-  useEffect(()=>{
-    api.get('/persist-user/').then(res =>{
-      setUser(res.data.usuario)
-    }).catch(e => {
-      console.log(e)
-      if(e.response?.status === 401){
-        setUser({id: '',
-          nome: '',
-          matricula:'',
-          email:'',
-          role:'',
-          tenant_id:''})
-       navigate("/")
-      }
-    })
-  },[setUser, navigate])
   
   return (
     <QueryClientProvider client={queryClient}>
