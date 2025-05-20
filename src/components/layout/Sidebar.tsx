@@ -72,6 +72,7 @@ export default function Sidebar() {
 ];
 
 
+
 const menuProfessor = sidebarLinks.filter(menu => menu.role.includes("professor"))
 const menuAdmin = sidebarLinks.filter(menu => menu.role.includes("admin"))
 const menuAluno = sidebarLinks.filter(menu => menu.role.includes("aluno"))

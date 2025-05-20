@@ -8,6 +8,9 @@ import { useToast } from "@/hooks/use-toast";
 import { User, Lock, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/context/authContext";
 
+import LOGO from "/LOGO-1.png"
+
+
 export default function Login() {
   const [matricula, setMatricula] = useState("");
   const [senha, setSenha] = useState("");
@@ -38,25 +41,11 @@ export default function Login() {
       <div className="bg-[#8257e5] text-white w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12">
         <div className="max-w-md flex flex-col items-center text-center">
           {/* Ilustração centralizada */}
-          <div className="mb-8 w-32 h-32 md:w-40 md:h-40 flex items-center justify-center rounded-full bg-white/20">
-            <svg 
-              xmlns="http://www.w3.org/2000/svg" 
-              width="64" 
-              height="64" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="currentColor" 
-              strokeWidth="1.5" 
-              className="text-white"
-            >
-              <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path>
-              <path d="M6 12v5c0 2 2 3 6 3s6-1 6-3v-5"></path>
-            </svg>
+          <div className="mb-8 w-32 h-32 md:w-full md:h-full flex items-center justify-center flex-col">
+            <img src={LOGO} alt="Logo" className="w-[300rem]" />
+            
+            <p className="text-lg md:text-xl text-white/80">APRENDIZAGEM E RESULTADO</p>
           </div>
-          
-          {/* Nome e subtítulo */}
-          <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-2">INNOV PLAY</h1>
-          <p className="text-lg md:text-xl text-white/80">APRENDIZAGEM E RESULTADO</p>
         </div>
       </div>
       

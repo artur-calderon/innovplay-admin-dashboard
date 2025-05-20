@@ -28,8 +28,16 @@ const queryClient = new QueryClient();
 
 const App = () =>{ 
   const {user, setUser} = useAuth();
-  const navigate = useNavigate()
+  const [rigthRoute, setRigthRoute] = useState('')
 
+
+  useEffect(()=>{
+    if(user.role === "aluno"){
+      setRigthRoute("/aluno")
+    }else{
+      setRigthRoute("/app") 
+    }
+  },[user])
   
   return (
     <QueryClientProvider client={queryClient}>
@@ -50,7 +58,7 @@ const App = () =>{
         <Sonner />
         
           <Routes>
-            <Route path="/" element={user.id != "" ? <Navigate to={user.role === 'aluno' ? "/aluno": "/app"}/>: <Login />} />
+            <Route path="/" element={user.id != "" ? <Navigate to={rigthRoute}/>: <Login />} />
             {
               user.role === 'aluno' && (
                 <Route path="/aluno" element={<Layout/>}>
@@ -70,7 +78,7 @@ const App = () =>{
             }
 
             {
-              user.role != 'aluno' && (
+              user.role != 'aluno' &&(
                 <Route path="/app" element={<Layout/>}>
                   <Route index element={<Index/>}/>
                   <Route path="/app/alunos" element={<Alunos/>} />
@@ -94,7 +102,7 @@ const App = () =>{
                 </Route>
               )
             }
-           
+
             {/* More routes will be added later */}
             <Route path="*" element={<NotFound />} />
           </Routes>
