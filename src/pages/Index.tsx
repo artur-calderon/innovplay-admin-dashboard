@@ -26,7 +26,7 @@ const Index = () => {
     <>
       <div className="w-full flex justify-between text-xl">
         <h1 className="text-3xl font-bold mb-6">Painel Administrativo</h1>
-        <span>Bem vindo! {user.nome ? user.nome : "Aluno"}</span>
+        <span>Bem vindo! {user.name ? user.name : "Aluno"}</span>
       </div>
       
       {/* Stat Cards */}

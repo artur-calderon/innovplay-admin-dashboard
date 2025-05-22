@@ -4,17 +4,17 @@ import { toast } from 'react-toastify'
 
 interface User{
     id:string,
-    nome:string,
+    name:string,
     email:string,
     role:string,
     tenant_id:string,
-    matricula:string
+    registration:string
 }
 
 interface AuthContext{
     user:User,
     loading: boolean,
-    login: (matricula:string, senha:string) => void,
+    login: (registration:string, password:string) => void,
     logout: () => Promise<void>,
     setUser: (user:User) => void
 }
@@ -25,8 +25,8 @@ export const useAuth =  create<AuthContext>((set) =>{
         loading:false,
         user: {
             id: '',
-            nome: '',
-            matricula:'',
+            name: '',
+            registration:'',
             email:'',
             role:'',
             tenant_id:''
@@ -35,11 +35,11 @@ export const useAuth =  create<AuthContext>((set) =>{
         setUser:(user)=>{
             set({user})
         },
-        login: async (matricula: string, senha: string) => {
+        login: async (registration: string, password: string) => {
             set({ loading: true })
             try
             {
-                const response = await api.post("/login/",{matricula, senha})
+                const response = await api.post("/login/",{registration, password})
                 toast.success("Login realizado com sucesso!");
                 set({user: response.data.usuario})
                 return response;
@@ -57,8 +57,8 @@ export const useAuth =  create<AuthContext>((set) =>{
                 set({
                     user:{
                         id: '',
-                        nome: '',
-                        matricula:'',
+                        name: '',
+                        registration:'',
                         email:'',
                         role:'',
                         tenant_id:''
