@@ -19,6 +19,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { api } from "@/lib/api";
+import { toast } from "sonner";
+
+// Role mapping object
+const roleMapping: { [key: string]: string } = {
+  "Administrador": "admin",
+  "Professor": "professor",
+  "Coordenador": "coordenador",
+  "Diretor": "diretor",
+  "Técnico administrativo": "tecadmin",
+  "Aluno": "aluno"
+};
 
 // Form validation schema
 const userFormSchema = z.object({
@@ -26,9 +38,13 @@ const userFormSchema = z.object({
   email: z.string().email("Email inválido"),
   password: z.string().min(6, "A senha deve ter pelo menos 6 caracteres").optional(),
   role: z.string().min(1, "Selecione uma função"),
+  registration: z.string().nullable(),
+  city_id: z.string().nullable(),
 });
 
-type UserFormValues = z.infer<typeof userFormSchema>;
+type UserFormValues = z.infer<typeof userFormSchema> & {
+  id?: number;
+};
 
 interface UserFormProps {
   user?: {
@@ -36,12 +52,15 @@ interface UserFormProps {
     name: string;
     email: string;
     role: string;
+    registration?: string;
+    city_id?: string;
   };
-  onSubmit: (data: any) => void;
+  onSubmit?: (data: UserFormValues) => void;
 }
 
 export default function UserForm({ user, onSubmit }: UserFormProps) {
   const isEditing = !!user;
+  const [isLoading, setIsLoading] = useState(false);
   
   // Set up form with default values
   const form = useForm<UserFormValues>({
@@ -51,24 +70,57 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
       email: user?.email || "",
       password: "",
       role: user?.role || "",
+      registration: user?.registration || null,
+      city_id: user?.city_id || null,
     },
   });
 
   // Handle form submission
-  const handleSubmit = (data: UserFormValues) => {
-    // If editing, we don't require the password field and preserve the ID
-    if (isEditing) {
-      if (!data.password || data.password.trim() === "") {
-        // If password field is empty during edit, remove it from the data
-        const { password, ...dataWithoutPassword } = data;
-        onSubmit({ ...dataWithoutPassword, id: user.id });
+  const handleSubmit = async (data: UserFormValues) => {
+    try {
+      setIsLoading(true);
+      
+      // Convert role to the correct format
+      const formattedData = {
+        ...data,
+        role: roleMapping[data.role] || data.role
+      };
+      
+      // If editing, we don't require the password field and preserve the ID
+      if (isEditing) {
+        if (!formattedData.password || formattedData.password.trim() === "") {
+          // If password field is empty during edit, remove it from the data
+          const { password, ...dataWithoutPassword } = formattedData;
+          if (onSubmit) {
+            onSubmit({ ...dataWithoutPassword, id: user.id });
+          }
+        } else {
+          // Password was provided during edit
+          if (onSubmit) {
+            onSubmit({ ...formattedData, id: user.id });
+          }
+        }
       } else {
-        // Password was provided during edit
-        onSubmit({ ...data, id: user.id });
+        // New user - make API call
+        const response = await api.post('/admin/criar-usuario', {
+          name: formattedData.name,
+          email: formattedData.email,
+          password: formattedData.password,
+          role: formattedData.role,
+          registration: formattedData.registration,
+          city_id: formattedData.city_id
+        });
+
+        if (response.status === 200 || response.status === 201) {
+          toast.success('Usuário criado com sucesso!');
+          form.reset();
+        }
       }
-    } else {
-      // New user - password is required
-      onSubmit(data);
+    } catch (error) {
+      toast.error('Erro ao criar usuário. Por favor, tente novamente.');
+      console.error('Error creating user:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -123,6 +175,34 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
 
         <FormField
           control={form.control}
+          name="registration"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Matrícula (opcional)</FormLabel>
+              <FormControl>
+                <Input placeholder="Digite a matrícula" {...field} value={field.value || ''} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="city_id"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Município (opcional)</FormLabel>
+              <FormControl>
+                <Input placeholder="Digite o município" {...field} value={field.value || ''} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
           name="role"
           render={({ field }) => (
             <FormItem>
@@ -137,6 +217,7 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
+                  <SelectItem value="Administrador">Administrador</SelectItem>
                   <SelectItem value="Professor">Professor</SelectItem>
                   <SelectItem value="Coordenador">Coordenador</SelectItem>
                   <SelectItem value="Diretor">Diretor</SelectItem>
@@ -149,8 +230,8 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
         />
 
         <div className="flex justify-end pt-4">
-          <Button type="submit">
-            {isEditing ? "Atualizar" : "Cadastrar"}
+          <Button type="submit" disabled={isLoading}>
+            {isLoading ? "Processando..." : isEditing ? "Atualizar" : "Cadastrar"}
           </Button>
         </div>
       </form>

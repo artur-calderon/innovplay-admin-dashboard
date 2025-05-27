@@ -194,7 +194,7 @@ export default function QuestionSelectionStep({
                   </DialogTrigger>
                   <DialogContent className="max-w-4xl">
                     <DialogHeader>
-                      <DialogTitle>Criar Nova Questão</DialogTitle>
+                      {/* <DialogTitle>Criar Nova Questão</DialogTitle> */}
                     </DialogHeader>
                     <div className="mt-4">
                       <QuestionForm onSubmit={handleCreateQuestion} />

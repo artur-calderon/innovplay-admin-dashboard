@@ -16,7 +16,8 @@ import {
   Bell,
   Settings,
   LogOut,
-  Edit
+  Edit,
+  LandPlot
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -63,6 +64,7 @@ export default function Sidebar() {
   { icon: Award, label: "Certificados", href:`${user.role === 'aluno'? "/aluno/certificados" : "/app/certificados" }`,role:["admin", "professor", "aluno"] },
   { icon: Trophy, label: "Competições", href: `${user.role === 'aluno'? "/aluno/competicoes" : "/app/competicoes" }`,role:["admin", "professor", "aluno"] },
   { icon: Award, label: "Olimpíadas", href: `${user.role === 'aluno'? "/aluno/olimpiadas" : "/app/olimpiadas" }` ,role:["admin", "professor", "aluno"]},
+  { icon: LandPlot, label: "Municípios", href: "/app/city" ,role:["admin"]},
   { icon: School, label: "Escolas", href: "/app/escolas" ,role:["admin", "professor"]},
   { icon: User, label: "Usuários", href: "/app/usuarios",role:["admin"] },
   { icon: Edit, label: "Editar Perfil", href:`${user.role === 'aluno'? "/aluno/perfil" : "/app/perfil" }` ,role:["admin", "professor", "aluno"]},

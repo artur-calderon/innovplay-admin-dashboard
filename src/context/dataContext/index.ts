@@ -1,6 +1,7 @@
 import { create} from 'zustand'
 import { api } from '@/lib/api'
 import {toast} from 'react-toastify'
+import { useAuth } from '../authContext'
 
 
 interface AlunnoProps{
@@ -184,6 +185,7 @@ export const useDataContext = create<DataProps>(set => {
 
         getAvaliacoes: async () => {
             try {
+                
                 const response = await api.get("/tests/")
                 set({avaliacoes: response.data})
             } catch (error) {
@@ -194,7 +196,8 @@ export const useDataContext = create<DataProps>(set => {
         getEscolas:async ()=>{
             try
             {
-                const response = await api.get("/school/")
+                const response = await api.get("/school")
+                console.log(response.data)
                 set({escolas:response.data})
 
             }catch(e){

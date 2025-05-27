@@ -1,6 +1,7 @@
 import {create} from 'zustand'
 import { api } from '@/lib/api'
 import { toast } from 'react-toastify'
+import axios from 'axios'
 
 interface User{
     id:string,
@@ -8,7 +9,7 @@ interface User{
     email:string,
     role:string,
     tenant_id:string,
-    registration:string
+    registration:string,
 }
 
 interface AuthContext{
@@ -16,57 +17,89 @@ interface AuthContext{
     loading: boolean,
     login: (registration:string, password:string) => void,
     logout: () => Promise<void>,
-    setUser: (user:User) => void
+    setUser: (user:User) => void,
+    persistUser: () => Promise<boolean>
 }
 
+export const useAuth = create<AuthContext>((set) => ({
+    loading: false,
+    user: {
+        id: '',
+        name: '',
+        registration: '',
+        email: '',
+        role: '',
+        tenant_id: '',
+    },
+    setUser: (user) => {
+        set({ user })
+    },
+    login: async (registration: string, password: string) => {
+        set({ loading: true })
+        try {
+            const response = await api.post("/login/", { registration, password })
 
-export const useAuth =  create<AuthContext>((set) =>{
-    return {
-        loading:false,
-        user: {
-            id: '',
-            name: '',
-            registration:'',
-            email:'',
-            role:'',
-            tenant_id:''
+            toast.success("Login realizado com sucesso!");
 
-        },
-        setUser:(user)=>{
-            set({user})
-        },
-        login: async (registration: string, password: string) => {
-            set({ loading: true })
-            try
-            {
-                const response = await api.post("/login/",{registration, password})
-                toast.success("Login realizado com sucesso!");
-                set({user: response.data.usuario})
-                return response;
+            localStorage.setItem('token', response.data.token)
 
-            }catch(e){
-                toast.error("Erro ao autenticar!")
-            }finally{
-                set({loading: false})
+            axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`
+
+            set({user: response.data.user})
+
+            return response;
+        } catch (e) {
+            toast.error("Erro ao autenticar!")
+        } finally {
+            set({ loading: false })
+        }
+    },
+    logout: async () => {
+        try {
+            await api.post("/logout/")
+            localStorage.removeItem('token')
+            set({
+                user: {
+                    id: '',
+                    name: '',
+                    registration: '',
+                    email: '',
+                    role: '',
+                    tenant_id: '',
+                }
+            })
+            window.location.href = '/';
+        } catch (e) {
+            toast.error("Não foi possivel deslogar", e)
+        }
+    },
+    persistUser: async () => {
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                return false;
             }
-        },
 
-        logout: async () =>{
-            try{
-                await api.post("/logout/")
-                set({
-                    user:{
-                        id: '',
-                        name: '',
-                        registration:'',
-                        email:'',
-                        role:'',
-                        tenant_id:''
+            // Configura o token no header
+            api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+            
+            const response = await api.get('/persist-user/');
+            
+            if (response.data) {
+                // Mantém os dados existentes do usuário e atualiza apenas o necessário
+                set((state) => ({ 
+                    user: {
+                        ...state.user,
+                        ...response.data.user,
                     }
-                })
-            }catch(e){
-                toast.error("Não foi possivel deslogar",e)
+                }));
+                return true;
             }
+            return false;
+        } catch (e) {
+            console.error('Erro ao persistir usuário:', e);
+            localStorage.removeItem('token');
+            return false;
         }
     }
-})
+}))

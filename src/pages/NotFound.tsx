@@ -1,7 +1,6 @@
 
 import { useLocation } from "react-router-dom";
 import { useEffect } from "react";
-import Layout from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 

@@ -184,9 +184,9 @@ export default function Evaluations() {
                 escolas.map((escola) => (
                     <Card key={escola.id} className="h-full flex flex-col">
                     <CardHeader>
-                        <CardTitle className="text-base md:text-lg">{escola.nome}</CardTitle>
+                        <CardTitle className="text-base md:text-lg">{escola.name}</CardTitle>
                         <CardDescription>
-                        {escola.dominio} | {escola.endereco}
+                        {escola.domain} | {escola.address}
                         </CardDescription>
                     </CardHeader>
                     {/* <CardContent className="flex-grow">

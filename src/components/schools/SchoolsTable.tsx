@@ -28,33 +28,9 @@ import {
 import { toast } from "react-toastify";
 import SchoolForm from "./SchoolForm";
 
-// Mock data for schools
-const mockSchools = [
-  {
-    id: 1,
-    name: "Escola Municipal João Silva",
-    municipality: "São Paulo",
-    address: "Rua das Flores, 123",
-    domain: "joaosilva.edu.br",
-  },
-  {
-    id: 2,
-    name: "Colégio Estadual Maria Oliveira",
-    municipality: "Rio de Janeiro",
-    address: "Avenida Central, 456",
-    domain: "mariaoliveira.edu.br",
-  },
-  {
-    id: 3,
-    name: "Instituto Federal de Tecnologia",
-    municipality: "Belo Horizonte",
-    address: "Praça da Liberdade, 789",
-    domain: "iftec.edu.br",
-  },
-];
 
 export default function SchoolsTable() {
-  const [schools, setSchools] = useState(mockSchools);
+  const [schools, setSchools] = useState([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);

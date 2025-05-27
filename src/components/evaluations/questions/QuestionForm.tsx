@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,12 +11,25 @@ import { Badge } from "@/components/ui/badge";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, Book, Check, List, Minus, Plus, Save } from "lucide-react";
+import { ArrowLeft, Book, Check, List, Minus, Plus, Save, Eye } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import ReactQuill from 'react-quill'
+import 'react-quill/dist/quill.snow.css'
+import Quill from 'quill'
+import ImageResize from 'quill-image-resize-module-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 
 // Form schema
 const questionSchema = z.object({
+  title: z.string().min(3, "O título precisa ter pelo menos 3 caracteres"),
   statement: z.string().min(10, "O enunciado precisa ter pelo menos 10 caracteres"),
+  secondStatement: z.string().optional(),
   questionType: z.enum(["multipleChoice", "essay"]),
   options: z.array(z.object({
     text: z.string(),
@@ -27,15 +40,64 @@ const questionSchema = z.object({
   grade: z.string().min(1, "Selecione a série"),
   subject: z.string().min(1, "Selecione a disciplina"),
   difficulty: z.string().min(1, "Selecione a dificuldade"),
+  value: z.string().min(1, "Informe o valor da questão"),
+  skills: z.string().min(1, "Informe as habilidades"),
   topics: z.array(z.string()).default([])
 });
 
 type QuestionFormValues = z.infer<typeof questionSchema>;
 
-// Add prop type for external onSubmit function
 interface QuestionFormProps {
   onSubmit?: (data: QuestionFormValues) => void;
 }
+
+const QuestionPreview = ({ data }: { data: QuestionFormValues }) => {
+  return (
+    <div className="space-y-6 p-4">
+      <div className="space-y-2">
+        <h3 className="text-lg font-semibold">{data.title}</h3>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="outline">{data.educationLevel}</Badge>
+          <Badge variant="outline">{data.grade}</Badge>
+          <Badge variant="outline">{data.subject}</Badge>
+          <Badge variant="outline">{data.difficulty}</Badge>
+          <Badge variant="outline">Valor: {data.value}</Badge>
+          {data.skills && <Badge variant="outline">{data.skills}</Badge>}
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: data.statement }} />
+        {data.secondStatement && (
+          <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: data.secondStatement }} />
+        )}
+      </div>
+
+      {data.questionType === "multipleChoice" && data.options && (
+        <div className="space-y-3">
+          <h4 className="font-medium">Alternativas:</h4>
+          {data.options.map((option, index) => (
+            <div key={index} className="flex items-center space-x-2">
+              <div className={`w-6 h-6 rounded-full border flex items-center justify-center ${
+                option.isCorrect ? 'bg-primary text-primary-foreground' : 'bg-background'
+              }`}>
+                {String.fromCharCode(65 + index)}
+              </div>
+              <span>{option.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {data.solution && (
+        <div className="space-y-2">
+          <h4 className="font-medium">Resolução:</h4>
+          <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: data.solution }} />
+        </div>
+      )}
+    </div>
+  );
+};
 
 const QuestionForm = ({ onSubmit: externalOnSubmit }: QuestionFormProps) => {
   const navigate = useNavigate();
@@ -45,12 +107,6 @@ const QuestionForm = ({ onSubmit: externalOnSubmit }: QuestionFormProps) => {
     { id: 3, text: "", isCorrect: false }
   ]);
 
-  // Define possible values for dropdown fields
-  const educationLevels = ["Fundamental", "Médio", "Superior"];
-  const grades = ["1º Ano", "2º Ano", "3º Ano", "4º Ano", "5º Ano", "6º Ano", "7º Ano", "8º Ano", "9º Ano"];
-  const subjects = ["Matemática", "Português", "Ciências", "História", "Geografia", "Física", "Química", "Biologia", "Inglês"];
-  const difficultyLevels = ["Fácil", "Médio", "Difícil", "Desafiadora"];
-  
   const [selectedTopics, setSelectedTopics] = useState<string[]>([
     "Álgebra", "Geometria"
   ]);
@@ -58,17 +114,69 @@ const QuestionForm = ({ onSubmit: externalOnSubmit }: QuestionFormProps) => {
   const form = useForm<QuestionFormValues>({
     resolver: zodResolver(questionSchema),
     defaultValues: {
+      title: "",
       statement: "",
+      secondStatement: "",
       questionType: "multipleChoice",
       solution: "",
       educationLevel: "",
       grade: "",
       subject: "",
       difficulty: "",
+      value: "",
+      skills: "",
       topics: selectedTopics
     }
   });
 
+  // Mock data for skills - replace with actual API call
+  const skillsByCourse: Record<string, string[]> = {
+    "Fundamental": ["H1 - Compreensão", "H2 - Análise", "H3 - Aplicação"],
+    "Médio": ["H4 - Síntese", "H5 - Avaliação", "H6 - Criação"],
+    "Superior": ["H7 - Pesquisa", "H8 - Desenvolvimento", "H9 - Inovação"]
+  };
+
+  const [availableSkills, setAvailableSkills] = useState<string[]>([]);
+
+  // Watch for education level changes to update available skills
+  const selectedCourse = form.watch("educationLevel");
+  
+  useEffect(() => {
+    if (selectedCourse) {
+      setAvailableSkills(skillsByCourse[selectedCourse] || []);
+      // Reset skills when course changes
+      form.setValue("skills", "");
+    }
+  }, [selectedCourse, form]);
+
+  Quill.register('modules/imageResize', ImageResize)
+
+  const modules = {
+    toolbar: [
+      [{ header: [1, 2, false] }],
+      ['bold', 'italic', 'underline', 'strike'],
+      [{ list: 'ordered' }, { list: 'bullet' }],
+      ['link', 'image'],
+      [{ 'script': 'sub'}, { 'script': 'super' }, 'formula'],
+      ['clean']
+    ],
+    imageResize: {
+      modules: [ 'Resize', 'DisplaySize', 'Toolbar' ]
+    }
+  }
+
+  const formats = [
+    'header', 'bold', 'italic', 'underline', 'strike',
+    'list', 'bullet', 'link', 'image',
+    'script', 'formula'
+  ]
+
+  // Define possible values for dropdown fields
+  const educationLevels = ["Fundamental", "Médio", "Superior"];
+  const grades = ["1º Ano", "2º Ano", "3º Ano", "4º Ano", "5º Ano", "6º Ano", "7º Ano", "8º Ano", "9º Ano"];
+  const subjects = ["Matemática", "Português", "Ciências", "História", "Geografia", "Física", "Química", "Biologia", "Inglês"];
+  const difficultyLevels = ["Fácil", "Médio", "Difícil"];
+  
   const questionType = form.watch("questionType");
 
   const addOption = () => {
@@ -97,7 +205,6 @@ const QuestionForm = ({ onSubmit: externalOnSubmit }: QuestionFormProps) => {
   };
 
   const handleSubmit = (data: QuestionFormValues) => {
-    // Transform options data for submission
     if (questionType === "multipleChoice") {
       data.options = options.map(opt => ({
         text: opt.text,
@@ -108,19 +215,12 @@ const QuestionForm = ({ onSubmit: externalOnSubmit }: QuestionFormProps) => {
     data.topics = selectedTopics;
     console.log("Question form submitted:", data);
     
-    // Call external onSubmit if provided
     if (externalOnSubmit) {
       externalOnSubmit(data);
-    } else {
-      // Default behavior when used standalone
-      // In a real app, you would save this data to your backend
-      // and then navigate away or show a success message
     }
   };
 
   const openTopicSelector = () => {
-    // This would open a modal or dialog with topic selection
-    // For now, we'll just add a sample topic
     if (!selectedTopics.includes("Funções")) {
       setSelectedTopics([...selectedTopics, "Funções"]);
     }
@@ -130,15 +230,209 @@ const QuestionForm = ({ onSubmit: externalOnSubmit }: QuestionFormProps) => {
     setSelectedTopics(selectedTopics.filter(t => t !== topic));
   };
 
+  const [previewData, setPreviewData] = useState<QuestionFormValues | null>(null);
+
+  const handlePreview = () => {
+    const formData = form.getValues();
+    if (questionType === "multipleChoice") {
+      formData.options = options.map(opt => ({
+        text: opt.text,
+        isCorrect: opt.isCorrect
+      }));
+    }
+    formData.topics = selectedTopics;
+    setPreviewData(formData);
+  };
+
   return (
-    <Card className="w-full max-w-4xl mx-auto">
+    <Card className="w-full max-w-4xl mx-auto max-h-[90vh] overflow-y-auto">
       <CardHeader>
         <CardTitle className="text-2xl font-bold">Criar Nova Questão</CardTitle>
       </CardHeader>
       <CardContent>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
-            {/* Question statement */}
+          {/* Classification section */}
+          <div className="pt-4">
+            <h3 className="text-lg font-medium mb-4">Classificações</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Education level */}
+              <FormField
+                control={form.control}
+                name="educationLevel"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Curso</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione o nível de ensino" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {educationLevels.map((level) => (
+                          <SelectItem key={level} value={level}>
+                            {level}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Grade */}
+              <FormField
+                control={form.control}
+                name="grade"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Série</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione a série" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {grades.map((grade) => (
+                          <SelectItem key={grade} value={grade}>
+                            {grade}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Subject */}
+              <FormField
+                control={form.control}
+                name="subject"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Disciplina</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione a disciplina" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {subjects.map((subject) => (
+                          <SelectItem key={subject} value={subject}>
+                            {subject}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Difficulty */}
+              <FormField
+                control={form.control}
+                name="difficulty"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Dificuldade</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione a dificuldade" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {difficultyLevels.map((level) => (
+                          <SelectItem key={level} value={level}>
+                            {level}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* Value and Skills */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+              <FormField
+                control={form.control}
+                name="value"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Valor da Questão</FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="number" 
+                        placeholder="Ex: 1.0" 
+                        step="0.1"
+                        {...field} 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="skills"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Habilidades</FormLabel>
+                    <Select 
+                      onValueChange={field.onChange} 
+                      defaultValue={field.value}
+                      disabled={!selectedCourse}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder={selectedCourse ? "Selecione a habilidade" : "Selecione primeiro o curso"} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {availableSkills.map((skill) => (
+                          <SelectItem key={skill} value={skill}>
+                            {skill}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </div>
+
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-7 mt-9">
+            {/* Question Title */}
+            <FormField
+              control={form.control}
+              name="title"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Título da Questão</FormLabel>
+                  <FormControl>
+                    <Input 
+                      placeholder="Digite o título da questão" 
+                      {...field} 
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Question Statement */}
             <FormField
               control={form.control}
               name="statement"
@@ -146,11 +440,25 @@ const QuestionForm = ({ onSubmit: externalOnSubmit }: QuestionFormProps) => {
                 <FormItem>
                   <FormLabel>Enunciado da questão</FormLabel>
                   <FormControl>
-                    <Textarea 
-                      placeholder="Digite o enunciado da questão aqui..." 
-                      className="min-h-[120px]" 
-                      {...field} 
-                    />
+                    <div className="h-[350px] mb-12 relative">
+                      <style>
+                        {`
+                          .ql-formula {
+                            position: absolute !important;
+                            z-index: 9999 !important;
+                          }
+                          .ql-tooltip {
+                            z-index: 9999 !important;
+                          }
+                        `}
+                      </style>
+                      <ReactQuill 
+                        {...field}
+                        modules={modules}
+                        formats={formats}
+                        className="h-[300px]"
+                      />
+                    </div>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -179,6 +487,24 @@ const QuestionForm = ({ onSubmit: externalOnSubmit }: QuestionFormProps) => {
                         <Label htmlFor="essay">Discursiva</Label>
                       </div>
                     </RadioGroup>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Second Statement */}
+            <FormField
+              control={form.control}
+              name="secondStatement"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Segundo Enunciado</FormLabel>
+                  <FormControl>
+                    <Input 
+                      placeholder="Digite o segundo enunciado da questão" 
+                      {...field} 
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -256,161 +582,29 @@ const QuestionForm = ({ onSubmit: externalOnSubmit }: QuestionFormProps) => {
               )}
             />
 
-            {/* Classification section */}
-            <div className="pt-4 border-t">
-              <h3 className="text-lg font-medium mb-4">Classificações</h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Education level */}
-                <FormField
-                  control={form.control}
-                  name="educationLevel"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Nível de ensino</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione o nível de ensino" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {educationLevels.map((level) => (
-                            <SelectItem key={level} value={level}>
-                              {level}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Grade */}
-                <FormField
-                  control={form.control}
-                  name="grade"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Série</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione a série" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {grades.map((grade) => (
-                            <SelectItem key={grade} value={grade}>
-                              {grade}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Subject */}
-                <FormField
-                  control={form.control}
-                  name="subject"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Disciplina</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione a disciplina" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {subjects.map((subject) => (
-                            <SelectItem key={subject} value={subject}>
-                              {subject}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Difficulty */}
-                <FormField
-                  control={form.control}
-                  name="difficulty"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Dificuldade</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione a dificuldade" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {difficultyLevels.map((level) => (
-                            <SelectItem key={level} value={level}>
-                              {level}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              {/* Topics */}
-              <div className="mt-4">
-                <div className="flex justify-between items-center mb-2">
-                  <Label>Assuntos</Label>
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    size="sm"
-                    onClick={openTopicSelector}
-                    className="flex items-center"
-                  >
-                    <Book className="h-4 w-4 mr-1" />
-                    Selecionar
-                  </Button>
-                </div>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {selectedTopics.length > 0 ? (
-                    selectedTopics.map((topic) => (
-                      <Badge 
-                        key={topic} 
-                        variant="secondary"
-                        className="cursor-pointer px-3 py-1"
-                        onClick={() => removeTopic(topic)}
-                      >
-                        {topic} ✕
-                      </Badge>
-                    ))
-                  ) : (
-                    <span className="text-sm text-muted-foreground">Nenhum assunto selecionado</span>
-                  )}
-                </div>
-              </div>
-            </div>
-
             {/* Form actions */}
             <div className="flex justify-between pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => navigate(-1)}
-                className="flex items-center"
-              >
-                <ArrowLeft className="h-4 w-4 mr-1" />
-                Voltar
-              </Button>
+              <div className="flex gap-2">
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      onClick={handlePreview}
+                      className="flex items-center"
+                    >
+                      <Eye className="h-4 w-4 mr-1" />
+                      Prévia
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>Prévia da Questão</DialogTitle>
+                    </DialogHeader>
+                    {previewData && <QuestionPreview data={previewData} />}
+                  </DialogContent>
+                </Dialog>
+              </div>
               <Button type="submit" className="flex items-center">
                 <Save className="h-4 w-4 mr-1" />
                 Salvar
