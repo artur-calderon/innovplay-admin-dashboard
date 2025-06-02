@@ -66,9 +66,9 @@ export default function SchoolForm({ school, onClose, onSave }: SchoolFormProps)
     try {
       let response;
       if (school) {
-        response = await api.put(`/schools/${school.id}`, formData);
+        response = await api.put(`/school/${school.id}`, formData);
       } else {
-        response = await api.post("/schools", formData);
+        response = await api.post("/school", formData);
       }
       onSave(response.data);
       toast({
