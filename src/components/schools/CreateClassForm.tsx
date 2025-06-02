@@ -140,41 +140,22 @@ export function CreateClassForm({ schoolId, onSuccess }: CreateClassFormProps) {
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">
-            <label htmlFor="letter">Letra da Turma</label>
-            <Select
-              value={selectedLetter}
-              onValueChange={setSelectedLetter}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione a letra" />
-              </SelectTrigger>
-              <SelectContent>
-                {letters.map((letter) => (
-                  <SelectItem key={letter} value={letter}>
-                    {letter}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid gap-2">
-            <label htmlFor="stage">Curso</label>
-            <Select
-              value={selectedStage}
-              onValueChange={setSelectedStage}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione o curso" />
-              </SelectTrigger>
-              <SelectContent>
-                {educationStages.map((stage) => (
-                  <SelectItem key={stage.id} value={stage.id}>
-                    {stage.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              <label htmlFor="stage">Curso</label>
+              <Select
+                value={selectedStage}
+                onValueChange={setSelectedStage}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o curso" />
+                </SelectTrigger>
+                <SelectContent>
+                  {educationStages.map((stage) => (
+                    <SelectItem key={stage.id} value={stage.id}>
+                      {stage.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
           </div>
 
           <div className="grid gap-2">
@@ -191,6 +172,25 @@ export function CreateClassForm({ schoolId, onSuccess }: CreateClassFormProps) {
                 {grades.map((grade) => (
                   <SelectItem key={grade.id} value={grade.id}>
                     {grade.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid gap-2">
+            <label htmlFor="letter">Turma</label>
+            <Select
+              value={selectedLetter}
+              onValueChange={setSelectedLetter}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione a letra" />
+              </SelectTrigger>
+              <SelectContent>
+                {letters.map((letter) => (
+                  <SelectItem key={letter} value={letter}>
+                    {letter}
                   </SelectItem>
                 ))}
               </SelectContent>

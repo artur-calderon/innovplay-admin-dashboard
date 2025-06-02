@@ -30,6 +30,10 @@ interface Class {
   id: string;
   name: string;
   grade_id: string;
+  grade: {
+    id: string;
+    name: string;
+  };
 }
 
 interface AddStudentFormProps {
@@ -76,9 +80,8 @@ export function AddStudentForm({ schoolId, schoolName, onSuccess }: AddStudentFo
   };
 
   const generatePassword = () => {
-    const currentYear = new Date().getFullYear();
-    const schoolPrefix = schoolName.toLowerCase().replace(/\s+/g, "");
-    return `${schoolPrefix}@${currentYear}`;
+    const firstName = name.split(" ")[0].toLowerCase();
+    return `${firstName}@innovplay`;
   };
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -266,7 +269,7 @@ export function AddStudentForm({ schoolId, schoolName, onSuccess }: AddStudentFo
                   <SelectContent>
                     {classes.map((classItem) => (
                       <SelectItem key={classItem.id} value={classItem.id}>
-                        {classItem.name}
+                        {classItem.name} - {classItem.grade.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
