@@ -65,19 +65,26 @@ interface QuestoesProp{
 
 interface EscolasProp{
     id:string
-    nome: string
-    municipio_id:string
-    enderec: string
-    dominio: string
-    criado_em: string
-
+    name: string
+    city_id:string
+    address: string
+    domain: string
+    created_at: string
+    city: {
+        id: string;
+        name: string;
+        state: string;
+        created_at: string;
+    }
 }
 
 interface MunicipioProps{
     id:string
-    nome: string
-    estado:string
-    criado_em:string
+    name: string
+    state:string
+    domain:string
+    city_id:string
+    created_at:string
 }
 
 interface GradesProp{
@@ -94,12 +101,13 @@ interface EducationStageProps{
 interface DataProps {
     avaliacoes: AvaliacaoProp,
     questoes: QuestoesProp,
-    escolas: EscolasProp,
+    escolas: EscolasProp[],
     grades: GradesProp,
     educationStages: EducationStageProps,
     municipios: MunicipioProps,
     alunos: AlunnoProps,
-    getEscolas:() => void;
+    getEscolas: (id?: string) => Promise<EscolasProp | EscolasProp[] | null>;
+    getMunicipios: () => void;
 }
 
 export const useDataContext = create<DataProps>(set => {
@@ -144,14 +152,7 @@ export const useDataContext = create<DataProps>(set => {
             created_by: "", 
             criado_em: "",
         },
-        escolas:{
-            id:"",
-            nome: "",
-            municipio_id:"",
-            enderec: "",
-            dominio: "",
-            criado_em: "",
-        },
+        escolas:[],
         grades:{
             id: "",
             name: "",
@@ -163,9 +164,11 @@ export const useDataContext = create<DataProps>(set => {
         },
         municipios:{
             id:"",
-            nome: "",
-            estado:"",
-            criado_em:"",
+            name: "",
+            state:"",
+            domain:"",
+            city_id:"",
+            created_at:"",
         }, 
         alunos:{
         id: '',
@@ -193,16 +196,32 @@ export const useDataContext = create<DataProps>(set => {
             }
         },
 
-        getEscolas:async ()=>{
-            try
-            {
-                const response = await api.get("/school")
-                console.log(response.data)
-                set({escolas:response.data})
-
-            }catch(e){
-              toast.error("Erro ao buscar escolas!",e)  
+        getEscolas: async (id?: string) => {
+            try {
+                const endpoint = id ? `/school/${id}` : "/school";
+                const response = await api.get(endpoint);
+                
+                if (id) {
+                    // If fetching a single school, return it directly
+                    return response.data;
+                } else {
+                    // If fetching all schools, update the state
+                    set({ escolas: response.data });
+                    return response.data;
+                }
+            } catch (e) {
+                toast.error("Erro ao buscar escolas!", e);
+                return null;
             }
         },
+        getMunicipios: async () => {
+            try{
+                const response = await api.get("/city/")
+                set({municipios: response.data})
+
+            }catch(e) {
+                toast.error("Erro ao buscar minicipios", e)
+            }
+        }
     }
 })

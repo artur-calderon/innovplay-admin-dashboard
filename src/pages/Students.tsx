@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import Layout from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
@@ -30,7 +29,6 @@ import { api } from "@/lib/api";
 import { useParams } from "react-router-dom";
 import { useDataContext } from "@/context/dataContext";
 
-
 // Form schema for student data
 const studentSchema = z.object({
   fullName: z.string().min(3, "Nome muito curto").max(100),
@@ -47,91 +45,97 @@ const studentSchema = z.object({
 
 type StudentFormData = z.infer<typeof studentSchema>;
 
-interface CoursesType{
-  id:string,
-  name:string
+interface CoursesType {
+  id: string;
+  name: string;
 }
 
 interface StudentType {
-  id:string;
-  nome:string;
-  matricula:string;
-  brith_date:string;
-  education_stage_id:string;
-  grade_id:string;
+  id: string;
+  nome: string;
+  matricula: string;
+  brith_date: string;
+  education_stage_id: string;
+  grade_id: string;
+  criado_em: string;
+}
+
+interface EscolaType {
+  id: string;
+  name: string;
 }
 
 export default function Students() {
-  const [students, setStudents] = useState([]);
+  const [students, setStudents] = useState<StudentType[]>([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [selectedStudent, setSelectedStudent] = useState<any>(null);
+  const [selectedStudent, setSelectedStudent] = useState<StudentType | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
-  const [courses, setCourses] = useState([])
+  const [courses, setCourses] = useState<CoursesType[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<CoursesType>({
-    id:"",
-    name:""
+    id: "",
+    name: ""
   });
   const [gradesByStage, setGradesByStage] = useState([]);
-  const [grades, setGrades] = useState([])
+  const [grades, setGrades] = useState([]);
   const [reloadAlunos, setReloadAlunos] = useState(false);
-  const [escolaAtual, setEscolaAtual] = useState([])
+  const [escolaAtual, setEscolaAtual] = useState<EscolaType>({ id: "", nome: "" });
 
   const { toast } = useToast();
-  const {id} = useParams()
-  const {escolas} = useDataContext()
+  const { id } = useParams();
+  const { escolas } = useDataContext();
 
-
-  useEffect(()=>{
-    if(escolas.length > 0){
-      escolas.map(escola => setEscolaAtual(escola))
+  useEffect(() => {
+    if (escolas && escolas.length > 0) {
+      const escola = escolas.find((e: EscolaType) => e.id === id);
+      if (escola) {
+        setEscolaAtual(escola);
+      }
     }
-  },[escolas])
+  }, [escolas, id]);
 
-  useEffect(()=>{
-  api.get(`/alunos/escola/${id}`).then((res)=>{
-      setStudents(res.data)
-    }).catch(e => console.log(e))
-  },[reloadAlunos,id])
+  useEffect(() => {
+    api.get(`/students/school/${id}`).then((res) => {
+      setStudents(res.data);
+    }).catch(e => console.log(e));
+  }, [reloadAlunos, id]);
 
-  useEffect(()=>{
-    api.get("/education_stages").then((res)=>{
-      setCourses(res.data)
-    }).catch(e=>{console.log(e)})
+  useEffect(() => {
+    api.get("/education_stages/").then((res) => {
+      setCourses(res.data);
+    }).catch(e => { console.log(e) });
 
-    api.get("/grades").then(res=>{
-      setGrades(res.data)
-    }).catch(e => console.log(e))
-  },[])
+    api.get("/grades/").then(res => {
+      setGrades(res.data);
+    }).catch(e => console.log(e));
+  }, []);
 
-  useEffect(()=>{
-    if(selectedCourse){
-      api.get(`/education_stages/${selectedCourse}`).then(res => {
-        setGradesByStage(res.data)
-      }).catch(e => console.log(e))
+  useEffect(() => {
+    if (selectedCourse.id) {
+      api.get(`/education_stages/${selectedCourse.id}`).then(res => {
+        setGradesByStage(res.data);
+      }).catch(e => console.log(e));
     }
-  },[selectedCourse])
+  }, [selectedCourse]);
 
-
-  function returnEducationStage(id:string){
-    if(courses.length > 0){
-      const atualCourse =  courses.filter(course => course.id === id)
-      return atualCourse[0].name
-    }else {
-      return "Carregando..."
-    }
-  }
-
-  function returnGrade(id:string){
-    if(grades.length > 0){
-      const atualGrade = grades.filter(grade => grade.id === id)
-      return atualGrade[0].name
-    }else{
-      return "Carregando..."
+  function returnEducationStage(id: string) {
+    if (courses.length > 0) {
+      const atualCourse = courses.filter(course => course.id === id);
+      return atualCourse[0]?.name || "Carregando...";
+    } else {
+      return "Carregando...";
     }
   }
 
+  function returnGrade(id: string) {
+    if (grades.length > 0) {
+      const atualGrade = grades.filter(grade => grade.id === id);
+      return atualGrade[0]?.name || "Carregando...";
+    } else {
+      return "Carregando...";
+    }
+  }
 
   const {
     register: registerAdd,
@@ -160,54 +164,50 @@ export default function Students() {
     }).format(date);
   };
 
-
   const handleAddStudent = async (data: StudentFormData) => {
     const newStudent = {
-      nome: data.fullName,
+      name: data.fullName,
       email: data.email,
-      senha:data.senha,
-      matricula: data.matricula,
+      password: data.senha,
+      registration: data.matricula,
       birth_date: data.birthDate,
-      education_stage_id:data.course,
-      grade_id:data.grade
-      // registrationDate: new Date().toISOString().split("T")[0],
+      education_stage_id: data.course,
+      grade_id: data.grade
     };
-    await api.post("/alunos/", newStudent).then((res) => {
-      toast({ 
+    await api.post("/students", newStudent).then((res) => {
+      toast({
         title: "Aluno adicionado",
         description: `${data.fullName} foi adicionado com sucesso.`,
       });
-    }).catch(e =>{
-      console.log(e)
+    }).catch(e => {
+      console.log(e);
       toast({
-        title:"Erro ao adicionar o aluno!",
-      })
-    })
+        title: "Erro ao adicionar o aluno!",
+      });
+    });
 
-    // setStudents([...students, newStudent]);
     setIsAddDialogOpen(false);
     resetAdd();
-    setReloadAlunos(prev => !prev)
+    setReloadAlunos(prev => !prev);
   };
 
   const handleEditStudent = async (data: StudentFormData) => {
     if (!selectedStudent) return;
-    console.log(data)
     const editedStudent = {
       nome: data.fullName,
       email: data.email,
-      senha:data.senha,
+      senha: data.senha,
       matricula: data.matricula,
       birth_date: data.birthDate,
-      education_stage_id:data.course,
-      grade_id:data.grade
+      education_stage_id: data.course,
+      grade_id: data.grade
     };
 
-    await api.put(`/alunos/${selectedStudent.id}`,editedStudent)
+    await api.put(`/alunos/${selectedStudent.id}`, editedStudent);
     setIsEditDialogOpen(false);
     setSelectedStudent(null);
     resetEdit();
-    setReloadAlunos(prev => !prev)
+    setReloadAlunos(prev => !prev);
     toast({
       title: "Aluno atualizado",
       description: `${data.fullName} foi atualizado com sucesso.`,
@@ -216,43 +216,43 @@ export default function Students() {
 
   const handleDeleteStudent = async (id: string) => {
     await api.delete(`/alunos/${id}`).then(res => {
-      console.log(res)
+      console.log(res);
       toast({
         title: "Aluno removido",
         variant: "destructive",
       });
-      setReloadAlunos(prev => !prev)
+      setReloadAlunos(prev => !prev);
     }).catch(e => {
       toast({
-        title:"Aluno não encontrado!",
-        description:`${e}`
-      })
-    })
-  };
-
-  const openEditDialog = (student: any) => {
-    console.log(student)
-    setSelectedStudent(student);
-    setIsEditDialogOpen(true);
-    resetEdit({
-      fullName: student.fullName,
-      birthDate: student.birthDate,
-      grade: student.grade,
-      course: student.education_stage_id,
+        title: "Aluno não encontrado!",
+        description: `${e}`
+      });
     });
   };
 
+  const openEditDialog = (student: StudentType) => {
+    setSelectedStudent(student);
+    setIsEditDialogOpen(true);
+    resetEdit({
+      fullName: student.nome,
+      birthDate: new Date(student.brith_date),
+      grade: student.grade_id,
+      course: student.education_stage_id,
+      email: "",
+      senha: "",
+      matricula: student.matricula
+    });
+  };
 
   const filteredStudents = students.filter((student) =>
     student.nome.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  
   return (
     <>
       <div className="container mx-auto px-2 md:px-4 py-4 md:py-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-          <h1 className="text-xl md:text-2xl font-bold">Alunos da escola {escolaAtual.id === id ? escolaAtual.nome : "Carregando..."}</h1>
+          <h1 className="text-xl md:text-2xl font-bold">Alunos da escola {escolaAtual.name}</h1>
 
           <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
             <div className="relative flex-grow">
@@ -264,7 +264,7 @@ export default function Students() {
                 className="pl-9 w-full"
               />
             </div>
-            
+
             <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
               <DialogTrigger asChild>
                 <Button className="whitespace-nowrap">
@@ -291,7 +291,7 @@ export default function Students() {
                       <p className="text-sm text-red-500">{errorsAdd.fullName.message}</p>
                     )}
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="matricula">Número de Matrícula</Label>
                     <Input
@@ -304,7 +304,7 @@ export default function Students() {
                     )}
                   </div>
 
-                   <div className="space-y-2">
+                  <div className="space-y-2">
                     <Label htmlFor="email">E-mail</Label>
                     <Input
                       id="email"
@@ -317,7 +317,7 @@ export default function Students() {
                     )}
                   </div>
 
-                   <div className="space-y-2">
+                  <div className="space-y-2">
                     <Label htmlFor="password">Senha</Label>
                     <Input
                       id="password"
@@ -342,48 +342,48 @@ export default function Students() {
                     )}
                   </div>
 
-                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Curso */}
-                  <div className="space-y-2">
-                    <Label htmlFor="add-course">Curso</Label>
-                    <select
-                      id="add-course"
-                      {...registerAdd("course")}
-                      className="w-full p-2 border rounded-md"
-                      onChange={e => setSelectedCourse(e.target.value)}
-                    >
-                      <option value="">Selecione um curso</option>
-                      {courses.map((course) => (
-                        <option key={course.id} value={course.id}>
-                          {course.name}
-                        </option>
-                      ))}
-                    </select>
-                    {errorsAdd.course && (
-                      <p className="text-sm text-red-500">{errorsAdd.course.message}</p>
-                    )}
-                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Curso */}
+                    <div className="space-y-2">
+                      <Label htmlFor="add-course">Curso</Label>
+                      <select
+                        id="add-course"
+                        {...registerAdd("course")}
+                        className="w-full p-2 border rounded-md"
+                        onChange={e => setSelectedCourse({ id: e.target.value, name: "" })}
+                      >
+                        <option value="">Selecione um curso</option>
+                        {courses.map((course) => (
+                          <option key={course.id} value={course.id}>
+                            {course.name}
+                          </option>
+                        ))}
+                      </select>
+                      {errorsAdd.course && (
+                        <p className="text-sm text-red-500">{errorsAdd.course.message}</p>
+                      )}
+                    </div>
 
-                  {/* Série */}
-                  <div className="space-y-2">
-                    <Label htmlFor="add-grade">Série</Label>
-                    <select
-                      id="add-grade"
-                      {...registerAdd("grade")}
-                      className="w-full p-2 border rounded-md"
-                    >
-                      <option value="">Selecione uma série</option>
-                      {gradesByStage.map((grade) => (
-                        <option key={grade.id} value={grade.id}>
-                          {grade.name}
-                        </option>
-                      ))}
-                    </select>
-                    {errorsAdd.grade && (
-                      <p className="text-sm text-red-500">{errorsAdd.grade.message}</p>
-                    )}
+                    {/* Série */}
+                    <div className="space-y-2">
+                      <Label htmlFor="add-grade">Série</Label>
+                      <select
+                        id="add-grade"
+                        {...registerAdd("grade")}
+                        className="w-full p-2 border rounded-md"
+                      >
+                        <option value="">Selecione uma série</option>
+                        {gradesByStage.map((grade) => (
+                          <option key={grade.id} value={grade.id}>
+                            {grade.name}
+                          </option>
+                        ))}
+                      </select>
+                      {errorsAdd.grade && (
+                        <p className="text-sm text-red-500">{errorsAdd.grade.message}</p>
+                      )}
+                    </div>
                   </div>
-                </div>
                   <div className="flex justify-end gap-2 pt-4">
                     <Button
                       type="button"
@@ -463,68 +463,68 @@ export default function Students() {
             {selectedStudent && (
               <form onSubmit={handleSubmitEdit(handleEditStudent)} className="space-y-4">
                 <div className="space-y-2">
-                    <Label htmlFor="edit-name">Nome Completo</Label>
-                    <Input
-                      id="edit-name"
-                      {...registerEdit("fullName")}
-                      placeholder="Nome completo do aluno"
-                    />
-                    {errorsAdd.fullName && (
-                      <p className="text-sm text-red-500">{errorsAdd.fullName.message}</p>
-                    )}
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="matricula">Número de Matrícula</Label>
-                    <Input
-                      id="matricula"
-                      {...registerEdit("matricula")}
-                      placeholder="Número de Matrícula"
-                    />
-                    {errorsAdd.matricula && (
-                      <p className="text-sm text-red-500">{errorsAdd.matricula.message}</p>
-                    )}
-                  </div>
+                  <Label htmlFor="edit-name">Nome Completo</Label>
+                  <Input
+                    id="edit-name"
+                    {...registerEdit("fullName")}
+                    placeholder="Nome completo do aluno"
+                  />
+                  {errorsEdit.fullName && (
+                    <p className="text-sm text-red-500">{errorsEdit.fullName.message}</p>
+                  )}
+                </div>
 
-                   <div className="space-y-2">
-                    <Label htmlFor="email">E-mail</Label>
-                    <Input
-                      id="email"
-                      {...registerEdit("email")}
-                      placeholder="Email do aluno"
-                      type="email"
-                    />
-                    {errorsAdd.email && (
-                      <p className="text-sm text-red-500">{errorsAdd.email.message}</p>
-                    )}
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="matricula">Número de Matrícula</Label>
+                  <Input
+                    id="matricula"
+                    {...registerEdit("matricula")}
+                    placeholder="Número de Matrícula"
+                  />
+                  {errorsEdit.matricula && (
+                    <p className="text-sm text-red-500">{errorsEdit.matricula.message}</p>
+                  )}
+                </div>
 
-                   <div className="space-y-2">
-                    <Label htmlFor="password">Senha</Label>
-                    <Input
-                      id="password"
-                      {...registerEdit("senha")}
-                      placeholder="Senha do aluno"
-                      type="password"
-                    />
-                    {errorsAdd.senha && (
-                      <p className="text-sm text-red-500">{errorsAdd.senha.message}</p>
-                    )}
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">E-mail</Label>
+                  <Input
+                    id="email"
+                    {...registerEdit("email")}
+                    placeholder="Email do aluno"
+                    type="email"
+                  />
+                  {errorsEdit.email && (
+                    <p className="text-sm text-red-500">{errorsEdit.email.message}</p>
+                  )}
+                </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="add-birthDate">Data de Nascimento</Label>
-                    <Input
-                      id="add-birthDate"
-                      type="date"
-                      {...registerEdit("birthDate")}
-                    />
-                    {errorsAdd.birthDate && (
-                      <p className="text-sm text-red-500">{errorsAdd.birthDate.message}</p>
-                    )}
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Senha</Label>
+                  <Input
+                    id="password"
+                    {...registerEdit("senha")}
+                    placeholder="Senha do aluno"
+                    type="password"
+                  />
+                  {errorsEdit.senha && (
+                    <p className="text-sm text-red-500">{errorsEdit.senha.message}</p>
+                  )}
+                </div>
 
-                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="add-birthDate">Data de Nascimento</Label>
+                  <Input
+                    id="add-birthDate"
+                    type="date"
+                    {...registerEdit("birthDate")}
+                  />
+                  {errorsEdit.birthDate && (
+                    <p className="text-sm text-red-500">{errorsEdit.birthDate.message}</p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Curso */}
                   <div className="space-y-2">
                     <Label htmlFor="edit-course">Curso</Label>
@@ -532,7 +532,7 @@ export default function Students() {
                       id="edit-course"
                       {...registerEdit("course")}
                       className="w-full p-2 border rounded-md"
-                      onChange={e => setSelectedCourse(e.target.value)}
+                      onChange={e => setSelectedCourse({ id: e.target.value, name: "" })}
                     >
                       <option value="">Selecione um curso</option>
                       {courses.map((course) => (
@@ -541,8 +541,8 @@ export default function Students() {
                         </option>
                       ))}
                     </select>
-                    {errorsAdd.course && (
-                      <p className="text-sm text-red-500">{errorsAdd.course.message}</p>
+                    {errorsEdit.course && (
+                      <p className="text-sm text-red-500">{errorsEdit.course.message}</p>
                     )}
                   </div>
 
@@ -561,8 +561,8 @@ export default function Students() {
                         </option>
                       ))}
                     </select>
-                    {errorsAdd.grade && (
-                      <p className="text-sm text-red-500">{errorsAdd.grade.message}</p>
+                    {errorsEdit.grade && (
+                      <p className="text-sm text-red-500">{errorsEdit.grade.message}</p>
                     )}
                   </div>
                 </div>

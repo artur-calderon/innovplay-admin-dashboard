@@ -10,6 +10,13 @@ interface User{
     role:string,
     tenant_id:string,
     registration:string,
+    created_at:string,
+    updated_at:string,
+    phone:string,
+    address:string,
+    gender:string,
+    nationality:string,
+    birth_date:string,
 }
 
 interface AuthContext{
@@ -30,6 +37,13 @@ export const useAuth = create<AuthContext>((set) => ({
         email: '',
         role: '',
         tenant_id: '',
+        created_at: '',
+        updated_at: '',
+        phone: '',
+        address: '',
+        gender: '',
+        nationality: '',
+        birth_date: '',
     },
     setUser: (user) => {
         set({ user })
@@ -66,6 +80,13 @@ export const useAuth = create<AuthContext>((set) => ({
                     email: '',
                     role: '',
                     tenant_id: '',
+                    created_at: '',
+                    updated_at: '',
+                    phone: '',
+                    address: '',
+                    gender: '',
+                    nationality: '',
+                    birth_date: '',
                 }
             })
             window.location.href = '/';
@@ -84,7 +105,6 @@ export const useAuth = create<AuthContext>((set) => ({
             api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
             
             const response = await api.get('/persist-user/');
-            
             if (response.data) {
                 // Mantém os dados existentes do usuário e atualiza apenas o necessário
                 set((state) => ({ 

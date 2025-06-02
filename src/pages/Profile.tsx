@@ -1,48 +1,56 @@
-
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/context/authContext";
 
 const Profile = () => {
   const user = useAuth((state) => state.user);
 
+  const formatDate = (dateString: string) => {
+    if (!dateString) return "Data não informada";
+    const date = new Date(dateString);
+    return date.toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+  };
+
   // Mock data for the profile page
   const personalDetails = {
-    "Nome completo": "Samuel Wilson",
-    "Data de Nascimento": "January 1, 1987",
-    "Gênero": "Masculino",
-    "Nacionalidade": "Brasileiro",
-    "Endereço": "São Paulo - Brasil",
-    "Telefone": "(11) 99999-9999",
+    "Nome completo": user.name || "Nome não informado",
+    "Data de Nascimento": user.birth_date || "Data não informada",
+    "Gênero": user.gender || "Gênero não informado",
+    "Nacionalidade": user.nationality || "Nacionalidade não informada",
+    "Endereço": user.address || "Endereço não informado",
+    "Telefone": user.phone || "Telefone não informado",
     "Email": user.email || "usuario@exemplo.com",
   };
 
   const accountDetails = {
-    "Nome de exibição": user.nome || "s_wilson_168920",
-    "Conta criada": "March 20, 2020",
+    "Nome de exibição": user.name || "s_wilson_168920",
+    "Conta criada": formatDate(user.created_at) || "Data não informada",
     "Último login": "August 22, 2024",
     "Status da assinatura": "Membro Premium",
     "Verificação da conta": "Verificada",
     "Preferência de idioma": "Português",
     "Fuso horário": "GMT-3 (Brasília)",
   };
+  // const securitySettings = {
+  //   "Senha alterada": "July 15, 2024",
+  //   "Autenticação de dois fatores": "Ativada",
+  //   "Perguntas de segurança": "Sim",
+  //   "Notificações de login": "Ativadas",
+  //   "Dispositivos conectados": "3 Dispositivos",
+  //   "Atividade recente": "Nenhuma atividade suspeita detectada",
+  // };
 
-  const securitySettings = {
-    "Senha alterada": "July 15, 2024",
-    "Autenticação de dois fatores": "Ativada",
-    "Perguntas de segurança": "Sim",
-    "Notificações de login": "Ativadas",
-    "Dispositivos conectados": "3 Dispositivos",
-    "Atividade recente": "Nenhuma atividade suspeita detectada",
-  };
-
-  const preferences = {
-    "Notificações por email": "Inscrito",
-    "Alertas SMS": "Ativados",
-    "Preferências de conteúdo": "Tecnologia, Educação, Inovação",
-    "Visualização padrão": "Modo compacto",
-    "Modo escuro": "Ativado",
-    "Idioma do conteúdo": "Português",
-  };
+  // const preferences = {
+  //   "Notificações por email": "Inscrito",
+  //   "Alertas SMS": "Ativados",
+  //   "Preferências de conteúdo": "Tecnologia, Educação, Inovação",
+  //   "Visualização padrão": "Modo compacto",
+  //   "Modo escuro": "Ativado",
+  //   "Idioma do conteúdo": "Português",
+  // };
 
   const renderDetailSection = (title: string, details: Record<string, string>) => (
     <Card className="mb-6">
@@ -80,10 +88,10 @@ const Profile = () => {
         <div className="flex flex-col items-center mb-8">
           <div className="w-24 h-24 rounded-full bg-innov-blue flex items-center justify-center mb-4">
             <span className="text-white text-3xl font-bold">
-              {user.nome?.charAt(0) || "U"}
+              {user.name?.charAt(0) || "U"}
             </span>
           </div>
-          <h1 className="text-2xl font-bold">{user.nome || "Usuário"}</h1>
+          <h1 className="text-2xl font-bold">{user.name || "Usuário"}</h1>
           <p className="text-muted-foreground">{user.email || "usuario@exemplo.com"}</p>
           <span className="inline-flex items-center mt-2 px-2 py-1 text-xs font-medium rounded-md bg-gradient-to-r from-innov-blue to-innov-purple text-white">
             {user.role === "admin" ? "Administrador" : user.role === "professor" ? "Professor" : "Aluno"}
@@ -93,11 +101,11 @@ const Profile = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             {renderDetailSection("Dados Pessoais", personalDetails)}
-            {renderDetailSection("Configurações de Segurança", securitySettings)}
+            {/* {renderDetailSection("Configurações de Segurança", securitySettings)} */}
           </div>
           <div>
             {renderDetailSection("Detalhes da Conta", accountDetails)}
-            {renderDetailSection("Preferências", preferences)}
+            {/* {renderDetailSection("Preferências", preferences)} */}
           </div>
         </div>
       </div>

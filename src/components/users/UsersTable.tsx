@@ -49,6 +49,7 @@ export default function UsersTable() {
     try {
       setIsLoading(true);
       const response = await api.get('/users/list');
+      console.log(response.data);
       
       // Get users from response data
       const usersData = response.data?.users || [];

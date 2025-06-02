@@ -1,164 +1,160 @@
 import { useState, useEffect } from "react";
-import { z } from "zod";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { api } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
+import { Loader2 } from "lucide-react";
 
-// Form validation schema
-const schoolFormSchema = z.object({
-  name: z.string().min(3, "O nome deve ter pelo menos 3 caracteres"),
-  municipality: z.string().min(1, "Selecione um município"),
-  address: z.string().min(5, "O endereço deve ter pelo menos 5 caracteres"),
-  domain: z.string().min(3, "O domínio deve ter pelo menos 3 caracteres"),
-});
-
-type SchoolFormValues = z.infer<typeof schoolFormSchema>;
-
-// Mock data for municipalities
-const municipalities = [
-  "São Paulo",
-  "Rio de Janeiro",
-  "Belo Horizonte",
-  "Brasília",
-  "Curitiba",
-  "Porto Alegre",
-  "Salvador",
-  "Recife",
-  "Fortaleza",
-  "Manaus",
-];
-
-interface SchoolFormProps {
-  school?: {
-    id: number;
-    name: string;
-    municipality: string;
-    address: string;
-    domain: string;
-  };
-  onSubmit: (data: any) => void;
+interface City {
+  id: string;
+  name: string;
+  state: string;
+  created_at: string;
 }
 
-export default function SchoolForm({ school, onSubmit }: SchoolFormProps) {
-  const isEditing = !!school;
-  
-  // Set up form with default values
-  const form = useForm<SchoolFormValues>({
-    resolver: zodResolver(schoolFormSchema),
-    defaultValues: {
-      name: school?.name || "",
-      municipality: school?.municipality || "",
-      address: school?.address || "",
-      domain: school?.domain || "",
-    },
-  });
+interface School {
+  id: string;
+  name: string;
+  city_id: string;
+  address: string;
+  domain: string;
+  created_at: string;
+  city: City;
+}
 
-  // Handle form submission
-  const handleSubmit = (data: SchoolFormValues) => {
-    // If editing, preserve the ID
-    if (isEditing) {
-      onSubmit({ ...data, id: school.id });
-    } else {
-      // New school
-      onSubmit(data);
+interface SchoolFormProps {
+  school?: School;
+  onClose: () => void;
+  onSave: (school: School) => void;
+}
+
+export default function SchoolForm({ school, onClose, onSave }: SchoolFormProps) {
+  const [formData, setFormData] = useState({
+    name: school?.name || "",
+    address: school?.address || "",
+    domain: school?.domain || "",
+    city_id: school?.city_id || "",
+  });
+  const [cities, setCities] = useState<City[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const fetchCities = async () => {
+      try {
+        const response = await api.get("/city/");
+        setCities(response.data);
+      } catch (error) {
+        console.error("Error fetching cities:", error);
+        toast({
+          title: "Erro",
+          description: "Erro ao carregar municípios",
+          variant: "destructive",
+        });
+      }
+    };
+
+    fetchCities();
+  }, [toast]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    try {
+      let response;
+      if (school) {
+        response = await api.put(`/schools/${school.id}`, formData);
+      } else {
+        response = await api.post("/schools", formData);
+      }
+      onSave(response.data);
+      toast({
+        title: "Sucesso",
+        description: school ? "Escola atualizada com sucesso" : "Escola criada com sucesso",
+      });
+    } catch (error) {
+      console.error("Error saving school:", error);
+      toast({
+        title: "Erro",
+        description: school ? "Erro ao atualizar escola" : "Erro ao criar escola",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-        <FormField
-          control={form.control}
-          name="name"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Nome</FormLabel>
-              <FormControl>
-                <Input placeholder="Digite o nome da escola" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="municipality"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Município</FormLabel>
-              <Select
-                onValueChange={field.onChange}
-                defaultValue={field.value}
-              >
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione um município" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {municipalities.map((municipality) => (
-                    <SelectItem key={municipality} value={municipality}>
-                      {municipality}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="address"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Endereço</FormLabel>
-              <FormControl>
-                <Input placeholder="Digite o endereço completo" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="domain"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Domínio</FormLabel>
-              <FormControl>
-                <Input placeholder="exemplo.edu.br" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <div className="flex justify-end pt-4">
-          <Button type="submit">
-            {isEditing ? "Atualizar" : "Cadastrar"}
-          </Button>
-        </div>
-      </form>
-    </Form>
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{school ? "Editar Escola" : "Nova Escola"}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="name">Nome da Escola</Label>
+            <Input
+              id="name"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="address">Endereço</Label>
+            <Input
+              id="address"
+              value={formData.address}
+              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="domain">Domínio</Label>
+            <Input
+              id="domain"
+              value={formData.domain}
+              onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="city">Município</Label>
+            <select
+              id="city"
+              value={formData.city_id}
+              onChange={(e) => setFormData({ ...formData, city_id: e.target.value })}
+              className="w-full p-2 border rounded-md"
+              required
+            >
+              <option value="">Selecione um município</option>
+              {cities.map((city) => (
+                <option key={city.id} value={city.id}>
+                  {city.name} - {city.state}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                "Salvar"
+              )}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

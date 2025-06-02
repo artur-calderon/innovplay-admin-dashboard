@@ -15,11 +15,14 @@ import EmBreve from "./pages/EmBreve";
 import Alunos from './pages/Alunos'
 import Layout from "./components/layout/Layout";
 import StudentEvaluations from "./components/evaluations/StudentEvaluations";
-import CreateEvaluation from "./pages/CreateEvaluation";
 import Users from "./pages/Users";
 import Schools from "./pages/Schools";
 import Profile from "./pages/Profile";
 import { PrivateRoute } from "./components/PrivateRoute";
+import SchoolDetails from "./components/schools/SchoolDetails";
+import { ClassDetails } from "./components/schools/ClassDetails";
+import CreateEvaluation from "./pages/CreateEvaluation";
+import Cities from "@/pages/Cities";
 
 const queryClient = new QueryClient();
 
@@ -77,9 +80,10 @@ const App = () => {
           {/* Rotas do app (admin/professor/etc) */}
           <Route path="/app" element={<Layout/>}>
             <Route index element={<PrivateRoute><Index/></PrivateRoute>}/>
-            <Route path="/app/alunos" element={<PrivateRoute><Alunos/></PrivateRoute>} />
-            <Route path="/app/alunos/:id" element={<PrivateRoute><Students/></PrivateRoute>} />
+            {/* <Route path="/app/alunos" element={<PrivateRoute><Alunos/></PrivateRoute>} /> */}
+            {/* <Route path="/app/alunos/:id" element={<PrivateRoute><Students/></PrivateRoute>} /> */}
             <Route path="/app/avaliacoes" element={<PrivateRoute><Evaluations /></PrivateRoute>} />
+            <Route path="/app/criar-avaliacao" element={<PrivateRoute><CreateEvaluation /></PrivateRoute>} />
             <Route path="/app/agenda" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/app/jogos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/app/play-tv" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
@@ -89,6 +93,11 @@ const App = () => {
             <Route path="/app/competicoes" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/app/olimpiadas" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/app/escolas" element={<PrivateRoute><Schools /></PrivateRoute>} />
+            <Route path="/app/city" element={<PrivateRoute><Cities /></PrivateRoute>} />
+            <Route path="/app/escola/:id" element={<PrivateRoute><SchoolDetails /></PrivateRoute>} />
+            <Route path="/app/turma/:id" element={<PrivateRoute><ClassDetails /></PrivateRoute>} />
+            <Route path="/app/escola/:id/adicionar-aluno" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+            <Route path="/app/escola/:id/criar-turma" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/app/usuarios" element={<PrivateRoute><Users /></PrivateRoute>} />
             <Route path="/app/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
             <Route path="/app/avisos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />

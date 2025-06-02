@@ -54,7 +54,7 @@ export default function Sidebar() {
 
   const sidebarLinks: SidebarLink[] = [
   { icon: LayoutDashboard, label: "Painel", href: `${user.role === 'aluno'? "/aluno" : "/app" }` , role:["admin", "professor","aluno"]},
-  { icon: Users, label: "Alunos", href:"/app/alunos" , role:["admin", "professor"]},
+  // { icon: Users, label: "Alunos", href:"/app/alunos" , role:["admin", "professor"]},
   { icon: List, label: "Avaliações", href:`${user.role === 'aluno'? "/aluno/avaliacoes" : "/app/avaliacoes" }` ,role:["admin", "professor", "aluno"] },
   { icon: CalendarDays, label: "Agenda", href: `${user.role === 'aluno'? "/aluno/agenda" : "/app/agenda" }`,role:["admin", "professor", "aluno"] },
   { icon: Gamepad, label: "Jogos", href: `${user.role === 'aluno'? "/aluno/jogos" : "/app/jogos" }`,role:["admin", "professor", "aluno"] },
