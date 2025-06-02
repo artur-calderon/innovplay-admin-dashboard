@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Search, School as SchoolIcon, Plus, Pencil, Trash2 } from "lucide-react";
+import { Loader2, Search, School as SchoolIcon, Plus, Pencil, Trash2, Eye } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import {
   Table,
   TableBody,
@@ -44,6 +45,7 @@ interface School {
 
 export default function Schools() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [schools, setSchools] = useState<School[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -147,6 +149,10 @@ export default function Schools() {
     }
   };
 
+  const handleViewSchool = (schoolId: string) => {
+    navigate(`/app/escola/${schoolId}`);
+  };
+
   // Filter schools based on search query
   const filteredSchools = schools?.filter((school) =>
     school.name?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -229,6 +235,13 @@ export default function Schools() {
                     {user.role === 'admin' && (
                       <TableCell>
                         <div className="flex space-x-2">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => handleViewSchool(school.id)}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
                           <Button
                             variant="outline"
                             size="icon"
