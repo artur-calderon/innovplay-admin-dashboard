@@ -80,7 +80,7 @@ export default function Students() {
   const [gradesByStage, setGradesByStage] = useState([]);
   const [grades, setGrades] = useState([]);
   const [reloadAlunos, setReloadAlunos] = useState(false);
-  const [escolaAtual, setEscolaAtual] = useState<EscolaType>({ id: "", nome: "" });
+  const [escolaAtual, setEscolaAtual] = useState<EscolaType>({ id: "", name: "" });
 
   const { toast } = useToast();
   const { id } = useParams();

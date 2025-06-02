@@ -28,9 +28,10 @@ interface SchoolFormProps {
   school?: School;
   onClose: () => void;
   onSave: (school: School) => void;
+  onDelete?: (schoolId: string) => void;
 }
 
-export default function SchoolForm({ school, onClose, onSave }: SchoolFormProps) {
+export default function SchoolForm({ school, onClose, onSave, onDelete }: SchoolFormProps) {
   const [formData, setFormData] = useState({
     name: school?.name || "",
     address: school?.address || "",
@@ -39,6 +40,7 @@ export default function SchoolForm({ school, onClose, onSave }: SchoolFormProps)
   });
   const [cities, setCities] = useState<City[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -87,6 +89,30 @@ export default function SchoolForm({ school, onClose, onSave }: SchoolFormProps)
     }
   };
 
+  const handleDelete = async () => {
+    if (!school || !onDelete) return;
+    setIsDeleting(true);
+
+    try {
+      await api.delete(`/school/${school.id}`);
+      onDelete(school.id);
+      toast({
+        title: "Sucesso",
+        description: "Escola excluída com sucesso",
+      });
+      onClose();
+    } catch (error) {
+      console.error("Error deleting school:", error);
+      toast({
+        title: "Erro",
+        description: "Erro ao excluir escola",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent>
@@ -101,6 +127,7 @@ export default function SchoolForm({ school, onClose, onSave }: SchoolFormProps)
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               required
+              disabled={isLoading || isDeleting}
             />
           </div>
           <div className="space-y-2">
@@ -110,6 +137,7 @@ export default function SchoolForm({ school, onClose, onSave }: SchoolFormProps)
               value={formData.address}
               onChange={(e) => setFormData({ ...formData, address: e.target.value })}
               required
+              disabled={isLoading || isDeleting}
             />
           </div>
           <div className="space-y-2">
@@ -119,6 +147,7 @@ export default function SchoolForm({ school, onClose, onSave }: SchoolFormProps)
               value={formData.domain}
               onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
               required
+              disabled={isLoading || isDeleting}
             />
           </div>
           <div className="space-y-2">
@@ -129,6 +158,7 @@ export default function SchoolForm({ school, onClose, onSave }: SchoolFormProps)
               onChange={(e) => setFormData({ ...formData, city_id: e.target.value })}
               className="w-full p-2 border rounded-md"
               required
+              disabled={isLoading || isDeleting}
             >
               <option value="">Selecione um município</option>
               {cities.map((city) => (
@@ -139,10 +169,27 @@ export default function SchoolForm({ school, onClose, onSave }: SchoolFormProps)
             </select>
           </div>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={onClose}>
+            {school && onDelete && (
+              <Button 
+                type="button" 
+                variant="destructive" 
+                onClick={handleDelete}
+                disabled={isLoading || isDeleting}
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Excluindo...
+                  </>
+                ) : (
+                  "Excluir"
+                )}
+              </Button>
+            )}
+            <Button type="button" variant="outline" onClick={onClose} disabled={isLoading || isDeleting}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={isLoading}>
+            <Button type="submit" disabled={isLoading || isDeleting}>
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
