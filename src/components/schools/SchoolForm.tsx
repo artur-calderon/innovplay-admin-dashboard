@@ -27,11 +27,12 @@ interface School {
 interface SchoolFormProps {
   school?: School;
   onClose: () => void;
-  onSave: (school: School) => void;
+  onSave: (school: Partial<School>) => void;
   onDelete?: (schoolId: string) => void;
+  isLoading?: boolean;
 }
 
-export default function SchoolForm({ school, onClose, onSave, onDelete }: SchoolFormProps) {
+export default function SchoolForm({ school, onClose, onSave, onDelete, isLoading = false }: SchoolFormProps) {
   const [formData, setFormData] = useState({
     name: school?.name || "",
     address: school?.address || "",
@@ -39,7 +40,6 @@ export default function SchoolForm({ school, onClose, onSave, onDelete }: School
     city_id: school?.city_id || "",
   });
   const [cities, setCities] = useState<City[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const { toast } = useToast();
 
@@ -63,29 +63,14 @@ export default function SchoolForm({ school, onClose, onSave, onDelete }: School
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    setIsDeleting(true);
 
     try {
-      let response;
-      if (school) {
-        response = await api.put(`/school/${school.id}`, formData);
-      } else {
-        response = await api.post("/school", formData);
-      }
-      onSave(response.data);
-      toast({
-        title: "Sucesso",
-        description: school ? "Escola atualizada com sucesso" : "Escola criada com sucesso",
-      });
+      onSave(formData);
     } catch (error) {
       console.error("Error saving school:", error);
-      toast({
-        title: "Erro",
-        description: school ? "Erro ao atualizar escola" : "Erro ao criar escola",
-        variant: "destructive",
-      });
     } finally {
-      setIsLoading(false);
+      setIsDeleting(false);
     }
   };
 
@@ -119,7 +104,7 @@ export default function SchoolForm({ school, onClose, onSave, onDelete }: School
         <DialogHeader>
           <DialogTitle>{school ? "Editar Escola" : "Nova Escola"}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
           <div className="space-y-2">
             <Label htmlFor="name">Nome da Escola</Label>
             <Input
@@ -128,6 +113,7 @@ export default function SchoolForm({ school, onClose, onSave, onDelete }: School
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               required
               disabled={isLoading || isDeleting}
+              autoComplete="off"
             />
           </div>
           <div className="space-y-2">
@@ -138,6 +124,7 @@ export default function SchoolForm({ school, onClose, onSave, onDelete }: School
               onChange={(e) => setFormData({ ...formData, address: e.target.value })}
               required
               disabled={isLoading || isDeleting}
+              autoComplete="off"
             />
           </div>
           <div className="space-y-2">
@@ -148,6 +135,7 @@ export default function SchoolForm({ school, onClose, onSave, onDelete }: School
               onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
               required
               disabled={isLoading || isDeleting}
+              autoComplete="off"
             />
           </div>
           <div className="space-y-2">
@@ -159,6 +147,7 @@ export default function SchoolForm({ school, onClose, onSave, onDelete }: School
               className="w-full p-2 border rounded-md"
               required
               disabled={isLoading || isDeleting}
+              autoComplete="off"
             >
               <option value="">Selecione um município</option>
               {cities.map((city) => (

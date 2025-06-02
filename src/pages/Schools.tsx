@@ -14,6 +14,16 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import SchoolForm from "@/components/schools/SchoolForm";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface City {
   id: string;
@@ -36,15 +46,19 @@ export default function Schools() {
   const { user } = useAuth();
   const [schools, setSchools] = useState<School[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [schoolToDelete, setSchoolToDelete] = useState<School | null>(null);
   const { toast } = useToast();
 
   const fetchSchools = async () => {
     setIsLoading(true);
     try {
-      const response = await api.get("/school/");
+      const response = await api.get("/school");
       let schoolsData = response.data;
 
       // Se não for admin, filtra apenas as escolas do município do usuário
@@ -69,21 +83,68 @@ export default function Schools() {
     fetchSchools();
   }, [user.role, user.tenant_id, toast]);
 
-  const handleSaveSchool = (school: School) => {
-    if (selectedSchool) {
-      // Atualizar escola existente
-      setSchools(schools.map(s => s.id === school.id ? school : s));
-    } else {
-      // Adicionar nova escola
-      setSchools([...schools, school]);
+  const handleSaveSchool = async (school: Partial<School>) => {
+    setIsSaving(true);
+    try {
+      if (selectedSchool) {
+        // Atualizar escola existente
+        const response = await api.put(`/school/${selectedSchool.id}`, school);
+        setSchools(schools.map(s => s.id === selectedSchool.id ? response.data : s));
+        toast({
+          title: "Sucesso",
+          description: "Escola atualizada com sucesso",
+        });
+      } else {
+        // Adicionar nova escola
+        const response = await api.post("/school", school);
+        await fetchSchools(); // Recarrega a lista completa
+        toast({
+          title: "Sucesso",
+          description: "Escola criada com sucesso",
+        });
+      }
+      setIsAddDialogOpen(false);
+      setSelectedSchool(null);
+    } catch (error: any) {
+      console.error("Error saving school:", error);
+      let errorMessage = "Erro ao salvar escola";
+      
+      if (error.response?.data?.campos_faltantes) {
+        const campos = error.response.data.campos_faltantes.join(", ");
+        errorMessage = `Campos obrigatórios faltando: ${campos}`;
+      }
+
+      toast({
+        title: "Erro",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
     }
-    setIsAddDialogOpen(false);
-    setSelectedSchool(null);
   };
 
-  const handleDeleteSchool = (schoolId: string) => {
-    setSchools(schools.filter(s => s.id !== schoolId));
-    setSelectedSchool(null);
+  const handleDeleteSchool = async (schoolId: string) => {
+    setIsDeleting(true);
+    try {
+      await api.delete(`/school/${schoolId}`);
+      await fetchSchools(); // Recarrega a lista completa
+      setSchoolToDelete(null);
+      setIsDeleteDialogOpen(false);
+      toast({
+        title: "Sucesso",
+        description: "Escola excluída com sucesso",
+      });
+    } catch (error) {
+      console.error("Error deleting school:", error);
+      toast({
+        title: "Erro",
+        description: "Erro ao excluir escola",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   // Filter schools based on search query
@@ -179,8 +240,8 @@ export default function Schools() {
                             variant="outline"
                             size="icon"
                             onClick={() => {
-                              setSelectedSchool(school);
-                              handleDeleteSchool(school.id);
+                              setSchoolToDelete(school);
+                              setIsDeleteDialogOpen(true);
                             }}
                           >
                             <Trash2 className="h-4 w-4" />
@@ -205,9 +266,52 @@ export default function Schools() {
             setSelectedSchool(null);
           }}
           onSave={handleSaveSchool}
-          onDelete={handleDeleteSchool}
+          isLoading={isSaving}
         />
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={(open) => {
+        if (!open && !isDeleting) {
+          setIsDeleteDialogOpen(false);
+          setSchoolToDelete(null);
+        }
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Você tem certeza?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. Isso excluirá permanentemente a
+              escola {schoolToDelete?.name} e removerá os dados associados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel 
+              onClick={() => {
+                setSchoolToDelete(null);
+                setIsDeleteDialogOpen(false);
+              }}
+              disabled={isDeleting}
+            >
+              Cancelar
+            </AlertDialogCancel>
+            <Button
+              variant="destructive"
+              onClick={() => schoolToDelete && handleDeleteSchool(schoolToDelete.id)}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Excluindo...
+                </>
+              ) : (
+                "Excluir"
+              )}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
