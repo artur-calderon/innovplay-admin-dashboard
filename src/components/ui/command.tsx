@@ -23,7 +23,10 @@ Command.displayName = CommandPrimitive.displayName
 
 interface CommandDialogProps extends DialogProps {}
 
-const CommandDialog = ({ children, ...props }: CommandDialogProps) => {
+const CommandDialog = React.forwardRef<
+  React.ElementRef<typeof Dialog>,
+  CommandDialogProps
+>(({ children, ...props }, ref) => {
   return (
     <Dialog {...props}>
       <DialogContent className="overflow-hidden p-0 shadow-lg">
@@ -33,7 +36,8 @@ const CommandDialog = ({ children, ...props }: CommandDialogProps) => {
       </DialogContent>
     </Dialog>
   )
-}
+})
+CommandDialog.displayName = "CommandDialog"
 
 const CommandInput = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.Input>,
