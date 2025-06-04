@@ -1,9 +1,9 @@
-
 import { ReactNode, useState, useEffect } from "react";
 import Sidebar from "./Sidebar";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Outlet } from "react-router-dom";
+import { cn } from "@/lib/utils";
 
 type LayoutProps = {
   children: ReactNode;
@@ -31,6 +31,17 @@ export default function Layout() {
     return () => window.removeEventListener("resize", checkIfMobile);
   }, []);
 
+  // Prevent scrolling when mobile menu is open
+  useEffect(() => {
+    if (isMobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    // Clean up on component unmount
+    return () => { document.body.style.overflow = 'unset'; };
+  }, [isMobileMenuOpen]);
+
   return (
     <div className="flex min-h-screen">
       {/* Mobile menu toggle button */}
@@ -44,15 +55,19 @@ export default function Layout() {
         <span className="sr-only">Toggle menu</span>
       </Button>
 
-      {/* Responsive Sidebar - hidden on mobile unless toggled */}
-      <div className={`${isMobileMenuOpen ? "block" : "hidden"} md:block`}>
+      {/* Responsive Sidebar */}
+      <div className={cn(
+        "fixed inset-y-0 left-0 z-50 transition-transform duration-300 ease-in-out md:relative md:translate-x-0",
+        isMobileMenuOpen ? "translate-x-0" : "-translate-x-full",
+        "md:block"
+      )}>
         <Sidebar />
       </div>
 
       {/* Dark overlay when mobile menu is open */}
-      {isMobileMenuOpen && (
+      {isMobileMenuOpen && isMobile && (
         <div 
-          className="fixed inset-0 bg-black/50 z-40 md:hidden" 
+          className="fixed inset-0 bg-black/50 z-40"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
