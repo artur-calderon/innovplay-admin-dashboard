@@ -23,6 +23,7 @@ import SchoolDetails from "./components/schools/SchoolDetails";
 import { ClassDetails } from "./components/schools/ClassDetails";
 import CreateEvaluation from "./pages/CreateEvaluation";
 import Cities from "@/pages/Cities";
+import EditQuickLinks from "./pages/EditQuickLinks";
 
 const queryClient = new QueryClient();
 
@@ -67,6 +68,7 @@ const App = () => {
             <Route index element={<PrivateRoute><Index/></PrivateRoute>}/>
             <Route path="/aluno/avaliacoes" element={<PrivateRoute><StudentEvaluations /></PrivateRoute>} />
             <Route path="/aluno/agenda" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+            <Route path="/aluno/editar-atalhos" element={<PrivateRoute><EditQuickLinks/></PrivateRoute>} />
             <Route path="/aluno/jogos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/aluno/play-tv" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/aluno/certificados" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
@@ -80,9 +82,8 @@ const App = () => {
           {/* Rotas do app (admin/professor/etc) */}
           <Route path="/app" element={<Layout/>}>
             <Route index element={<PrivateRoute><Index/></PrivateRoute>}/>
-            {/* <Route path="/app/alunos" element={<PrivateRoute><Alunos/></PrivateRoute>} /> */}
-            {/* <Route path="/app/alunos/:id" element={<PrivateRoute><Students/></PrivateRoute>} /> */}
             <Route path="/app/avaliacoes" element={<PrivateRoute><Evaluations /></PrivateRoute>} />
+            <Route path="/app/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
             <Route path="/app/criar-avaliacao" element={<PrivateRoute><CreateEvaluation /></PrivateRoute>} />
             <Route path="/app/agenda" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/app/jogos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />

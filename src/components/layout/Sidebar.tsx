@@ -151,12 +151,12 @@ function RenderMenu({ user, currentPath, isCollapsed, handleLogout }) {
         <div className={cn("flex items-center", isCollapsed && "justify-center w-full")}>
           {!isCollapsed && (
             <>
-              <span className="text-white font-bold text-xl md:text-2xl">Innov</span>
-              <span className="text-white font-bold text-xl md:text-2xl ml-1">Play</span>
+              
+              <img width='208px' height='56.44' src="/LOGO-1-menor.png"/>
             </>
           )}
           {isCollapsed && (
-            <span className="text-white font-bold text-xl md:text-2xl">IP</span>
+            <img width='48px' height='54.27'  src="/ico.png"/>
           )}
         </div>
         <button 

@@ -1,4 +1,3 @@
-
 import Layout from "@/components/layout/Layout";
 import StatCard from "@/components/dashboard/StatCard";
 import RecentStudents from "@/components/dashboard/RecentStudents";
@@ -17,16 +16,22 @@ import {
   Tv
 } from "lucide-react";
 import { useAuth } from "@/context/authContext";
+import StudentProfessorIndex from "./StudentProfessorIndex";
 
 const Index = () => {
+  const { user } = useAuth();
 
-  const {user} = useAuth();
+  // Check user role and render appropriate dashboard
+  if (user?.role === "aluno" || user?.role === "professor") {
+    return <StudentProfessorIndex />;
+  }
 
+  // Default dashboard for admin and other roles
   return (
     <>
       <div className="w-full flex justify-between text-xl">
         <h1 className="text-3xl font-bold mb-6">Painel Administrativo</h1>
-        <span>Bem vindo! {user.name ? user.name : "Aluno"}</span>
+        <span>Bem vindo! {user.name ? user.name : "Usuário"}</span>
       </div>
       
       {/* Stat Cards */}
