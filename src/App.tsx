@@ -24,6 +24,9 @@ import { ClassDetails } from "./components/schools/ClassDetails";
 import CreateEvaluation from "./pages/CreateEvaluation";
 import Cities from "@/pages/Cities";
 import EditQuickLinks from "./pages/EditQuickLinks";
+import ViewEvaluation from "./pages/ViewEvaluation";
+import CreateQuestionPage from "./pages/CreateQuestionPage";
+import QuestionsPage from "./pages/QuestionsPage";
 
 const queryClient = new QueryClient();
 
@@ -83,6 +86,7 @@ const App = () => {
           <Route path="/app" element={<Layout/>}>
             <Route index element={<PrivateRoute><Index/></PrivateRoute>}/>
             <Route path="/app/avaliacoes" element={<PrivateRoute><Evaluations /></PrivateRoute>} />
+            <Route path="/app/avaliacao/:id" element={<PrivateRoute><ViewEvaluation /></PrivateRoute>} />
             <Route path="/app/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
             <Route path="/app/criar-avaliacao" element={<PrivateRoute><CreateEvaluation /></PrivateRoute>} />
             <Route path="/app/agenda" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
@@ -103,6 +107,10 @@ const App = () => {
             <Route path="/app/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
             <Route path="/app/avisos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/app/configuracoes" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+            
+            {/* Rotas de gerenciamento de questões */}
+            <Route path="/app/cadastros/questao" element={<PrivateRoute><QuestionsPage /></PrivateRoute>} />
+            <Route path="/app/cadastros/questao/criar" element={<PrivateRoute><CreateQuestionPage /></PrivateRoute>} />
           </Route>
 
           {/* Rota 404 para outras rotas não encontradas */}

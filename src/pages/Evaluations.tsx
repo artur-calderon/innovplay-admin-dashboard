@@ -132,24 +132,13 @@ export default function Evaluations() {
     });
   };
 
-  const openEditDialog = (evaluation: any) => {
-    setSelectedEvaluation(evaluation);
-    setIsEditDialogOpen(true);
-  };
-
-  const handleUseReadyEvaluation = (evaluation: any) => {
-    toast({
-      title: "Avaliação adicionada",
-      description: `${evaluation.title} foi adicionada com sucesso.`,
-    });
-  };
-
+ 
   // Conditionally render teacher view or student view based on user role
   if (user.role === "aluno") {
     return (
-      <Layout>
+      <>
         <StudentEvaluations />
-      </Layout>
+      </>
     );
   }
 
@@ -162,14 +151,13 @@ export default function Evaluations() {
         </div>
 
         <Tabs defaultValue="ready" className="mb-6" onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 gap-2">
-            <TabsTrigger value="ready">Avaliações Prontas</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 gap-2">
+            <TabsTrigger value="ready">Minhas Avaliações</TabsTrigger>
             <TabsTrigger value="manual">Criar Manualmente</TabsTrigger>
-            <TabsTrigger value="questions">Banco de Questões</TabsTrigger>
           </TabsList>
 
           <TabsContent value="ready" className="pt-4">
-            <ReadyEvaluations onUseEvaluation={handleUseReadyEvaluation} />
+            <ReadyEvaluations />
           </TabsContent>
 
           <TabsContent value="manual" className="pt-4">
@@ -201,75 +189,10 @@ export default function Evaluations() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="questions" className="pt-4">
+          {/* <TabsContent value="questions" className="pt-4">
             <QuestionBank onCreateEvaluation={handleCreateEvaluation} />
-          </TabsContent>
-        </Tabs>
-
-        <div className="bg-white rounded-xl shadow-md overflow-hidden overflow-x-auto">
-          <div className="min-w-full">
-            <Table>
-              <TableCaption>Lista de avaliações cadastradas</TableCaption>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[250px]">Título</TableHead>
-                  <TableHead className="hidden sm:table-cell">Disciplina</TableHead>
-                  <TableHead className="hidden md:table-cell">Série</TableHead>
-                  <TableHead className="hidden md:table-cell">Nº Questões</TableHead>
-                  <TableHead className="hidden lg:table-cell">Data de criação</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {evaluations.map((evaluation) => (
-                  <TableRow key={evaluation.id}>
-                    <TableCell className="font-medium">{evaluation.title}</TableCell>
-                    <TableCell className="hidden sm:table-cell">{evaluation.subject}</TableCell>
-                    <TableCell className="hidden md:table-cell">{evaluation.grade}</TableCell>
-                    <TableCell className="hidden md:table-cell">{evaluation.questionCount}</TableCell>
-                    <TableCell className="hidden lg:table-cell">{formatDate(evaluation.creationDate)}</TableCell>
-                    <TableCell className="text-right space-x-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEditDialog(evaluation)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteEvaluation(evaluation.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-
-        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-          <DialogContent className="sm:max-w-[650px] w-[95%] max-w-full sm:w-auto">
-            <DialogHeader>
-              <DialogTitle>Editar Avaliação</DialogTitle>
-            </DialogHeader>
-            {selectedEvaluation && (
-              <EvaluationForm
-                initialValues={selectedEvaluation}
-                onSubmit={handleEditEvaluation}
-              />
-            )}
-          </DialogContent>
-        </Dialog>
+          </TabsContent> */}
+        </Tabs>    
       </div>
     </>
   );

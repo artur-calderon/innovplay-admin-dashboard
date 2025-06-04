@@ -1,9 +1,17 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Search } from "lucide-react";
+import { Search, Eye, Pencil, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 // Mock data for ready evaluations
 const readyEvaluationsMock = [
@@ -14,6 +22,7 @@ const readyEvaluationsMock = [
     grade: "4º Ano",
     questionCount: 15,
     description: "Avaliação com questões de adição, subtração, multiplicação e divisão.",
+    creationDate: "2024-03-20",
   },
   {
     id: "2",
@@ -22,6 +31,7 @@ const readyEvaluationsMock = [
     grade: "6º Ano",
     questionCount: 12,
     description: "Avaliação com textos variados e questões de interpretação.",
+    creationDate: "2024-03-19",
   },
   {
     id: "3",
@@ -30,6 +40,7 @@ const readyEvaluationsMock = [
     grade: "5º Ano",
     questionCount: 10,
     description: "Questões sobre ecologia, sustentabilidade e conservação ambiental.",
+    creationDate: "2024-03-18",
   },
   {
     id: "4",
@@ -38,6 +49,7 @@ const readyEvaluationsMock = [
     grade: "7º Ano",
     questionCount: 20,
     description: "Avaliação sobre as principais civilizações antigas e suas contribuições.",
+    creationDate: "2024-03-17",
   },
   {
     id: "5",
@@ -46,6 +58,7 @@ const readyEvaluationsMock = [
     grade: "8º Ano",
     questionCount: 15,
     description: "Questões sobre mapas, coordenadas geográficas e escalas.",
+    creationDate: "2024-03-16",
   },
   {
     id: "6",
@@ -54,16 +67,28 @@ const readyEvaluationsMock = [
     grade: "9º Ano",
     questionCount: 18,
     description: "Avaliação sobre figuras geométricas, ângulos e teoremas.",
+    creationDate: "2024-03-15",
   },
 ];
 
+interface Evaluation {
+  id: string;
+  title: string;
+  subject: string;
+  grade: string;
+  questionCount: number;
+  description: string;
+  creationDate: string;
+}
+
 interface ReadyEvaluationsProps {
-  onUseEvaluation: (evaluation: any) => void;
+  onUseEvaluation: (evaluation: Evaluation) => void;
 }
 
 export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [evaluations, setEvaluations] = useState(readyEvaluationsMock);
+  const navigate = useNavigate();
   
   const filteredEvaluations = evaluations.filter(
     (evaluation) =>
@@ -73,13 +98,21 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
       evaluation.description.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('pt-BR');
+  };
+
+  const handleView = (evaluationId: string) => {
+    navigate(`/app/avaliacao/${evaluationId}`);
+  };
+
   return (
     <div>
       <div className="mb-6">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
           <Input
-            placeholder="Buscar avaliações prontas..."
+            placeholder="Buscar minhas avaliações prontas..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-9"
@@ -87,37 +120,62 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-        {filteredEvaluations.length > 0 ? (
-          filteredEvaluations.map((evaluation) => (
-            <Card key={evaluation.id} className="h-full flex flex-col">
-              <CardHeader>
-                <CardTitle className="text-base md:text-lg">{evaluation.title}</CardTitle>
-                <CardDescription>
-                  {evaluation.subject} | {evaluation.grade}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex-grow">
-                <p className="text-sm text-gray-500">{evaluation.description}</p>
-                <p className="text-sm font-medium mt-2">
-                  {evaluation.questionCount} questões
-                </p>
-              </CardContent>
-              <CardFooter>
-                <Button 
-                  onClick={() => onUseEvaluation(evaluation)}
-                  className="w-full sm:w-auto"
-                >
-                  Usar Avaliação
-                </Button>
-              </CardFooter>
-            </Card>
-          ))
-        ) : (
-          <div className="col-span-full text-center py-8 text-gray-500">
-            Nenhuma avaliação encontrada com os termos pesquisados.
-          </div>
-        )}
+      <div className="bg-white rounded-xl shadow-md overflow-hidden overflow-x-auto">
+        <div className="min-w-full">
+          <Table>
+            <TableCaption>Lista de avaliações prontas disponíveis</TableCaption>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[250px]">Título</TableHead>
+                <TableHead className="hidden sm:table-cell">Disciplina</TableHead>
+                <TableHead className="hidden md:table-cell">Série</TableHead>
+                <TableHead className="hidden md:table-cell">Nº Questões</TableHead>
+                <TableHead className="hidden lg:table-cell">Data de criação</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredEvaluations.length > 0 ? (
+                filteredEvaluations.map((evaluation) => (
+                  <TableRow key={evaluation.id}>
+                    <TableCell className="font-medium">{evaluation.title}</TableCell>
+                    <TableCell className="hidden sm:table-cell">{evaluation.subject}</TableCell>
+                    <TableCell className="hidden md:table-cell">{evaluation.grade}</TableCell>
+                    <TableCell className="hidden md:table-cell">{evaluation.questionCount}</TableCell>
+                    <TableCell className="hidden lg:table-cell">{formatDate(evaluation.creationDate)}</TableCell>
+                    <TableCell className="text-right space-x-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleView(evaluation.id)}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      {/* <Button
+                        variant="ghost"
+                        size="sm"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                      >
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      </Button> */}
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                    Nenhuma avaliação encontrada com os termos pesquisados.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </div>
     </div>
   );

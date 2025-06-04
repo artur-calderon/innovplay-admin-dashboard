@@ -44,6 +44,10 @@ export function CreateEvaluationStep2({ data, onBack, onSubmit }: CreateEvaluati
     setQuestions([...questions, question]);
   };
 
+  const handleQuestionsSelectedFromBank = (questionsFromBank: Question[]) => {
+    setQuestions([...questions, ...questionsFromBank]);
+  };
+
   const getQuestionsForSubject = (subjectId: string) => {
     return questions.filter(q => q.subjectId === subjectId);
   };
@@ -143,8 +147,8 @@ export function CreateEvaluationStep2({ data, onBack, onSubmit }: CreateEvaluati
         <Button variant="outline" onClick={onBack} className="w-full">
           Voltar
         </Button>
-        <Button 
-          onClick={() => onSubmit({ ...data, questions })} 
+        <Button
+          onClick={() => onSubmit({ ...data, questions })}
           className="w-full"
         >
           Finalizar
@@ -161,13 +165,12 @@ export function CreateEvaluationStep2({ data, onBack, onSubmit }: CreateEvaluati
         />
       )}
 
-      {showQuestionBank && (
-        <QuestionBank
-          onClose={handleQuestionBankClose}
-          subjectId={selectedSubject}
-          onQuestionSelected={handleQuestionAdded}
-        />
-      )}
+      <QuestionBank
+        open={showQuestionBank}
+        onClose={handleQuestionBankClose}
+        subjectId={selectedSubject}
+        onQuestionSelected={handleQuestionAdded}
+      />
     </div>
   );
 } 

@@ -33,6 +33,7 @@ const questionSchema = z.object({
   secondStatement: z.string().optional(),
   questionType: z.enum(["multipleChoice", "essay"]),
   options: z.array(z.object({
+    id: z.string(),
     text: z.string(),
     isCorrect: z.boolean().default(false)
   })).optional(),
@@ -115,9 +116,11 @@ const QuestionForm = ({
 }: QuestionFormProps) => {
   const navigate = useNavigate();
   const [options, setOptions] = useState([
-    { id: 1, text: "", isCorrect: false },
-    { id: 2, text: "", isCorrect: false },
-    { id: 3, text: "", isCorrect: false }
+    { id: "a", text: "", isCorrect: false },
+    { id: "b", text: "", isCorrect: false },
+    { id: "c", text: "", isCorrect: false },
+    { id: "d", text: "", isCorrect: false },
+    { id: "e", text: "", isCorrect: false },
   ]);
 
   const [selectedTopics, setSelectedTopics] = useState<string[]>([
@@ -197,24 +200,25 @@ const QuestionForm = ({
 
   const addOption = () => {
     if (options.length < 5) {
-      setOptions([...options, { id: options.length + 1, text: "", isCorrect: false }]);
+      const nextId = String.fromCharCode(97 + options.length);
+      setOptions([...options, { id: nextId, text: "", isCorrect: false }]);
     }
   };
 
-  const removeOption = (idToRemove: number) => {
+  const removeOption = (id: string) => {
     if (options.length > 3) {
-      setOptions(options.filter(option => option.id !== idToRemove));
+      setOptions(options.filter(option => option.id !== id));
     }
   };
 
-  const setCorrectOption = (id: number) => {
+  const setCorrectOption = (id: string) => {
     setOptions(options.map(option => ({
       ...option,
       isCorrect: option.id === id
     })));
   };
 
-  const handleOptionTextChange = (id: number, text: string) => {
+  const handleOptionTextChange = (id: string, text: string) => {
     setOptions(options.map(option => 
       option.id === id ? { ...option, text } : option
     ));
@@ -223,6 +227,7 @@ const QuestionForm = ({
   const handleSubmit = (data: QuestionFormValues) => {
     if (questionType === "multipleChoice") {
       data.options = options.map(opt => ({
+        id: opt.id,
         text: opt.text,
         isCorrect: opt.isCorrect
       }));
@@ -240,7 +245,14 @@ const QuestionForm = ({
       id: `question-${Math.random().toString(36).substr(2, 9)}`,
       number: questionNumber,
       text: data.statement,
-      subjectId: subjectId || "main"
+      title: data.title,
+      subjectId: subjectId || "main",
+      type: data.questionType,
+      subject: data.subject,
+      grade: data.grade,
+      difficulty: data.difficulty,
+      value: parseFloat(data.value),
+      skills: data.skills
     };
 
     onQuestionAdded(newQuestion);
@@ -263,6 +275,7 @@ const QuestionForm = ({
     const formData = form.getValues();
     if (questionType === "multipleChoice") {
       formData.options = options.map(opt => ({
+        id: opt.id,
         text: opt.text,
         isCorrect: opt.isCorrect
       }));
@@ -274,187 +287,144 @@ const QuestionForm = ({
   if (!open) return null;
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Criar Nova Questão</DialogTitle>
-        </DialogHeader>
-        <Card className="w-full">
-          <CardContent>
-            <Form {...form}>
-              {/* Classification section */}
-              <div className="pt-4">
-                <h3 className="text-lg font-medium mb-4">Classificações</h3>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Education level */}
-                  <FormField
-                    control={form.control}
-                    name="educationLevel"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Curso</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecione o nível de ensino" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {educationLevels.map((level) => (
-                              <SelectItem key={level} value={level}>
-                                {level}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {/* Grade */}
-                  <FormField
-                    control={form.control}
-                    name="grade"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Série</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecione a série" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {grades.map((grade) => (
-                              <SelectItem key={grade} value={grade}>
-                                {grade}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {/* Subject */}
-                  <FormField
-                    control={form.control}
-                    name="subject"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Disciplina</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecione a disciplina" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {subjects.map((subject) => (
-                              <SelectItem key={subject} value={subject}>
-                                {subject}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {/* Difficulty */}
-                  <FormField
-                    control={form.control}
-                    name="difficulty"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Dificuldade</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecione a dificuldade" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {difficultyLevels.map((level) => (
-                              <SelectItem key={level} value={level}>
-                                {level}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                {/* Value and Skills */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                  <FormField
-                    control={form.control}
-                    name="value"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Valor da Questão</FormLabel>
+    <div className="w-full">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Criar Nova Questão</h1>
+        <Button 
+          variant="outline" 
+          onClick={onClose}
+          className="flex items-center"
+        >
+          <ArrowLeft className="h-4 w-4 mr-1" />
+          Voltar
+        </Button>
+      </div>
+      <Card className="w-full">
+        <CardContent>
+          <Form {...form}>
+            {/* Classification section */}
+            <div className="pt-4">
+              <h3 className="text-lg font-medium mb-4">Classificações</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Education level */}
+                <FormField
+                  control={form.control}
+                  name="educationLevel"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Curso</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
-                          <Input 
-                            type="number" 
-                            placeholder="Ex: 1.0" 
-                            step="0.1"
-                            {...field} 
-                          />
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione o nível de ensino" />
+                          </SelectTrigger>
                         </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                        <SelectContent>
+                          {educationLevels.map((level) => (
+                            <SelectItem key={level} value={level}>
+                              {level}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-                  <FormField
-                    control={form.control}
-                    name="skills"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Habilidades</FormLabel>
-                        <Select 
-                          onValueChange={field.onChange} 
-                          defaultValue={field.value}
-                          disabled={!selectedCourse}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder={selectedCourse ? "Selecione a habilidade" : "Selecione primeiro o curso"} />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {availableSkills.map((skill) => (
-                              <SelectItem key={skill} value={skill}>
-                                {skill}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                {/* Grade */}
+                <FormField
+                  control={form.control}
+                  name="grade"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Série</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione a série" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {grades.map((grade) => (
+                            <SelectItem key={grade} value={grade}>
+                              {grade}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Subject */}
+                <FormField
+                  control={form.control}
+                  name="subject"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Disciplina</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione a disciplina" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {subjects.map((subject) => (
+                            <SelectItem key={subject} value={subject}>
+                              {subject}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Difficulty */}
+                <FormField
+                  control={form.control}
+                  name="difficulty"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Dificuldade</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione a dificuldade" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {difficultyLevels.map((level) => (
+                            <SelectItem key={level} value={level}>
+                              {level}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
 
-              <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-7 mt-9">
-                {/* Question Title */}
+              {/* Value and Skills */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 <FormField
                   control={form.control}
-                  name="title"
+                  name="value"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Título da Questão</FormLabel>
+                      <FormLabel>Valor da Questão</FormLabel>
                       <FormControl>
                         <Input 
-                          placeholder="Digite o título da questão" 
+                          type="number" 
+                          placeholder="Ex: 1.0" 
+                          step="0.1"
                           {...field} 
                         />
                       </FormControl>
@@ -463,193 +433,242 @@ const QuestionForm = ({
                   )}
                 />
 
-                {/* Question Statement */}
                 <FormField
                   control={form.control}
-                  name="statement"
+                  name="skills"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Enunciado da questão</FormLabel>
-                      <FormControl>
-                        <div className="h-[350px] mb-12 relative">
-                          <style>
-                            {`
-                              .ql-formula {
-                                position: absolute !important;
-                                z-index: 9999 !important;
-                              }
-                              .ql-tooltip {
-                                z-index: 9999 !important;
-                              }
-                            `}
-                          </style>
-                          <ReactQuill 
-                            {...field}
-                            modules={modules}
-                            formats={formats}
-                            className="h-[300px]"
-                            theme="snow"
-                            value={field.value}
-                            onChange={field.onChange}
-                          />
-                        </div>
-                      </FormControl>
+                      <FormLabel>Habilidades</FormLabel>
+                      <Select 
+                        onValueChange={field.onChange} 
+                        defaultValue={field.value}
+                        disabled={!selectedCourse}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder={selectedCourse ? "Selecione a habilidade" : "Selecione primeiro o curso"} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {availableSkills.map((skill) => (
+                            <SelectItem key={skill} value={skill}>
+                              {skill}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+              </div>
+            </div>
 
-                {/* Question type selector */}
-                <FormField
-                  control={form.control}
-                  name="questionType"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Tipo de questão</FormLabel>
-                      <FormControl>
-                        <RadioGroup
-                          className="flex flex-col space-y-1 sm:flex-row sm:space-y-0 sm:space-x-4"
+            <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-7 mt-9">
+              {/* Question Title */}
+              <FormField
+                control={form.control}
+                name="title"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Título da Questão</FormLabel>
+                    <FormControl>
+                      <Input 
+                        placeholder="Digite o título da questão" 
+                        {...field} 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Question Statement */}
+              <FormField
+                control={form.control}
+                name="statement"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Enunciado da questão</FormLabel>
+                    <FormControl>
+                      <div className="h-[350px] mb-12 relative">
+                        <style>
+                          {`
+                            .ql-formula {
+                              position: absolute !important;
+                              z-index: 9999 !important;
+                            }
+                            .ql-tooltip {
+                              z-index: 9999 !important;
+                            }
+                          `}
+                        </style>
+                        <ReactQuill 
+                          {...field}
+                          modules={modules}
+                          formats={formats}
+                          className="h-[300px]"
+                          theme="snow"
                           value={field.value}
-                          onValueChange={field.onChange}
-                        >
-                          <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="multipleChoice" id="multipleChoice" />
-                            <Label htmlFor="multipleChoice">Múltipla Escolha</Label>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="essay" id="essay" />
-                            <Label htmlFor="essay">Discursiva</Label>
-                          </div>
-                        </RadioGroup>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Second Statement */}
-                <FormField
-                  control={form.control}
-                  name="secondStatement"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Segundo Enunciado</FormLabel>
-                      <FormControl>
-                        <Input 
-                          placeholder="Digite o segundo enunciado da questão" 
-                          {...field} 
+                          onChange={field.onChange}
                         />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Multiple choice options */}
-                {questionType === "multipleChoice" && (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-md font-medium">Alternativas</h3>
-                      <div className="flex space-x-2">
-                        {options.length < 5 && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={addOption}
-                          >
-                            <Plus className="h-4 w-4 mr-1" /> Adicionar
-                          </Button>
-                        )}
                       </div>
-                    </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-                    {options.map((option) => (
-                      <div key={option.id} className="flex items-center space-x-3">
+              {/* Question type selector */}
+              <FormField
+                control={form.control}
+                name="questionType"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Tipo de questão</FormLabel>
+                    <FormControl>
+                      <RadioGroup
+                        className="flex flex-col space-y-1 sm:flex-row sm:space-y-0 sm:space-x-4"
+                        value={field.value}
+                        onValueChange={field.onChange}
+                      >
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="multipleChoice" id="multipleChoice" />
+                          <Label htmlFor="multipleChoice">Múltipla Escolha</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="essay" id="essay" />
+                          <Label htmlFor="essay">Discursiva</Label>
+                        </div>
+                      </RadioGroup>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Second Statement */}
+              <FormField
+                control={form.control}
+                name="secondStatement"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Segundo Enunciado</FormLabel>
+                    <FormControl>
+                      <Input 
+                        placeholder="Digite o segundo enunciado da questão" 
+                        {...field} 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Multiple choice options */}
+              {questionType === "multipleChoice" && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-md font-medium">Alternativas</h3>
+                    <div className="flex space-x-2">
+                      {options.length < 5 && (
                         <Button
                           type="button"
-                          variant={option.isCorrect ? "default" : "outline"}
+                          variant="outline"
+                          size="sm"
+                          onClick={addOption}
+                        >
+                          <Plus className="h-4 w-4 mr-1" /> Adicionar
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {options.map((option) => (
+                    <div key={option.id} className="flex items-center space-x-3">
+                      <Button
+                        type="button"
+                        variant={option.isCorrect ? "default" : "outline"}
+                        size="icon"
+                        onClick={() => setCorrectOption(option.id)}
+                        className="w-8 h-8 rounded-full flex-shrink-0"
+                      >
+                        {option.isCorrect && <Check className="h-4 w-4" />}
+                      </Button>
+                      <Input
+                        value={option.text}
+                        onChange={(e) => handleOptionTextChange(option.id, e.target.value)}
+                        placeholder={`Alternativa ${option.id}`}
+                        className="flex-grow"
+                      />
+                      {options.length > 3 && (
+                        <Button
+                          type="button"
+                          variant="outline"
                           size="icon"
-                          onClick={() => setCorrectOption(option.id)}
-                          className="w-8 h-8 rounded-full flex-shrink-0"
+                          onClick={() => removeOption(option.id)}
+                          className="flex-shrink-0"
                         >
-                          {option.isCorrect && <Check className="h-4 w-4" />}
+                          <Minus className="h-4 w-4" />
                         </Button>
-                        <Input
-                          value={option.text}
-                          onChange={(e) => handleOptionTextChange(option.id, e.target.value)}
-                          placeholder={`Alternativa ${option.id}`}
-                          className="flex-grow"
-                        />
-                        {options.length > 3 && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon"
-                            onClick={() => removeOption(option.id)}
-                            className="flex-shrink-0"
-                          >
-                            <Minus className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Solution */}
-                <FormField
-                  control={form.control}
-                  name="solution"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Resolução (opcional)</FormLabel>
-                      <FormControl>
-                        <Textarea 
-                          placeholder="Digite a resolução da questão aqui..." 
-                          className="min-h-[100px]" 
-                          {...field} 
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Form actions */}
-                <div className="flex justify-between pt-4">
-                  <div className="flex gap-2">
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button 
-                          type="button" 
-                          variant="outline" 
-                          onClick={handlePreview}
-                          className="flex items-center"
-                        >
-                          <Eye className="h-4 w-4 mr-1" />
-                          Prévia
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-                        <DialogHeader>
-                          <DialogTitle>Prévia da Questão</DialogTitle>
-                        </DialogHeader>
-                        {previewData && <QuestionPreview data={previewData} />}
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-                  <Button type="submit" className="flex items-center">
-                    <Save className="h-4 w-4 mr-1" />
-                    Salvar
-                  </Button>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              </form>
-            </Form>
-          </CardContent>
-        </Card>
-      </DialogContent>
-    </Dialog>
+              )}
+
+              {/* Solution */}
+              <FormField
+                control={form.control}
+                name="solution"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Resolução (opcional)</FormLabel>
+                    <FormControl>
+                      <Textarea 
+                        placeholder="Digite a resolução da questão aqui..." 
+                        className="min-h-[100px]" 
+                        {...field} 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Form actions */}
+              <div className="flex justify-between pt-4">
+                <div className="flex gap-2">
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        onClick={handlePreview}
+                        className="flex items-center"
+                      >
+                        <Eye className="h-4 w-4 mr-1" />
+                        Prévia
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+                      <DialogHeader>
+                        <DialogTitle>Prévia da Questão</DialogTitle>
+                      </DialogHeader>
+                      {previewData && <QuestionPreview data={previewData} />}
+                    </DialogContent>
+                  </Dialog>
+                </div>
+                <Button type="submit" className="flex items-center">
+                  <Save className="h-4 w-4 mr-1" />
+                  Salvar
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </CardContent>
+      </Card>
+    </div>
   );
 };
 
