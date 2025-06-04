@@ -32,7 +32,7 @@ export function CreateEvaluationStep1({ onNext }: CreateEvaluationStep1Props) {
   const [course, setCourse] = useState("");
   const [grade, setGrade] = useState("");
   const [classId, setClassId] = useState("");
-  const [skill, setSkill] = useState("");
+  // const [skill, setSkill] = useState("");
   const [model, setModel] = useState<EvaluationFormData['model'] | "">("");
   const [type, setType] = useState<EvaluationFormData['type'] | "">("");
   const [subjects, setSubjects] = useState<EvaluationFormData['subjects']>([]);
@@ -88,7 +88,7 @@ export function CreateEvaluationStep1({ onNext }: CreateEvaluationStep1Props) {
 
   const handleSubmit = () => {
     if (user.role === "admin") {
-      if (!title || !municipalities.length || !schools.length || !course || !grade || !classId || !skill || !model || !type) {
+      if (!title || !municipalities.length || !schools.length || !course || !grade || !classId ||  !model || !type) {
         toast({
           title: "Erro",
           description: "Preencha todos os campos obrigatórios",
@@ -106,7 +106,7 @@ export function CreateEvaluationStep1({ onNext }: CreateEvaluationStep1Props) {
         return;
       }
     } else {
-      if (!title || !schools.length || !classId || !skill) {
+      if (!title || !schools.length || !classId) {
         toast({
           title: "Erro",
           description: "Preencha todos os campos obrigatórios",
@@ -123,7 +123,6 @@ export function CreateEvaluationStep1({ onNext }: CreateEvaluationStep1Props) {
       course,
       grade,
       classId,
-      skill,
       model: model as EvaluationFormData['model'],
       type: type as EvaluationFormData['type'],
       subjects,
@@ -223,7 +222,7 @@ export function CreateEvaluationStep1({ onNext }: CreateEvaluationStep1Props) {
               </Select>
             </div>
 
-            <div className="grid gap-2">
+            {/* <div className="grid gap-2">
               <Label htmlFor="skill">Habilidade *</Label>
               <Input
                 id="skill"
@@ -231,7 +230,7 @@ export function CreateEvaluationStep1({ onNext }: CreateEvaluationStep1Props) {
                 onChange={(e) => setSkill(e.target.value)}
                 placeholder="Digite a habilidade"
               />
-            </div>
+            </div> */}
 
             <div className="grid gap-2">
               <Label htmlFor="model">Modelo de Prova *</Label>
@@ -301,7 +300,7 @@ export function CreateEvaluationStep1({ onNext }: CreateEvaluationStep1Props) {
               </Select>
             </div>
 
-            <div className="grid gap-2">
+            {/* <div className="grid gap-2">
               <Label htmlFor="skill">Habilidade *</Label>
               <Input
                 id="skill"
@@ -309,7 +308,7 @@ export function CreateEvaluationStep1({ onNext }: CreateEvaluationStep1Props) {
                 onChange={(e) => setSkill(e.target.value)}
                 placeholder="Digite a habilidade"
               />
-            </div>
+            </div> */}
 
             <div className="grid gap-2">
               <Label htmlFor="subject">Disciplina *</Label>

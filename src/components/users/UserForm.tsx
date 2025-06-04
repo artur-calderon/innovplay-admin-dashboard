@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
+import { useDataContext } from "@/context/dataContext";
+import { MultiSelect } from "@/components/ui/multi-select";
 
 // Role mapping object
 const roleMapping: { [key: string]: string } = {
@@ -61,7 +63,12 @@ interface UserFormProps {
 export default function UserForm({ user, onSubmit }: UserFormProps) {
   const isEditing = !!user;
   const [isLoading, setIsLoading] = useState(false);
+  const { municipios, getMunicipios } = useDataContext();
   
+  useEffect(() => {
+    getMunicipios();
+  }, [getMunicipios]);
+
   // Set up form with default values
   const form = useForm<UserFormValues>({
     resolver: zodResolver(userFormSchema),
@@ -123,6 +130,12 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
       setIsLoading(false);
     }
   };
+
+  // Transform municipios data for MultiSelect
+  const municipioOptions = Array.isArray(municipios) ? municipios.map(municipio => ({
+    id: municipio.id.toString(),
+    name: municipio.name
+  })) : [];
 
   return (
     <Form {...form}>
@@ -192,9 +205,14 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
           name="city_id"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Município (opcional)</FormLabel>
+              <FormLabel>Município</FormLabel>
               <FormControl>
-                <Input placeholder="Digite o município" {...field} value={field.value || ''} />
+                <MultiSelect
+                  options={municipioOptions}
+                  selected={field.value ? [field.value] : []}
+                  onChange={(values) => field.onChange(values[0] || null)}
+                  placeholder="Selecione um município"
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -229,7 +247,7 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
           )}
         />
 
-        <div className="flex justify-end pt-4">
+        <div className="flex justify-end">
           <Button type="submit" disabled={isLoading}>
             {isLoading ? "Processando..." : isEditing ? "Atualizar" : "Cadastrar"}
           </Button>

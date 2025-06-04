@@ -18,7 +18,6 @@ export interface EvaluationFormData {
   course: string;
   grade: string;
   classId: string;
-  skill: string;
   model: 'SAEB' | 'AVALIE' | 'PROVA';
   type: 'SIMULADO' | 'AVALIACAO';
   subjects?: Subject[];

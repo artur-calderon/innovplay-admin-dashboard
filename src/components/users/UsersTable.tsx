@@ -49,7 +49,6 @@ export default function UsersTable() {
     try {
       setIsLoading(true);
       const response = await api.get('/users/list');
-      console.log(response.data);
       
       // Get users from response data
       const usersData = response.data?.users || [];
@@ -75,7 +74,7 @@ export default function UsersTable() {
 
   const handleAddUser = async (userData: Omit<User, "id">) => {
     try {
-      await api.post('/admin/criar-usuario', userData);
+      await api.post('/users', userData);
       toast.success('Usuário criado com sucesso!');
       setIsAddModalOpen(false);
       fetchUsers(); // Refresh the list
