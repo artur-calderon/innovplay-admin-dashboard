@@ -1,0 +1,11 @@
+.remirror-editor sup {
+  vertical-align: super;
+  font-size: smaller;
+  line-height: 0;
+}
+
+.remirror-editor .remirror-sup {
+  vertical-align: super;
+  font-size: smaller;
+  line-height: 0;
+} 

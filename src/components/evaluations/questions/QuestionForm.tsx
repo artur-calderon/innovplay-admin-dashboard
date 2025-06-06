@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,12 +11,32 @@ import { Badge } from "@/components/ui/badge";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, Book, Check, List, Minus, Plus, Save, Eye } from "lucide-react";
+import { ArrowLeft, Book, Check, List as ListIcon, Minus, Plus, Save, Eye, Heading1, Heading2, Heading3, List, Code, Type } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import ReactQuill from 'react-quill'
-import 'react-quill/dist/quill.snow.css'
-import Quill from 'quill'
-import ImageResize from 'quill-image-resize-module-react'
+import {
+  Remirror,
+  useRemirror,
+  EditorComponent,
+  RemirrorProps,
+  useActive,
+  useCommands,
+} from '@remirror/react';
+import { DocExtension } from '@remirror/extension-doc';
+import { ParagraphExtension } from '@remirror/extension-paragraph';
+import { TextExtension } from '@remirror/extension-text';
+import { HeadingExtension } from '@remirror/extension-heading';
+import { BulletListExtension, ListItemExtension } from '@remirror/extension-list';
+import { ImageExtension } from '@remirror/extension-image';
+import { CodeBlockExtension } from '@remirror/extension-code-block';
+import { CodeExtension } from '@remirror/extension-code';
+import { PlaceholderExtension } from '@remirror/extension-placeholder';
+import { SupExtension } from '@remirror/extension-sup';
+import 'remirror/styles/all.css';
+
+import './QuestionForm.css';
+import { MyEditor, ResizableImage } from './MyEditor';
+import './MyEditor.css';
+
 import {
   Dialog,
   DialogContent,
@@ -25,6 +45,14 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Question } from "../types";
+
+// Import Tiptap components and extensions for preview
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Superscript from '@tiptap/extension-superscript';
+import Placeholder from '@tiptap/extension-placeholder';
+import Underline from '@tiptap/extension-underline';
+import TextAlign from '@tiptap/extension-text-align';
 
 // Form schema
 const questionSchema = z.object({
@@ -58,7 +86,60 @@ interface QuestionFormProps {
   questionNumber: number;
 }
 
+interface EditorContent {
+  type: string;
+  content?: EditorContent[];
+  text?: string;
+  attrs?: Record<string, unknown>;
+}
+
 const QuestionPreview = ({ data }: { data: QuestionFormValues }) => {
+  // Initialize read-only Tiptap editor for the preview statement
+  const statementEditor = useEditor({
+    extensions: [
+      StarterKit,
+      ResizableImage.configure({
+        inline: false,
+        allowBase64: true,
+      }),
+      Superscript,
+      Underline,
+      TextAlign.configure({
+        types: ['heading', 'paragraph', 'image'],
+        alignments: ['left', 'center', 'right'],
+        defaultAlignment: 'left',
+      }),
+      Placeholder.configure({
+        placeholder: '' // No placeholder in preview
+      }),
+    ],
+    content: data.statement,
+    editable: false, // Make the preview editor read-only
+  });
+
+  // Initialize read-only Tiptap editor for the preview second statement
+  const secondStatementEditor = useEditor({
+    extensions: [
+      StarterKit,
+      ResizableImage.configure({
+        inline: false,
+        allowBase64: true,
+      }),
+      Superscript,
+      Underline,
+      TextAlign.configure({
+        types: ['heading', 'paragraph', 'image'],
+        alignments: ['left', 'center', 'right'],
+        defaultAlignment: 'left',
+      }),
+      Placeholder.configure({
+        placeholder: '' // No placeholder in preview
+      }),
+    ],
+    content: data.secondStatement || '',
+    editable: false, // Make the preview editor read-only
+  });
+
   return (
     <div className="space-y-6 p-4">
       <div className="space-y-2">
@@ -74,9 +155,19 @@ const QuestionPreview = ({ data }: { data: QuestionFormValues }) => {
       </div>
 
       <div className="space-y-4">
-        <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: data.statement }} />
+        {/* Render statement using Tiptap EditorContent */}
+        {statementEditor && (
+          <div className="prose max-w-none">
+            <EditorContent editor={statementEditor} />
+          </div>
+        )}
         {data.secondStatement && (
-          <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: data.secondStatement }} />
+          // Render second statement using Tiptap EditorContent
+          secondStatementEditor && (
+            <div className="prose max-w-none">
+              <EditorContent editor={secondStatementEditor} />
+            </div>
+          )
         )}
       </div>
 
@@ -106,6 +197,157 @@ const QuestionPreview = ({ data }: { data: QuestionFormValues }) => {
   );
 };
 
+const EditorToolbar = () => {
+  const { toggleHeading, toggleBulletList, toggleCode, toggleCodeBlock, insertImage, toggleSup } = useCommands();
+  const active = useActive();
+
+  const isHeadingActive = (level: number) => {
+    try {
+      return active.heading({ level });
+    } catch {
+      return false;
+    }
+  };
+
+  const isBulletListActive = () => {
+    try {
+      return active.bulletList();
+    } catch {
+      return false;
+    }
+  };
+
+  const isCodeActive = () => {
+    try {
+      return active.code();
+    } catch {
+      return false;
+    }
+  };
+
+  const isCodeBlockActive = () => {
+    try {
+      return active.codeBlock();
+    } catch {
+      return false;
+    }
+  };
+
+  const isSupActive = () => {
+    try {
+      return active.sup();
+    } catch {
+      return false;
+    }
+  };
+
+  const handleImageUpload = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const url = event.target?.result as string;
+          if (url) {
+            insertImage({ src: url, alt: file.name });
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+    
+    input.click();
+  };
+
+  return (
+    <div className="border-b p-2 flex flex-wrap gap-2">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={() => toggleHeading({ level: 1 })}
+        className={isHeadingActive(1) ? 'bg-muted' : ''}
+        title="Heading 1"
+      >
+        <Heading1 className="h-4 w-4" />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={() => toggleHeading({ level: 2 })}
+        className={isHeadingActive(2) ? 'bg-muted' : ''}
+        title="Heading 2"
+      >
+        <Heading2 className="h-4 w-4" />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={() => toggleHeading({ level: 3 })}
+        className={isHeadingActive(3) ? 'bg-muted' : ''}
+        title="Heading 3"
+      >
+        <Heading3 className="h-4 w-4" />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={() => toggleBulletList()}
+        className={isBulletListActive() ? 'bg-muted' : ''}
+        title="Bullet List"
+      >
+        <List className="h-4 w-4" />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={() => toggleCode()}
+        className={isCodeActive() ? 'bg-muted' : ''}
+        title="Inline Code"
+      >
+        <Type className="h-4 w-4" />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={() => toggleCodeBlock()}
+        className={isCodeBlockActive() ? 'bg-muted' : ''}
+        title="Code Block"
+      >
+        <Code className="h-4 w-4" />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={() => toggleSup()}
+        className={isSupActive() ? 'bg-muted' : ''}
+        title="Superscript"
+      >
+        <span className="text-xs font-bold">x²</span>
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={handleImageUpload}
+        title="Insert Image"
+      >
+        🖼️
+      </Button>
+    </div>
+  );
+};
+
 const QuestionForm = ({ 
   onSubmit: externalOnSubmit, 
   open, 
@@ -115,6 +357,7 @@ const QuestionForm = ({
   questionNumber 
 }: QuestionFormProps) => {
   const navigate = useNavigate();
+  const [editorContent, setEditorContent] = useState<string>('');
   const [options, setOptions] = useState([
     { id: "a", text: "", isCorrect: false },
     { id: "b", text: "", isCorrect: false },
@@ -122,6 +365,43 @@ const QuestionForm = ({
     { id: "d", text: "", isCorrect: false },
     { id: "e", text: "", isCorrect: false },
   ]);
+
+  const { manager, state } = useRemirror({
+    extensions: () => [
+      new DocExtension({}),
+      new ParagraphExtension({}),
+      new TextExtension({}),
+      new HeadingExtension({}),
+      new BulletListExtension({}),
+      new ListItemExtension({}),
+      new ImageExtension({
+        uploadHandler: (files) => {
+          const images = [];
+          for (const file of files) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              images.push({ src: event.target?.result as string });
+            };
+            reader.readAsDataURL(file.file);
+          }
+          return images;
+        }
+      }),
+      new CodeBlockExtension({}),
+      new CodeExtension({}),
+      new SupExtension(),
+      new PlaceholderExtension({ placeholder: 'Digite o enunciado da questão aqui...' }),
+    ],
+    content: editorContent,
+    selection: 'end',
+    stringHandler: 'html',
+  });
+
+  const handleEditorChange = (params: { state: { doc: { toJSON: () => unknown } } }) => {
+    const content = JSON.stringify(params.state.doc.toJSON());
+    setEditorContent(content);
+    form.setValue('statement', content);
+  };
 
   const [selectedTopics, setSelectedTopics] = useState<string[]>([
     "Álgebra", "Geometria"
@@ -164,31 +444,6 @@ const QuestionForm = ({
       form.setValue("skills", "");
     }
   }, [selectedCourse, form]);
-
-  // Register Quill modules
-  useEffect(() => {
-    Quill.register('modules/imageResize', ImageResize);
-  }, []);
-
-  const modules = React.useMemo(() => ({
-    toolbar: [
-      [{ header: [1, 2, false] }],
-      ['bold', 'italic', 'underline', 'strike'],
-      [{ list: 'ordered' }, { list: 'bullet' }],
-      ['link', 'image'],
-      [{ 'script': 'sub'}, { 'script': 'super' }, 'formula'],
-      ['clean']
-    ],
-    imageResize: {
-      modules: [ 'Resize', 'DisplaySize', 'Toolbar' ]
-    }
-  }), []);
-
-  const formats = React.useMemo(() => [
-    'header', 'bold', 'italic', 'underline', 'strike',
-    'list', 'bullet', 'link', 'image',
-    'script', 'formula'
-  ], []);
 
   // Define possible values for dropdown fields
   const educationLevels = ["Fundamental", "Médio", "Superior"];
@@ -491,26 +746,13 @@ const QuestionForm = ({
                   <FormItem>
                     <FormLabel>Enunciado da questão</FormLabel>
                     <FormControl>
-                      <div className="h-[350px] mb-12 relative">
-                        <style>
-                          {`
-                            .ql-formula {
-                              position: absolute !important;
-                              z-index: 9999 !important;
-                            }
-                            .ql-tooltip {
-                              z-index: 9999 !important;
-                            }
-                          `}
-                        </style>
-                        <ReactQuill 
-                          {...field}
-                          modules={modules}
-                          formats={formats}
-                          className="h-[300px]"
-                          theme="snow"
-                          value={field.value}
-                          onChange={field.onChange}
+                      <div className="mb-12 relative">
+                        <MyEditor
+                          content={field.value}
+                          onChange={(content) => {
+                            field.onChange(content);
+                            setEditorContent(content);
+                          }}
                         />
                       </div>
                     </FormControl>
