@@ -1,18 +1,15 @@
 import { Toaster } from "@/components/ui/toaster";
-import {ToastContainer} from 'react-toastify'
+import { ToastContainer } from 'react-toastify'
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, useNavigate, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import Index from "./pages/Index";
-import Students from "./pages/Students";
 import Evaluations from "./pages/Evaluations";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
 import { useAuth } from "./context/authContext";
-import { useEffect } from "react";
 import EmBreve from "./pages/EmBreve";
-import Alunos from './pages/Alunos'
 import Layout from "./components/layout/Layout";
 import StudentEvaluations from "./components/evaluations/StudentEvaluations";
 import Users from "./pages/Users";
@@ -30,7 +27,7 @@ import QuestionsPage from "./pages/QuestionsPage";
 
 const queryClient = new QueryClient();
 
-const App = () => { 
+const App = () => {
   const { user } = useAuth();
 
   // Função para determinar a rota baseada no papel do usuário
@@ -56,22 +53,22 @@ const App = () => {
           theme="light"
         />
         <Sonner />
-        
+
         <Routes>
           {/* Rota raiz - redireciona baseado no papel do usuário */}
-          <Route 
-            path="/" 
+          <Route
+            path="/"
             element={
               user.id ? <Navigate to={getBaseRoute()} /> : <Login />
-            } 
+            }
           />
-          
+
           {/* Rotas do aluno */}
-          <Route path="/aluno" element={<Layout/>}>
-            <Route index element={<PrivateRoute><Index/></PrivateRoute>}/>
+          <Route path="/aluno" element={<Layout />}>
+            <Route index element={<PrivateRoute><Index /></PrivateRoute>} />
             <Route path="/aluno/avaliacoes" element={<PrivateRoute><StudentEvaluations /></PrivateRoute>} />
             <Route path="/aluno/agenda" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-            <Route path="/aluno/editar-atalhos" element={<PrivateRoute><EditQuickLinks/></PrivateRoute>} />
+            <Route path="/aluno/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
             <Route path="/aluno/jogos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/aluno/play-tv" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/aluno/certificados" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
@@ -83,8 +80,8 @@ const App = () => {
           </Route>
 
           {/* Rotas do app (admin/professor/etc) */}
-          <Route path="/app" element={<Layout/>}>
-            <Route index element={<PrivateRoute><Index/></PrivateRoute>}/>
+          <Route path="/app" element={<Layout />}>
+            <Route index element={<PrivateRoute><Index /></PrivateRoute>} />
             <Route path="/app/avaliacoes" element={<PrivateRoute><Evaluations /></PrivateRoute>} />
             <Route path="/app/avaliacao/:id" element={<PrivateRoute><ViewEvaluation /></PrivateRoute>} />
             <Route path="/app/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
@@ -107,7 +104,7 @@ const App = () => {
             <Route path="/app/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
             <Route path="/app/avisos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/app/configuracoes" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-            
+
             {/* Rotas de gerenciamento de questões */}
             <Route path="/app/cadastros/questao" element={<PrivateRoute><QuestionsPage /></PrivateRoute>} />
             <Route path="/app/cadastros/questao/criar" element={<PrivateRoute><CreateQuestionPage /></PrivateRoute>} />

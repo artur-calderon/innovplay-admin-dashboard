@@ -1,176 +1,223 @@
-import { useState } from "react";
-import { useAuth } from "@/context/authContext";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Search } from "lucide-react";
-import QuestionForm from "./questions/QuestionForm";
-import { QuestionBank } from "./QuestionBank";
-import { EvaluationFormData, Question } from "./types";
+import { Card, CardContent } from "@/components/ui/card";
+import { Plus, Book } from "lucide-react";
+import { Question, Subject } from "./types";
+import { api } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/authContext";
+import QuestionFormReadOnly from "./questions/QuestionFormReadOnly";
+import QuestionBank from "./questions/QuestionBank";
 
 interface CreateEvaluationStep2Props {
-  data: EvaluationFormData;
+  data: {
+    title: string;
+    municipalities: string[];
+    schools: string[];
+    course: string;
+    grade: string;
+    classId: string;
+    type: "AVALIACAO" | "SIMULADO";
+    model: "SAEB" | "PROVA" | "AVALIE";
+    subjects: Subject[];
+    subject: string;
+  };
   onBack: () => void;
-  onSubmit: (data: EvaluationFormData) => void;
+  // onSubmit: (data: any) => void;
 }
 
-export function CreateEvaluationStep2({ data, onBack, onSubmit }: CreateEvaluationStep2Props) {
-  const { user } = useAuth();
-  const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
+export const CreateEvaluationStep2 = ({
+  data,
+  onBack,
+  // onSubmit,
+}: CreateEvaluationStep2Props) => {
+  const [loading, setLoading] = useState(false);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [subjectOptions, setSubjectOptions] = useState<Subject[]>([]);
   const [showQuestionForm, setShowQuestionForm] = useState(false);
   const [showQuestionBank, setShowQuestionBank] = useState(false);
-  const [questions, setQuestions] = useState<Question[]>([]);
+  const { toast } = useToast();
+  const { user } = useAuth();
 
-  const handleAddQuestion = (subjectId: string) => {
-    setSelectedSubject(subjectId);
+  useEffect(() => {
+    const fetchSubjects = async () => {
+      try {
+        const response = await api.get("/subjects");
+        setSubjectOptions(response.data);
+      } catch (error) {
+        console.error("Erro ao buscar matérias:", error);
+        toast({
+          title: "Erro",
+          description: "Não foi possível carregar as matérias",
+          variant: "destructive",
+        });
+      }
+    };
+
+    fetchSubjects();
+  }, [toast]);
+
+  const handleAddQuestion = () => {
     setShowQuestionForm(true);
   };
 
-  const handleSearchQuestion = (subjectId: string) => {
-    setSelectedSubject(subjectId);
+  const handleAddFromBank = () => {
     setShowQuestionBank(true);
   };
 
-  const handleQuestionFormClose = () => {
-    setShowQuestionForm(false);
-    setSelectedSubject(null);
-  };
-
-  const handleQuestionBankClose = () => {
-    setShowQuestionBank(false);
-    setSelectedSubject(null);
+  const handleRemoveQuestion = (index: number) => {
+    setQuestions((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleQuestionAdded = (question: Question) => {
-    setQuestions([...questions, question]);
+    setQuestions((prev) => [...prev, question]);
+    setShowQuestionForm(false);
   };
 
-  const handleQuestionsSelectedFromBank = (questionsFromBank: Question[]) => {
-    setQuestions([...questions, ...questionsFromBank]);
+  const handleQuestionSelected = (question: Question) => {
+    setQuestions((prev) => [...prev, question]);
+    setShowQuestionBank(false);
   };
 
-  const getQuestionsForSubject = (subjectId: string) => {
-    return questions.filter(q => q.subjectId === subjectId);
+  const handleSubmit = async () => {
+    try {
+      setLoading(true);
+      const response = await api.post("/test", {
+        title: data.title,
+        municipalities: data.municipalities,
+        schools: data.schools,
+        course: data.course,
+        grade: data.grade,
+        class_id: data.classId,
+        type: data.type,
+        model: data.model,
+        subjects: data.subjects,
+        subject: data.subject,
+        questions: questions,
+        created_by: user.id
+      });
+      const datas = {
+        title: data.title,
+        municipalities: data.municipalities,
+        schools: data.schools,
+        course: data.course,
+        grade: data.grade,
+        class_id: data.classId,
+        type: data.type,
+        model: data.model,
+        subjects: data.subjects,
+        subject: data.subject,
+        questions: questions,
+        created_by: user.id
+      }
+
+      console.log(datas)
+
+      toast({
+        title: "Sucesso",
+        description: "Avaliação criada com sucesso!",
+      });
+
+      // onSubmit(response.data);
+    } catch (error) {
+      console.error("Erro ao criar avaliação:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível criar a avaliação",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4">
-        {user.role === "admin" && data.type === "SIMULADO" ? (
-          // Admin view for simulated test
-          data.subjects?.map((subject) => (
-            <Card key={subject.id}>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span>{subject.name}</span>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleAddQuestion(subject.id)}
-                    >
-                      <Plus className="mr-2 h-4 w-4" />
-                      Nova Questão
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleSearchQuestion(subject.id)}
-                    >
-                      <Search className="mr-2 h-4 w-4" />
-                      Buscar Questão
-                    </Button>
-                  </div>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Quantidade de questões: {subject.questionCount}
-                </p>
-                <div className="space-y-2">
-                  {getQuestionsForSubject(subject.id).map((question) => (
-                    <div
-                      key={question.id}
-                      className="p-3 border rounded-md"
-                    >
-                      <p className="font-medium">Questão {question.number}</p>
-                      <p className="text-sm text-muted-foreground">{question.text}</p>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          ))
-        ) : (
-          // Teacher view or regular evaluation
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Questões</span>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleAddQuestion("main")}
-                  >
-                    <Plus className="mr-2 h-4 w-4" />
-                    Nova Questão
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleSearchQuestion("main")}
-                  >
-                    <Search className="mr-2 h-4 w-4" />
-                    Buscar Questão
-                  </Button>
-                </div>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {questions.map((question) => (
-                  <div
-                    key={question.id}
-                    className="p-3 border rounded-md"
-                  >
-                    <p className="font-medium">Questão {question.number}</p>
-                    <p className="text-sm text-muted-foreground">{question.text}</p>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold">Questões</h2>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={handleAddFromBank}
+          >
+            <Book className="h-4 w-4 mr-2" />
+            Banco de Questões
+          </Button>
+          <Button onClick={handleAddQuestion}>
+            <Plus className="h-4 w-4 mr-2" />
+            Nova Questão
+          </Button>
+        </div>
       </div>
 
-      <div className="flex gap-4">
-        <Button variant="outline" onClick={onBack} className="w-full">
+      <Card>
+        <CardContent className="pt-6">
+          {showQuestionForm && (
+            <QuestionFormReadOnly
+              open={showQuestionForm}
+              onClose={() => setShowQuestionForm(false)}
+              onQuestionAdded={handleQuestionAdded}
+              questionNumber={questions.length + 1}
+              evaluationData={{
+                course: data.course,
+                grade: data.grade,
+                subject: data.subject,
+              }}
+            />
+          )}
+
+          {showQuestionBank && (
+            <QuestionBank
+              onClose={() => setShowQuestionBank(false)}
+              onSelect={handleQuestionSelected}
+              subjects={subjectOptions}
+            />
+          )}
+
+          {questions.length > 0 ? (
+            <div className="space-y-4">
+              {questions.map((question, index) => (
+                <Card key={index}>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold">
+                        Questão {index + 1}
+                      </h3>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveQuestion(index)}
+                      >
+                        Remover
+                      </Button>
+                    </div>
+                    <p className="mt-2">{question.text}</p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              Nenhuma questão adicionada
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="flex justify-end gap-2">
+        <Button
+          variant="outline"
+          onClick={onBack}
+        >
           Voltar
         </Button>
         <Button
-          onClick={() => onSubmit({ ...data, questions })}
-          className="w-full"
+          onClick={handleSubmit}
+          disabled={loading || questions.length === 0}
         >
-          Finalizar
+          {loading ? "Salvando..." : "Salvar Avaliação"}
         </Button>
       </div>
-
-      {showQuestionForm && (
-        <QuestionForm
-          open={showQuestionForm}
-          onClose={handleQuestionFormClose}
-          subjectId={selectedSubject}
-          onQuestionAdded={handleQuestionAdded}
-          questionNumber={questions.length + 1}
-        />
-      )}
-
-      <QuestionBank
-        open={showQuestionBank}
-        onClose={handleQuestionBankClose}
-        subjectId={selectedSubject}
-        onQuestionSelected={handleQuestionAdded}
-      />
     </div>
   );
-} 
+}; 

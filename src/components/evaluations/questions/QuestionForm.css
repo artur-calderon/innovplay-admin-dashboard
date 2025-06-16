@@ -8,4 +8,92 @@
   vertical-align: super;
   font-size: smaller;
   line-height: 0;
-} 
+}
+
+.tiptap-editor {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.375rem;
+  overflow: hidden;
+}
+
+.editor-toolbar {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-bottom: 1px solid #e2e8f0;
+  background-color: #f8fafc;
+}
+
+.editor-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.25rem;
+  background-color: white;
+  color: #64748b;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.editor-toolbar button:hover {
+  background-color: #f1f5f9;
+  color: #0f172a;
+}
+
+.editor-toolbar button.is-active {
+  background-color: #e2e8f0;
+  color: #0f172a;
+}
+
+.editor-content {
+  padding: 1rem;
+  min-height: 200px;
+}
+
+.editor-content p {
+  margin: 0;
+}
+
+.editor-content img {
+  max-width: 100%;
+  height: auto;
+}
+
+.resizable-image-container {
+  position: relative;
+  display: inline-block;
+  margin: 1rem 0;
+}
+
+.resizable-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.resize-handle {
+  position: absolute;
+  bottom: -8px;
+  right: -8px;
+  width: 16px;
+  height: 16px;
+  background-color: #3b82f6;
+  border-radius: 50%;
+  cursor: nwse-resize;
+}
+
+[data-text-align="center"] {
+  text-align: center;
+}
+
+[data-text-align="right"] {
+  text-align: right;
+}
+
+[data-text-align="left"] {
+  text-align: left;
+}

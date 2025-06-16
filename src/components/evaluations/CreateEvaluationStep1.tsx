@@ -14,324 +14,492 @@ import {
 } from "@/components/ui/select";
 import { MultiSelect, Option } from "@/components/ui/multi-select";
 import { SubjectModal } from "./SubjectModal";
-import { EvaluationFormData, TeacherSchool } from "./types";
+import { EvaluationFormData, TeacherSchool, Subject } from "./types";
+import { Card, CardContent } from "@/components/ui/card";
+
+interface Grade {
+  id: string;
+  name: string;
+}
+
+interface City {
+  id: string;
+  name: string;
+  state: string;
+  created_at: string;
+}
+
+interface School {
+  id: string;
+  name: string;
+  domain: string;
+  address: string;
+  city_id: string;
+  created_at: string;
+  students_count: number;
+  classes_count: number;
+  city: City;
+}
+
+interface Class {
+  id: string;
+  name: string;
+  grade_id: string;
+  grade: Grade;
+  school_id: string;
+  school: School;
+}
 
 interface CreateEvaluationStep1Props {
   onNext: (data: EvaluationFormData) => void;
 }
 
-export function CreateEvaluationStep1({ onNext }: CreateEvaluationStep1Props) {
+export const CreateEvaluationStep1 = ({ onNext }: CreateEvaluationStep1Props) => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
-  // Form data
-  const [title, setTitle] = useState("");
-  const [municipalities, setMunicipalities] = useState<string[]>([]);
-  const [schools, setSchools] = useState<string[]>([]);
-  const [course, setCourse] = useState("");
-  const [grade, setGrade] = useState("");
-  const [classId, setClassId] = useState("");
-  // const [skill, setSkill] = useState("");
-  const [model, setModel] = useState<EvaluationFormData['model'] | "">("");
-  const [type, setType] = useState<EvaluationFormData['type'] | "">("");
-  const [subjects, setSubjects] = useState<EvaluationFormData['subjects']>([]);
+  const [formData, setFormData] = useState<EvaluationFormData>({
+    title: "",
+    municipalities: [],
+    schools: [],
+    course: "",
+    grade: "",
+    classId: "",
+    type: "AVALIACAO" as const,
+    model: "SAEB" as const,
+    subjects: [],
+    subject: "",
+    questions: [],
+  });
 
-  // Options
-  const [municipalityOptions, setMunicipalityOptions] = useState<Option[]>([]);
-  const [schoolOptions, setSchoolOptions] = useState<Option[]>([]);
-  const [courseOptions, setCourseOptions] = useState<Option[]>([]);
-  const [gradeOptions, setGradeOptions] = useState<Option[]>([]);
-  const [classOptions, setClassOptions] = useState<Option[]>([]);
-  const [subjectOptions, setSubjectOptions] = useState<Option[]>([]);
-
-  // Placeholder data for teacher's schools
-  const teacherSchools: TeacherSchool[] = [
-    {
-      id: "1",
-      name: "Escola A",
-      classes: [
-        { id: "1", name: "Turma A", grade: "1º Ano" },
-        { id: "2", name: "Turma B", grade: "2º Ano" },
-      ],
-    },
-  ];
+  const [municipalities, setMunicipalities] = useState<{ id: string; name: string }[]>([]);
+  const [schools, setSchools] = useState<{ id: string; name: string }[]>([]);
+  const [courses, setCourses] = useState<{ id: string; name: string }[]>([]);
+  const [grades, setGrades] = useState<Grade[]>([]);
+  const [classes, setClasses] = useState<Class[]>([]);
+  const [subjectOptions, setSubjectOptions] = useState<Subject[]>([]);
+  const [showSubjectModal, setShowSubjectModal] = useState(false);
+  const [gradesMap, setGradesMap] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    // TODO: Replace with actual API calls
-    setMunicipalityOptions([
-      { id: "1", name: "Município A" },
-      { id: "2", name: "Município B" },
-    ]);
-    setSchoolOptions([
-      { id: "1", name: "Escola A" },
-      { id: "2", name: "Escola B" },
-    ]);
-    setCourseOptions([
-      { id: "1", name: "Ensino Fundamental" },
-      { id: "2", name: "Ensino Médio" },
-    ]);
-    setGradeOptions([
-      { id: "1", name: "1º Ano" },
-      { id: "2", name: "2º Ano" },
-    ]);
-    setClassOptions([
-      { id: "1", name: "Turma A" },
-      { id: "2", name: "Turma B" },
-    ]);
-    setSubjectOptions([
-      { id: "1", name: "Matemática" },
-      { id: "2", name: "Português" },
-      { id: "3", name: "História" },
-    ]);
-  }, []);
-
-  const handleSubmit = () => {
-    if (user.role === "admin") {
-      if (!title || !municipalities.length || !schools.length || !course || !grade || !classId ||  !model || !type) {
+    const fetchMunicipalities = async () => {
+      try {
+        const response = await api.get("/city");
+        setMunicipalities(response.data);
+      } catch (error) {
+        console.error("Erro ao buscar municípios:", error);
         toast({
           title: "Erro",
-          description: "Preencha todos os campos obrigatórios",
+          description: "Não foi possível carregar os municípios",
           variant: "destructive",
         });
-        return;
       }
-
-      if (type === "SIMULADO" && (!subjects || subjects.length === 0)) {
-        toast({
-          title: "Erro",
-          description: "Adicione pelo menos uma matéria para o simulado",
-          variant: "destructive",
-        });
-        return;
-      }
-    } else {
-      if (!title || !schools.length || !classId) {
-        toast({
-          title: "Erro",
-          description: "Preencha todos os campos obrigatórios",
-          variant: "destructive",
-        });
-        return;
-      }
-    }
-
-    const formData: EvaluationFormData = {
-      title,
-      municipalities,
-      schools,
-      course,
-      grade,
-      classId,
-      model: model as EvaluationFormData['model'],
-      type: type as EvaluationFormData['type'],
-      subjects,
     };
 
+    const fetchCourses = async () => {
+      try {
+        const response = await api.get("/education_stages");
+        setCourses(response.data);
+      } catch (error) {
+        console.error("Erro ao buscar cursos:", error);
+        toast({
+          title: "Erro",
+          description: "Não foi possível carregar os cursos",
+          variant: "destructive",
+        });
+      }
+    };
+
+    const fetchSubjects = async () => {
+      try {
+        const response = await api.get("/subjects");
+        setSubjectOptions(response.data);
+      } catch (error) {
+        console.error("Erro ao buscar matérias:", error);
+        toast({
+          title: "Erro",
+          description: "Não foi possível carregar as matérias",
+          variant: "destructive",
+        });
+      }
+    };
+
+    fetchMunicipalities();
+    fetchCourses();
+    fetchSubjects()
+  }, [toast]);
+
+  useEffect(() => {
+    const fetchSchools = async () => {
+      if (formData.municipalities.length > 0) {
+        try {
+          const schoolsPromises = formData.municipalities.map(municipalityId =>
+            api.get(`/school/city/${municipalityId}`)
+          );
+
+          const responses = await Promise.all(schoolsPromises);
+          const allSchools = responses.flatMap(response => response.data);
+
+          if (allSchools.length === 0) {
+            toast({
+              title: "Atenção",
+              description: "Nenhuma escola encontrada para esta cidade",
+              variant: "destructive",
+            });
+          }
+
+          setSchools(allSchools);
+        } catch (error: any) {
+          console.error("Erro ao buscar escolas:", error);
+          const errorMessage = error.response?.data?.error || error.response?.data?.message || "Não foi possível carregar as escolas";
+          toast({
+            title: "Erro",
+            description: errorMessage,
+            variant: "destructive",
+          });
+        }
+      } else {
+        setSchools([]);
+      }
+    };
+
+    fetchSchools();
+  }, [formData.municipalities, toast]);
+
+  useEffect(() => {
+    const fetchGrades = async () => {
+      if (formData.course) {
+        try {
+          const response = await api.get(`/grades/education-stage/${formData.course}`);
+          setGrades(response.data);
+          const gradesMap: Record<string, string> = {};
+          response.data.forEach((grade: Grade) => {
+            gradesMap[grade.id] = grade.name;
+          });
+          setGradesMap(gradesMap);
+        } catch (error) {
+          console.error("Erro ao buscar séries:", error);
+          toast({
+            title: "Erro",
+            description: "Não foi possível carregar as séries",
+            variant: "destructive",
+          });
+        }
+      } else {
+        setGrades([]);
+        setGradesMap({});
+      }
+    };
+
+    fetchGrades();
+  }, [formData.course, toast]);
+
+  useEffect(() => {
+    const fetchClasses = async () => {
+      if (formData.grade && formData.schools.length > 0) {
+        try {
+          const response = await api.get("/classes", {
+            params: {
+              grade: formData.grade,
+              schools: formData.schools.join(","),
+            },
+          });
+          console.log(response.data)
+          setClasses(response.data);
+        } catch (error) {
+          console.error("Erro ao buscar turmas:", error);
+          toast({
+            title: "Erro",
+            description: "Não foi possível carregar as turmas",
+            variant: "destructive",
+          });
+        }
+      } else {
+        setClasses([]);
+      }
+    };
+
+    fetchClasses();
+  }, [formData.grade, formData.schools, toast]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.title) {
+      toast({
+        title: "Erro",
+        description: "O título é obrigatório",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!formData.municipalities.length) {
+      toast({
+        title: "Erro",
+        description: "Selecione pelo menos um município",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!formData.schools.length) {
+      toast({
+        title: "Erro",
+        description: "Selecione pelo menos uma escola",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!formData.course) {
+      toast({
+        title: "Erro",
+        description: "Selecione um curso",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!formData.grade) {
+      toast({
+        title: "Erro",
+        description: "Selecione uma série",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!formData.classId) {
+      toast({
+        title: "Erro",
+        description: "Selecione uma turma",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!formData.subject) {
+      toast({
+        title: "Erro",
+        description: "Selecione uma matéria",
+        variant: "destructive",
+      });
+      return;
+    }
     onNext(formData);
   };
 
-  const handleModelChange = (value: string) => {
-    setModel(value as EvaluationFormData['model']);
-  };
-
-  const handleTypeChange = (value: string) => {
-    setType(value as EvaluationFormData['type']);
-  };
-
   return (
-    <div className="space-y-6">
-      <div className="grid gap-4">
-        <div className="grid gap-2">
-          <Label htmlFor="title">Título da Avaliação *</Label>
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="space-y-4">
+        <div>
+          <Label htmlFor="title">Título da Avaliação</Label>
           <Input
             id="title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            value={formData.title}
+            onChange={(e) =>
+              setFormData((prev) => ({ ...prev, title: e.target.value }))
+            }
             placeholder="Digite o título da avaliação"
           />
         </div>
 
-        {user.role === "admin" ? (
-          <>
-            <div className="grid gap-2">
-              <Label>Municípios *</Label>
-              <MultiSelect
-                options={municipalityOptions}
-                selected={municipalities}
-                onChange={setMunicipalities}
-                placeholder="Selecione os municípios"
-              />
+        <div>
+          <Label>Municípios</Label>
+          <MultiSelect
+            options={municipalities.map(m => ({ id: m.id, name: m.name }))}
+            selected={formData.municipalities}
+            onChange={(selected) => {
+              setFormData((prev) => ({
+                ...prev,
+                municipalities: selected,
+                schools: [],
+              }));
+            }}
+            placeholder="Selecione um ou mais municípios"
+          />
+        </div>
+
+        <div>
+          <Label>Escolas</Label>
+          {schools.length === 0 ? (
+            <div className="text-sm text-muted-foreground">
+              Não há escolas cadastradas nos municípios selecionados
             </div>
+          ) : (
+            <MultiSelect
+              options={schools.map(s => ({ id: s.id, name: s.name }))}
+              selected={formData.schools}
+              onChange={(selected) => {
+                setFormData((prev) => ({ ...prev, schools: selected }));
+              }}
+              placeholder="Selecione uma ou mais escolas"
+            />
+          )}
+        </div>
 
-            <div className="grid gap-2">
-              <Label>Escolas *</Label>
-              <MultiSelect
-                options={schoolOptions}
-                selected={schools}
-                onChange={setSchools}
-                placeholder="Selecione as escolas"
-              />
+        <div>
+          <Label>Curso</Label>
+          <Select
+            value={formData.course}
+            onValueChange={(value) =>
+              setFormData((prev) => ({
+                ...prev,
+                course: value,
+                grade: "",
+                classId: "",
+              }))
+            }
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione um curso" />
+            </SelectTrigger>
+            <SelectContent>
+              {courses.map((course) => (
+                <SelectItem key={course.id} value={course.id}>
+                  {course.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <Label>Série</Label>
+          <Select
+            value={formData.grade}
+            onValueChange={(value) =>
+              setFormData((prev) => ({
+                ...prev,
+                grade: value,
+                classId: "",
+              }))
+            }
+            disabled={!formData.course}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione uma série" />
+            </SelectTrigger>
+            <SelectContent>
+              {grades.map((grade) => (
+                <SelectItem key={grade.id} value={grade.id}>
+                  {grade.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <Label>Turma</Label>
+          <Select
+            value={formData.classId}
+            onValueChange={(value) =>
+              setFormData((prev) => ({ ...prev, classId: value }))
+            }
+            disabled={!formData.grade || !formData.schools.length}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione uma turma" />
+            </SelectTrigger>
+            <SelectContent>
+              {classes.map((class_) => (
+                <SelectItem key={class_.id} value={class_.id}>
+                  {`${class_.name} - ${class_.grade.name}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <Label>Matéria</Label>
+          <Select
+            value={formData.subject}
+            onValueChange={(value) =>
+              setFormData((prev) => ({ ...prev, subject: value }))
+            }
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione uma matéria" />
+            </SelectTrigger>
+            <SelectContent>
+              {subjectOptions.map((subject) => (
+                <SelectItem key={subject.id} value={subject.id}>
+                  {subject.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <Label>Tipo</Label>
+          <Select
+            value={formData.type}
+            onValueChange={(value: "AVALIACAO" | "SIMULADO") =>
+              setFormData((prev) => ({ ...prev, type: value }))
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="AVALIACAO">Avaliação</SelectItem>
+              <SelectItem value="SIMULADO">Simulado</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <Label>Modelo</Label>
+          <Select
+            value={formData.model}
+            onValueChange={(value: "SAEB" | "PROVA" | "AVALIE") =>
+              setFormData((prev) => ({ ...prev, model: value }))
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="SAEB">SAEB</SelectItem>
+              <SelectItem value="PROVA">Prova</SelectItem>
+              <SelectItem value="AVALIE">Avalie</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {formData.type === "SIMULADO" && (
+          <div>
+            <Label>Matérias do Simulado</Label>
+            <div className="flex items-center space-x-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowSubjectModal(true)}
+              >
+                Adicionar Matérias
+              </Button>
+              {formData.subjects.length > 0 && (
+                <span className="text-sm text-muted-foreground">
+                  {formData.subjects.length} matéria(s) selecionada(s)
+                </span>
+              )}
             </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="course">Curso *</Label>
-              <Select value={course} onValueChange={setCourse}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o curso" />
-                </SelectTrigger>
-                <SelectContent>
-                  {courseOptions.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
-                      {option.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="grade">Série *</Label>
-              <Select value={grade} onValueChange={setGrade}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a série" />
-                </SelectTrigger>
-                <SelectContent>
-                  {gradeOptions.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
-                      {option.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="class">Turma *</Label>
-              <Select value={classId} onValueChange={setClassId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a turma" />
-                </SelectTrigger>
-                <SelectContent>
-                  {classOptions.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
-                      {option.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* <div className="grid gap-2">
-              <Label htmlFor="skill">Habilidade *</Label>
-              <Input
-                id="skill"
-                value={skill}
-                onChange={(e) => setSkill(e.target.value)}
-                placeholder="Digite a habilidade"
-              />
-            </div> */}
-
-            <div className="grid gap-2">
-              <Label htmlFor="model">Modelo de Prova *</Label>
-              <Select value={model} onValueChange={handleModelChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o modelo" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="SAEB">SAEB</SelectItem>
-                  <SelectItem value="AVALIE">AVALIE</SelectItem>
-                  <SelectItem value="PROVA">PROVA</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="type">Tipo *</Label>
-              <Select value={type} onValueChange={handleTypeChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o tipo" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="SIMULADO">Simulado</SelectItem>
-                  <SelectItem value="AVALIACAO">Avaliação</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {type === "SIMULADO" && (
-              <div className="grid gap-2">
-                <Label>Matérias *</Label>
-                <SubjectModal
-                  subjects={subjects}
-                  onSubjectsChange={setSubjects}
-                  availableSubjects={subjectOptions}
-                />
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            <div className="grid gap-2">
-              <Label>Escolas *</Label>
-              <MultiSelect
-                options={teacherSchools.map(school => ({ id: school.id, name: school.name }))}
-                selected={schools}
-                onChange={setSchools}
-                placeholder="Selecione as escolas"
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="class">Turma *</Label>
-              <Select value={classId} onValueChange={setClassId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a turma" />
-                </SelectTrigger>
-                <SelectContent>
-                  {teacherSchools
-                    .flatMap(school => school.classes)
-                    .map((classItem) => (
-                      <SelectItem key={classItem.id} value={classItem.id}>
-                        {classItem.name} - {classItem.grade}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* <div className="grid gap-2">
-              <Label htmlFor="skill">Habilidade *</Label>
-              <Input
-                id="skill"
-                value={skill}
-                onChange={(e) => setSkill(e.target.value)}
-                placeholder="Digite a habilidade"
-              />
-            </div> */}
-
-            <div className="grid gap-2">
-              <Label htmlFor="subject">Disciplina *</Label>
-              <Select value={course} onValueChange={setCourse}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a disciplina" />
-                </SelectTrigger>
-                <SelectContent>
-                  {subjectOptions.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
-                      {option.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </>
+          </div>
         )}
       </div>
 
-      <Button onClick={handleSubmit} className="w-full">
-        Próximo
-      </Button>
-    </div>
+      <div className="flex justify-end">
+        <Button type="submit">Próximo</Button>
+      </div>
+
+      {showSubjectModal && (
+        <SubjectModal
+          subjects={formData.subjects}
+          onSubjectsChange={(subjects) =>
+            setFormData((prev) => ({ ...prev, subjects }))
+          }
+          availableSubjects={subjectOptions}
+          onClose={() => setShowSubjectModal(false)}
+        />
+      )}
+    </form>
   );
-} 
+}; 

@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { UserPlus, Eye, Pencil, Trash2, Edit, Loader2 } from "lucide-react";
 import { CreateClassForm } from "./CreateClassForm";
 import { AddStudentForm } from "./AddStudentForm";
+import { AddTeacherForm } from "./AddTeacherForm";
 import {
   Table,
   TableBody,
@@ -48,6 +49,14 @@ interface Class {
   grade_id: string;
 }
 
+interface Teacher {
+  id: string;
+  name: string;
+  email: string;
+  registration?: string;
+  birth_date?: string;
+}
+
 export default function SchoolDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -55,6 +64,7 @@ export default function SchoolDetails() {
   const [school, setSchool] = useState<School | null>(null);
   const [classes, setClasses] = useState<Class[]>([]);
   const [grades, setGrades] = useState<Record<string, string>>({});
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
   const { toast } = useToast();
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isLoadingSchool, setIsLoadingSchool] = useState(true);
@@ -122,10 +132,32 @@ export default function SchoolDetails() {
     fetchClasses();
   }, [id, toast]);
 
+  useEffect(() => {
+    const fetchTeachers = async () => {
+      if (!id) return;
+
+      try {
+        const response = await api.get(`/teacher/school/${id}`);
+        setTeachers(Array.isArray(response.data) ? response.data : []);
+      } catch (error) {
+        console.error("Error fetching teachers:", error);
+        toast({
+          title: "Erro",
+          description: "Erro ao carregar professores",
+          variant: "destructive",
+        });
+        setTeachers([]);
+      }
+    };
+
+    fetchTeachers();
+  }, [id, toast]);
+
   const handleClassCreated = () => {
     // Refetch classes when a new one is created
     if (id) {
       api.get(`/classes/school/${id}`).then(response => {
+        console.log(response.data);
         setClasses(response.data);
       });
     }
@@ -177,11 +209,19 @@ export default function SchoolDetails() {
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">{school.name}</h1>
         <div className="flex gap-4">
-          <AddStudentForm 
-            schoolId={school.id} 
+          <AddTeacherForm
+            schoolId={school.id}
+            schoolName={school.name}
+            classes={classes}
+            onSuccess={() => {
+              // Você pode adicionar qualquer lógica de atualização aqui se necessário
+            }}
+          />
+          <AddStudentForm
+            schoolId={school.id}
             schoolName={school.name}
             onSuccess={() => {
-              // You can add any refresh logic here if needed
+              // Você pode adicionar qualquer lógica de atualização aqui se necessário
             }}
           />
           <CreateClassForm schoolId={school.id} onSuccess={handleClassCreated} />
@@ -227,6 +267,57 @@ export default function SchoolDetails() {
               </dl>
             </CardContent>
           </Card>
+        </div>
+
+        <div className="p-4 border rounded-lg">
+          <h2 className="text-xl font-semibold mb-4">Professores</h2>
+          {teachers.length === 0 ? (
+            <p className="text-gray-500">Nenhum professor cadastrado</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Matrícula</TableHead>
+                  <TableHead>Data de Nascimento</TableHead>
+                  <TableHead>Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {teachers.map((teacher) => (
+                  <TableRow key={teacher.id}>
+                    <TableCell>{teacher.name}</TableCell>
+                    <TableCell>{teacher.email}</TableCell>
+                    <TableCell>{teacher.registration || "-"}</TableCell>
+                    <TableCell>
+                      {teacher.birth_date
+                        ? new Date(teacher.birth_date).toLocaleDateString("pt-BR")
+                        : "-"}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => navigate(`/app/professor/${teacher.id}`)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => navigate(`/app/professor/${teacher.id}/editar`)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </div>
 
         <div className="p-4 border rounded-lg">
@@ -285,7 +376,9 @@ export default function SchoolDetails() {
           school={school}
           onClose={() => setIsEditDialogOpen(false)}
           onSave={(updatedSchool) => {
-            setSchool(updatedSchool);
+            if (school) {
+              setSchool({ ...school, ...updatedSchool });
+            }
             setIsEditDialogOpen(false);
           }}
         />

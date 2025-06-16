@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Eye, Pencil, Trash2 } from "lucide-react";
+import { Search, Eye, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useToast } from "@/hooks/use-toast";
+import { api } from "@/lib/api";
 import {
   Table,
   TableBody,
@@ -12,73 +14,46 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-
-// Mock data for ready evaluations
-const readyEvaluationsMock = [
-  {
-    id: "1",
-    title: "Matemática - Operações Básicas",
-    subject: "Matemática",
-    grade: "4º Ano",
-    questionCount: 15,
-    description: "Avaliação com questões de adição, subtração, multiplicação e divisão.",
-    creationDate: "2024-03-20",
-  },
-  {
-    id: "2",
-    title: "Português - Interpretação de Texto",
-    subject: "Português",
-    grade: "6º Ano",
-    questionCount: 12,
-    description: "Avaliação com textos variados e questões de interpretação.",
-    creationDate: "2024-03-19",
-  },
-  {
-    id: "3",
-    title: "Ciências - Meio Ambiente",
-    subject: "Ciências",
-    grade: "5º Ano",
-    questionCount: 10,
-    description: "Questões sobre ecologia, sustentabilidade e conservação ambiental.",
-    creationDate: "2024-03-18",
-  },
-  {
-    id: "4",
-    title: "História - Grandes Civilizações",
-    subject: "História",
-    grade: "7º Ano",
-    questionCount: 20,
-    description: "Avaliação sobre as principais civilizações antigas e suas contribuições.",
-    creationDate: "2024-03-17",
-  },
-  {
-    id: "5",
-    title: "Geografia - Cartografia",
-    subject: "Geografia",
-    grade: "8º Ano",
-    questionCount: 15,
-    description: "Questões sobre mapas, coordenadas geográficas e escalas.",
-    creationDate: "2024-03-16",
-  },
-  {
-    id: "6",
-    title: "Matemática - Geometria",
-    subject: "Matemática",
-    grade: "9º Ano",
-    questionCount: 18,
-    description: "Avaliação sobre figuras geométricas, ângulos e teoremas.",
-    creationDate: "2024-03-15",
-  },
-];
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Evaluation {
   id: string;
   title: string;
   subject: string;
-  grade: string;
+  grade_id: string;
   questionCount: number;
   description: string;
-  creationDate: string;
+  created_at: string;
+  type: string;
+  max_score: number;
+  time_limit: string;
+  created_by: string;
+  updated_at: string;
+  municipalities: string[];
+  schools: string[];
+  course: string;
+  model: string;
+  subjects_info: any;
+  questions: Array<{
+    id: string;
+    title: string;
+    question_type: string;
+    command: string;
+  }>;
+}
+
+interface Subject {
+  id: string;
+  name: string;
 }
 
 interface ReadyEvaluationsProps {
@@ -87,16 +62,80 @@ interface ReadyEvaluationsProps {
 
 export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [evaluations, setEvaluations] = useState(readyEvaluationsMock);
+  const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [evaluationToDelete, setEvaluationToDelete] = useState<string | null>(null);
+  const [subjectsMap, setSubjectsMap] = useState<Record<string, string>>({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
   const navigate = useNavigate();
-  
+  const { toast } = useToast();
+
+  useEffect(() => {
+    fetchSubjects();
+    fetchEvaluations();
+  }, []);
+
+  const fetchSubjects = async () => {
+    try {
+      const response = await api.get("/subjects");
+      const subjects: Subject[] = response.data;
+      const map: Record<string, string> = {};
+      subjects.forEach(subject => {
+        map[subject.id] = subject.name;
+      });
+      setSubjectsMap(map);
+    } catch (error) {
+      console.error("Erro ao buscar disciplinas:", error);
+    }
+  };
+
+  const fetchEvaluations = async () => {
+    try {
+      setIsLoading(true);
+      const response = await api.get("/test/user/me");
+
+      if (response.data.message === "Nenhuma avaliação encontrada para este usuário") {
+        setEvaluations([]);
+      } else {
+        setEvaluations(response.data);
+      }
+    } catch (error: any) {
+      console.error("Erro ao buscar avaliações:", error);
+      if (error.response?.data?.error) {
+        toast({
+          title: "Erro",
+          description: error.response.data.error,
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const filteredEvaluations = evaluations.filter(
     (evaluation) =>
       evaluation.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       evaluation.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      evaluation.grade.toLowerCase().includes(searchTerm.toLowerCase()) ||
       evaluation.description.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Calcular índices para paginação
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = filteredEvaluations.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredEvaluations.length / itemsPerPage);
+
+  const handlePageChange = (pageNumber: number) => {
+    setCurrentPage(pageNumber);
+  };
+
+  // Resetar para primeira página quando o termo de busca mudar
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('pt-BR');
@@ -104,6 +143,33 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
 
   const handleView = (evaluationId: string) => {
     navigate(`/app/avaliacao/${evaluationId}`);
+  };
+
+  const handleEdit = (evaluationId: string) => {
+    navigate(`/app/avaliacao/editar/${evaluationId}`);
+  };
+
+  const handleDelete = async () => {
+    if (!evaluationToDelete) return;
+
+    try {
+      await api.delete(`/test/${evaluationToDelete}`);
+      toast({
+        title: "Sucesso",
+        description: "Avaliação excluída com sucesso",
+      });
+      fetchEvaluations();
+    } catch (error) {
+      console.error("Erro ao excluir avaliação:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível excluir a avaliação",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleteDialogOpen(false);
+      setEvaluationToDelete(null);
+    }
   };
 
   return (
@@ -128,21 +194,29 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
               <TableRow>
                 <TableHead className="w-[250px]">Título</TableHead>
                 <TableHead className="hidden sm:table-cell">Disciplina</TableHead>
-                <TableHead className="hidden md:table-cell">Série</TableHead>
+                <TableHead className="hidden md:table-cell">Tipo</TableHead>
                 <TableHead className="hidden md:table-cell">Nº Questões</TableHead>
                 <TableHead className="hidden lg:table-cell">Data de criação</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredEvaluations.length > 0 ? (
-                filteredEvaluations.map((evaluation) => (
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8">
+                    Carregando avaliações...
+                  </TableCell>
+                </TableRow>
+              ) : currentItems.length > 0 ? (
+                currentItems.map((evaluation) => (
                   <TableRow key={evaluation.id}>
                     <TableCell className="font-medium">{evaluation.title}</TableCell>
-                    <TableCell className="hidden sm:table-cell">{evaluation.subject}</TableCell>
-                    <TableCell className="hidden md:table-cell">{evaluation.grade}</TableCell>
-                    <TableCell className="hidden md:table-cell">{evaluation.questionCount}</TableCell>
-                    <TableCell className="hidden lg:table-cell">{formatDate(evaluation.creationDate)}</TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      {subjectsMap[evaluation.subject] || evaluation.subject}
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">{evaluation.type}</TableCell>
+                    <TableCell className="hidden md:table-cell">{evaluation.questions.length}</TableCell>
+                    <TableCell className="hidden lg:table-cell">{formatDate(evaluation.created_at)}</TableCell>
                     <TableCell className="text-right space-x-1">
                       <Button
                         variant="ghost"
@@ -151,25 +225,30 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
-                      {/* <Button
+                      <Button
                         variant="ghost"
                         size="sm"
+                        onClick={() => handleEdit(evaluation.id)}
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="sm"
+                        onClick={() => {
+                          setEvaluationToDelete(evaluation.id);
+                          setDeleteDialogOpen(true);
+                        }}
                       >
                         <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button> */}
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-8 text-gray-500">
-                    Nenhuma avaliação encontrada com os termos pesquisados.
+                    Nenhuma avaliação encontrada para este usuário
                   </TableCell>
                 </TableRow>
               )}
@@ -177,6 +256,57 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
           </Table>
         </div>
       </div>
+
+      {!isLoading && filteredEvaluations.length > 0 && (
+        <div className="flex items-center justify-between mt-4">
+          <div className="text-sm text-gray-500">
+            Mostrando {indexOfFirstItem + 1} a {Math.min(indexOfLastItem, filteredEvaluations.length)} de {filteredEvaluations.length} avaliações
+          </div>
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+              <Button
+                key={page}
+                variant={currentPage === page ? "default" : "outline"}
+                size="sm"
+                onClick={() => handlePageChange(page)}
+              >
+                {page}
+              </Button>
+            ))}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir esta avaliação? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>Confirmar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

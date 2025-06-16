@@ -1,31 +1,28 @@
 export interface Subject {
   id: string;
   name: string;
-  questionCount: number;
-}
-
-export interface QuestionOption {
-  id: string; // e.g., "a", "b", "c"
-  text: string;
-  isCorrect: boolean;
 }
 
 export interface Question {
   id: string;
-  number: number; // Order in an evaluation
-  text: string; // Main statement
-  subjectId: string; // Link to the subject (if applicable/needed)
-  type: 'multipleChoice' | 'essay'; // Question type
-  subject: string; // Subject name (redundant if subjectId is used, but present in mock/form)
-  grade: string; // Grade level (redundant if subjectId is used, but present in mock/form)
-  difficulty: string; // Difficulty level
-  value: number; // Point value of the question
-  solution?: string; // Optional solution/explanation
-  options?: QuestionOption[]; // Options for multiple choice questions
-  title: string; // Add title field from form
-  secondStatement?: string; // Add secondStatement field from form
-  skills?: string; // Add skills field from form
-  topics?: string[]; // Add topics field from form
+  title: string;
+  text: string;
+  secondStatement?: string;
+  type: "multipleChoice" | "open" | "trueFalse";
+  subjectId: string;
+  subject: string;
+  grade: string;
+  difficulty: string;
+  value: string;
+  solution: string;
+  options: {
+    id: string;
+    text: string;
+    isCorrect: boolean;
+  }[];
+  skills: string[];
+  topics: string[];
+  created_by: string;
 }
 
 export interface EvaluationFormData {
@@ -35,18 +32,23 @@ export interface EvaluationFormData {
   course: string;
   grade: string;
   classId: string;
-  model: 'SAEB' | 'AVALIE' | 'PROVA';
-  type: 'SIMULADO' | 'AVALIACAO';
-  subjects?: Subject[];
-  questions?: Question[];
+  type: "AVALIACAO" | "SIMULADO";
+  model: "SAEB" | "PROVA" | "AVALIE";
+  subjects: Subject[];
+  subject: string;
+  questions: Question[];
 }
 
 export interface TeacherSchool {
   id: string;
   name: string;
-  classes: {
-    id: string;
-    name: string;
-    grade: string;
-  }[];
+  city: string;
+  state: string;
+}
+
+export interface SubjectModalProps {
+  subjects: Subject[];
+  onSubjectsChange: (subjects: Subject[]) => void;
+  availableSubjects: Subject[];
+  onClose: () => void;
 } 

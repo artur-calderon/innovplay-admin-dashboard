@@ -6,11 +6,15 @@ import { ArrowLeft } from "lucide-react";
 import { CreateEvaluationStep1 } from "@/components/evaluations/CreateEvaluationStep1";
 import { CreateEvaluationStep2 } from "@/components/evaluations/CreateEvaluationStep2";
 import { EvaluationFormData } from "@/components/evaluations/types";
+import { api } from "@/lib/api";
+import { toast } from "sonner";
+import { useAuth } from "@/context/authContext";
 
 const CreateEvaluation = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [evaluationData, setEvaluationData] = useState<EvaluationFormData | null>(null);
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const handleNext = (data: EvaluationFormData) => {
     setEvaluationData(data);
@@ -21,10 +25,29 @@ const CreateEvaluation = () => {
     setCurrentStep(1);
   };
 
-  const handleSubmit = (data: EvaluationFormData) => {
-    // TODO: Save evaluation data to backend
-    console.log("Final evaluation data:", data);
-    navigate("/app/avaliacoes");
+  const handleSubmit = async (data: EvaluationFormData) => {
+    try {
+      const response = await api.post("/test", {
+        title: data.title,
+        municipalities: data.municipalities,
+        schools: data.schools,
+        course: data.course,
+        grade: data.grade,
+        class_id: data.classId,
+        type: data.type,
+        model: data.model,
+        subjects: data.subjects,
+        questions: data.questions,
+        subject: data.subject,
+        created_by: user.id
+      });
+
+      toast.success("Avaliação criada com sucesso!");
+      navigate("/app/avaliacoes");
+    } catch (error) {
+      console.error("Erro ao criar avaliação:", error);
+      toast.error("Erro ao criar avaliação");
+    }
   };
 
   return (
@@ -49,12 +72,12 @@ const CreateEvaluation = () => {
           {currentStep === 1 && (
             <CreateEvaluationStep1 onNext={handleNext} />
           )}
-          
+
           {currentStep === 2 && evaluationData && (
             <CreateEvaluationStep2
               data={evaluationData}
               onBack={handleBack}
-              onSubmit={handleSubmit}
+            // onSubmit={handleSubmit}
             />
           )}
         </CardContent>

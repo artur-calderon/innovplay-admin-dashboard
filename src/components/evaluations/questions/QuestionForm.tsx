@@ -34,7 +34,7 @@ import { SupExtension } from '@remirror/extension-sup';
 import 'remirror/styles/all.css';
 
 import './QuestionForm.css';
-import { MyEditor, ResizableImage } from './MyEditor';
+import MyEditor from './MyEditor';
 import './MyEditor.css';
 
 import {
@@ -44,7 +44,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Question } from "../types";
+import { Question, Subject } from "../types";
+import { api } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 
 // Import Tiptap components and extensions for preview
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -56,23 +58,22 @@ import TextAlign from '@tiptap/extension-text-align';
 
 // Form schema
 const questionSchema = z.object({
-  title: z.string().min(3, "O título precisa ter pelo menos 3 caracteres"),
-  statement: z.string().min(10, "O enunciado precisa ter pelo menos 10 caracteres"),
+  title: z.string().min(1, "O título é obrigatório"),
+  text: z.string().min(1, "O enunciado é obrigatório"),
+  subjectId: z.string().min(1, "A disciplina é obrigatória"),
+  grade: z.string().min(1, "A série é obrigatória"),
+  difficulty: z.string().min(1, "A dificuldade é obrigatória"),
+  value: z.string().min(1, "O valor é obrigatório"),
+  solution: z.string().min(1, "A solução é obrigatória"),
+  options: z.array(
+    z.object({
+      text: z.string().min(1, "O texto da opção é obrigatório"),
+      isCorrect: z.boolean(),
+    })
+  ),
   secondStatement: z.string().optional(),
-  questionType: z.enum(["multipleChoice", "essay"]),
-  options: z.array(z.object({
-    id: z.string(),
-    text: z.string(),
-    isCorrect: z.boolean().default(false)
-  })).optional(),
-  solution: z.string().optional(),
-  educationLevel: z.string().min(1, "Selecione o nível de ensino"),
-  grade: z.string().min(1, "Selecione a série"),
-  subject: z.string().min(1, "Selecione a disciplina"),
-  difficulty: z.string().min(1, "Selecione a dificuldade"),
-  value: z.string().min(1, "Informe o valor da questão"),
-  skills: z.string().min(1, "Informe as habilidades"),
-  topics: z.array(z.string()).default([])
+  skills: z.string().optional(),
+  topics: z.string().optional(),
 });
 
 type QuestionFormValues = z.infer<typeof questionSchema>;
@@ -81,9 +82,13 @@ interface QuestionFormProps {
   onSubmit?: (data: QuestionFormValues) => void;
   open: boolean;
   onClose: () => void;
-  subjectId: string | null;
   onQuestionAdded: (question: Question) => void;
   questionNumber: number;
+  evaluationData: {
+    course: string;
+    grade: string;
+    subject: string;
+  };
 }
 
 interface EditorContent {
@@ -94,6 +99,23 @@ interface EditorContent {
 }
 
 const QuestionPreview = ({ data }: { data: QuestionFormValues }) => {
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+
+  useEffect(() => {
+    const fetchSubjects = async () => {
+      try {
+        const response = await api.get("/subjects");
+        setSubjects(response.data);
+      } catch (error) {
+        console.error("Erro ao buscar disciplinas:", error);
+      }
+    };
+
+    fetchSubjects();
+  }, []);
+
+  const selectedSubject = subjects.find(s => s.id === data.subjectId);
+
   // Initialize read-only Tiptap editor for the preview statement
   const statementEditor = useEditor({
     extensions: [
@@ -113,7 +135,7 @@ const QuestionPreview = ({ data }: { data: QuestionFormValues }) => {
         placeholder: '' // No placeholder in preview
       }),
     ],
-    content: data.statement,
+    content: data.text,
     editable: false, // Make the preview editor read-only
   });
 
@@ -145,9 +167,8 @@ const QuestionPreview = ({ data }: { data: QuestionFormValues }) => {
       <div className="space-y-2">
         <h3 className="text-lg font-semibold">{data.title}</h3>
         <div className="flex flex-wrap gap-2">
-          <Badge variant="outline">{data.educationLevel}</Badge>
           <Badge variant="outline">{data.grade}</Badge>
-          <Badge variant="outline">{data.subject}</Badge>
+          <Badge variant="outline">{selectedSubject?.name || data.subjectId}</Badge>
           <Badge variant="outline">{data.difficulty}</Badge>
           <Badge variant="outline">Valor: {data.value}</Badge>
           {data.skills && <Badge variant="outline">{data.skills}</Badge>}
@@ -171,14 +192,13 @@ const QuestionPreview = ({ data }: { data: QuestionFormValues }) => {
         )}
       </div>
 
-      {data.questionType === "multipleChoice" && data.options && (
+      {data.options.length > 0 && (
         <div className="space-y-3">
           <h4 className="font-medium">Alternativas:</h4>
           {data.options.map((option, index) => (
             <div key={index} className="flex items-center space-x-2">
-              <div className={`w-6 h-6 rounded-full border flex items-center justify-center ${
-                option.isCorrect ? 'bg-primary text-primary-foreground' : 'bg-background'
-              }`}>
+              <div className={`w-6 h-6 rounded-full border flex items-center justify-center ${option.isCorrect ? 'bg-primary text-primary-foreground' : 'bg-background'
+                }`}>
                 {String.fromCharCode(65 + index)}
               </div>
               <span>{option.text}</span>
@@ -245,7 +265,7 @@ const EditorToolbar = () => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
-    
+
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) {
@@ -259,7 +279,7 @@ const EditorToolbar = () => {
         reader.readAsDataURL(file);
       }
     };
-    
+
     input.click();
   };
 
@@ -348,568 +368,377 @@ const EditorToolbar = () => {
   );
 };
 
-const QuestionForm = ({ 
-  onSubmit: externalOnSubmit, 
-  open, 
-  onClose, 
-  subjectId,
+const QuestionForm = ({
+  onSubmit: externalOnSubmit,
+  open,
+  onClose,
   onQuestionAdded,
-  questionNumber 
+  questionNumber,
+  evaluationData,
 }: QuestionFormProps) => {
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [showPreview, setShowPreview] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { toast } = useToast();
   const navigate = useNavigate();
-  const [editorContent, setEditorContent] = useState<string>('');
-  const [options, setOptions] = useState([
-    { id: "a", text: "", isCorrect: false },
-    { id: "b", text: "", isCorrect: false },
-    { id: "c", text: "", isCorrect: false },
-    { id: "d", text: "", isCorrect: false },
-    { id: "e", text: "", isCorrect: false },
-  ]);
-
-  const { manager, state } = useRemirror({
-    extensions: () => [
-      new DocExtension({}),
-      new ParagraphExtension({}),
-      new TextExtension({}),
-      new HeadingExtension({}),
-      new BulletListExtension({}),
-      new ListItemExtension({}),
-      new ImageExtension({
-        uploadHandler: (files) => {
-          const images = [];
-          for (const file of files) {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-              images.push({ src: event.target?.result as string });
-            };
-            reader.readAsDataURL(file.file);
-          }
-          return images;
-        }
-      }),
-      new CodeBlockExtension({}),
-      new CodeExtension({}),
-      new SupExtension(),
-      new PlaceholderExtension({ placeholder: 'Digite o enunciado da questão aqui...' }),
-    ],
-    content: editorContent,
-    selection: 'end',
-    stringHandler: 'html',
-  });
-
-  const handleEditorChange = (params: { state: { doc: { toJSON: () => unknown } } }) => {
-    const content = JSON.stringify(params.state.doc.toJSON());
-    setEditorContent(content);
-    form.setValue('statement', content);
-  };
-
-  const [selectedTopics, setSelectedTopics] = useState<string[]>([
-    "Álgebra", "Geometria"
-  ]);
 
   const form = useForm<QuestionFormValues>({
     resolver: zodResolver(questionSchema),
     defaultValues: {
       title: "",
-      statement: "",
-      secondStatement: "",
-      questionType: "multipleChoice",
-      solution: "",
-      educationLevel: "",
-      grade: "",
-      subject: "",
+      text: "",
+      subjectId: evaluationData.subject,
+      grade: evaluationData.grade,
       difficulty: "",
       value: "",
+      solution: "",
+      options: [
+        { text: "", isCorrect: false },
+        { text: "", isCorrect: false },
+        { text: "", isCorrect: false },
+        { text: "", isCorrect: false },
+        { text: "", isCorrect: false },
+      ],
+      secondStatement: "",
       skills: "",
-      topics: selectedTopics
-    }
+      topics: "",
+    },
   });
 
-  // Mock data for skills - replace with actual API call
-  const skillsByCourse: Record<string, string[]> = {
-    "Fundamental": ["H1 - Compreensão", "H2 - Análise", "H3 - Aplicação"],
-    "Médio": ["H4 - Síntese", "H5 - Avaliação", "H6 - Criação"],
-    "Superior": ["H7 - Pesquisa", "H8 - Desenvolvimento", "H9 - Inovação"]
-  };
-
-  const [availableSkills, setAvailableSkills] = useState<string[]>([]);
-
-  // Watch for education level changes to update available skills
-  const selectedCourse = form.watch("educationLevel");
-  
   useEffect(() => {
-    if (selectedCourse) {
-      setAvailableSkills(skillsByCourse[selectedCourse] || []);
-      // Reset skills when course changes
-      form.setValue("skills", "");
-    }
-  }, [selectedCourse, form]);
-
-  // Define possible values for dropdown fields
-  const educationLevels = ["Fundamental", "Médio", "Superior"];
-  const grades = ["1º Ano", "2º Ano", "3º Ano", "4º Ano", "5º Ano", "6º Ano", "7º Ano", "8º Ano", "9º Ano"];
-  const subjects = ["Matemática", "Português", "Ciências", "História", "Geografia", "Física", "Química", "Biologia", "Inglês"];
-  const difficultyLevels = ["Fácil", "Médio", "Difícil"];
-  
-  const questionType = form.watch("questionType");
-
-  const addOption = () => {
-    if (options.length < 5) {
-      const nextId = String.fromCharCode(97 + options.length);
-      setOptions([...options, { id: nextId, text: "", isCorrect: false }]);
-    }
-  };
-
-  const removeOption = (id: string) => {
-    if (options.length > 3) {
-      setOptions(options.filter(option => option.id !== id));
-    }
-  };
-
-  const setCorrectOption = (id: string) => {
-    setOptions(options.map(option => ({
-      ...option,
-      isCorrect: option.id === id
-    })));
-  };
-
-  const handleOptionTextChange = (id: string, text: string) => {
-    setOptions(options.map(option => 
-      option.id === id ? { ...option, text } : option
-    ));
-  };
-
-  const handleSubmit = (data: QuestionFormValues) => {
-    if (questionType === "multipleChoice") {
-      data.options = options.map(opt => ({
-        id: opt.id,
-        text: opt.text,
-        isCorrect: opt.isCorrect
-      }));
-    }
-    
-    data.topics = selectedTopics;
-    console.log("Question form submitted:", data);
-    
-    if (externalOnSubmit) {
-      externalOnSubmit(data);
-    }
-
-    // Create a new question object
-    const newQuestion: Question = {
-      id: `question-${Math.random().toString(36).substr(2, 9)}`,
-      number: questionNumber,
-      text: data.statement,
-      title: data.title,
-      subjectId: subjectId || "main",
-      type: data.questionType,
-      subject: data.subject,
-      grade: data.grade,
-      difficulty: data.difficulty,
-      value: parseFloat(data.value),
-      skills: data.skills
+    const fetchSubjects = async () => {
+      try {
+        const response = await api.get("/subjects");
+        setSubjects(response.data);
+      } catch (error) {
+        console.error("Erro ao buscar disciplinas:", error);
+        toast({
+          title: "Erro",
+          description: "Não foi possível carregar as disciplinas",
+          variant: "destructive",
+        });
+      }
     };
 
-    onQuestionAdded(newQuestion);
-    onClose();
-  };
+    fetchSubjects();
+  }, [toast]);
 
-  const openTopicSelector = () => {
-    if (!selectedTopics.includes("Funções")) {
-      setSelectedTopics([...selectedTopics, "Funções"]);
+  const handleFormSubmit = async (data: QuestionFormValues) => {
+    // Monta as opções sem id
+    const options = (data.options || []).map(opt => ({
+      text: opt.text,
+      isCorrect: opt.isCorrect,
+    }));
+    // skills e topics como string
+    const skills = typeof data.skills === 'string' ? data.skills : (data.skills || []).join(', ');
+    const topics = typeof data.topics === 'string' ? data.topics : (data.topics || []).join(', ');
+    const question = {
+      title: data.title,
+      text: data.text,
+      secondStatement: data.secondStatement || '',
+      subjectId: data.subjectId,
+      grade: data.grade,
+      difficulty: data.difficulty,
+      value: data.value,
+      solution: data.solution || '',
+      options,
+      skills,
+      topics,
+    };
+    // Aqui, se for cadastro avulso, pode chamar a API diretamente
+    try {
+      setIsSubmitting(true);
+      await api.post("/question", question);
+      toast({
+        title: "Sucesso",
+        description: "Questão criada com sucesso!",
+      });
+      if (externalOnSubmit) {
+        externalOnSubmit(question);
+      }
+      onQuestionAdded && onQuestionAdded(question);
+      onClose();
+    } catch (error) {
+      console.error("Erro ao criar questão:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível criar a questão",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
-
-  const removeTopic = (topic: string) => {
-    setSelectedTopics(selectedTopics.filter(t => t !== topic));
-  };
-
-  const [previewData, setPreviewData] = useState<QuestionFormValues | null>(null);
-
-  const handlePreview = () => {
-    const formData = form.getValues();
-    if (questionType === "multipleChoice") {
-      formData.options = options.map(opt => ({
-        id: opt.id,
-        text: opt.text,
-        isCorrect: opt.isCorrect
-      }));
-    }
-    formData.topics = selectedTopics;
-    setPreviewData(formData);
-  };
-
-  if (!open) return null;
 
   return (
-    <div className="w-full">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Criar Nova Questão</h1>
-        <Button 
-          variant="outline" 
-          onClick={onClose}
-          className="flex items-center"
-        >
-          <ArrowLeft className="h-4 w-4 mr-1" />
-          Voltar
-        </Button>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold">Questão {questionNumber}</h2>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setShowPreview(!showPreview)}
+            type="button"
+          >
+            <Eye className="h-4 w-4 mr-2" />
+            {showPreview ? "Editar" : "Visualizar"}
+          </Button>
+        </div>
       </div>
-      <Card className="w-full">
-        <CardContent>
-          <Form {...form}>
-            {/* Classification section */}
-            <div className="pt-4">
-              <h3 className="text-lg font-medium mb-4">Classificações</h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Education level */}
-                <FormField
-                  control={form.control}
-                  name="educationLevel"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Curso</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione o nível de ensino" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {educationLevels.map((level) => (
-                            <SelectItem key={level} value={level}>
-                              {level}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
 
-                {/* Grade */}
-                <FormField
-                  control={form.control}
-                  name="grade"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Série</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione a série" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {grades.map((grade) => (
-                            <SelectItem key={grade} value={grade}>
-                              {grade}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Subject */}
-                <FormField
-                  control={form.control}
-                  name="subject"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Disciplina</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione a disciplina" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {subjects.map((subject) => (
-                            <SelectItem key={subject} value={subject}>
-                              {subject}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Difficulty */}
-                <FormField
-                  control={form.control}
-                  name="difficulty"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Dificuldade</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione a dificuldade" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {difficultyLevels.map((level) => (
-                            <SelectItem key={level} value={level}>
-                              {level}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              {/* Value and Skills */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                <FormField
-                  control={form.control}
-                  name="value"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Valor da Questão</FormLabel>
-                      <FormControl>
-                        <Input 
-                          type="number" 
-                          placeholder="Ex: 1.0" 
-                          step="0.1"
-                          {...field} 
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="skills"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Habilidades</FormLabel>
-                      <Select 
-                        onValueChange={field.onChange} 
-                        defaultValue={field.value}
-                        disabled={!selectedCourse}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder={selectedCourse ? "Selecione a habilidade" : "Selecione primeiro o curso"} />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {availableSkills.map((skill) => (
-                            <SelectItem key={skill} value={skill}>
-                              {skill}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-            </div>
-
-            <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-7 mt-9">
-              {/* Question Title */}
+      {showPreview ? (
+        <div className="border rounded-lg p-4">
+          <QuestionPreview data={form.getValues()} />
+        </div>
+      ) : (
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-6">
+            <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="title"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Título da Questão</FormLabel>
+                    <FormLabel>Título</FormLabel>
                     <FormControl>
-                      <Input 
-                        placeholder="Digite o título da questão" 
-                        {...field} 
-                      />
+                      <Input {...field} />
                     </FormControl>
-                    <FormMessage />
+                    {form.formState.errors.title && (
+                      <FormMessage />
+                    )}
                   </FormItem>
                 )}
               />
 
-              {/* Question Statement */}
               <FormField
                 control={form.control}
-                name="statement"
+                name="grade"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Enunciado da questão</FormLabel>
+                    <FormLabel>Série</FormLabel>
                     <FormControl>
-                      <div className="mb-12 relative">
-                        <MyEditor
-                          content={field.value}
-                          onChange={(content) => {
-                            field.onChange(content);
-                            setEditorContent(content);
-                          }}
-                        />
-                      </div>
+                      <Input {...field} />
                     </FormControl>
-                    <FormMessage />
+                    {form.formState.errors.grade && (
+                      <FormMessage />
+                    )}
                   </FormItem>
                 )}
               />
 
-              {/* Question type selector */}
               <FormField
                 control={form.control}
-                name="questionType"
+                name="subjectId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Tipo de questão</FormLabel>
-                    <FormControl>
-                      <RadioGroup
-                        className="flex flex-col space-y-1 sm:flex-row sm:space-y-0 sm:space-x-4"
-                        value={field.value}
-                        onValueChange={field.onChange}
-                      >
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="multipleChoice" id="multipleChoice" />
-                          <Label htmlFor="multipleChoice">Múltipla Escolha</Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="essay" id="essay" />
-                          <Label htmlFor="essay">Discursiva</Label>
-                        </div>
-                      </RadioGroup>
-                    </FormControl>
-                    <FormMessage />
+                    <FormLabel>Disciplina</FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione a disciplina" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {subjects.map((subject) => (
+                          <SelectItem key={subject.id} value={subject.id}>
+                            {subject.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {form.formState.errors.subjectId && (
+                      <FormMessage />
+                    )}
                   </FormItem>
                 )}
               />
 
-              {/* Second Statement */}
               <FormField
                 control={form.control}
-                name="secondStatement"
+                name="difficulty"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Segundo Enunciado</FormLabel>
-                    <FormControl>
-                      <Input 
-                        placeholder="Digite o segundo enunciado da questão" 
-                        {...field} 
-                      />
-                    </FormControl>
-                    <FormMessage />
+                    <FormLabel>Dificuldade</FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione a dificuldade" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="Fácil">Fácil</SelectItem>
+                        <SelectItem value="Médio">Médio</SelectItem>
+                        <SelectItem value="Difícil">Difícil</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {form.formState.errors.difficulty && (
+                      <FormMessage />
+                    )}
                   </FormItem>
                 )}
               />
 
-              {/* Multiple choice options */}
-              {questionType === "multipleChoice" && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-md font-medium">Alternativas</h3>
-                    <div className="flex space-x-2">
-                      {options.length < 5 && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={addOption}
-                        >
-                          <Plus className="h-4 w-4 mr-1" /> Adicionar
-                        </Button>
-                      )}
-                    </div>
-                  </div>
+              <FormField
+                control={form.control}
+                name="value"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Valor</FormLabel>
+                    <FormControl>
+                      <Input {...field} type="number" step="0.1" />
+                    </FormControl>
+                    {form.formState.errors.value && (
+                      <FormMessage />
+                    )}
+                  </FormItem>
+                )}
+              />
+            </div>
 
-                  {options.map((option) => (
-                    <div key={option.id} className="flex items-center space-x-3">
-                      <Button
-                        type="button"
-                        variant={option.isCorrect ? "default" : "outline"}
-                        size="icon"
-                        onClick={() => setCorrectOption(option.id)}
-                        className="w-8 h-8 rounded-full flex-shrink-0"
-                      >
-                        {option.isCorrect && <Check className="h-4 w-4" />}
-                      </Button>
-                      <Input
-                        value={option.text}
-                        onChange={(e) => handleOptionTextChange(option.id, e.target.value)}
-                        placeholder={`Alternativa ${option.id}`}
-                        className="flex-grow"
-                      />
-                      {options.length > 3 && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          onClick={() => removeOption(option.id)}
-                          className="flex-shrink-0"
-                        >
-                          <Minus className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
+            <FormField
+              control={form.control}
+              name="text"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Enunciado</FormLabel>
+                  <FormControl>
+                    <MyEditor
+                      value={field.value}
+                      onChange={field.onChange}
+                    />
+                  </FormControl>
+                  {form.formState.errors.text && (
+                    <FormMessage />
+                  )}
+                </FormItem>
               )}
+            />
 
-              {/* Solution */}
-              <FormField
-                control={form.control}
-                name="solution"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Resolução (opcional)</FormLabel>
-                    <FormControl>
-                      <Textarea 
-                        placeholder="Digite a resolução da questão aqui..." 
-                        className="min-h-[100px]" 
-                        {...field} 
-                      />
-                    </FormControl>
+            <FormField
+              control={form.control}
+              name="secondStatement"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Segundo Enunciado (opcional)</FormLabel>
+                  <FormControl>
+                    <MyEditor
+                      value={field.value || ""}
+                      onChange={field.onChange}
+                    />
+                  </FormControl>
+                  {form.formState.errors.secondStatement && (
                     <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  )}
+                </FormItem>
+              )}
+            />
 
-              {/* Form actions */}
-              <div className="flex justify-between pt-4">
-                <div className="flex gap-2">
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button 
-                        type="button" 
-                        variant="outline" 
-                        onClick={handlePreview}
-                        className="flex items-center"
-                      >
-                        <Eye className="h-4 w-4 mr-1" />
-                        Prévia
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-                      <DialogHeader>
-                        <DialogTitle>Prévia da Questão</DialogTitle>
-                      </DialogHeader>
-                      {previewData && <QuestionPreview data={previewData} />}
-                    </DialogContent>
-                  </Dialog>
-                </div>
-                <Button type="submit" className="flex items-center">
-                  <Save className="h-4 w-4 mr-1" />
-                  Salvar
-                </Button>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label>Alternativas</Label>
               </div>
-            </form>
-          </Form>
-        </CardContent>
-      </Card>
+              {form.getValues("options").map((_, index) => (
+                <FormField
+                  key={index}
+                  control={form.control}
+                  name={`options.${index}.text`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <div className="flex items-center gap-2">
+                          <RadioGroup
+                            value={form.getValues(`options.${index}.isCorrect`) ? "true" : "false"}
+                            onValueChange={(value) => {
+                              form.setValue(`options.${index}.isCorrect`, value === "true");
+                            }}
+                            className="flex items-center"
+                          >
+                            <div className="flex items-center space-x-2">
+                              <RadioGroupItem value="true" id={`correct-${index}`} />
+                              <Label htmlFor={`correct-${index}`}>Correta</Label>
+                            </div>
+                          </RadioGroup>
+                          <Input {...field} className="flex-1" />
+                        </div>
+                      </FormControl>
+                      {form.formState.errors.options?.[index]?.text && (
+                        <FormMessage />
+                      )}
+                    </FormItem>
+                  )}
+                />
+              ))}
+            </div>
+
+            <FormField
+              control={form.control}
+              name="solution"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Solução</FormLabel>
+                  <FormControl>
+                    <Textarea {...field} />
+                  </FormControl>
+                  {form.formState.errors.solution && (
+                    <FormMessage />
+                  )}
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="skills"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Habilidades (separadas por vírgula)</FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  {form.formState.errors.skills && (
+                    <FormMessage />
+                  )}
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="topics"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tópicos (separados por vírgula)</FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  {form.formState.errors.topics && (
+                    <FormMessage />
+                  )}
+                </FormItem>
+              )}
+            />
+
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "Salvando..." : "Salvar"}
+              </Button>
+            </div>
+          </form>
+        </Form>
+      )}
     </div>
   );
 };
