@@ -24,6 +24,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface Evaluation {
   id: string;
@@ -50,6 +51,7 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [evaluationToDelete, setEvaluationToDelete] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   const navigate = useNavigate();
@@ -140,10 +142,47 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
     }
   };
 
+  const handleBulkDelete = async () => {
+    try {
+      await api.delete("/test", { data: { ids: selectedIds } });
+      toast({
+        title: "Sucesso",
+        description: `${selectedIds.length} avaliações foram excluídas.`,
+      });
+      fetchEvaluations();
+      setSelectedIds([]);
+    } catch (error) {
+      console.error("Erro ao excluir avaliações:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível excluir as avaliações selecionadas.",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleteDialogOpen(false);
+    }
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(currentItems.map((item) => item.id));
+    } else {
+      setSelectedIds([]);
+    }
+  };
+
+  const handleSelectOne = (id: string, checked: boolean) => {
+    if (checked) {
+      setSelectedIds((prev) => [...prev, id]);
+    } else {
+      setSelectedIds((prev) => prev.filter((selectedId) => selectedId !== id));
+    }
+  };
+
   return (
     <div>
-      <div className="mb-6">
-        <div className="relative">
+      <div className="flex justify-between items-center mb-6">
+        <div className="relative w-full max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
           <Input
             placeholder="Buscar minhas avaliações prontas..."
@@ -152,6 +191,18 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
             className="pl-9"
           />
         </div>
+        {selectedIds.length > 0 && (
+          <Button
+            variant="destructive"
+            onClick={() => {
+              setEvaluationToDelete(null); // Clear single delete state
+              setDeleteDialogOpen(true);
+            }}
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Excluir ({selectedIds.length})
+          </Button>
+        )}
       </div>
 
       <div className="bg-white rounded-xl shadow-md overflow-hidden overflow-x-auto">
@@ -160,6 +211,16 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
             <TableCaption>Lista de avaliações prontas disponíveis</TableCaption>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-[50px]">
+                  <Checkbox
+                    checked={
+                      currentItems.length > 0 &&
+                      selectedIds.length === currentItems.length
+                    }
+                    onCheckedChange={handleSelectAll}
+                    aria-label="Selecionar todos"
+                  />
+                </TableHead>
                 <TableHead className="w-[250px]">Título</TableHead>
                 <TableHead className="hidden sm:table-cell">Disciplina</TableHead>
                 <TableHead className="hidden md:table-cell">Tipo</TableHead>
@@ -177,7 +238,14 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
                 </TableRow>
               ) : currentItems.length > 0 ? (
                 currentItems.map((evaluation) => (
-                  <TableRow key={evaluation.id}>
+                  <TableRow key={evaluation.id} data-state={selectedIds.includes(evaluation.id) && "selected"}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedIds.includes(evaluation.id)}
+                        onCheckedChange={(checked) => handleSelectOne(evaluation.id, !!checked)}
+                        aria-label={`Selecionar ${evaluation.title}`}
+                      />
+                    </TableCell>
                     <TableCell className="font-medium">{evaluation.title}</TableCell>
                     <TableCell className="hidden sm:table-cell">
                       {evaluation.subject.name}
@@ -266,12 +334,15 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir esta avaliação? Esta ação não pode ser desfeita.
+              {evaluationToDelete
+                ? "Tem certeza que deseja excluir esta avaliação? Esta ação não pode ser desfeita."
+                : `Tem certeza que deseja excluir ${selectedIds.length} avaliações? Esta ação não pode ser desfeita.`
+              }
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>Confirmar</AlertDialogAction>
+            <AlertDialogAction onClick={evaluationToDelete ? handleDelete : handleBulkDelete}>Confirmar</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
