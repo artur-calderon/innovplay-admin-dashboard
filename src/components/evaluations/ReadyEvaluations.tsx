@@ -28,21 +28,10 @@ import {
 interface Evaluation {
   id: string;
   title: string;
-  subject: string;
-  grade_id: string;
-  questionCount: number;
+  subject: { id: string; name: string };
   description: string;
-  created_at: string;
+  createdAt: string;
   type: string;
-  max_score: number;
-  time_limit: string;
-  created_by: string;
-  updated_at: string;
-  municipalities: string[];
-  schools: string[];
-  course: string;
-  model: string;
-  subjects_info: any;
   questions: Array<{
     id: string;
     title: string;
@@ -51,13 +40,8 @@ interface Evaluation {
   }>;
 }
 
-interface Subject {
-  id: string;
-  name: string;
-}
-
 interface ReadyEvaluationsProps {
-  onUseEvaluation: (evaluation: Evaluation) => void;
+  onUseEvaluation?: (evaluation: Evaluation) => void;
 }
 
 export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
@@ -66,36 +50,20 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [evaluationToDelete, setEvaluationToDelete] = useState<string | null>(null);
-  const [subjectsMap, setSubjectsMap] = useState<Record<string, string>>({});
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
-    fetchSubjects();
     fetchEvaluations();
   }, []);
-
-  const fetchSubjects = async () => {
-    try {
-      const response = await api.get("/subjects");
-      const subjects: Subject[] = response.data;
-      const map: Record<string, string> = {};
-      subjects.forEach(subject => {
-        map[subject.id] = subject.name;
-      });
-      setSubjectsMap(map);
-    } catch (error) {
-      console.error("Erro ao buscar disciplinas:", error);
-    }
-  };
 
   const fetchEvaluations = async () => {
     try {
       setIsLoading(true);
       const response = await api.get("/test/user/me");
-
+      console.log(response.data);
       if (response.data.message === "Nenhuma avaliação encontrada para este usuário") {
         setEvaluations([]);
       } else {
@@ -118,7 +86,7 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
   const filteredEvaluations = evaluations.filter(
     (evaluation) =>
       evaluation.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      evaluation.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      evaluation.subject.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       evaluation.description.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -212,11 +180,11 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
                   <TableRow key={evaluation.id}>
                     <TableCell className="font-medium">{evaluation.title}</TableCell>
                     <TableCell className="hidden sm:table-cell">
-                      {subjectsMap[evaluation.subject] || evaluation.subject}
+                      {evaluation.subject.name}
                     </TableCell>
                     <TableCell className="hidden md:table-cell">{evaluation.type}</TableCell>
                     <TableCell className="hidden md:table-cell">{evaluation.questions.length}</TableCell>
-                    <TableCell className="hidden lg:table-cell">{formatDate(evaluation.created_at)}</TableCell>
+                    <TableCell className="hidden lg:table-cell">{formatDate(evaluation.createdAt)}</TableCell>
                     <TableCell className="text-right space-x-1">
                       <Button
                         variant="ghost"

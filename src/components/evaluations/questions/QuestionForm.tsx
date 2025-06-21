@@ -8,10 +8,10 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { useForm } from "react-hook-form";
+import { useForm, useFieldArray } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, Book, Check, List as ListIcon, Minus, Plus, Save, Eye, Heading1, Heading2, Heading3, List, Code, Type } from "lucide-react";
+import { ArrowLeft, Book, Check, List as ListIcon, Minus, Plus, Save, Eye, Heading1, Heading2, Heading3, List, Code, Type, Trash } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import {
   Remirror,
@@ -47,6 +47,9 @@ import {
 import { Question, Subject } from "../types";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { MultiSelect, Option } from "@/components/ui/multi-select";
+import { useAuth } from "@/context/authContext";
+import QuestionPreview from "./QuestionPreview";
 
 // Import Tiptap components and extensions for preview
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -55,16 +58,18 @@ import Superscript from '@tiptap/extension-superscript';
 import Placeholder from '@tiptap/extension-placeholder';
 import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
+import { ResizableImage } from 'tiptap-extension-resizable-image';
 
 // Form schema
 const questionSchema = z.object({
   title: z.string().min(1, "O título é obrigatório"),
   text: z.string().min(1, "O enunciado é obrigatório"),
+  educationStageId: z.string().min(1, "O curso é obrigatório"),
   subjectId: z.string().min(1, "A disciplina é obrigatória"),
   grade: z.string().min(1, "A série é obrigatória"),
   difficulty: z.string().min(1, "A dificuldade é obrigatória"),
   value: z.string().min(1, "O valor é obrigatório"),
-  solution: z.string().min(1, "A solução é obrigatória"),
+  solution: z.string().optional(),
   options: z.array(
     z.object({
       text: z.string().min(1, "O texto da opção é obrigatório"),
@@ -72,7 +77,7 @@ const questionSchema = z.object({
     })
   ),
   secondStatement: z.string().optional(),
-  skills: z.string().optional(),
+  skills: z.array(z.string()).optional(),
   topics: z.string().optional(),
 });
 
@@ -80,15 +85,14 @@ type QuestionFormValues = z.infer<typeof questionSchema>;
 
 interface QuestionFormProps {
   onSubmit?: (data: QuestionFormValues) => void;
-  open: boolean;
+  open?: boolean;
   onClose: () => void;
   onQuestionAdded: (question: Question) => void;
-  questionNumber: number;
-  evaluationData: {
-    course: string;
-    grade: string;
-    subject: string;
-  };
+  questionId?: string;
+}
+
+interface SkillOption extends Option {
+  code: string;
 }
 
 interface EditorContent {
@@ -97,125 +101,6 @@ interface EditorContent {
   text?: string;
   attrs?: Record<string, unknown>;
 }
-
-const QuestionPreview = ({ data }: { data: QuestionFormValues }) => {
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-
-  useEffect(() => {
-    const fetchSubjects = async () => {
-      try {
-        const response = await api.get("/subjects");
-        setSubjects(response.data);
-      } catch (error) {
-        console.error("Erro ao buscar disciplinas:", error);
-      }
-    };
-
-    fetchSubjects();
-  }, []);
-
-  const selectedSubject = subjects.find(s => s.id === data.subjectId);
-
-  // Initialize read-only Tiptap editor for the preview statement
-  const statementEditor = useEditor({
-    extensions: [
-      StarterKit,
-      ResizableImage.configure({
-        inline: false,
-        allowBase64: true,
-      }),
-      Superscript,
-      Underline,
-      TextAlign.configure({
-        types: ['heading', 'paragraph', 'image'],
-        alignments: ['left', 'center', 'right'],
-        defaultAlignment: 'left',
-      }),
-      Placeholder.configure({
-        placeholder: '' // No placeholder in preview
-      }),
-    ],
-    content: data.text,
-    editable: false, // Make the preview editor read-only
-  });
-
-  // Initialize read-only Tiptap editor for the preview second statement
-  const secondStatementEditor = useEditor({
-    extensions: [
-      StarterKit,
-      ResizableImage.configure({
-        inline: false,
-        allowBase64: true,
-      }),
-      Superscript,
-      Underline,
-      TextAlign.configure({
-        types: ['heading', 'paragraph', 'image'],
-        alignments: ['left', 'center', 'right'],
-        defaultAlignment: 'left',
-      }),
-      Placeholder.configure({
-        placeholder: '' // No placeholder in preview
-      }),
-    ],
-    content: data.secondStatement || '',
-    editable: false, // Make the preview editor read-only
-  });
-
-  return (
-    <div className="space-y-6 p-4">
-      <div className="space-y-2">
-        <h3 className="text-lg font-semibold">{data.title}</h3>
-        <div className="flex flex-wrap gap-2">
-          <Badge variant="outline">{data.grade}</Badge>
-          <Badge variant="outline">{selectedSubject?.name || data.subjectId}</Badge>
-          <Badge variant="outline">{data.difficulty}</Badge>
-          <Badge variant="outline">Valor: {data.value}</Badge>
-          {data.skills && <Badge variant="outline">{data.skills}</Badge>}
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        {/* Render statement using Tiptap EditorContent */}
-        {statementEditor && (
-          <div className="prose max-w-none">
-            <EditorContent editor={statementEditor} />
-          </div>
-        )}
-        {data.secondStatement && (
-          // Render second statement using Tiptap EditorContent
-          secondStatementEditor && (
-            <div className="prose max-w-none">
-              <EditorContent editor={secondStatementEditor} />
-            </div>
-          )
-        )}
-      </div>
-
-      {data.options.length > 0 && (
-        <div className="space-y-3">
-          <h4 className="font-medium">Alternativas:</h4>
-          {data.options.map((option, index) => (
-            <div key={index} className="flex items-center space-x-2">
-              <div className={`w-6 h-6 rounded-full border flex items-center justify-center ${option.isCorrect ? 'bg-primary text-primary-foreground' : 'bg-background'
-                }`}>
-                {String.fromCharCode(65 + index)}
-              </div>
-              <span>{option.text}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {data.solution && (
-        <div className="space-y-2">
-          <h4 className="font-medium">Resolução:</h4>
-          <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: data.solution }} />
-        </div>
-      )}
-    </div>
-  );
-};
 
 const EditorToolbar = () => {
   const { toggleHeading, toggleBulletList, toggleCode, toggleCodeBlock, insertImage, toggleSup } = useCommands();
@@ -373,22 +258,26 @@ const QuestionForm = ({
   open,
   onClose,
   onQuestionAdded,
-  questionNumber,
-  evaluationData,
+  questionId,
 }: QuestionFormProps) => {
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [educationStages, setEducationStages] = useState<Option[]>([]);
+  const [grades, setGrades] = useState<Option[]>([]);
+  const [skills, setSkills] = useState<SkillOption[]>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const form = useForm<QuestionFormValues>({
     resolver: zodResolver(questionSchema),
     defaultValues: {
       title: "",
       text: "",
-      subjectId: evaluationData.subject,
-      grade: evaluationData.grade,
+      educationStageId: "",
+      subjectId: "",
+      grade: "",
       difficulty: "",
       value: "",
       solution: "",
@@ -400,69 +289,204 @@ const QuestionForm = ({
         { text: "", isCorrect: false },
       ],
       secondStatement: "",
-      skills: "",
+      skills: [],
       topics: "",
     },
   });
 
+  const { fields, append, remove } = useFieldArray({
+    control: form.control,
+    name: "options",
+  });
+
+  const selectedEducationStageId = form.watch("educationStageId");
+  const selectedSubjectId = form.watch("subjectId");
+
   useEffect(() => {
-    const fetchSubjects = async () => {
+    const fetchQuestionData = async () => {
+      if (questionId) {
+        try {
+          const response = await api.get<Question>(`/questions/${questionId}`);
+          const questionData = response.data;
+
+          const normalizeSkills = (skills: any): string[] => {
+            if (Array.isArray(skills)) return skills;
+            if (typeof skills === 'string' && skills.length > 0) return skills.split(',').map(s => s.trim());
+            return [];
+          };
+          const normalizeTopics = (topics: any): string => {
+            if (Array.isArray(topics)) return topics.join(', ');
+            if (typeof topics === 'string') return topics;
+            return '';
+          }
+
+          // Map API data to form values
+          form.reset({
+            title: questionData.title || "",
+            text: questionData.formattedText || questionData.text || "",
+            educationStageId: questionData.educationStage?.id || "",
+            subjectId: questionData.subject?.id || "",
+            grade: questionData.grade?.id || "",
+            difficulty: questionData.difficulty || "",
+            value: questionData.value?.toString() || "",
+            solution: questionData.formattedSolution || questionData.solution || "",
+            options: questionData.options || [],
+            secondStatement: questionData.secondStatement || "",
+            skills: normalizeSkills(questionData.skills),
+            topics: normalizeTopics(questionData.topics),
+          });
+
+        } catch (error) {
+          console.error("Erro ao buscar dados da questão:", error);
+          toast({
+            title: "Erro",
+            description: "Não foi possível carregar os dados da questão para edição.",
+            variant: "destructive",
+          });
+        }
+      }
+    };
+    fetchQuestionData();
+  }, [questionId, form, toast]);
+
+  useEffect(() => {
+    const fetchInitialData = async () => {
       try {
-        const response = await api.get("/subjects");
-        setSubjects(response.data);
+        const [subjectsResponse, stagesResponse] = await Promise.all([
+          api.get("/subjects"),
+          api.get("/education_stages"),
+        ]);
+        setSubjects(subjectsResponse.data);
+        setEducationStages(stagesResponse.data);
       } catch (error) {
-        console.error("Erro ao buscar disciplinas:", error);
+        console.error("Erro ao buscar dados iniciais:", error);
         toast({
           title: "Erro",
-          description: "Não foi possível carregar as disciplinas",
+          description: "Não foi possível carregar os dados iniciais do formulário.",
           variant: "destructive",
         });
       }
     };
-
-    fetchSubjects();
+    fetchInitialData();
   }, [toast]);
 
-  const handleFormSubmit = async (data: QuestionFormValues) => {
-    // Monta as opções sem id
-    const options = (data.options || []).map(opt => ({
-      text: opt.text,
-      isCorrect: opt.isCorrect,
-    }));
-    // skills e topics como string
-    const skills = typeof data.skills === 'string' ? data.skills : (data.skills || []).join(', ');
-    const topics = typeof data.topics === 'string' ? data.topics : (data.topics || []).join(', ');
-    const question = {
-      title: data.title,
-      text: data.text,
-      secondStatement: data.secondStatement || '',
-      subjectId: data.subjectId,
-      grade: data.grade,
-      difficulty: data.difficulty,
-      value: data.value,
-      solution: data.solution || '',
-      options,
-      skills,
-      topics,
+  useEffect(() => {
+    const fetchGrades = async () => {
+      if (selectedEducationStageId) {
+        try {
+          const response = await api.get(`/grades/education-stage/${selectedEducationStageId}`);
+          setGrades(response.data);
+          form.setValue("grade", ""); // Reseta a série ao mudar de curso
+        } catch (error) {
+          console.error("Erro ao buscar séries:", error);
+          toast({
+            title: "Erro",
+            description: "Não foi possível carregar as séries para este curso.",
+            variant: "destructive",
+          });
+        }
+      } else {
+        setGrades([]);
+      }
     };
-    // Aqui, se for cadastro avulso, pode chamar a API diretamente
+    fetchGrades();
+  }, [selectedEducationStageId, form, toast]);
+
+  useEffect(() => {
+    const fetchSkills = async () => {
+      if (selectedSubjectId) {
+        form.setValue("skills", []); // Reseta as habilidades ao mudar de disciplina
+        try {
+          const response = await api.get(`/skills/subject/${selectedSubjectId}`);
+          if (Array.isArray(response.data)) {
+            const formattedSkills: SkillOption[] = response.data.map(skill => ({
+              id: skill.id,
+              name: `${skill.code} - ${skill.description}`,
+              code: skill.code,
+            }));
+            setSkills(formattedSkills);
+          } else {
+            setSkills([]);
+          }
+        } catch (error) {
+          console.error("Erro ao buscar habilidades:", error);
+          setSkills([]); // Garante que a lista esteja vazia em caso de erro
+          toast({
+            title: "Aviso",
+            description: "Nenhuma habilidade encontrada para esta disciplina.",
+            variant: "default",
+          });
+        }
+      } else {
+        setSkills([]);
+      }
+    };
+    fetchSkills();
+  }, [selectedSubjectId, form, toast]);
+
+  const htmlToText = (html: string) => {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+    return tempDiv.textContent || tempDiv.innerText || '';
+  }
+
+  const handleFormSubmit = async (data: QuestionFormValues) => {
+    if (!user) {
+      toast({
+        title: "Erro de Autenticação",
+        description: "Você precisa estar logado para criar uma questão.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const selectedGrade = grades.find(g => g.id === data.grade);
+
+    const payload = {
+      title: data.title,
+      text: htmlToText(data.text),
+      formattedText: data.text,
+      question_type: 'multipleChoice',
+      subject_id: data.subjectId,
+      education_stage_id: data.educationStageId,
+      grade_id: data.grade,
+      difficulty_level: data.difficulty,
+      value: data.value ? parseFloat(data.value) : 0,
+      solution: data.solution ? htmlToText(data.solution) : "",
+      formattedSolution: data.solution || "",
+      options: data.options.map(opt => ({ text: opt.text, isCorrect: opt.isCorrect })),
+      skills: data.skills || [],
+      topics: data.topics ? data.topics.split(',').map(t => t.trim()) : [],
+      secondStatement: data.secondStatement || '',
+      last_modified_by: user.id,
+    };
+
     try {
       setIsSubmitting(true);
-      await api.post("/question", question);
+      let response;
+      if (questionId) {
+        // Update existing question
+        response = await api.put(`/questions/${questionId}`, { ...payload, last_modified_by: user.id });
+      } else {
+        // Create new question
+        response = await api.post("/questions", { ...payload, created_by: user.id });
+      }
+
+      const updatedOrNewQuestion: Question = response.data;
       toast({
         title: "Sucesso",
-        description: "Questão criada com sucesso!",
+        description: `Questão ${questionId ? 'atualizada' : 'criada'} com sucesso!`,
       });
       if (externalOnSubmit) {
-        externalOnSubmit(question);
+        externalOnSubmit(data);
       }
-      onQuestionAdded && onQuestionAdded(question);
+      onQuestionAdded && onQuestionAdded(updatedOrNewQuestion);
       onClose();
     } catch (error) {
-      console.error("Erro ao criar questão:", error);
+      console.error(`Erro ao ${questionId ? 'atualizar' : 'criar'} questão:`, error);
       toast({
         title: "Erro",
-        description: "Não foi possível criar a questão",
+        description: `Não foi possível ${questionId ? 'atualizar' : 'criar'} a questão`,
         variant: "destructive",
       });
     } finally {
@@ -472,8 +496,7 @@ const QuestionForm = ({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Questão {questionNumber}</h2>
+      <div className="flex items-center justify-end">
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
@@ -488,7 +511,27 @@ const QuestionForm = ({
 
       {showPreview ? (
         <div className="border rounded-lg p-4">
-          <QuestionPreview data={form.getValues()} />
+          {(() => {
+            const formData = form.getValues();
+            const previewQuestion: Question = {
+              id: 'preview',
+              title: formData.title,
+              text: formData.text,
+              type: 'multipleChoice', // Mocked for preview
+              subjectId: formData.subjectId,
+              subject: subjects.find(s => s.id === formData.subjectId) || { id: formData.subjectId, name: 'Carregando...' },
+              grade: grades.find(g => g.id === formData.grade) || { id: formData.grade, name: 'Carregando...' },
+              difficulty: formData.difficulty,
+              value: formData.value,
+              solution: formData.solution || '',
+              options: formData.options.map((o, i) => ({ ...o, id: `preview-${i}`, text: o.text || '', isCorrect: o.isCorrect || false })),
+              skills: formData.skills || [],
+              topics: formData.topics ? formData.topics.split(',').map(t => t.trim()) : [],
+              created_by: user.id || '',
+              secondStatement: formData.secondStatement
+            };
+            return <QuestionPreview question={previewQuestion} />;
+          })()}
         </div>
       ) : (
         <Form {...form}>
@@ -503,87 +546,80 @@ const QuestionForm = ({
                     <FormControl>
                       <Input {...field} />
                     </FormControl>
-                    {form.formState.errors.title && (
-                      <FormMessage />
-                    )}
+                    {form.formState.errors.title && <FormMessage />}
                   </FormItem>
                 )}
               />
-
               <FormField
                 control={form.control}
-                name="grade"
+                name="educationStageId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Série</FormLabel>
+                    <FormLabel>Curso</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione o curso" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {educationStages.map((stage) => (
+                            <SelectItem key={stage.id} value={stage.id}>
+                              {stage.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </FormControl>
-                    {form.formState.errors.grade && (
-                      <FormMessage />
-                    )}
+                    {form.formState.errors.educationStageId && <FormMessage />}
                   </FormItem>
                 )}
               />
-
               <FormField
                 control={form.control}
                 name="subjectId"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Disciplina</FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      value={field.value}
-                    >
-                      <FormControl>
+                    <FormControl>
+                      <Select onValueChange={field.onChange} value={field.value}>
                         <SelectTrigger>
                           <SelectValue placeholder="Selecione a disciplina" />
                         </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {subjects.map((subject) => (
-                          <SelectItem key={subject.id} value={subject.id}>
-                            {subject.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {form.formState.errors.subjectId && (
-                      <FormMessage />
-                    )}
+                        <SelectContent>
+                          {subjects.map((subject) => (
+                            <SelectItem key={subject.id} value={subject.id}>
+                              {subject.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FormControl>
+                    {form.formState.errors.subjectId && <FormMessage />}
                   </FormItem>
                 )}
               />
-
               <FormField
                 control={form.control}
                 name="difficulty"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Dificuldade</FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      value={field.value}
-                    >
-                      <FormControl>
+                    <FormControl>
+                      <Select onValueChange={field.onChange} value={field.value}>
                         <SelectTrigger>
                           <SelectValue placeholder="Selecione a dificuldade" />
                         </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="Fácil">Fácil</SelectItem>
-                        <SelectItem value="Médio">Médio</SelectItem>
-                        <SelectItem value="Difícil">Difícil</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {form.formState.errors.difficulty && (
-                      <FormMessage />
-                    )}
+                        <SelectContent>
+                          <SelectItem value="Fácil">Fácil</SelectItem>
+                          <SelectItem value="Médio">Médio</SelectItem>
+                          <SelectItem value="Difícil">Difícil</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </FormControl>
+                    {form.formState.errors.difficulty && <FormMessage />}
                   </FormItem>
                 )}
               />
-
               <FormField
                 control={form.control}
                 name="value"
@@ -593,14 +629,59 @@ const QuestionForm = ({
                     <FormControl>
                       <Input {...field} type="number" step="0.1" />
                     </FormControl>
-                    {form.formState.errors.value && (
-                      <FormMessage />
-                    )}
+                    {form.formState.errors.value && <FormMessage />}
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="grade"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Série</FormLabel>
+                    <FormControl>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        disabled={!selectedEducationStageId || grades.length === 0}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={selectedEducationStageId ? "Selecione a série" : "Selecione um curso primeiro"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {grades.map((grade) => (
+                            <SelectItem key={grade.id} value={grade.id}>
+                              {grade.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FormControl>
+                    {form.formState.errors.grade && <FormMessage />}
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="skills"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Habilidades</FormLabel>
+                    <FormControl>
+                      <MultiSelect
+                        options={skills}
+                        selected={field.value || []}
+                        onChange={field.onChange}
+                        placeholder={selectedSubjectId ? "Selecione as habilidades" : "Selecione uma disciplina primeiro"}
+                        className="w-full"
+                        label=""
+                      />
+                    </FormControl>
+                    {form.formState.errors.skills && <FormMessage />}
                   </FormItem>
                 )}
               />
             </div>
-
             <FormField
               control={form.control}
               name="text"
@@ -613,13 +694,10 @@ const QuestionForm = ({
                       onChange={field.onChange}
                     />
                   </FormControl>
-                  {form.formState.errors.text && (
-                    <FormMessage />
-                  )}
+                  {form.formState.errors.text && <FormMessage />}
                 </FormItem>
               )}
             />
-
             <FormField
               control={form.control}
               name="secondStatement"
@@ -632,50 +710,71 @@ const QuestionForm = ({
                       onChange={field.onChange}
                     />
                   </FormControl>
-                  {form.formState.errors.secondStatement && (
-                    <FormMessage />
-                  )}
+                  {form.formState.errors.secondStatement && <FormMessage />}
                 </FormItem>
               )}
             />
-
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <Label>Alternativas</Label>
+                <Label className="mb-0">Alternativas</Label>
+                {fields.length < 5 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => append({ text: "", isCorrect: false })}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Adicionar Alternativa
+                  </Button>
+                )}
               </div>
-              {form.getValues("options").map((_, index) => (
-                <FormField
-                  key={index}
-                  control={form.control}
-                  name={`options.${index}.text`}
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormControl>
-                        <div className="flex items-center gap-2">
-                          <RadioGroup
-                            value={form.getValues(`options.${index}.isCorrect`) ? "true" : "false"}
-                            onValueChange={(value) => {
-                              form.setValue(`options.${index}.isCorrect`, value === "true");
-                            }}
-                            className="flex items-center"
-                          >
-                            <div className="flex items-center space-x-2">
-                              <RadioGroupItem value="true" id={`correct-${index}`} />
-                              <Label htmlFor={`correct-${index}`}>Correta</Label>
-                            </div>
-                          </RadioGroup>
-                          <Input {...field} className="flex-1" />
-                        </div>
-                      </FormControl>
-                      {form.formState.errors.options?.[index]?.text && (
-                        <FormMessage />
+              <div className="space-y-4">
+                {fields.map((field, index) => (
+                  <div key={field.id} className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        form.getValues("options").forEach((_, i) => {
+                          form.setValue(`options.${i}.isCorrect`, i === index);
+                        });
+                      }}
+                      className={`w-6 h-6 rounded-full border flex items-center justify-center transition-colors ${form.watch("options")[index].isCorrect ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground'}`}
+                      aria-label={`Marcar alternativa ${String.fromCharCode(65 + index)} como correta`}
+                    >
+                      {form.watch("options")[index].isCorrect ? <Check className="w-4 h-4" /> : null}
+                    </button>
+                    <Label className="text-sm text-muted-foreground">
+                      {String.fromCharCode(65 + index)}
+                    </Label>
+                    <FormField
+                      control={form.control}
+                      name={`options.${index}.text`}
+                      render={({ field }) => (
+                        <FormItem className="flex-1">
+                          <FormControl>
+                            <Input {...field} />
+                          </FormControl>
+                          {form.formState.errors.options?.[index]?.text && (
+                            <FormMessage />
+                          )}
+                        </FormItem>
                       )}
-                    </FormItem>
-                  )}
-                />
-              ))}
+                    />
+                    {fields.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => remove(index)}
+                        className="ml-2 text-destructive hover:bg-destructive/10 rounded p-1"
+                        aria-label="Remover alternativa"
+                      >
+                        <Trash className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
-
             <FormField
               control={form.control}
               name="solution"
@@ -683,7 +782,10 @@ const QuestionForm = ({
                 <FormItem>
                   <FormLabel>Solução</FormLabel>
                   <FormControl>
-                    <Textarea {...field} />
+                    <MyEditor
+                      value={field.value}
+                      onChange={field.onChange}
+                    />
                   </FormControl>
                   {form.formState.errors.solution && (
                     <FormMessage />
@@ -691,23 +793,6 @@ const QuestionForm = ({
                 </FormItem>
               )}
             />
-
-            <FormField
-              control={form.control}
-              name="skills"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Habilidades (separadas por vírgula)</FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
-                  {form.formState.errors.skills && (
-                    <FormMessage />
-                  )}
-                </FormItem>
-              )}
-            />
-
             <FormField
               control={form.control}
               name="topics"
@@ -723,7 +808,6 @@ const QuestionForm = ({
                 </FormItem>
               )}
             />
-
             <div className="flex justify-end gap-2">
               <Button
                 type="button"

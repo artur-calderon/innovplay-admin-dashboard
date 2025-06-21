@@ -25,6 +25,7 @@ import TextAlign from '@tiptap/extension-text-align';
 import './QuestionForm.css';
 import MyEditor from './MyEditor';
 import './MyEditor.css';
+import { MultiSelect, Option } from "@/components/ui/multi-select";
 
 // Form schema
 const questionSchema = z.object({
@@ -42,7 +43,7 @@ const questionSchema = z.object({
         })
     ),
     secondStatement: z.string().optional(),
-    skills: z.string().optional(),
+    skills: z.array(z.string()).optional(),
     topics: z.string().optional(),
 });
 
@@ -126,7 +127,9 @@ const QuestionPreview: React.FC<{ data: QuestionFormValues }> = ({ data }) => {
                     <Badge variant="outline">{selectedSubject?.name || data.subjectId}</Badge>
                     <Badge variant="outline">{data.difficulty}</Badge>
                     <Badge variant="outline">Valor: {data.value}</Badge>
-                    {data.skills && <Badge variant="outline">{data.skills}</Badge>}
+                    {data.skills && Array.isArray(data.skills) && data.skills.length > 0 && (
+                        <Badge variant="outline">{data.skills.join(", ")}</Badge>
+                    )}
                 </div>
             </div>
 
@@ -182,6 +185,7 @@ const QuestionFormReadOnly = ({
 }: QuestionFormReadOnlyProps) => {
     const [subjects, setSubjects] = useState<Subject[]>([]);
     const [grades, setGrades] = useState<{ id: string; name: string }[]>([]);
+    const [skills, setSkills] = useState<Option[]>([]);
     const [showPreview, setShowPreview] = useState(false);
     const { toast } = useToast();
     const navigate = useNavigate();
@@ -202,7 +206,7 @@ const QuestionFormReadOnly = ({
                 { text: "", isCorrect: false },
             ],
             secondStatement: "",
-            skills: "",
+            skills: [],
             topics: "",
         },
     });
@@ -222,8 +226,9 @@ const QuestionFormReadOnly = ({
 
     // Função para marcar uma alternativa como correta
     const handleRadioChange = (index: number) => {
-        fields.forEach((_, i) => {
-            update(i, { ...fields[i], isCorrect: i === index });
+        const currentOptions = form.getValues("options");
+        currentOptions.forEach((option, i) => {
+            update(i, { ...option, isCorrect: i === index });
         });
     };
 
@@ -258,6 +263,34 @@ const QuestionFormReadOnly = ({
         fetchGrades();
     }, [toast]);
 
+    useEffect(() => {
+        const fetchSkills = async () => {
+            if (evaluationData.subject) {
+                try {
+                    const response = await api.get(`/skills/subject/${evaluationData.subject}`);
+                    if (Array.isArray(response.data)) {
+                        const formattedSkills = response.data.map((skill: any) => ({
+                            id: skill.id,
+                            name: `${skill.code} - ${skill.description}`,
+                        }));
+                        setSkills(formattedSkills);
+                    } else {
+                        setSkills([]);
+                    }
+                } catch (error) {
+                    console.error("Erro ao buscar habilidades:", error);
+                    setSkills([]);
+                    toast({
+                        title: "Aviso",
+                        description: "Nenhuma habilidade encontrada para esta disciplina.",
+                        variant: "default",
+                    });
+                }
+            }
+        };
+        fetchSkills();
+    }, [evaluationData.subject, toast]);
+
     const handleFormSubmit = async (data: QuestionFormValues) => {
         try {
             // Monta as opções sem id
@@ -266,14 +299,14 @@ const QuestionFormReadOnly = ({
                 isCorrect: opt.isCorrect,
             }));
             // skills e topics como string
-            const skills = typeof data.skills === 'string' ? data.skills : (data.skills || []).join(', ');
+            const skills = (data.skills || []).join(', ');
             const topics = typeof data.topics === 'string' ? data.topics : (data.topics || []).join(', ');
             const question = {
                 title: data.title,
                 text: data.text,
                 secondStatement: data.secondStatement || '',
                 subjectId: data.subjectId,
-                grade: data.grade,
+                grade_level: data.grade,
                 difficulty: data.difficulty,
                 value: data.value,
                 solution: data.solution || '',
@@ -283,11 +316,9 @@ const QuestionFormReadOnly = ({
             };
             await onQuestionAdded(question);
             form.reset();
-            navigate('/app/avaliacoes');
-            onClose();
             toast({
                 title: "Sucesso",
-                description: "Avaliação salva com sucesso!",
+                description: "Questão salva com sucesso!",
                 variant: "default",
             });
         } catch (error) {
@@ -420,9 +451,16 @@ const QuestionFormReadOnly = ({
                                 name="skills"
                                 render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel>Habilidades (separadas por vírgula)</FormLabel>
+                                        <FormLabel>Habilidades</FormLabel>
                                         <FormControl>
-                                            <Input {...field} />
+                                            <MultiSelect
+                                                options={skills}
+                                                selected={field.value || []}
+                                                onChange={field.onChange}
+                                                placeholder="Selecione as habilidades"
+                                                className="w-full"
+                                                label=""
+                                            />
                                         </FormControl>
                                         {form.formState.errors.skills && (
                                             <FormMessage />

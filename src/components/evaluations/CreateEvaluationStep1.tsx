@@ -73,7 +73,9 @@ export const CreateEvaluationStep1 = ({ onNext }: CreateEvaluationStep1Props) =>
     questions: [],
   });
 
-  const [municipalities, setMunicipalities] = useState<{ id: string; name: string }[]>([]);
+  const [municipalities, setMunicipalities] = useState<{ id: string; name: string; state: string }[]>([]);
+  const [states, setStates] = useState<string[]>([]);
+  const [selectedState, setSelectedState] = useState<string>("");
   const [schools, setSchools] = useState<{ id: string; name: string }[]>([]);
   const [courses, setCourses] = useState<{ id: string; name: string }[]>([]);
   const [grades, setGrades] = useState<Grade[]>([]);
@@ -87,6 +89,8 @@ export const CreateEvaluationStep1 = ({ onNext }: CreateEvaluationStep1Props) =>
       try {
         const response = await api.get("/city");
         setMunicipalities(response.data);
+        const uniqueStates = Array.from(new Set((response.data as { state: string }[]).map((c) => c.state)));
+        setStates(uniqueStates);
       } catch (error) {
         console.error("Erro ao buscar municípios:", error);
         toast({
@@ -265,14 +269,6 @@ export const CreateEvaluationStep1 = ({ onNext }: CreateEvaluationStep1Props) =>
       });
       return;
     }
-    if (!formData.classId) {
-      toast({
-        title: "Erro",
-        description: "Selecione uma turma",
-        variant: "destructive",
-      });
-      return;
-    }
     if (!formData.subject) {
       toast({
         title: "Erro",
@@ -300,16 +296,54 @@ export const CreateEvaluationStep1 = ({ onNext }: CreateEvaluationStep1Props) =>
         </div>
 
         <div>
+          <Label>Estado</Label>
+          <Select
+            value={selectedState}
+            onValueChange={(value) => {
+              setSelectedState(value);
+              setFormData((prev) => ({ ...prev, municipalities: [], schools: [] }));
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione um estado" />
+            </SelectTrigger>
+            <SelectContent>
+              {states.map((state) => (
+                <SelectItem key={state} value={state}>{state}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
           <Label>Municípios</Label>
           <MultiSelect
-            options={municipalities.map(m => ({ id: m.id, name: m.name }))}
+            options={
+              [
+                { id: "ALL", name: "Todos" },
+                ...municipalities
+                  .filter((m) => !selectedState || m.state === selectedState)
+                  .map((m) => ({ id: m.id, name: m.name })),
+              ]
+            }
             selected={formData.municipalities}
             onChange={(selected) => {
-              setFormData((prev) => ({
-                ...prev,
-                municipalities: selected,
-                schools: [],
-              }));
+              if (selected.includes("ALL")) {
+                const allIds = municipalities
+                  .filter((m) => !selectedState || m.state === selectedState)
+                  .map((m) => m.id);
+                setFormData((prev) => ({
+                  ...prev,
+                  municipalities: allIds,
+                  schools: [],
+                }));
+              } else {
+                setFormData((prev) => ({
+                  ...prev,
+                  municipalities: selected,
+                  schools: [],
+                }));
+              }
             }}
             placeholder="Selecione um ou mais municípios"
           />
@@ -323,10 +357,18 @@ export const CreateEvaluationStep1 = ({ onNext }: CreateEvaluationStep1Props) =>
             </div>
           ) : (
             <MultiSelect
-              options={schools.map(s => ({ id: s.id, name: s.name }))}
+              options={[
+                { id: "ALL", name: "Todos" },
+                ...schools.map((s) => ({ id: s.id, name: s.name })),
+              ]}
               selected={formData.schools}
               onChange={(selected) => {
-                setFormData((prev) => ({ ...prev, schools: selected }));
+                if (selected.includes("ALL")) {
+                  const allIds = schools.map((s) => s.id);
+                  setFormData((prev) => ({ ...prev, schools: allIds }));
+                } else {
+                  setFormData((prev) => ({ ...prev, schools: selected }));
+                }
               }}
               placeholder="Selecione uma ou mais escolas"
             />
@@ -342,7 +384,6 @@ export const CreateEvaluationStep1 = ({ onNext }: CreateEvaluationStep1Props) =>
                 ...prev,
                 course: value,
                 grade: "",
-                classId: "",
               }))
             }
           >
@@ -363,44 +404,24 @@ export const CreateEvaluationStep1 = ({ onNext }: CreateEvaluationStep1Props) =>
           <Label>Série</Label>
           <Select
             value={formData.grade}
-            onValueChange={(value) =>
-              setFormData((prev) => ({
-                ...prev,
-                grade: value,
-                classId: "",
-              }))
-            }
+            onValueChange={(value) => {
+              if (value === "ALL") {
+                const allIds = grades.map((g) => g.id);
+                setFormData((prev) => ({ ...prev, grade: allIds.join(",") }));
+              } else {
+                setFormData((prev) => ({ ...prev, grade: value }));
+              }
+            }}
             disabled={!formData.course}
           >
             <SelectTrigger>
               <SelectValue placeholder="Selecione uma série" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="ALL">Todos</SelectItem>
               {grades.map((grade) => (
                 <SelectItem key={grade.id} value={grade.id}>
                   {grade.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div>
-          <Label>Turma</Label>
-          <Select
-            value={formData.classId}
-            onValueChange={(value) =>
-              setFormData((prev) => ({ ...prev, classId: value }))
-            }
-            disabled={!formData.grade || !formData.schools.length}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Selecione uma turma" />
-            </SelectTrigger>
-            <SelectContent>
-              {classes.map((class_) => (
-                <SelectItem key={class_.id} value={class_.id}>
-                  {`${class_.name} - ${class_.grade.name}`}
                 </SelectItem>
               ))}
             </SelectContent>

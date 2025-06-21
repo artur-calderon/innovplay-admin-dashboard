@@ -24,6 +24,7 @@ import EditQuickLinks from "./pages/EditQuickLinks";
 import ViewEvaluation from "./pages/ViewEvaluation";
 import CreateQuestionPage from "./pages/CreateQuestionPage";
 import QuestionsPage from "./pages/QuestionsPage";
+import EditQuestionPage from "./pages/EditQuestionPage";
 
 const queryClient = new QueryClient();
 
@@ -108,6 +109,7 @@ const App = () => {
             {/* Rotas de gerenciamento de questões */}
             <Route path="/app/cadastros/questao" element={<PrivateRoute><QuestionsPage /></PrivateRoute>} />
             <Route path="/app/cadastros/questao/criar" element={<PrivateRoute><CreateQuestionPage /></PrivateRoute>} />
+            <Route path="/app/cadastros/questao/editar/:id" element={<PrivateRoute><EditQuestionPage /></PrivateRoute>} />
           </Route>
 
           {/* Rota 404 para outras rotas não encontradas */}

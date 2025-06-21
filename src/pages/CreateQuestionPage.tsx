@@ -17,7 +17,7 @@ const CreateQuestionPage = () => {
   const handleSubmit = async (questionData: Question) => {
     try {
       setIsLoading(true);
-      const response = await api.post("/question", {
+      const response = await api.post("/questions", {
         title: questionData.title,
         text: questionData.text,
         second_statement: questionData.secondStatement,
@@ -65,9 +65,7 @@ const CreateQuestionPage = () => {
           <QuestionForm
             open={true}
             onClose={() => navigate("/app/cadastros/questao")}
-            subjectId={null}
             onQuestionAdded={handleSubmit}
-            questionNumber={0}
           />
         </CardContent>
       </Card>

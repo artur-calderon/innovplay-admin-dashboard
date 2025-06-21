@@ -17,6 +17,7 @@
   font-size: smaller;
 }
 
+/* Estilos para imagens redimensionáveis */
 .resizable-image-container {
   position: relative;
   display: block;
@@ -54,6 +55,23 @@
   background-color: #2d7ff9;
 }
 
+/* Alinhamento de imagens */
+.resizable-image-container[data-align="left"] {
+  text-align: left;
+  margin: 1em 0;
+}
+
+.resizable-image-container[data-align="center"] {
+  text-align: center;
+  margin: 1em auto;
+}
+
+.resizable-image-container[data-align="right"] {
+  text-align: right;
+  margin: 1em 0 1em auto;
+}
+
+/* Estilos para o editor */
 .tiptap-editor {
   border: 1px solid #ccc;
   border-radius: 4px;
@@ -89,51 +107,16 @@
   min-height: 200px;
 }
 
-.editor-content p {
-  margin: 0 0 1em;
-}
-
-.editor-content ul,
-.editor-content ol {
-  margin: 0 0 1em;
-  padding-left: 2em;
-}
-
-/* Remove .editor-content parent selector from these classes */
-.align-left {
-  text-align: left;
-}
-
-.align-center {
-  text-align: center;
-}
-
-.align-right {
-  text-align: right;
-}
-
-/* Estilos para texto sobrescrito */
-sup {
-  vertical-align: super;
-  font-size: smaller;
-}
-
 /* Estilos para listas */
 .ProseMirror ul {
   list-style-type: disc;
   padding-left: 1.5em;
+  margin: 1em 0;
 }
 
 .ProseMirror ol {
   list-style-type: decimal;
   padding-left: 1.5em;
-}
-
-/* Estilos para imagens */
-.ProseMirror img {
-  max-width: 100%;
-  height: auto;
-  display: block;
   margin: 1em 0;
 }
 
@@ -144,77 +127,6 @@ sup {
   color: #adb5bd;
   pointer-events: none;
   height: 0;
-}
-
-/* Add more specific rules for alignment within the prose class */
-.prose .resizable-image-container.align-left {
-  text-align: left;
-}
-
-.prose .resizable-image-container.align-center {
-  text-align: center;
-}
-
-.prose .resizable-image-container.align-right {
-  text-align: right;
-}
-
-/* Estilos para imagens redimensionáveis */
-.resizable-image-container {
-  position: relative;
-  display: block;
-  margin: 1em 0;
-  max-width: 100%;
-}
-
-.resizable-image {
-  max-width: 100%;
-  height: auto;
-  display: inline-block;
-  cursor: move;
-}
-
-.resize-handle {
-  position: absolute;
-  right: -6px;
-  bottom: -6px;
-  width: 12px;
-  height: 12px;
-  background: #4a90e2;
-  border: 2px solid white;
-  border-radius: 50%;
-  cursor: nwse-resize;
-  opacity: 0;
-  transition: opacity 0.2s;
-  z-index: 10;
-}
-
-.resizable-image-container:hover .resize-handle {
-  opacity: 1;
-}
-
-/* Alinhamento de texto e imagens */
-.ProseMirror {
-  text-align: left;
-}
-
-.ProseMirror .resizable-image-container {
-  display: block;
-}
-
-.ProseMirror .resizable-image-container[style*="text-align: center"] {
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.ProseMirror .resizable-image-container[style*="text-align: right"] {
-  margin-left: auto;
-  margin-right: 0;
-}
-
-.ProseMirror .resizable-image-container[style*="text-align: left"] {
-  margin-left: 0;
-  margin-right: auto;
 }
 
 /* Estilos para o preview */
@@ -229,163 +141,20 @@ sup {
 }
 
 .prose .resizable-image-container {
-  display: inline-block;
-}
-
-.prose .resizable-image-container[style*="text-align: center"] {
   display: block;
-  text-align: center;
-  margin-left: auto;
-  margin-right: auto;
 }
 
-.prose .resizable-image-container[style*="text-align: right"] {
-  display: block;
-  text-align: right;
-  margin-left: auto;
-  margin-right: 0;
-}
-
-/* Alignment styles */
-.resizable-image-container[style*="text-align: center"] {
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.resizable-image-container[style*="text-align: right"] {
-  margin-left: auto;
-  margin-right: 0;
-}
-
-.resizable-image-container[style*="text-align: left"] {
-  margin-left: 0;
-  margin-right: auto;
-}
-
-/* Alignment styles using margin and text-align on the container */
-.resizable-image-container[data-text-align="center"] {
-  text-align: center;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.resizable-image-container[data-text-align="right"] {
-  text-align: right;
-  margin-left: auto;
-  margin-right: 0;
-}
-
-.resizable-image-container[data-text-align="left"] {
+.prose .resizable-image-container[data-align="left"] {
   text-align: left;
-  margin-left: 0;
-  margin-right: auto;
-}
-
-/* ProseMirror specific alignment styles */
-.ProseMirror .resizable-image-container {
-  display: block;
-}
-
-.ProseMirror .resizable-image-container[data-text-align="center"] {
-  text-align: center;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.ProseMirror .resizable-image-container[data-text-align="right"] {
-  text-align: right;
-  margin-left: auto;
-  margin-right: 0;
-}
-
-.ProseMirror .resizable-image-container[data-text-align="left"] {
-  text-align: left;
-  margin-left: 0;
-  margin-right: auto;
-}
-
-/* Alignment styles for the container based on data-text-align */
-.resizable-image-container[data-text-align="center"] {
-  text-align: center;
-}
-
-.resizable-image-container[data-text-align="right"] {
-  text-align: right;
-}
-
-.resizable-image-container[data-text-align="left"] {
-  text-align: left;
-}
-
-/* ProseMirror specific alignment styles */
-.ProseMirror .resizable-image-container {
-  display: block;
   margin: 1em 0;
 }
 
-.ProseMirror .resizable-image {
-  display: inline-block;
-  max-width: 100%;
-  height: auto;
-}
-
-/* Combined rules for clarity */
-.ProseMirror .resizable-image-container[data-text-align="center"] {
+.prose .resizable-image-container[data-align="center"] {
   text-align: center;
+  margin: 1em auto;
 }
 
-.ProseMirror .resizable-image-container[data-text-align="right"] {
+.prose .resizable-image-container[data-align="right"] {
   text-align: right;
-}
-
-.ProseMirror .resizable-image-container[data-text-align="left"] {
-  text-align: left;
-}
-
-/* Removed previous conflicting margin styles */
-.resizable-image-container[style*="text-align: center"] {
-  margin-left: unset !important;
-  margin-right: unset !important;
-}
-
-.resizable-image-container[style*="text-align: right"] {
-  margin-left: unset !important;
-  margin-right: unset !important;
-}
-
-.resizable-image-container[style*="text-align: left"] {
-  margin-left: unset !important;
-  margin-right: unset !important;
-}
-
-.ProseMirror .resizable-image-container[style*="text-align: center"] {
-  margin-left: unset !important;
-  margin-right: unset !important;
-}
-
-.ProseMirror .resizable-image-container[style*="text-align: right"] {
-  margin-left: unset !important;
-  margin-right: unset !important;
-}
-
-.ProseMirror .resizable-image-container[style*="text-align: left"] {
-  margin-left: unset !important;
-  margin-right: unset !important;
-}
-
-/* Alinhamento de texto */
-.ProseMirror {
-  text-align: left;
-}
-
-.ProseMirror [style*="text-align: center"] {
-  text-align: center;
-}
-
-.ProseMirror [style*="text-align: right"] {
-  text-align: right;
-}
-
-.ProseMirror [style*="text-align: left"] {
-  text-align: left;
+  margin: 1em 0 1em auto;
 }

@@ -1,82 +1,99 @@
-import React from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import React from 'react';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Superscript from '@tiptap/extension-superscript';
+import Placeholder from '@tiptap/extension-placeholder';
+import Underline from '@tiptap/extension-underline';
+import TextAlign from '@tiptap/extension-text-align';
+import { ResizableImage } from 'tiptap-extension-resizable-image';
 import { Badge } from "@/components/ui/badge";
 import { Question } from "../types";
+import './QuestionPreview.css';
 
 interface QuestionPreviewProps {
-    data: {
-        title: string;
-        text: string;
-        secondStatement?: string;
-        difficulty: string;
-        value: string;
-        solution: string;
-        options: {
-            text: string;
-            isCorrect: boolean;
-        }[];
-        skills?: string;
-        topics?: string;
-    };
+    question: Question;
 }
 
-const QuestionPreview = ({ data }: QuestionPreviewProps) => {
+const ReadOnlyEditor = ({ content }: { content: string | null | undefined }) => {
+    const editor = useEditor({
+        extensions: [
+            StarterKit,
+            ResizableImage,
+            Superscript,
+            Underline,
+            TextAlign.configure({
+                types: ['heading', 'paragraph', 'image'],
+                alignments: ['left', 'center', 'right'],
+                defaultAlignment: 'left',
+            }),
+            Placeholder.configure({ placeholder: '' }),
+        ],
+        content: content || '',
+        editable: false,
+    });
+
+    if (!editor) {
+        return null;
+    }
+
+    return <EditorContent editor={editor} />;
+};
+
+
+const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question }) => {
+    if (!question) {
+        return <div className="p-4">Nenhuma questão para visualizar.</div>;
+    }
+
     return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">{data.title}</h3>
-                <div className="flex items-center gap-2">
-                    <Badge variant="outline">{data.difficulty}</Badge>
-                    <Badge variant="outline">{data.value} pontos</Badge>
+        <div className="space-y-6 p-4 question-preview-content">
+            <div className="space-y-2">
+                <h3 className="text-lg font-semibold">{question.title}</h3>
+                <div className="flex flex-wrap gap-2">
+                    {question.grade?.name && <Badge variant="outline">{question.grade.name}</Badge>}
+                    {question.subject?.name && <Badge variant="outline">{question.subject.name}</Badge>}
+                    {question.difficulty && <Badge variant="outline">{question.difficulty}</Badge>}
+                    {question.value && <Badge variant="outline">Valor: {question.value}</Badge>}
+                    {question.skills && question.skills.length > 0 && (
+                        <Badge variant="outline">{question.skills.join(", ")}</Badge>
+                    )}
                 </div>
             </div>
 
-            <div className="prose max-w-none">
-                <div dangerouslySetInnerHTML={{ __html: data.text }} />
+            <div className="space-y-4">
+                <div className="prose max-w-none">
+                    <ReadOnlyEditor content={question.formattedText || question.text} />
+                </div>
+                {question.secondStatement && (
+                    <div className="prose max-w-none">
+                        <ReadOnlyEditor content={question.secondStatement} />
+                    </div>
+                )}
             </div>
 
-            {data.secondStatement && (
-                <div className="prose max-w-none">
-                    <div dangerouslySetInnerHTML={{ __html: data.secondStatement }} />
+            {question.options && question.options.length > 0 && (
+                <div className="space-y-3">
+                    <h4 className="font-medium">Alternativas:</h4>
+                    {question.options.map((option, index) => (
+                        <div key={option.id || index} className="flex items-center space-x-2">
+                            <div
+                                className={`w-6 h-6 rounded-full border flex items-center justify-center ${option.isCorrect ? 'bg-primary text-primary-foreground' : 'bg-background'
+                                    }`}
+                            >
+                                {String.fromCharCode(65 + index)}
+                            </div>
+                            <span>{option.text}</span>
+                        </div>
+                    ))}
                 </div>
             )}
 
-            <div className="space-y-2">
-                {data.options.map((option, index) => (
-                    <div
-                        key={index}
-                        className={`p-3 rounded-lg border ${option.isCorrect ? "border-green-500 bg-green-50" : "border-gray-200"
-                            }`}
-                    >
-                        <div className="flex items-start gap-2">
-                            <span className="font-medium">{String.fromCharCode(65 + index)}.</span>
-                            <div dangerouslySetInnerHTML={{ __html: option.text }} />
-                        </div>
-                    </div>
-                ))}
-            </div>
-
-            <Card>
-                <CardContent className="pt-6">
-                    <h4 className="font-medium mb-2">Solução</h4>
+            {question.solution && (
+                <div className="space-y-2">
+                    <h4 className="font-medium">Resolução:</h4>
                     <div className="prose max-w-none">
-                        <div dangerouslySetInnerHTML={{ __html: data.solution }} />
+                        <ReadOnlyEditor content={question.formattedSolution || question.solution} />
                     </div>
-                </CardContent>
-            </Card>
-
-            {(data.skills || data.topics) && (
-                <div className="flex flex-wrap gap-2">
-                    {data.skills?.split(",").map((skill, index) => (
-                        <Badge key={`skill-${index}`} variant="secondary">
-                            {skill.trim()}
-                        </Badge>
-                    ))}
-                    {data.topics?.split(",").map((topic, index) => (
-                        <Badge key={`topic-${index}`} variant="secondary">
-                            {topic.trim()}
-                        </Badge>
-                    ))}
                 </div>
             )}
         </div>

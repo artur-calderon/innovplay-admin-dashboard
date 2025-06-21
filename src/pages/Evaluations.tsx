@@ -28,45 +28,11 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/authContext";
 import StudentEvaluations from "@/components/evaluations/StudentEvaluations";
 
-// Mock data for evaluations
-const mockEvaluations = [
-  {
-    id: "1",
-    title: "Avaliação de Matemática - Álgebra",
-    subject: "Matemática",
-    grade: "9º Ano",
-    questionCount: 10,
-    creationDate: "2023-05-15",
-  },
-  {
-    id: "2",
-    title: "Avaliação de Português - Interpretação de Texto",
-    subject: "Português",
-    grade: "7º Ano",
-    questionCount: 8,
-    creationDate: "2023-04-10",
-  },
-  {
-    id: "3",
-    title: "Avaliação de Ciências - Sistema Solar",
-    subject: "Ciências",
-    grade: "6º Ano",
-    questionCount: 12,
-    creationDate: "2023-06-22",
-  },
-  {
-    id: "4",
-    title: "Avaliação de História - Brasil Império",
-    subject: "História",
-    grade: "8º Ano",
-    questionCount: 15,
-    creationDate: "2023-03-30",
-  },
-];
+
 
 export default function Evaluations() {
   const { user } = useAuth();
-  const [evaluations, setEvaluations] = useState(mockEvaluations);
+  const [evaluations, setEvaluations] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState("ready");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -89,10 +55,10 @@ export default function Evaluations() {
       creationDate: new Date().toISOString().split("T")[0],
       questionCount: newEvaluation.questions?.length || 0,
     };
-    
+
     setEvaluations([...evaluations, evaluationWithId]);
     setIsCreateDialogOpen(false);
-    
+
     toast({
       title: "Avaliação criada",
       description: `${newEvaluation.title} foi criada com sucesso.`,
@@ -101,19 +67,19 @@ export default function Evaluations() {
 
   const handleEditEvaluation = (updatedEvaluation: any) => {
     const updatedEvaluations = evaluations.map((evaluation) =>
-      evaluation.id === selectedEvaluation.id 
-        ? { 
-            ...evaluation, 
-            ...updatedEvaluation,
-            questionCount: updatedEvaluation.questions?.length || evaluation.questionCount
-          } 
+      evaluation.id === selectedEvaluation.id
+        ? {
+          ...evaluation,
+          ...updatedEvaluation,
+          questionCount: updatedEvaluation.questions?.length || evaluation.questionCount
+        }
         : evaluation
     );
-    
+
     setEvaluations(updatedEvaluations);
     setIsEditDialogOpen(false);
     setSelectedEvaluation(null);
-    
+
     toast({
       title: "Avaliação atualizada",
       description: `${updatedEvaluation.title} foi atualizada com sucesso.`,
@@ -124,7 +90,7 @@ export default function Evaluations() {
     const evaluationToDelete = evaluations.find(evaluation => evaluation.id === id);
     const updatedEvaluations = evaluations.filter((evaluation) => evaluation.id !== id);
     setEvaluations(updatedEvaluations);
-    
+
     toast({
       title: "Avaliação removida",
       description: `${evaluationToDelete?.title} foi removida com sucesso.`,
@@ -132,7 +98,7 @@ export default function Evaluations() {
     });
   };
 
- 
+
   // Conditionally render teacher view or student view based on user role
   if (user.role === "aluno") {
     return (
@@ -192,7 +158,7 @@ export default function Evaluations() {
           {/* <TabsContent value="questions" className="pt-4">
             <QuestionBank onCreateEvaluation={handleCreateEvaluation} />
           </TabsContent> */}
-        </Tabs>    
+        </Tabs>
       </div>
     </>
   );

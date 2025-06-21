@@ -6,6 +6,7 @@ import { Question, Subject } from "./types";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/authContext";
+import { useNavigate } from "react-router-dom";
 import QuestionFormReadOnly from "./questions/QuestionFormReadOnly";
 import QuestionBank from "./questions/QuestionBank";
 
@@ -38,6 +39,7 @@ export const CreateEvaluationStep2 = ({
   const [showQuestionBank, setShowQuestionBank] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchSubjects = async () => {
@@ -118,6 +120,7 @@ export const CreateEvaluationStep2 = ({
         description: "Avaliação criada com sucesso!",
       });
 
+      navigate("/app/avaliacoes");
       // onSubmit(response.data);
     } catch (error) {
       console.error("Erro ao criar avaliação:", error);

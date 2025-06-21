@@ -10,11 +10,13 @@ export interface Question {
   secondStatement?: string;
   type: "multipleChoice" | "open" | "trueFalse";
   subjectId: string;
-  subject: string;
-  grade: string;
+  subject: { id: string, name: string };
+  grade: { id: string, name: string };
   difficulty: string;
   value: string;
   solution: string;
+  formattedText?: string;
+  formattedSolution?: string;
   options: {
     id: string;
     text: string;
@@ -23,6 +25,7 @@ export interface Question {
   skills: string[];
   topics: string[];
   created_by: string;
+  educationStage?: { id: string; name: string; } | null;
 }
 
 export interface EvaluationFormData {
