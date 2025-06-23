@@ -66,6 +66,7 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question }) => {
                 </div>
                 {question.secondStatement && (
                     <div className="prose max-w-none">
+                        <div className="font-medium mb-1">Segundo Enunciado:</div>
                         <ReadOnlyEditor content={question.secondStatement} />
                     </div>
                 )}

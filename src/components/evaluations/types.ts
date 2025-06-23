@@ -18,12 +18,11 @@ export interface Question {
   formattedText?: string;
   formattedSolution?: string;
   options: {
-    id: string;
+    id?: string;
     text: string;
     isCorrect: boolean;
   }[];
   skills: string[];
-  topics: string[];
   created_by: string;
   educationStage?: { id: string; name: string; } | null;
 }

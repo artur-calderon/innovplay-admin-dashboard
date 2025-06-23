@@ -120,10 +120,10 @@ export const CreateEvaluationStep1 = ({ onNext }: CreateEvaluationStep1Props) =>
         const response = await api.get("/subjects");
         setSubjectOptions(response.data);
       } catch (error) {
-        console.error("Erro ao buscar matérias:", error);
+        console.error("Erro ao buscar disciplinas:", error);
         toast({
           title: "Erro",
-          description: "Não foi possível carregar as matérias",
+          description: "Não foi possível carregar as disciplinas",
           variant: "destructive",
         });
       }
@@ -269,15 +269,27 @@ export const CreateEvaluationStep1 = ({ onNext }: CreateEvaluationStep1Props) =>
       });
       return;
     }
-    if (!formData.subject) {
+    if (!formData.subjects.length) {
       toast({
         title: "Erro",
-        description: "Selecione uma matéria",
+        description: "Selecione pelo menos uma disciplina",
         variant: "destructive",
       });
       return;
     }
     onNext(formData);
+  };
+
+  // Filtrar disciplinas baseado na role do usuário
+  const getAvailableSubjects = () => {
+    if (user.role === 'admin') {
+      return subjectOptions;
+    } else if (user.role === 'professor' && (user as any).subjects) {
+      return subjectOptions.filter(subject =>
+        (user as any).subjects.some((userSubject: any) => userSubject.id === subject.id)
+      );
+    }
+    return [];
   };
 
   return (
@@ -429,27 +441,6 @@ export const CreateEvaluationStep1 = ({ onNext }: CreateEvaluationStep1Props) =>
         </div>
 
         <div>
-          <Label>Matéria</Label>
-          <Select
-            value={formData.subject}
-            onValueChange={(value) =>
-              setFormData((prev) => ({ ...prev, subject: value }))
-            }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Selecione uma matéria" />
-            </SelectTrigger>
-            <SelectContent>
-              {subjectOptions.map((subject) => (
-                <SelectItem key={subject.id} value={subject.id}>
-                  {subject.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div>
           <Label>Tipo</Label>
           <Select
             value={formData.type}
@@ -486,25 +477,23 @@ export const CreateEvaluationStep1 = ({ onNext }: CreateEvaluationStep1Props) =>
           </Select>
         </div>
 
-        {formData.type === "SIMULADO" && (
-          <div>
-            <Label>Matérias do Simulado</Label>
-            <div className="flex items-center space-x-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowSubjectModal(true)}
-              >
-                Adicionar Matérias
-              </Button>
-              {formData.subjects.length > 0 && (
-                <span className="text-sm text-muted-foreground">
-                  {formData.subjects.length} matéria(s) selecionada(s)
-                </span>
-              )}
-            </div>
+        <div>
+          <Label>Disciplinas</Label>
+          <div className="flex items-center space-x-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowSubjectModal(true)}
+            >
+              Adicionar Disciplinas
+            </Button>
+            {formData.subjects.length > 0 && (
+              <span className="text-sm text-muted-foreground">
+                {formData.subjects.length} disciplina(s) selecionada(s)
+              </span>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       <div className="flex justify-end">
@@ -517,7 +506,7 @@ export const CreateEvaluationStep1 = ({ onNext }: CreateEvaluationStep1Props) =>
           onSubjectsChange={(subjects) =>
             setFormData((prev) => ({ ...prev, subjects }))
           }
-          availableSubjects={subjectOptions}
+          availableSubjects={getAvailableSubjects()}
           onClose={() => setShowSubjectModal(false)}
         />
       )}

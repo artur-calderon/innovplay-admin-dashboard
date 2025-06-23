@@ -39,6 +39,7 @@ interface Evaluation {
     question_type: string;
     command: string;
   }>;
+  subjects_info: Array<{ id: string; name: string }>;
 }
 
 interface ReadyEvaluationsProps {
@@ -248,7 +249,13 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
                     </TableCell>
                     <TableCell className="font-medium">{evaluation.title}</TableCell>
                     <TableCell className="hidden sm:table-cell">
-                      {evaluation.subject.name}
+                      {Array.isArray(evaluation.subjects_info) && evaluation.subjects_info.length > 0
+                        ? evaluation.subjects_info.map((subj: { id: string, name: string }) => (
+                          <span key={subj.id} className="inline-block bg-gray-100 rounded px-2 py-1 mr-1 text-xs">
+                            {subj.name}
+                          </span>
+                        ))
+                        : "Sem disciplina"}
                     </TableCell>
                     <TableCell className="hidden md:table-cell">{evaluation.type}</TableCell>
                     <TableCell className="hidden md:table-cell">{evaluation.questions.length}</TableCell>

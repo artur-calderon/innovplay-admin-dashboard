@@ -74,6 +74,14 @@ export function MultiSelect({
                     key={option.id}
                     variant="secondary"
                     className="mr-1"
+                    style={{
+                      maxWidth: 100,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      display: 'inline-block',
+                      verticalAlign: 'middle',
+                    }}
                   >
                     {option.name}
                     <button

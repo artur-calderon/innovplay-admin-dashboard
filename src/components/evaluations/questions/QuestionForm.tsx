@@ -61,7 +61,7 @@ import TextAlign from '@tiptap/extension-text-align';
 import { ResizableImage } from 'tiptap-extension-resizable-image';
 
 // Form schema
-const questionSchema = z.object({
+const baseSchema = z.object({
   title: z.string().min(1, "O título é obrigatório"),
   text: z.string().min(1, "O enunciado é obrigatório"),
   educationStageId: z.string().min(1, "O curso é obrigatório"),
@@ -75,10 +75,46 @@ const questionSchema = z.object({
       text: z.string().min(1, "O texto da opção é obrigatório"),
       isCorrect: z.boolean(),
     })
-  ),
+  ).optional(),
   secondStatement: z.string().optional(),
   skills: z.array(z.string()).optional(),
-  topics: z.string().optional(),
+  questionType: z.enum(['multipleChoice', 'open']),
+});
+
+const questionSchema = baseSchema.superRefine((data, ctx) => {
+  if (data.questionType === 'multipleChoice') {
+    if (!data.options || data.options.length < 2) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Adicione pelo menos duas alternativas.',
+        path: ['options'],
+      });
+    } else {
+      data.options.forEach((opt, idx) => {
+        if (!opt.text || opt.text.trim() === '') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'O texto da alternativa é obrigatório.',
+            path: ['options', idx, 'text'],
+          });
+        }
+      });
+      if (!data.options.some(opt => opt.isCorrect)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Marque uma alternativa como correta.',
+          path: ['options'],
+        });
+      }
+    }
+  }
+  // Se for dissertativa, não validar nem exigir alternativas
+  if (data.questionType === 'open') {
+    // options pode ser undefined ou array vazio
+    if (data.options && data.options.length > 0) {
+      // Não precisa validar nada, mas pode limpar se quiser
+    }
+  }
 });
 
 type QuestionFormValues = z.infer<typeof questionSchema>;
@@ -266,6 +302,7 @@ const QuestionForm = ({
   const [skills, setSkills] = useState<SkillOption[]>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [questionType, setQuestionType] = useState<'multipleChoice' | 'open'>('multipleChoice');
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -290,7 +327,7 @@ const QuestionForm = ({
       ],
       secondStatement: "",
       skills: [],
-      topics: "",
+      questionType: 'multipleChoice',
     },
   });
 
@@ -314,11 +351,6 @@ const QuestionForm = ({
             if (typeof skills === 'string' && skills.length > 0) return skills.split(',').map(s => s.trim());
             return [];
           };
-          const normalizeTopics = (topics: any): string => {
-            if (Array.isArray(topics)) return topics.join(', ');
-            if (typeof topics === 'string') return topics;
-            return '';
-          }
 
           // Map API data to form values
           form.reset({
@@ -333,9 +365,9 @@ const QuestionForm = ({
             options: questionData.options || [],
             secondStatement: questionData.secondStatement || "",
             skills: normalizeSkills(questionData.skills),
-            topics: normalizeTopics(questionData.topics),
+            questionType: questionData.type === 'open' ? 'open' : 'multipleChoice',
           });
-
+          setQuestionType(questionData.type === 'open' ? 'open' : 'multipleChoice');
         } catch (error) {
           console.error("Erro ao buscar dados da questão:", error);
           toast({
@@ -424,6 +456,10 @@ const QuestionForm = ({
     fetchSkills();
   }, [selectedSubjectId, form, toast]);
 
+  useEffect(() => {
+    form.setValue('questionType', questionType);
+  }, [questionType]);
+
   const htmlToText = (html: string) => {
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = html;
@@ -446,19 +482,19 @@ const QuestionForm = ({
       title: data.title,
       text: htmlToText(data.text),
       formattedText: data.text,
-      question_type: 'multipleChoice',
-      subject_id: data.subjectId,
-      education_stage_id: data.educationStageId,
-      grade_id: data.grade,
-      difficulty_level: data.difficulty,
+      type: data.questionType,
+      subjectId: data.subjectId,
+      educationStageId: data.educationStageId,
+      grade: data.grade,
+      difficulty: data.difficulty,
       value: data.value ? parseFloat(data.value) : 0,
       solution: data.solution ? htmlToText(data.solution) : "",
       formattedSolution: data.solution || "",
-      options: data.options.map(opt => ({ text: opt.text, isCorrect: opt.isCorrect })),
+      options: data.questionType === 'multipleChoice' ? data.options.map(opt => ({ text: opt.text, isCorrect: opt.isCorrect })) : [],
       skills: data.skills || [],
-      topics: data.topics ? data.topics.split(',').map(t => t.trim()) : [],
       secondStatement: data.secondStatement || '',
-      last_modified_by: user.id,
+      lastModifiedBy: user.id,
+      createdBy: user.id,
     };
 
     try {
@@ -494,6 +530,27 @@ const QuestionForm = ({
     }
   };
 
+  const handleSetQuestionType = (type: 'multipleChoice' | 'open') => {
+    setQuestionType(type);
+    if (type === 'multipleChoice') {
+      form.setValue('options', [
+        { text: '', isCorrect: false },
+        { text: '', isCorrect: false },
+      ]);
+      form.clearErrors('options');
+    } else if (type === 'open') {
+      form.setValue('options', []);
+      form.clearErrors('options');
+    }
+  };
+
+  const selectedSkills = (form.watch('skills') && Array.isArray(form.watch('skills')))
+    ? form.watch('skills').map((skillId: string) => {
+      const skill = skills.find(opt => opt.id === skillId);
+      return skill ? skill.name.substring(0, 6) : skillId;
+    })
+    : [];
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-end">
@@ -517,16 +574,15 @@ const QuestionForm = ({
               id: 'preview',
               title: formData.title,
               text: formData.text,
-              type: 'multipleChoice', // Mocked for preview
+              type: formData.questionType,
               subjectId: formData.subjectId,
               subject: subjects.find(s => s.id === formData.subjectId) || { id: formData.subjectId, name: 'Carregando...' },
               grade: grades.find(g => g.id === formData.grade) || { id: formData.grade, name: 'Carregando...' },
               difficulty: formData.difficulty,
               value: formData.value,
               solution: formData.solution || '',
-              options: formData.options.map((o, i) => ({ ...o, id: `preview-${i}`, text: o.text || '', isCorrect: o.isCorrect || false })),
+              options: formData.questionType === 'multipleChoice' ? formData.options.map((o, i) => ({ ...o, id: `preview-${i}`, text: o.text || '', isCorrect: o.isCorrect || false })) : [],
               skills: formData.skills || [],
-              topics: formData.topics ? formData.topics.split(',').map(t => t.trim()) : [],
               created_by: user.id || '',
               secondStatement: formData.secondStatement
             };
@@ -714,67 +770,88 @@ const QuestionForm = ({
                 </FormItem>
               )}
             />
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Label className="mb-0">Alternativas</Label>
-                {fields.length < 5 && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => append({ text: "", isCorrect: false })}
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Adicionar Alternativa
-                  </Button>
-                )}
-              </div>
+            <div className="flex items-center gap-4 mb-2">
+              <span className="font-medium">Tipo de Questão:</span>
+              <Button
+                type="button"
+                variant={questionType === 'multipleChoice' ? 'default' : 'outline'}
+                onClick={() => handleSetQuestionType('multipleChoice')}
+                className={questionType === 'multipleChoice' ? 'bg-primary text-white' : ''}
+              >
+                Múltipla Escolha
+              </Button>
+              <Button
+                type="button"
+                variant={questionType === 'open' ? 'default' : 'outline'}
+                onClick={() => handleSetQuestionType('open')}
+                className={questionType === 'open' ? 'bg-primary text-white' : ''}
+              >
+                Dissertativa
+              </Button>
+            </div>
+            {questionType === 'multipleChoice' && (
               <div className="space-y-4">
-                {fields.map((field, index) => (
-                  <div key={field.id} className="flex items-center gap-2">
-                    <button
+                <div className="flex items-center justify-between">
+                  <Label className="mb-0">Alternativas</Label>
+                  {fields.length < 5 && (
+                    <Button
                       type="button"
-                      onClick={() => {
-                        form.getValues("options").forEach((_, i) => {
-                          form.setValue(`options.${i}.isCorrect`, i === index);
-                        });
-                      }}
-                      className={`w-6 h-6 rounded-full border flex items-center justify-center transition-colors ${form.watch("options")[index].isCorrect ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground'}`}
-                      aria-label={`Marcar alternativa ${String.fromCharCode(65 + index)} como correta`}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => append({ text: "", isCorrect: false })}
                     >
-                      {form.watch("options")[index].isCorrect ? <Check className="w-4 h-4" /> : null}
-                    </button>
-                    <Label className="text-sm text-muted-foreground">
-                      {String.fromCharCode(65 + index)}
-                    </Label>
-                    <FormField
-                      control={form.control}
-                      name={`options.${index}.text`}
-                      render={({ field }) => (
-                        <FormItem className="flex-1">
-                          <FormControl>
-                            <Input {...field} />
-                          </FormControl>
-                          {form.formState.errors.options?.[index]?.text && (
-                            <FormMessage />
-                          )}
-                        </FormItem>
-                      )}
-                    />
-                    {fields.length > 1 && (
+                      <Plus className="h-4 w-4 mr-2" />
+                      Adicionar Alternativa
+                    </Button>
+                  )}
+                </div>
+                <div className="space-y-4">
+                  {fields.map((field, index) => (
+                    <div key={field.id} className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => remove(index)}
-                        className="ml-2 text-destructive hover:bg-destructive/10 rounded p-1"
-                        aria-label="Remover alternativa"
+                        onClick={() => {
+                          form.getValues("options").forEach((_, i) => {
+                            form.setValue(`options.${i}.isCorrect`, i === index);
+                          });
+                        }}
+                        className={`w-6 h-6 rounded-full border flex items-center justify-center transition-colors ${form.watch("options")[index].isCorrect ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground'}`}
+                        aria-label={`Marcar alternativa ${String.fromCharCode(65 + index)} como correta`}
                       >
-                        <Trash className="w-4 h-4" />
+                        {form.watch("options")[index].isCorrect ? <Check className="w-4 h-4" /> : null}
                       </button>
-                    )}
-                  </div>
-                ))}
+                      <Label className="text-sm text-muted-foreground">
+                        {String.fromCharCode(65 + index)}
+                      </Label>
+                      <FormField
+                        control={form.control}
+                        name={`options.${index}.text`}
+                        render={({ field }) => (
+                          <FormItem className="flex-1">
+                            <FormControl>
+                              <Input {...field} />
+                            </FormControl>
+                            {form.formState.errors.options?.[index]?.text && (
+                              <FormMessage />
+                            )}
+                          </FormItem>
+                        )}
+                      />
+                      {fields.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => remove(index)}
+                          className="ml-2 text-destructive hover:bg-destructive/10 rounded p-1"
+                          aria-label="Remover alternativa"
+                        >
+                          <Trash className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
             <FormField
               control={form.control}
               name="solution"
@@ -788,21 +865,6 @@ const QuestionForm = ({
                     />
                   </FormControl>
                   {form.formState.errors.solution && (
-                    <FormMessage />
-                  )}
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="topics"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Tópicos (separados por vírgula)</FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
-                  {form.formState.errors.topics && (
                     <FormMessage />
                   )}
                 </FormItem>

@@ -45,7 +45,6 @@ const QuestionsPage = () => {
       }
 
       const response = await api.get("/questions", { params });
-      console.log(response.data);
       const normalizedQuestions = response.data.map((q: any) => ({
         ...q,
         skills: Array.isArray(q.skills) ? q.skills : (q.skills && typeof q.skills === 'string' ? q.skills.split(',').map(s => s.trim()) : []),
