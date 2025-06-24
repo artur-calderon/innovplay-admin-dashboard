@@ -5,6 +5,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Pencil, Trash2, Play } from "lucide-react";
 import { api } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // Interfaces based on the provided JSON structure
 interface Author {
@@ -28,6 +40,12 @@ interface Question {
   skills: string[];
   options?: QuestionOption[];
   solution: string;
+  subjectId?: string; // ID da matéria da questão
+}
+
+interface Subject {
+  id: string;
+  name: string;
 }
 
 interface Evaluation {
@@ -43,6 +61,7 @@ interface Evaluation {
     id: string;
     name: string;
   };
+  subjects_info?: Subject[]; // Array de matérias da avaliação
   grade: {
     id: string;
     name: string;
@@ -51,13 +70,26 @@ interface Evaluation {
   createdBy: Author;
   createdAt: string;
   questions: Question[];
+  municipalities?: any[]; // Assuming a new field
+  schools?: any[]; // Assuming a new field
+}
+
+// Interface para questões agrupadas por matéria
+interface QuestionsBySubject {
+  [subjectId: string]: {
+    subject: Subject;
+    questions: Question[];
+  };
 }
 
 export default function ViewEvaluation() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   useEffect(() => {
     const fetchEvaluation = async () => {
@@ -80,12 +112,75 @@ export default function ViewEvaluation() {
   };
 
   const handleDelete = () => {
-    // Implementar lógica de exclusão
-    console.log("Excluir avaliação:", id);
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!id) return;
+
+    try {
+      setIsDeleting(true);
+      await api.delete(`/test/${id}`);
+
+      toast({
+        title: "Sucesso",
+        description: "Avaliação excluída com sucesso!",
+      });
+
+      navigate("/app/avaliacoes");
+    } catch (error) {
+      console.error("Erro ao excluir avaliação:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível excluir a avaliação",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteDialog(false);
+    }
   };
 
   const handleApply = () => {
     navigate(`/app/avaliacao/${id}/aplicar`);
+  };
+
+  // Função para agrupar questões por matéria
+  const groupQuestionsBySubject = (): QuestionsBySubject => {
+    if (!evaluation) return {};
+
+    const questionsBySubject: QuestionsBySubject = {};
+
+    // Se temos subjects_info, usamos para criar a estrutura
+    if (evaluation.subjects_info && evaluation.subjects_info.length > 0) {
+      evaluation.subjects_info.forEach(subject => {
+        questionsBySubject[subject.id] = {
+          subject,
+          questions: []
+        };
+      });
+
+      // Distribuir questões pelas matérias
+      evaluation.questions.forEach(question => {
+        if (question.subjectId && questionsBySubject[question.subjectId]) {
+          questionsBySubject[question.subjectId].questions.push(question);
+        } else {
+          // Se não tem subjectId ou não encontrou a matéria, coloca na primeira
+          const firstSubjectId = Object.keys(questionsBySubject)[0];
+          if (firstSubjectId) {
+            questionsBySubject[firstSubjectId].questions.push(question);
+          }
+        }
+      });
+    } else {
+      // Fallback para avaliações antigas com apenas uma matéria
+      questionsBySubject[evaluation.subject.id] = {
+        subject: evaluation.subject,
+        questions: evaluation.questions
+      };
+    }
+
+    return questionsBySubject;
   };
 
   if (isLoading) {
@@ -126,6 +221,10 @@ export default function ViewEvaluation() {
     return <div className="container mx-auto py-6 text-center">Avaliação não encontrada.</div>;
   }
 
+  const questionsBySubject = groupQuestionsBySubject();
+  const totalQuestions = evaluation.questions.length;
+  const subjectsCount = evaluation.subjects_info?.length || 1;
+
   return (
     <div className="container mx-auto py-6 space-y-6">
       {/* Cabeçalho com título e botões de ação */}
@@ -136,9 +235,9 @@ export default function ViewEvaluation() {
             <Pencil className="h-4 w-4 mr-2" />
             Editar
           </Button>
-          <Button variant="outline" onClick={handleDelete}>
+          <Button variant="outline" onClick={handleDelete} disabled={isDeleting}>
             <Trash2 className="h-4 w-4 mr-2 text-red-500" />
-            Excluir
+            {isDeleting ? "Excluindo..." : "Excluir"}
           </Button>
           <Button onClick={handleApply}>
             <Play className="h-4 w-4 mr-2" />
@@ -159,8 +258,20 @@ export default function ViewEvaluation() {
               <p>{evaluation.course?.name || 'Não informado'}</p>
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-500">Disciplina</label>
-              <p>{evaluation.subject?.name || 'Não informado'}</p>
+              <label className="text-sm font-medium text-gray-500">Matérias</label>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {evaluation.subjects_info && evaluation.subjects_info.length > 0 ? (
+                  evaluation.subjects_info.map((subject) => (
+                    <Badge key={subject.id} variant="outline">
+                      {subject.name}
+                    </Badge>
+                  ))
+                ) : (
+                  <Badge variant="outline">
+                    {evaluation.subject?.name || 'Não informado'}
+                  </Badge>
+                )}
+              </div>
             </div>
             <div>
               <label className="text-sm font-medium text-gray-500">Série</label>
@@ -168,7 +279,7 @@ export default function ViewEvaluation() {
             </div>
             <div>
               <label className="text-sm font-medium text-gray-500">Número de Questões</label>
-              <p>{evaluation.questions?.length || 0}</p>
+              <p>{totalQuestions}</p>
             </div>
             <div>
               <label className="text-sm font-medium text-gray-500">Data de Criação</label>
@@ -181,45 +292,97 @@ export default function ViewEvaluation() {
           </CardContent>
         </Card>
 
+        {/* Novo card com informações de municípios e escolas */}
         <Card>
           <CardHeader>
-            <CardTitle>Descrição</CardTitle>
+            <CardTitle>Municípios e Escolas</CardTitle>
           </CardHeader>
-          <CardContent>
-            <p>{evaluation.description || 'Nenhuma descrição fornecida.'}</p>
+          <CardContent className="space-y-4">
+            <div>
+              <label className="text-sm font-medium text-gray-500">Municípios</label>
+              <ul className="list-disc list-inside">
+                {(evaluation.municipalities && evaluation.municipalities.length > 0)
+                  ? evaluation.municipalities.map((m: any, idx: number) => (
+                    <li key={m.id || m.name || idx}>{m.name || m}</li>
+                  ))
+                  : <li>Não informado</li>}
+              </ul>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-500">Escolas</label>
+              <ul className="list-disc list-inside">
+                {(evaluation.schools && evaluation.schools.length > 0)
+                  ? evaluation.schools.map((s: any, idx: number) => (
+                    <li key={s.id || s.name || idx}>{s.name || s}</li>
+                  ))
+                  : <li>Não informado</li>}
+              </ul>
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Lista de Questões */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Questões</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-6">
-            {evaluation.questions && evaluation.questions.map((question, index) => (
-              <div key={question.id} className="border rounded-lg p-4">
-                <h3 className="font-medium mb-2">Questão {question.number || index + 1}</h3>
-                <div className="mb-4" dangerouslySetInnerHTML={{ __html: question.formattedText || question.text }}></div>
-                <div className="space-y-2">
-                  {question.options && question.options.map((option, optionIndex) => (
-                    <div
-                      key={optionIndex}
-                      className={`p-2 rounded ${option.isCorrect
-                        ? "bg-green-50 border border-green-200"
-                        : "bg-gray-50"
-                        }`}
-                    >
-                      <div dangerouslySetInnerHTML={{ __html: option.text }}></div>
+      {/* Lista de Questões por Matéria */}
+      <div className="space-y-6">
+        {Object.entries(questionsBySubject).map(([subjectId, subjectData]) => (
+          <Card key={subjectId}>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <span>{subjectData.subject.name}</span>
+                <Badge variant="secondary">
+                  {subjectData.questions.length} questão{subjectData.questions.length !== 1 ? 'ões' : ''}
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                {subjectData.questions.map((question, index) => (
+                  <div key={question.id} className="border rounded-lg p-4">
+                    <h3 className="font-medium mb-2">Questão {question.number || index + 1}</h3>
+                    <div className="mb-4" dangerouslySetInnerHTML={{ __html: question.formattedText || question.text }}></div>
+                    <div className="space-y-2">
+                      {question.options && question.options.map((option, optionIndex) => (
+                        <div
+                          key={optionIndex}
+                          className={`p-2 rounded ${option.isCorrect
+                            ? "bg-green-50 border border-green-200"
+                            : "bg-gray-50"
+                            }`}
+                        >
+                          <div dangerouslySetInnerHTML={{ __html: option.text }}></div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Dialog de confirmação de exclusão */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir a avaliação "{evaluation?.title}"?
+              Esta ação não pode ser desfeita e todas as questões associadas serão perdidas.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isDeleting ? "Excluindo..." : "Excluir"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 } 

@@ -117,7 +117,7 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
   };
 
   const handleEdit = (evaluationId: string) => {
-    navigate(`/app/avaliacao/editar/${evaluationId}`);
+    navigate(`/app/avaliacao/${evaluationId}/editar`);
   };
 
   const handleDelete = async () => {

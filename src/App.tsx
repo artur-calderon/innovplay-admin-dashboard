@@ -19,6 +19,7 @@ import { PrivateRoute } from "./components/PrivateRoute";
 import SchoolDetails from "./components/schools/SchoolDetails";
 import { ClassDetails } from "./components/schools/ClassDetails";
 import CreateEvaluation from "./pages/CreateEvaluation";
+import EditEvaluation from "./pages/EditEvaluation";
 import Cities from "@/pages/Cities";
 import EditQuickLinks from "./pages/EditQuickLinks";
 import ViewEvaluation from "./pages/ViewEvaluation";
@@ -85,6 +86,7 @@ const App = () => {
             <Route index element={<PrivateRoute><Index /></PrivateRoute>} />
             <Route path="/app/avaliacoes" element={<PrivateRoute><Evaluations /></PrivateRoute>} />
             <Route path="/app/avaliacao/:id" element={<PrivateRoute><ViewEvaluation /></PrivateRoute>} />
+            <Route path="/app/avaliacao/:id/editar" element={<PrivateRoute><EditEvaluation /></PrivateRoute>} />
             <Route path="/app/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
             <Route path="/app/criar-avaliacao" element={<PrivateRoute><CreateEvaluation /></PrivateRoute>} />
             <Route path="/app/agenda" element={<PrivateRoute><EmBreve /></PrivateRoute>} />

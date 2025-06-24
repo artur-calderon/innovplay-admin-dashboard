@@ -54,8 +54,10 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question }) => {
                     {question.subject?.name && <Badge variant="outline">{question.subject.name}</Badge>}
                     {question.difficulty && <Badge variant="outline">{question.difficulty}</Badge>}
                     {question.value && <Badge variant="outline">Valor: {question.value}</Badge>}
-                    {question.skills && question.skills.length > 0 && (
+                    {question.skills && question.skills.length > 0 ? (
                         <Badge variant="outline">{question.skills.join(", ")}</Badge>
+                    ) : (
+                        <Badge variant="outline">Nenhuma skill</Badge>
                     )}
                 </div>
             </div>
