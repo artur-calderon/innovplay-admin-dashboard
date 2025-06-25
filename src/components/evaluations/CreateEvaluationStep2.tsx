@@ -256,7 +256,7 @@ export const CreateEvaluationStep2 = ({
                                     Remover
                                   </Button>
                                 </div>
-                                <p className="mt-2 text-sm">{question.text}</p>
+                                <p className="mt-2 text-sm">{question.title}</p>
                               </CardContent>
                             </Card>
                           ))}

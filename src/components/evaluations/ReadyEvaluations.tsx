@@ -66,7 +66,6 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
     try {
       setIsLoading(true);
       const response = await api.get("/test/user/me");
-      console.log(response.data);
       if (response.data.message === "Nenhuma avaliação encontrada para este usuário") {
         setEvaluations([]);
       } else {

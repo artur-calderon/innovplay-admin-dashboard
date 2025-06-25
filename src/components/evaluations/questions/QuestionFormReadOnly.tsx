@@ -178,18 +178,24 @@ const QuestionPreview: React.FC<{ data: QuestionFormValues }> = ({ data }) => {
 
             <div className="space-y-4">
                 {/* Render statement using Tiptap EditorContent */}
-                {statementEditor && (
-                    <div className="prose max-w-none">
-                        <EditorContent editor={statementEditor} />
-                    </div>
-                )}
-                {data.secondStatement && (
-                    // Render second statement using Tiptap EditorContent
-                    secondStatementEditor && (
+                <div>
+                    <h4 className="font-medium mb-2">Enunciado:</h4>
+                    {statementEditor && (
                         <div className="prose max-w-none">
-                            <EditorContent editor={secondStatementEditor} />
+                            <EditorContent editor={statementEditor} />
                         </div>
-                    )
+                    )}
+                </div>
+                {data.secondStatement && (
+                    <div>
+                        <h4 className="font-medium mb-2">Segundo Enunciado:</h4>
+                        {/* Render second statement using Tiptap EditorContent */}
+                        {secondStatementEditor && (
+                            <div className="prose max-w-none">
+                                <EditorContent editor={secondStatementEditor} />
+                            </div>
+                        )}
+                    </div>
                 )}
             </div>
 
@@ -352,6 +358,10 @@ const QuestionFormReadOnly = ({
         };
         fetchSkills();
     }, [evaluationData.subject, toast]);
+
+    useEffect(() => {
+        form.setValue('subjectId', evaluationData.subject);
+    }, [evaluationData.subject, form]);
 
     const handleFormSubmit = async (data: QuestionFormValues) => {
         try {

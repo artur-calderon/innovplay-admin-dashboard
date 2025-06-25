@@ -41,6 +41,7 @@ interface Question {
   options?: QuestionOption[];
   solution: string;
   subjectId?: string; // ID da matéria da questão
+  subject?: { id: string; name: string }; // Adicionado para compatibilidade com backend
 }
 
 interface Subject {
@@ -162,10 +163,11 @@ export default function ViewEvaluation() {
 
       // Distribuir questões pelas matérias
       evaluation.questions.forEach(question => {
-        if (question.subjectId && questionsBySubject[question.subjectId]) {
-          questionsBySubject[question.subjectId].questions.push(question);
+        const subjId = question.subject?.id;
+        if (subjId && questionsBySubject[subjId]) {
+          questionsBySubject[subjId].questions.push(question);
         } else {
-          // Se não tem subjectId ou não encontrou a matéria, coloca na primeira
+          // Se não tem subject ou não encontrou a matéria, coloca na primeira
           const firstSubjectId = Object.keys(questionsBySubject)[0];
           if (firstSubjectId) {
             questionsBySubject[firstSubjectId].questions.push(question);
@@ -344,9 +346,9 @@ export default function ViewEvaluation() {
                       {question.options && question.options.map((option, optionIndex) => (
                         <div
                           key={optionIndex}
-                          className={`p-2 rounded ${option.isCorrect
-                            ? "bg-green-50 border border-green-200"
-                            : "bg-gray-50"
+                          className={`p-2 rounded transition-colors ${option.isCorrect
+                            ? "bg-green-300 border-1 border-green-600 text-green-900 font-semibold"
+                            : "bg-gray-50 border border-gray-200"
                             }`}
                         >
                           <div dangerouslySetInnerHTML={{ __html: option.text }}></div>

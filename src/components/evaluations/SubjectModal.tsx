@@ -7,7 +7,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Plus, X } from "lucide-react";
 import { Subject } from "./types";
@@ -51,20 +50,14 @@ export function SubjectModal({
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button variant="outline" className="w-full">
-          <Plus className="h-4 w-4 mr-2" />
-          Adicionar Matérias
-        </Button>
-      </DialogTrigger>
+    <Dialog open={true} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Adicionar Matérias</DialogTitle>
+          <DialogTitle>Adicionar Disciplinas</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div className="grid gap-2">
-            <Label htmlFor="search">Buscar Matéria</Label>
+            <Label htmlFor="search">Buscar Disciplina</Label>
             <Input
               id="search"
               value={searchTerm}
@@ -74,7 +67,7 @@ export function SubjectModal({
           </div>
 
           <div className="space-y-2">
-            <Label>Matérias Disponíveis</Label>
+            <Label>Disciplinas Disponíveis</Label>
             <div className="max-h-[200px] overflow-y-auto space-y-2">
               {filteredSubjects.map((subject) => (
                 <div
@@ -95,7 +88,7 @@ export function SubjectModal({
           </div>
 
           <div className="space-y-2">
-            <Label>Matérias Selecionadas</Label>
+            <Label>Disciplinas Selecionadas</Label>
             <div className="space-y-2">
               {subjects.map((subject) => (
                 <div
