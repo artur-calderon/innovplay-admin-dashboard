@@ -1,12 +1,70 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "@/context/authContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Book, List, Sparkles, CalendarDays, ArrowLeft, ArrowRight, Plus, Pencil } from "lucide-react";
+import { 
+  Book, 
+  List, 
+  Sparkles, 
+  CalendarDays, 
+  ArrowLeft, 
+  ArrowRight, 
+  Plus, 
+  Pencil,
+  Gamepad,
+  Tv,
+  Headset,
+  Ticket,
+  Award,
+  Trophy,
+  School,
+  User as UserIcon,
+  Bell,
+  Settings,
+  Edit,
+  MessageSquare,
+  ClipboardEdit,
+  FileText,
+  HelpCircle,
+  BarChart2,
+  Monitor
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { quickLinksApi, QuickLink } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
+import { Skeleton } from "@/components/ui/skeleton";
+
+// Mapeamento de ícones para converter strings em componentes
+const iconMap = {
+  Book,
+  List,
+  Sparkles,
+  CalendarDays,
+  Gamepad,
+  Tv,
+  Headset,
+  Ticket,
+  Award,
+  Trophy,
+  School,
+  UserIcon,
+  Bell,
+  Settings,
+  Edit,
+  MessageSquare,
+  ClipboardEdit,
+  FileText,
+  HelpCircle,
+  BarChart2,
+  Monitor,
+};
 
 const StudentProfessorIndex = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
+  
+  const [quickLinks, setQuickLinks] = useState<QuickLink[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Dummy data for Agenda
   const agendaItems = [
@@ -16,15 +74,41 @@ const StudentProfessorIndex = () => {
     { date: "Sex 6", event: "Nenhum evento encontrado" },
   ];
 
+  // Carregar atalhos salvos do usuário
+  useEffect(() => {
+    const loadQuickLinks = async () => {
+      if (!user?.id) return;
+      
+      try {
+        setIsLoading(true);
+        const savedLinks = await quickLinksApi.getUserQuickLinks(user.id);
+        setQuickLinks(savedLinks);
+      } catch (error) {
+        console.error('Erro ao carregar atalhos:', error);
+        toast({
+          title: "Erro",
+          description: "Não foi possível carregar os atalhos rápidos.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadQuickLinks();
+  }, [user?.id, toast]);
+
+
+
   const handleEditQuickLinks = () => {
     const baseRoute = user?.role === "aluno" ? "/aluno" : "/app";
     navigate(`${baseRoute}/editar-atalhos`);
   };
 
-  // Define quick link items. This should ideally come from a state/store
-  // that is populated from the user's saved quick links.
-  // Starting empty now.
-  const quickLinks: { icon: React.ElementType; label: string; path: string; }[] = [];
+  // Função para obter o ícone correto
+  const getIconComponent = (iconName: string) => {
+    return iconMap[iconName as keyof typeof iconMap] || List;
+  };
 
   return (
     <div className="container mx-auto py-6 px-4">
@@ -57,23 +141,44 @@ const StudentProfessorIndex = () => {
               <Pencil className="h-4 w-4 text-muted-foreground cursor-pointer" onClick={handleEditQuickLinks} />
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-4">
-              {quickLinks.length === 0 ? (
-                <div className="col-span-2 text-center text-muted-foreground">
-                  Nenhum atalho selecionado. Clique no lápis para adicionar.
+              {isLoading ? (
+                // Skeleton loading para atalhos
+                <>
+                  {[...Array(4)].map((_, index) => (
+                    <div key={index} className="flex items-center gap-3 animate-pulse">
+                      <Skeleton className="h-12 w-12 rounded-full bg-gray-200" />
+                      <div className="flex-1">
+                        <Skeleton className="h-4 w-24 mb-1 bg-gray-200" />
+                      </div>
+                    </div>
+                  ))}
+                </>
+              ) : quickLinks.length === 0 ? (
+                <div className="col-span-2 text-center text-muted-foreground py-8">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="p-3 rounded-full bg-gray-100">
+                      <Pencil className="h-6 w-6 text-gray-400" />
+                    </div>
+                    <p>Nenhum atalho selecionado.</p>
+                    <p className="text-sm">Clique no lápis para adicionar.</p>
+                  </div>
                 </div>
               ) : (
-                quickLinks.map((link, index) => (
-                  <div 
-                    key={index} 
-                    className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
-                    onClick={() => navigate(link.path)}
-                  >
-                    <div className="p-3 rounded-full bg-green-100">
-                      <link.icon className="h-6 w-6 text-green-700" />
+                quickLinks.map((link, index) => {
+                  const IconComponent = getIconComponent(link.icon);
+                  return (
+                    <div 
+                      key={index} 
+                      className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-all duration-200 hover:shadow-sm"
+                      onClick={() => navigate(link.href)}
+                    >
+                      <div className="p-3 rounded-full bg-green-100 flex-shrink-0">
+                        <IconComponent className="h-6 w-6 text-green-700" />
+                      </div>
+                      <span className="font-medium text-sm">{link.label}</span>
                     </div>
-                    <span>{link.label}</span>
-                  </div>
-                ))
+                  );
+                })
               )}
             </CardContent>
           </Card>
