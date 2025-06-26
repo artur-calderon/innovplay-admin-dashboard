@@ -88,8 +88,9 @@ const EditQuickLinks = () => {
   // TODO: Fetch selected quick links for the user
   const [selectedQuickLinks, setSelectedQuickLinks] = useState<QuickLink[]>([]);
 
+
   // Filter available links based on selected ones
-  const availableQuickLinks = allAvailableLinks.filter(link => 
+  const availableQuickLinks = allAvailableLinks.filter(link =>
     !selectedQuickLinks.some(selectedLink => selectedLink.href === link.href)
   );
 
@@ -126,11 +127,11 @@ const EditQuickLinks = () => {
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {selectedQuickLinks.map(link => (
             <div key={link.href} className="border rounded-md p-4 flex flex-col items-center justify-between text-center relative">
-              <Button 
-                 variant="ghost" 
-                 size="icon" 
-                 onClick={() => handleRemoveQuickLink(link)} 
-                 className="absolute top-1 right-1 w-6 h-6 text-red-500 hover:bg-red-100"
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => handleRemoveQuickLink(link)}
+                className="absolute top-1 right-1 w-6 h-6 text-red-500 hover:bg-red-100"
               >
                 <Minus className="h-4 w-4" />
               </Button>
@@ -164,23 +165,23 @@ const EditQuickLinks = () => {
           )}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {allAvailableLinks.filter(link => !selectedQuickLinks.some(selected => selected.href === link.href)).map(link => (
-              <div 
-                key={link.href} 
-                className={( "border rounded-md p-4 flex flex-col items-center justify-between text-center relative ") +
+              <div
+                key={link.href}
+                className={("border rounded-md p-4 flex flex-col items-center justify-between text-center relative ") +
                   (selectedQuickLinks.length >= maxSelectedLinks ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:bg-gray-50")
                 }
                 onClick={() => handleAddQuickLink(link)}
                 style={{ pointerEvents: selectedQuickLinks.length >= maxSelectedLinks ? 'none' : 'auto' }}
               >
-                 <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="absolute top-1 right-1 w-6 h-6 text-green-500 hover:bg-green-100"
-                 >
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-1 right-1 w-6 h-6 text-green-500 hover:bg-green-100"
+                >
                   <Plus className="h-4 w-4" />
                 </Button>
                 <div className="flex items-center justify-center w-12 h-12 rounded-full bg-gray-100 mb-2">
-                   <link.icon className="h-6 w-6 text-gray-700" />
+                  <link.icon className="h-6 w-6 text-gray-700" />
                 </div>
                 <span className="text-sm font-medium mb-2">{link.label}</span>
               </div>

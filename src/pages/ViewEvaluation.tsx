@@ -97,6 +97,7 @@ export default function ViewEvaluation() {
       if (!id) return;
       try {
         const response = await api.get(`/test/${id}`);
+        console.log(response.data)
         setEvaluation(response.data);
       } catch (error) {
         console.error("Erro ao buscar avaliação:", error);
@@ -340,20 +341,85 @@ export default function ViewEvaluation() {
               <div className="space-y-6">
                 {subjectData.questions.map((question, index) => (
                   <div key={question.id} className="border rounded-lg p-4">
-                    <h3 className="font-medium mb-2">Questão {question.number || index + 1}</h3>
-                    <div className="mb-4" dangerouslySetInnerHTML={{ __html: question.formattedText || question.text }}></div>
-                    <div className="space-y-2">
-                      {question.options && question.options.map((option, optionIndex) => (
+                    <h3 className="font-medium mb-4 text-lg">Questão {question.number || index + 1}</h3>
+
+                    {/* Enunciado */}
+                    <div className="mb-4">
+                      <h4 className="font-semibold text-gray-700 mb-2">Enunciado:</h4>
+                      <div
+                        className="p-3 bg-gray-50 rounded-md border"
+                        dangerouslySetInnerHTML={{ __html: question.text }}
+                      ></div>
+                    </div>
+
+                    {/* Segundo Enunciado (se houver) */}
+                    {question.formattedText && question.formattedText !== question.text && (
+                      <div className="mb-4">
+                        <h4 className="font-semibold text-gray-700 mb-2">Segundo Enunciado:</h4>
                         <div
-                          key={optionIndex}
-                          className={`p-2 rounded transition-colors ${option.isCorrect
-                            ? "bg-green-300 border-1 border-green-600 text-green-900 font-semibold"
-                            : "bg-gray-50 border border-gray-200"
-                            }`}
-                        >
-                          <div dangerouslySetInnerHTML={{ __html: option.text }}></div>
+                          className="p-3 bg-blue-50 rounded-md border border-blue-200"
+                          dangerouslySetInnerHTML={{ __html: question.formattedText }}
+                        ></div>
+                      </div>
+                    )}
+
+                    {/* Alternativas */}
+                    {question.options && question.options.length > 0 && (
+                      <div className="mb-4">
+                        <h4 className="font-semibold text-gray-700 mb-2">Alternativas:</h4>
+                        <div className="space-y-2">
+                          {question.options.map((option, optionIndex) => (
+                            <div
+                              key={optionIndex}
+                              className={`p-3 rounded-md border transition-colors ${option.isCorrect
+                                ? "bg-green-100 border-green-300 text-green-900 font-medium"
+                                : "bg-white border-gray-200 hover:bg-gray-50"
+                                }`}
+                            >
+                              <div className="flex items-start gap-2">
+                                <span className="font-medium text-gray-600 min-w-[20px]">
+                                  {String.fromCharCode(65 + optionIndex)})
+                                </span>
+                                <div
+                                  className="flex-1"
+                                  dangerouslySetInnerHTML={{ __html: option.text }}
+                                ></div>
+                                {option.isCorrect && (
+                                  <Badge variant="default" className="bg-green-600 text-white text-xs">
+                                    Correta
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      </div>
+                    )}
+
+                    {/* Informações adicionais da questão */}
+                    <div className="mt-4 pt-4 border-t border-gray-200">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600">
+                        <div>
+                          <span className="font-medium">Tipo:</span> {
+                            question.type === 'open' ? 'Dissertativa' :
+                              question.type === 'multipleChoice' ? 'Múltipla Escolha' :
+                                question.type
+                          }
+                        </div>
+                        <div>
+                          <span className="font-medium">Valor:</span> {question.value} pontos
+                        </div>
+                        <div>
+                          <span className="font-medium">Dificuldade:</span> {question.difficulty}
+                        </div>
+                        <div>
+                          <span className="font-medium">Habilidades:</span> {
+                            Array.isArray(question.skills) && question.skills.length > 0
+                              ? question.skills.join(', ')
+                              : 'Nenhuma habilidade'
+                          }
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ))}
