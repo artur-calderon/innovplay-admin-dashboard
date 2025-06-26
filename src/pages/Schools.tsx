@@ -110,7 +110,7 @@ export default function Schools() {
     } catch (error: any) {
       console.error("Error saving school:", error);
       let errorMessage = "Erro ao salvar escola";
-      
+
       if (error.response?.data?.campos_faltantes) {
         const campos = error.response.data.campos_faltantes.join(", ");
         errorMessage = `Campos obrigatórios faltando: ${campos}`;
@@ -299,7 +299,7 @@ export default function Schools() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel 
+            <AlertDialogCancel
               onClick={() => {
                 setSchoolToDelete(null);
                 setIsDeleteDialogOpen(false);
