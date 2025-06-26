@@ -32,8 +32,49 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/context/authContext";
 import { useNavigate } from "react-router-dom";
-import { quickLinksApi, QuickLink } from "@/lib/api";
+import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import axios from 'axios';
+
+// Tipos para atalhos rápidos
+export interface QuickLink {
+    href: string;
+    icon: string;
+    label: string;
+}
+
+export interface UserQuickLinksResponse {
+    id: string;
+    user_id: string;
+    quickLinks: QuickLink[];
+}
+
+// Funções da API para atalhos rápidos
+export const quickLinksApi = {
+    // Buscar atalhos do usuário
+    getUserQuickLinks: async (userId: string): Promise<QuickLink[]> => {
+        try {
+            const response = await api.get<UserQuickLinksResponse>(`/user-quick-links/${userId}`);
+            return response.data.quickLinks || [];
+        } catch (error) {
+            if (axios.isAxiosError(error) && error.response?.status === 404) {
+                // Se não existir atalhos, retorna array vazio
+                return [];
+            }
+            throw error;
+        }
+    },
+
+    // Criar/atualizar atalhos do usuário
+    saveUserQuickLinks: async (userId: string, quickLinks: QuickLink[]): Promise<void> => {
+        await api.post(`/user-quick-links/${userId}`, { quickLinks });
+    },
+
+    // Deletar atalhos do usuário
+    deleteUserQuickLinks: async (userId: string): Promise<void> => {
+        await api.delete(`/user-quick-links/${userId}`);
+    }
+};
 
 // Mapeamento reverso para obter componentes dos ícones
 const iconComponents = {

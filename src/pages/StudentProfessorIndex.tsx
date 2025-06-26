@@ -29,7 +29,7 @@ import {
   Monitor
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { quickLinksApi, QuickLink } from "@/lib/api";
+import { quickLinksApi, QuickLink } from "./EditQuickLinks";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 
