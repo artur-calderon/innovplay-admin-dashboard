@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Eye, Pencil, Trash2, Search, Filter, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { Plus, Eye, Pencil, Trash2, Search, Filter, ChevronLeft, ChevronRight } from "lucide-react";
 import { Question } from "@/components/evaluations/types";
 import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
@@ -639,18 +639,7 @@ const QuestionsPage = () => {
     fetchQuestions(false, true);
   };
 
-  // Função para limpar todos os caches (debug/desenvolvimento)
-  const clearAllCaches = useCallback(() => {
-    setQuestionsCache({});
-    setFetchedKeys(new Set());
-    setEmptyResults(new Set());
-    setError(null);
-    setRetryCount(0);
-    
-    if (isDebugMode) {
-      console.log('🧹 Todos os caches limpos');
-    }
-  }, [isDebugMode]);
+
 
     const renderPagination = () => {
     if (totalPages <= 1) return null;
@@ -883,16 +872,7 @@ const QuestionsPage = () => {
               Excluir ({selectedIds.length})
             </Button>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRetry}
-            disabled={loading}
-            className={`transition-all duration-200 ${loading ? 'opacity-75 cursor-not-allowed' : 'hover:scale-105'}`}
-          >
-            <RefreshCw className={`h-4 w-4 mr-1 transition-transform duration-200 ${loading ? 'animate-spin' : ''}`} />
-            {loading ? 'Carregando...' : 'Atualizar'}
-          </Button>
+
           <Button
             size="sm"
             onClick={() => navigate("/app/cadastros/questao/criar")}
@@ -968,21 +948,7 @@ const QuestionsPage = () => {
               <span className="animate-pulse">Buscando...</span>
             </div>
           )}
-          {Object.keys(questionsCache).length > 0 && !loading && (
-            <Badge variant="outline" className="text-xs">
-              Cache: {Object.keys(questionsCache).length} grupo(s)
-            </Badge>
-          )}
-          {emptyResults.size > 0 && !loading && isDebugMode && (
-            <Badge variant="outline" className="text-xs text-yellow-600">
-              Vazios: {emptyResults.size}
-            </Badge>
-          )}
-          {isCurrentlyFetching && (
-            <Badge variant="secondary" className="text-xs animate-pulse">
-              Buscando: {isCurrentlyFetching}
-            </Badge>
-          )}
+
         </div>
         {paginatedQuestions.length > 0 && (
           <div className="flex items-center gap-2">
@@ -1138,16 +1104,6 @@ const QuestionsPage = () => {
               >
                 Criar Nova Questão
               </Button>
-              {isDebugMode && (
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={clearAllCaches}
-                  className="text-xs"
-                >
-                  Limpar Cache
-                </Button>
-              )}
             </div>
             {retryCount > 0 && (
               <p className="text-xs text-muted-foreground">
