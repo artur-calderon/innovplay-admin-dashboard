@@ -189,6 +189,14 @@ const QuestionsPage = () => {
   const [retryCount, setRetryCount] = useState(0);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  
+  // Estados para controle de requisições múltiplas e otimização
+  // - fetchedKeys: chaves que já foram buscadas (evita buscas redundantes)
+  // - isCurrentlyFetching: chave sendo buscada no momento (evita calls simultâneos)
+  // - emptyResults: chaves que retornaram vazio (evita re-buscar resultados vazios)
+  const [fetchedKeys, setFetchedKeys] = useState<Set<string>>(new Set());
+  const [isCurrentlyFetching, setIsCurrentlyFetching] = useState<string | null>(null);
+  const [emptyResults, setEmptyResults] = useState<Set<string>>(new Set());
 
   // Estado de filtros e pesquisa
   const [filterType, setFilterType] = useState<'my' | 'all'>('my');
@@ -268,18 +276,44 @@ const QuestionsPage = () => {
   }, []);
 
   // Fetch questões com cache e retry
-  const fetchQuestions = useCallback(async (isRetry = false) => {
+  const fetchQuestions = useCallback(async (isRetry = false, forceRefresh = false) => {
     const cacheKey = `${filterType}-${user.id || 'all'}`;
     
-    // Verificar cache primeiro (exceto se for retry)
-    if (!isRetry && questionsCache[cacheKey] && questionsCache[cacheKey].length > 0) {
+    // Verificar se já está fazendo fetch da mesma chave
+    if (!forceRefresh && isCurrentlyFetching === cacheKey) {
+      if (isDebugMode) {
+        console.log('🚫 Fetch já em andamento para:', cacheKey);
+      }
+      return;
+    }
+    
+    // Verificar cache primeiro (exceto se for retry ou forceRefresh)
+    if (!isRetry && !forceRefresh && questionsCache[cacheKey]) {
       setQuestions(questionsCache[cacheKey]);
       setLoading(false);
       setError(null);
       setLoadingProgress(0);
+      if (isDebugMode) {
+        console.log('📦 Usando cache para:', cacheKey, questionsCache[cacheKey].length, 'itens');
+      }
+      return;
+    }
+    
+    // Verificar se já foi buscado e retornou vazio (exceto retry ou forceRefresh)
+    if (!isRetry && !forceRefresh && emptyResults.has(cacheKey)) {
+      setQuestions([]);
+      setLoading(false);
+      setError(null);
+      setLoadingProgress(0);
+      if (isDebugMode) {
+        console.log('🗳️ Resultado vazio conhecido para:', cacheKey);
+      }
       return;
     }
 
+    // Marcar que está fazendo fetch desta chave
+    setIsCurrentlyFetching(cacheKey);
+    
     if (!isRetry) {
       setLoading(true);
       setError(null);
@@ -340,6 +374,24 @@ const QuestionsPage = () => {
         ...prev,
         [cacheKey]: normalizedQuestions
       }));
+      
+      // Marcar como buscado
+      setFetchedKeys(prev => new Set(prev).add(cacheKey));
+      
+      // Se resultado vazio, marcar para evitar buscas futuras
+      if (normalizedQuestions.length === 0) {
+        setEmptyResults(prev => new Set(prev).add(cacheKey));
+        if (isDebugMode) {
+          console.log('🗳️ Marcando resultado vazio para:', cacheKey);
+        }
+      } else {
+        // Remover dos resultados vazios se agora tem dados
+        setEmptyResults(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(cacheKey);
+          return newSet;
+        });
+      }
       
       setQuestions(normalizedQuestions);
       setError(null);
@@ -417,8 +469,8 @@ const QuestionsPage = () => {
         setQuestions([]);
       }
 
-      // Retry automático para erros temporários
-      if (!isRetry && retryCount < 2 && error instanceof AxiosError && (
+      // Retry automático para erros temporários (mas não para resultados vazios conhecidos)
+      if (!isRetry && retryCount < 2 && !emptyResults.has(cacheKey) && error instanceof AxiosError && (
         (error.response?.status && error.response.status >= 500) || 
         error.code === 'NETWORK_ERROR' ||
         error.code === 'ECONNABORTED'
@@ -439,12 +491,15 @@ const QuestionsPage = () => {
         });
       }
     } finally {
+      // Limpar flag de fetch em andamento
+      setIsCurrentlyFetching(null);
+      
       // Delay mínimo para UX mais suave
       setTimeout(() => {
         setLoading(false);
       }, isInitialLoad ? 400 : 100);
     }
-  }, [user.id, filterType, questionsCache, retryCount, toast]);
+  }, [user.id, filterType, questionsCache, retryCount, toast, isCurrentlyFetching, emptyResults, fetchedKeys, isDebugMode, isInitialLoad]);
 
   useEffect(() => {
     if (user.id || filterType === 'all') {
@@ -456,6 +511,35 @@ const QuestionsPage = () => {
   useEffect(() => {
     setCurrentPage(1);
   }, [debouncedSearchTerm, filters, filterType]);
+
+  // Limpar estados de controle quando filtros principais mudam
+  useEffect(() => {
+    const cacheKey = `${filterType}-${user.id || 'all'}`;
+    
+    // Só limpar se estiver mudando para uma chave diferente
+    if (!fetchedKeys.has(cacheKey)) {
+      setError(null);
+      setRetryCount(0);
+    }
+  }, [filterType, user.id, fetchedKeys]);
+
+  // Limpar resultados vazios antigos periodicamente (limpeza de memória)
+  useEffect(() => {
+    const cleanupInterval = setInterval(() => {
+      const now = Date.now();
+      const maxAge = 10 * 60 * 1000; // 10 minutos
+      
+      // Por simplicidade, limpar todos os resultados vazios a cada 10 minutos
+      // Em produção, seria melhor armazenar timestamps
+      setEmptyResults(new Set());
+      
+      if (isDebugMode) {
+        console.log('🧹 Limpeza periódica de resultados vazios');
+      }
+    }, 10 * 60 * 1000); // 10 minutos
+
+    return () => clearInterval(cleanupInterval);
+  }, [isDebugMode]);
 
   // Event handlers
   const handleFilterChange = (key: keyof Filters, value: string) => {
@@ -527,11 +611,46 @@ const QuestionsPage = () => {
   };
 
   const handleRetry = () => {
+    const cacheKey = `${filterType}-${user.id || 'all'}`;
+    
     setError(null);
     setRetryCount(0);
-    setQuestionsCache({});
-    fetchQuestions();
+    
+    // Limpar cache e estados de controle para esta chave específica
+    setQuestionsCache(prev => {
+      const newCache = { ...prev };
+      delete newCache[cacheKey];
+      return newCache;
+    });
+    
+    setFetchedKeys(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(cacheKey);
+      return newSet;
+    });
+    
+    setEmptyResults(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(cacheKey);
+      return newSet;
+    });
+    
+    // Forçar nova busca
+    fetchQuestions(false, true);
   };
+
+  // Função para limpar todos os caches (debug/desenvolvimento)
+  const clearAllCaches = useCallback(() => {
+    setQuestionsCache({});
+    setFetchedKeys(new Set());
+    setEmptyResults(new Set());
+    setError(null);
+    setRetryCount(0);
+    
+    if (isDebugMode) {
+      console.log('🧹 Todos os caches limpos');
+    }
+  }, [isDebugMode]);
 
     const renderPagination = () => {
     if (totalPages <= 1) return null;
@@ -854,6 +973,16 @@ const QuestionsPage = () => {
               Cache: {Object.keys(questionsCache).length} grupo(s)
             </Badge>
           )}
+          {emptyResults.size > 0 && !loading && isDebugMode && (
+            <Badge variant="outline" className="text-xs text-yellow-600">
+              Vazios: {emptyResults.size}
+            </Badge>
+          )}
+          {isCurrentlyFetching && (
+            <Badge variant="secondary" className="text-xs animate-pulse">
+              Buscando: {isCurrentlyFetching}
+            </Badge>
+          )}
         </div>
         {paginatedQuestions.length > 0 && (
           <div className="flex items-center gap-2">
@@ -1009,6 +1138,16 @@ const QuestionsPage = () => {
               >
                 Criar Nova Questão
               </Button>
+              {isDebugMode && (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={clearAllCaches}
+                  className="text-xs"
+                >
+                  Limpar Cache
+                </Button>
+              )}
             </div>
             {retryCount > 0 && (
               <p className="text-xs text-muted-foreground">
