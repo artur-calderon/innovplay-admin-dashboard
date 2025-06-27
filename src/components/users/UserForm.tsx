@@ -311,7 +311,7 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
             name="confirmPassword"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Confirmar Nova Senha (opcional)</FormLabel>
+                <FormLabel>Confirmar Nova Senha</FormLabel>
                 <FormControl>
                   <div className="relative">
                     <Input 

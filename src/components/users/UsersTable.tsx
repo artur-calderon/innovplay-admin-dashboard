@@ -152,17 +152,12 @@ export default function UsersTable() {
       // Get users from response data
       const usersData = response.data?.users || [];
       
-      // Transform the roles to display format and add city name
-      const formattedUsers = usersData.map((user: User) => {
-        const cityName = Array.isArray(municipios) 
-          ? municipios.find(m => m.id.toString() === user.city_id)?.name || ''
-          : '';
-        return {
-          ...user,
-          role: roleDisplayMapping[user.role] || user.role,
-          city_name: cityName
-        };
-      });
+      // Transform the roles to display format (city names will be added separately)
+      const formattedUsers = usersData.map((user: User) => ({
+        ...user,
+        role: roleDisplayMapping[user.role] || user.role,
+        city_name: '' // Will be populated by separate effect
+      }));
       
       setUsers(formattedUsers);
     } catch (error) {
@@ -172,11 +167,26 @@ export default function UsersTable() {
     } finally {
       setIsLoading(false);
     }
-  }, [municipios]);
+  }, []); // No dependencies to prevent infinite loops
 
+  // Load users only once on mount
   useEffect(() => {
     fetchUsers();
-  }, [fetchUsers]); // Re-fetch when dependencies change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount
+
+  // Update city names when municipios data is available
+  useEffect(() => {
+    if (Array.isArray(municipios) && municipios.length > 0 && users.length > 0) {
+      setUsers(prevUsers => 
+        prevUsers.map(user => ({
+          ...user,
+          city_name: municipios.find(m => m.id.toString() === user.city_id)?.name || ''
+        }))
+      );
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [municipios]); // Update city names when municipios change
 
   // Event handlers
   const handleFilterChange = (key: keyof Filters, value: string) => {
@@ -208,7 +218,8 @@ export default function UsersTable() {
       await Promise.all(selectedIds.map(id => api.delete(`/users/${id}`)));
       toast.success(`${selectedIds.length} usuários excluídos com sucesso!`);
       setSelectedIds([]);
-      fetchUsers();
+      // Refresh the list after delete
+      await fetchUsers();
     } catch (error) {
       console.error('Error deleting users:', error);
       toast.error('Erro ao excluir usuários');
@@ -219,8 +230,9 @@ export default function UsersTable() {
     try {
       await api.post('/users', userData);
       toast.success('Usuário criado com sucesso!');
-      setIsAddModalOpen(false);
-      fetchUsers(); // Refresh the list
+      closeAddModal();
+      // Refresh the list after adding
+      await fetchUsers();
     } catch (error) {
       console.error('Error creating user:', error);
       toast.error('Erro ao criar usuário');
@@ -231,8 +243,9 @@ export default function UsersTable() {
     try {
       await api.put(`/users/${userData.id}`, userData);
       toast.success('Usuário atualizado com sucesso!');
-      setIsEditModalOpen(false);
-      fetchUsers(); // Refresh the list
+      closeEditModal();
+      // Refresh the list after editing
+      await fetchUsers();
     } catch (error) {
       console.error('Error updating user:', error);
       toast.error('Erro ao atualizar usuário');
@@ -242,6 +255,20 @@ export default function UsersTable() {
   const openEditModal = (user: User) => {
     setCurrentUser(user);
     setIsEditModalOpen(true);
+  };
+
+  const closeEditModal = () => {
+    setCurrentUser(null);
+    setIsEditModalOpen(false);
+  };
+
+  const closeAddModal = () => {
+    setIsAddModalOpen(false);
+  };
+
+  const closeDeleteDialog = () => {
+    setUserToDelete(null);
+    setDeleteDialogOpen(false);
   };
 
   const confirmDelete = (userId: number) => {
@@ -254,8 +281,9 @@ export default function UsersTable() {
       try {
         await api.delete(`/users/${userToDelete}`);
         toast.success('Usuário excluído com sucesso!');
-        setDeleteDialogOpen(false);
-        fetchUsers(); // Refresh the list
+        closeDeleteDialog();
+        // Refresh the list after delete
+        await fetchUsers();
       } catch (error) {
         console.error('Error deleting user:', error);
         toast.error('Erro ao excluir usuário');
@@ -390,7 +418,7 @@ export default function UsersTable() {
             </Button>
           )}
           
-          <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+          <Dialog open={isAddModalOpen} onOpenChange={closeAddModal}>
             <DialogTrigger asChild>
               <Button size="sm">
                 <UserPlus className="h-4 w-4 mr-1" />
@@ -530,7 +558,7 @@ export default function UsersTable() {
               <p className="text-lg font-semibold">Erro ao carregar usuários</p>
               <p className="text-sm mt-2">{error}</p>
             </div>
-            <Button onClick={fetchUsers} size="sm">
+            <Button onClick={() => fetchUsers()} size="sm">
               Tentar Novamente
             </Button>
           </div>
@@ -604,7 +632,7 @@ export default function UsersTable() {
       )}
 
       {/* Edit User Modal */}
-      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+      <Dialog open={isEditModalOpen} onOpenChange={closeEditModal}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Editar Usuário</DialogTitle>
@@ -614,7 +642,7 @@ export default function UsersTable() {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      <AlertDialog open={deleteDialogOpen} onOpenChange={closeDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
@@ -623,7 +651,7 @@ export default function UsersTable() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDeleteDialogOpen(false)}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel onClick={closeDeleteDialog}>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteUser}>Confirmar</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
