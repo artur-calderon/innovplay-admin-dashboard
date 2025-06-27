@@ -226,16 +226,26 @@ export default function UsersTable() {
     }
   };
 
-  const handleAddUser = async (userData: Omit<User, "id">) => {
+  const handleAddUser = async (userData: Omit<User, "id"> & { password?: string }) => {
     try {
-      await api.post('/users', userData);
-      toast.success('Usuário criado com sucesso!');
-      closeAddModal();
-      // Refresh the list after adding
-      await fetchUsers();
+      const response = await api.post('/admin/criar-usuario', {
+        name: userData.name,
+        email: userData.email,
+        password: userData.password,
+        role: userData.role,
+        registration: userData.registration,
+        city_id: userData.city_id
+      });
+
+      if (response.status === 200 || response.status === 201) {
+        toast.success('Usuário criado com sucesso!');
+        closeAddModal();
+        // Refresh the list after adding
+        await fetchUsers();
+      }
     } catch (error) {
       console.error('Error creating user:', error);
-      toast.error('Erro ao criar usuário');
+      toast.error('Erro ao criar usuário. Por favor, tente novamente.');
     }
   };
 

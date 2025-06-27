@@ -82,7 +82,7 @@ interface UserFormProps {
     registration?: string;
     city_id?: string;
   };
-  onSubmit?: (data: UserFormValues) => void;
+  onSubmit?: (data: UserFormValues) => Promise<void> | void;
 }
 
 export default function UserForm({ user, onSubmit }: UserFormProps) {
@@ -165,18 +165,10 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
           }
         }
       } else {
-        // New user - make API call
-        const response = await api.post('/admin/criar-usuario', {
-          name: dataToSend.name,
-          email: dataToSend.email,
-          password: dataToSend.password,
-          role: dataToSend.role,
-          registration: dataToSend.registration,
-          city_id: dataToSend.city_id
-        });
-
-        if (response.status === 200 || response.status === 201) {
-          toast.success('Usuário criado com sucesso!');
+        // New user - use callback to parent component
+        if (onSubmit) {
+          await onSubmit(dataToSend);
+          // Reset form after successful submission
           form.reset();
         }
       }
