@@ -17,7 +17,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import QuestionPreview from "@/components/evaluations/questions/QuestionPreview";
 import { useToast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Progress } from "@/components/ui/progress";
+
 
 // Estilos customizados para skeleton mais fluído
 const shimmerKeyframes = `
@@ -499,7 +499,7 @@ const QuestionsPage = () => {
         setLoading(false);
       }, isInitialLoad ? 400 : 100);
     }
-  }, [user.id, filterType, questionsCache, retryCount, toast, isCurrentlyFetching, emptyResults, fetchedKeys, isDebugMode, isInitialLoad]);
+  }, [user.id, filterType, questionsCache, retryCount, toast, isCurrentlyFetching, emptyResults, isDebugMode, isInitialLoad]);
 
   useEffect(() => {
     if (user.id || filterType === 'all') {
@@ -526,9 +526,6 @@ const QuestionsPage = () => {
   // Limpar resultados vazios antigos periodicamente (limpeza de memória)
   useEffect(() => {
     const cleanupInterval = setInterval(() => {
-      const now = Date.now();
-      const maxAge = 10 * 60 * 1000; // 10 minutos
-      
       // Por simplicidade, limpar todos os resultados vazios a cada 10 minutos
       // Em produção, seria melhor armazenar timestamps
       setEmptyResults(new Set());
@@ -766,7 +763,7 @@ const QuestionsPage = () => {
 
   const QuestionCard = React.memo(({ question, index }: { question: Question; index: number }) => {
     const handleView = useCallback(() => setViewQuestion(question), [question]);
-    const handleEdit = useCallback(() => navigate(`/app/cadastros/questao/editar/${question.id}`), [question.id, navigate]);
+    const handleEdit = useCallback(() => navigate(`/app/cadastros/questao/editar/${question.id}`), [question.id]);
     const handleDeleteClick = useCallback(() => setDeleteQuestionId(question.id), [question.id]);
     const handleSelect = useCallback((checked: boolean) => handleSelectOne(question.id, checked), [question.id]);
 
