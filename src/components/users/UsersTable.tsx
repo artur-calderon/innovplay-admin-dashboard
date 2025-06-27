@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Edit, Trash2, UserPlus, Search, Filter, ChevronLeft, ChevronRight } from "lucide-react";
+import { Edit, Trash2, UserPlus, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +35,92 @@ const roleDisplayMapping: { [key: string]: string } = {
 
 const ROLES = ['Administrador', 'Professor', 'Coordenador', 'Diretor', 'Técnico administrativo', 'Aluno'];
 const PAGE_SIZE_OPTIONS = [10, 15, 20, 25];
+
+// Hierarquia de funções para ordenação por nível
+const roleHierarchy: { [key: string]: number } = {
+  "Administrador": 1,
+  "Diretor": 2,
+  "Coordenador": 3,
+  "Professor": 4,
+  "Técnico administrativo": 5,
+  "Aluno": 6
+};
+
+// Tipos de ordenação
+type SortField = 'name' | 'email' | 'role' | 'city' | 'id' | 'none';
+type SortDirection = 'asc' | 'desc';
+
+interface SortConfig {
+  field: SortField;
+  direction: SortDirection;
+  secondary?: {
+    field: SortField;
+    direction: SortDirection;
+  };
+}
+
+// Funções utilitárias para ordenação avançada
+const normalizeString = (str: string): string => {
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Remove acentos
+    .trim();
+};
+
+const compareNatural = (a: string, b: string): number => {
+  const aNum = parseFloat(a);
+  const bNum = parseFloat(b);
+  
+  if (!isNaN(aNum) && !isNaN(bNum)) {
+    return aNum - bNum;
+  }
+  
+  return normalizeString(a).localeCompare(normalizeString(b), 'pt-BR', {
+    numeric: true,
+    sensitivity: 'base'
+  });
+};
+
+const getSortValue = (user: User, field: SortField): string | number => {
+  switch (field) {
+    case 'name':
+      return normalizeString(user.name);
+    case 'email':
+      return normalizeString(user.email);
+    case 'role':
+      return roleHierarchy[user.role] || 999;
+    case 'city':
+      return normalizeString(user.city_name || 'zzz'); // Valores vazios vão para o final
+    case 'id':
+      return user.id;
+    default:
+      return '';
+  }
+};
+
+// Persistência da ordenação
+const SORT_STORAGE_KEY = 'users-table-sort';
+
+const saveSortConfig = (config: SortConfig) => {
+  try {
+    localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(config));
+  } catch (error) {
+    console.warn('Não foi possível salvar configuração de ordenação:', error);
+  }
+};
+
+const loadSortConfig = (): SortConfig => {
+  try {
+    const saved = localStorage.getItem(SORT_STORAGE_KEY);
+    if (saved) {
+      return JSON.parse(saved);
+    }
+  } catch (error) {
+    console.warn('Não foi possível carregar configuração de ordenação:', error);
+  }
+  return { field: 'none', direction: 'asc' };
+};
 
 // Hook para debounce
 const useDebounce = (value: string, delay: number) => {
@@ -98,11 +184,101 @@ export default function UsersTable() {
   // Estados de seleção múltipla
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   
+  // Estado de ordenação
+  const [sortConfig, setSortConfig] = useState<SortConfig>(() => loadSortConfig());
+  
+  // Função de ordenação melhorada
+  const handleSort = (field: SortField, setSecondary = false) => {
+    setSortConfig(prev => {
+      let newConfig: SortConfig;
+      
+      if (setSecondary && prev.field !== 'none') {
+        // Definir ordenação secundária
+        newConfig = {
+          ...prev,
+          secondary: {
+            field,
+            direction: 'asc'
+          }
+        };
+      } else {
+        // Ordenação principal
+        if (prev.field === field) {
+          // Alternar direção ou adicionar ordenação secundária
+          if (prev.direction === 'asc') {
+            newConfig = { ...prev, direction: 'desc' };
+          } else if (!prev.secondary) {
+            // Se não tem secundária, sugerir nome como secundária
+            newConfig = {
+              field,
+              direction: 'asc',
+              secondary: field !== 'name' ? { field: 'name', direction: 'asc' } : undefined
+            };
+          } else {
+            // Reset
+            newConfig = { field: 'none', direction: 'asc' };
+          }
+        } else {
+          newConfig = {
+            field,
+            direction: 'asc',
+            secondary: field !== 'name' ? { field: 'name', direction: 'asc' } : undefined
+          };
+        }
+      }
+      
+      saveSortConfig(newConfig);
+      return newConfig;
+    });
+  };
+
+  // Função para ordenar usuários avançada
+  const sortUsers = (users: User[], config: SortConfig): User[] => {
+    if (config.field === 'none') return users;
+
+    return [...users].sort((a, b) => {
+      // Ordenação principal
+      const aValue = getSortValue(a, config.field);
+      const bValue = getSortValue(b, config.field);
+      
+      let result = 0;
+      
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        result = compareNatural(aValue, bValue);
+      } else {
+        result = aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
+      }
+      
+      if (config.direction === 'desc') {
+        result *= -1;
+      }
+      
+      // Se valores são iguais e há ordenação secundária
+      if (result === 0 && config.secondary) {
+        const aSecondary = getSortValue(a, config.secondary.field);
+        const bSecondary = getSortValue(b, config.secondary.field);
+        
+        if (typeof aSecondary === 'string' && typeof bSecondary === 'string') {
+          result = compareNatural(aSecondary, bSecondary);
+        } else {
+          result = aSecondary < bSecondary ? -1 : aSecondary > bSecondary ? 1 : 0;
+        }
+        
+        if (config.secondary.direction === 'desc') {
+          result *= -1;
+        }
+      }
+      
+      return result;
+    });
+  };
+  
   // Usuários filtrados e paginados
   const filteredUsers = useMemo(() => {
     if (users.length === 0) return [];
 
-    return users.filter(user => {
+    // Primeiro filtrar
+    const filtered = users.filter(user => {
       // Filtro de pesquisa
       if (debouncedSearchTerm !== '' && 
           !user.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) &&
@@ -123,7 +299,10 @@ export default function UsersTable() {
 
       return true;
     });
-  }, [users, debouncedSearchTerm, filters]);
+
+    // Depois ordenar
+    return sortUsers(filtered, sortConfig);
+  }, [users, debouncedSearchTerm, filters, sortConfig]);
 
   const totalPages = Math.ceil(filteredUsers.length / pageSize);
   const paginatedUsers = useMemo(() => {
@@ -485,6 +664,151 @@ export default function UsersTable() {
             </Select>
           </div>
 
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground hidden sm:block">Ordenar:</span>
+            <Select 
+              onValueChange={(value) => {
+                if (value === 'none') {
+                  setSortConfig({ field: 'none', direction: 'asc' });
+                } else {
+                  handleSort(value as SortField);
+                }
+              }} 
+              value={sortConfig.field}
+            >
+              <SelectTrigger className="w-40 h-9">
+                <SelectValue placeholder="Selecione" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">
+                  <div className="flex items-center gap-2">
+                    <ArrowUpDown className="h-3 w-3" />
+                    Padrão
+                  </div>
+                </SelectItem>
+                <SelectItem value="name">
+                  <div className="flex items-center gap-2">
+                    {sortConfig.field === 'name' ? (
+                      sortConfig.direction === 'asc' ? 
+                      <ArrowUp className="h-3 w-3" /> : 
+                      <ArrowDown className="h-3 w-3" />
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3" />
+                    )}
+                    Nome (A-Z)
+                  </div>
+                </SelectItem>
+                <SelectItem value="email">
+                  <div className="flex items-center gap-2">
+                    {sortConfig.field === 'email' ? (
+                      sortConfig.direction === 'asc' ? 
+                      <ArrowUp className="h-3 w-3" /> : 
+                      <ArrowDown className="h-3 w-3" />
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3" />
+                    )}
+                    Email (A-Z)
+                  </div>
+                </SelectItem>
+                <SelectItem value="role">
+                  <div className="flex items-center gap-2">
+                    {sortConfig.field === 'role' ? (
+                      sortConfig.direction === 'asc' ? 
+                      <ArrowUp className="h-3 w-3" /> : 
+                      <ArrowDown className="h-3 w-3" />
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3" />
+                    )}
+                    Hierarquia
+                  </div>
+                </SelectItem>
+                <SelectItem value="city">
+                  <div className="flex items-center gap-2">
+                    {sortConfig.field === 'city' ? (
+                      sortConfig.direction === 'asc' ? 
+                      <ArrowUp className="h-3 w-3" /> : 
+                      <ArrowDown className="h-3 w-3" />
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3" />
+                    )}
+                    Município (A-Z)
+                  </div>
+                </SelectItem>
+                <SelectItem value="id">
+                  <div className="flex items-center gap-2">
+                    {sortConfig.field === 'id' ? (
+                      sortConfig.direction === 'asc' ? 
+                      <ArrowUp className="h-3 w-3" /> : 
+                      <ArrowDown className="h-3 w-3" />
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3" />
+                    )}
+                    ID (#)
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <Button
+              variant={sortConfig.field === 'name' ? "default" : "outline"}
+              size="sm"
+              onClick={() => handleSort('name')}
+              className="h-9 px-2"
+              title="Ordenar por Nome"
+            >
+              <div className="flex items-center gap-1">
+                {sortConfig.field === 'name' ? (
+                  sortConfig.direction === 'asc' ? 
+                  <ArrowUp className="h-3 w-3" /> : 
+                  <ArrowDown className="h-3 w-3" />
+                ) : (
+                  <ArrowUpDown className="h-3 w-3" />
+                )}
+                <span className="text-xs">Nome</span>
+              </div>
+            </Button>
+            
+            <Button
+              variant={sortConfig.field === 'role' ? "default" : "outline"}
+              size="sm"
+              onClick={() => handleSort('role')}
+              className="h-9 px-2"
+              title="Ordenar por Hierarquia"
+            >
+              <div className="flex items-center gap-1">
+                {sortConfig.field === 'role' ? (
+                  sortConfig.direction === 'asc' ? 
+                  <ArrowUp className="h-3 w-3" /> : 
+                  <ArrowDown className="h-3 w-3" />
+                ) : (
+                  <ArrowUpDown className="h-3 w-3" />
+                )}
+                <span className="text-xs">Função</span>
+              </div>
+            </Button>
+          </div>
+
+          {sortConfig.field !== 'none' && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                const newConfig = { field: 'none' as SortField, direction: 'asc' as SortDirection };
+                setSortConfig(newConfig);
+                saveSortConfig(newConfig);
+              }}
+              className="h-9 px-2 text-muted-foreground hover:text-foreground"
+              title="Remover ordenação"
+            >
+              <div className="flex items-center gap-1">
+                <ArrowUpDown className="h-3 w-3" />
+                <span className="text-xs">Reset</span>
+              </div>
+            </Button>
+          )}
+
           <Sheet>
             <SheetTrigger asChild>
               <Button variant="outline" size="sm">
@@ -508,6 +832,34 @@ export default function UsersTable() {
       <div className="flex items-center justify-between text-sm text-muted-foreground">
         <div className="flex items-center gap-2">
           <span>{filteredUsers.length} usuário(s) encontrado(s)</span>
+          {sortConfig.field !== 'none' && (
+            <div className="flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded">
+              {sortConfig.direction === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+              <span>
+                Ordenado por{' '}
+                {sortConfig.field === 'name' && 'Nome'}
+                {sortConfig.field === 'email' && 'Email'}
+                {sortConfig.field === 'role' && 'Hierarquia'}
+                {sortConfig.field === 'city' && 'Município'}
+                {sortConfig.field === 'id' && 'ID'}
+                {sortConfig.secondary && (
+                  <>
+                    {' + '}
+                    {sortConfig.secondary.field === 'name' && 'Nome'}
+                    {sortConfig.secondary.field === 'email' && 'Email'}
+                    {sortConfig.secondary.field === 'role' && 'Hierarquia'}
+                    {sortConfig.secondary.field === 'city' && 'Município'}
+                    {sortConfig.secondary.field === 'id' && 'ID'}
+                  </>
+                )}
+              </span>
+            </div>
+          )}
+          {filteredUsers.length > 100 && sortConfig.field !== 'none' && (
+            <div className="flex items-center gap-1 text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded">
+              <span>⚡ Ordenação inteligente ativa</span>
+            </div>
+          )}
           {searchTerm !== debouncedSearchTerm && (
             <div className="flex items-center gap-1 text-xs">
               <div className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
@@ -536,10 +888,25 @@ export default function UsersTable() {
                 <TableHead className="w-12">
                   <Skeleton className="h-4 w-4" />
                 </TableHead>
-                <TableHead>Nome</TableHead>
+                <TableHead>
+                  <div className="flex items-center gap-2">
+                    Nome
+                    <ArrowUpDown className="h-3 w-3 opacity-30" />
+                  </div>
+                </TableHead>
                 <TableHead>Email</TableHead>
-                <TableHead>Função</TableHead>
-                <TableHead>Município</TableHead>
+                <TableHead>
+                  <div className="flex items-center gap-2">
+                    Função
+                    <ArrowUpDown className="h-3 w-3 opacity-30" />
+                  </div>
+                </TableHead>
+                <TableHead>
+                  <div className="flex items-center gap-2">
+                    Município
+                    <ArrowUpDown className="h-3 w-3 opacity-30" />
+                  </div>
+                </TableHead>
                 <TableHead className="w-[100px]">Ações</TableHead>
               </TableRow>
             </TableHeader>
@@ -597,10 +964,66 @@ export default function UsersTable() {
                       aria-label="Selecionar todos"
                     />
                   </TableHead>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Função</TableHead>
-                  <TableHead>Município</TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => handleSort('name')}
+                  >
+                    <div className="flex items-center gap-2">
+                      Nome
+                      {sortConfig.field === 'name' ? (
+                        sortConfig.direction === 'asc' ? 
+                        <ArrowUp className="h-3 w-3" /> : 
+                        <ArrowDown className="h-3 w-3" />
+                      ) : (
+                        <ArrowUpDown className="h-3 w-3 opacity-50" />
+                      )}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => handleSort('email')}
+                  >
+                    <div className="flex items-center gap-2">
+                      Email
+                      {sortConfig.field === 'email' ? (
+                        sortConfig.direction === 'asc' ? 
+                        <ArrowUp className="h-3 w-3" /> : 
+                        <ArrowDown className="h-3 w-3" />
+                      ) : (
+                        <ArrowUpDown className="h-3 w-3 opacity-50" />
+                      )}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => handleSort('role')}
+                  >
+                    <div className="flex items-center gap-2">
+                      Função
+                      {sortConfig.field === 'role' ? (
+                        sortConfig.direction === 'asc' ? 
+                        <ArrowUp className="h-3 w-3" /> : 
+                        <ArrowDown className="h-3 w-3" />
+                      ) : (
+                        <ArrowUpDown className="h-3 w-3 opacity-50" />
+                      )}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => handleSort('city')}
+                  >
+                    <div className="flex items-center gap-2">
+                      Município
+                      {sortConfig.field === 'city' ? (
+                        sortConfig.direction === 'asc' ? 
+                        <ArrowUp className="h-3 w-3" /> : 
+                        <ArrowDown className="h-3 w-3" />
+                      ) : (
+                        <ArrowUpDown className="h-3 w-3 opacity-50" />
+                      )}
+                    </div>
+                  </TableHead>
                   <TableHead className="w-[100px]">Ações</TableHead>
                 </TableRow>
               </TableHeader>

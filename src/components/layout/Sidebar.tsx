@@ -72,7 +72,7 @@ export default function Sidebar() {
   {
     icon: List,
     label: "Cadastros",
-    role: ["admin"],
+    role: ["admin", "professor"],
     children: [
       {
         icon: Building,
@@ -85,11 +85,11 @@ export default function Sidebar() {
           { icon: BookOpen, label: "Disciplina", href: "/app/cadastros/disciplina", role: ["admin"] },
         ]
       },
-      { icon: List, label: "Avaliações", href: "/app/avaliacoes", role: ["admin"] },
+      { icon: List, label: "Avaliações", href: "/app/avaliacoes", role: ["admin", "professor"] },
       { icon: School, label: "Escola", href: "/app/escolas", role: ["admin"] },
       { icon: LandPlot, label: "Municípios", href: "/app/city" ,role:["admin"]},
-      { icon: HelpCircle, label: "Questão", href: "/app/cadastros/questao", role: ["admin"] },
-      { icon: Users2, label: "Turma", href: "/app/cadastros/turma", role: ["admin"] },
+      { icon: HelpCircle, label: "Questão", href: "/app/cadastros/questao", role: ["admin", "professor"] },
+      { icon: Users2, label: "Turma", href: "/app/cadastros/turma", role: ["admin", "professor"] },
       { icon: User, label: "Usuário", href: "/app/usuarios", role: ["admin"] },
     ]
   },

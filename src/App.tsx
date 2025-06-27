@@ -26,6 +26,7 @@ import ViewEvaluation from "./pages/ViewEvaluation";
 import CreateQuestionPage from "./pages/CreateQuestionPage";
 import QuestionsPage from "./pages/QuestionsPage";
 import EditQuestionPage from "./pages/EditQuestionPage";
+import Turmas from "./pages/Turmas";
 
 const queryClient = new QueryClient();
 
@@ -112,6 +113,9 @@ const App = () => {
             <Route path="/app/cadastros/questao" element={<PrivateRoute><QuestionsPage /></PrivateRoute>} />
             <Route path="/app/cadastros/questao/criar" element={<PrivateRoute><CreateQuestionPage /></PrivateRoute>} />
             <Route path="/app/cadastros/questao/editar/:id" element={<PrivateRoute><EditQuestionPage /></PrivateRoute>} />
+            
+            {/* Rota de gerenciamento de turmas */}
+            <Route path="/app/cadastros/turma" element={<PrivateRoute><Turmas /></PrivateRoute>} />
           </Route>
 
           {/* Rota 404 para outras rotas não encontradas */}
