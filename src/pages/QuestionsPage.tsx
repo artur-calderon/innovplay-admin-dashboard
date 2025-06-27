@@ -90,10 +90,7 @@ const useDebounce = (value: string, delay: number) => {
 
 // Componentes de Loading mais fluídos
 const SkeletonRow = ({ index }: { index: number }) => (
-  <tr 
-    className="border-b" 
-    style={{ animationDelay: `${index * 50}ms` }}
-  >
+  <tr className="border-b">
     <td className="p-3">
       <div className="h-4 w-4 rounded" style={shimmerStyle} />
     </td>
@@ -129,10 +126,7 @@ const SkeletonRow = ({ index }: { index: number }) => (
 );
 
 const SkeletonCard = ({ index }: { index: number }) => (
-  <div 
-    className="border rounded-lg p-3 bg-background"
-    style={{ animationDelay: `${index * 75}ms` }}
-  >
+  <div className="border rounded-lg p-3 bg-background">
     <div className="flex items-start justify-between gap-3">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-2">
@@ -769,8 +763,7 @@ const QuestionsPage = () => {
 
     return (
       <div 
-        className="border rounded-lg p-3 bg-background hover:bg-muted/20 transition-all duration-200 animate-in fade-in-0 slide-in-from-left-4"
-        style={{ animationDelay: `${index * 50}ms` }}
+        className="border rounded-lg p-3 bg-background hover:bg-muted/20 transition-colors"
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
@@ -940,7 +933,7 @@ const QuestionsPage = () => {
         <div className="flex items-center gap-2">
           <span>{filteredQuestions.length} questão(ões) encontrada(s)</span>
           {searchTerm !== debouncedSearchTerm && (
-            <div className="flex items-center gap-1 text-xs animate-in fade-in-0 slide-in-from-left-2 duration-200">
+            <div className="flex items-center gap-1 text-xs">
               <div className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
               <span className="animate-pulse">Buscando...</span>
             </div>
@@ -961,7 +954,7 @@ const QuestionsPage = () => {
 
       {/* Content */}
       {loading ? (
-        <div className="space-y-4 animate-in fade-in-0 duration-300">
+        <div className="space-y-4">
           {/* Desktop Skeleton */}
           <div className="hidden md:block border rounded-lg overflow-hidden bg-background">
             <table className="w-full">
@@ -994,7 +987,7 @@ const QuestionsPage = () => {
           </div>
         </div>
       ) : paginatedQuestions.length > 0 ? (
-        <div className="space-y-4 animate-in fade-in-0 slide-in-from-bottom-4 duration-500">
+        <div className="space-y-4">
           {/* Desktop Table */}
           <div className="hidden md:block border rounded-lg overflow-hidden bg-background">
             <table className="w-full">
@@ -1021,8 +1014,7 @@ const QuestionsPage = () => {
                 {paginatedQuestions.map((question, index) => (
                   <tr 
                     key={question.id} 
-                    className="border-b hover:bg-muted/20 transition-all duration-200 animate-in fade-in-0 slide-in-from-right-4" 
-                    style={{ animationDelay: `${index * 25}ms` }}
+                    className="border-b hover:bg-muted/20 transition-colors" 
                     data-state={selectedIds.includes(question.id) && "selected"}
                   >
                     <td className="p-3">
