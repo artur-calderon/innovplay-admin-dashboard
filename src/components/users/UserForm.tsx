@@ -240,7 +240,7 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
           name="password"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>{isEditing ? "Nova senha (opicional)" : "Senha"}</FormLabel>
+              <FormLabel>{isEditing ? "Nova senha (opcional)" : "Senha"}</FormLabel>
               <FormControl>
                 <div className="relative">
                   <Input 
@@ -311,7 +311,7 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
             name="confirmPassword"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Confirmar Nova Senha</FormLabel>
+                <FormLabel>Confirmar Nova Senha (opcional)</FormLabel>
                 <FormControl>
                   <div className="relative">
                     <Input 
