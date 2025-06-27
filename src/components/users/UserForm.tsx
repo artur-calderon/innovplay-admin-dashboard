@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { useDataContext } from "@/context/dataContext";
@@ -90,6 +90,9 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState<string>('');
+  const [loadingCurrentPassword, setLoadingCurrentPassword] = useState(false);
   const { municipios, getMunicipios } = useDataContext();
   const { user: currentUser } = useAuth();
   
@@ -99,6 +102,44 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
   useEffect(() => {
     getMunicipios();
   }, [getMunicipios]);
+
+  // Função para buscar senha atual (apenas para admins)
+  const fetchCurrentPassword = async () => {
+    if (!isEditing || !isAdmin || !user?.id) return;
+    
+    try {
+      setLoadingCurrentPassword(true);
+      const response = await api.get(`/admin/user-password/${user.id}`);
+      
+      if (response.data?.password) {
+        setCurrentPassword(response.data.password);
+      } else {
+        setCurrentPassword('');
+      }
+    } catch (error) {
+      console.error('Error fetching current password:', error);
+      
+      // Se o endpoint não existir (404) ou não estiver implementado, não mostra erro
+      const errorResponse = error as { response?: { status?: number } };
+      if (errorResponse?.response?.status === 404 || errorResponse?.response?.status === 501) {
+        setCurrentPassword('');
+        console.warn('Endpoint para visualizar senha não disponível');
+      } else {
+        toast.error('Erro ao carregar senha atual');
+        setCurrentPassword('');
+      }
+    } finally {
+      setLoadingCurrentPassword(false);
+    }
+  };
+
+  // Buscar senha atual quando componente monta (se for admin editando)
+  useEffect(() => {
+    if (isEditing && isAdmin && user?.id) {
+      fetchCurrentPassword();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditing, isAdmin, user?.id]);
 
   // Set up form with default values
   const form = useForm<UserFormValues>({
@@ -226,6 +267,53 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
             </FormItem>
           )}
         />
+
+        {/* Campo para exibir senha atual (apenas para admins editando) */}
+        {isEditing && isAdmin && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium">Senha Atual</label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={fetchCurrentPassword}
+                disabled={loadingCurrentPassword}
+                className="h-6 px-2 text-xs"
+              >
+                <RefreshCw className={`h-3 w-3 mr-1 ${loadingCurrentPassword ? 'animate-spin' : ''}`} />
+                Recarregar
+              </Button>
+            </div>
+            <div className="relative">
+              <Input
+                type={showCurrentPassword ? "text" : "password"}
+                value={loadingCurrentPassword ? "Carregando..." : (currentPassword || "")}
+                readOnly
+                placeholder={loadingCurrentPassword ? "Carregando..." : "Senha não disponível"}
+                className="pr-10 bg-muted/50"
+              />
+              {currentPassword && !loadingCurrentPassword && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                >
+                  {showCurrentPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Esta é a senha atual do usuário. Apenas administradores podem visualizar esta informação.
+            </p>
+          </div>
+        )}
 
         <FormField
           control={form.control}
