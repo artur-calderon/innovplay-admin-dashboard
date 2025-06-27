@@ -272,8 +272,20 @@ export default function UsersTable() {
     setIsEditModalOpen(false);
   };
 
+  const handleEditModalChange = (open: boolean) => {
+    if (!open) {
+      setCurrentUser(null);
+    }
+    setIsEditModalOpen(open);
+  };
+
   const closeAddModal = () => {
     setIsAddModalOpen(false);
+  };
+
+  const handleAddModalChange = (open: boolean) => {
+    console.log('Modal state changing to:', open);
+    setIsAddModalOpen(open);
   };
 
   const closeDeleteDialog = () => {
@@ -428,7 +440,7 @@ export default function UsersTable() {
             </Button>
           )}
           
-          <Dialog open={isAddModalOpen} onOpenChange={closeAddModal}>
+          <Dialog open={isAddModalOpen} onOpenChange={handleAddModalChange}>
             <DialogTrigger asChild>
               <Button size="sm">
                 <UserPlus className="h-4 w-4 mr-1" />
@@ -642,7 +654,7 @@ export default function UsersTable() {
       )}
 
       {/* Edit User Modal */}
-      <Dialog open={isEditModalOpen} onOpenChange={closeEditModal}>
+      <Dialog open={isEditModalOpen} onOpenChange={handleEditModalChange}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Editar Usuário</DialogTitle>
