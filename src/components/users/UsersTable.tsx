@@ -284,7 +284,6 @@ export default function UsersTable() {
   };
 
   const handleAddModalChange = (open: boolean) => {
-    console.log('Modal state changing to:', open);
     setIsAddModalOpen(open);
   };
 
