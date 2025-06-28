@@ -29,7 +29,7 @@ import { MultiSelect, Option } from "@/components/ui/multi-select";
 
 // Form schema
 const questionSchema = z.object({
-    title: z.string().min(1, "O título é obrigatório"),
+    title: z.string().min(1, "O conteúdo é obrigatório"),
     text: z.string().min(1, "O enunciado é obrigatório"),
     subjectId: z.string().min(1, "A disciplina é obrigatória"),
     grade: z.string().min(1, "A série é obrigatória"),
@@ -461,7 +461,7 @@ const QuestionFormReadOnly = ({
                                 name="title"
                                 render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel>Título</FormLabel>
+                                        <FormLabel>Conteúdo</FormLabel>
                                         <FormControl>
                                             <Input {...field} />
                                         </FormControl>
