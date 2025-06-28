@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Eye, EyeOff } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { useDataContext } from "@/context/dataContext";
@@ -35,16 +36,39 @@ const roleMapping: { [key: string]: string } = {
 };
 
 // Form validation schema
-const userFormSchema = z.object({
+const createUserFormSchema = (isEditing: boolean) => z.object({
   name: z.string().min(3, "O nome deve ter pelo menos 3 caracteres"),
   email: z.string().email("Email inválido"),
-  password: z.string().min(6, "A senha deve ter pelo menos 6 caracteres").optional(),
+  password: isEditing 
+    ? z.string().optional()
+    : z.string().min(6, "A senha deve ter pelo menos 6 caracteres"),
+  confirmPassword: isEditing 
+    ? z.string().optional()
+    : z.string().min(1, "Confirme sua senha"),
   role: z.string().min(1, "Selecione uma função"),
   registration: z.string().nullable(),
   city_id: z.string().nullable(),
+}).refine((data) => {
+  if (!isEditing) {
+    return data.password === data.confirmPassword;
+  }
+  if (data.password && data.password.length > 0) {
+    return data.password === data.confirmPassword;
+  }
+  return true;
+}, {
+  message: "As senhas não coincidem",
+  path: ["confirmPassword"],
 });
 
-type UserFormValues = z.infer<typeof userFormSchema> & {
+type UserFormValues = {
+  name: string;
+  email: string;
+  password?: string;
+  confirmPassword?: string;
+  role: string;
+  registration?: string | null;
+  city_id?: string | null;
   id?: number;
 };
 
@@ -57,12 +81,14 @@ interface UserFormProps {
     registration?: string;
     city_id?: string;
   };
-  onSubmit?: (data: UserFormValues) => void;
+  onSubmit?: (data: UserFormValues) => Promise<void> | void;
 }
 
 export default function UserForm({ user, onSubmit }: UserFormProps) {
   const isEditing = !!user;
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const { municipios, getMunicipios } = useDataContext();
   
   useEffect(() => {
@@ -71,16 +97,39 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
 
   // Set up form with default values
   const form = useForm<UserFormValues>({
-    resolver: zodResolver(userFormSchema),
+    resolver: zodResolver(createUserFormSchema(isEditing)),
     defaultValues: {
       name: user?.name || "",
       email: user?.email || "",
       password: "",
+      confirmPassword: "",
       role: user?.role || "",
       registration: user?.registration || null,
       city_id: user?.city_id || null,
     },
   });
+
+  // Função para gerar email automaticamente baseado no nome
+  const generateEmailFromName = (name: string) => {
+    if (!name.trim()) return "";
+    
+    const names = name.trim().split(" ");
+    const initials = names
+      .map(n => n.charAt(0).toLowerCase())
+      .join("");
+    
+    return `${initials}@innovplay.com`;
+  };
+
+  // Watch para mudanças no campo nome (apenas para novos usuários)
+  const watchedName = form.watch("name");
+  
+  useEffect(() => {
+    if (!isEditing && watchedName) {
+      const generatedEmail = generateEmailFromName(watchedName);
+      form.setValue("email", generatedEmail);
+    }
+  }, [watchedName, isEditing, form]);
 
   // Handle form submission
   const handleSubmit = async (data: UserFormValues) => {
@@ -93,33 +142,28 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
         role: roleMapping[data.role] || data.role
       };
       
+      // Remove confirmPassword from the data before sending
+      const { confirmPassword, ...dataToSend } = formattedData;
+      
       // If editing, we don't require the password field and preserve the ID
       if (isEditing) {
-        if (!formattedData.password || formattedData.password.trim() === "") {
+        if (!dataToSend.password || dataToSend.password.trim() === "") {
           // If password field is empty during edit, remove it from the data
-          const { password, ...dataWithoutPassword } = formattedData;
+          const { password, ...dataWithoutPassword } = dataToSend;
           if (onSubmit) {
             onSubmit({ ...dataWithoutPassword, id: user.id });
           }
         } else {
           // Password was provided during edit
           if (onSubmit) {
-            onSubmit({ ...formattedData, id: user.id });
+            onSubmit({ ...dataToSend, id: user.id });
           }
         }
       } else {
-        // New user - make API call
-        const response = await api.post('/admin/criar-usuario', {
-          name: formattedData.name,
-          email: formattedData.email,
-          password: formattedData.password,
-          role: formattedData.role,
-          registration: formattedData.registration,
-          city_id: formattedData.city_id
-        });
-
-        if (response.status === 200 || response.status === 201) {
-          toast.success('Usuário criado com sucesso!');
+        // New user - use callback to parent component
+        if (onSubmit) {
+          await onSubmit(dataToSend);
+          // Reset form after successful submission
           form.reset();
         }
       }
@@ -161,8 +205,18 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
             <FormItem>
               <FormLabel>Email</FormLabel>
               <FormControl>
-                <Input type="email" placeholder="nome@escola.edu.br" {...field} />
+                <Input 
+                  type="email" 
+                  placeholder={isEditing ? "nome@escola.edu.br" : "Será gerado automaticamente"} 
+                  {...field}
+                  readOnly={!isEditing}
+                />
               </FormControl>
+              {!isEditing && (
+                <p className="text-xs text-muted-foreground">
+                  O email é gerado automaticamente baseado nas iniciais do nome + @innovplay.com
+                </p>
+              )}
               <FormMessage />
             </FormItem>
           )}
@@ -175,16 +229,66 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
             <FormItem>
               <FormLabel>{isEditing ? "Nova senha (opcional)" : "Senha"}</FormLabel>
               <FormControl>
-                <Input 
-                  type="password" 
-                  placeholder={isEditing ? "Deixe em branco para manter a senha atual" : "Digite uma senha"} 
-                  {...field} 
-                />
+                <div className="relative">
+                  <Input 
+                    type={showPassword ? "text" : "password"} 
+                    placeholder={isEditing ? "Deixe em branco para manter a senha atual" : "Digite uma senha"} 
+                    {...field} 
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
+
+        {!isEditing && (
+          <FormField
+            control={form.control}
+            name="confirmPassword"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Confirmar Senha</FormLabel>
+                <FormControl>
+                  <div className="relative">
+                    <Input 
+                      type={showConfirmPassword ? "text" : "password"} 
+                      placeholder="Confirme sua senha" 
+                      {...field} 
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    >
+                      {showConfirmPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
         <FormField
           control={form.control}

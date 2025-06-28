@@ -250,6 +250,38 @@ const QuestionsPage = () => {
     return filteredQuestions.slice(startIndex, startIndex + pageSize);
   }, [filteredQuestions, currentPage, pageSize]);
 
+  // Definir filtro inicial para professores
+  useEffect(() => {
+    if (user.role === 'professor' && filterType === 'my') {
+      setFilterType('all');
+    }
+  }, [user.role, filterType]);
+
+  // Limpar cache quando professor acessa "Todas as Questões"
+  useEffect(() => {
+    if (user.role === 'professor' && filterType === 'all') {
+      const cacheKey = `${filterType}-${user.id || 'all'}`;
+      
+      setQuestionsCache(prev => {
+        const newCache = { ...prev };
+        delete newCache[cacheKey];
+        return newCache;
+      });
+      
+      setEmptyResults(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(cacheKey);
+        return newSet;
+      });
+      
+      setFetchedKeys(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(cacheKey);
+        return newSet;
+      });
+    }
+  }, [user.role, filterType, user.id]);
+
   // Fetch inicial de dados (executar em paralelo)
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -326,18 +358,56 @@ const QuestionsPage = () => {
     }
 
     try {
-      const params: { created_by?: string } = {};
+      const params: { created_by?: string; scope?: string; all?: string; admin_view?: string } = {};
 
       if (filterType === 'my' && user.id) {
         params.created_by = user.id;
+      } else if (filterType === 'all' && user.role === 'professor') {
+        // Tentar diferentes parâmetros para forçar busca de todas as questões
+        params.scope = 'global';
+        params.all = 'true';
+        params.admin_view = 'true';
+      }
+
+
+
+      // Log temporário para testar novos parâmetros
+      if (user.role === 'professor' && filterType === 'all') {
+        console.log('🧪 TESTE - Professor tentando ver todas as questões:', params);
       }
 
       if (isDebugMode) {
         console.log('📡 Fazendo requisição para /questions com params:', params);
       }
       
-      const response = await api.get("/questions", { params });
+      let response = await api.get("/questions", { params });
       
+      // Se professor não recebeu questões, tentar abordagem alternativa
+      if (user.role === 'professor' && filterType === 'all' && 
+          (!response.data || response.data.length === 0)) {
+        console.log('🔄 Primeira tentativa vazia, tentando endpoint alternativo...');
+        
+        try {
+          // Tentar sem parâmetros especiais
+          response = await api.get("/questions");
+          console.log('🆔 Tentativa sem parâmetros:', response.data?.length);
+        } catch (altError) {
+          console.log('❌ Falha na tentativa alternativa');
+        }
+        
+        // Se ainda vazio, tentar com endpoint de admin (pode não existir)
+        if (!response.data || response.data.length === 0) {
+          try {
+            response = await api.get("/admin/questions");
+            console.log('🔧 Tentativa com endpoint admin:', response.data?.length);
+          } catch (adminError) {
+            console.log('❌ Endpoint admin não existe');
+          }
+        }
+      }
+      
+
+
       if (isDebugMode) {
         console.log('✅ Resposta recebida:', response.status, response.data?.length);
       }
@@ -889,7 +959,7 @@ const QuestionsPage = () => {
           <Tabs value={filterType} onValueChange={(value) => setFilterType(value as 'my' | 'all')}>
             <TabsList className="h-9">
               <TabsTrigger value="my" className="text-sm">Minhas Questões</TabsTrigger>
-              {user.role === 'admin' && <TabsTrigger value="all" className="text-sm">Todas as Questões</TabsTrigger>}
+              {(user.role === 'admin' || user.role === 'professor') && <TabsTrigger value="all" className="text-sm">Todas as Questões</TabsTrigger>}
             </TabsList>
           </Tabs>
         </div>

@@ -65,18 +65,29 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
   const fetchEvaluations = async () => {
     try {
       setIsLoading(true);
-      const response = await api.get("/test/user/me");
-      if (response.data.message === "Nenhuma avaliação encontrada para este usuário") {
+      const response = await api.get("/test");
+      if (response.data && Array.isArray(response.data)) {
+        setEvaluations(response.data);
+      } else if (response.data?.message === "Nenhuma avaliação encontrada para este usuário") {
         setEvaluations([]);
       } else {
-        setEvaluations(response.data);
+        setEvaluations([]);
       }
     } catch (error: any) {
       console.error("Erro ao buscar avaliações:", error);
-      if (error.response?.data?.error) {
+      if (error.response?.status === 404) {
+        // Se retornar 404, apenas não há avaliações
+        setEvaluations([]);
+      } else if (error.response?.data?.error) {
         toast({
           title: "Erro",
           description: error.response.data.error,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Erro ao carregar avaliações",
+          description: "Não foi possível carregar as avaliações.",
           variant: "destructive",
         });
       }
