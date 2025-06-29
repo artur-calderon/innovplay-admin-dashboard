@@ -117,11 +117,54 @@
   }
   
   .sidebar-link {
-    @apply flex items-center gap-3 px-3 sm:px-4 py-2 sm:py-3 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-all;
+    @apply flex items-center gap-3 px-3 py-2.5 text-white/80 hover:text-white rounded-lg transition-all duration-200;
+    position: relative;
+  }
+  
+  .sidebar-link:hover {
+    @apply bg-white/10 transform scale-[1.02];
+    backdrop-filter: blur(10px);
   }
   
   .sidebar-link.active {
-    @apply bg-white/20 text-white font-medium;
+    @apply bg-white/15 text-white font-medium shadow-lg;
+    backdrop-filter: blur(10px);
+  }
+  
+  .sidebar-link.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 60%;
+    background: linear-gradient(to bottom, #60a5fa, #3b82f6);
+    border-radius: 0 4px 4px 0;
+    box-shadow: 0 0 8px rgba(59, 130, 246, 0.4);
+  }
+
+  /* Custom scrollbar for sidebar */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
   }
   
   .stat-card {
@@ -130,6 +173,65 @@
   
   .stat-card-icon {
     @apply p-2 sm:p-3 rounded-lg text-white;
+  }
+
+  /* Mobile-first responsive utilities */
+  .mobile-container {
+    @apply px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto;
+  }
+  
+  .mobile-card {
+    @apply p-4 sm:p-6 bg-white rounded-lg shadow-sm border;
+  }
+  
+  .mobile-button {
+    @apply w-full sm:w-auto px-4 py-2 sm:px-6 sm:py-2.5;
+  }
+  
+  .mobile-input {
+    @apply text-base sm:text-sm; /* Prevents zoom on iOS */
+  }
+  
+  .mobile-text {
+    @apply text-sm sm:text-base;
+  }
+  
+  .mobile-title {
+    @apply text-lg sm:text-xl lg:text-2xl;
+  }
+  
+  .mobile-subtitle {
+    @apply text-base sm:text-lg;
+  }
+
+  /* Mobile header improvements */
+  @media (max-width: 767px) {
+    .mobile-header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 60;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(229, 231, 235, 0.8);
+    }
+    
+    .mobile-content {
+      padding-top: 4rem; /* Space for fixed header */
+    }
+    
+    /* Ensure sidebar appears above main content but below header */
+    .mobile-sidebar {
+      z-index: 50;
+    }
+    
+    /* Overlay styling */
+    .mobile-overlay {
+      z-index: 40;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(4px);
+    }
   }
 
   /* Responsive table enhancements */

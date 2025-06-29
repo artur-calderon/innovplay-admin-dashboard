@@ -72,7 +72,7 @@ const QuestionBank = ({
                         id="search"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        placeholder="Buscar por título ou enunciado..."
+                        placeholder="Buscar por conteúdo ou enunciado..."
                     />
                 </div>
                 <div className="w-48">

@@ -50,6 +50,7 @@ import { useToast } from "@/hooks/use-toast";
 import { MultiSelect, Option } from "@/components/ui/multi-select";
 import { useAuth } from "@/context/authContext";
 import QuestionPreview from "./QuestionPreview";
+import SkillsSelector from "./SkillsSelector";
 
 // Import Tiptap components and extensions for preview
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -62,7 +63,7 @@ import { ResizableImage } from 'tiptap-extension-resizable-image';
 
 // Form schema
 const baseSchema = z.object({
-  title: z.string().min(1, "O título é obrigatório"),
+  title: z.string().min(1, "O conteúdo é obrigatório"),
   text: z.string().min(1, "O enunciado é obrigatório"),
   educationStageId: z.string().min(1, "O curso é obrigatório"),
   subjectId: z.string().min(1, "A disciplina é obrigatória"),
@@ -127,8 +128,11 @@ interface QuestionFormProps {
   questionId?: string;
 }
 
-interface SkillOption extends Option {
+interface SkillOption {
+  id: string;
+  name: string;
   code: string;
+  description: string;
 }
 
 interface EditorContent {
@@ -352,8 +356,7 @@ const QuestionForm = ({
             return [];
           };
 
-          // Map API data to form values
-          form.reset({
+          const formData = {
             title: questionData.title || "",
             text: questionData.formattedText || questionData.text || "",
             educationStageId: questionData.educationStage?.id || "",
@@ -366,7 +369,10 @@ const QuestionForm = ({
             secondStatement: questionData.secondStatement || "",
             skills: normalizeSkills(questionData.skills),
             questionType: questionData.type === 'open' ? 'open' : 'multipleChoice',
-          });
+          };
+
+          // Map API data to form values
+          form.reset(formData);
           setQuestionType(questionData.type === 'open' ? 'open' : 'multipleChoice');
         } catch (error) {
           console.error("Erro ao buscar dados da questão:", error);
@@ -408,7 +414,15 @@ const QuestionForm = ({
         try {
           const response = await api.get(`/grades/education-stage/${selectedEducationStageId}`);
           setGrades(response.data);
-          form.setValue("grade", ""); // Reseta a série ao mudar de curso
+          
+          // Só reseta a série se não estivermos carregando uma questão existente
+          // ou se o usuário mudou o curso manualmente
+          const currentGradeValue = form.getValues("grade");
+          const isEditingExistingQuestion = questionId && currentGradeValue;
+          
+          if (!isEditingExistingQuestion) {
+            form.setValue("grade", ""); // Reseta a série apenas quando necessário
+          }
         } catch (error) {
           console.error("Erro ao buscar séries:", error);
           toast({
@@ -422,7 +436,7 @@ const QuestionForm = ({
       }
     };
     fetchGrades();
-  }, [selectedEducationStageId, form, toast]);
+  }, [selectedEducationStageId, form, toast, questionId]);
 
   useEffect(() => {
     const fetchSkills = async () => {
@@ -435,6 +449,7 @@ const QuestionForm = ({
               id: skill.id,
               name: `${skill.code} - ${skill.description}`,
               code: skill.code,
+              description: skill.description,
             }));
             setSkills(formattedSkills);
           } else {
@@ -476,8 +491,6 @@ const QuestionForm = ({
       return;
     }
 
-    const selectedGrade = grades.find(g => g.id === data.grade);
-
     const payload = {
       title: data.title,
       text: htmlToText(data.text),
@@ -486,6 +499,7 @@ const QuestionForm = ({
       subjectId: data.subjectId,
       educationStageId: data.educationStageId,
       grade: data.grade,
+      gradeId: data.grade, // Campo alternativo para compatibilidade
       difficulty: data.difficulty,
       value: data.value ? parseFloat(data.value) : 0,
       solution: data.solution ? htmlToText(data.solution) : "",
@@ -544,36 +558,36 @@ const QuestionForm = ({
     }
   };
 
-  const selectedSkills = (form.watch('skills') && Array.isArray(form.watch('skills')))
-    ? form.watch('skills').map((skillId: string) => {
-      const skill = skills.find(opt => opt.id === skillId);
-      return skill ? skill.name.substring(0, 6) : skillId;
-    })
-    : [];
+
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-end">
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setShowPreview(!showPreview)}
-            type="button"
-          >
-            <Eye className="h-4 w-4 mr-2" />
-            {showPreview ? "Editar" : "Visualizar"}
-          </Button>
-        </div>
+      {/* Botão de preview */}
+      <div className="flex justify-end">
+        <Button
+          variant="outline"
+          onClick={() => setShowPreview(!showPreview)}
+          type="button"
+          className="flex items-center gap-2"
+        >
+          <Eye className="h-4 w-4" />
+          {showPreview ? "Voltar à Edição" : "Visualizar"}
+        </Button>
       </div>
 
       {showPreview ? (
-        <div className="border rounded-lg p-4">
+        <div className="bg-gray-50 rounded-xl border-2 border-gray-200 p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Eye className="h-5 w-5 text-blue-600" />
+            <h3 className="text-lg font-semibold text-gray-800">Preview da Questão</h3>
+          </div>
           {(() => {
             const formData = form.getValues();
             const previewQuestion: Question = {
               id: 'preview',
               title: formData.title,
               text: formData.text,
+              formattedText: formData.text,
               type: formData.questionType,
               subjectId: formData.subjectId,
               subject: subjects.find(s => s.id === formData.subjectId) || { id: formData.subjectId, name: 'Carregando...' },
@@ -581,233 +595,354 @@ const QuestionForm = ({
               difficulty: formData.difficulty,
               value: formData.value,
               solution: formData.solution || '',
-              options: formData.questionType === 'multipleChoice' ? formData.options.map((o, i) => ({ ...o, id: `preview-${i}`, text: o.text || '', isCorrect: o.isCorrect || false })) : [],
+              formattedSolution: formData.solution || '',
+              options: formData.questionType === 'multipleChoice' ? formData.options.map((o, i) => ({ 
+                ...o, 
+                id: `preview-${i}`, 
+                text: o.text || '', 
+                isCorrect: o.isCorrect || false 
+              })) : [],
               skills: formData.skills || [],
-              created_by: user.id || '',
-              secondStatement: formData.secondStatement
+              created_by: user?.id || '',
+              secondStatement: formData.secondStatement,
+              educationStage: null
             };
             return <QuestionPreview question={previewQuestion} />;
           })()}
         </div>
       ) : (
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="title"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Título</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    {form.formState.errors.title && <FormMessage />}
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="educationStageId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Curso</FormLabel>
-                    <FormControl>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione o curso" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {educationStages.map((stage) => (
-                            <SelectItem key={stage.id} value={stage.id}>
-                              {stage.name}
+          <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-8">
+            
+            {/* Seção: Informações Básicas */}
+            <div className="bg-blue-50 rounded-xl p-6 border border-blue-200">
+              <div className="flex items-center gap-2 mb-4">
+                <Book className="h-5 w-5 text-blue-600" />
+                <h3 className="text-lg font-semibold text-gray-800">Informações Básicas</h3>
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+                <div className="sm:col-span-2">
+                  <FormField
+                    control={form.control}
+                    name="title"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm font-semibold text-gray-700">Conteúdo da Questão *</FormLabel>
+                        <FormControl>
+                          <Input 
+                            {...field} 
+                            placeholder="Ex: Propriedades dos números naturais"
+                            className="h-11 text-base"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="educationStageId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-semibold text-gray-700">Curso *</FormLabel>
+                      <FormControl>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <SelectTrigger className="h-11">
+                            <SelectValue placeholder="Selecione o curso" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {educationStages.map((stage) => (
+                              <SelectItem key={stage.id} value={stage.id}>
+                                {stage.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="subjectId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-semibold text-gray-700">Disciplina *</FormLabel>
+                      <FormControl>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <SelectTrigger className="h-11">
+                            <SelectValue placeholder="Selecione a disciplina" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {subjects.map((subject) => (
+                              <SelectItem key={subject.id} value={subject.id}>
+                                {subject.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="grade"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-semibold text-gray-700">Série *</FormLabel>
+                      <FormControl>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value}
+                          disabled={!selectedEducationStageId || grades.length === 0}
+                        >
+                          <SelectTrigger className="h-11">
+                            <SelectValue placeholder={selectedEducationStageId ? "Selecione a série" : "Selecione um curso primeiro"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {grades.map((grade) => (
+                              <SelectItem key={grade.id} value={grade.id}>
+                                {grade.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="difficulty"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-semibold text-gray-700">Dificuldade *</FormLabel>
+                      <FormControl>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <SelectTrigger className="h-11">
+                            <SelectValue placeholder="Selecione a dificuldade" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Fácil">
+                              <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                                Fácil
+                              </div>
                             </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </FormControl>
-                    {form.formState.errors.educationStageId && <FormMessage />}
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="subjectId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Disciplina</FormLabel>
-                    <FormControl>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione a disciplina" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {subjects.map((subject) => (
-                            <SelectItem key={subject.id} value={subject.id}>
-                              {subject.name}
+                            <SelectItem value="Médio">
+                              <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                                Médio
+                              </div>
                             </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </FormControl>
-                    {form.formState.errors.subjectId && <FormMessage />}
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="difficulty"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Dificuldade</FormLabel>
-                    <FormControl>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione a dificuldade" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Fácil">Fácil</SelectItem>
-                          <SelectItem value="Médio">Médio</SelectItem>
-                          <SelectItem value="Difícil">Difícil</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </FormControl>
-                    {form.formState.errors.difficulty && <FormMessage />}
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="value"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Valor</FormLabel>
-                    <FormControl>
-                      <Input {...field} type="number" step="0.1" />
-                    </FormControl>
-                    {form.formState.errors.value && <FormMessage />}
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="grade"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Série</FormLabel>
-                    <FormControl>
-                      <Select
-                        onValueChange={field.onChange}
-                        value={field.value}
-                        disabled={!selectedEducationStageId || grades.length === 0}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder={selectedEducationStageId ? "Selecione a série" : "Selecione um curso primeiro"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {grades.map((grade) => (
-                            <SelectItem key={grade.id} value={grade.id}>
-                              {grade.name}
+                            <SelectItem value="Difícil">
+                              <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                                Difícil
+                              </div>
                             </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </FormControl>
-                    {form.formState.errors.grade && <FormMessage />}
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="skills"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Habilidades</FormLabel>
-                    <FormControl>
-                      <MultiSelect
-                        options={skills}
-                        selected={field.value || []}
-                        onChange={field.onChange}
-                        placeholder={selectedSubjectId ? "Selecione as habilidades" : "Selecione uma disciplina primeiro"}
-                        className="w-full"
-                        label=""
-                      />
-                    </FormControl>
-                    {form.formState.errors.skills && <FormMessage />}
-                  </FormItem>
-                )}
-              />
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="value"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-semibold text-gray-700">Valor da Questão *</FormLabel>
+                      <FormControl>
+                        <Input 
+                          {...field} 
+                          type="number" 
+                          step="0.1" 
+                          placeholder="Ex: 2.5"
+                          className="h-11"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="skills"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-semibold text-gray-700">
+                        Habilidades (BNCC)
+                        <span className="text-gray-500 font-normal ml-1">
+                          {skills.length > 0 ? `(${skills.length} disponíveis)` : ''}
+                        </span>
+                      </FormLabel>
+                      <FormControl>
+                        <SkillsSelector
+                          skills={skills}
+                          selected={field.value || []}
+                          onChange={field.onChange}
+                          placeholder={selectedSubjectId ? "Clique para abrir o seletor de habilidades" : "Selecione uma disciplina primeiro"}
+                          disabled={!selectedSubjectId || skills.length === 0}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                      {(field.value || []).length > 0 && (
+                        <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                          <div className="text-sm font-medium text-blue-800 mb-2">
+                            Habilidades Selecionadas ({(field.value || []).length}):
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {(field.value || []).map((skillId: string) => {
+                              const skill = skills.find(opt => opt.id === skillId);
+                              return skill ? (
+                                <Badge key={skillId} variant="outline" className="text-xs bg-white border-blue-300">
+                                  {skill.code}
+                                </Badge>
+                              ) : null;
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </FormItem>
+                  )}
+                />
+              </div>
             </div>
-            <FormField
-              control={form.control}
-              name="text"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Enunciado</FormLabel>
-                  <FormControl>
-                    <MyEditor
-                      value={field.value}
-                      onChange={field.onChange}
-                    />
-                  </FormControl>
-                  {form.formState.errors.text && <FormMessage />}
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="secondStatement"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Segundo Enunciado (opcional)</FormLabel>
-                  <FormControl>
-                    <MyEditor
-                      value={field.value || ""}
-                      onChange={field.onChange}
-                    />
-                  </FormControl>
-                  {form.formState.errors.secondStatement && <FormMessage />}
-                </FormItem>
-              )}
-            />
-            <div className="flex items-center gap-4 mb-2">
-              <span className="font-medium">Tipo de Questão:</span>
-              <Button
-                type="button"
-                variant={questionType === 'multipleChoice' ? 'default' : 'outline'}
-                onClick={() => handleSetQuestionType('multipleChoice')}
-                className={questionType === 'multipleChoice' ? 'bg-primary text-white' : ''}
-              >
-                Múltipla Escolha
-              </Button>
-              <Button
-                type="button"
-                variant={questionType === 'open' ? 'default' : 'outline'}
-                onClick={() => handleSetQuestionType('open')}
-                className={questionType === 'open' ? 'bg-primary text-white' : ''}
-              >
-                Dissertativa
-              </Button>
+
+            {/* Seção: Tipo de Questão */}
+            <div className="bg-purple-50 rounded-xl p-6 border border-purple-200">
+              <div className="flex items-center gap-2 mb-4">
+                <ListIcon className="h-5 w-5 text-purple-600" />
+                <h3 className="text-lg font-semibold text-gray-800">Tipo de Questão</h3>
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <Button
+                  type="button"
+                  variant={questionType === 'multipleChoice' ? 'default' : 'outline'}
+                  size="lg"
+                  onClick={() => handleSetQuestionType('multipleChoice')}
+                  className={`w-full h-auto min-h-[4rem] p-4 ${questionType === 'multipleChoice' 
+                    ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg' 
+                    : 'hover:bg-purple-50 hover:border-purple-300'
+                  }`}
+                >
+                  <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3">
+                    <Check className="h-5 w-5 flex-shrink-0" />
+                    <div className="text-center sm:text-left">
+                      <div className="font-semibold text-sm sm:text-base">Múltipla Escolha</div>
+                      <div className="text-xs opacity-80 hidden sm:block">Questão com alternativas A, B, C, D...</div>
+                    </div>
+                  </div>
+                </Button>
+                
+                <Button
+                  type="button"
+                  variant={questionType === 'open' ? 'default' : 'outline'}
+                  size="lg"
+                  onClick={() => handleSetQuestionType('open')}
+                  className={`w-full h-auto min-h-[4rem] p-4 ${questionType === 'open' 
+                    ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg' 
+                    : 'hover:bg-purple-50 hover:border-purple-300'
+                  }`}
+                >
+                  <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3">
+                    <Type className="h-5 w-5 flex-shrink-0" />
+                    <div className="text-center sm:text-left">
+                      <div className="font-semibold text-sm sm:text-base">Dissertativa</div>
+                      <div className="text-xs opacity-80 hidden sm:block">Questão com resposta livre do aluno</div>
+                    </div>
+                  </div>
+                </Button>
+              </div>
             </div>
+
+            {/* Seção: Enunciados */}
+            <div className="bg-green-50 rounded-xl p-6 border border-green-200">
+              <div className="flex items-center gap-2 mb-4">
+                <Type className="h-5 w-5 text-green-600" />
+                <h3 className="text-lg font-semibold text-gray-800">Enunciados</h3>
+              </div>
+              
+              <div className="space-y-6">
+                <FormField
+                  control={form.control}
+                  name="text"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-semibold text-gray-700">Enunciado Principal *</FormLabel>
+                      <FormControl>
+                        <MyEditor
+                          value={field.value}
+                          onChange={field.onChange}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="secondStatement"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-semibold text-gray-700">
+                        Segundo Enunciado
+                        <span className="text-gray-500 font-normal ml-1">(opcional)</span>
+                      </FormLabel>
+                      <FormControl>
+                        <MyEditor
+                          value={field.value || ""}
+                          onChange={field.onChange}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
+
+            {/* Seção: Alternativas (apenas para múltipla escolha) */}
             {questionType === 'multipleChoice' && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label className="mb-0">Alternativas</Label>
+              <div className="bg-orange-50 rounded-xl p-6 border border-orange-200">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Check className="h-5 w-5 text-orange-600" />
+                    <h3 className="text-lg font-semibold text-gray-800">Alternativas</h3>
+                  </div>
                   {fields.length < 5 && (
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
                       onClick={() => append({ text: "", isCorrect: false })}
+                      className="flex items-center gap-2 border-orange-300 text-orange-700 hover:bg-orange-100"
                     >
-                      <Plus className="h-4 w-4 mr-2" />
+                      <Plus className="h-4 w-4" />
                       Adicionar Alternativa
                     </Button>
                   )}
                 </div>
+                
                 <div className="space-y-4">
                   {fields.map((field, index) => (
-                    <div key={field.id} className="flex items-center gap-2">
+                    <div key={field.id} className="flex items-center gap-4 p-4 bg-white rounded-lg border border-gray-200 shadow-sm">
                       <button
                         type="button"
                         onClick={() => {
@@ -815,71 +950,124 @@ const QuestionForm = ({
                             form.setValue(`options.${i}.isCorrect`, i === index);
                           });
                         }}
-                        className={`w-6 h-6 rounded-full border flex items-center justify-center transition-colors ${form.watch("options")[index].isCorrect ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground'}`}
+                        className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${
+                          form.watch("options")[index].isCorrect 
+                            ? 'bg-green-500 border-green-500 text-white shadow-lg' 
+                            : 'bg-white border-gray-300 hover:border-gray-400'
+                        }`}
                         aria-label={`Marcar alternativa ${String.fromCharCode(65 + index)} como correta`}
                       >
                         {form.watch("options")[index].isCorrect ? <Check className="w-4 h-4" /> : null}
                       </button>
-                      <Label className="text-sm text-muted-foreground">
+                      
+                      <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center font-semibold text-gray-600">
                         {String.fromCharCode(65 + index)}
-                      </Label>
+                      </div>
+                      
                       <FormField
                         control={form.control}
                         name={`options.${index}.text`}
                         render={({ field }) => (
                           <FormItem className="flex-1">
                             <FormControl>
-                              <Input {...field} />
+                              <Input 
+                                {...field} 
+                                placeholder={`Digite a alternativa ${String.fromCharCode(65 + index)}`}
+                                className="h-11 text-base"
+                              />
                             </FormControl>
-                            {form.formState.errors.options?.[index]?.text && (
-                              <FormMessage />
-                            )}
+                            <FormMessage />
                           </FormItem>
                         )}
                       />
-                      {fields.length > 1 && (
-                        <button
+                      
+                      {fields.length > 2 && (
+                        <Button
                           type="button"
+                          variant="ghost"
+                          size="sm"
                           onClick={() => remove(index)}
-                          className="ml-2 text-destructive hover:bg-destructive/10 rounded p-1"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
                           aria-label="Remover alternativa"
                         >
                           <Trash className="w-4 h-4" />
-                        </button>
+                        </Button>
                       )}
                     </div>
                   ))}
                 </div>
+                
+                {form.formState.errors.options && (
+                  <p className="text-red-600 text-sm mt-2">
+                    {form.formState.errors.options.message}
+                  </p>
+                )}
               </div>
             )}
-            <FormField
-              control={form.control}
-              name="solution"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Solução</FormLabel>
-                  <FormControl>
-                    <MyEditor
-                      value={field.value}
-                      onChange={field.onChange}
-                    />
-                  </FormControl>
-                  {form.formState.errors.solution && (
+
+            {/* Seção: Resolução */}
+            <div className="bg-indigo-50 rounded-xl p-6 border border-indigo-200">
+              <div className="flex items-center gap-2 mb-4">
+                <Save className="h-5 w-5 text-indigo-600" />
+                <h3 className="text-lg font-semibold text-gray-800">
+                  Resolução
+                  <span className="text-gray-500 font-normal ml-1">(opcional)</span>
+                </h3>
+              </div>
+              
+              <FormField
+                control={form.control}
+                name="solution"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-semibold text-gray-700">
+                      Explicação detalhada da resolução
+                    </FormLabel>
+                    <FormControl>
+                      <MyEditor
+                        value={field.value || ""}
+                        onChange={field.onChange}
+                      />
+                    </FormControl>
                     <FormMessage />
-                  )}
-                </FormItem>
-              )}
-            />
-            <div className="flex justify-end gap-2">
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* Botões de ação */}
+            <div className="flex flex-col sm:flex-row sm:justify-end gap-3 sm:gap-4 pt-6 border-t border-gray-200">
               <Button
                 type="button"
                 variant="outline"
                 onClick={onClose}
+                size="lg"
+                className="w-full sm:w-auto px-6 sm:px-8 order-2 sm:order-1"
               >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Salvando..." : "Salvar"}
+              <Button 
+                type="submit" 
+                disabled={isSubmitting}
+                size="lg"
+                className="w-full sm:w-auto px-6 sm:px-8 bg-blue-600 hover:bg-blue-700 order-1 sm:order-2"
+              >
+                {isSubmitting ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Salvando...</span>
+                  </div>
+                ) : questionId ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <Save className="h-4 w-4" />
+                    <span>Atualizar Questão</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center gap-2">
+                    <Plus className="h-4 w-4" />
+                    <span>Criar Questão</span>
+                  </div>
+                )}
               </Button>
             </div>
           </form>

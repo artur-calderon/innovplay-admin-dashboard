@@ -64,22 +64,25 @@ const questions: Question[] = [
 
 export default function QuestionsTable() {
   return (
-    <div className="bg-white p-4 rounded-xl shadow">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-semibold">Tabela de Questões</h2>
-        <div className="space-x-2">
-          <Button variant="outline" size="sm">
-            <Edit className="mr-2 h-4 w-4" />
-            Editar Pesos
+    <div className="mobile-card">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+        <h2 className="mobile-subtitle font-semibold">Tabela de Questões</h2>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" className="mobile-button text-xs sm:text-sm">
+            <Edit className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Editar Pesos</span>
+            <span className="sm:hidden">Editar</span>
           </Button>
-          <Button size="sm">
-            <Plus className="mr-2 h-4 w-4" />
-            Adicionar
+          <Button size="sm" className="mobile-button text-xs sm:text-sm">
+            <Plus className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Adicionar</span>
+            <span className="sm:hidden">Novo</span>
           </Button>
         </div>
       </div>
       
-      <div className="overflow-x-auto">
+      {/* Desktop Table */}
+      <div className="hidden lg:block overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -110,6 +113,27 @@ export default function QuestionsTable() {
             ))}
           </TableBody>
         </Table>
+      </div>
+
+      {/* Mobile Cards */}
+      <div className="lg:hidden space-y-3">
+        {questions.map((question) => (
+          <div key={question.id} className="border rounded-lg p-3 bg-gray-50">
+            <div className="flex justify-between items-start mb-2">
+              <h3 className="font-medium text-sm">{question.question}</h3>
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                <Edit className="h-3 w-3" />
+              </Button>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+              <div><span className="font-medium">Nível:</span> {question.level}</div>
+              <div><span className="font-medium">Série:</span> {question.series}</div>
+              <div><span className="font-medium">Disciplina:</span> {question.discipline}</div>
+              <div><span className="font-medium">Dificuldade:</span> {question.difficulty}</div>
+              <div><span className="font-medium">Peso:</span> {question.weight}</div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

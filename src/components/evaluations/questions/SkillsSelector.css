@@ -1,0 +1,49 @@
+/* SkillsSelector Custom Styles */
+
+/* Garantir que o dialog overlay seja completamente opaco */
+[data-radix-dialog-overlay] {
+  background-color: rgba(0, 0, 0, 0.5) !important;
+  backdrop-filter: blur(4px) !important;
+}
+
+/* Garantir que o content tenha fundo sólido */
+[data-radix-dialog-content] {
+  background-color: white !important;
+  border: 1px solid #e5e7eb !important;
+}
+
+/* Melhorar z-index do dialog */
+.skills-selector-dialog {
+  z-index: 9999 !important;
+}
+
+/* Garantir que sticky headers tenham fundo opaco */
+.skills-category-header {
+  background-color: white !important;
+  backdrop-filter: blur(8px) !important;
+}
+
+/* Melhorar contraste das habilidades selecionadas */
+.skill-item-selected {
+  background-color: #eff6ff !important;
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 1px #3b82f6 !important;
+}
+
+/* Garantir que o scroll area tenha fundo sólido */
+.skills-scroll-area {
+  background-color: white !important;
+}
+
+/* Melhorar a sidebar */
+.skills-sidebar {
+  background-color: #f9fafb !important;
+  border-right: 1px solid #e5e7eb !important;
+}
+
+/* Footer sempre visível e sólido */
+.skills-footer {
+  background-color: white !important;
+  border-top: 1px solid #e5e7eb !important;
+  box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+} 
