@@ -21,7 +21,8 @@ import {
   BookOpen,
   Building,
   Users2,
-  HelpCircle
+  HelpCircle,
+  X
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -29,7 +30,6 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/context/authContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 type SidebarLink = {
   icon: React.ElementType;
@@ -59,7 +59,11 @@ const isLinkActive = (link: SidebarLink, currentPath: string): boolean => {
   return false;
 };
 
-export default function Sidebar() {
+interface SidebarProps {
+  onMobileMenuClose?: () => void;
+}
+
+export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
   const currentPath = useLocation().pathname;
   const isMobile = useIsMobile();
 
@@ -72,8 +76,15 @@ export default function Sidebar() {
     });
   }
 
-  // Always collapsed on mobile, always expanded on desktop
-  const isCollapsed = isMobile;
+  // Função para fechar menu mobile quando um link for clicado
+  const handleLinkClick = () => {
+    if (isMobile && onMobileMenuClose) {
+      onMobileMenuClose();
+    }
+  };
+
+  // No mobile sempre expandida quando visível, no desktop sempre expandida
+  const isCollapsed = false;
 
   // Organize links by categories for better UX
   const sidebarCategories: SidebarCategory[] = [
@@ -217,27 +228,19 @@ export default function Sidebar() {
 
   // User info component
   const UserInfo = () => (
-    <div className={cn(
-      "p-4 border-b border-white/10",
-      isCollapsed ? "px-2" : "px-4"
-    )}>
-      <div className={cn(
-        "flex items-center",
-        isCollapsed ? "justify-center" : "gap-3"
-      )}>
+    <div className="p-4 border-b border-white/10">
+      <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white font-semibold flex-shrink-0">
           {user?.name ? user.name.charAt(0).toUpperCase() : "U"}
         </div>
-        {!isCollapsed && (
-          <div className="flex-1 min-w-0">
-            <p className="text-white font-medium text-sm truncate">
-              {user?.name || "Usuário"}
-            </p>
-            <p className="text-white/70 text-xs truncate capitalize">
-              {user?.role || "Usuário"}
-            </p>
-          </div>
-        )}
+        <div className="flex-1 min-w-0">
+          <p className="text-white font-medium text-sm truncate">
+            {user?.name || "Usuário"}
+          </p>
+          <p className="text-white/70 text-xs truncate capitalize">
+            {user?.role || "Usuário"}
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -282,31 +285,27 @@ export default function Sidebar() {
       <div className="flex items-center justify-between w-full">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <link.icon size={18} className="flex-shrink-0" />
-          {!isCollapsed && (
-            <span className="truncate text-sm font-medium">{link.label}</span>
+          <span className="truncate text-sm font-medium">{link.label}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {link.badge && (
+            <Badge 
+              variant="secondary" 
+              className="bg-white/20 text-white text-xs px-1.5 py-0.5 h-5"
+            >
+              {link.badge}
+            </Badge>
+          )}
+          {hasSubmenu && (
+            <ChevronDown 
+              size={14} 
+              className={cn(
+                "transition-transform duration-200",
+                isSubmenuOpen && "rotate-180"
+              )}
+            />
           )}
         </div>
-        {!isCollapsed && (
-          <div className="flex items-center gap-2">
-            {link.badge && (
-              <Badge 
-                variant="secondary" 
-                className="bg-white/20 text-white text-xs px-1.5 py-0.5 h-5"
-              >
-                {link.badge}
-              </Badge>
-            )}
-            {hasSubmenu && (
-              <ChevronDown 
-                size={14} 
-                className={cn(
-                  "transition-transform duration-200",
-                  isSubmenuOpen && "rotate-180"
-                )}
-              />
-            )}
-          </div>
-        )}
       </div>
     );
 
@@ -320,55 +319,26 @@ export default function Sidebar() {
     );
 
     const menuItem = (
-      <li className={cn(link.divider && !isCollapsed && "border-t border-white/10 pt-2 mt-2")}>
+      <li className={cn(link.divider && "border-t border-white/10 pt-2 mt-2")}>
         {link.label === "Sair" ? (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button onClick={handleLogout} className={itemClasses}>
-                  {linkContent}
-                </button>
-              </TooltipTrigger>
-              {isCollapsed && (
-                <TooltipContent side="right" className="bg-gray-900 text-white">
-                  <p>{link.label}</p>
-                </TooltipContent>
-              )}
-            </Tooltip>
-          </TooltipProvider>
+          <button onClick={handleLogout} className={itemClasses}>
+            {linkContent}
+          </button>
         ) : hasSubmenu ? (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button onClick={handleToggleSubmenu} className={itemClasses}>
-                  {linkContent}
-                </button>
-              </TooltipTrigger>
-              {isCollapsed && (
-                <TooltipContent side="right" className="bg-gray-900 text-white">
-                  <p>{link.label}</p>
-                </TooltipContent>
-              )}
-            </Tooltip>
-          </TooltipProvider>
+          <button onClick={handleToggleSubmenu} className={itemClasses}>
+            {linkContent}
+          </button>
         ) : (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Link to={link.href || "#"} className={itemClasses}>
-                  {linkContent}
-                </Link>
-              </TooltipTrigger>
-              {isCollapsed && (
-                <TooltipContent side="right" className="bg-gray-900 text-white">
-                  <p>{link.label}</p>
-                </TooltipContent>
-              )}
-            </Tooltip>
-          </TooltipProvider>
+          <Link 
+            to={link.href || "#"} 
+            className={itemClasses}
+            onClick={handleLinkClick}
+          >
+            {linkContent}
+          </Link>
         )}
 
-        {hasSubmenu && !isCollapsed && isSubmenuOpen && (
+        {hasSubmenu && isSubmenuOpen && (
           <ul className="space-y-1 ml-2 mt-1 border-l border-white/10 pl-3">
             {link.children?.map(child => (
               <RenderMenuItem 
@@ -390,27 +360,47 @@ export default function Sidebar() {
   }
 
   // Category separator component
-  const CategorySeparator = ({ name, isCollapsed }: { name: string; isCollapsed: boolean }) => (
-    !isCollapsed && (
-      <div className="px-3 pt-6 pb-2 first:pt-2">
-        <h3 className="text-white/50 text-xs font-medium uppercase tracking-wider">
-          {name}
-        </h3>
-      </div>
-    )
+  const CategorySeparator = ({ name }: { name: string }) => (
+    <div className="px-3 pt-6 pb-2 first:pt-2">
+      <h3 className="text-white/50 text-xs font-medium uppercase tracking-wider">
+        {name}
+      </h3>
+    </div>
   );
 
   return (
     <div
       className={cn(
         "sidebar-gradient min-h-screen h-full flex flex-col transition-all duration-300 z-50 relative",
-        isCollapsed ? "w-16" : "w-64"
+        isMobile ? "w-screen" : "w-64"
       )}
     >
-      {/* Logo Section */}
-      <div className="p-4 border-b border-white/10">
-        <div className={cn("flex items-center", isCollapsed && "justify-center")}>
-          {!isCollapsed ? (
+      {/* Mobile Header with Close Button */}
+      {isMobile && (
+        <div className="flex items-center justify-between p-4 border-b border-white/10">
+          <img 
+            width="150px" 
+            height="40px" 
+            src="/LOGO-1-menor.png" 
+            alt="Logo"
+            className="object-contain"
+          />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 text-white/70 hover:text-white hover:bg-white/10"
+            onClick={onMobileMenuClose}
+          >
+            <X className="h-5 w-5" />
+            <span className="sr-only">Fechar menu</span>
+          </Button>
+        </div>
+      )}
+
+      {/* Desktop Logo Section */}
+      {!isMobile && (
+        <div className="p-4 border-b border-white/10">
+          <div className="flex items-center justify-center">
             <img 
               width="180px" 
               height="48px" 
@@ -418,26 +408,16 @@ export default function Sidebar() {
               alt="Logo"
               className="object-contain"
             />
-          ) : (
-            <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
-              <img 
-                width="24px" 
-                height="24px" 
-                src="/ico.png" 
-                alt="Logo"
-                className="object-contain"
-              />
-            </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* User Info */}
       <UserInfo />
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto custom-scrollbar">
-        <div className="px-2 pb-4">
+        <div className={cn("px-2 pb-4", isMobile && "pb-8")}>
           {sidebarCategories.map(category => {
             // Check if user has permission for this category
             const hasPermission = category.role.includes(user.role);
@@ -445,7 +425,7 @@ export default function Sidebar() {
 
             return (
               <div key={category.name}>
-                <CategorySeparator name={category.name} isCollapsed={isCollapsed} />
+                <CategorySeparator name={category.name} />
                 <ul className="space-y-1">
                   {category.links.map(link => (
                     <RenderMenuItem

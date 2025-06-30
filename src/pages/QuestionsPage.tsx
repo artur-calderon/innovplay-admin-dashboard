@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Eye, Pencil, Trash2, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown } from "lucide-react";
+import { Plus, Eye, Pencil, Trash2, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown, Copy } from "lucide-react";
 import { Question } from "@/components/evaluations/types";
 import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
@@ -384,7 +384,7 @@ const QuestionsPage = () => {
         // Carregar subjects e grades em paralelo, sem bloquear questões
         const promises = [
           api.get("/subjects").then(res => setSubjects(res.data)),
-          api.get("/grades").then(res => setGrades(res.data))
+          api.get("/grades/").then(res => setGrades(res.data))
         ];
         
         await Promise.allSettled(promises);
@@ -472,10 +472,10 @@ const QuestionsPage = () => {
       }
 
       if (isDebugMode) {
-        console.log('📡 Fazendo requisição para /questions com params:', params);
+        console.log('📡 Fazendo requisição para /questions/ com params:', params);
       }
       
-      let response = await api.get("/questions", { params });
+      let response = await api.get("/questions/", { params });
       
       // Se professor não recebeu questões, tentar abordagem alternativa
       if (user.role === 'professor' && filterType === 'all' && 
@@ -484,7 +484,7 @@ const QuestionsPage = () => {
         
         try {
           // Tentar sem parâmetros especiais
-          response = await api.get("/questions");
+          response = await api.get("/questions/");
           console.log('🆔 Tentativa sem parâmetros:', response.data?.length);
         } catch (altError) {
           console.log('❌ Falha na tentativa alternativa');
@@ -751,6 +751,65 @@ const QuestionsPage = () => {
     }
   };
 
+  const handleDuplicate = async (question: Question) => {
+    try {
+      // Criar uma cópia da questão sem o ID e com título modificado
+      const duplicatedQuestion = {
+        title: `[CÓPIA] ${question.title}`,
+        text: question.text,
+        formattedText: question.formattedText || question.text,
+        second_statement: question.secondStatement,
+        type: question.type,
+        subjectId: question.subject?.id || question.subjectId,
+        grade: question.grade?.id,
+        gradeId: question.grade?.id,
+        difficulty: question.difficulty,
+        value: parseFloat(question.value) || 0,
+        solution: question.solution || "",
+        formattedSolution: question.formattedSolution || question.solution || "",
+        skills: question.skills || [],
+        options: question.options?.map(opt => ({ text: opt.text, isCorrect: opt.isCorrect })) || [],
+        created_by: user?.id,
+        createdBy: user?.id,
+        lastModifiedBy: user?.id
+      };
+
+      console.log("📤 Payload sendo enviado:", duplicatedQuestion);
+
+      const response = await api.post("/questions", duplicatedQuestion);
+      
+      console.log("✅ Resposta da API:", response.data);
+      
+      toast({
+        title: "Questão duplicada! 🎉",
+        description: "Uma cópia da questão foi criada com sucesso.",
+      });
+      
+      // Atualizar a lista de questões
+      fetchQuestions(false, true);
+    } catch (error: unknown) {
+      console.error("❌ Erro ao duplicar questão:", error);
+      
+      let errorMessage = "Erro desconhecido";
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        // Se for um erro do axios, tentar acessar a resposta
+        if ('response' in error && error.response && typeof error.response === 'object') {
+          const response = error.response as { data?: { message?: string } };
+          console.error("📄 Detalhes do erro:", response.data);
+          errorMessage = response.data?.message || error.message;
+        }
+      }
+      
+      toast({
+        title: "Erro ao duplicar questão",
+        description: `Erro: ${errorMessage}`,
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
       setSelectedIds(paginatedQuestions.map((q) => q.id));
@@ -961,7 +1020,11 @@ const QuestionsPage = () => {
     const handleView = useCallback(() => setViewQuestion(question), [question]);
     const handleEdit = useCallback(() => navigate(`/app/cadastros/questao/editar/${question.id}`), [question.id]);
     const handleDeleteClick = useCallback(() => setDeleteQuestionId(question.id), [question.id]);
+    const handleDuplicateClick = useCallback(() => handleDuplicate(question), [question]);
     const handleSelect = useCallback((checked: boolean) => handleSelectOne(question.id, checked), [question.id]);
+    
+    // Verificar se usuário pode editar/deletar (se é o criador ou admin)
+    const canEditDelete = user?.id === question.created_by || user?.role === 'admin';
 
     return (
       <div 
@@ -1029,21 +1092,34 @@ const QuestionsPage = () => {
             <Button 
               variant="ghost" 
               size="sm" 
-              onClick={handleEdit}
-              className="h-8 w-8 p-0 hover:bg-orange-100"
-              title="Editar"
+              onClick={handleDuplicateClick}
+              className="h-8 w-8 p-0 hover:bg-green-100"
+              title="Duplicar questão"
             >
-              <Pencil className="h-3.5 w-3.5" />
+              <Copy className="h-3.5 w-3.5" />
             </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={handleDeleteClick}
-              className="h-8 w-8 p-0 hover:bg-red-100"
-              title="Excluir"
-            >
-              <Trash2 className="h-3.5 w-3.5 text-destructive" />
-            </Button>
+            {canEditDelete && (
+              <>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={handleEdit}
+                  className="h-8 w-8 p-0 hover:bg-orange-100"
+                  title="Editar"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={handleDeleteClick}
+                  className="h-8 w-8 p-0 hover:bg-red-100"
+                  title="Excluir"
+                >
+                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -1313,15 +1389,42 @@ const QuestionsPage = () => {
                     <td className="px-3 py-2 text-sm font-mono">{question.value}</td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => setViewQuestion(question)}>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => setViewQuestion(question)}
+                          title="Visualizar"
+                        >
                           <Eye className="h-3 w-3" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => navigate(`/app/cadastros/questao/editar/${question.id}`)}>
-                          <Pencil className="h-3 w-3" />
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => handleDuplicate(question)}
+                          title="Duplicar questão"
+                        >
+                          <Copy className="h-3 w-3" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => setDeleteQuestionId(question.id)}>
-                          <Trash2 className="h-3 w-3 text-destructive" />
-                        </Button>
+                        {(user?.id === question.created_by || user?.role === 'admin') && (
+                          <>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => navigate(`/app/cadastros/questao/editar/${question.id}`)}
+                              title="Editar"
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => setDeleteQuestionId(question.id)}
+                              title="Excluir"
+                            >
+                              <Trash2 className="h-3 w-3 text-destructive" />
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>

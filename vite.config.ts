@@ -19,4 +19,10 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  define: {
+    // Definir variáveis de ambiente se não estiverem definidas
+    __VITE_API_BASE_URL__: JSON.stringify(process.env.VITE_API_BASE_URL || 'http://localhost:5000'),
+    __VITE_DEBUG_MODE__: JSON.stringify(process.env.VITE_DEBUG_MODE || 'false'),
+  },
+  envPrefix: 'VITE_', // Prefixo para variáveis de ambiente
 }));
