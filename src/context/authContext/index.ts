@@ -62,8 +62,11 @@ export const useAuth = create<AuthContext>((set) => ({
             set({user: response.data.user})
 
             return response;
-        } catch (e) {
-            toast.error("Erro ao autenticar!")
+        } catch (e: any) {
+            console.error("Erro no login:", e);
+            const errorMessage = e.response?.data?.erro || e.response?.data?.error || "Erro ao autenticar!";
+            toast.error(errorMessage);
+            throw e;
         } finally {
             set({ loading: false })
         }
@@ -72,6 +75,9 @@ export const useAuth = create<AuthContext>((set) => ({
         try {
             await api.post("/logout/")
             localStorage.removeItem('token')
+            
+            delete axios.defaults.headers.common['Authorization']
+            
             set({
                 user: {
                     id: '',
@@ -90,8 +96,9 @@ export const useAuth = create<AuthContext>((set) => ({
                 }
             })
             window.location.href = '/';
-        } catch (e) {
-            toast.error("Não foi possivel deslogar", e)
+        } catch (e: any) {
+            console.error("Erro no logout:", e);
+            toast.error("Não foi possível deslogar");
         }
     },
     persistUser: async () => {
@@ -101,12 +108,16 @@ export const useAuth = create<AuthContext>((set) => ({
                 return false;
             }
 
-            // Configura o token no header
             api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
             
             const response = await api.get('/persist-user/');
-            if (response.data) {
-                // Mantém os dados existentes do usuário e atualiza apenas o necessário
+            if (response.data && response.data.user) {
+                if (response.data.token) {
+                    localStorage.setItem('token', response.data.token);
+                    api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
+                    axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
+                }
+                
                 set((state) => ({ 
                     user: {
                         ...state.user,
@@ -116,9 +127,11 @@ export const useAuth = create<AuthContext>((set) => ({
                 return true;
             }
             return false;
-        } catch (e) {
+        } catch (e: any) {
             console.error('Erro ao persistir usuário:', e);
             localStorage.removeItem('token');
+            delete api.defaults.headers.common['Authorization'];
+            delete axios.defaults.headers.common['Authorization'];
             return false;
         }
     }

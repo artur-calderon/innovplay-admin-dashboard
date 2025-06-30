@@ -88,7 +88,7 @@ const QuestionPreview: React.FC<{ data: QuestionFormValues }> = ({ data }) => {
         };
         const fetchGrades = async () => {
             try {
-                const response = await api.get("/grades");
+                const response = await api.get("/grades/");
                 setGrades(response.data);
             } catch (error) {
                 console.error("Erro ao buscar séries:", error);

@@ -189,7 +189,7 @@ export const useDataContext = create<DataProps>(set => {
         getAvaliacoes: async () => {
             try {
                 
-                const response = await api.get("/tests/")
+                const response = await api.get("/test/")
                 set({avaliacoes: response.data})
             } catch (error) {
                 toast.error("Erro ao receber avaliacoes", error)

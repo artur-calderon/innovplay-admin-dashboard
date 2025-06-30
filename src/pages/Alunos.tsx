@@ -29,45 +29,11 @@ import { useAuth } from "@/context/authContext";
 import StudentEvaluations from "@/components/evaluations/StudentEvaluations";
 import { useDataContext } from "@/context/dataContext";
 
-// Mock data for evaluations
-const mockEvaluations = [
-  {
-    id: "1",
-    title: "Avaliação de Matemática - Álgebra",
-    subject: "Matemática",
-    grade: "9º Ano",
-    questionCount: 10,
-    creationDate: "2023-05-15",
-  },
-  {
-    id: "2",
-    title: "Avaliação de Português - Interpretação de Texto",
-    subject: "Português",
-    grade: "7º Ano",
-    questionCount: 8,
-    creationDate: "2023-04-10",
-  },
-  {
-    id: "3",
-    title: "Avaliação de Ciências - Sistema Solar",
-    subject: "Ciências",
-    grade: "6º Ano",
-    questionCount: 12,
-    creationDate: "2023-06-22",
-  },
-  {
-    id: "4",
-    title: "Avaliação de História - Brasil Império",
-    subject: "História",
-    grade: "8º Ano",
-    questionCount: 15,
-    creationDate: "2023-03-30",
-  },
-];
+// Mock data removed - using real API data now
 
 export default function Evaluations() {
   const { user } = useAuth();
-  const [evaluations, setEvaluations] = useState(mockEvaluations);
+  const [evaluations, setEvaluations] = useState([]);
   const [activeTab, setActiveTab] = useState("ready");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);

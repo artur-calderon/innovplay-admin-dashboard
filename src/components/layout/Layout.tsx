@@ -90,7 +90,7 @@ export default function Layout() {
         isMobileMenuOpen ? "translate-x-0" : "-translate-x-full",
         "md:block"
       )}>
-        <Sidebar />
+        <Sidebar onMobileMenuClose={() => setIsMobileMenuOpen(false)} />
       </aside>
 
       {/* Dark overlay when mobile menu is open */}
