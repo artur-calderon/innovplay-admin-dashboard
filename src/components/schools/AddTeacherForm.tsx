@@ -58,15 +58,10 @@ export function AddTeacherForm({ schoolId, schoolName, classes, onSuccess }: Add
         birthDate: "",
     });
 
-    // Verificar se o usuário tem permissão
-    if (user?.role !== "admin" && user?.role !== "tecadmin") {
-        return null;
-    }
-
     // Carregar professores ao abrir o modal
     useEffect(() => {
         const fetchTeachers = async () => {
-            if (!isOpen) return;
+            if (!isOpen || !user || (user.role !== "admin" && user.role !== "tecadmin")) return;
 
             setIsLoading(true);
             try {
@@ -88,7 +83,7 @@ export function AddTeacherForm({ schoolId, schoolName, classes, onSuccess }: Add
         };
 
         fetchTeachers();
-    }, [isOpen, schoolId, toast]);
+    }, [isOpen, schoolId, toast, user]);
 
     // Filtrar professores quando o termo de busca mudar
     useEffect(() => {
@@ -104,6 +99,11 @@ export function AddTeacherForm({ schoolId, schoolName, classes, onSuccess }: Add
         );
         setFilteredTeachers(filtered);
     }, [searchTerm, allTeachers]);
+
+    // Verificar se o usuário tem permissão
+    if (!user || (user.role !== "admin" && user.role !== "tecadmin")) {
+        return null;
+    }
 
     const handleTeacherSelect = (teacherId: string) => {
         const teacher = allTeachers.find((t) => t.id === teacherId);

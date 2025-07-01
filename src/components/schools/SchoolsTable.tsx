@@ -27,10 +27,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
-import { toast } from "react-toastify";
+import { useToast } from "@/hooks/use-toast";
 import SchoolForm from "./SchoolForm";
-import { useDataContext } from "@/context/dataContext";
 import { api } from "@/lib/api";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface City {
   id: string;
@@ -46,55 +46,119 @@ interface School {
   address: string;
   domain: string;
   created_at: string;
+  students_count?: number;
+  classes_count?: number;
   city: City;
 }
 
 export default function SchoolsTable() {
   const navigate = useNavigate();
-  const { escolas, getEscolas } = useDataContext();
+  const [schools, setSchools] = useState<School[]>([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [currentSchool, setCurrentSchool] = useState<School | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoadingSchools, setIsLoadingSchools] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
-    const fetchSchools = async () => {
-      setIsLoadingSchools(true);
-      try {
-        await getEscolas();
-      } finally {
-        setIsLoadingSchools(false);
-      }
-    };
     fetchSchools();
-  }, [getEscolas]);
+  }, []);
+
+  const fetchSchools = async () => {
+    try {
+      setIsLoadingSchools(true);
+      const response = await api.get("/school");
+      setSchools(response.data || []);
+    } catch (error) {
+      console.error("Error fetching schools:", error);
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar escolas. Verifique sua conexão.",
+        variant: "destructive",
+      });
+      setSchools([]);
+    } finally {
+      setIsLoadingSchools(false);
+    }
+  };
 
   // Filter schools based on search query
-  const filteredSchools = escolas?.filter((school) =>
-    school.name.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredSchools = schools?.filter((school) =>
+    school.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    school.city?.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    school.address?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   // Handler for adding a school
-  const handleAddSchool = (schoolData: School) => {
-    getEscolas(); // Refresh the schools list
-    setIsAddDialogOpen(false);
+  const handleAddSchool = async (schoolData: Partial<School>) => {
+    try {
+      await api.post("/school", schoolData);
+      await fetchSchools(); // Refresh the schools list
+      setIsAddDialogOpen(false);
+      toast({
+        title: "Sucesso",
+        description: "Escola criada com sucesso!",
+      });
+    } catch (error: any) {
+      console.error("Error creating school:", error);
+      toast({
+        title: "Erro",
+        description: error.response?.data?.error || "Erro ao criar escola",
+        variant: "destructive",
+      });
+    }
   };
 
   // Handler for editing a school
-  const handleEditSchool = (schoolData: School) => {
-    getEscolas(); // Refresh the schools list
-    setIsEditDialogOpen(false);
-    toast.success("Escola atualizada com sucesso!");
+  const handleEditSchool = async (schoolData: Partial<School>) => {
+    if (!currentSchool) return;
+    
+    try {
+      await api.put(`/school/${currentSchool.id}`, schoolData);
+      await fetchSchools(); // Refresh the schools list
+      setIsEditDialogOpen(false);
+      setCurrentSchool(null);
+      toast({
+        title: "Sucesso",
+        description: "Escola atualizada com sucesso!",
+      });
+    } catch (error: any) {
+      console.error("Error updating school:", error);
+      toast({
+        title: "Erro",
+        description: error.response?.data?.error || "Erro ao atualizar escola",
+        variant: "destructive",
+      });
+    }
   };
 
   // Handler for deleting a school
-  const handleDeleteSchool = () => {
+  const handleDeleteSchool = async () => {
     if (!currentSchool) return;
-    getEscolas(); // Refresh the schools list
-    setIsDeleteDialogOpen(false);
-    toast.success("Escola removida com sucesso!");
+    
+    try {
+      setIsDeleting(true);
+      await api.delete(`/school/${currentSchool.id}`);
+      await fetchSchools(); // Refresh the schools list
+      setIsDeleteDialogOpen(false);
+      setCurrentSchool(null);
+      toast({
+        title: "Sucesso",
+        description: "Escola excluída com sucesso!",
+      });
+    } catch (error: any) {
+      console.error("Error deleting school:", error);
+      toast({
+        title: "Erro",
+        description: error.response?.data?.error || "Erro ao excluir escola",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   // Handler for viewing a school
@@ -102,12 +166,40 @@ export default function SchoolsTable() {
     navigate(`/app/escola/${schoolId}`);
   };
 
+  if (isLoadingSchools) {
+    return (
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <Skeleton className="h-9 w-48" />
+          <Skeleton className="h-10 w-32" />
+        </div>
+        <Skeleton className="h-10 w-64" />
+        <div className="space-y-3">
+          {[...Array(5)].map((_, index) => (
+            <div key={index} className="flex space-x-4">
+              <Skeleton className="h-12 flex-1" />
+              <Skeleton className="h-12 w-32" />
+              <Skeleton className="h-12 w-24" />
+              <Skeleton className="h-12 w-32" />
+              <Skeleton className="h-12 w-32" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-bold">Escolas</h2>
+        <div>
+          <h2 className="text-3xl font-bold">Escolas</h2>
+          <p className="text-muted-foreground">
+            Gerencie as escolas cadastradas no sistema
+          </p>
+        </div>
         <Button onClick={() => setIsAddDialogOpen(true)}>
-          <Plus className="mr-2" />
+          <Plus className="mr-2 h-4 w-4" />
           Nova Escola
         </Button>
       </div>
@@ -122,13 +214,20 @@ export default function SchoolsTable() {
             className="pl-8"
           />
         </div>
+        <Button
+          variant="outline"
+          onClick={fetchSchools}
+          disabled={isLoadingSchools}
+        >
+          {isLoadingSchools ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            "Atualizar"
+          )}
+        </Button>
       </div>
 
-      {isLoadingSchools ? (
-        <div className="flex justify-center items-center py-8">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      ) : (
+      <div className="rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -136,13 +235,15 @@ export default function SchoolsTable() {
               <TableHead>Município</TableHead>
               <TableHead>Endereço</TableHead>
               <TableHead>Domínio</TableHead>
+              <TableHead className="hidden lg:table-cell">Alunos</TableHead>
+              <TableHead className="hidden lg:table-cell">Turmas</TableHead>
               <TableHead className="w-[150px]">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {!filteredSchools || filteredSchools.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-6">
+                <TableCell colSpan={7} className="text-center py-6">
                   <div className="flex flex-col items-center gap-2">
                     <Building className="h-10 w-10 text-gray-400" />
                     <h3 className="font-medium text-lg">
@@ -160,35 +261,42 @@ export default function SchoolsTable() {
               filteredSchools.map((school) => (
                 <TableRow key={school.id}>
                   <TableCell className="font-medium">{school.name}</TableCell>
-                  <TableCell>{school.city.name}</TableCell>
-                  <TableCell>{school.address}</TableCell>
-                  <TableCell>{school.domain}</TableCell>
+                  <TableCell>{school.city?.name || "Não informado"} - {school.city?.state || ""}</TableCell>
+                  <TableCell className="max-w-xs truncate" title={school.address}>
+                    {school.address || "Não informado"}
+                  </TableCell>
+                  <TableCell>{school.domain || "Não informado"}</TableCell>
+                  <TableCell className="hidden lg:table-cell">{school.students_count || 0}</TableCell>
+                  <TableCell className="hidden lg:table-cell">{school.classes_count || 0}</TableCell>
                   <TableCell>
                     <div className="flex space-x-2">
                       <Button
                         variant="outline"
-                        size="icon"
+                        size="sm"
                         onClick={() => handleViewSchool(school.id)}
+                        title="Visualizar escola"
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
                       <Button
                         variant="outline"
-                        size="icon"
+                        size="sm"
                         onClick={() => {
                           setCurrentSchool(school);
                           setIsEditDialogOpen(true);
                         }}
+                        title="Editar escola"
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
                       <Button
                         variant="outline"
-                        size="icon"
+                        size="sm"
                         onClick={() => {
                           setCurrentSchool(school);
                           setIsDeleteDialogOpen(true);
                         }}
+                        title="Excluir escola"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -199,7 +307,7 @@ export default function SchoolsTable() {
             )}
           </TableBody>
         </Table>
-      )}
+      </div>
 
       {/* Add School Dialog */}
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -209,10 +317,7 @@ export default function SchoolsTable() {
           </DialogHeader>
           <SchoolForm 
             onClose={() => setIsAddDialogOpen(false)}
-            onSave={(school) => {
-              handleAddSchool(school);
-              setIsAddDialogOpen(false);
-            }}
+            onSave={handleAddSchool}
           />
         </DialogContent>
       </Dialog>
@@ -225,11 +330,11 @@ export default function SchoolsTable() {
           </DialogHeader>
           <SchoolForm 
             school={currentSchool || undefined}
-            onClose={() => setIsEditDialogOpen(false)}
-            onSave={(school) => {
-              handleEditSchool(school);
+            onClose={() => {
               setIsEditDialogOpen(false);
+              setCurrentSchool(null);
             }}
+            onSave={handleEditSchool}
           />
         </DialogContent>
       </Dialog>
@@ -238,16 +343,27 @@ export default function SchoolsTable() {
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Você tem certeza?</AlertDialogTitle>
+            <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta ação não pode ser desfeita. Isso excluirá permanentemente a
-              escola {currentSchool?.name} e removerá os dados associados.
+              Tem certeza que deseja excluir a escola "{currentSchool?.name}"?
+              Esta ação não pode ser desfeita e removerá todos os dados associados.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteSchool}>
-              Excluir
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteSchool}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Excluindo...
+                </>
+              ) : (
+                "Excluir"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

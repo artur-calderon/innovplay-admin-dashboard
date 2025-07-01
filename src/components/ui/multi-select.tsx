@@ -110,8 +110,8 @@ export function MultiSelect({
                 title={option.name}
               >
                 {option.code || option.name.substring(0, 8)}
-                <button
-                  className="ml-1 hover:bg-destructive/20 rounded-full p-0.5"
+                <div
+                  className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 cursor-pointer"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={(e) => {
                     e.preventDefault();
@@ -120,7 +120,7 @@ export function MultiSelect({
                   }}
                 >
                   <X className="h-2.5 w-2.5" />
-                </button>
+                </div>
               </Badge>
             ))}
             {selected.length > maxDisplayItems && (
@@ -155,9 +155,9 @@ export function MultiSelect({
         <ScrollArea className="h-[calc(100%-60px)]">
           <div className="p-2 space-y-1">
             {Object.keys(groupOptionsByPrefix).map((prefix) => (
-              <button
+              <div
                 key={prefix}
-                className="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-100 transition-colors"
+                className="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-100 transition-colors cursor-pointer"
                 onClick={() => {
                   document.getElementById(`group-${prefix}`)?.scrollIntoView({ 
                     behavior: 'smooth', 
@@ -171,7 +171,7 @@ export function MultiSelect({
                     {groupOptionsByPrefix[prefix].length}
                   </Badge>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         </ScrollArea>
@@ -184,20 +184,28 @@ export function MultiSelect({
           <div className="flex items-center justify-between">
             <h3 className="font-semibold">Selecionar Habilidades</h3>
             <div className="flex items-center gap-2">
-              <Button
-                variant={viewMode === 'list' ? 'default' : 'outline'}
-                size="sm"
+              <div
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-sm cursor-pointer transition-colors flex items-center justify-center",
+                  viewMode === 'list' 
+                    ? "bg-primary text-primary-foreground" 
+                    : "border border-input bg-background hover:bg-accent hover:text-accent-foreground"
+                )}
                 onClick={() => setViewMode('list')}
               >
                 <List className="h-4 w-4" />
-              </Button>
-              <Button
-                variant={viewMode === 'grid' ? 'default' : 'outline'}
-                size="sm"
+              </div>
+              <div
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-sm cursor-pointer transition-colors flex items-center justify-center",
+                  viewMode === 'grid' 
+                    ? "bg-primary text-primary-foreground" 
+                    : "border border-input bg-background hover:bg-accent hover:text-accent-foreground"
+                )}
                 onClick={() => setViewMode('grid')}
               >
                 <Grid className="h-4 w-4" />
-              </Button>
+              </div>
             </div>
           </div>
           
@@ -212,13 +220,12 @@ export function MultiSelect({
               />
             </div>
             {selected.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
+              <div
+                className="px-3 py-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground rounded-md text-sm cursor-pointer transition-colors"
                 onClick={() => onChange([])}
               >
                 Limpar ({selected.length})
-              </Button>
+              </div>
             )}
           </div>
         </div>
@@ -295,12 +302,18 @@ export function MultiSelect({
               {selected.length} de {options.length} habilidades selecionadas
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setOpen(false)}>
+              <div 
+                className="px-4 py-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground rounded-md text-sm cursor-pointer transition-colors"
+                onClick={() => setOpen(false)}
+              >
                 Cancelar
-              </Button>
-              <Button onClick={() => setOpen(false)}>
+              </div>
+              <div 
+                className="px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md text-sm cursor-pointer transition-colors"
+                onClick={() => setOpen(false)}
+              >
                 Confirmar Seleção
-              </Button>
+              </div>
             </div>
           </div>
         </div>

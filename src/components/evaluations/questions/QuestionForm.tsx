@@ -350,9 +350,21 @@ const QuestionForm = ({
           const response = await api.get<Question>(`/questions/${questionId}`);
           const questionData = response.data;
 
-          const normalizeSkills = (skills: any): string[] => {
-            if (Array.isArray(skills)) return skills;
-            if (typeof skills === 'string' && skills.length > 0) return skills.split(',').map(s => s.trim());
+          const normalizeSkills = (skills: string[] | { id: string }[]): string[] => {
+            if (!skills) return [];
+            
+            if (Array.isArray(skills)) {
+              if (skills.length === 0) return [];
+              
+              // Se é array de strings
+              if (typeof skills[0] === 'string') {
+                return skills as string[];
+              }
+              
+              // Se é array de objetos com id
+              return skills.map((skill: { id: string }) => skill.id);
+            }
+            
             return [];
           };
 
@@ -530,7 +542,9 @@ const QuestionForm = ({
       if (externalOnSubmit) {
         externalOnSubmit(data);
       }
-      onQuestionAdded && onQuestionAdded(updatedOrNewQuestion);
+      if (onQuestionAdded) {
+        onQuestionAdded(updatedOrNewQuestion);
+      }
       onClose();
     } catch (error) {
       console.error(`Erro ao ${questionId ? 'atualizar' : 'criar'} questão:`, error);
@@ -558,7 +572,23 @@ const QuestionForm = ({
     }
   };
 
-
+  // Encontrar a skill que corresponde ao select
+  useEffect(() => {
+    if (selectedEducationStageId && selectedSubjectId) {
+      const matchingSkill = skills.find(skill => 
+        skill.education_stage === selectedEducationStageId && 
+        skill.subject === selectedSubjectId
+      );
+      
+      if (matchingSkill) {
+        // Resetar a seleção anterior
+        form.setValue('skill', '');
+        
+        // Configurar nova skill
+        form.setValue('skill', matchingSkill.id);
+      }
+    }
+  }, [selectedEducationStageId, selectedSubjectId, skills, form]);
 
   return (
     <div className="space-y-6">

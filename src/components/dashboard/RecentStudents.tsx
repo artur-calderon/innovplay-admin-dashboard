@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useEffect, useState } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Users } from "lucide-react";
@@ -7,8 +8,14 @@ import { Users } from "lucide-react";
 interface Student {
   id: string;
   name: string;
+  email: string;
+  role: string;
   created_at: string;
   registration?: string;
+}
+
+interface ApiResponse {
+  users: Student[];
 }
 
 export default function RecentStudents() {
@@ -19,27 +26,18 @@ export default function RecentStudents() {
     const fetchRecentStudents = async () => {
       try {
         setIsLoading(true);
+        const response = await api.get<ApiResponse>("/users/list");
+        const allUsers = response.data?.users || [];
         
-        // Tentar buscar dados de estudantes da API
-        const response = await api.get("/users/list");
-        if (response.data?.users) {
-          // Filtrar apenas alunos e pegar os 5 mais recentes
-          const studentUsers = response.data.users
-            .filter((user: any) => user.role === "Aluno" || user.role === "aluno")
-            .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-            .slice(0, 5)
-            .map((user: any) => ({
-              id: user.id,
-              name: user.name,
-              created_at: user.created_at,
-              registration: user.registration
-            }));
-          
-          setStudents(studentUsers);
-        }
+        // Filtrar apenas alunos e pegar os 5 mais recentes
+        const recentStudents = allUsers
+          .filter((user: Student) => user.role === "aluno")
+          .sort((a: Student, b: Student) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 5);
+        
+        setStudents(recentStudents);
       } catch (error) {
-        console.error("Erro ao buscar estudantes recentes:", error);
-        // Em caso de erro, deixar lista vazia
+        console.error("Erro ao buscar alunos recentes:", error);
         setStudents([]);
       } finally {
         setIsLoading(false);
@@ -49,55 +47,60 @@ export default function RecentStudents() {
     fetchRecentStudents();
   }, []);
 
-  const formatDate = (dateString: string) => {
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('pt-BR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    } catch {
-      return "Data inválida";
-    }
-  };
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            Alunos Recentes
+          </CardTitle>
+          <CardDescription>Últimos alunos cadastrados no sistema</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex items-center justify-between p-2 rounded border">
+              <div className="space-y-1">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-3 w-48" />
+              </div>
+              <Skeleton className="h-5 w-12" />
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>
-      <CardHeader className="pb-2">
-        <CardTitle>Últimos Alunos Cadastrados</CardTitle>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Users className="h-5 w-5" />
+          Alunos Recentes
+        </CardTitle>
+        <CardDescription>Últimos alunos cadastrados no sistema</CardDescription>
       </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="space-y-4">
-            {[...Array(5)].map((_, index) => (
-              <div key={index} className="flex justify-between items-center border-b pb-2">
-                <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-4 w-24" />
+      <CardContent className="space-y-3">
+        {students.length > 0 ? (
+          students.map((student) => (
+            <div key={student.id} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
+              <div className="space-y-1">
+                <p className="font-medium text-sm">{student.name}</p>
+                <p className="text-xs text-muted-foreground">{student.email}</p>
+                {student.registration && (
+                  <p className="text-xs text-muted-foreground">Mat: {student.registration}</p>
+                )}
               </div>
-            ))}
-          </div>
-        ) : students.length > 0 ? (
-          <div className="space-y-4">
-            {students.map((student) => (
-              <div key={student.id} className="flex justify-between items-center border-b pb-2">
-                <div className="flex flex-col">
-                  <span className="font-medium">{student.name}</span>
-                  {student.registration && (
-                    <span className="text-xs text-gray-500">Mat: {student.registration}</span>
-                  )}
-                </div>
-                <span className="text-sm text-gray-500">{formatDate(student.created_at)}</span>
-              </div>
-            ))}
-          </div>
+              <Badge variant="secondary" className="text-xs">
+                {student.role}
+              </Badge>
+            </div>
+          ))
         ) : (
-          <div className="flex flex-col items-center justify-center py-8 text-gray-500">
-            <Users className="h-12 w-12 text-gray-300 mb-2" />
-            <p className="text-sm">Nenhum aluno cadastrado ainda</p>
-          </div>
+          <p className="text-sm text-muted-foreground text-center py-4">
+            Nenhum aluno encontrado
+          </p>
         )}
       </CardContent>
     </Card>

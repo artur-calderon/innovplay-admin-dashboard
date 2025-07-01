@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -27,6 +27,9 @@ import {
 } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import { Check, X } from "lucide-react";
+import { api } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // Form schema
 const evaluationFormSchema = z.object({
@@ -38,56 +41,53 @@ const evaluationFormSchema = z.object({
 
 type EvaluationFormValues = z.infer<typeof evaluationFormSchema>;
 
-// Mock data
-const schools = [
-  "Escola Municipal João da Silva",
-  "Colégio Estadual Maria Santos",
-  "Instituto Federal de Educação",
-  "Escola Técnica de Artes",
-  "Centro Educacional Novo Horizonte"
-];
+interface School {
+  id: string;
+  name: string;
+}
 
-const subjects = [
-  "Matemática",
-  "Português",
-  "Ciências",
-  "História",
-  "Geografia",
-  "Física",
-  "Química",
-  "Biologia",
-  "Inglês",
-  "Artes",
-  "Educação Física"
-];
+interface Subject {
+  id: string;
+  name: string;
+}
 
-const classes = [
-  "1º Ano A",
-  "1º Ano B",
-  "2º Ano A",
-  "2º Ano B",
-  "3º Ano A",
-  "3º Ano B",
-  "4º Ano A",
-  "4º Ano B",
-  "5º Ano A",
-  "5º Ano B",
-  "6º Ano A",
-  "6º Ano B",
-  "7º Ano A",
-  "7º Ano B",
-  "8º Ano A",
-  "8º Ano B",
-  "9º Ano A",
-  "9º Ano B",
-];
+interface Class {
+  id: string;
+  name: string;
+  school_id: string;
+  school?: {
+    id: string;
+    name: string;
+  };
+}
+
+interface EvaluationFormData {
+  name: string;
+  school: string;
+  subject: string;
+  classes: string[];
+  id?: string;
+  createdAt?: string;
+  schoolName?: string;
+  subjectName?: string;
+  classesData?: Class[];
+}
 
 interface EvaluationFormProps {
-  onSubmit: (data: any) => void;
-  initialValues?: any;
+  onSubmit: (data: EvaluationFormData) => void;
+  initialValues?: Partial<EvaluationFormValues>;
 }
 
 export default function EvaluationForm({ onSubmit, initialValues }: EvaluationFormProps) {
+  const [schools, setSchools] = useState<School[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [classes, setClasses] = useState<Class[]>([]);
+  const [filteredClasses, setFilteredClasses] = useState<Class[]>([]);
+  const [isLoadingSchools, setIsLoadingSchools] = useState(true);
+  const [isLoadingSubjects, setIsLoadingSubjects] = useState(true);
+  const [isLoadingClasses, setIsLoadingClasses] = useState(false);
+  const { toast } = useToast();
+
   const form = useForm<EvaluationFormValues>({
     resolver: zodResolver(evaluationFormSchema),
     defaultValues: initialValues || {
@@ -98,18 +98,97 @@ export default function EvaluationForm({ onSubmit, initialValues }: EvaluationFo
     },
   });
 
+  const selectedSchool = form.watch("school");
+  const selectedClasses = form.watch("classes") || [];
+
+  // Fetch initial data
+  useEffect(() => {
+    fetchSchools();
+    fetchSubjects();
+  }, []);
+
+  // Filter classes when school changes
+  useEffect(() => {
+    if (selectedSchool) {
+      fetchClassesBySchool(selectedSchool);
+    } else {
+      setFilteredClasses([]);
+      // Clear selected classes when school changes
+      form.setValue("classes", []);
+    }
+  }, [selectedSchool]);
+
+  const fetchSchools = async () => {
+    try {
+      setIsLoadingSchools(true);
+      const response = await api.get("/school");
+      setSchools(response.data || []);
+    } catch (error) {
+      console.error("Erro ao buscar escolas:", error);
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar escolas. Verifique sua conexão.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingSchools(false);
+    }
+  };
+
+  const fetchSubjects = async () => {
+    try {
+      setIsLoadingSubjects(true);
+      const response = await api.get("/subjects");
+      setSubjects(response.data || []);
+    } catch (error) {
+      console.error("Erro ao buscar disciplinas:", error);
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar disciplinas. Verifique sua conexão.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingSubjects(false);
+    }
+  };
+
+  const fetchClassesBySchool = async (schoolId: string) => {
+    try {
+      setIsLoadingClasses(true);
+      const response = await api.get(`/classes/school/${schoolId}`);
+      const classesData = response.data || [];
+      setFilteredClasses(classesData);
+    } catch (error) {
+      console.error("Erro ao buscar turmas:", error);
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar turmas da escola selecionada.",
+        variant: "destructive",
+      });
+      setFilteredClasses([]);
+    } finally {
+      setIsLoadingClasses(false);
+    }
+  };
+
   const handleSubmit = (values: EvaluationFormValues) => {
+    // Find the selected school and subject names for the response
+    const selectedSchoolData = schools.find(s => s.id === values.school);
+    const selectedSubjectData = subjects.find(s => s.id === values.subject);
+    const selectedClassesData = filteredClasses.filter(c => values.classes.includes(c.id));
+
     // Generate a mock ID for the created evaluation
     const evaluationWithId = {
       ...values,
       id: `eval-${Math.random().toString(36).substr(2, 9)}`,
       createdAt: new Date().toISOString(),
+      schoolName: selectedSchoolData?.name,
+      subjectName: selectedSubjectData?.name,
+      classesData: selectedClassesData,
     };
     
     onSubmit(evaluationWithId);
   };
-
-  const selectedClasses = form.watch("classes") || [];
   
   const handleToggleClass = (classItem: string) => {
     const current = form.getValues("classes") || [];
@@ -148,15 +227,28 @@ export default function EvaluationForm({ onSubmit, initialValues }: EvaluationFo
                 <Select onValueChange={field.onChange} value={field.value}>
                   <FormControl>
                     <SelectTrigger>
-                      <SelectValue placeholder="Selecione uma escola" />
+                      <SelectValue placeholder={isLoadingSchools ? "Carregando..." : "Selecione uma escola"} />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {schools.map((school) => (
-                      <SelectItem key={school} value={school}>
-                        {school}
+                    {isLoadingSchools ? (
+                      <SelectItem value="loading" disabled>
+                        <div className="flex items-center">
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Carregando escolas...
+                        </div>
                       </SelectItem>
-                    ))}
+                    ) : schools.length === 0 ? (
+                      <SelectItem value="no-schools" disabled>
+                        Nenhuma escola encontrada
+                      </SelectItem>
+                    ) : (
+                      schools.map((school) => (
+                        <SelectItem key={school.id} value={school.id}>
+                          {school.name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
                 <FormMessage />
@@ -173,15 +265,28 @@ export default function EvaluationForm({ onSubmit, initialValues }: EvaluationFo
                 <Select onValueChange={field.onChange} value={field.value}>
                   <FormControl>
                     <SelectTrigger>
-                      <SelectValue placeholder="Selecione uma matéria" />
+                      <SelectValue placeholder={isLoadingSubjects ? "Carregando..." : "Selecione uma matéria"} />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {subjects.map((subject) => (
-                      <SelectItem key={subject} value={subject}>
-                        {subject}
+                    {isLoadingSubjects ? (
+                      <SelectItem value="loading" disabled>
+                        <div className="flex items-center">
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Carregando disciplinas...
+                        </div>
                       </SelectItem>
-                    ))}
+                    ) : subjects.length === 0 ? (
+                      <SelectItem value="no-subjects" disabled>
+                        Nenhuma disciplina encontrada
+                      </SelectItem>
+                    ) : (
+                      subjects.map((subject) => (
+                        <SelectItem key={subject.id} value={subject.id}>
+                          {subject.name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
                 <FormMessage />
@@ -202,44 +307,62 @@ export default function EvaluationForm({ onSubmit, initialValues }: EvaluationFo
                     <Button
                       variant="outline"
                       className="w-full justify-between"
+                      disabled={!selectedSchool || isLoadingClasses}
                     >
-                      {selectedClasses.length === 0
+                      {!selectedSchool ? "Selecione uma escola primeiro" :
+                       isLoadingClasses ? "Carregando turmas..." :
+                       selectedClasses.length === 0
                         ? "Selecionar turmas..."
                         : `${selectedClasses.length} turma${selectedClasses.length > 1 ? "s" : ""} selecionada${selectedClasses.length > 1 ? "s" : ""}`}
                       <span className="sr-only">Toggle classes popover</span>
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-full p-4" align="start">
-                    <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-                      {classes.map((classItem) => (
-                        <div
-                          key={classItem}
-                          className={`flex cursor-pointer items-center rounded-md border p-2 ${
-                            selectedClasses.includes(classItem)
-                              ? "border-primary bg-primary/10"
-                              : "hover:border-primary/50"
-                          }`}
-                          onClick={() => handleToggleClass(classItem)}
-                        >
-                          <div className="flex-grow text-sm">{classItem}</div>
-                          {selectedClasses.includes(classItem) && <Check className="ml-2 h-4 w-4 text-primary" />}
-                        </div>
-                      ))}
-                    </div>
+                    {isLoadingClasses ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-10 w-full" />
+                        <Skeleton className="h-10 w-full" />
+                        <Skeleton className="h-10 w-full" />
+                      </div>
+                    ) : filteredClasses.length === 0 ? (
+                      <div className="text-center text-sm text-muted-foreground py-4">
+                        Nenhuma turma encontrada para esta escola
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                        {filteredClasses.map((classItem) => (
+                          <div
+                            key={classItem.id}
+                            className={`flex cursor-pointer items-center rounded-md border p-2 ${
+                              selectedClasses.includes(classItem.id)
+                                ? "border-primary bg-primary/10"
+                                : "hover:border-primary/50"
+                            }`}
+                            onClick={() => handleToggleClass(classItem.id)}
+                          >
+                            <div className="flex-grow text-sm">{classItem.name}</div>
+                            {selectedClasses.includes(classItem.id) && <Check className="ml-2 h-4 w-4 text-primary" />}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </PopoverContent>
                 </Popover>
 
                 <div className="flex flex-wrap gap-2">
                   {selectedClasses.length > 0 ? (
-                    selectedClasses.map((classItem) => (
-                      <Badge key={classItem} variant="secondary">
-                        {classItem}
-                        <X
-                          className="ml-1 h-3 w-3 cursor-pointer hover:text-destructive"
-                          onClick={() => handleToggleClass(classItem)}
-                        />
-                      </Badge>
-                    ))
+                    selectedClasses.map((classId) => {
+                      const classData = filteredClasses.find(c => c.id === classId);
+                      return classData ? (
+                        <Badge key={classId} variant="secondary">
+                          {classData.name}
+                          <X
+                            className="ml-1 h-3 w-3 cursor-pointer hover:text-destructive"
+                            onClick={() => handleToggleClass(classId)}
+                          />
+                        </Badge>
+                      ) : null;
+                    })
                   ) : (
                     <div className="text-sm text-muted-foreground">Nenhuma turma selecionada</div>
                   )}
@@ -251,7 +374,11 @@ export default function EvaluationForm({ onSubmit, initialValues }: EvaluationFo
         />
 
         <div className="flex justify-end">
-          <Button type="submit" className="flex items-center">
+          <Button 
+            type="submit" 
+            className="flex items-center"
+            disabled={isLoadingSchools || isLoadingSubjects}
+          >
             Próximo
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
