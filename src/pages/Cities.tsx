@@ -122,7 +122,7 @@ export default function Cities() {
     setIsEditing(true);
 
     try {
-      await api.put(`/city/${selectedCity.id}`, {
+      await api.put(`/city/${selectedCity.id}/`, {
         name: newCity.name,
         state: newCity.state,
       });
@@ -161,7 +161,7 @@ export default function Cities() {
     setIsDeleting(true);
 
     try {
-      await api.delete(`/city/${selectedCity.id}`);
+      await api.delete(`/city/${selectedCity.id}/`);
       
       // Fetch updated cities list
       const response = await api.get("/city/");

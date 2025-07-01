@@ -1,4 +1,3 @@
-
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 @tailwind base;
@@ -290,4 +289,312 @@
   .text-balance {
     text-wrap: balance;
   }
+}
+
+/* Estilos para visualização de questões na página ViewEvaluation */
+.question-preview-content {
+  width: 100%;
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  font-size: 1rem;
+  line-height: 1.8;
+  color: #2c3e50;
+  background: #fff;
+}
+
+/* Estilos para o enunciado principal */
+.question-preview-content .question-statement {
+  font-size: 1.05rem;
+  line-height: 1.8;
+  color: #2c3e50;
+}
+
+/* Segundo enunciado integrado naturalmente */
+.question-preview-content .question-continuation {
+  position: relative;
+}
+
+/* Indicador sutil para segundo enunciado */
+.question-preview-content .question-continuation::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: 0;
+  width: 40px;
+  height: 3px;
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  border-radius: 2px;
+  opacity: 0.6;
+}
+
+/* Estilos base para todas as imagens - manter proporção */
+.question-preview-content .prose img,
+.question-preview-content img {
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  margin: 1.2rem 0;
+}
+
+/* Hover effect para imagens maiores */
+.question-preview-content img:not([style*="vertical-align"]):not([style*="inline-block"]):hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  cursor: zoom-in;
+}
+
+/* Imagens inline (matemáticas, frações, etc.) - Prioridade alta */
+.question-preview-content p img,
+.question-preview-content .prose p img {
+  display: inline-block !important;
+  vertical-align: middle !important;
+  margin: 0 0.3rem !important;
+  max-height: 2.8em !important;
+  max-width: 4em !important;
+  width: auto !important;
+  height: auto !important;
+  object-fit: contain !important;
+  border-radius: 4px !important;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.1) !important;
+  background: rgba(255, 255, 255, 0.95) !important;
+  transition: none !important;
+  border: 1px solid rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Elementos matemáticos específicos com vertical-align definido */
+.question-preview-content img[style*="vertical-align: middle"],
+.question-preview-content img[style*="display: inline-block"] {
+  display: inline-block !important;
+  vertical-align: middle !important;
+  margin: 0 0.25rem !important;
+  max-height: 2.5em !important;
+  max-width: 3.5em !important;
+  width: auto !important;
+  height: auto !important;
+  object-fit: contain !important;
+  border-radius: 4px !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08) !important;
+  background: rgba(255, 255, 255, 0.95) !important;
+  border: 1px solid rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Imagens maiores (diagramas, gráficos, etc.) */
+.question-preview-content img:not([style*="vertical-align"]):not([style*="inline-block"]) {
+  display: block !important;
+  margin: 2rem auto !important;
+  max-width: 100% !important;
+  max-height: 450px !important;
+  width: auto !important;
+  height: auto !important;
+  object-fit: contain !important;
+  border-radius: 12px !important;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.1) !important;
+  background: #fff !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  padding: 0.5rem !important;
+}
+
+/* Melhorar aparência das alternativas */
+.question-preview-content .alternative-item {
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.question-preview-content .alternative-item:hover {
+  transform: translateY(-2px);
+}
+
+.question-preview-content .alternative-item::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent 0%, #e2e8f0 50%, transparent 100%);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.question-preview-content .alternative-item:hover::before {
+  opacity: 1;
+}
+
+/* Estilos para área de resposta dissertativa */
+.question-preview-content .answer-area {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Seção de resolução */
+.question-preview-content .resolution-content {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Estilos para o editor de texto */
+.question-preview-content .prose {
+  max-width: none;
+  line-height: 1.8;
+  color: #2c3e50;
+}
+
+.question-preview-content .prose h1,
+.question-preview-content .prose h2,
+.question-preview-content .prose h3 {
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+  line-height: 1.4;
+  color: #1a202c;
+  font-weight: 600;
+}
+
+.question-preview-content .prose p {
+  margin-bottom: 1.25rem;
+  line-height: 1.8;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  color: #2c3e50;
+}
+
+.question-preview-content .prose ul,
+.question-preview-content .prose ol {
+  margin: 1.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.question-preview-content .prose li {
+  margin-bottom: 0.75rem;
+  line-height: 1.7;
+}
+
+/* Estilos para código */
+.question-preview-content .prose code {
+  background-color: rgba(99, 102, 241, 0.1);
+  color: #5b21b6;
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-weight: 500;
+}
+
+.question-preview-content .prose pre {
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  padding: 1.25rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 1.5rem 0;
+}
+
+/* Melhorar responsividade para telas pequenas */
+@media (max-width: 768px) {
+  .question-preview-content {
+    font-size: 0.95rem;
+    line-height: 1.7;
+  }
+  
+  .question-preview-content .question-statement {
+    font-size: 1rem;
+  }
+  
+  .question-preview-content .prose {
+    font-size: inherit;
+  }
+  
+  /* Reduzir tamanho de imagens grandes em mobile */
+  .question-preview-content img:not([style*="vertical-align"]):not([style*="inline-block"]) {
+    max-height: 320px !important;
+    border-radius: 8px !important;
+    margin: 1.5rem auto !important;
+    padding: 0.25rem !important;
+  }
+  
+  /* Ajustar imagens inline para mobile */
+  .question-preview-content p img,
+  .question-preview-content .prose p img {
+    max-height: 2.4em !important;
+    max-width: 3.5em !important;
+    margin: 0 0.2rem !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .question-preview-content {
+    font-size: 0.9rem;
+    line-height: 1.6;
+  }
+  
+  .question-preview-content .question-statement {
+    font-size: 0.95rem;
+  }
+  
+  /* Imagens ainda menores em telas muito pequenas */
+  .question-preview-content img:not([style*="vertical-align"]):not([style*="inline-block"]) {
+    max-height: 280px !important;
+    margin: 1rem auto !important;
+    border-radius: 6px !important;
+  }
+  
+  .question-preview-content p img,
+  .question-preview-content .prose p img {
+    max-height: 2.2em !important;
+    max-width: 3em !important;
+    margin: 0 0.15rem !important;
+  }
+  
+  .question-preview-content img[style*="vertical-align: middle"] {
+    max-height: 2em !important;
+    max-width: 2.8em !important;
+    margin: 0 0.1rem !important;
+  }
+}
+
+/* Garantir que o conteúdo não extrapole */
+.question-preview-content * {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Respeitar alinhamento de texto dos parágrafos */
+.question-preview-content p[style*="text-align: center"] {
+  text-align: center;
+}
+
+.question-preview-content p[style*="text-align: right"] {
+  text-align: right;
+}
+
+.question-preview-content p[style*="text-align: left"] {
+  text-align: left;
+}
+
+/* Imagens em parágrafos centralizados */
+.question-preview-content p[style*="text-align: center"] img:not([style*="vertical-align"]):not([style*="inline-block"]) {
+  display: block !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  margin-top: 1.5rem !important;
+  margin-bottom: 1.5rem !important;
+}
+
+.question-preview-content p[style*="text-align: right"] img:not([style*="vertical-align"]):not([style*="inline-block"]) {
+  display: block !important;
+  margin-left: auto !important;
+  margin-right: 0 !important;
+  margin-top: 1.5rem !important;
+  margin-bottom: 1.5rem !important;
+}
+
+.question-preview-content p[style*="text-align: left"] img:not([style*="vertical-align"]):not([style*="inline-block"]) {
+  display: block !important;
+  margin-left: 0 !important;
+  margin-right: auto !important;
+  margin-top: 1.5rem !important;
+  margin-bottom: 1.5rem !important;
 }

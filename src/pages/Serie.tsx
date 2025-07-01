@@ -63,6 +63,7 @@ export default function Serie() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Serie | null>(null);
   const [deletingItem, setDeletingItem] = useState<Serie | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState<FormData>({
     name: "",
     education_stage_id: "",
@@ -142,28 +143,64 @@ export default function Serie() {
       return;
     }
 
-    // Simulação - endpoints não implementados no backend
-    toast({
-      title: "Funcionalidade não implementada",
-      description: "Os endpoints CRUD para séries ainda não foram implementados no backend. Entre em contato com o desenvolvedor.",
-      variant: "destructive",
-    });
-    
-    setIsModalOpen(false);
+    try {
+      setIsSubmitting(true);
+      
+      if (editingItem) {
+        // Atualizar série existente
+        await api.put(`/grades/${editingItem.id}`, formData);
+        toast({
+          title: "Sucesso",
+          description: "Série atualizada com sucesso!",
+        });
+      } else {
+        // Criar nova série - Endpoint ainda não implementado no backend
+        toast({
+          title: "Funcionalidade não implementada",
+          description: "O endpoint POST para criar séries ainda não foi implementado no backend. Entre em contato com o desenvolvedor.",
+          variant: "destructive",
+        });
+        setIsModalOpen(false);
+        return;
+      }
+      
+      setIsModalOpen(false);
+      fetchSeries(); // Recarregar a lista
+    } catch (error: any) {
+      console.error("Erro ao salvar série:", error);
+      toast({
+        title: "Erro",
+        description: error.response?.data?.error || "Erro ao salvar série",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleDelete = async () => {
     if (!deletingItem) return;
 
-    // Simulação - endpoints não implementados no backend
-    toast({
-      title: "Funcionalidade não implementada",
-      description: "Os endpoints CRUD para séries ainda não foram implementados no backend. Entre em contato com o desenvolvedor.",
-      variant: "destructive",
-    });
-    
-    setIsDeleteDialogOpen(false);
-    setDeletingItem(null);
+    try {
+      setIsSubmitting(true);
+      await api.delete(`/grades/${deletingItem.id}`);
+      toast({
+        title: "Sucesso",
+        description: "Série excluída com sucesso!",
+      });
+      setIsDeleteDialogOpen(false);
+      setDeletingItem(null);
+      fetchSeries(); // Recarregar a lista
+    } catch (error: any) {
+      console.error("Erro ao excluir série:", error);
+      toast({
+        title: "Erro",
+        description: error.response?.data?.error || "Erro ao excluir série",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const filteredSeries = series.filter(serie =>
@@ -231,7 +268,7 @@ export default function Serie() {
       <Alert>
         <AlertCircle className="h-4 w-4" />
         <AlertDescription>
-          <strong>Aviso:</strong> Os botões de editar e excluir estão disponíveis na interface, mas os endpoints CRUD para séries ainda não foram implementados no backend. Entre em contato com o desenvolvedor para implementar essas funcionalidades.
+          <strong>Aviso:</strong> O endpoint POST para criar novas séries ainda não foi implementado no backend. Apenas edição e exclusão estão disponíveis.
         </AlertDescription>
       </Alert>
 
@@ -365,22 +402,32 @@ export default function Serie() {
                 </SelectContent>
               </Select>
             </div>
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                Esta funcionalidade ainda não foi implementada no backend. Os endpoints CRUD para séries precisam ser criados.
-              </AlertDescription>
-            </Alert>
+            {!editingItem && (
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  O endpoint POST para criar séries ainda não foi implementado no backend.
+                </AlertDescription>
+              </Alert>
+            )}
             <div className="flex justify-end space-x-2 pt-4">
               <Button 
                 type="button" 
                 variant="outline" 
                 onClick={() => setIsModalOpen(false)}
+                disabled={isSubmitting}
               >
                 Cancelar
               </Button>
-              <Button type="submit">
-                {editingItem ? "Atualizar" : "Criar"}
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  editingItem ? "Atualizar" : "Criar"
+                )}
               </Button>
             </div>
           </form>
@@ -398,12 +445,20 @@ export default function Serie() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={isSubmitting}>Cancelar</AlertDialogCancel>
             <AlertDialogAction 
               onClick={handleDelete}
+              disabled={isSubmitting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Excluir
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Excluindo...
+                </>
+              ) : (
+                "Excluir"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

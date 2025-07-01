@@ -41,70 +41,73 @@ const Index = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  useEffect(() => {
+    // Only fetch dashboard stats for admin users
+    if (user?.role !== "aluno" && user?.role !== "professor") {
+      const fetchDashboardStats = async () => {
+        try {
+          setIsLoading(true);
+
+          // Fazer várias chamadas em paralelo para buscar as estatísticas
+          const promises = [
+            api.get("/school").then(res => res.data?.length || 0).catch(() => 0),
+            api.get("/test/").then(res => res.data?.length || 0).catch(() => 0),
+            api.get("/users/list").then(res => res.data?.users?.length || 0).catch(() => 0),
+            api.get("/questions/").then(res => res.data?.length || 0).catch(() => 0),
+          ];
+
+          const [schoolCount, evaluationCount, userCount, questionCount] = await Promise.all(promises);
+
+          // Para dados que ainda não temos endpoints específicos, usar valores calculados ou padrão
+          setStats({
+            students: Math.floor(userCount * 0.7), // Estimativa: 70% dos usuários são alunos
+            schools: schoolCount,
+            evaluations: evaluationCount,
+            games: 36, // Placeholder - necessário criar endpoint
+            users: userCount,
+            onlineSupport: 18, // Placeholder - necessário criar endpoint
+            notices: 57, // Placeholder - necessário criar endpoint
+            certificates: 356, // Placeholder - necessário criar endpoint
+            competitions: 12, // Placeholder - necessário criar endpoint
+            olympics: 8, // Placeholder - necessário criar endpoint
+            playTv: 64, // Placeholder - necessário criar endpoint
+          });
+
+        } catch (error) {
+          console.error("Erro ao buscar estatísticas do dashboard:", error);
+          toast({
+            title: "Erro",
+            description: "Não foi possível carregar as estatísticas do dashboard",
+            variant: "destructive",
+          });
+          
+          // Valores padrão em caso de erro
+          setStats({
+            students: 0,
+            schools: 0,
+            evaluations: 0,
+            games: 0,
+            users: 0,
+            onlineSupport: 0,
+            notices: 0,
+            certificates: 0,
+            competitions: 0,
+            olympics: 0,
+            playTv: 0,
+          });
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      fetchDashboardStats();
+    }
+  }, [toast, user?.role]);
+
   // Check user role and render appropriate dashboard
   if (user?.role === "aluno" || user?.role === "professor") {
     return <StudentProfessorIndex />;
   }
-
-  useEffect(() => {
-    const fetchDashboardStats = async () => {
-      try {
-        setIsLoading(true);
-
-        // Fazer várias chamadas em paralelo para buscar as estatísticas
-        const promises = [
-          api.get("/school").then(res => res.data?.length || 0).catch(() => 0),
-          api.get("/test/").then(res => res.data?.length || 0).catch(() => 0),
-          api.get("/users/list").then(res => res.data?.users?.length || 0).catch(() => 0),
-          api.get("/questions/").then(res => res.data?.length || 0).catch(() => 0),
-        ];
-
-        const [schoolCount, evaluationCount, userCount, questionCount] = await Promise.all(promises);
-
-        // Para dados que ainda não temos endpoints específicos, usar valores calculados ou padrão
-        setStats({
-          students: Math.floor(userCount * 0.7), // Estimativa: 70% dos usuários são alunos
-          schools: schoolCount,
-          evaluations: evaluationCount,
-          games: 36, // Placeholder - necessário criar endpoint
-          users: userCount,
-          onlineSupport: 18, // Placeholder - necessário criar endpoint
-          notices: 57, // Placeholder - necessário criar endpoint
-          certificates: 356, // Placeholder - necessário criar endpoint
-          competitions: 12, // Placeholder - necessário criar endpoint
-          olympics: 8, // Placeholder - necessário criar endpoint
-          playTv: 64, // Placeholder - necessário criar endpoint
-        });
-
-      } catch (error) {
-        console.error("Erro ao buscar estatísticas do dashboard:", error);
-        toast({
-          title: "Erro",
-          description: "Não foi possível carregar as estatísticas do dashboard",
-          variant: "destructive",
-        });
-        
-        // Valores padrão em caso de erro
-        setStats({
-          students: 0,
-          schools: 0,
-          evaluations: 0,
-          games: 0,
-          users: 0,
-          onlineSupport: 0,
-          notices: 0,
-          certificates: 0,
-          competitions: 0,
-          olympics: 0,
-          playTv: 0,
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchDashboardStats();
-  }, [toast]);
 
   // Default dashboard for admin and other roles
   return (

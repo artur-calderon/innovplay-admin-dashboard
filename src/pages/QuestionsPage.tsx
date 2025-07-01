@@ -1273,7 +1273,7 @@ const QuestionsPage = () => {
       {/* Results Summary */}
       <div className="flex flex-col xs:flex-row xs:items-center xs:justify-between gap-2 text-sm text-muted-foreground">
         <div className="flex items-center gap-2">
-          <span>{filteredAndSortedQuestions.length} questão(ões) encontrada(s)</span>
+          <span>{filteredAndSortedQuestions.length} questões encontradas</span>
           {searchTerm !== debouncedSearchTerm && (
             <div className="flex items-center gap-1 text-xs">
               <div className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>

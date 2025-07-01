@@ -1,7 +1,7 @@
 import {create} from 'zustand'
 import { api } from '@/lib/api'
 import { toast } from 'react-toastify'
-import axios from 'axios'
+import axios, { AxiosError } from 'axios'
 
 interface User{
     id:string,
@@ -17,6 +17,12 @@ interface User{
     gender:string,
     nationality:string,
     birth_date:string,
+}
+
+interface ApiError {
+    erro?: string;
+    error?: string;
+    message?: string;
 }
 
 interface AuthContext{
@@ -62,11 +68,12 @@ export const useAuth = create<AuthContext>((set) => ({
             set({user: response.data.user})
 
             return response;
-        } catch (e: any) {
-            console.error("Erro no login:", e);
-            const errorMessage = e.response?.data?.erro || e.response?.data?.error || "Erro ao autenticar!";
+        } catch (error: unknown) {
+            console.error("Erro no login:", error);
+            const axiosError = error as AxiosError<ApiError>;
+            const errorMessage = axiosError.response?.data?.erro || axiosError.response?.data?.error || "Erro ao autenticar!";
             toast.error(errorMessage);
-            throw e;
+            throw error;
         } finally {
             set({ loading: false })
         }
@@ -96,8 +103,8 @@ export const useAuth = create<AuthContext>((set) => ({
                 }
             })
             window.location.href = '/';
-        } catch (e: any) {
-            console.error("Erro no logout:", e);
+        } catch (error: unknown) {
+            console.error("Erro no logout:", error);
             toast.error("Não foi possível deslogar");
         }
     },
@@ -127,8 +134,8 @@ export const useAuth = create<AuthContext>((set) => ({
                 return true;
             }
             return false;
-        } catch (e: any) {
-            console.error('Erro ao persistir usuário:', e);
+        } catch (error: unknown) {
+            console.error('Erro ao persistir usuário:', error);
             localStorage.removeItem('token');
             delete api.defaults.headers.common['Authorization'];
             delete axios.defaults.headers.common['Authorization'];

@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Filter, Check, Plus } from "lucide-react";
+import { Search, Filter, Check, Plus, Loader2, AlertCircle } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -25,131 +25,46 @@ import {
 } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { Question, QuestionOption } from "./types"; // Import Question and QuestionOption types
+import { Question } from "./types"; // Import Question type only
+import { api } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
-// Mock data for question bank - Updated to match the fuller Question type
-const questionBankMock: Question[] = [
-  {
-    id: "1",
-    number: 1,
-    text: "Qual é o resultado de 25 × 4?",
-    subjectId: "math", // Assuming subjectId exists now
-    subject: "Matemática",
-    grade: "5º Ano",
-    difficulty: "Fácil",
-    type: "multipleChoice",
-    value: 1.0,
-    solution: "",
-    options: [
-      { id: "a", text: "10", isCorrect: false },
-      { id: "b", text: "100", isCorrect: true },
-      { id: "c", text: "1000", isCorrect: false },
-      { id: "d", text: "254", isCorrect: false },
-    ],
-    title: "Multiplicação simples",
-    skills: "Cálculo básico",
-    topics: ["Multiplicação"],
-  },
-  {
-    id: "2",
-    number: 2,
-    text: "Quem escreveu a obra 'Dom Casmurro'?",
-    subjectId: "portuguese",
-    subject: "Português",
-    grade: "9º Ano",
-    difficulty: "Médio",
-    type: "multipleChoice",
-    value: 1.0,
-    solution: "Machado de Assis",
-    options: [
-      { id: "a", text: "José de Alencar", isCorrect: false },
-      { id: "b", text: "Machado de Assis", isCorrect: true },
-      { id: "c", text: "Clarice Lispector", isCorrect: false },
-      { id: "d", text: "Monteiro Lobato", isCorrect: false },
-    ],
-    title: "Literatura Brasileira",
-    skills: "Leitura e Interpretação",
-    topics: ["Romantismo"],
-  },
-  {
-    id: "3",
-    number: 3,
-    text: "Qual é o maior planeta do Sistema Solar?",
-    subjectId: "science",
-    subject: "Ciências",
-    grade: "6º Ano",
-    difficulty: "Fácil",
-    type: "multipleChoice",
-    value: 1.0,
-    solution: "Júpiter",
-    options: [
-      { id: "a", text: "Terra", isCorrect: false },
-      { id: "b", text: "Marte", isCorrect: false },
-      { id: "c", text: "Júpiter", isCorrect: true },
-      { id: "d", text: "Saturno", isCorrect: false },
-    ],
-    title: "Sistema Solar",
-    skills: "Conhecimentos gerais",
-    topics: ["Astronomia"],
-  },
-  {
-    id: "4",
-    number: 4,
-    text: "Quais são as principais causas da Revolução Francesa?",
-    subjectId: "history",
-    subject: "História",
-    grade: "8º Ano",
-    difficulty: "Difícil",
-    type: "essay",
-    value: 2.0,
-    solution: "Resposta esperada inclui desigualdade social, crise econômica, ideias iluministas, etc.",
-    title: "Revolução Francesa",
-    skills: "Análise histórica",
-    topics: ["História Moderna"],
-  },
-  {
-    id: "5",
-    number: 5,
-    text: "Cite as principais características do relevo brasileiro.",
-    subjectId: "geography",
-    subject: "Geografia",
-    grade: "7º Ano",
-    difficulty: "Médio",
-    type: "essay",
-    value: 2.0,
-    solution: "Resposta esperada inclui planaltos, planícies, depressões, etc.",
-    title: "Relevo do Brasil",
-    skills: "Geografia física",
-    topics: ["Geomorfologia"],
-  },
-  {
-    id: "6",
-    number: 6,
-    text: "Resolva a seguinte equação: 2x + 5 = 15",
-    subjectId: "math",
-    subject: "Matemática",
-    grade: "7º Ano",
-    difficulty: "Médio",
-    type: "multipleChoice",
-    value: 1.0,
-    solution: "2x = 10, x = 5",
-    options: [
-      { id: "a", text: "3", isCorrect: false },
-      { id: "b", text: "5", isCorrect: true },
-      { id: "c", text: "7", isCorrect: false },
-      { id: "d", text: "10", isCorrect: false },
-    ],
-    title: "Equação do 1º grau",
-    skills: "Resolução de problemas",
-    topics: ["Álgebra"],
-  },
-];
+interface ApiQuestionOption {
+  id?: string;
+  text: string;
+  isCorrect?: boolean;
+}
 
-// Filter options (should ideally come from an API/store)
-const subjects = ["Matemática", "Português", "Ciências", "História", "Geografia"];
-const grades = ["5º Ano", "6º Ano", "7º Ano", "8º Ano", "9º Ano"];
-const difficulties = ["Fácil", "Médio", "Difícil"];
-const types = ["multipleChoice", "essay"]; // Using keys matching Question type
+interface ApiQuestion {
+  id: string;
+  title?: string;
+  text: string;
+  formatted_text?: string;
+  subject_id: string;
+  subject?: { id: string; name: string };
+  grade?: { id: string; name: string };
+  grade_id?: string;
+  difficulty_level?: string;
+  question_type?: string;
+  value?: number;
+  correct_answer?: string;
+  formatted_solution?: string;
+  alternatives?: ApiQuestionOption[];
+  skill?: string | string[];
+  created_by?: string;
+}
+
+interface Subject {
+  id: string;
+  name: string;
+}
+
+interface Grade {
+  id: string;
+  name: string;
+}
 
 interface EvaluationFromBank {
   title: string;
@@ -176,8 +91,13 @@ export function QuestionBank({
   onCreateEvaluation
 }: QuestionBankProps) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [questions, setQuestions] = useState<Question[]>(questionBankMock);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [grades, setGrades] = useState<Grade[]>([]);
   const [selectedQuestions, setSelectedQuestions] = useState<string[]>([]); // Stores IDs of selected questions
+  const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
+  
   const [filters, setFilters] = useState({
     subject: "",
     grade: "",
@@ -190,14 +110,91 @@ export function QuestionBank({
   const [evaluationTitle, setEvaluationTitle] = useState("");
   const [evaluationGrade, setEvaluationGrade] = useState("");
 
+  // Filter options
+  const difficulties = ["Fácil", "Médio", "Difícil"];
+  const types = [
+    { key: "multipleChoice", label: "Múltipla Escolha" },
+    { key: "essay", label: "Dissertativa" }
+  ];
+
+  useEffect(() => {
+    if (open) {
+      fetchQuestions();
+      fetchSubjects();
+      fetchGrades();
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      fetchQuestions();
+    }
+  }, [filters, subjectId]);
+
+  const fetchQuestions = async () => {
+    try {
+      setIsLoading(true);
+      const response = await api.get("/questions/");
+      
+      // Transform API response to match our Question interface
+      const transformedQuestions = (response.data || []).map((q: ApiQuestion) => ({
+        id: q.id,
+        title: q.title || "",
+        text: q.text,
+        formattedText: q.formatted_text,
+        subjectId: q.subject_id,
+        subject: q.subject || { id: q.subject_id || "", name: "Disciplina não definida" },
+        grade: q.grade || { id: q.grade_id || "", name: "Série não definida" }, 
+        difficulty: q.difficulty_level || "Médio",
+        type: q.question_type === "essay" ? "open" : q.question_type === "trueFalse" ? "trueFalse" : "multipleChoice",
+        value: String(q.value || 1.0),
+        solution: q.correct_answer || "",
+        formattedSolution: q.formatted_solution,
+        options: q.alternatives || [],
+        skills: Array.isArray(q.skill) ? q.skill : [q.skill || ""],
+        created_by: q.created_by || "",
+      }));
+      
+      setQuestions(transformedQuestions);
+    } catch (error) {
+      console.error("Erro ao buscar questões:", error);
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar questões do banco. Verifique sua conexão.",
+        variant: "destructive",
+      });
+      setQuestions([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchSubjects = async () => {
+    try {
+      const response = await api.get("/subjects");
+      setSubjects(response.data || []);
+    } catch (error) {
+      console.error("Erro ao buscar disciplinas:", error);
+    }
+  };
+
+  const fetchGrades = async () => {
+    try {
+      const response = await api.get("/grades/");
+      setGrades(response.data || []);
+    } catch (error) {
+      console.error("Erro ao buscar séries:", error);
+    }
+  };
+
   const filteredQuestions = questions.filter(
     (question) => {
       const matchesSearch = question.text.toLowerCase().includes(searchTerm.toLowerCase());
       // Filter by subjectId prop if provided
-      const matchesSubjectId = !subjectId || question.subjectId === subjectId; // Match subjectId prop to question.subjectId
-      // Filter by filter state
-      const matchesSubject = !filters.subject || question.subject === filters.subject;
-      const matchesGrade = !filters.grade || question.grade === filters.grade;
+      const matchesSubjectId = !subjectId || question.subjectId === subjectId;
+      // Filter by filter state - usar strings para comparação
+      const matchesSubject = !filters.subject || question.subject.name === filters.subject;
+      const matchesGrade = !filters.grade || question.grade.name === filters.grade;
       const matchesDifficulty = !filters.difficulty || question.difficulty === filters.difficulty;
       const matchesType = !filters.type || question.type === filters.type;
 
@@ -309,8 +306,8 @@ export function QuestionBank({
                         >
                           <option value="">Todas</option>
                           {subjects.map((subject) => (
-                            <option key={subject} value={subject}>
-                              {subject}
+                            <option key={subject.id} value={subject.name}>
+                              {subject.name}
                             </option>
                           ))}
                         </select>
@@ -325,8 +322,8 @@ export function QuestionBank({
                         >
                           <option value="">Todas</option>
                           {grades.map((grade) => (
-                            <option key={grade} value={grade}>
-                              {grade}
+                            <option key={grade.id} value={grade.name}>
+                              {grade.name}
                             </option>
                           ))}
                         </select>
@@ -357,8 +354,8 @@ export function QuestionBank({
                         >
                           <option value="">Todos</option>
                           {types.map((type) => (
-                            <option key={type} value={type}>
-                              {type === 'multipleChoice' ? 'Múltipla Escolha' : 'Dissertativa'}
+                            <option key={type.key} value={type.key}>
+                              {type.label}
                             </option>
                           ))}
                         </select>
@@ -370,72 +367,124 @@ export function QuestionBank({
                   </div>
                 </PopoverContent>
               </Popover>
-              {/* Internal Create Evaluation Dialog Trigger (if still needed) */}
-              {/* <DialogTrigger asChild> */}
-                {/* <Button disabled={selectedQuestions.length === 0}> */}
-                  {/* Criar Avaliação ({selectedQuestions.length}) */}
-                {/* </Button> */}
-              {/* </DialogTrigger> */}
+              <Button
+                variant="outline"
+                onClick={fetchQuestions}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Atualizar"
+                )}
+              </Button>
             </div>
           </div>
 
-          {/* Questions Table */}
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden overflow-x-auto mb-4">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12">Select</TableHead>
-                  <TableHead className="min-w-[200px]">Questão</TableHead> {/* Added min-width */}
-                  <TableHead className="w-32 hidden sm:table-cell">Disciplina</TableHead>
-                  <TableHead className="w-24 hidden md:table-cell">Série</TableHead>
-                  <TableHead className="w-24 hidden lg:table-cell">Dificuldade</TableHead>
-                   <TableHead className="w-24 hidden lg:table-cell">Tipo</TableHead> {/* Added Type column */}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredQuestions.length > 0 ? (
-                  filteredQuestions.map((question) => (
-                    <TableRow key={question.id}>
-                      <TableCell className="w-12">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => toggleQuestionSelection(question.id)}
-                          className={cn("rounded-full", selectedQuestions.includes(question.id) ? "bg-green-500 text-white hover:bg-green-600" : "hover:bg-gray-200")}
-                        >
-                          {selectedQuestions.includes(question.id) ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                        </Button>
-                      </TableCell>
-                      <TableCell className="max-w-xs truncate">{question.text}</TableCell>
-                      <TableCell className="hidden sm:table-cell">{question.subject}</TableCell>
-                      <TableCell className="hidden md:table-cell">{question.grade}</TableCell>
-                      <TableCell className="hidden lg:table-cell">{question.difficulty}</TableCell>
-                       <TableCell className="w-24 hidden lg:table-cell">{question.type === 'multipleChoice' ? 'Múltipla Escolha' : 'Dissertativa'}</TableCell> {/* Display Type */}
+          {/* Loading State */}
+          {isLoading ? (
+            <div className="space-y-4">
+              <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-12">Select</TableHead>
+                      <TableHead className="min-w-[200px]">Questão</TableHead>
+                      <TableHead className="w-32 hidden sm:table-cell">Disciplina</TableHead>
+                      <TableHead className="w-24 hidden md:table-cell">Série</TableHead>
+                      <TableHead className="w-24 hidden lg:table-cell">Dificuldade</TableHead>
+                      <TableHead className="w-24 hidden lg:table-cell">Tipo</TableHead>
                     </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center text-gray-500"> {/* Updated colspan */}
-                      Nenhuma questão encontrada com os filtros aplicados.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                  </TableHeader>
+                  <TableBody>
+                    {[...Array(5)].map((_, index) => (
+                      <TableRow key={index}>
+                        <TableCell><Skeleton className="h-8 w-8 rounded-full" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-full" /></TableCell>
+                        <TableCell className="hidden sm:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
+                        <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-16" /></TableCell>
+                        <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-16" /></TableCell>
+                        <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Questions Table */}
+              <div className="bg-white rounded-xl shadow-sm overflow-hidden overflow-x-auto mb-4">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-12">Select</TableHead>
+                      <TableHead className="min-w-[200px]">Questão</TableHead> {/* Added min-width */}
+                      <TableHead className="w-32 hidden sm:table-cell">Disciplina</TableHead>
+                      <TableHead className="w-24 hidden md:table-cell">Série</TableHead>
+                      <TableHead className="w-24 hidden lg:table-cell">Dificuldade</TableHead>
+                       <TableHead className="w-24 hidden lg:table-cell">Tipo</TableHead> {/* Added Type column */}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredQuestions.length > 0 ? (
+                      filteredQuestions.map((question) => (
+                        <TableRow key={question.id}>
+                          <TableCell className="w-12">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => toggleQuestionSelection(question.id)}
+                              className={cn("rounded-full", selectedQuestions.includes(question.id) ? "bg-green-500 text-white hover:bg-green-600" : "hover:bg-gray-200")}
+                            >
+                              {selectedQuestions.includes(question.id) ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                            </Button>
+                          </TableCell>
+                          <TableCell className="max-w-xs truncate" title={question.text}>{question.text}</TableCell>
+                          <TableCell className="hidden sm:table-cell">{String(question.subject.name)}</TableCell>
+                          <TableCell className="hidden md:table-cell">{String(question.grade.name)}</TableCell>
+                          <TableCell className="hidden lg:table-cell">{question.difficulty}</TableCell>
+                           <TableCell className="w-24 hidden lg:table-cell">
+                             {question.type === 'multipleChoice' ? 'Múltipla Escolha' : 
+                              question.type === 'trueFalse' ? 'Verdadeiro/Falso' : 
+                              question.type === 'open' ? 'Dissertativa' : 'Outro'}
+                           </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center text-gray-500 py-8">
+                          {searchTerm || Object.values(filters).some(Boolean) 
+                            ? "Nenhuma questão encontrada com os filtros aplicados." 
+                            : "Nenhuma questão disponível no banco."}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Show total count */}
+              {filteredQuestions.length > 0 && (
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    {filteredQuestions.length} questões encontradas • {selectedQuestions.length} selecionadas
+                  </AlertDescription>
+                </Alert>
+              )}
+            </>
+          )}
 
           {/* Action buttons */}
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" onClick={onClose}>Cancelar</Button>
-            <Button onClick={handleSelectQuestions} disabled={selectedQuestions.length === 0}>Adicionar Selecionadas ({selectedQuestions.length})</Button>
+            <Button onClick={handleSelectQuestions} disabled={selectedQuestions.length === 0 || isLoading}>
+              Adicionar Selecionadas ({selectedQuestions.length})
+            </Button>
           </div>
         </div>
-         {/* Internal Create Evaluation Dialog Content (if still needed) */}
-         {/* <DialogContent>...</DialogContent> */}
-          {/* Move internal dialog logic here or remove if not needed when used as a selection tool */}
       </DialogContent>
     </Dialog>
-     /* Render internal Create Evaluation Dialog outside the main Dialog if needed */
-     /* {isCreateDialogOpen && onCreateEvaluation && (...) } */
   );
 }

@@ -29,6 +29,7 @@ export interface Question {
 
 export interface EvaluationFormData {
   title: string;
+  description?: string;
   municipalities: string[];
   schools: string[];
   course: string;
@@ -39,6 +40,9 @@ export interface EvaluationFormData {
   subjects: Subject[];
   subject: string;
   questions: Question[];
+  startDateTime?: string;
+  duration?: string;
+  classes?: string[];
 }
 
 export interface TeacherSchool {

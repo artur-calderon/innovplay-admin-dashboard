@@ -102,7 +102,7 @@ export default function Students() {
   }, [reloadAlunos, id]);
 
   useEffect(() => {
-    api.get("/education_stages/").then((res) => {
+    api.get("/education_stages").then((res) => {
       setCourses(res.data);
     }).catch(e => { console.log(e) });
 
@@ -171,7 +171,8 @@ export default function Students() {
       password: data.senha,
       registration: data.matricula,
       birth_date: data.birthDate,
-      education_stage_id: data.course,
+      class_id: "", // This would need to be selected by the user
+      city_id: "", // This would need to be retrieved from context or user
       grade_id: data.grade
     };
     await api.post("/students", newStudent).then((res) => {
@@ -183,6 +184,8 @@ export default function Students() {
       console.log(e);
       toast({
         title: "Erro ao adicionar o aluno!",
+        description: e.response?.data?.error || "Erro desconhecido",
+        variant: "destructive",
       });
     });
 
@@ -203,7 +206,7 @@ export default function Students() {
       grade_id: data.grade
     };
 
-    await api.put(`/alunos/${selectedStudent.id}`, editedStudent);
+    await api.put(`/students/${selectedStudent.id}`, editedStudent);
     setIsEditDialogOpen(false);
     setSelectedStudent(null);
     resetEdit();
@@ -215,7 +218,7 @@ export default function Students() {
   };
 
   const handleDeleteStudent = async (id: string) => {
-    await api.delete(`/alunos/${id}`).then(res => {
+    await api.delete(`/students/${id}`).then(res => {
       console.log(res);
       toast({
         title: "Aluno removido",
