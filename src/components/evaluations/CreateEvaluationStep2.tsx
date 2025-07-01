@@ -207,6 +207,7 @@ export const CreateEvaluationStep2 = ({
         course: data.course,
         grade: data.grade,
         subject: data.subject,
+        municipalities: data.municipalities || [],
         schools: Array.isArray(data.schools) ? data.schools : [data.schools],
         time_limit: data.startDateTime,
         duration: data.duration ? Number(data.duration) : undefined,
@@ -215,12 +216,83 @@ export const CreateEvaluationStep2 = ({
         classes: data.classes || []
       };
 
+      console.log("📤 Enviando payload para criar avaliação:", payload);
       const response = await api.post("/test", payload);
+      const evaluationId = response.data.id;
+      console.log("✅ Avaliação criada com ID:", evaluationId);
 
-      toast({
-        title: "Sucesso",
-        description: "Avaliação criada com sucesso!",
-      });
+      // ✅ Aplicar automaticamente às turmas selecionadas
+      if (data.classes && data.classes.length > 0) {
+        console.log("🎯 Aplicando avaliação às turmas:", data.classes);
+        console.log("📅 Data de aplicação:", data.startDateTime);
+        
+        const classApplications = data.classes.map(classId => ({
+          class_id: classId,
+          application: data.startDateTime || new Date().toISOString(),
+          expiration: null // Pode ser configurado no futuro
+        }));
+
+        console.log("📋 Payload de aplicação às turmas:", {
+          classes: classApplications
+        });
+
+        try {
+          const applyResponse = await api.post(`/test/${evaluationId}/apply`, {
+            classes: classApplications
+          });
+          console.log("✅ Resposta da aplicação às turmas:", applyResponse.data);
+          console.log("✅ Avaliação aplicada às turmas com sucesso");
+          
+          // ✅ Mostrar toast de sucesso com detalhes
+          toast({
+            title: "Sucesso!",
+            description: `Avaliação criada e aplicada a ${data.classes.length} turma${data.classes.length > 1 ? 's' : ''}!`,
+          });
+          
+        } catch (applyError) {
+          console.error("❌ Erro ao aplicar avaliação às turmas:", applyError);
+          console.error("❌ Detalhes do erro:", applyError.response?.data);
+          
+          // Tentar aplicar uma por uma se falhou em lote
+          console.log("🔄 Tentando aplicar turmas individualmente...");
+          let successCount = 0;
+          
+          for (const classId of data.classes) {
+            try {
+              await api.post(`/test/${evaluationId}/apply`, {
+                classes: [{
+                  class_id: classId,
+                  application: data.startDateTime || new Date().toISOString(),
+                  expiration: null
+                }]
+              });
+              successCount++;
+              console.log(`✅ Turma ${classId} aplicada com sucesso`);
+            } catch (individualError) {
+              console.error(`❌ Erro ao aplicar turma ${classId}:`, individualError.response?.data);
+            }
+          }
+          
+          if (successCount > 0) {
+            toast({
+              title: "Avaliação criada",
+              description: `Avaliação criada e aplicada a ${successCount} de ${data.classes.length} turmas.`,
+            });
+          } else {
+            toast({
+              title: "Avaliação criada",
+              description: "Avaliação criada, mas houve erro ao aplicar às turmas. Aplique manualmente.",
+              variant: "default",
+            });
+          }
+        }
+      } else {
+        console.log("⚠️ Nenhuma turma selecionada para aplicar a avaliação");
+        toast({
+          title: "Sucesso",
+          description: "Avaliação criada com sucesso!",
+        });
+      }
 
       // Chamar callback de conclusão se fornecido
       if (onComplete) {
@@ -266,7 +338,7 @@ export const CreateEvaluationStep2 = ({
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Questões por Disciplina</h2>
         <div className="text-sm text-muted-foreground">
-          Total: {getTotalQuestions()} {getTotalQuestions() === 1 ? 'questão' : 'questões'}
+          Total: {getTotalQuestions()} questões
         </div>
       </div>
 
@@ -283,7 +355,7 @@ export const CreateEvaluationStep2 = ({
                         <h3 className="text-lg font-semibold">
                           {subject.name}
                           <span className="ml-2 text-sm text-muted-foreground">
-                            ({subjectQuestions.length} {subjectQuestions.length === 1 ? 'questão' : 'questões'})
+                            ({subjectQuestions.length} questões)
                           </span>
                         </h3>
                         <div className="flex items-center gap-2">
@@ -329,7 +401,7 @@ export const CreateEvaluationStep2 = ({
                                         </Badge>
                                         {question.value && (
                                           <Badge variant="outline" className="text-xs">
-                                            {question.value} pt{parseFloat(question.value) !== 1 ? 's' : ''}
+                                            {question.value} pts
                                           </Badge>
                                         )}
                                       </div>

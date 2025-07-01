@@ -311,7 +311,7 @@ export default function QuestionBank({
     setSelectedIds([]);
     toast({
       title: "Questões adicionadas",
-      description: `${selectedQuestions.length} questão(ões) adicionada(s) à avaliação`,
+      description: `${selectedQuestions.length} questões adicionadas à avaliação`,
     });
   };
 
@@ -565,7 +565,7 @@ export default function QuestionBank({
           {selectedIds.length > 0 && (
             <div className="flex flex-col sm:flex-row items-center justify-between bg-blue-50 p-3 rounded-lg gap-2">
               <span className="text-sm text-blue-800 text-center sm:text-left">
-                {selectedIds.length} questão(ões) selecionada(s)
+                {selectedIds.length} questões selecionadas
               </span>
               <Button onClick={handleAddSelected} size="sm" className="w-full sm:w-auto">
                 <Plus className="h-4 w-4 mr-2" />

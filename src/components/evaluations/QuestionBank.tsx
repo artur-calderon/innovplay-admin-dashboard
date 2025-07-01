@@ -25,11 +25,36 @@ import {
 } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { Question, QuestionOption } from "./types"; // Import Question and QuestionOption types
+import { Question } from "./types"; // Import Question type only
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+
+interface ApiQuestionOption {
+  id?: string;
+  text: string;
+  isCorrect?: boolean;
+}
+
+interface ApiQuestion {
+  id: string;
+  title?: string;
+  text: string;
+  formatted_text?: string;
+  subject_id: string;
+  subject?: { id: string; name: string };
+  grade?: { id: string; name: string };
+  grade_id?: string;
+  difficulty_level?: string;
+  question_type?: string;
+  value?: number;
+  correct_answer?: string;
+  formatted_solution?: string;
+  alternatives?: ApiQuestionOption[];
+  skill?: string | string[];
+  created_by?: string;
+}
 
 interface Subject {
   id: string;
@@ -112,23 +137,22 @@ export function QuestionBank({
       const response = await api.get("/questions/");
       
       // Transform API response to match our Question interface
-      const transformedQuestions = (response.data || []).map((q: any) => ({
+      const transformedQuestions = (response.data || []).map((q: ApiQuestion) => ({
         id: q.id,
-        number: q.number || 1,
+        title: q.title || "",
         text: q.text,
         formattedText: q.formatted_text,
         subjectId: q.subject_id,
-        subject: q.subject?.name || "Disciplina não definida",
-        grade: q.grade?.name || "Série não definida", 
+        subject: q.subject || { id: q.subject_id || "", name: "Disciplina não definida" },
+        grade: q.grade || { id: q.grade_id || "", name: "Série não definida" }, 
         difficulty: q.difficulty_level || "Médio",
-        type: q.question_type || "multipleChoice",
-        value: q.value || 1.0,
+        type: q.question_type === "essay" ? "open" : q.question_type === "trueFalse" ? "trueFalse" : "multipleChoice",
+        value: String(q.value || 1.0),
         solution: q.correct_answer || "",
         formattedSolution: q.formatted_solution,
         options: q.alternatives || [],
-        title: q.title || "",
-        skills: q.skill || "",
-        topics: q.topics || [],
+        skills: Array.isArray(q.skill) ? q.skill : [q.skill || ""],
+        created_by: q.created_by || "",
       }));
       
       setQuestions(transformedQuestions);
@@ -167,10 +191,10 @@ export function QuestionBank({
     (question) => {
       const matchesSearch = question.text.toLowerCase().includes(searchTerm.toLowerCase());
       // Filter by subjectId prop if provided
-      const matchesSubjectId = !subjectId || question.subjectId === subjectId; // Match subjectId prop to question.subjectId
-      // Filter by filter state
-      const matchesSubject = !filters.subject || question.subject === filters.subject;
-      const matchesGrade = !filters.grade || question.grade === filters.grade;
+      const matchesSubjectId = !subjectId || question.subjectId === subjectId;
+      // Filter by filter state - usar strings para comparação
+      const matchesSubject = !filters.subject || question.subject.name === filters.subject;
+      const matchesGrade = !filters.grade || question.grade.name === filters.grade;
       const matchesDifficulty = !filters.difficulty || question.difficulty === filters.difficulty;
       const matchesType = !filters.type || question.type === filters.type;
 
@@ -417,12 +441,13 @@ export function QuestionBank({
                             </Button>
                           </TableCell>
                           <TableCell className="max-w-xs truncate" title={question.text}>{question.text}</TableCell>
-                          <TableCell className="hidden sm:table-cell">{question.subject}</TableCell>
-                          <TableCell className="hidden md:table-cell">{question.grade}</TableCell>
+                          <TableCell className="hidden sm:table-cell">{String(question.subject.name)}</TableCell>
+                          <TableCell className="hidden md:table-cell">{String(question.grade.name)}</TableCell>
                           <TableCell className="hidden lg:table-cell">{question.difficulty}</TableCell>
                            <TableCell className="w-24 hidden lg:table-cell">
                              {question.type === 'multipleChoice' ? 'Múltipla Escolha' : 
-                              question.type === 'essay' ? 'Dissertativa' : question.type}
+                              question.type === 'trueFalse' ? 'Verdadeiro/Falso' : 
+                              question.type === 'open' ? 'Dissertativa' : 'Outro'}
                            </TableCell>
                         </TableRow>
                       ))
@@ -444,7 +469,7 @@ export function QuestionBank({
                 <Alert>
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
-                    {filteredQuestions.length} questão(ões) encontrada(s) • {selectedQuestions.length} selecionada(s)
+                    {filteredQuestions.length} questões encontradas • {selectedQuestions.length} selecionadas
                   </AlertDescription>
                 </Alert>
               )}

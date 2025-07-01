@@ -91,6 +91,10 @@ interface Evaluation {
   questions: Question[];
   municipalities?: Municipality[];
   schools?: SchoolInfo[];
+  municipalities_count?: number;
+  schools_count?: number;
+  total_students?: number;
+  applied_classes_count?: number;
 }
 
 // Interface para questões agrupadas por matéria
@@ -333,8 +337,10 @@ export default function ViewEvaluation() {
   const questionsBySubject = groupQuestionsBySubject();
   const totalQuestions = evaluation.questions.length;
   const subjectsCount = evaluation.subjects_info?.length || 1;
-  const municipalitiesCount = evaluation.municipalities?.length || 0;
-  const schoolsCount = evaluation.schools?.length || 0;
+  const municipalitiesCount = evaluation.municipalities_count || evaluation.municipalities?.length || 0;
+  const schoolsCount = evaluation.schools_count || evaluation.schools?.length || 0;
+  const totalStudents = evaluation.total_students || 0;
+  const appliedClassesCount = evaluation.applied_classes_count || 0;
 
   return (
     <div className="container mx-auto px-2 md:px-4 py-4 md:py-6 space-y-6">
@@ -392,7 +398,7 @@ export default function ViewEvaluation() {
       </div>
 
       {/* Statistics Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
@@ -404,6 +410,21 @@ export default function ViewEvaluation() {
             <div className="text-2xl font-bold">{totalQuestions}</div>
             <p className="text-xs text-muted-foreground">
               Total de questões
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              Alunos
+            </CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">{totalStudents}</div>
+            <p className="text-xs text-muted-foreground">
+              {appliedClassesCount > 0 ? `Em ${appliedClassesCount} turmas` : 'Prova entregue'}
             </p>
           </CardContent>
         </Card>
@@ -433,7 +454,7 @@ export default function ViewEvaluation() {
           <CardContent>
             <div className="text-2xl font-bold">{municipalitiesCount}</div>
             <p className="text-xs text-muted-foreground">
-              Municípios selecionados
+              {municipalitiesCount === 1 ? 'Município selecionado' : 'Municípios selecionados'}
             </p>
           </CardContent>
         </Card>
@@ -448,7 +469,7 @@ export default function ViewEvaluation() {
           <CardContent>
             <div className="text-2xl font-bold">{schoolsCount}</div>
             <p className="text-xs text-muted-foreground">
-              Escolas participantes
+              {schoolsCount === 1 ? 'Escola participante' : 'Escolas participantes'}
             </p>
           </CardContent>
         </Card>
@@ -513,10 +534,24 @@ export default function ViewEvaluation() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Users className="h-5 w-5" />
-              Municípios e Escolas
+              Aplicação da Prova
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {totalStudents > 0 && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Users className="h-5 w-5 text-green-600" />
+                  <span className="font-semibold text-green-800">
+                    {totalStudents} alunos receberam a prova
+                  </span>
+                </div>
+                <p className="text-sm text-green-700">
+                  Distribuída em {appliedClassesCount} turmas de {schoolsCount} escolas
+                </p>
+              </div>
+            )}
+            
             <div>
               <label className="text-sm font-medium text-muted-foreground mb-2 block">
                 Municípios ({municipalitiesCount})
@@ -525,8 +560,9 @@ export default function ViewEvaluation() {
                 {(evaluation.municipalities && evaluation.municipalities.length > 0) ? (
                   <ul className="space-y-1">
                     {evaluation.municipalities.map((m: Municipality, idx: number) => (
-                      <li key={m.id || m.name || idx} className="text-sm bg-gray-50 px-2 py-1 rounded">
-                        {m.name}
+                      <li key={m.id || m.name || idx} className="text-sm bg-blue-50 px-3 py-2 rounded border border-blue-200 flex items-center gap-2">
+                        <MapPin className="h-4 w-4 text-blue-600" />
+                        <span className="font-medium">{m.name}</span>
                       </li>
                     ))}
                   </ul>
@@ -535,6 +571,7 @@ export default function ViewEvaluation() {
                 )}
               </div>
             </div>
+            
             <div>
               <label className="text-sm font-medium text-muted-foreground mb-2 block">
                 Escolas ({schoolsCount})
@@ -543,8 +580,9 @@ export default function ViewEvaluation() {
                 {(evaluation.schools && evaluation.schools.length > 0) ? (
                   <ul className="space-y-1">
                     {evaluation.schools.map((s: SchoolInfo, idx: number) => (
-                      <li key={s.id || s.name || idx} className="text-sm bg-gray-50 px-2 py-1 rounded">
-                        {s.name}
+                      <li key={s.id || s.name || idx} className="text-sm bg-gray-50 px-3 py-2 rounded border border-gray-200 flex items-center gap-2">
+                        <School className="h-4 w-4 text-gray-600" />
+                        <span className="font-medium">{s.name}</span>
                       </li>
                     ))}
                   </ul>
@@ -601,11 +639,11 @@ export default function ViewEvaluation() {
                   <div className="flex-1">
                     <h2 className="text-xl font-bold text-gray-800">{subjectData.subject.name}</h2>
                     <p className="text-sm text-muted-foreground mt-1">
-                      {subjectData.questions.length} questão{subjectData.questions.length !== 1 ? 'ões' : ''} cadastrada{subjectData.questions.length !== 1 ? 's' : ''}
+                      {subjectData.questions.length} questões cadastradas
                     </p>
                   </div>
                   <Badge variant="secondary" className="bg-blue-100 text-blue-700">
-                    {subjectData.questions.length} questão{subjectData.questions.length !== 1 ? 'ões' : ''}
+                    {subjectData.questions.length} questões
                   </Badge>
                 </CardTitle>
               </CardHeader>
@@ -637,7 +675,7 @@ export default function ViewEvaluation() {
                               </Badge>
                               {Array.isArray(question.skills) && question.skills.length > 0 && (
                                 <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
-                                  {question.skills.length} habilidade{question.skills.length !== 1 ? 's' : ''}
+                                  {question.skills.length} habilidades
                                 </Badge>
                               )}
                             </div>
@@ -769,7 +807,7 @@ export default function ViewEvaluation() {
                               <span className="font-medium text-gray-600">Habilidades:</span> 
                               <span className="text-gray-700">
                                 {Array.isArray(question.skills) && question.skills.length > 0
-                                  ? `${question.skills.length} cadastrada${question.skills.length !== 1 ? 's' : ''}`
+                                  ? `${question.skills.length} habilidades`
                                   : 'Nenhuma'}
                               </span>
                             </div>

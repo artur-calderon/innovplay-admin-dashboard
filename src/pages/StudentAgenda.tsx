@@ -548,7 +548,7 @@ export default function StudentAgenda() {
                   <span className="font-semibold">Avaliações Liberadas</span>
                 </div>
                 <p className="text-sm text-green-700">
-                  Você tem {available.length} avaliação{available.length !== 1 ? 'ões' : ''} disponível{available.length !== 1 ? 'eis' : ''} para realizar agora.
+                  Você tem {available.length} avaliações disponíveis para realizar agora.
                   Clique em "Fazer Avaliação" para iniciar.
                 </p>
               </div>
@@ -586,7 +586,7 @@ export default function StudentAgenda() {
                   <span className="font-semibold">Próximas Avaliações</span>
                 </div>
                 <p className="text-sm text-blue-700">
-                  Você tem {upcoming.length} avaliação{upcoming.length !== 1 ? 'ões' : ''} agendada{upcoming.length !== 1 ? 's' : ''}.
+                  Você tem {upcoming.length} avaliações agendadas.
                   Elas serão liberadas automaticamente no horário marcado.
                 </p>
               </div>
@@ -624,7 +624,7 @@ export default function StudentAgenda() {
                   <span className="font-semibold">Avaliações Expiradas</span>
                 </div>
                 <p className="text-sm text-red-700">
-                  {expired.length} avaliação{expired.length !== 1 ? 'ões' : ''} perdeu{expired.length === 1 ? '' : 'ram'} o prazo de realização.
+                  {expired.length} avaliações perderam o prazo de realização.
                   Entre em contato com seu professor se necessário.
                 </p>
               </div>
