@@ -92,17 +92,23 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
       name: "Principal",
       role: ["admin", "professor", "aluno"],
       links: [
-        { 
-          icon: LayoutDashboard, 
-          label: "Painel", 
-          href: `${user.role === 'aluno' ? "/aluno" : "/app"}`, 
-          role: ["admin", "professor", "aluno"] 
+        {
+          icon: LayoutDashboard,
+          label: "Painel",
+          href: `${user.role === 'aluno' ? "/aluno" : "/app"}`,
+          role: ["admin", "professor", "aluno"]
         },
-        { 
-          icon: CalendarDays, 
-          label: "Agenda", 
-          href: `${user.role === 'aluno' ? "/aluno/agenda" : "/app/agenda"}`, 
-          role: ["admin", "professor", "aluno"] 
+        {
+          icon: CalendarDays,
+          label: "Agenda",
+          href: `${user.role === 'aluno' ? "/aluno/agenda" : "/app/agenda"}`,
+          role: ["admin", "professor", "aluno"]
+        },
+        {
+          icon: List,
+          label: "Avaliações",
+          href: `${user.role === 'aluno' ? "/aluno/avaliacoes" : "/app/avaliacoes"}`,
+          role: ["aluno"]
         },
       ]
     },
@@ -110,24 +116,24 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
       name: "Plataforma",
       role: ["admin", "professor", "aluno"],
       links: [
-        { 
-          icon: Gamepad, 
-          label: "Jogos", 
-          href: `${user.role === 'aluno' ? "/aluno/jogos" : "/app/jogos"}`, 
+        {
+          icon: Gamepad,
+          label: "Jogos",
+          href: `${user.role === 'aluno' ? "/aluno/jogos" : "/app/jogos"}`,
           role: ["admin", "professor", "aluno"],
           badge: "3"
         },
-        { 
-          icon: Tv, 
-          label: "Play TV", 
-          href: `${user.role === 'aluno' ? "/aluno/play-tv" : "/app/play-tv"}`, 
-          role: ["admin", "professor", "aluno"] 
+        {
+          icon: Tv,
+          label: "Play TV",
+          href: `${user.role === 'aluno' ? "/aluno/play-tv" : "/app/play-tv"}`,
+          role: ["admin", "professor", "aluno"]
         },
-        { 
-          icon: Headset, 
-          label: "Plantão Online", 
-          href: "/app/plantao", 
-          role: ["admin", "professor"] 
+        {
+          icon: Headset,
+          label: "Plantão Online",
+          href: "/app/plantao",
+          role: ["admin", "professor"]
         },
       ]
     },
@@ -159,11 +165,11 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
             { icon: User, label: "Usuário", href: "/app/usuarios", role: ["admin"] },
           ]
         },
-        { 
-          icon: Ticket, 
-          label: "Cartão Resposta", 
-          href: "/app/cartao-resposta", 
-          role: ["admin", "professor"] 
+        {
+          icon: Ticket,
+          label: "Cartão Resposta",
+          href: "/app/cartao-resposta",
+          role: ["admin", "professor"]
         },
       ]
     },
@@ -171,24 +177,24 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
       name: "Atividades",
       role: ["admin", "professor", "aluno"],
       links: [
-        { 
-          icon: Award, 
-          label: "Certificados", 
-          href: `${user.role === 'aluno' ? "/aluno/certificados" : "/app/certificados"}`, 
-          role: ["admin", "professor", "aluno"] 
+        {
+          icon: Award,
+          label: "Certificados",
+          href: `${user.role === 'aluno' ? "/aluno/certificados" : "/app/certificados"}`,
+          role: ["admin", "professor", "aluno"]
         },
-        { 
-          icon: Trophy, 
-          label: "Competições", 
-          href: `${user.role === 'aluno' ? "/aluno/competicoes" : "/app/competicoes"}`, 
+        {
+          icon: Trophy,
+          label: "Competições",
+          href: `${user.role === 'aluno' ? "/aluno/competicoes" : "/app/competicoes"}`,
           role: ["admin", "professor", "aluno"],
           badge: "2"
         },
-        { 
-          icon: Award, 
-          label: "Olimpíadas", 
-          href: `${user.role === 'aluno' ? "/aluno/olimpiadas" : "/app/olimpiadas"}`, 
-          role: ["admin", "professor", "aluno"] 
+        {
+          icon: Award,
+          label: "Olimpíadas",
+          href: `${user.role === 'aluno' ? "/aluno/olimpiadas" : "/app/olimpiadas"}`,
+          role: ["admin", "professor", "aluno"]
         },
       ]
     },
@@ -196,29 +202,29 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
       name: "Configurações",
       role: ["admin", "professor", "aluno"],
       links: [
-        { 
-          icon: Edit, 
-          label: "Editar Perfil", 
-          href: `${user.role === 'aluno' ? "/aluno/perfil" : "/app/perfil"}`, 
-          role: ["admin", "professor", "aluno"] 
+        {
+          icon: Edit,
+          label: "Editar Perfil",
+          href: `${user.role === 'aluno' ? "/aluno/perfil" : "/app/perfil"}`,
+          role: ["admin", "professor", "aluno"]
         },
-        { 
-          icon: Bell, 
-          label: "Avisos", 
-          href: `${user.role === 'aluno' ? "/aluno/avisos" : "/app/avisos"}`, 
+        {
+          icon: Bell,
+          label: "Avisos",
+          href: `${user.role === 'aluno' ? "/aluno/avisos" : "/app/avisos"}`,
           role: ["admin", "professor", "aluno"],
           badge: "5"
         },
-        { 
-          icon: Settings, 
-          label: "Configurações", 
-          href: "/app/configuracoes", 
-          role: ["admin", "professor"] 
+        {
+          icon: Settings,
+          label: "Configurações",
+          href: "/app/configuracoes",
+          role: ["admin", "professor"]
         },
-        { 
-          icon: LogOut, 
-          label: "Sair", 
-          href: "/logout", 
+        {
+          icon: LogOut,
+          label: "Sair",
+          href: "/logout",
           role: ["admin", "professor", "aluno"],
           divider: true
         },
@@ -289,16 +295,16 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         </div>
         <div className="flex items-center gap-2">
           {link.badge && (
-            <Badge 
-              variant="secondary" 
+            <Badge
+              variant="secondary"
               className="bg-white/20 text-white text-xs px-1.5 py-0.5 h-5"
             >
               {link.badge}
             </Badge>
           )}
           {hasSubmenu && (
-            <ChevronDown 
-              size={14} 
+            <ChevronDown
+              size={14}
               className={cn(
                 "transition-transform duration-200",
                 isSubmenuOpen && "rotate-180"
@@ -329,8 +335,8 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
             {linkContent}
           </button>
         ) : (
-          <Link 
-            to={link.href || "#"} 
+          <Link
+            to={link.href || "#"}
             className={itemClasses}
             onClick={handleLinkClick}
           >
@@ -341,7 +347,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         {hasSubmenu && isSubmenuOpen && (
           <ul className="space-y-1 ml-2 mt-1 border-l border-white/10 pl-3">
             {link.children?.map(child => (
-              <RenderMenuItem 
+              <RenderMenuItem
                 key={child.href || child.label}
                 link={child}
                 currentPath={currentPath}
@@ -378,10 +384,10 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
       {/* Mobile Header with Close Button */}
       {isMobile && (
         <div className="flex items-center justify-between p-4 border-b border-white/10">
-          <img 
-            width="150px" 
-            height="40px" 
-            src="/LOGO-1-menor.png" 
+          <img
+            width="150px"
+            height="40px"
+            src="/LOGO-1-menor.png"
             alt="Logo"
             className="object-contain"
           />
@@ -401,10 +407,10 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
       {!isMobile && (
         <div className="p-4 border-b border-white/10">
           <div className="flex items-center justify-center">
-            <img 
-              width="180px" 
-              height="48px" 
-              src="/LOGO-1-menor.png" 
+            <img
+              width="180px"
+              height="48px"
+              src="/LOGO-1-menor.png"
               alt="Logo"
               className="object-contain"
             />
