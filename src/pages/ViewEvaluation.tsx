@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Pencil, Trash2, Play, ArrowLeft, Eye, Users, BookOpen, FileText, Calendar, User, MapPin, School } from "lucide-react";
+import { Pencil, Trash2, ArrowLeft, Eye, Users, BookOpen, FileText, Calendar, User, MapPin, School } from "lucide-react";
 import { api } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -115,7 +115,9 @@ export default function ViewEvaluation() {
       if (!id) return;
       try {
         const response = await api.get(`/test/${id}`);
-        console.log(response.data)
+        console.log('📊 Dados da avaliação:', response.data);
+        console.log('📝 Questões encontradas:', response.data?.questions?.length || 0);
+        console.log('🔍 Primeira questão:', response.data?.questions?.[0]);
         setEvaluation(response.data);
       } catch (error) {
         console.error("Erro ao buscar avaliação:", error);
@@ -166,22 +168,28 @@ export default function ViewEvaluation() {
     }
   };
 
-  const handleApply = () => {
-    navigate(`/app/avaliacao/${id}/aplicar`);
-  };
-
   const handleBack = () => {
     navigate("/app/avaliacoes");
   };
 
   // Função para agrupar questões por matéria
   const groupQuestionsBySubject = (): QuestionsBySubject => {
-    if (!evaluation) return {};
+    if (!evaluation) {
+      console.log('❌ Nenhuma avaliação encontrada');
+      return {};
+    }
+
+    console.log('🔄 Agrupando questões por matéria...');
+    console.log('📋 Evaluation completa:', evaluation);
+    console.log('📋 Subjects info:', evaluation.subjects_info);
+    console.log('📝 Total de questões:', evaluation.questions?.length || 0);
+    console.log('📝 Questões array:', evaluation.questions);
 
     const questionsBySubject: QuestionsBySubject = {};
 
     // Se temos subjects_info, usamos para criar a estrutura
     if (evaluation.subjects_info && evaluation.subjects_info.length > 0) {
+      console.log('✅ Usando subjects_info para agrupamento');
       evaluation.subjects_info.forEach(subject => {
         questionsBySubject[subject.id] = {
           subject,
@@ -190,26 +198,49 @@ export default function ViewEvaluation() {
       });
 
       // Distribuir questões pelas matérias
-      evaluation.questions.forEach(question => {
+      evaluation.questions?.forEach((question, index) => {
         const subjId = question.subject?.id;
+        console.log(`📝 Questão ${index + 1}:`, question);
+        console.log(`📝 Questão ${index + 1}: subject_id = ${subjId}`);
+        console.log(`📝 Questão ${index + 1}: text = "${question.text}"`);
+        console.log(`📝 Questão ${index + 1}: type = "${question.type}"`);
+        console.log(`📝 Questão ${index + 1}: options =`, question.options);
+        console.log(`📝 Questão ${index + 1}: difficulty = "${question.difficulty}"`);
+        
         if (subjId && questionsBySubject[subjId]) {
           questionsBySubject[subjId].questions.push(question);
         } else {
           // Se não tem subject ou não encontrou a matéria, coloca na primeira
           const firstSubjectId = Object.keys(questionsBySubject)[0];
           if (firstSubjectId) {
+            console.log(`⚠️ Questão ${index + 1} sem subject válido, colocando na primeira matéria`);
             questionsBySubject[firstSubjectId].questions.push(question);
           }
         }
       });
     } else {
       // Fallback para avaliações antigas com apenas uma matéria
-      questionsBySubject[evaluation.subject.id] = {
-        subject: evaluation.subject,
-        questions: evaluation.questions
-      };
+      console.log('📚 Usando fallback para matéria única');
+      if (evaluation.subject) {
+        console.log('📚 Subject encontrado:', evaluation.subject);
+        console.log('📚 Questões para adicionar:', evaluation.questions);
+        
+        // Log detalhado de cada questão no fallback
+        evaluation.questions?.forEach((question, index) => {
+          console.log(`📚 Questão ${index + 1} (fallback):`, question);
+          console.log(`📚 Questão ${index + 1}: text = "${question.text}"`);
+          console.log(`📚 Questão ${index + 1}: type = "${question.type}"`);
+          console.log(`📚 Questão ${index + 1}: options =`, question.options);
+        });
+        
+        questionsBySubject[evaluation.subject.id] = {
+          subject: evaluation.subject,
+          questions: evaluation.questions || []
+        };
+      }
     }
 
+    console.log('✅ Agrupamento concluído:', questionsBySubject);
     return questionsBySubject;
   };
 
@@ -356,10 +387,6 @@ export default function ViewEvaluation() {
           >
             <Trash2 className="h-4 w-4 mr-2" />
             {isDeleting ? "Excluindo..." : "Excluir"}
-          </Button>
-          <Button size="sm" onClick={handleApply}>
-            <Play className="h-4 w-4 mr-2" />
-            Aplicar Avaliação
           </Button>
         </div>
       </div>
@@ -532,194 +559,232 @@ export default function ViewEvaluation() {
 
       {/* Questions by Subject */}
       <div className="space-y-8">
-        {Object.entries(questionsBySubject).map(([subjectId, subjectData]) => (
-          <Card key={subjectId} className="overflow-hidden">
-            <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
-              <CardTitle className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-500 text-white rounded-lg flex items-center justify-center">
-                  <BookOpen className="h-5 w-5" />
-                </div>
-                <div className="flex-1">
-                  <h2 className="text-xl font-bold text-gray-800">{subjectData.subject.name}</h2>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {subjectData.questions.length} questão{subjectData.questions.length !== 1 ? 'ões' : ''} cadastrada{subjectData.questions.length !== 1 ? 's' : ''}
-                  </p>
-                </div>
-                <Badge variant="secondary" className="bg-blue-100 text-blue-700">
-                  {subjectData.questions.length} questão{subjectData.questions.length !== 1 ? 'ões' : ''}
-                </Badge>
+        {Object.keys(questionsBySubject).length === 0 ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Questões da Avaliação
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-6">
-              <div className="space-y-8">
-                {subjectData.questions.map((question, index) => (
-                  <div key={question.id} className="question-preview-content bg-white rounded-xl border border-gray-200 overflow-hidden">
-                    {/* Header da questão */}
-                    <div className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200 p-6">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1">
-                          <h3 className="text-xl font-bold text-gray-800 mb-3">
-                            Questão {question.number || index + 1}
-                          </h3>
-                          <div className="flex flex-wrap gap-2">
-                            <Badge variant="outline" className="text-xs bg-white">
-                              {question.type === 'open' ? 'Dissertativa' : 
-                               question.type === 'multipleChoice' ? 'Múltipla Escolha' :
-                               question.type}
-                            </Badge>
-                            <Badge variant="outline" className="text-xs bg-white">
-                              {question.value} pontos
-                            </Badge>
-                            <Badge variant="outline" className="text-xs bg-white">
-                              {question.difficulty}
-                            </Badge>
-                            {Array.isArray(question.skills) && question.skills.length > 0 && (
-                              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
-                                {question.skills.length} habilidade{question.skills.length !== 1 ? 's' : ''}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Conteúdo da questão */}
-                    <div className="p-6 space-y-6">
-                      {/* Enunciado */}
-                      <div className="prose prose-sm max-w-none question-statement">
-                        <div
-                          className="text-base leading-relaxed text-gray-700 p-4 bg-gray-50 rounded-lg border"
-                          dangerouslySetInnerHTML={{ __html: question.text }}
-                        />
-                      </div>
-
-                      {/* Segundo Enunciado (se houver) */}
-                      {question.formattedText && question.formattedText !== question.text && (
-                        <div className="prose prose-sm max-w-none question-continuation">
-                          <div
-                            className="text-base leading-relaxed text-gray-700 p-4 bg-blue-50 rounded-lg border border-blue-200"
-                            dangerouslySetInnerHTML={{ __html: question.formattedText }}
-                          />
-                        </div>
-                      )}
-
-                      {/* Alternativas para questões de múltipla escolha */}
-                      {question.type === 'multipleChoice' && question.options && question.options.length > 0 && (
-                        <div className="space-y-4">
-                          <h4 className="font-semibold text-lg text-gray-700 flex items-center gap-2">
-                            <span className="w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-sm">🔢</span>
-                            Alternativas
-                          </h4>
-                          <div className="space-y-3">
-                            {question.options.map((option, optionIndex) => (
-                              <div
-                                key={optionIndex}
-                                className={`alternative-item flex items-start gap-4 p-5 rounded-xl border transition-all duration-200 ${
-                                  option.isCorrect
-                                    ? "bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 shadow-sm"
-                                    : "bg-white border-gray-200 hover:border-gray-300 hover:shadow-sm"
-                                }`}
-                              >
-                                <div
-                                  className={`w-9 h-9 rounded-full border-2 flex items-center justify-center text-sm font-bold shrink-0 transition-all duration-200 ${
-                                    option.isCorrect 
-                                      ? 'bg-green-500 text-white border-green-500 shadow-lg' 
-                                      : 'bg-gray-50 border-gray-300 text-gray-600'
-                                  }`}
-                                >
-                                  {String.fromCharCode(65 + optionIndex)}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className={`text-base leading-relaxed ${
-                                    option.isCorrect ? 'font-medium text-green-800' : 'text-gray-700'
-                                  }`}>
-                                    <div dangerouslySetInnerHTML={{ __html: option.text }} />
-                                  </div>
-                                  {option.isCorrect && (
-                                    <Badge variant="outline" className="mt-3 text-xs bg-green-50 text-green-700 border-green-200">
-                                      ✓ Resposta Correta
-                                    </Badge>
-                                  )}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Área de resposta para questões dissertativas */}
-                      {question.type === 'open' && (
-                        <div className="space-y-4">
-                          <h4 className="font-semibold text-lg text-gray-700 flex items-center gap-2">
-                            <span className="w-6 h-6 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-sm">✍️</span>
-                            Área de Resposta
-                          </h4>
-                          <div className="answer-area bg-gradient-to-br from-gray-50 to-gray-100 border-2 border-dashed border-gray-300 rounded-xl p-6 relative overflow-hidden">
-                            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-400 to-purple-600 opacity-60"></div>
-                            <div className="space-y-3">
-                              <p className="text-sm font-medium text-gray-600">
-                                Espaço destinado para a resposta do estudante
-                              </p>
-                              <div className="bg-white/80 backdrop-blur-sm border border-gray-200 rounded-lg p-4 min-h-[120px] flex items-center justify-center">
-                                <p className="text-gray-400 text-sm leading-relaxed text-center">
-                                  📝 O estudante desenvolverá sua resposta neste espaço durante a avaliação, demonstrando conhecimento e raciocínio sobre o tema abordado.
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Resolução/Gabarito (se houver) */}
-                      {question.solution && question.solution.trim() !== '' && (
-                        <div className="space-y-4 border-t border-gray-200 pt-6">
-                          <h4 className="font-semibold text-lg text-gray-700 flex items-center gap-2">
-                            <span className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm">💡</span>
-                            Resolução
-                          </h4>
-                          <div className="resolution-content bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6 relative overflow-hidden">
-                            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-400 to-indigo-600"></div>
-                            <div className="prose prose-sm max-w-none">
-                              <div
-                                className="text-base leading-relaxed text-gray-700"
-                                dangerouslySetInnerHTML={{ __html: question.solution }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Metadados da questão */}
-                      <div className="bg-gray-50 rounded-lg p-4 border-t border-gray-200">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
-                          <div className="flex items-center gap-2">
-                            <span className="w-2 h-2 bg-blue-400 rounded-full"></span>
-                            <span className="font-medium text-gray-600">Dificuldade:</span> 
-                            <span className="text-gray-700">{question.difficulty}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="w-2 h-2 bg-green-400 rounded-full"></span>
-                            <span className="font-medium text-gray-600">Valor:</span> 
-                            <span className="text-gray-700">{question.value} pontos</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="w-2 h-2 bg-purple-400 rounded-full"></span>
-                            <span className="font-medium text-gray-600">Habilidades:</span> 
-                            <span className="text-gray-700">
-                              {Array.isArray(question.skills) && question.skills.length > 0
-                                ? `${question.skills.length} cadastrada${question.skills.length !== 1 ? 's' : ''}`
-                                : 'Nenhuma'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+            <CardContent className="text-center py-12">
+              <div className="space-y-4">
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto">
+                  <FileText className="h-8 w-8 text-gray-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                    Nenhuma questão encontrada
+                  </h3>
+                  <p className="text-gray-600 mb-4">
+                    Esta avaliação ainda não possui questões cadastradas.
+                  </p>
+                  <Button onClick={handleEdit} variant="outline">
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Adicionar Questões
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
-        ))}
+        ) : (
+          Object.entries(questionsBySubject).map(([subjectId, subjectData]) => {
+            console.log(`🎨 Renderizando disciplina: ${subjectData.subject.name} com ${subjectData.questions.length} questões`);
+            
+            return (
+            <Card key={subjectId} className="overflow-hidden">
+              <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+                <CardTitle className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-500 text-white rounded-lg flex items-center justify-center">
+                    <BookOpen className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1">
+                    <h2 className="text-xl font-bold text-gray-800">{subjectData.subject.name}</h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {subjectData.questions.length} questão{subjectData.questions.length !== 1 ? 'ões' : ''} cadastrada{subjectData.questions.length !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                  <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                    {subjectData.questions.length} questão{subjectData.questions.length !== 1 ? 'ões' : ''}
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6">
+                <div className="space-y-8">
+                  {subjectData.questions.map((question, index) => {
+                    console.log(`🎨 Renderizando questão ${index + 1}: ${question.text?.substring(0, 50)}...`);
+                    
+                    return (
+                    <div key={question.id} className="question-preview-content bg-white rounded-xl border border-gray-200 overflow-hidden">
+                      {/* Header da questão */}
+                      <div className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200 p-6">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <h3 className="text-xl font-bold text-gray-800 mb-3">
+                              Questão {question.number || index + 1}
+                            </h3>
+                            <div className="flex flex-wrap gap-2">
+                              <Badge variant="outline" className="text-xs bg-white">
+                                {question.type === 'open' ? 'Dissertativa' : 
+                                 question.type === 'multipleChoice' ? 'Múltipla Escolha' :
+                                 question.type}
+                              </Badge>
+                              <Badge variant="outline" className="text-xs bg-white">
+                                {question.value} pontos
+                              </Badge>
+                              <Badge variant="outline" className="text-xs bg-white">
+                                {question.difficulty}
+                              </Badge>
+                              {Array.isArray(question.skills) && question.skills.length > 0 && (
+                                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
+                                  {question.skills.length} habilidade{question.skills.length !== 1 ? 's' : ''}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Conteúdo da questão */}
+                      <div className="p-6 space-y-6">
+                        {/* Enunciado */}
+                        <div className="prose prose-sm max-w-none question-statement">
+                          <div
+                            className="text-base leading-relaxed text-gray-700 p-4 bg-gray-50 rounded-lg border"
+                            dangerouslySetInnerHTML={{ __html: question.text }}
+                          />
+                        </div>
+
+                        {/* Segundo Enunciado (se houver) */}
+                        {question.formattedText && question.formattedText !== question.text && (
+                          <div className="prose prose-sm max-w-none question-continuation">
+                            <div
+                              className="text-base leading-relaxed text-gray-700 p-4 bg-blue-50 rounded-lg border border-blue-200"
+                              dangerouslySetInnerHTML={{ __html: question.formattedText }}
+                            />
+                          </div>
+                        )}
+
+                        {/* Alternativas para questões de múltipla escolha */}
+                        {question.type === 'multipleChoice' && question.options && question.options.length > 0 && (
+                          <div className="space-y-4">
+                            <h4 className="font-semibold text-lg text-gray-700 flex items-center gap-2">
+                              <span className="w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-sm">🔢</span>
+                              Alternativas
+                            </h4>
+                            <div className="space-y-3">
+                              {question.options.map((option, optionIndex) => (
+                                <div
+                                  key={optionIndex}
+                                  className={`alternative-item flex items-start gap-4 p-5 rounded-xl border transition-all duration-200 ${
+                                    option.isCorrect
+                                      ? "bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 shadow-sm"
+                                      : "bg-white border-gray-200 hover:border-gray-300 hover:shadow-sm"
+                                  }`}
+                                >
+                                  <div
+                                    className={`w-9 h-9 rounded-full border-2 flex items-center justify-center text-sm font-bold shrink-0 transition-all duration-200 ${
+                                      option.isCorrect 
+                                        ? 'bg-green-500 text-white border-green-500 shadow-lg' 
+                                        : 'bg-gray-50 border-gray-300 text-gray-600'
+                                    }`}
+                                  >
+                                    {String.fromCharCode(65 + optionIndex)}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className={`text-base leading-relaxed ${
+                                      option.isCorrect ? 'font-medium text-green-800' : 'text-gray-700'
+                                    }`}>
+                                      <div dangerouslySetInnerHTML={{ __html: option.text }} />
+                                    </div>
+                                    {option.isCorrect && (
+                                      <Badge variant="outline" className="mt-3 text-xs bg-green-50 text-green-700 border-green-200">
+                                        ✓ Resposta Correta
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Área de resposta para questões dissertativas */}
+                        {question.type === 'open' && (
+                          <div className="space-y-4">
+                            <h4 className="font-semibold text-lg text-gray-700 flex items-center gap-2">
+                              <span className="w-6 h-6 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-sm">✍️</span>
+                              Área de Resposta
+                            </h4>
+                            <div className="answer-area bg-gradient-to-br from-gray-50 to-gray-100 border-2 border-dashed border-gray-300 rounded-xl p-6 relative overflow-hidden">
+                              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-400 to-purple-600 opacity-60"></div>
+                              <div className="space-y-3">
+                                <p className="text-sm font-medium text-gray-600">
+                                  Espaço destinado para a resposta do estudante
+                                </p>
+                                <div className="bg-white/80 backdrop-blur-sm border border-gray-200 rounded-lg p-4 min-h-[120px] flex items-center justify-center">
+                                  <p className="text-gray-400 text-sm leading-relaxed text-center">
+                                    📝 O estudante desenvolverá sua resposta neste espaço durante a avaliação, demonstrando conhecimento e raciocínio sobre o tema abordado.
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Resolução/Gabarito (se houver) */}
+                        {question.solution && question.solution.trim() !== '' && (
+                          <div className="space-y-4 border-t border-gray-200 pt-6">
+                            <h4 className="font-semibold text-lg text-gray-700 flex items-center gap-2">
+                              <span className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm">💡</span>
+                              Resolução
+                            </h4>
+                            <div className="resolution-content bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6 relative overflow-hidden">
+                              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-400 to-indigo-600"></div>
+                              <div className="prose prose-sm max-w-none">
+                                <div
+                                  className="text-base leading-relaxed text-gray-700"
+                                  dangerouslySetInnerHTML={{ __html: question.solution }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Metadados da questão */}
+                        <div className="bg-gray-50 rounded-lg p-4 border-t border-gray-200">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2 h-2 bg-blue-400 rounded-full"></span>
+                              <span className="font-medium text-gray-600">Dificuldade:</span> 
+                              <span className="text-gray-700">{question.difficulty}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+                              <span className="font-medium text-gray-600">Valor:</span> 
+                              <span className="text-gray-700">{question.value} pontos</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="w-2 h-2 bg-purple-400 rounded-full"></span>
+                              <span className="font-medium text-gray-600">Habilidades:</span> 
+                              <span className="text-gray-700">
+                                {Array.isArray(question.skills) && question.skills.length > 0
+                                  ? `${question.skills.length} cadastrada${question.skills.length !== 1 ? 's' : ''}`
+                                  : 'Nenhuma'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+            );
+          })
+        )}
       </div>
 
       {/* Dialog de confirmação de exclusão */}

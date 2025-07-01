@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Book, Eye, Trash2 } from "lucide-react";
+import { Book, Eye, Trash2, Plus } from "lucide-react";
 import { Question, Subject } from "./types";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -9,6 +9,7 @@ import { useAuth } from "@/context/authContext";
 import { useNavigate } from "react-router-dom";
 import QuestionBank from "./questions/QuestionBank";
 import QuestionPreview from "./questions/QuestionPreview";
+import QuestionForm from "./questions/QuestionForm";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -29,6 +30,10 @@ interface CreateEvaluationStep2Props {
     model: "SAEB" | "PROVA" | "AVALIE";
     subjects: Subject[];
     subject: string;
+    description?: string;
+    startDateTime?: string;
+    duration?: string;
+    classes?: string[];
   };
   onBack: () => void;
   onComplete?: () => void;
@@ -48,11 +53,14 @@ export const CreateEvaluationStep2 = ({
   const [subjectOptions, setSubjectOptions] = useState<Subject[]>([]);
   const [showQuestionBank, setShowQuestionBank] = useState(false);
   const [showQuestionPreview, setShowQuestionPreview] = useState(false);
+  const [showCreateQuestion, setShowCreateQuestion] = useState(false);
   const [selectedSubjectForQuestion, setSelectedSubjectForQuestion] = useState<string>("");
   const [previewQuestion, setPreviewQuestion] = useState<Question | null>(null);
   const { toast } = useToast();
   const { user } = useAuth();
   const navigate = useNavigate();
+
+
 
   useEffect(() => {
     const fetchSubjects = async () => {
@@ -74,18 +82,37 @@ export const CreateEvaluationStep2 = ({
 
   // Inicializar estrutura de questões por disciplina
   useEffect(() => {
-    console.log("Initializing questionsBySubject with subjects:", data.subjects);
     const initialQuestionsBySubject: QuestionsBySubject = {};
     data.subjects.forEach(subject => {
       initialQuestionsBySubject[subject.id] = [];
     });
-    console.log("Initial questionsBySubject state:", initialQuestionsBySubject);
     setQuestionsBySubject(initialQuestionsBySubject);
   }, [data.subjects]);
 
   const handleAddFromBank = (subjectId: string) => {
     setSelectedSubjectForQuestion(subjectId);
     setShowQuestionBank(true);
+  };
+
+  const handleCreateNewQuestion = (subjectId: string) => {
+    setSelectedSubjectForQuestion(subjectId);
+    setShowCreateQuestion(true);
+  };
+
+  const handleQuestionCreated = (question: Question) => {
+    if (selectedSubjectForQuestion) {
+      setQuestionsBySubject(prev => ({
+        ...prev,
+        [selectedSubjectForQuestion]: [...(prev[selectedSubjectForQuestion] || []), question]
+      }));
+      
+      toast({
+        title: "Questão criada e adicionada",
+        description: "A nova questão foi criada e adicionada à avaliação com sucesso!",
+      });
+    }
+    setShowCreateQuestion(false);
+    setSelectedSubjectForQuestion("");
   };
 
   const handleRemoveQuestion = (subjectId: string, questionIndex: number) => {
@@ -135,10 +162,29 @@ export const CreateEvaluationStep2 = ({
     try {
       setLoading(true);
 
+      // Validar dados obrigatórios antes de enviar
+      if (!data.title || data.title.trim() === "") {
+        toast({
+          title: "Erro",
+          description: "Título da avaliação é obrigatório",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!data.course || !data.grade || !data.subject) {
+        toast({
+          title: "Erro",
+          description: "Curso, série e disciplina são obrigatórios",
+          variant: "destructive",
+        });
+        return;
+      }
+
       // Preparar dados para envio
       const allQuestions = Object.entries(questionsBySubject).flatMap(([subjectId, questions]) =>
         questions.map(question => ({
-          ...question,
+          id: question.id,
           subject_id: subjectId
         }))
       );
@@ -152,37 +198,24 @@ export const CreateEvaluationStep2 = ({
         return;
       }
 
-      const response = await api.post("/test", {
-        title: data.title,
-        municipalities: data.municipalities,
-        schools: data.schools,
-        course: data.course,
-        grade: data.grade,
-        class_id: data.classId,
+      // Montar payload conforme backend espera
+      const payload = {
+        title: data.title.trim(),
+        description: data.description?.trim() || "Avaliação criada via painel",
         type: data.type,
         model: data.model,
-        subjects: data.subjects,
-        subject: data.subject,
-        questions: allQuestions,
-        created_by: user.id
-      });
-
-      const datas = {
-        title: data.title,
-        municipalities: data.municipalities,
-        schools: data.schools,
         course: data.course,
         grade: data.grade,
-        class_id: data.classId,
-        type: data.type,
-        model: data.model,
-        subjects: data.subjects,
         subject: data.subject,
+        schools: Array.isArray(data.schools) ? data.schools : [data.schools],
+        time_limit: data.startDateTime,
+        duration: data.duration ? Number(data.duration) : undefined,
         questions: allQuestions,
-        created_by: user.id
-      }
+        created_by: user?.id || "",
+        classes: data.classes || []
+      };
 
-      console.log(datas)
+      const response = await api.post("/test", payload);
 
       toast({
         title: "Sucesso",
@@ -199,7 +232,7 @@ export const CreateEvaluationStep2 = ({
       console.error("Erro ao criar avaliação:", error);
       toast({
         title: "Erro",
-        description: "Não foi possível criar a avaliação",
+        description: error?.response?.data?.message || "Não foi possível criar a avaliação",
         variant: "destructive",
       });
     } finally {
@@ -233,13 +266,13 @@ export const CreateEvaluationStep2 = ({
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Questões por Disciplina</h2>
         <div className="text-sm text-muted-foreground">
-          Total: {getTotalQuestions()} questão(ões)
+          Total: {getTotalQuestions()} {getTotalQuestions() === 1 ? 'questão' : 'questões'}
         </div>
       </div>
 
       <Card>
         <CardContent className="pt-6">
-          {data.subjects.length > 0 ? (
+          {data.subjects && data.subjects.length > 0 ? (
             <div className="space-y-6">
               {data.subjects.map((subject) => {
                 const subjectQuestions = questionsBySubject[subject.id] || [];
@@ -250,10 +283,19 @@ export const CreateEvaluationStep2 = ({
                         <h3 className="text-lg font-semibold">
                           {subject.name}
                           <span className="ml-2 text-sm text-muted-foreground">
-                            ({subjectQuestions.length} questão{subjectQuestions.length !== 1 ? 'ões' : ''})
+                            ({subjectQuestions.length} {subjectQuestions.length === 1 ? 'questão' : 'questões'})
                           </span>
                         </h3>
                         <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleCreateNewQuestion(subject.id)}
+                            className="flex items-center gap-2"
+                          >
+                            <Plus className="h-4 w-4" />
+                            Nova Questão
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
@@ -327,7 +369,7 @@ export const CreateEvaluationStep2 = ({
                         <div className="text-center py-8 text-muted-foreground text-sm bg-muted/30 rounded-lg">
                           <Book className="h-8 w-8 mx-auto mb-2 opacity-50" />
                           <p>Nenhuma questão adicionada para esta disciplina</p>
-                          <p className="text-xs mt-1">Use o botão "Banco de Questões" para adicionar questões</p>
+                          <p className="text-xs mt-1">Use os botões "Nova Questão" ou "Banco de Questões" para adicionar questões</p>
                         </div>
                       )}
                     </CardContent>
@@ -342,6 +384,23 @@ export const CreateEvaluationStep2 = ({
           )}
         </CardContent>
       </Card>
+
+      {/* Modal para criar nova questão */}
+      <Dialog open={showCreateQuestion} onOpenChange={setShowCreateQuestion}>
+        <DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Criar Nova Questão</DialogTitle>
+          </DialogHeader>
+          <QuestionForm
+            open={showCreateQuestion}
+            onClose={() => {
+              setShowCreateQuestion(false);
+              setSelectedSubjectForQuestion("");
+            }}
+            onQuestionAdded={handleQuestionCreated}
+          />
+        </DialogContent>
+      </Dialog>
 
       {/* Banco de Questões */}
       <QuestionBank

@@ -8,10 +8,12 @@ import { FileText } from "lucide-react";
 interface Evaluation {
   id: string;
   title: string;
-  subject?: string;
-  created_at: string;
+  subject?: string | { id: string; name: string };
+  createdAt?: string;
+  created_at?: string;
   status?: string;
   questions_count?: number;
+  questions?: any[];
 }
 
 export default function RecentEvaluations() {
@@ -27,7 +29,11 @@ export default function RecentEvaluations() {
         
         // Pegar as 5 avaliações mais recentes
         const recentEvaluations = allEvaluations
-          .sort((a: Evaluation, b: Evaluation) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .sort((a: Evaluation, b: Evaluation) => {
+            const dateA = new Date(a.createdAt || a.created_at || '').getTime();
+            const dateB = new Date(b.createdAt || b.created_at || '').getTime();
+            return dateB - dateA;
+          })
           .slice(0, 5);
         
         setEvaluations(recentEvaluations);
@@ -83,10 +89,17 @@ export default function RecentEvaluations() {
               <div className="space-y-1">
                 <p className="font-medium text-sm line-clamp-1">{evaluation.title}</p>
                 {evaluation.subject && (
-                  <p className="text-xs text-muted-foreground">{evaluation.subject}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {typeof evaluation.subject === 'string' 
+                      ? evaluation.subject 
+                      : evaluation.subject.name
+                    }
+                  </p>
                 )}
-                {evaluation.questions_count && (
-                  <p className="text-xs text-muted-foreground">{evaluation.questions_count} questões</p>
+                {(evaluation.questions_count || evaluation.questions?.length) && (
+                  <p className="text-xs text-muted-foreground">
+                    {evaluation.questions_count || evaluation.questions?.length} questões
+                  </p>
                 )}
               </div>
               <Badge variant="outline" className="text-xs">

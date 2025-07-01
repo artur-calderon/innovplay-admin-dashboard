@@ -224,7 +224,11 @@ export default function SchoolDetails() {
               // Você pode adicionar qualquer lógica de atualização aqui se necessário
             }}
           />
-          <CreateClassForm schoolId={school.id} onSuccess={handleClassCreated} />
+          <CreateClassForm 
+            schoolId={id || ""} 
+            schoolName={school?.name}
+            onSuccess={handleClassCreated} 
+          />
         </div>
       </div>
 

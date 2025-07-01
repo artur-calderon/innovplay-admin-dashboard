@@ -31,6 +31,7 @@ import Instituicao from "./pages/Instituicao";
 import Curso from "./pages/Curso";
 import Serie from "./pages/Serie";
 import Disciplina from "./pages/Disciplina";
+import StudentAgenda from "./pages/StudentAgenda";
 
 const queryClient = new QueryClient();
 
@@ -74,7 +75,7 @@ const App = () => {
           <Route path="/aluno" element={<Layout />}>
             <Route index element={<PrivateRoute><Index /></PrivateRoute>} />
             <Route path="/aluno/avaliacoes" element={<PrivateRoute><StudentEvaluations /></PrivateRoute>} />
-            <Route path="/aluno/agenda" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+            <Route path="/aluno/agenda" element={<PrivateRoute><StudentAgenda /></PrivateRoute>} />
             <Route path="/aluno/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
             <Route path="/aluno/jogos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/aluno/play-tv" element={<PrivateRoute><EmBreve /></PrivateRoute>} />

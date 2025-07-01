@@ -177,17 +177,18 @@ export default function EvaluationForm({ onSubmit, initialValues }: EvaluationFo
     const selectedSubjectData = subjects.find(s => s.id === values.subject);
     const selectedClassesData = filteredClasses.filter(c => values.classes.includes(c.id));
 
-    // Generate a mock ID for the created evaluation
-    const evaluationWithId = {
-      ...values,
-      id: `eval-${Math.random().toString(36).substr(2, 9)}`,
-      createdAt: new Date().toISOString(),
+    // Prepare evaluation data with real information
+    const evaluationData: EvaluationFormData = {
+      name: values.name,
+      school: values.school,
+      subject: values.subject,
+      classes: values.classes,
       schoolName: selectedSchoolData?.name,
       subjectName: selectedSubjectData?.name,
       classesData: selectedClassesData,
     };
     
-    onSubmit(evaluationWithId);
+    onSubmit(evaluationData);
   };
   
   const handleToggleClass = (classItem: string) => {

@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { PlusCircle, Search, Edit, Trash2, Users, Building, Loader2, AlertCircle } from "lucide-react";
+import { PlusCircle, Search, Edit, Trash2, Users, Building, Loader2, AlertCircle, UserPlus, X, Eye, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -32,6 +32,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 interface School {
   id: string;
@@ -41,6 +50,14 @@ interface School {
 interface Grade {
   id: string;
   name: string;
+}
+
+interface Student {
+  id: string;
+  name: string;
+  email: string;
+  registration?: string;
+  birth_date?: string;
 }
 
 interface Turma {
@@ -65,6 +82,13 @@ interface FormData {
   grade_id?: string;
 }
 
+interface AddStudentFormData {
+  name: string;
+  email: string;
+  registration: string;
+  birthDate: string;
+}
+
 export default function Turmas() {
   const [searchTerm, setSearchTerm] = useState("");
   const [turmas, setTurmas] = useState<Turma[]>([]);
@@ -81,6 +105,19 @@ export default function Turmas() {
     school_id: "",
     grade_id: "",
   });
+
+  // Estados para gerenciar alunos
+  const [students, setStudents] = useState<Student[]>([]);
+  const [isLoadingStudents, setIsLoadingStudents] = useState(false);
+  const [addStudentForm, setAddStudentForm] = useState<AddStudentFormData>({
+    name: "",
+    email: "",
+    registration: "",
+    birthDate: "",
+  });
+  const [isAddingStudent, setIsAddingStudent] = useState(false);
+  const [updatingCounters, setUpdatingCounters] = useState<Set<string>>(new Set());
+
   const { toast } = useToast();
 
   useEffect(() => {
@@ -89,11 +126,36 @@ export default function Turmas() {
     fetchGrades();
   }, []);
 
+  // Buscar alunos quando uma turma é selecionada para edição
+  useEffect(() => {
+    if (editingItem?.id) {
+      fetchStudentsByClass(editingItem.id);
+    }
+  }, [editingItem]);
+
   const fetchTurmas = async () => {
     try {
       setIsLoading(true);
-      const response = await api.get("/classes");
-      setTurmas(response.data || []);
+      
+      // Buscar todas as escolas primeiro
+      const schoolsResponse = await api.get("/school");
+      const allSchools = schoolsResponse.data || [];
+      
+      // Buscar turmas de todas as escolas com contador de alunos
+      const turmasPromises = allSchools.map(async (school: School) => {
+        try {
+          const response = await api.get(`/classes/school/${school.id}`);
+          return response.data || [];
+        } catch (error) {
+          console.error(`Erro ao buscar turmas da escola ${school.name}:`, error);
+          return [];
+        }
+      });
+      
+      const turmasArrays = await Promise.all(turmasPromises);
+      const allTurmas = turmasArrays.flat();
+      
+      setTurmas(allTurmas);
     } catch (error) {
       console.error("Erro ao buscar turmas:", error);
       toast({
@@ -125,9 +187,66 @@ export default function Turmas() {
     }
   };
 
+  const fetchStudentsByClass = async (classId: string) => {
+    try {
+      setIsLoadingStudents(true);
+      const response = await api.get(`/classes/${classId}/students`);
+      setStudents(response.data || []);
+    } catch (error) {
+      console.error("Erro ao buscar alunos da turma:", error);
+      // Fallback: tentar buscar por escola
+      if (editingItem?.school_id) {
+        try {
+          const fallbackResponse = await api.get(`/students/school/${editingItem.school_id}/class/${classId}`);
+          setStudents(fallbackResponse.data || []);
+        } catch (fallbackError) {
+          console.error("Erro no fallback:", fallbackError);
+          setStudents([]);
+        }
+      }
+    } finally {
+      setIsLoadingStudents(false);
+    }
+  };
+
+  // Função para atualizar contador de uma turma específica
+  const updateClassStudentCount = async (classId: string, schoolId: string) => {
+    try {
+      setUpdatingCounters(prev => new Set(prev).add(classId));
+      
+      const response = await api.get(`/classes/school/${schoolId}`);
+      const schoolClasses = response.data || [];
+      const updatedClass = schoolClasses.find((c: Turma) => c.id === classId);
+      
+      if (updatedClass) {
+        setTurmas(prevTurmas => 
+          prevTurmas.map(turma => 
+            turma.id === classId 
+              ? { ...turma, students_count: updatedClass.students_count }
+              : turma
+          )
+        );
+        
+        // Atualizar também o item sendo editado se for o mesmo
+        if (editingItem?.id === classId) {
+          setEditingItem(prev => prev ? { ...prev, students_count: updatedClass.students_count } : null);
+        }
+      }
+    } catch (error) {
+      console.error("Erro ao atualizar contador de alunos:", error);
+    } finally {
+      setUpdatingCounters(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(classId);
+        return newSet;
+      });
+    }
+  };
+
   const openCreateModal = () => {
     setEditingItem(null);
     setFormData({ name: "", school_id: "", grade_id: "" });
+    setStudents([]);
     setIsModalOpen(true);
   };
 
@@ -228,6 +347,94 @@ export default function Turmas() {
       });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const generateEmail = (fullName: string) => {
+    const names = fullName.toLowerCase().split(" ");
+    const initials = names.map(name => name[0]).join("");
+    return `${initials}@innovplay.com`;
+  };
+
+  const generatePassword = (fullName: string) => {
+    const firstName = fullName.split(" ")[0].toLowerCase();
+    return `${firstName}@innovplay`;
+  };
+
+  const handleAddStudent = async () => {
+    if (!addStudentForm.name || !addStudentForm.birthDate || !editingItem) {
+      toast({
+        title: "Erro",
+        description: "Preencha todos os campos obrigatórios",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsAddingStudent(true);
+      
+      const studentData = {
+        name: addStudentForm.name,
+        email: addStudentForm.email || generateEmail(addStudentForm.name),
+        password: generatePassword(addStudentForm.name),
+        registration: addStudentForm.registration || undefined,
+        birth_date: addStudentForm.birthDate,
+        class_id: editingItem.id,
+        grade_id: editingItem.grade_id,
+        city_id: editingItem.school_id, // Usando school_id como city_id (ajustar conforme API)
+      };
+
+      await api.post("/students", studentData);
+      
+      toast({
+        title: "Sucesso",
+        description: "Aluno adicionado com sucesso!",
+      });
+
+      // Limpar formulário
+      setAddStudentForm({
+        name: "",
+        email: "",
+        registration: "",
+        birthDate: "",
+      });
+
+      // Recarregar lista de alunos
+      fetchStudentsByClass(editingItem.id);
+      // Atualizar contador de alunos de forma mais eficiente
+      updateClassStudentCount(editingItem.id, editingItem.school_id);
+    } catch (error: any) {
+      console.error("Erro ao adicionar aluno:", error);
+      toast({
+        title: "Erro",
+        description: error.response?.data?.error || "Erro ao adicionar aluno",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAddingStudent(false);
+    }
+  };
+
+  const handleRemoveStudent = async (studentId: string) => {
+    if (!editingItem) return;
+
+    try {
+      await api.put(`/classes/${editingItem.id}/remove_student`, { student_id: studentId });
+      setStudents(students.filter(student => student.id !== studentId));
+      // Atualizar contador de alunos de forma mais eficiente
+      updateClassStudentCount(editingItem.id, editingItem.school_id);
+      toast({
+        title: "Sucesso",
+        description: "Aluno removido da turma com sucesso",
+      });
+    } catch (error: any) {
+      console.error("Erro ao remover aluno:", error);
+      toast({
+        title: "Erro",
+        description: error.response?.data?.error || "Erro ao remover aluno da turma",
+        variant: "destructive",
+      });
     }
   };
 
@@ -344,7 +551,14 @@ export default function Turmas() {
                 <div className="flex items-center justify-between mt-3">
                   <div className="flex items-center space-x-1">
                     <Users className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">{turma.students_count || 0} alunos</span>
+                    {updatingCounters.has(turma.id) ? (
+                      <div className="flex items-center space-x-1">
+                        <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+                        <span className="text-sm text-blue-600">Atualizando...</span>
+                      </div>
+                    ) : (
+                      <span className="text-sm">{turma.students_count || 0} alunos</span>
+                    )}
                   </div>
                 </div>
                 <div className="flex gap-2 mt-4">
@@ -355,6 +569,15 @@ export default function Turmas() {
                   >
                     <Edit className="h-3 w-3 mr-1" />
                     Editar
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => updateClassStudentCount(turma.id, turma.school_id)}
+                    disabled={updatingCounters.has(turma.id)}
+                    title="Atualizar contador de alunos"
+                  >
+                    <RefreshCw className={`h-3 w-3 ${updatingCounters.has(turma.id) ? 'animate-spin' : ''}`} />
                   </Button>
                   <Button 
                     variant="outline" 
@@ -393,88 +616,275 @@ export default function Turmas() {
         </Card>
       )}
 
-      {/* Modal Criar/Editar */}
+      {/* Modal Criar/Editar com Tabs */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingItem ? "Editar Turma" : "Nova Turma"}
             </DialogTitle>
             <DialogDescription>
               {editingItem 
-                ? "Atualize as informações da turma" 
+                ? "Atualize as informações da turma e gerencie os alunos" 
                 : "Preencha os dados para criar uma nova turma"}
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Nome da Turma *</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) => setFormData({...formData, name: e.target.value})}
-                placeholder="Ex: 5º Ano A"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="school">Escola *</Label>
-              <Select 
-                value={formData.school_id} 
-                onValueChange={(value) => setFormData({...formData, school_id: value})}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione uma escola" />
-                </SelectTrigger>
-                <SelectContent>
-                  {schools.map((school) => (
-                    <SelectItem key={school.id} value={school.id}>
-                      {school.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="grade">Série (Opcional)</Label>
-              <Select 
-                value={formData.grade_id || ""} 
-                onValueChange={(value) => setFormData({...formData, grade_id: value})}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione uma série" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">Nenhuma série</SelectItem>
-                  {grades.map((grade) => (
-                    <SelectItem key={grade.id} value={grade.id}>
-                      {grade.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex justify-end space-x-2 pt-4">
-              <Button 
-                type="button" 
-                variant="outline" 
-                onClick={() => setIsModalOpen(false)}
-                disabled={isSubmitting}
-              >
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Salvando...
-                  </>
-                ) : (
-                  editingItem ? "Atualizar" : "Criar"
-                )}
-              </Button>
-            </div>
-          </form>
+          
+          <Tabs defaultValue="info" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="info">Informações da Turma</TabsTrigger>
+              <TabsTrigger value="students" disabled={!editingItem}>
+                Alunos ({students.length})
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="info" className="space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Nome da Turma *</Label>
+                  <Input
+                    id="name"
+                    value={formData.name}
+                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    placeholder="Ex: 5º Ano A"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="school">Escola *</Label>
+                  <Select 
+                    value={formData.school_id} 
+                    onValueChange={(value) => setFormData({...formData, school_id: value})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione uma escola" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {schools.filter(school => school.id && school.name).map((school) => (
+                        <SelectItem key={school.id} value={school.id}>
+                          {school.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="grade">Série (Opcional)</Label>
+                  <Select 
+                    value={formData.grade_id || "none"} 
+                    onValueChange={(value) => setFormData({...formData, grade_id: value === "none" ? "" : value})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione uma série" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Nenhuma série</SelectItem>
+                      {grades.filter(grade => grade.id && grade.name).map((grade) => (
+                        <SelectItem key={grade.id} value={grade.id}>
+                          {grade.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex justify-end space-x-2 pt-4">
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={() => setIsModalOpen(false)}
+                    disabled={isSubmitting}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Salvando...
+                      </>
+                    ) : (
+                      editingItem ? "Atualizar" : "Criar"
+                    )}
+                  </Button>
+                </div>
+              </form>
+            </TabsContent>
+            
+            <TabsContent value="students" className="space-y-4">
+              {editingItem && (
+                <div className="space-y-6">
+                  {/* Formulário para adicionar aluno */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <UserPlus className="h-5 w-5" />
+                        Adicionar Novo Aluno
+                      </CardTitle>
+                      <div className="text-sm text-muted-foreground bg-blue-50 p-3 rounded-lg border border-blue-200">
+                        <p className="font-medium text-blue-800 mb-2">📧 Credenciais Automáticas:</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                          <div>
+                            <p><strong>Email:</strong> Iniciais do nome + "@innovplay.com"</p>
+                            <p className="text-blue-600 font-mono">Ex: "João Silva" → jss@innovplay.com</p>
+                          </div>
+                          <div>
+                            <p><strong>Senha:</strong> Primeiro nome + "@innovplay"</p>
+                            <p className="text-blue-600 font-mono">Ex: "João Silva" → joão@innovplay</p>
+                          </div>
+                        </div>
+                        <p className="text-xs mt-2 text-blue-600 font-medium">✨ As credenciais aparecerão automaticamente conforme você digita o nome</p>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-4">
+                        {/* Nome - Campo principal em destaque */}
+                        <div className="space-y-2">
+                          <Label htmlFor="student-name">Nome Completo *</Label>
+                          <Input
+                            id="student-name"
+                            value={addStudentForm.name}
+                            onChange={(e) => {
+                              const name = e.target.value;
+                              setAddStudentForm({
+                                ...addStudentForm, 
+                                name,
+                                email: name ? generateEmail(name) : ""
+                              });
+                            }}
+                            placeholder="Digite o nome completo do aluno"
+                            disabled={isAddingStudent}
+                            className="text-lg"
+                          />
+                        </div>
+                        
+                        {/* Credenciais geradas automaticamente */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="student-email">Email (Gerado automaticamente)</Label>
+                            <Input
+                              id="student-email"
+                              value={addStudentForm.email}
+                              readOnly
+                              className="bg-muted font-mono"
+                              placeholder="Email será gerado automaticamente"
+                              disabled={isAddingStudent}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="student-password">Senha (Gerada automaticamente)</Label>
+                            <Input
+                              id="student-password"
+                              value={addStudentForm.name ? generatePassword(addStudentForm.name) : ""}
+                              readOnly
+                              className="bg-muted font-mono"
+                              placeholder="Senha será gerada automaticamente"
+                              disabled={isAddingStudent}
+                            />
+                          </div>
+                        </div>
+                        
+                        {/* Campos adicionais */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="student-registration">Matrícula (Opcional)</Label>
+                            <Input
+                              id="student-registration"
+                              value={addStudentForm.registration}
+                              onChange={(e) => setAddStudentForm({...addStudentForm, registration: e.target.value})}
+                              placeholder="Número de matrícula"
+                              disabled={isAddingStudent}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="student-birthdate">Data de Nascimento *</Label>
+                            <Input
+                              id="student-birthdate"
+                              type="date"
+                              value={addStudentForm.birthDate}
+                              onChange={(e) => setAddStudentForm({...addStudentForm, birthDate: e.target.value})}
+                              disabled={isAddingStudent}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <Button 
+                        onClick={handleAddStudent}
+                        disabled={isAddingStudent}
+                        className="w-full"
+                      >
+                        {isAddingStudent ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Adicionando...
+                          </>
+                        ) : (
+                          <>
+                            <UserPlus className="mr-2 h-4 w-4" />
+                            Adicionar Aluno
+                          </>
+                        )}
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  {/* Lista de alunos */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Users className="h-5 w-5" />
+                        Alunos da Turma ({students.length})
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {isLoadingStudents ? (
+                        <div className="space-y-2">
+                          <Skeleton className="h-12 w-full" />
+                          <Skeleton className="h-12 w-full" />
+                          <Skeleton className="h-12 w-full" />
+                        </div>
+                      ) : students.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground">
+                          <Users className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
+                          <p>Nenhum aluno cadastrado nesta turma</p>
+                          <p className="text-sm">Use o formulário acima para adicionar alunos</p>
+                        </div>
+                      ) : (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Nome</TableHead>
+                              <TableHead>Email</TableHead>
+                              <TableHead>Matrícula</TableHead>
+                              <TableHead className="text-right">Ações</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {students.map((student) => (
+                              <TableRow key={student.id}>
+                                <TableCell className="font-medium">{student.name}</TableCell>
+                                <TableCell>{student.email}</TableCell>
+                                <TableCell>{student.registration || "-"}</TableCell>
+                                <TableCell className="text-right">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleRemoveStudent(student.id)}
+                                    className="text-red-600 hover:text-red-700"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
 
