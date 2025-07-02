@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
-import { Check, X, Loader2 } from "lucide-react";
+import { Check, X, Loader2, BookOpen, CheckCheck } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/authContext";
@@ -35,7 +35,7 @@ const evaluationSchema = z.object({
   evaluationMode: z.enum(["virtual", "physical"], {
     required_error: "Selecione o modo de avaliação",
   }),
-  subject: z.string().min(1, "Selecione uma disciplina"),
+  subjects: z.array(z.string()).min(1, "Selecione pelo menos uma disciplina"),
   classes: z.array(z.string()).min(1, "Selecione pelo menos uma turma"),
 }).refine((data) => {
   if (data.startDateTime && data.endDateTime) {
@@ -90,7 +90,7 @@ interface EvaluationPayload {
   model: string;
   course: string;
   grade: string;
-  subject: string;
+  subjects: string[];
   school: string;
   municipio: string;
   startDateTime: string;
@@ -114,7 +114,7 @@ interface InitialData {
   endDateTime?: string;
   duration?: string;
   evaluationMode?: "virtual" | "physical";
-  subject?: string;
+  subjects?: string[];
   classes?: string[];
 }
 
@@ -148,7 +148,7 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
       endDateTime: initialData?.endDateTime || "",
       duration: initialData?.duration || "",
       evaluationMode: initialData?.evaluationMode || "virtual",
-      subject: initialData?.subject || "",
+      subjects: initialData?.subjects || [],
       classes: initialData?.classes || [],
     },
   });
@@ -175,6 +175,7 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
   const [selectedMunicipio, setSelectedMunicipio] = useState<string>("");
   const [selectedSchool, setSelectedSchool] = useState<string>("");
   const selectedClasses = form.watch("classes") || [];
+  const selectedSubjects = form.watch("subjects") || [];
   const [selectedCourse, setSelectedCourse] = useState<string>("");
   const [selectedGrade, setSelectedGrade] = useState<string>("");
 
@@ -289,6 +290,30 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
     }
   };
 
+  const handleToggleSubject = (subjectId: string) => {
+    const current = form.getValues("subjects") || [];
+    if (current.includes(subjectId)) {
+      form.setValue("subjects", current.filter((s) => s !== subjectId));
+    } else {
+      form.setValue("subjects", [...current, subjectId]);
+    }
+  };
+
+  const handleSelectAllSubjects = () => {
+    const allSubjectIds = subjects.map(s => s.id);
+    const current = form.getValues("subjects") || [];
+    
+    if (current.length === subjects.length) {
+      // Se todos estão selecionados, desmarcar todos
+      form.setValue("subjects", []);
+      toast({ title: "Disciplinas desmarcadas", description: "Todas as disciplinas foram desmarcadas", variant: "default" });
+    } else {
+      // Selecionar todos
+      form.setValue("subjects", allSubjectIds);
+      toast({ title: "Disciplinas selecionadas", description: `${subjects.length} disciplinas selecionadas`, variant: "default" });
+    }
+  };
+
   const handleStateChange = (stateId: string) => {
     setSelectedState(stateId);
     form.setValue("state", stateId);
@@ -318,14 +343,14 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
     setLoading(true);
     try {
       const payload: EvaluationPayload = {
-        name: values.name, // Manter o campo como 'name' para compatibilidade com Step1
+        name: values.name,
         description: values.description,
         type: "AVALIACAO",
         model: "SAEB",
         course: values.course,
         grade: values.grade,
-        subject: values.subject,
-        school: values.school, // Manter como string única
+        subjects: values.subjects,
+        school: values.school,
         municipio: values.municipio,
         startDateTime: values.startDateTime,
         endDateTime: values.endDateTime,
@@ -333,7 +358,7 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
         evaluationMode: values.evaluationMode,
         classes: values.classes,
         created_by: user?.id || "",
-        questions: [], // será preenchido no passo 2
+        questions: [],
       };
       
       if (onSubmit) {
@@ -347,7 +372,7 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
           model: "SAEB",
           course: values.course,
           grade: values.grade,
-          subject: values.subject,
+          subjects: values.subjects,
           schools: [values.school],
           time_limit: values.startDateTime,
           end_time: values.endDateTime,
@@ -625,22 +650,114 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
         </div>
         <FormField
           control={form.control}
-          name="subject"
-          render={({ field }) => (
+          name="subjects"
+          render={() => (
             <FormItem>
-              <FormLabel>Matéria/Disciplina</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value} disabled={loadingSubjects}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder={loadingSubjects ? "Carregando..." : "Selecione uma disciplina"} />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {subjects.map((subject) => (
-                    <SelectItem key={subject.id} value={subject.id}>{subject.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center justify-between">
+                <FormLabel>Matérias/Disciplinas</FormLabel>
+                {subjects.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleSelectAllSubjects}
+                    disabled={loadingSubjects}
+                    className="text-xs h-6 px-2"
+                  >
+                    <CheckCheck className="h-3 w-3 mr-1" />
+                    {selectedSubjects.length === subjects.length ? "Desmarcar Todas" : "Selecionar Todas"}
+                  </Button>
+                )}
+              </div>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-between" disabled={loadingSubjects}>
+                    {loadingSubjects ? (
+                      <span className="flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Carregando...</span>
+                    ) : selectedSubjects.length === 0
+                      ? (
+                        <span className="flex items-center">
+                          <BookOpen className="mr-2 h-4 w-4" />
+                          Selecionar disciplinas...
+                        </span>
+                      )
+                      : (
+                        <span className="flex items-center">
+                          <BookOpen className="mr-2 h-4 w-4" />
+                          {selectedSubjects.length} disciplina{selectedSubjects.length > 1 ? "s" : ""} selecionada{selectedSubjects.length > 1 ? "s" : ""}
+                        </span>
+                      )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-full p-4" align="start">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between border-b pb-2">
+                      <span className="text-sm font-medium">Selecionar Disciplinas</span>
+                      <Badge variant="outline" className="text-xs">
+                        {selectedSubjects.length}/{subjects.length}
+                      </Badge>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleSelectAllSubjects}
+                        className="flex-1 text-xs"
+                      >
+                        <CheckCheck className="h-3 w-3 mr-1" />
+                        {selectedSubjects.length === subjects.length ? "Desmarcar Todas" : "Selecionar Todas"}
+                      </Button>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-60 overflow-y-auto">
+                      {subjects.map((subject) => (
+                        <div
+                          key={subject.id}
+                          className={`flex cursor-pointer items-center rounded-md border p-2 transition-colors ${
+                            selectedSubjects.includes(subject.id) 
+                              ? "border-primary bg-primary/10 text-primary" 
+                              : "hover:border-primary/50 hover:bg-muted/50"
+                          }`}
+                          onClick={() => handleToggleSubject(subject.id)}
+                        >
+                          <div className="flex-grow text-sm">{subject.name}</div>
+                          {selectedSubjects.includes(subject.id) && <Check className="ml-2 h-4 w-4 text-primary" />}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {selectedSubjects.length > 0 ? (
+                  selectedSubjects.map((subjectId) => {
+                    const subjectObj = subjects.find((s) => s.id === subjectId);
+                    return (
+                      <Badge key={subjectId} variant="secondary" className="hover:bg-secondary/80">
+                        <BookOpen className="h-3 w-3 mr-1" />
+                        {subjectObj?.name || subjectId}
+                        <X 
+                          className="ml-1 h-3 w-3 cursor-pointer hover:text-destructive" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleSubject(subjectId);
+                          }} 
+                        />
+                      </Badge>
+                    );
+                  })
+                ) : (
+                  <div className="text-sm text-muted-foreground flex items-center">
+                    <BookOpen className="h-4 w-4 mr-2" />
+                    Nenhuma disciplina selecionada
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Selecione uma ou mais disciplinas para esta avaliação
+              </p>
               <FormMessage />
             </FormItem>
           )}

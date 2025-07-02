@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Table,
   TableBody,
@@ -44,6 +45,8 @@ interface Evaluation {
     command: string;
   }>;
   subjects_info: Array<{ id: string; name: string }>;
+  subjects?: Array<{ id: string; name: string }>; // Campo oficial do backend
+  subjects_count?: number; // Quantidade de disciplinas
   model?: string;
   status?: string;
   grade?: { id: string; name: string };
@@ -63,6 +66,105 @@ interface Grade {
 interface ReadyEvaluationsProps {
   onUseEvaluation?: (evaluation: Evaluation) => void;
 }
+
+// Componente separado para listar disciplinas
+const SubjectsList = ({ evaluation }: { evaluation: Evaluation }) => {
+  // Função para extrair disciplinas
+  const getSubjects = () => {
+    // Prioridade 1: subjects (campo oficial do backend)
+    if (evaluation.subjects && Array.isArray(evaluation.subjects) && evaluation.subjects.length > 0) {
+      return evaluation.subjects;
+    }
+    
+    // Prioridade 2: subjects_info (fallback)
+    if (evaluation.subjects_info && Array.isArray(evaluation.subjects_info) && evaluation.subjects_info.length > 0) {
+      return evaluation.subjects_info;
+    }
+    
+    // Prioridade 3: subject único (fallback)
+    if (evaluation.subject && evaluation.subject.name) {
+      return [evaluation.subject];
+    }
+    
+    return [];
+  };
+
+  const subjects = getSubjects();
+  const subjectsCount = evaluation.subjects_count || subjects.length;
+
+  // Se não há disciplinas
+  if (subjects.length === 0) {
+    return (
+      <div className="flex flex-wrap gap-1">
+        <Badge variant="secondary" className="text-xs text-gray-500">
+          Sem disciplina
+        </Badge>
+      </div>
+    );
+  }
+
+  // Se há apenas uma disciplina
+  if (subjects.length === 1) {
+    return (
+      <div className="flex flex-wrap gap-1">
+        <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-800">
+          {subjects[0].name}
+        </Badge>
+      </div>
+    );
+  }
+
+  // Se há múltiplas disciplinas
+  return (
+    <div className="flex flex-wrap gap-1 max-w-[200px]">
+      {/* Mostrar as duas primeiras disciplinas */}
+      {subjects.slice(0, 2).map((subject, index) => (
+        <Badge 
+          key={subject.id || index} 
+          variant="secondary" 
+          className="text-xs bg-blue-100 text-blue-800 font-medium"
+        >
+          {subject.name}
+        </Badge>
+      ))}
+      
+      {/* Mostrar +n se houver mais de 2 disciplinas */}
+      {subjectsCount > 2 && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge 
+              variant="outline" 
+              className="text-xs cursor-help hover:bg-blue-50 border-blue-300 text-blue-700 font-semibold"
+            >
+              +{subjectsCount - 2}
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-xs">
+            <div className="space-y-2">
+              <p className="font-semibold text-sm text-gray-900">Outras disciplinas:</p>
+              <div className="space-y-1">
+                {subjects.slice(2).map((subject, index) => (
+                  <div key={subject.id || index} className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
+                    <span className="text-sm text-gray-700">{subject.name}</span>
+                  </div>
+                ))}
+                {subjectsCount > subjects.length && (
+                  <div className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full"></div>
+                    <span className="text-sm text-gray-500">
+                      +{subjectsCount - subjects.length} disciplinas adicionais
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      )}
+    </div>
+  );
+};
 
 export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
   const [searchTerm, setSearchTerm] = useState("");
@@ -278,7 +380,8 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
   const hasActiveFilters = Object.values(filters).some(value => value !== 'all');
 
   return (
-    <div className="space-y-6">
+    <TooltipProvider>
+      <div className="space-y-6">
       {/* Header com busca e filtros */}
       <div className="flex flex-col lg:flex-row gap-4">
         <div className="relative flex-1">
@@ -461,24 +564,7 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
                         </div>
                       </TableCell>
                       <TableCell className="hidden sm:table-cell">
-                        <div className="flex flex-wrap gap-1">
-                          {Array.isArray(evaluation.subjects_info) && evaluation.subjects_info.length > 0
-                            ? evaluation.subjects_info.slice(0, 2).map((subj: { id: string, name: string }) => (
-                              <Badge key={subj.id} variant="secondary" className="text-xs">
-                                {subj.name}
-                              </Badge>
-                            ))
-                            : evaluation.subject?.name && (
-                              <Badge variant="secondary" className="text-xs">
-                                {evaluation.subject.name}
-                              </Badge>
-                            )}
-                          {evaluation.subjects_info?.length > 2 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{evaluation.subjects_info.length - 2}
-                            </Badge>
-                          )}
-                        </div>
+                        <SubjectsList evaluation={evaluation} />
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
                         <div className="flex flex-col gap-1">
@@ -632,6 +718,7 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }
