@@ -24,6 +24,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import EvaluationForm from "@/components/evaluations/EvaluationForm";
 import { ReadyEvaluations } from "@/components/evaluations/ReadyEvaluations";
 import { QuestionBank } from "@/components/evaluations/QuestionBank";
+import EvaluationResults from "@/components/evaluations/EvaluationResults";
+import EvaluationReport from "@/components/evaluations/EvaluationReport";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/authContext";
 import StudentEvaluations from "@/components/evaluations/StudentEvaluations";
@@ -31,6 +33,7 @@ import { api } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { mockApi } from "@/lib/mockData";
 
 interface EvaluationStats {
   total: number;
@@ -46,6 +49,8 @@ interface EvaluationStats {
 export default function Evaluations() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("ready");
+  const [showResults, setShowResults] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   const [stats, setStats] = useState<EvaluationStats>({
     total: 0,
     thisMonth: 0,
@@ -69,7 +74,7 @@ export default function Evaluations() {
     try {
       setIsLoadingStats(true);
       
-      // Buscar estatísticas das avaliações
+      // Buscar estatísticas das avaliações (API real)
       const [evaluationsRes, questionsRes] = await Promise.all([
         api.get("/test"),
         api.get("/questions/")
@@ -77,6 +82,11 @@ export default function Evaluations() {
 
       const evaluations = evaluationsRes.data || [];
       const questions = questionsRes.data || [];
+
+      // Buscar dados dos resultados (mock)
+      const resultsData = await mockApi.getEvaluationResults();
+      const completedResults = resultsData.filter(result => result.status === 'completed');
+      const pendingResults = resultsData.filter(result => result.status === 'pending');
 
       // Calcular estatísticas
       const currentMonth = new Date().getMonth();
@@ -102,20 +112,87 @@ export default function Evaluations() {
         averageQuestions: evaluations.length > 0 ? Math.round(totalQuestions / evaluations.length) : 0,
         virtualEvaluations: virtualEvaluations || Math.floor(evaluations.length * 0.7), // Fallback
         physicalEvaluations: physicalEvaluations || Math.ceil(evaluations.length * 0.3), // Fallback
-        completedEvaluations: Math.floor(evaluations.length * 0.6), // Simulado
-        pendingResults: Math.floor(evaluations.length * 0.2) // Simulado
+        completedEvaluations: completedResults.length, // Usando dados mock
+        pendingResults: pendingResults.length // Usando dados mock
       });
 
     } catch (error) {
       console.error("Erro ao buscar estatísticas:", error);
+      // Se houver erro na API, usar apenas dados mock
+      try {
+        const resultsData = await mockApi.getEvaluationResults();
+        const completedResults = resultsData.filter(result => result.status === 'completed');
+        const pendingResults = resultsData.filter(result => result.status === 'pending');
+        
+        setStats({
+          total: resultsData.length,
+          thisMonth: 1,
+          totalQuestions: 50,
+          averageQuestions: 15,
+          virtualEvaluations: Math.floor(resultsData.length * 0.7),
+          physicalEvaluations: Math.ceil(resultsData.length * 0.3),
+          completedEvaluations: completedResults.length,
+          pendingResults: pendingResults.length
+        });
+      } catch (mockError) {
+        console.error("Erro ao buscar dados mock:", mockError);
+      }
     } finally {
       setIsLoadingStats(false);
+    }
+  };
+
+  // Handlers for results actions
+  const handleViewResults = () => {
+    setShowResults(true);
+  };
+
+  const handleCorrectNow = () => {
+    toast({
+      title: "Correção iniciada",
+      description: "Redirecionando para a tela de correção...",
+    });
+    // Aqui você pode redirecionar para a tela de correção
+  };
+
+  const handleGenerateReport = () => {
+    setShowReport(true);
+  };
+
+  const handleExportAll = async () => {
+    try {
+      const allResults = await mockApi.getEvaluationResults();
+      const allIds = allResults.map(result => result.id);
+      const response = await mockApi.exportResults(allIds);
+      
+      if (response.success) {
+        toast({
+          title: "Exportação concluída!",
+          description: "Todos os resultados foram exportados com sucesso.",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Erro na exportação",
+        description: "Não foi possível exportar os resultados",
+        variant: "destructive",
+      });
     }
   };
 
   // Conditionally render teacher view or student view based on user role
   if (user.role === "aluno") {
     return <StudentEvaluations />;
+  }
+
+  // If showing results, render the EvaluationResults component
+  if (showResults) {
+    return <EvaluationResults onBack={() => setShowResults(false)} />;
+  }
+
+  // If showing report, render the EvaluationReport component
+  if (showReport) {
+    return <EvaluationReport onBack={() => setShowReport(false)} />;
   }
 
   // Default view for teachers and admins
@@ -354,7 +431,7 @@ export default function Evaluations() {
                 </p>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={handleExportAll}>
                   <Download className="h-4 w-4 mr-2" />
                   Exportar Tudo
                 </Button>
@@ -372,7 +449,7 @@ export default function Evaluations() {
                   <p className="text-xs text-muted-foreground mt-1">
                     Com resultados disponíveis
                   </p>
-                  <Button variant="outline" size="sm" className="w-full mt-3">
+                  <Button variant="outline" size="sm" className="w-full mt-3" onClick={handleViewResults}>
                     Ver Resultados
                   </Button>
                 </CardContent>
@@ -387,7 +464,7 @@ export default function Evaluations() {
                   <p className="text-xs text-muted-foreground mt-1">
                     Aguardando correção
                   </p>
-                  <Button variant="outline" size="sm" className="w-full mt-3">
+                  <Button variant="outline" size="sm" className="w-full mt-3" onClick={handleCorrectNow}>
                     Corrigir Agora
                   </Button>
                 </CardContent>
@@ -404,7 +481,7 @@ export default function Evaluations() {
                   <p className="text-xs text-muted-foreground mt-1">
                     Relatórios disponíveis
                   </p>
-                  <Button variant="outline" size="sm" className="w-full mt-3">
+                  <Button variant="outline" size="sm" className="w-full mt-3" onClick={handleGenerateReport}>
                     Gerar Relatório
                   </Button>
                 </CardContent>
