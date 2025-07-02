@@ -598,3 +598,56 @@
   margin-top: 1.5rem !important;
   margin-bottom: 1.5rem !important;
 }
+
+/* Animações personalizadas para carregamento do banco de questões */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Animação de loading pulsante */
+@keyframes pulse-slow {
+  0%, 100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Animação de loading ondulada */
+@keyframes wave {
+  0% {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+}
+
+/* Fade-in suave para quando o conteúdo carrega */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Aplicar animação de entrada quando o conteúdo é carregado */
+.question-loaded {
+  animation: fadeInUp 0.5s ease-out forwards;
+}
