@@ -29,10 +29,19 @@ const evaluationSchema = z.object({
   school: z.string().min(1, "Selecione uma escola"),
   course: z.string().min(1, "Selecione um curso"),
   grade: z.string().min(1, "Selecione uma série"),
-  startDateTime: z.string().min(1, "Selecione data e horário"),
+  startDateTime: z.string().min(1, "Selecione data e horário de início"),
+  endDateTime: z.string().min(1, "Selecione data e horário de término"),
   duration: z.string().min(1, "Informe o tempo de duração"),
   subject: z.string().min(1, "Selecione uma disciplina"),
   classes: z.array(z.string()).min(1, "Selecione pelo menos uma turma"),
+}).refine((data) => {
+  if (data.startDateTime && data.endDateTime) {
+    return new Date(data.endDateTime) > new Date(data.startDateTime);
+  }
+  return true;
+}, {
+  message: "A data de término deve ser posterior à data de início",
+  path: ["endDateTime"],
 });
 
 type EvaluationFormValues = z.infer<typeof evaluationSchema>;
@@ -75,6 +84,7 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
       course: initialData?.course || "",
       grade: initialData?.grade || "",
       startDateTime: initialData?.startDateTime || "",
+      endDateTime: initialData?.endDateTime || "",
       duration: initialData?.duration || "",
       subject: initialData?.subject || "",
       classes: initialData?.classes || [],
@@ -106,6 +116,33 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
   const [selectedCourse, setSelectedCourse] = useState<string>("");
   const [selectedGrade, setSelectedGrade] = useState<string>("");
 
+  // Watch dos campos de data para calcular duração total
+  const startDateTime = form.watch("startDateTime");
+  const endDateTime = form.watch("endDateTime");
+
+  // Função para calcular a duração total do período
+  const calculateTotalPeriod = () => {
+    if (!startDateTime || !endDateTime) return null;
+    
+    const start = new Date(startDateTime);
+    const end = new Date(endDateTime);
+    
+    if (end <= start) return null;
+    
+    const diffMs = end.getTime() - start.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    
+    if (diffDays > 0) {
+      return `${diffDays} dia${diffDays > 1 ? 's' : ''} e ${diffHours}h${diffMinutes}min`;
+    } else if (diffHours > 0) {
+      return `${diffHours}h${diffMinutes}min`;
+    } else {
+      return `${diffMinutes} minutos`;
+    }
+  };
+
   // Buscar cidades (para estados e municípios)
   useEffect(() => {
     setLoadingCities(true);
@@ -134,7 +171,7 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
   useEffect(() => {
     if (!selectedMunicipio) return;
     setLoadingSchools(true);
-    api.get(`/school?city_id=${selectedMunicipio}`)
+    api.get(`/school/city/${selectedMunicipio}`)
       .then(res => setSchools(res.data))
       .catch(() => toast({ title: "Erro", description: "Erro ao carregar escolas", variant: "destructive" }))
       .finally(() => setLoadingSchools(false));
@@ -229,6 +266,7 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
         school: values.school, // Manter como string única
         municipio: values.municipio,
         startDateTime: values.startDateTime,
+        endDateTime: values.endDateTime,
         duration: values.duration,
         classes: values.classes,
         created_by: user?.id || "",
@@ -249,6 +287,7 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
           subject: values.subject,
           schools: [values.school],
           time_limit: values.startDateTime,
+          end_time: values.endDateTime,
           duration: Number(values.duration),
           classes: values.classes,
           created_by: user?.id || "",
@@ -403,30 +442,72 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
             </FormItem>
           )}
         />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <FormField
-            control={form.control}
-            name="startDateTime"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Data e Horário de Início</FormLabel>
-                <FormControl>
-                  <Input type="datetime-local" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
+        <div className="space-y-6">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h3 className="text-sm font-semibold text-blue-800 mb-3">
+              Período de Disponibilidade da Avaliação
+            </h3>
+            <p className="text-xs text-blue-600 mb-4">
+              Configure quando a avaliação ficará disponível para os alunos realizarem
+            </p>
+            
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="startDateTime"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">Data e Horário de Início</FormLabel>
+                    <FormControl>
+                      <Input type="datetime-local" {...field} className="text-sm" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="endDateTime"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">Data e Horário de Término</FormLabel>
+                    <FormControl>
+                      <Input type="datetime-local" {...field} className="text-sm" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+            
+            {calculateTotalPeriod() && (
+              <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-md">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <span className="text-sm font-medium text-green-800">
+                    Período de disponibilidade: {calculateTotalPeriod()}
+                  </span>
+                </div>
+                <p className="text-xs text-green-600 mt-1">
+                  A avaliação ficará disponível para os alunos durante este período
+                </p>
+              </div>
             )}
-          />
+          </div>
+          
           <FormField
             control={form.control}
             name="duration"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Tempo de Duração (minutos)</FormLabel>
+                <FormLabel>Tempo de Duração Individual (minutos)</FormLabel>
                 <FormControl>
                   <Input type="number" min={1} placeholder="Ex: 60" {...field} />
                 </FormControl>
                 <FormMessage />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Tempo que cada aluno terá para completar a avaliação uma vez iniciada
+                </p>
               </FormItem>
             )}
           />
