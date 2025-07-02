@@ -751,7 +751,7 @@ const QuestionForm = ({
                   )}
                 />
 
-                <FormField
+                                  <FormField
                   control={form.control}
                   name="difficulty"
                   render={({ field }) => (
@@ -763,22 +763,28 @@ const QuestionForm = ({
                             <SelectValue placeholder="Selecione a dificuldade" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="Fácil">
-                              <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                                Fácil
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="Médio">
-                              <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                                Médio
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="Difícil">
+                            <SelectItem value="Abaixo do Básico">
                               <div className="flex items-center gap-2">
                                 <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                                Difícil
+                                Abaixo do Básico
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="Básico">
+                              <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                                Básico
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="Adequado">
+                              <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full bg-green-400"></div>
+                                Adequado
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="Avançado">
+                              <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full bg-green-700"></div>
+                                Avançado
                               </div>
                             </SelectItem>
                           </SelectContent>

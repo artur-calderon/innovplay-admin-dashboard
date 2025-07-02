@@ -1,111 +1,108 @@
-import { useState, useEffect, useCallback } from 'react';
-import { EvaluationFormData } from '@/components/evaluations/types';
-
-const DRAFT_KEY = 'evaluation_draft';
-const DRAFT_EXPIRY_DAYS = 7; // Rascunhos expiram em 7 dias
+import { useState, useCallback } from "react";
+import { EvaluationFormData } from "@/components/evaluations/types";
 
 interface DraftData {
-  data: EvaluationFormData;
-  timestamp: number;
+  data: EvaluationFormData | null;
   step: number;
+  timestamp: number;
+  version: string;
 }
 
-export const useEvaluationDraft = () => {
-  const [hasDraft, setHasDraft] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+const DRAFT_KEY = "evaluation_draft";
+const DRAFT_VERSION = "1.0.0";
+const DRAFT_EXPIRY_DAYS = 7; // Rascunhos expiram em 7 dias
 
-  // Verificar se existe rascunho válido
-  useEffect(() => {
-    const checkDraft = () => {
-      try {
-        const draft = localStorage.getItem(DRAFT_KEY);
-        if (draft) {
-          const draftData: DraftData = JSON.parse(draft);
-          const now = Date.now();
-          const expiryTime = draftData.timestamp + (DRAFT_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
-          
-          if (now < expiryTime) {
-            setHasDraft(true);
-          } else {
-            // Remove rascunho expirado
-            localStorage.removeItem(DRAFT_KEY);
-            setHasDraft(false);
-          }
-        }
-      } catch (error) {
-        console.error('Erro ao verificar rascunho:', error);
-        localStorage.removeItem(DRAFT_KEY);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+export function useEvaluationDraft() {
+  const [currentDraft, setCurrentDraft] = useState<DraftData | null>(null);
 
-    checkDraft();
-  }, []);
-
-  // Salvar rascunho
   const saveDraft = useCallback((data: EvaluationFormData, step: number) => {
     try {
-      const draftData: DraftData = {
+      const draft: DraftData = {
         data,
+        step,
         timestamp: Date.now(),
-        step
+        version: DRAFT_VERSION
       };
       
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(draftData));
-      setHasDraft(true);
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      setCurrentDraft(draft);
+      
+      return true;
     } catch (error) {
-      console.error('Erro ao salvar rascunho:', error);
+      console.error("Erro ao salvar rascunho:", error);
+      return false;
     }
   }, []);
 
-  // Carregar rascunho
-  const loadDraft = useCallback((): { data: EvaluationFormData; step: number } | null => {
+  const loadDraft = useCallback((): DraftData => {
     try {
-      const draft = localStorage.getItem(DRAFT_KEY);
-      if (draft) {
-        const draftData: DraftData = JSON.parse(draft);
-        return {
-          data: draftData.data,
-          step: draftData.step
-        };
+      const savedDraft = localStorage.getItem(DRAFT_KEY);
+      if (!savedDraft) {
+        return { data: null, step: 1, timestamp: 0, version: DRAFT_VERSION };
       }
+
+      const draft: DraftData = JSON.parse(savedDraft);
+      
+      // Verificar versão
+      if (draft.version !== DRAFT_VERSION) {
+        console.warn("Versão do rascunho incompatível, descartando...");
+        clearDraft();
+        return { data: null, step: 1, timestamp: 0, version: DRAFT_VERSION };
+      }
+
+      // Verificar expiração
+      const daysSinceCreation = (Date.now() - draft.timestamp) / (1000 * 60 * 60 * 24);
+      if (daysSinceCreation > DRAFT_EXPIRY_DAYS) {
+        console.warn("Rascunho expirado, descartando...");
+        clearDraft();
+        return { data: null, step: 1, timestamp: 0, version: DRAFT_VERSION };
+      }
+
+      setCurrentDraft(draft);
+      return draft;
     } catch (error) {
-      console.error('Erro ao carregar rascunho:', error);
+      console.error("Erro ao carregar rascunho:", error);
+      clearDraft();
+      return { data: null, step: 1, timestamp: 0, version: DRAFT_VERSION };
     }
-    return null;
   }, []);
 
-  // Remover rascunho
   const clearDraft = useCallback(() => {
-    localStorage.removeItem(DRAFT_KEY);
-    setHasDraft(false);
+    try {
+      localStorage.removeItem(DRAFT_KEY);
+      setCurrentDraft(null);
+      return true;
+    } catch (error) {
+      console.error("Erro ao limpar rascunho:", error);
+      return false;
+    }
   }, []);
 
-  // Obter informações do rascunho
-  const getDraftInfo = useCallback(() => {
-    try {
-      const draft = localStorage.getItem(DRAFT_KEY);
-      if (draft) {
-        const draftData: DraftData = JSON.parse(draft);
-        return {
-          title: draftData.data.title || 'Avaliação sem título',
-          timestamp: draftData.timestamp,
-          step: draftData.step
-        };
-      }
-    } catch (error) {
-      console.error('Erro ao obter informações do rascunho:', error);
+  const hasDraft = useCallback((): boolean => {
+    const draft = loadDraft();
+    return draft.data !== null;
+  }, [loadDraft]);
+
+  const getDraftAge = useCallback((): number => {
+    const draft = loadDraft();
+    if (!draft.timestamp) return 0;
+    
+    return Math.floor((Date.now() - draft.timestamp) / (1000 * 60 * 60 * 24));
+  }, [loadDraft]);
+
+  const updateDraftStep = useCallback((step: number) => {
+    if (currentDraft && currentDraft.data) {
+      saveDraft(currentDraft.data, step);
     }
-    return null;
-  }, []);
+  }, [currentDraft, saveDraft]);
 
   return {
-    hasDraft,
-    isLoading,
     saveDraft,
     loadDraft,
     clearDraft,
-    getDraftInfo
+    hasDraft,
+    getDraftAge,
+    updateDraftStep,
+    currentDraft
   };
-}; 
+} 

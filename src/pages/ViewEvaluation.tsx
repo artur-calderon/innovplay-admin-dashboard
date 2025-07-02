@@ -639,14 +639,25 @@ export default function ViewEvaluation() {
               </CardHeader>
               <CardContent className="p-6">
                 <div className="space-y-8">
-                  {subjectData.questions.map((question, index) => (
+                  {subjectData.questions.map((question, index) => {
+                    // Debug temporário
+                    console.log(`🔍 Questão ${index + 1}:`, {
+                      id: question.id,
+                      number: question.number,
+                      skills: question.skills,
+                      difficulty: question.difficulty,
+                      value: question.value,
+                      type: question.type
+                    });
+                    
+                    return (
                     <div key={question.id} className="question-preview-content bg-white rounded-xl border border-gray-200 overflow-hidden">
                       {/* Header da questão */}
                       <div className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200 p-6">
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex-1">
                             <h3 className="text-xl font-bold text-gray-800 mb-3">
-                              Questão {question.number || index + 1}
+                              Questão {index + 1}
                             </h3>
                             <div className="flex flex-wrap gap-2">
                               <Badge variant="outline" className="text-xs bg-white">
@@ -662,7 +673,7 @@ export default function ViewEvaluation() {
                               </Badge>
                               {Array.isArray(question.skills) && question.skills.length > 0 && (
                                 <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
-                                  {question.skills.length} habilidades
+                                  {question.skills.length} habilidade{question.skills.length > 1 ? 's' : ''}
                                 </Badge>
                               )}
                             </div>
@@ -687,6 +698,29 @@ export default function ViewEvaluation() {
                               className="text-base leading-relaxed text-gray-700 p-4 bg-blue-50 rounded-lg border border-blue-200"
                               dangerouslySetInnerHTML={{ __html: question.formattedText }}
                             />
+                          </div>
+                        )}
+
+                        {/* Habilidades (se houver) */}
+                        {Array.isArray(question.skills) && question.skills.length > 0 && (
+                          <div className="space-y-3">
+                            <h4 className="font-semibold text-lg text-gray-700 flex items-center gap-2">
+                              <span className="w-6 h-6 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-sm">🎯</span>
+                              Habilidades Avaliadas
+                            </h4>
+                            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                              <div className="flex flex-wrap gap-2">
+                                {question.skills.map((skill, skillIndex) => (
+                                  <Badge 
+                                    key={skillIndex} 
+                                    variant="outline" 
+                                    className="text-xs bg-white border-purple-300 text-purple-700 font-medium"
+                                  >
+                                    {skill}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
                           </div>
                         )}
 
@@ -794,15 +828,16 @@ export default function ViewEvaluation() {
                               <span className="font-medium text-gray-600">Habilidades:</span> 
                               <span className="text-gray-700">
                                 {Array.isArray(question.skills) && question.skills.length > 0
-                                  ? `${question.skills.length} habilidades`
-                                  : 'Nenhuma'}
+                                  ? `${question.skills.length} habilidade${question.skills.length > 1 ? 's' : ''}`
+                                  : 'Nenhuma habilidade definida'}
                               </span>
                             </div>
                           </div>
                         </div>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>

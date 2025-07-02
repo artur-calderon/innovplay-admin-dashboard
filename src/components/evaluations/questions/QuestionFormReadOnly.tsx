@@ -520,9 +520,10 @@ const QuestionFormReadOnly = ({
                                                 </SelectTrigger>
                                             </FormControl>
                                             <SelectContent>
-                                                <SelectItem value="Fácil">Fácil</SelectItem>
-                                                <SelectItem value="Médio">Médio</SelectItem>
-                                                <SelectItem value="Difícil">Difícil</SelectItem>
+                                                                        <SelectItem value="Abaixo do Básico">Abaixo do Básico</SelectItem>
+                        <SelectItem value="Básico">Básico</SelectItem>
+                        <SelectItem value="Adequado">Adequado</SelectItem>
+                        <SelectItem value="Avançado">Avançado</SelectItem>
                                             </SelectContent>
                                         </Select>
                                         {form.formState.errors.difficulty && (

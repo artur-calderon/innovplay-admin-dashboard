@@ -1,214 +1,571 @@
-import React, { useState } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import QuestionForm from "./questions/QuestionForm";
-import { QuestionBank } from "@/components/evaluations/QuestionBank";
-import { Plus, Trash2, Search } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { 
+  Search, 
+  Plus, 
+  Trash2, 
+  Eye, 
+  Filter, 
+  X, 
+  BookOpen, 
+  CheckCircle,
+  AlertCircle,
+  FileText
+} from "lucide-react";
+import { api } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
+import { EvaluationFormData, Question, Subject } from "./types";
+import { QuestionBank } from "./QuestionBank";
 
 interface QuestionSelectionStepProps {
-  evaluationId: string;
-  selectedQuestions: any[];
-  onAddQuestions: (questions: any[]) => void;
-  onRemoveQuestion: (questionId: string) => void;
+  evaluationData: EvaluationFormData;
+  selectedQuestions: Question[];
+  onQuestionsChange: (questions: Question[]) => void;
 }
 
-export default function QuestionSelectionStep({
-  evaluationId,
-  selectedQuestions,
-  onAddQuestions,
-  onRemoveQuestion,
+interface ApiQuestion {
+  id: string;
+  title?: string;
+  text: string;
+  formatted_text?: string;
+  subject_id: string;
+  subject?: { id: string; name: string };
+  grade?: { id: string; name: string };
+  grade_id?: string;
+  difficulty_level?: string;
+  question_type?: string;
+  value?: number;
+  correct_answer?: string;
+  formatted_solution?: string;
+  alternatives?: { id?: string; text: string; isCorrect?: boolean }[];
+  skill?: string | string[];
+  created_by?: string;
+}
+
+interface QuestionPreviewData {
+  question: Question;
+  isOpen: boolean;
+}
+
+export default function QuestionSelectionStep({ 
+  evaluationData, 
+  selectedQuestions, 
+  onQuestionsChange 
 }: QuestionSelectionStepProps) {
-  const [activeTab, setActiveTab] = useState("selected");
-  const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
-  const [isQuestionBankDialogOpen, setIsQuestionBankDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [availableQuestions, setAvailableQuestions] = useState<Question[]>([]);
+  const [filteredQuestions, setFilteredQuestions] = useState<Question[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showQuestionBank, setShowQuestionBank] = useState(false);
+  const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<string>("all");
+  const [difficultyFilter, setDifficultyFilter] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [previewData, setPreviewData] = useState<QuestionPreviewData>({ question: {} as Question, isOpen: false });
+  
+  const { toast } = useToast();
 
-  const filteredQuestions = selectedQuestions.filter(
-    (q) => q.text.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Carregar questões baseadas nas disciplinas selecionadas
+  useEffect(() => {
+    if (evaluationData.subjects.length > 0) {
+      fetchQuestionsForSubjects();
+    }
+  }, [evaluationData.subjects]);
 
-  const handleCreateQuestion = (questionData: any) => {
-    // In a real app, you would save the question to the database
-    // and then add it to the selected questions
-    const newQuestion = {
-      id: `question-${Math.random().toString(36).substr(2, 9)}`,
-      ...questionData,
-      createdAt: new Date().toISOString(),
-    };
-    
-    onAddQuestions([newQuestion]);
-    setIsFormDialogOpen(false);
-  };
+  // Aplicar filtros
+  useEffect(() => {
+    let filtered = availableQuestions;
 
-  const handleAddQuestionsFromBank = (evaluationData: any) => {
-    // This function is called by the QuestionBank component
-    // with the selected questions to add
-    if (evaluationData && evaluationData.questions) {
-      const questionsToAdd = evaluationData.questions.map((q: any, index: number) => ({
-        id: `bank-q-${Math.random().toString(36).substr(2, 9)}`,
-        text: q.text,
-        options: q.options,
-        answer: q.answer,
-        createdAt: new Date().toISOString(),
-        type: q.options ? "Múltipla escolha" : "Discursiva",
-        difficulty: ["Fácil", "Médio", "Difícil"][Math.floor(Math.random() * 3)],
-      }));
+    // Filtro por termo de busca
+    if (searchTerm) {
+      filtered = filtered.filter(q => 
+        q.text.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        q.subject.name.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Filtro por disciplina
+    if (selectedSubjectFilter !== "all") {
+      filtered = filtered.filter(q => q.subject.id === selectedSubjectFilter);
+    }
+
+    // Filtro por dificuldade
+    if (difficultyFilter !== "all") {
+      filtered = filtered.filter(q => q.difficulty === difficultyFilter);
+    }
+
+    // Filtro por tipo
+    if (typeFilter !== "all") {
+      filtered = filtered.filter(q => q.type === typeFilter);
+    }
+
+    // Excluir questões já selecionadas
+    filtered = filtered.filter(q => 
+      !selectedQuestions.find(selected => selected.id === q.id)
+    );
+
+    setFilteredQuestions(filtered);
+  }, [availableQuestions, searchTerm, selectedSubjectFilter, difficultyFilter, typeFilter, selectedQuestions]);
+
+  const fetchQuestionsForSubjects = async () => {
+    try {
+      setIsLoading(true);
+      const subjectIds = evaluationData.subjects.map(s => s.id);
       
-      onAddQuestions(questionsToAdd);
-      setIsQuestionBankDialogOpen(false);
+      // Buscar questões para todas as disciplinas selecionadas
+      const promises = subjectIds.map(subjectId => 
+        api.get(`/questions/?subject_id=${subjectId}`)
+      );
+      
+      const responses = await Promise.all(promises);
+      
+      // Combinar todas as questões
+      const allQuestions: Question[] = [];
+      responses.forEach(response => {
+        if (response.data && Array.isArray(response.data)) {
+          const transformedQuestions = response.data.map(transformApiQuestion);
+          allQuestions.push(...transformedQuestions);
+        }
+      });
+
+      // Remover duplicatas baseado no ID
+      const uniqueQuestions = allQuestions.filter((question, index, self) =>
+        index === self.findIndex(q => q.id === question.id)
+      );
+
+      setAvailableQuestions(uniqueQuestions);
+      
+    } catch (error) {
+      console.error("Erro ao buscar questões:", error);
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar questões das disciplinas selecionadas",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  const transformApiQuestion = (apiQuestion: ApiQuestion): Question => {
+    return {
+      id: apiQuestion.id,
+      title: apiQuestion.title || "",
+      text: apiQuestion.text,
+      formattedText: apiQuestion.formatted_text,
+      subjectId: apiQuestion.subject_id,
+      subject: apiQuestion.subject || { id: apiQuestion.subject_id, name: "Disciplina não definida" },
+      grade: apiQuestion.grade || { id: apiQuestion.grade_id || "", name: "Série não definida" },
+      difficulty: apiQuestion.difficulty_level || "Básico",
+      type: apiQuestion.question_type === "essay" ? "open" : 
+            apiQuestion.question_type === "trueFalse" ? "trueFalse" : "multipleChoice",
+      value: String(apiQuestion.value || 1.0),
+      solution: apiQuestion.correct_answer || "",
+      formattedSolution: apiQuestion.formatted_solution,
+      options: apiQuestion.alternatives || [],
+      skills: Array.isArray(apiQuestion.skill) ? apiQuestion.skill : [apiQuestion.skill || ""],
+      created_by: apiQuestion.created_by || "",
+    };
+  };
+
+  const handleAddQuestion = (question: Question) => {
+    const updated = [...selectedQuestions, question];
+    onQuestionsChange(updated);
+    
+    toast({
+      title: "Questão adicionada",
+      description: `"${question.text.substring(0, 50)}..." foi adicionada à avaliação`,
+    });
+  };
+
+  const handleRemoveQuestion = (questionId: string) => {
+    const updated = selectedQuestions.filter(q => q.id !== questionId);
+    onQuestionsChange(updated);
+    
+    toast({
+      title: "Questão removida",
+      description: "Questão removida da avaliação",
+      variant: "destructive",
+    });
+  };
+
+  const handleQuestionFromBank = (question: Question) => {
+    if (!selectedQuestions.find(q => q.id === question.id)) {
+      handleAddQuestion(question);
+    }
+  };
+
+  const handlePreviewQuestion = (question: Question) => {
+    setPreviewData({ question, isOpen: true });
+  };
+
+  const clearFilters = () => {
+    setSearchTerm("");
+    setSelectedSubjectFilter("all");
+    setDifficultyFilter("all");
+    setTypeFilter("all");
+  };
+
+  const getTotalPoints = () => {
+    return selectedQuestions.reduce((sum, q) => sum + parseFloat(q.value || "1"), 0);
+  };
+
+  const getQuestionsBySubject = () => {
+    const bySubject: { [key: string]: { subject: Subject; questions: Question[] } } = {};
+    
+    selectedQuestions.forEach(question => {
+      const subjectId = question.subject.id;
+      if (!bySubject[subjectId]) {
+        bySubject[subjectId] = {
+          subject: question.subject,
+          questions: []
+        };
+      }
+      bySubject[subjectId].questions.push(question);
+    });
+    
+    return bySubject;
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-gray-200 rounded w-1/3"></div>
+          <div className="h-32 bg-gray-200 rounded"></div>
+          <div className="h-64 bg-gray-200 rounded"></div>
+        </div>
+      </div>
+    );
+  }
+
+  const questionsBySubject = getQuestionsBySubject();
+
   return (
     <div className="space-y-6">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="selected">
-            Questões Selecionadas ({selectedQuestions.length})
-          </TabsTrigger>
-          <TabsTrigger value="add">Adicionar Questões</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="selected" className="pt-4">
-          <div className="mb-4 flex items-center gap-2">
-            <Search className="h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar questões..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="flex-1"
-            />
-          </div>
-          
-          {filteredQuestions.length > 0 ? (
+      {/* Resumo das Questões Selecionadas */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="h-5 w-5 text-green-500" />
+              Questões Selecionadas
+            </div>
+            <Badge variant="outline" className="text-lg px-3 py-1">
+              {selectedQuestions.length} questões • {getTotalPoints().toFixed(1)} pts
+            </Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {selectedQuestions.length > 0 ? (
             <div className="space-y-4">
-              {filteredQuestions.map((question, index) => (
-                <Card key={question.id} className="overflow-hidden">
-                  <CardHeader className="bg-muted/50 py-2">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-sm font-medium">
-                        Questão {index + 1}
-                      </CardTitle>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => onRemoveQuestion(question.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="p-4">
-                    <p className="text-sm">{question.text}</p>
-                    
-                    {question.options && question.options.length > 0 && (
-                      <div className="mt-3 space-y-2">
-                        {question.options.map((option: string, i: number) => (
-                          <div key={i} className="flex items-center gap-2">
-                            <div className={`flex h-5 w-5 items-center justify-center rounded-full border ${
-                              question.answer === String.fromCharCode(65 + i) 
-                                ? "border-green-500 bg-green-500 text-white" 
-                                : "border-gray-300"
-                            }`}>
-                              {String.fromCharCode(65 + i)}
-                            </div>
-                            <p className="text-sm">{option}</p>
+              {/* Questões agrupadas por disciplina */}
+              {Object.values(questionsBySubject).map(({ subject, questions }) => (
+                <div key={subject.id} className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary">{subject.name}</Badge>
+                    <span className="text-sm text-muted-foreground">
+                      {questions.length} questões
+                    </span>
+                  </div>
+                  <div className="grid gap-2">
+                    {questions.map((question, index) => (
+                      <div key={question.id} className="flex items-center justify-between p-3 border rounded-lg bg-gray-50">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-sm font-medium">Q{index + 1}</span>
+                            <Badge variant="outline" className="text-xs">
+                              {question.difficulty}
+                            </Badge>
+                            <Badge variant="outline" className="text-xs">
+                              {question.value} pts
+                            </Badge>
                           </div>
-                        ))}
+                          <p className="text-sm text-gray-700 line-clamp-2">
+                            {question.text}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 ml-4">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handlePreviewQuestion(question)}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveQuestion(question.id)}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
-                    )}
-                    
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {question.type && (
-                        <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-800">
-                          {question.type}
-                        </span>
-                      )}
-                      {question.difficulty && (
-                        <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-800">
-                          {question.difficulty}
-                        </span>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
-              <p className="text-muted-foreground">
-                {selectedQuestions.length === 0
-                  ? "Nenhuma questão selecionada. Adicione questões para a avaliação."
-                  : "Nenhuma questão encontrada com o termo de busca."}
+            <div className="text-center py-8">
+              <FileText className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+              <p className="text-gray-500 mb-2">Nenhuma questão selecionada</p>
+              <p className="text-sm text-gray-400">
+                Use os filtros abaixo ou o banco de questões para adicionar questões
               </p>
-              {selectedQuestions.length === 0 && (
-                <Button
-                  variant="outline"
-                  className="mt-4"
-                  onClick={() => setActiveTab("add")}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Adicionar Questões
-                </Button>
-              )}
             </div>
           )}
-        </TabsContent>
-        
-        <TabsContent value="add" className="pt-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center p-6">
-                <Dialog open={isQuestionBankDialogOpen} onOpenChange={setIsQuestionBankDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" className="w-full">
-                      <Search className="mr-2 h-4 w-4" />
-                      Selecionar do Banco de Questões
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-4xl">
-                    <DialogHeader>
-                      <DialogTitle>Banco de Questões</DialogTitle>
-                    </DialogHeader>
-                    <QuestionBank onCreateEvaluation={handleAddQuestionsFromBank} />
-                  </DialogContent>
-                </Dialog>
-                <p className="mt-4 text-center text-sm text-muted-foreground">
-                  Selecione questões já existentes no banco de questões para adicionar à avaliação.
-                </p>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center p-6">
-                <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" className="w-full">
-                      <Plus className="mr-2 h-4 w-4" />
-                      Criar Nova Questão
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-4xl">
-                    <DialogHeader>
-                      {/* <DialogTitle>Criar Nova Questão</DialogTitle> */}
-                    </DialogHeader>
-                    <div className="mt-4">
-                      <QuestionForm onSubmit={handleCreateQuestion} />
-                    </div>
-                  </DialogContent>
-                </Dialog>
-                <p className="mt-4 text-center text-sm text-muted-foreground">
-                  Crie uma nova questão para adicionar à avaliação e ao banco de questões.
-                </p>
-              </CardContent>
-            </Card>
+        </CardContent>
+      </Card>
+
+      {/* Busca e Filtros */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Plus className="h-5 w-5 text-blue-500" />
+              Adicionar Questões
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => setShowQuestionBank(true)}
+            >
+              <BookOpen className="h-4 w-4 mr-2" />
+              Banco de Questões
+            </Button>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Filtros */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+              <Input
+                placeholder="Buscar questões..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+
+            <Select value={selectedSubjectFilter} onValueChange={setSelectedSubjectFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Disciplina" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as disciplinas</SelectItem>
+                {evaluationData.subjects.map((subject) => (
+                  <SelectItem key={subject.id} value={subject.id}>
+                    {subject.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={difficultyFilter} onValueChange={setDifficultyFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Dificuldade" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas</SelectItem>
+                <SelectItem value="Abaixo do Básico">Abaixo do Básico</SelectItem>
+                <SelectItem value="Básico">Básico</SelectItem>
+                <SelectItem value="Adequado">Adequado</SelectItem>
+                <SelectItem value="Avançado">Avançado</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Tipo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="multipleChoice">Múltipla Escolha</SelectItem>
+                <SelectItem value="trueFalse">Verdadeiro/Falso</SelectItem>
+                <SelectItem value="open">Dissertativa</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-        </TabsContent>
-      </Tabs>
+
+          {/* Info sobre filtros ativos */}
+          {(searchTerm || selectedSubjectFilter !== "all" || difficultyFilter !== "all" || typeFilter !== "all") && (
+            <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-blue-600" />
+                <span className="text-sm text-blue-800">
+                  {filteredQuestions.length} questões encontradas com os filtros aplicados
+                </span>
+              </div>
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
+                Limpar filtros
+              </Button>
+            </div>
+          )}
+
+          {/* Lista de Questões Disponíveis */}
+          {filteredQuestions.length > 0 ? (
+            <div className="border rounded-lg overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12"></TableHead>
+                    <TableHead>Questão</TableHead>
+                    <TableHead className="w-32">Disciplina</TableHead>
+                    <TableHead className="w-24">Dificuldade</TableHead>
+                    <TableHead className="w-20">Pontos</TableHead>
+                    <TableHead className="w-24">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredQuestions.slice(0, 20).map((question, index) => (
+                    <TableRow key={question.id}>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleAddQuestion(question)}
+                          className="hover:bg-green-100"
+                        >
+                          <Plus className="h-4 w-4 text-green-600" />
+                        </Button>
+                      </TableCell>
+                      <TableCell>
+                        <p className="line-clamp-2 text-sm">{question.text}</p>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs">
+                          {question.subject.name}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge 
+                          variant="outline" 
+                          className={`text-xs ${
+                            question.difficulty === "Avançado" ? "text-green-700" :
+                            question.difficulty === "Adequado" ? "text-green-600" :
+                            question.difficulty === "Básico" ? "text-yellow-600" :
+                            "text-red-600"
+                          }`}
+                        >
+                          {question.difficulty}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm font-medium">{question.value}</span>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handlePreviewQuestion(question)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                {availableQuestions.length === 0 
+                  ? "Nenhuma questão encontrada para as disciplinas selecionadas."
+                  : "Nenhuma questão encontrada com os filtros aplicados."
+                }
+              </AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Question Bank Modal */}
+      <QuestionBank
+        open={showQuestionBank}
+        onClose={() => setShowQuestionBank(false)}
+        subjectId={null}
+        onQuestionSelected={handleQuestionFromBank}
+      />
+
+      {/* Question Preview Modal */}
+      <Dialog open={previewData.isOpen} onOpenChange={(open) => setPreviewData({ ...previewData, isOpen: open })}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Visualizar Questão</DialogTitle>
+            <DialogDescription>
+              Disciplina: {previewData.question.subject?.name} • 
+              Dificuldade: {previewData.question.difficulty} • 
+              Pontos: {previewData.question.value}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-sm font-medium">Enunciado:</Label>
+              <p className="mt-1 text-sm">{previewData.question.text}</p>
+            </div>
+            
+            {previewData.question.options && previewData.question.options.length > 0 && (
+              <div>
+                <Label className="text-sm font-medium">Alternativas:</Label>
+                <div className="mt-2 space-y-2">
+                  {previewData.question.options.map((option, index) => (
+                    <div key={index} className={`p-2 rounded border ${option.isCorrect ? 'bg-green-50 border-green-200' : 'bg-gray-50'}`}>
+                      <span className="font-medium">
+                        {String.fromCharCode(65 + index)}) 
+                      </span>
+                      {option.text}
+                      {option.isCorrect && (
+                        <Badge variant="secondary" className="ml-2 text-xs">
+                          Correta
+                        </Badge>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {previewData.question.skills && previewData.question.skills.length > 0 && (
+              <div>
+                <Label className="text-sm font-medium">Habilidades:</Label>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {previewData.question.skills.map((skill, index) => (
+                    <Badge key={index} variant="outline" className="text-xs">
+                      {skill}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
