@@ -80,7 +80,9 @@ interface Evaluation {
     id: string;
     name: string;
   };
-  subjects_info?: Subject[]; // Array de matérias da avaliação
+  subjects?: Subject[]; // Array de matérias da avaliação (campo oficial)
+  subjects_count?: number; // Quantidade de disciplinas
+  subjects_info?: Subject[]; // Array de matérias da avaliação (fallback)
   grade: {
     id: string;
     name: string;
@@ -119,9 +121,6 @@ export default function ViewEvaluation() {
       if (!id) return;
       try {
         const response = await api.get(`/test/${id}`);
-        console.log('📊 Dados da avaliação:', response.data);
-        console.log('📝 Questões encontradas:', response.data?.questions?.length || 0);
-        console.log('🔍 Primeira questão:', response.data?.questions?.[0]);
         setEvaluation(response.data);
       } catch (error) {
         console.error("Erro ao buscar avaliação:", error);
@@ -179,37 +178,34 @@ export default function ViewEvaluation() {
   // Função para agrupar questões por matéria
   const groupQuestionsBySubject = (): QuestionsBySubject => {
     if (!evaluation) {
-      console.log('❌ Nenhuma avaliação encontrada');
       return {};
     }
 
-    console.log('🔄 Agrupando questões por matéria...');
-    console.log('📋 Evaluation completa:', evaluation);
-    console.log('📋 Subjects info:', evaluation.subjects_info);
-    console.log('📝 Total de questões:', evaluation.questions?.length || 0);
-    console.log('📝 Questões array:', evaluation.questions);
-
     const questionsBySubject: QuestionsBySubject = {};
 
-    // Se temos subjects_info, usamos para criar a estrutura
-    if (evaluation.subjects_info && evaluation.subjects_info.length > 0) {
-      console.log('✅ Usando subjects_info para agrupamento');
+    // Prioridade 1: usar subjects (campo oficial)
+    if (evaluation.subjects && evaluation.subjects.length > 0) {
+      evaluation.subjects.forEach(subject => {
+        questionsBySubject[subject.id] = {
+          subject,
+          questions: []
+        };
+      });
+    } 
+    // Fallback: usar subjects_info se subjects não existir
+    else if (evaluation.subjects_info && evaluation.subjects_info.length > 0) {
       evaluation.subjects_info.forEach(subject => {
         questionsBySubject[subject.id] = {
           subject,
           questions: []
         };
       });
-
-      // Distribuir questões pelas matérias
-      evaluation.questions?.forEach((question, index) => {
+    }
+    
+    // Se existe alguma estrutura de disciplinas, distribuir questões pelas matérias
+    if (Object.keys(questionsBySubject).length > 0) {
+      evaluation.questions?.forEach((question) => {
         const subjId = question.subject?.id;
-        console.log(`📝 Questão ${index + 1}:`, question);
-        console.log(`📝 Questão ${index + 1}: subject_id = ${subjId}`);
-        console.log(`📝 Questão ${index + 1}: text = "${question.text}"`);
-        console.log(`📝 Questão ${index + 1}: type = "${question.type}"`);
-        console.log(`📝 Questão ${index + 1}: options =`, question.options);
-        console.log(`📝 Questão ${index + 1}: difficulty = "${question.difficulty}"`);
         
         if (subjId && questionsBySubject[subjId]) {
           questionsBySubject[subjId].questions.push(question);
@@ -217,26 +213,13 @@ export default function ViewEvaluation() {
           // Se não tem subject ou não encontrou a matéria, coloca na primeira
           const firstSubjectId = Object.keys(questionsBySubject)[0];
           if (firstSubjectId) {
-            console.log(`⚠️ Questão ${index + 1} sem subject válido, colocando na primeira matéria`);
             questionsBySubject[firstSubjectId].questions.push(question);
           }
         }
       });
     } else {
       // Fallback para avaliações antigas com apenas uma matéria
-      console.log('📚 Usando fallback para matéria única');
       if (evaluation.subject) {
-        console.log('📚 Subject encontrado:', evaluation.subject);
-        console.log('📚 Questões para adicionar:', evaluation.questions);
-        
-        // Log detalhado de cada questão no fallback
-        evaluation.questions?.forEach((question, index) => {
-          console.log(`📚 Questão ${index + 1} (fallback):`, question);
-          console.log(`📚 Questão ${index + 1}: text = "${question.text}"`);
-          console.log(`📚 Questão ${index + 1}: type = "${question.type}"`);
-          console.log(`📚 Questão ${index + 1}: options =`, question.options);
-        });
-        
         questionsBySubject[evaluation.subject.id] = {
           subject: evaluation.subject,
           questions: evaluation.questions || []
@@ -244,7 +227,6 @@ export default function ViewEvaluation() {
       }
     }
 
-    console.log('✅ Agrupamento concluído:', questionsBySubject);
     return questionsBySubject;
   };
 
@@ -336,7 +318,7 @@ export default function ViewEvaluation() {
 
   const questionsBySubject = groupQuestionsBySubject();
   const totalQuestions = evaluation.questions.length;
-  const subjectsCount = evaluation.subjects_info?.length || 1;
+  const subjectsCount = evaluation.subjects_count || evaluation.subjects?.length || evaluation.subjects_info?.length || 1;
   const municipalitiesCount = evaluation.municipalities_count || evaluation.municipalities?.length || 0;
   const schoolsCount = evaluation.schools_count || evaluation.schools?.length || 0;
   const totalStudents = evaluation.total_students || 0;
@@ -492,15 +474,26 @@ export default function ViewEvaluation() {
             <div>
               <label className="text-sm font-medium text-muted-foreground">Disciplinas</label>
               <div className="flex flex-wrap gap-2 mt-1">
-                {evaluation.subjects_info && evaluation.subjects_info.length > 0 ? (
+                {evaluation.subjects && evaluation.subjects.length > 0 ? (
+                  evaluation.subjects.map((subject) => (
+                    <Badge key={subject.id} variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                      {subject.name}
+                    </Badge>
+                  ))
+                ) : evaluation.subjects_info && evaluation.subjects_info.length > 0 ? (
                   evaluation.subjects_info.map((subject) => (
-                    <Badge key={subject.id} variant="outline" className="text-xs">
+                    <Badge key={subject.id} variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
                       {subject.name}
                     </Badge>
                   ))
                 ) : (
                   <Badge variant="outline" className="text-xs">
                     {evaluation.subject?.name || 'Não informado'}
+                  </Badge>
+                )}
+                {evaluation.subjects_count && evaluation.subjects_count > (evaluation.subjects?.length || 0) && (
+                  <Badge variant="outline" className="text-xs bg-gray-50 text-gray-600 border-gray-300">
+                    +{evaluation.subjects_count - (evaluation.subjects?.length || 0)} outras
                   </Badge>
                 )}
               </div>
@@ -626,10 +619,7 @@ export default function ViewEvaluation() {
             </CardContent>
           </Card>
         ) : (
-          Object.entries(questionsBySubject).map(([subjectId, subjectData]) => {
-            console.log(`🎨 Renderizando disciplina: ${subjectData.subject.name} com ${subjectData.questions.length} questões`);
-            
-            return (
+          Object.entries(questionsBySubject).map(([subjectId, subjectData]) => (
             <Card key={subjectId} className="overflow-hidden">
               <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
                 <CardTitle className="flex items-center gap-3">
@@ -649,10 +639,7 @@ export default function ViewEvaluation() {
               </CardHeader>
               <CardContent className="p-6">
                 <div className="space-y-8">
-                  {subjectData.questions.map((question, index) => {
-                    console.log(`🎨 Renderizando questão ${index + 1}: ${question.text?.substring(0, 50)}...`);
-                    
-                    return (
+                  {subjectData.questions.map((question, index) => (
                     <div key={question.id} className="question-preview-content bg-white rounded-xl border border-gray-200 overflow-hidden">
                       {/* Header da questão */}
                       <div className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200 p-6">
@@ -815,13 +802,11 @@ export default function ViewEvaluation() {
                         </div>
                       </div>
                     </div>
-                    );
-                  })}
+                  ))}
                 </div>
               </CardContent>
             </Card>
-            );
-          })
+          ))
         )}
       </div>
 

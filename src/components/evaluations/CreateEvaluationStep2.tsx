@@ -128,6 +128,16 @@ export const CreateEvaluationStep2 = ({
 
   const handleQuestionSelected = (question: Question) => {
     if (selectedSubjectForQuestion) {
+      // Verificar se a questão pertence à disciplina selecionada
+      if (question.subject?.id !== selectedSubjectForQuestion) {
+        toast({
+          title: "Erro",
+          description: "Esta questão não pertence à disciplina selecionada",
+          variant: "destructive",
+        });
+        return;
+      }
+
       // Verificar se a questão já foi adicionada para evitar duplicatas
       const currentQuestions = questionsBySubject[selectedSubjectForQuestion] || [];
       const isAlreadyAdded = currentQuestions.some(q => q.id === question.id);
@@ -206,7 +216,9 @@ export const CreateEvaluationStep2 = ({
         model: data.model,
         course: data.course,
         grade: data.grade,
-        subject: data.subject,
+        subject: data.subject, // Para compatibilidade (primeira disciplina)
+        subjects: data.subjects?.map(s => s.id) || [], // Múltiplas disciplinas
+        subjects_info: data.subjects || [], // Informações completas das disciplinas
         municipalities: data.municipalities || [],
         schools: Array.isArray(data.schools) ? data.schools : [data.schools],
         time_limit: data.startDateTime,
@@ -336,11 +348,70 @@ export const CreateEvaluationStep2 = ({
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Questões por Disciplina</h2>
-        <div className="text-sm text-muted-foreground">
-          Total: {getTotalQuestions()} questões
+        <div>
+          <h2 className="text-2xl font-bold">Questões por Disciplina</h2>
+          <div className="text-sm text-muted-foreground mt-1">
+            {data.subjects && data.subjects.length > 0 ? (
+              <>
+                <span className="font-medium">{data.subjects.length} disciplina{data.subjects.length > 1 ? 's' : ''} selecionada{data.subjects.length > 1 ? 's' : ''}:</span>
+                <span className="ml-2">
+                  {data.subjects.map((subject, index) => (
+                    <span key={subject.id}>
+                      {subject.name}
+                      {index < data.subjects.length - 1 && ", "}
+                    </span>
+                  ))}
+                </span>
+              </>
+            ) : (
+              "Nenhuma disciplina selecionada"
+            )}
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-2xl font-bold text-primary">
+            {getTotalQuestions()}
+          </div>
+          <div className="text-sm text-muted-foreground">
+            questões totais
+          </div>
         </div>
       </div>
+
+      {/* Resumo das disciplinas */}
+      {data.subjects && data.subjects.length > 0 && (
+        <Card className="bg-blue-50 border-blue-200">
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Book className="h-5 w-5 text-blue-600" />
+              <h3 className="font-semibold text-blue-900">Resumo das Disciplinas</h3>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {data.subjects.map((subject) => {
+                const subjectQuestions = questionsBySubject[subject.id] || [];
+                return (
+                  <div key={subject.id} className="bg-white rounded-lg p-3 border border-blue-200">
+                    <div className="font-medium text-sm text-gray-900 truncate" title={subject.name}>
+                      {subject.name}
+                    </div>
+                    <div className="text-xs text-gray-600 mt-1">
+                      {subjectQuestions.length} questões
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+                      <div 
+                        className="bg-blue-600 h-1.5 rounded-full transition-all duration-300" 
+                        style={{ 
+                          width: subjectQuestions.length > 0 ? '100%' : '0%' 
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="pt-6">
@@ -351,19 +422,28 @@ export const CreateEvaluationStep2 = ({
                 return (
                   <Card key={subject.id}>
                     <CardContent className="pt-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-semibold">
-                          {subject.name}
-                          <span className="ml-2 text-sm text-muted-foreground">
-                            ({subjectQuestions.length} questões)
-                          </span>
-                        </h3>
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                        <div>
+                          <h3 className="text-lg font-semibold flex items-center gap-2">
+                            <Book className="h-5 w-5 text-primary" />
+                            {subject.name}
+                            <Badge variant="secondary" className="text-xs">
+                              {subjectQuestions.length} questões
+                            </Badge>
+                          </h3>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {subjectQuestions.length === 0 
+                              ? "Adicione questões para esta disciplina"
+                              : `${subjectQuestions.length} questão${subjectQuestions.length > 1 ? 'ões' : ''} adicionada${subjectQuestions.length > 1 ? 's' : ''} para ${subject.name}`
+                            }
+                          </p>
+                        </div>
                         <div className="flex items-center gap-2">
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => handleCreateNewQuestion(subject.id)}
-                            className="flex items-center gap-2"
+                            className="flex items-center gap-2 hover:bg-green-50 hover:border-green-300"
                           >
                             <Plus className="h-4 w-4" />
                             Nova Questão
@@ -372,9 +452,10 @@ export const CreateEvaluationStep2 = ({
                             variant="outline"
                             size="sm"
                             onClick={() => handleAddFromBank(subject.id)}
+                            className="flex items-center gap-2 hover:bg-blue-50 hover:border-blue-300"
                           >
-                            <Book className="h-4 w-4 mr-2" />
-                            Banco de Questões
+                            <Book className="h-4 w-4" />
+                            Banco: {subject.name}
                           </Button>
                         </div>
                       </div>
