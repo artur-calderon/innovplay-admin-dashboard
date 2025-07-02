@@ -17,8 +17,8 @@ interface ScheduledEvaluation {
   title: string;
   description?: string;
   subject: {
-    id: string;
-    name: string;
+  id: string;
+  name: string;
   };
   time_limit: string; // Data/hora de início no formato ISO
   end_time?: string; // Data/hora de término no formato ISO
@@ -28,20 +28,20 @@ interface ScheduledEvaluation {
   score?: number;
   questions: any[];
   school: {
-    id: string;
-    name: string;
+  id: string;
+  name: string;
   };
   grade: {
-    id: string;
-    name: string;
+  id: string;
+  name: string;
   };
   course: {
-    id: string;
-    name: string;
+  id: string;
+  name: string;
   };
   createdBy: {
-    id: string;
-    name: string;
+  id: string;
+  name: string;
   };
   createdAt: string;
   // Campos calculados localmente
@@ -86,6 +86,9 @@ export default function StudentEvaluations() {
       // Buscar avaliações do aluno logado
       const response = await api.get(`/test/student/${user.id}`);
       const rawEvaluations = response.data || [];
+      
+      // Log simplificado para verificar dados recebidos
+      console.log(`📊 Recebidas ${rawEvaluations.length} avaliações do backend`);
       
       // Processar e calcular status das avaliações
       const processedEvaluations = rawEvaluations.map((evaluation: any) => 
@@ -137,6 +140,10 @@ export default function StudentEvaluations() {
     const endDateTime = evaluation.end_time 
       ? parseISO(evaluation.end_time)
       : addMinutes(startDateTime, evaluation.duration);
+    
+    // Verifica se está usando end_time do backend ou calculando pela duração
+    const usingBackendEndTime = !!evaluation.end_time;
+    
     const now = new Date();
     
     let calculatedStatus: 'upcoming' | 'available' | 'expired' = 'upcoming';
@@ -437,9 +444,9 @@ export default function StudentEvaluations() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex justify-between items-start">
-        <div>
+      <div>
           <h2 className="text-3xl font-bold tracking-tight">📚 Minhas Avaliações</h2>
-          <p className="text-muted-foreground">
+        <p className="text-muted-foreground">
             Acompanhe suas avaliações agendadas e realize-as no período disponível
           </p>
           <div className="flex items-center gap-3 mt-1">
@@ -622,8 +629,8 @@ export default function StudentEvaluations() {
                 <p className="text-muted-foreground">
                   Você não perdeu nenhuma avaliação até o momento.
                 </p>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
           )}
         </TabsContent>
       </Tabs>

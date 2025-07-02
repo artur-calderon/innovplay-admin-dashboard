@@ -121,7 +121,7 @@ export default function StudentAgenda() {
       {/* Header */}
       <div className="space-y-2">
         <h1 className="text-3xl font-bold">📅 Agenda Acadêmica</h1>
-        <p className="text-muted-foreground">
+                  <p className="text-muted-foreground">
           Acompanhe suas aulas, provas e eventos acadêmicos
         </p>
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -235,19 +235,19 @@ export default function StudentAgenda() {
                     <div className="flex items-center gap-2">
                       <Users className="h-4 w-4" />
                       <span>{event.teacher}</span>
-                    </div>
+              </div>
                   )}
                 </div>
               </CardContent>
             </Card>
           ))
-        ) : (
-          <Card>
-            <CardContent className="pt-6 text-center py-12">
+          ) : (
+            <Card>
+              <CardContent className="pt-6 text-center py-12">
               <Calendar className="h-16 w-16 mx-auto mb-4 text-gray-200" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
                 Nenhum evento hoje
-              </h3>
+                </h3>
               <p className="text-muted-foreground">
                 Aproveite o dia livre para estudar ou descansar!
               </p>
@@ -302,19 +302,19 @@ export default function StudentAgenda() {
               </CardContent>
             </Card>
           ))
-        ) : (
-          <Card>
-            <CardContent className="pt-6 text-center py-12">
+          ) : (
+            <Card>
+              <CardContent className="pt-6 text-center py-12">
               <Calendar className="h-16 w-16 mx-auto mb-4 text-gray-200" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
                 Nenhum evento próximo
-              </h3>
+                </h3>
               <p className="text-muted-foreground">
                 Seus próximos eventos aparecerão aqui.
               </p>
-            </CardContent>
-          </Card>
-        )}
+              </CardContent>
+            </Card>
+          )}
       </div>
     </div>
   );
