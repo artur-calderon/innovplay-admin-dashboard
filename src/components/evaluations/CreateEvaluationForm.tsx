@@ -134,7 +134,7 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
   useEffect(() => {
     if (!selectedMunicipio) return;
     setLoadingSchools(true);
-    api.get(`/school?city_id=${selectedMunicipio}`)
+    api.get(`/school/city/${selectedMunicipio}`)
       .then(res => setSchools(res.data))
       .catch(() => toast({ title: "Erro", description: "Erro ao carregar escolas", variant: "destructive" }))
       .finally(() => setLoadingSchools(false));
