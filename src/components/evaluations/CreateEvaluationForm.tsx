@@ -32,6 +32,9 @@ const evaluationSchema = z.object({
   startDateTime: z.string().min(1, "Selecione data e horário de início"),
   endDateTime: z.string().min(1, "Selecione data e horário de término"),
   duration: z.string().min(1, "Informe o tempo de duração"),
+  evaluationMode: z.enum(["virtual", "physical"], {
+    required_error: "Selecione o modo de avaliação",
+  }),
   subject: z.string().min(1, "Selecione uma disciplina"),
   classes: z.array(z.string()).min(1, "Selecione pelo menos uma turma"),
 }).refine((data) => {
@@ -46,30 +49,88 @@ const evaluationSchema = z.object({
 
 type EvaluationFormValues = z.infer<typeof evaluationSchema>;
 
+// Tipos para as entidades
 interface City {
   id: string;
   name: string;
   state: string;
 }
+
 interface School {
   id: string;
   name: string;
   city_id: string;
 }
+
 interface Class {
   id: string;
   name: string;
 }
+
 interface Subject {
   id: string;
   name: string;
 }
-interface EducationStage { id: string; name: string; }
-interface Grade { id: string; name: string; }
+
+interface EducationStage { 
+  id: string; 
+  name: string; 
+}
+
+interface Grade { 
+  id: string; 
+  name: string; 
+}
+
+// Tipo para o payload da avaliação
+interface EvaluationPayload {
+  name: string;
+  description: string;
+  type: string;
+  model: string;
+  course: string;
+  grade: string;
+  subject: string;
+  school: string;
+  municipio: string;
+  startDateTime: string;
+  endDateTime: string;
+  duration: string;
+  evaluationMode: "virtual" | "physical";
+  classes: string[];
+  created_by: string;
+  questions: unknown[];
+}
+
+// Tipo para dados iniciais
+interface InitialData {
+  title?: string;
+  description?: string;
+  municipalities?: string[];
+  schools?: string[];
+  course?: string;
+  grade?: string;
+  startDateTime?: string;
+  endDateTime?: string;
+  duration?: string;
+  evaluationMode?: "virtual" | "physical";
+  subject?: string;
+  classes?: string[];
+}
+
+// Tipo para erro de API
+interface ApiError {
+  response?: {
+    data?: {
+      message?: string;
+    };
+  };
+  message?: string;
+}
 
 interface CreateEvaluationFormProps {
-  onSubmit?: (data: any) => void;
-  initialData?: any;
+  onSubmit?: (data: EvaluationPayload) => void;
+  initialData?: InitialData;
 }
 
 const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, initialData }) => {
@@ -86,6 +147,7 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
       startDateTime: initialData?.startDateTime || "",
       endDateTime: initialData?.endDateTime || "",
       duration: initialData?.duration || "",
+      evaluationMode: initialData?.evaluationMode || "virtual",
       subject: initialData?.subject || "",
       classes: initialData?.classes || [],
     },
@@ -255,7 +317,7 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
   const handleSubmit = async (values: EvaluationFormValues) => {
     setLoading(true);
     try {
-      const payload = {
+      const payload: EvaluationPayload = {
         name: values.name, // Manter o campo como 'name' para compatibilidade com Step1
         description: values.description,
         type: "AVALIACAO",
@@ -268,6 +330,7 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
         startDateTime: values.startDateTime,
         endDateTime: values.endDateTime,
         duration: values.duration,
+        evaluationMode: values.evaluationMode,
         classes: values.classes,
         created_by: user?.id || "",
         questions: [], // será preenchido no passo 2
@@ -289,6 +352,7 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
           time_limit: values.startDateTime,
           end_time: values.endDateTime,
           duration: Number(values.duration),
+          evaluation_mode: values.evaluationMode,
           classes: values.classes,
           created_by: user?.id || "",
           questions: [],
@@ -296,8 +360,14 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
         toast({ title: "Avaliação criada com sucesso!", variant: "default" });
         form.reset();
       }
-    } catch (e: any) {
-      toast({ title: "Erro ao criar avaliação", description: e?.response?.data?.message || "Erro desconhecido", variant: "destructive" });
+    } catch (error: unknown) {
+      const apiError = error as ApiError;
+      const errorMessage = apiError?.response?.data?.message || apiError?.message || "Erro desconhecido";
+      toast({ 
+        title: "Erro ao criar avaliação", 
+        description: errorMessage, 
+        variant: "destructive" 
+      });
     } finally {
       setLoading(false);
     }
@@ -507,6 +577,47 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
                 <FormMessage />
                 <p className="text-xs text-muted-foreground mt-1">
                   Tempo que cada aluno terá para completar a avaliação uma vez iniciada
+                </p>
+              </FormItem>
+            )}
+          />
+          
+          <FormField
+            control={form.control}
+            name="evaluationMode"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Modo de Avaliação</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o modo de avaliação" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="virtual">
+                      <div className="flex items-center gap-2">
+                        <span>💻</span>
+                        <div>
+                          <div className="font-medium">Virtual (Online)</div>
+                          <div className="text-xs text-muted-foreground">Realizada no computador</div>
+                        </div>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="physical">
+                      <div className="flex items-center gap-2">
+                        <span>📝</span>
+                        <div>
+                          <div className="font-medium">Presencial (Papel)</div>
+                          <div className="text-xs text-muted-foreground">Realizada no papel fisicamente</div>
+                        </div>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Escolha como a avaliação será realizada pelos alunos
                 </p>
               </FormItem>
             )}

@@ -87,8 +87,10 @@ export default function StudentEvaluations() {
       const response = await api.get(`/test/student/${user.id}`);
       const rawEvaluations = response.data || [];
       
-      // Log simplificado para verificar dados recebidos
-      console.log(`📊 Recebidas ${rawEvaluations.length} avaliações do backend`);
+      // Log apenas se houver erro de desenvolvimento
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`📊 Recebidas ${rawEvaluations.length} avaliações do backend`);
+      }
       
       // Processar e calcular status das avaliações
       const processedEvaluations = rawEvaluations.map((evaluation: any) => 
@@ -141,8 +143,7 @@ export default function StudentEvaluations() {
       ? parseISO(evaluation.end_time)
       : addMinutes(startDateTime, evaluation.duration);
     
-    // Verifica se está usando end_time do backend ou calculando pela duração
-    const usingBackendEndTime = !!evaluation.end_time;
+    // Usar end_time do backend se disponível, senão calcular pela duração
     
     const now = new Date();
     
