@@ -34,9 +34,7 @@ import Disciplina from "./pages/Disciplina";
 import StudentAgenda from "./pages/StudentAgenda";
 import TakeEvaluationPage from "./pages/TakeEvaluationPage";
 import EvaluationCorrection from "./pages/EvaluationCorrection";
-import GamesManagement from "./pages/GamesManagement";
-import StudentGames from "./pages/StudentGames";
-import GameViewPage from "./pages/GameViewPage";
+import Results from "./pages/Results";
 
 const queryClient = new QueryClient();
 
@@ -82,8 +80,7 @@ const App = () => {
             <Route path="/aluno/avaliacoes" element={<PrivateRoute><StudentEvaluations /></PrivateRoute>} />
             <Route path="/aluno/agenda" element={<PrivateRoute><StudentAgenda /></PrivateRoute>} />
             <Route path="/aluno/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
-            <Route path="/aluno/jogos" element={<PrivateRoute><StudentGames /></PrivateRoute>} />
-            <Route path="/aluno/jogos/:id" element={<PrivateRoute><GameViewPage /></PrivateRoute>} />
+            <Route path="/aluno/jogos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/aluno/play-tv" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/aluno/certificados" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/aluno/competicoes" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
@@ -98,13 +95,14 @@ const App = () => {
             <Route index element={<PrivateRoute><Index /></PrivateRoute>} />
             <Route path="/app/avaliacoes" element={<PrivateRoute><Evaluations /></PrivateRoute>} />
             <Route path="/app/avaliacoes/correcao" element={<PrivateRoute><EvaluationCorrection /></PrivateRoute>} />
+            <Route path="/app/resultados" element={<PrivateRoute><Results /></PrivateRoute>} />
             <Route path="/app/avaliacao/:id" element={<PrivateRoute><ViewEvaluation /></PrivateRoute>} />
             <Route path="/app/avaliacao/:id/editar" element={<PrivateRoute><EditEvaluation /></PrivateRoute>} />
             <Route path="/app/avaliacao/:id/fazer" element={<PrivateRoute><TakeEvaluationPage /></PrivateRoute>} />
             <Route path="/app/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
             <Route path="/app/criar-avaliacao" element={<PrivateRoute><CreateEvaluation /></PrivateRoute>} />
             <Route path="/app/agenda" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-            <Route path="/app/jogos" element={<PrivateRoute><GamesManagement /></PrivateRoute>} />
+            <Route path="/app/jogos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/app/play-tv" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/app/plantao" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/app/cartao-resposta" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
@@ -126,10 +124,10 @@ const App = () => {
             <Route path="/app/cadastros/questao" element={<PrivateRoute><QuestionsPage /></PrivateRoute>} />
             <Route path="/app/cadastros/questao/criar" element={<PrivateRoute><CreateQuestionPage /></PrivateRoute>} />
             <Route path="/app/cadastros/questao/editar/:id" element={<PrivateRoute><EditQuestionPage /></PrivateRoute>} />
-
+            
             {/* Rotas de gerenciamento de turmas */}
             <Route path="/app/cadastros/turma" element={<PrivateRoute><Turmas /></PrivateRoute>} />
-
+            
             {/* Rotas de cadastros institucionais */}
             <Route path="/app/cadastros/instituicao" element={<PrivateRoute><Instituicao /></PrivateRoute>} />
             <Route path="/app/cadastros/curso" element={<PrivateRoute><Curso /></PrivateRoute>} />

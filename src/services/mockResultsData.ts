@@ -521,4 +521,22 @@ export function getMockFilterOptions(data: EvaluationResultsData[]) {
     municipalities: municipalities.sort(),
     classes: classes.sort()
   };
+}
+
+// Função para obter dados de resultados de avaliações
+export async function getEvaluationResults(): Promise<EvaluationResultsData[]> {
+  // Simular delay de API
+  await new Promise(resolve => setTimeout(resolve, 500));
+  return generateMockResultsData();
+}
+
+// Função para exportar resultados
+export async function exportResults(ids: string[]): Promise<{ success: boolean; message?: string }> {
+  // Simular delay de API
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  
+  return {
+    success: true,
+    message: `Exportação concluída para ${ids.length} avaliações`
+  };
 } 

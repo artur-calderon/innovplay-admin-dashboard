@@ -41,8 +41,23 @@ export interface EvaluationFormData {
   subject: string;
   questions: Question[];
   startDateTime?: string;
+  endDateTime?: string;
   duration?: string;
   classes?: string[];
+  selectedClasses?: ClassInfo[];
+  state?: string;
+  municipality?: string;
+  selectedSchools?: { id: string; name: string; }[];
+}
+
+export interface ClassInfo {
+  id: string;
+  name: string;
+  students_count?: number;
+  school?: {
+    id: string;
+    name: string;
+  };
 }
 
 export interface TeacherSchool {

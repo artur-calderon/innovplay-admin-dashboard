@@ -23,7 +23,8 @@ import {
   Users2,
   HelpCircle,
   X,
-  ClipboardCheck
+  ClipboardCheck,
+  BarChart3
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -160,6 +161,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
             },
             { icon: List, label: "Avaliações", href: "/app/avaliacoes", role: ["admin", "professor"] },
             { icon: ClipboardCheck, label: "Correção", href: "/app/avaliacoes/correcao", role: ["admin", "professor"], badge: "3" },
+            { icon: BarChart3, label: "Resultados", href: "/app/resultados", role: ["admin", "professor"] },
             { icon: School, label: "Escola", href: "/app/escolas", role: ["admin"] },
             { icon: LandPlot, label: "Municípios", href: "/app/city", role: ["admin"] },
             { icon: HelpCircle, label: "Questão", href: "/app/cadastros/questao", role: ["admin", "professor"] },
