@@ -1,440 +1,339 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Clock, Play, CheckCircle, AlertCircle, Book, Users, Timer, CalendarDays, School } from "lucide-react";
-import { format, isAfter, isBefore, addMinutes, parseISO, differenceInMinutes, differenceInHours, differenceInDays } from "date-fns";
-import { ptBR } from "date-fns/locale";
+import { Progress } from "@/components/ui/progress";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { 
+  Play, 
+  Clock, 
+  CheckCircle, 
+  AlertCircle, 
+  BookOpen, 
+  Calendar,
+  Users,
+  FileText,
+  Timer,
+  Eye,
+  RefreshCw,
+  Trophy,
+  Target,
+  Zap
+} from "lucide-react";
+import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useNavigate } from "react-router-dom";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useAuth } from "@/context/authContext";
+import { format, isAfter, isBefore, parseISO } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
-interface ScheduledEvaluation {
+interface StudentEvaluation {
   id: string;
   title: string;
-  description?: string;
-  subject: {
-  id: string;
-  name: string;
+  description: string;
+  subject: { id: string; name: string };
+  subjects?: { id: string; name: string }[];
+  grade: { id: string; name: string };
+  course: { id: string; name: string };
+  startDateTime: string;
+  endDateTime?: string;
+  duration: number; // em minutos
+  totalQuestions: number;
+  maxScore: number;
+  type: string;
+  model: string;
+  status: "pending" | "available" | "in_progress" | "completed" | "expired";
+  timeRemaining?: number; // em segundos se estiver em progresso
+  currentProgress?: {
+    questionsAnswered: number;
+    timeSpent: number; // em segundos
+    lastAccess: string;
   };
-  time_limit: string; // Data/hora de início no formato ISO
-  end_time?: string; // Data/hora de término no formato ISO
-  duration: number; // Duração em minutos
-  evaluation_mode?: 'virtual' | 'physical';
-  status?: 'upcoming' | 'available' | 'in_progress' | 'completed' | 'expired';
-  score?: number;
-  questions: any[];
-  school: {
-  id: string;
-  name: string;
+  result?: {
+    score: number;
+    percentage: number;
+    correctAnswers: number;
+    wrongAnswers: number;
+    blankAnswers: number;
+    timeSpent: number;
+    completedAt: string;
   };
-  grade: {
-  id: string;
-  name: string;
-  };
-  course: {
-  id: string;
-  name: string;
-  };
-  createdBy: {
-  id: string;
-  name: string;
-  };
-  createdAt: string;
-  // Campos calculados localmente
-  calculatedStatus?: 'upcoming' | 'available' | 'expired';
-  timeToStart?: string;
-  timeToEnd?: string;
+}
+
+interface EvaluationTaking {
+  evaluationId: string;
+  currentQuestion: number;
+  answers: { [questionId: string]: any };
+  timeRemaining: number;
+  startedAt: string;
 }
 
 export default function StudentEvaluations() {
-  const [evaluations, setEvaluations] = useState<ScheduledEvaluation[]>([]);
+  const [evaluations, setEvaluations] = useState<StudentEvaluation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [currentTime, setCurrentTime] = useState(new Date());
-  const [lastFetchTime, setLastFetchTime] = useState<Date | null>(null);
-  const [hasError, setHasError] = useState(false);
-  const { toast } = useToast();
-  const navigate = useNavigate();
+  const [selectedEvaluation, setSelectedEvaluation] = useState<StudentEvaluation | null>(null);
+  const [showInstructions, setShowInstructions] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const [currentTaking, setCurrentTaking] = useState<EvaluationTaking | null>(null);
+  const [confirmStart, setConfirmStart] = useState(false);
+  
   const { user } = useAuth();
+  const { toast } = useToast();
 
   useEffect(() => {
     fetchStudentEvaluations();
-    
-    // Atualizar o tempo atual a cada 30 segundos para controle preciso
-    const interval = setInterval(() => {
-      setCurrentTime(new Date());
-      updateEvaluationStatuses();
-    }, 30000);
-
-    return () => clearInterval(interval);
+    // Verificar se há avaliação em andamento no localStorage
+    checkInProgressEvaluation();
   }, []);
 
   const fetchStudentEvaluations = async () => {
     try {
       setIsLoading(true);
+      // Buscar avaliações do aluno
+      const response = await api.get(`/student-evaluations/${user?.id}`);
       
-      if (!user?.id) {
-        console.error("Usuário não identificado");
-        setEvaluations([]);
-        setHasError(true);
-        return;
-      }
-      
-      // Buscar avaliações do aluno logado
-      const response = await api.get(`/test/student/${user.id}`);
-      const rawEvaluations = response.data || [];
-      
-      // Log apenas se houver erro de desenvolvimento
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`📊 Recebidas ${rawEvaluations.length} avaliações do backend`);
-      }
-      
-      // Processar e calcular status das avaliações
-      const processedEvaluations = rawEvaluations.map((evaluation: any) => 
-        processEvaluation(evaluation)
-      );
-      
-      setEvaluations(processedEvaluations);
-      setHasError(false);
-      setLastFetchTime(new Date());
-    } catch (error: any) {
+      // Transformar dados e determinar status
+      const evaluationsWithStatus = response.data.map((evaluation: any) => ({
+        ...evaluation,
+        status: determineEvaluationStatus(evaluation),
+      }));
+
+      setEvaluations(evaluationsWithStatus);
+    } catch (error) {
       console.error("Erro ao buscar avaliações:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar suas avaliações",
+        variant: "destructive",
+      });
       
-      // Verificar se é erro 404 (nenhuma avaliação encontrada)
-      if (error?.response?.status === 404) {
-        setEvaluations([]);
-        setHasError(false); // 404 não é erro real
-        setLastFetchTime(new Date());
-      } else if (error?.response?.status === 500) {
-        setHasError(true);
-        setEvaluations([]);
-        
-        toast({
-          title: "Erro no servidor",
-          description: "Problema temporário no servidor. Tente novamente em alguns minutos.",
-          variant: "destructive",
-        });
-      } else {
-        setHasError(true);
-        if (evaluations.length === 0) {
-          setEvaluations([]);
-        }
-        
-        const errorMessage = error?.response?.data?.error || error?.response?.data?.details || error?.message;
-        
-        toast({
-          title: "Erro ao carregar avaliações",
-          description: errorMessage || 'Não foi possível carregar suas avaliações.',
-          variant: "destructive",
-        });
-      }
+      // Dados mock para desenvolvimento
+      setEvaluations(getMockEvaluations());
     } finally {
       setIsLoading(false);
     }
   };
 
-  const processEvaluation = (evaluation: any): ScheduledEvaluation => {
-    const startDateTime = parseISO(evaluation.time_limit);
-    // Se end_time estiver disponível, usar ele; senão, calcular baseado na duração
-    const endDateTime = evaluation.end_time 
-      ? parseISO(evaluation.end_time)
-      : addMinutes(startDateTime, evaluation.duration);
-    
-    // Usar end_time do backend se disponível, senão calcular pela duração
-    
+  const determineEvaluationStatus = (evaluation: any): StudentEvaluation["status"] => {
     const now = new Date();
-    
-    let calculatedStatus: 'upcoming' | 'available' | 'expired' = 'upcoming';
-    let timeToStart = '';
-    let timeToEnd = '';
-    
-    if (isAfter(now, endDateTime)) {
-      calculatedStatus = 'expired';
-    } else if (isAfter(now, startDateTime)) {
-      calculatedStatus = 'available';
-      timeToEnd = formatTimeRemaining(differenceInMinutes(endDateTime, now));
-    } else {
-      calculatedStatus = 'upcoming';
-      timeToStart = formatTimeRemaining(differenceInMinutes(startDateTime, now));
+    const startDate = parseISO(evaluation.startDateTime);
+    const endDate = evaluation.endDateTime ? parseISO(evaluation.endDateTime) : null;
+
+    // Verificar se já foi completada
+    if (evaluation.result) {
+      return "completed";
     }
-    
-    return {
-      ...evaluation,
-      calculatedStatus,
-      timeToStart,
-      timeToEnd,
-      evaluation_mode: evaluation.evaluation_mode || 'virtual'
-    };
-  };
 
-  const updateEvaluationStatuses = () => {
-    setEvaluations(prevEvaluations => 
-      prevEvaluations.map(evaluation => processEvaluation(evaluation))
-    );
-  };
-
-  const formatTimeRemaining = (minutes: number): string => {
-    if (minutes < 0) return 'Expirado';
-    
-    const days = Math.floor(minutes / (24 * 60));
-    const hours = Math.floor((minutes % (24 * 60)) / 60);
-    const mins = minutes % 60;
-    
-    if (days > 0) {
-      return `${days}d ${hours}h ${mins}m`;
-    } else if (hours > 0) {
-      return `${hours}h ${mins}m`;
-    } else {
-      return `${mins}m`;
+    // Verificar se está em progresso
+    if (evaluation.currentProgress) {
+      return "in_progress";
     }
+
+    // Verificar se expirou
+    if (endDate && isAfter(now, endDate)) {
+      return "expired";
+    }
+
+    // Verificar se está disponível
+    if (isAfter(now, startDate)) {
+      return "available";
+    }
+
+    // Ainda não começou
+    return "pending";
   };
 
-  const handleStartEvaluation = async (evaluationId: string) => {
-    try {
-      // Verificar se a avaliação pode ser iniciada
-      const evaluation = evaluations.find(e => e.id === evaluationId);
-      if (!evaluation || evaluation.calculatedStatus !== 'available') {
-        toast({
-          title: "Avaliação não disponível",
-          description: "Esta avaliação ainda não pode ser iniciada.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Iniciar a avaliação (endpoint pode não existir ainda)
+  const checkInProgressEvaluation = () => {
+    const inProgress = localStorage.getItem("evaluation_in_progress");
+    if (inProgress) {
       try {
-        await api.post(`/test/${evaluationId}/start`);
-      } catch (apiError) {
-        console.log("Endpoint de iniciar avaliação não implementado ainda");
+        const data = JSON.parse(inProgress);
+        setCurrentTaking(data);
+      } catch (error) {
+        localStorage.removeItem("evaluation_in_progress");
       }
+    }
+  };
+
+  const handleStartEvaluation = (evaluation: StudentEvaluation) => {
+    setSelectedEvaluation(evaluation);
+    setShowInstructions(true);
+  };
+
+  const handleConfirmStart = async () => {
+    if (!selectedEvaluation) return;
+
+    try {
+      // Iniciar avaliação no backend
+      const response = await api.post(`/evaluations/${selectedEvaluation.id}/start`);
+      
+      const takingData: EvaluationTaking = {
+        evaluationId: selectedEvaluation.id,
+        currentQuestion: 0,
+        answers: {},
+        timeRemaining: selectedEvaluation.duration * 60, // converter para segundos
+        startedAt: new Date().toISOString(),
+      };
+
+      // Salvar no localStorage para persistência
+      localStorage.setItem("evaluation_in_progress", JSON.stringify(takingData));
+      setCurrentTaking(takingData);
+      
+      setShowInstructions(false);
+      setConfirmStart(false);
       
       toast({
         title: "Avaliação iniciada!",
-        description: "Boa sorte na sua avaliação!",
+        description: `Você tem ${selectedEvaluation.duration} minutos para completar`,
       });
+
+      // Redirecionar para tela de avaliação
+      window.location.href = `/app/avaliacao/${selectedEvaluation.id}/fazer`;
       
-      // Navegar para a página de realizar avaliação (a ser implementada)
-      navigate(`/aluno/avaliacao/${evaluationId}/realizar`);
     } catch (error) {
+      console.error("Erro ao iniciar avaliação:", error);
       toast({
-        title: "Erro ao iniciar avaliação",
-        description: "Não foi possível iniciar a avaliação. Tente novamente.",
+        title: "Erro",
+        description: "Não foi possível iniciar a avaliação",
         variant: "destructive",
       });
     }
   };
 
-  const getStatusInfo = (evaluation: ScheduledEvaluation) => {
-    switch (evaluation.calculatedStatus) {
-      case 'available':
-        return {
-          color: 'bg-green-100 text-green-800 border-green-200',
-          icon: Play,
-          label: 'Disponível',
-          description: evaluation.timeToEnd ? `Termina em ${evaluation.timeToEnd}` : 'Clique para iniciar'
-        };
-      case 'expired':
-        return {
-          color: 'bg-red-100 text-red-800 border-red-200',
-          icon: AlertCircle,
-          label: 'Expirada',
-          description: 'Prazo encerrado'
-        };
-      default: {
-        return {
-          color: 'bg-blue-100 text-blue-800 border-blue-200',
-          icon: Calendar,
-          label: 'Agendada',
-          description: evaluation.timeToStart ? `Inicia em ${evaluation.timeToStart}` : 'Aguardando horário'
-        };
-      }
-    }
+  const handleContinueEvaluation = (evaluation: StudentEvaluation) => {
+    window.location.href = `/app/avaliacao/${evaluation.id}/fazer`;
   };
 
-  const getEvaluationsByStatus = () => {
-    const upcoming = evaluations.filter(e => e.calculatedStatus === 'upcoming');
-    const available = evaluations.filter(e => e.calculatedStatus === 'available');
-    const expired = evaluations.filter(e => e.calculatedStatus === 'expired');
-
-    return { upcoming, available, expired };
+  const handleViewResults = (evaluation: StudentEvaluation) => {
+    setSelectedEvaluation(evaluation);
+    setShowResults(true);
   };
 
-  const { upcoming, available, expired } = getEvaluationsByStatus();
+  const getStatusBadge = (status: StudentEvaluation["status"]) => {
+    const configs = {
+      pending: { label: "Agendada", variant: "secondary" as const, icon: Calendar },
+      available: { label: "Disponível", variant: "default" as const, icon: Play },
+      in_progress: { label: "Em Progresso", variant: "secondary" as const, icon: Timer },
+      completed: { label: "Concluída", variant: "secondary" as const, icon: CheckCircle },
+      expired: { label: "Expirada", variant: "destructive" as const, icon: AlertCircle },
+    };
 
-  const EvaluationCard = ({ evaluation }: { evaluation: ScheduledEvaluation }) => {
-    const statusInfo = getStatusInfo(evaluation);
-    const StatusIcon = statusInfo.icon;
-    const startDateTime = parseISO(evaluation.time_limit);
-    const endDateTime = evaluation.end_time 
-      ? parseISO(evaluation.end_time)
-      : addMinutes(startDateTime, evaluation.duration);
+    const config = configs[status];
+    const Icon = config.icon;
 
     return (
-      <Card className="transition-all duration-200 hover:shadow-md">
-        <CardHeader className="pb-4">
-          <div className="flex items-start justify-between">
-            <div className="flex-1 min-w-0">
-              <CardTitle className="text-lg font-semibold line-clamp-1">
-                {evaluation.title}
-              </CardTitle>
-              <CardDescription className="mt-1 line-clamp-2">
-                {evaluation.description || "Avaliação agendada"}
-              </CardDescription>
-            </div>
-            <Badge className={`ml-3 ${statusInfo.color} flex items-center gap-1`}>
-              <StatusIcon className="h-3 w-3" />
-              {statusInfo.label}
-            </Badge>
-          </div>
-        </CardHeader>
-        
-        <CardContent className="space-y-4">
-          {/* Informações da avaliação */}
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div className="flex items-center gap-2">
-              <Book className="h-4 w-4 text-muted-foreground" />
-              <span>{evaluation.subject?.name || 'Disciplina'}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <School className="h-4 w-4 text-muted-foreground" />
-              <span>{evaluation.school?.name || 'Escola'}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CalendarDays className="h-4 w-4 text-muted-foreground" />
-              <span>{format(startDateTime, "dd/MM/yyyy", { locale: ptBR })}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-muted-foreground" />
-              <span>
-                {format(startDateTime, "HH:mm", { locale: ptBR })} - {format(endDateTime, "HH:mm", { locale: ptBR })}
-              </span>
-            </div>
-          </div>
-
-          {/* Informações adicionais */}
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            <span>{evaluation.questions?.length || 0} questões</span>
-            <span>{evaluation.duration} min</span>
-            <span className="capitalize">{evaluation.evaluation_mode || 'virtual'}</span>
-            <span>{evaluation.grade?.name}</span>
-            {evaluation.createdBy?.name && <span>Prof. {evaluation.createdBy.name}</span>}
-          </div>
-
-          {/* Status e countdown */}
-          {evaluation.calculatedStatus === 'upcoming' && evaluation.timeToStart && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <div className="flex items-center gap-2 text-blue-800">
-                <Timer className="h-4 w-4" />
-                <span className="font-medium">Inicia em: {evaluation.timeToStart}</span>
-              </div>
-              <p className="text-xs text-blue-600 mt-1">
-                A avaliação será liberada automaticamente no horário agendado
-              </p>
-            </div>
-          )}
-
-          {evaluation.calculatedStatus === 'available' && evaluation.timeToEnd && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-              <div className="flex items-center gap-2 text-green-800">
-                <Timer className="h-4 w-4" />
-                <span className="font-medium">Tempo restante: {evaluation.timeToEnd}</span>
-              </div>
-              <p className="text-xs text-green-600 mt-1">
-                Você pode iniciar a avaliação agora
-              </p>
-            </div>
-          )}
-
-          {/* Ações */}
-          <div className="flex justify-between items-center pt-2 border-t">
-            <div className="text-xs text-muted-foreground">
-              {statusInfo.description}
-            </div>
-            
-            <div className="flex gap-2">
-              {evaluation.calculatedStatus === 'available' && evaluation.evaluation_mode === 'virtual' && (
-                <Button 
-                  size="sm"
-                  onClick={() => handleStartEvaluation(evaluation.id)}
-                  className="bg-green-600 hover:bg-green-700"
-                >
-                  <Play className="h-4 w-4 mr-1" />
-                  Fazer Avaliação
-                </Button>
-              )}
-              
-              {evaluation.evaluation_mode === 'physical' && (
-                <Badge variant="outline" className="text-xs">
-                  📝 Prova Presencial
-                </Badge>
-              )}
-              
-              {evaluation.calculatedStatus === 'upcoming' && (
-                <Badge variant="secondary" className="text-xs">
-                  ⏰ Aguardando
-                </Badge>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <Badge variant={config.variant} className="flex items-center gap-1">
+        <Icon className="h-3 w-3" />
+        {config.label}
+      </Badge>
     );
   };
 
+  const formatTimeRemaining = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+
+    if (hours > 0) {
+      return `${hours}h ${minutes}m ${secs}s`;
+    } else if (minutes > 0) {
+      return `${minutes}m ${secs}s`;
+    } else {
+      return `${secs}s`;
+    }
+  };
+
+  const getPerformanceColor = (percentage: number) => {
+    if (percentage >= 80) return "text-green-600";
+    if (percentage >= 60) return "text-blue-600";
+    if (percentage >= 40) return "text-yellow-600";
+    return "text-red-600";
+  };
+
+  const getMockEvaluations = (): StudentEvaluation[] => [
+    {
+      id: "eval-1",
+      title: "Avaliação de Matemática - 1º Bimestre",
+      description: "Avaliação sobre números decimais e frações",
+      subject: { id: "math", name: "Matemática" },
+      grade: { id: "5ano", name: "5º Ano" },
+      course: { id: "ef", name: "Ensino Fundamental" },
+      startDateTime: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 horas atrás
+      duration: 90,
+      totalQuestions: 15,
+      maxScore: 10,
+      type: "AVALIACAO",
+      model: "SAEB",
+      status: "available",
+    },
+    {
+      id: "eval-2", 
+      title: "Simulado de Português",
+      description: "Simulado preparatório para prova externa",
+      subject: { id: "port", name: "Português" },
+      grade: { id: "5ano", name: "5º Ano" },
+      course: { id: "ef", name: "Ensino Fundamental" },
+      startDateTime: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), // 1 dia atrás
+      duration: 120,
+      totalQuestions: 20,
+      maxScore: 10,
+      type: "SIMULADO",
+      model: "SAEB",
+      status: "completed",
+      result: {
+        score: 8.5,
+        percentage: 85,
+        correctAnswers: 17,
+        wrongAnswers: 2,
+        blankAnswers: 1,
+        timeSpent: 4500, // 1h15min
+        completedAt: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
+      }
+    },
+    {
+      id: "eval-3",
+      title: "Prova de Ciências - Água e Solo",
+      description: "Avaliação sobre ciclo da água e tipos de solo",
+      subject: { id: "cienc", name: "Ciências" },
+      grade: { id: "5ano", name: "5º Ano" },
+      course: { id: "ef", name: "Ensino Fundamental" },
+      startDateTime: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(), // em 2 dias
+      duration: 60,
+      totalQuestions: 12,
+      maxScore: 10,
+      type: "AVALIACAO",
+      model: "PROVA",
+      status: "pending",
+    }
+  ];
+
   if (isLoading) {
     return (
-      <div className="space-y-6">
-        <div className="space-y-2">
+      <div className="container mx-auto px-4 py-6 space-y-6">
+        <div className="space-y-4">
           <Skeleton className="h-8 w-64" />
           <Skeleton className="h-4 w-96" />
         </div>
-        
-        {/* Skeleton para cards de resumo */}
-        <div className="grid gap-4 md:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Card key={i}>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-2">
-                  <Skeleton className="h-4 w-4" />
-                  <div>
-                    <Skeleton className="h-8 w-8 mb-1" />
-                    <Skeleton className="h-3 w-16" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-        
-        {/* Skeleton para lista de avaliações */}
-        <div className="space-y-4">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Card key={i}>
-              <CardHeader>
-                <div className="flex justify-between">
-                  <div className="space-y-2">
-                    <Skeleton className="h-6 w-48" />
-                    <Skeleton className="h-4 w-64" />
-                  </div>
-                  <Skeleton className="h-6 w-20" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-4">
-                    <Skeleton className="h-4 w-24" />
-                    <Skeleton className="h-4 w-24" />
-                    <Skeleton className="h-4 w-24" />
-                    <Skeleton className="h-4 w-24" />
-                  </div>
-                  <Skeleton className="h-8 w-20 ml-auto" />
-                </div>
-              </CardContent>
-            </Card>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[...Array(6)].map((_, i) => (
+            <Skeleton key={i} className="h-64" />
           ))}
         </div>
       </div>
@@ -442,199 +341,383 @@ export default function StudentEvaluations() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="container mx-auto px-4 py-6 space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-start">
-      <div>
-          <h2 className="text-3xl font-bold tracking-tight">📚 Minhas Avaliações</h2>
+      <div className="space-y-2">
+        <h1 className="text-2xl font-bold">Minhas Avaliações</h1>
         <p className="text-muted-foreground">
-            Acompanhe suas avaliações agendadas e realize-as no período disponível
-          </p>
-          <div className="flex items-center gap-3 mt-1">
-            <p className="text-xs text-muted-foreground">
-              Atualizado automaticamente • Última atualização: {format(currentTime, "HH:mm:ss")}
-            </p>
-            {hasError && (
-              <Badge variant="destructive" className="text-xs">
-                <AlertCircle className="h-3 w-3 mr-1" />
-                Erro de conexão
-              </Badge>
-            )}
-            {lastFetchTime && !hasError && (
-              <Badge variant="secondary" className="text-xs">
-                <CheckCircle className="h-3 w-3 mr-1" />
-                Sincronizado
-              </Badge>
-            )}
+          Acompanhe suas avaliações agendadas e resultados
+        </p>
+      </div>
+
+      {/* Estatísticas Rápidas */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Pendentes</p>
+                <p className="text-2xl font-bold text-orange-600">
+                  {evaluations.filter(e => e.status === "pending").length}
+                </p>
+              </div>
+              <Calendar className="h-8 w-8 text-orange-600" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Disponíveis</p>
+                <p className="text-2xl font-bold text-blue-600">
+                  {evaluations.filter(e => e.status === "available").length}
+                </p>
+              </div>
+              <Play className="h-8 w-8 text-blue-600" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Concluídas</p>
+                <p className="text-2xl font-bold text-green-600">
+                  {evaluations.filter(e => e.status === "completed").length}
+                </p>
+              </div>
+              <CheckCircle className="h-8 w-8 text-green-600" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Média Geral</p>
+                <p className="text-2xl font-bold text-purple-600">
+                  {evaluations.filter(e => e.result).length > 0 
+                    ? (evaluations.filter(e => e.result).reduce((acc, e) => acc + (e.result?.percentage || 0), 0) / evaluations.filter(e => e.result).length).toFixed(0) + "%"
+                    : "0%"
+                  }
+                </p>
+              </div>
+              <Trophy className="h-8 w-8 text-purple-600" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Avaliação em Progresso */}
+      {currentTaking && (
+        <Alert className="border-blue-200 bg-blue-50">
+          <Timer className="h-4 w-4" />
+          <AlertDescription className="flex items-center justify-between">
+            <span>
+              Você tem uma avaliação em progresso. 
+              <strong className="ml-1">
+                {evaluations.find(e => e.id === currentTaking.evaluationId)?.title}
+              </strong>
+            </span>
+            <Button 
+              size="sm" 
+              onClick={() => handleContinueEvaluation(evaluations.find(e => e.id === currentTaking.evaluationId)!)}
+            >
+              Continuar
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Lista de Avaliações */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {evaluations.map((evaluation) => (
+          <Card key={evaluation.id} className="hover:shadow-md transition-shadow">
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between">
+                <div className="space-y-1 flex-1">
+                  <CardTitle className="text-base line-clamp-2">{evaluation.title}</CardTitle>
+                  <div className="flex items-center gap-2">
+                    {getStatusBadge(evaluation.status)}
+                    <Badge variant="outline" className="text-xs">
+                      {evaluation.type}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+            </CardHeader>
+            
+            <CardContent className="space-y-4">
+              {/* Informações básicas */}
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="h-4 w-4 text-muted-foreground" />
+                  <span>{evaluation.subject.name}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <span>{evaluation.duration} minutos</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                  <span>{evaluation.totalQuestions} questões</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span>
+                    {format(parseISO(evaluation.startDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                  </span>
+                </div>
+              </div>
+
+              {/* Progresso se estiver em andamento */}
+              {evaluation.currentProgress && (
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Progresso</span>
+                    <span>{evaluation.currentProgress.questionsAnswered}/{evaluation.totalQuestions}</span>
+                  </div>
+                  <Progress 
+                    value={(evaluation.currentProgress.questionsAnswered / evaluation.totalQuestions) * 100} 
+                    className="h-2"
+                  />
+                </div>
+              )}
+
+              {/* Resultado se concluída */}
+              {evaluation.result && (
+                <div className="space-y-2 p-3 bg-gray-50 rounded-lg">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium">Resultado</span>
+                    <Badge 
+                      variant="secondary" 
+                      className={`${getPerformanceColor(evaluation.result.percentage)} bg-transparent border`}
+                    >
+                      {evaluation.result.percentage}%
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="text-center">
+                      <p className="font-medium text-green-600">{evaluation.result.correctAnswers}</p>
+                      <p className="text-muted-foreground">Acertos</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="font-medium text-red-600">{evaluation.result.wrongAnswers}</p>
+                      <p className="text-muted-foreground">Erros</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="font-medium text-gray-600">{evaluation.result.blankAnswers}</p>
+                      <p className="text-muted-foreground">Em branco</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Ações */}
+              <div className="flex gap-2">
+                {evaluation.status === "available" && (
+                  <Button 
+                    className="flex-1" 
+                    onClick={() => handleStartEvaluation(evaluation)}
+                  >
+                    <Play className="h-4 w-4 mr-2" />
+                    Iniciar
+                  </Button>
+                )}
+                
+                {evaluation.status === "in_progress" && (
+                  <Button 
+                    className="flex-1" 
+                    variant="secondary"
+                    onClick={() => handleContinueEvaluation(evaluation)}
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Continuar
+                  </Button>
+                )}
+                
+                {evaluation.status === "completed" && (
+                  <Button 
+                    className="flex-1" 
+                    variant="outline"
+                    onClick={() => handleViewResults(evaluation)}
+                  >
+                    <Eye className="h-4 w-4 mr-2" />
+                    Ver Resultado
+                  </Button>
+                )}
+                
+                {evaluation.status === "pending" && (
+                  <Button className="flex-1" variant="secondary" disabled>
+                    <Calendar className="h-4 w-4 mr-2" />
+                    Agendada
+                  </Button>
+                )}
+                
+                {evaluation.status === "expired" && (
+                  <Button className="flex-1" variant="destructive" disabled>
+                    <AlertCircle className="h-4 w-4 mr-2" />
+                    Expirada
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Dialog de Instruções */}
+      <Dialog open={showInstructions} onOpenChange={setShowInstructions}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Instruções da Avaliação</DialogTitle>
+            <DialogDescription>
+              {selectedEvaluation?.title}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <Alert>
+              <Target className="h-4 w-4" />
+              <AlertDescription>
+                Leia atentamente todas as instruções antes de iniciar a avaliação.
+              </AlertDescription>
+            </Alert>
+
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <strong>Duração:</strong> {selectedEvaluation?.duration} minutos
+                </div>
+                <div>
+                  <strong>Questões:</strong> {selectedEvaluation?.totalQuestions}
+                </div>
+                <div>
+                  <strong>Disciplina:</strong> {selectedEvaluation?.subject.name}
+                </div>
+                <div>
+                  <strong>Tipo:</strong> {selectedEvaluation?.type}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="font-medium">Regras importantes:</h4>
+                <ul className="text-sm space-y-1 text-muted-foreground list-disc list-inside">
+                  <li>Uma vez iniciada, a avaliação não pode ser pausada</li>
+                  <li>O tempo é cronometrado automaticamente</li>
+                  <li>Você pode navegar entre as questões livremente</li>
+                  <li>Certifique-se de ter uma conexão estável com a internet</li>
+                  <li>Revise suas respostas antes de finalizar</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowInstructions(false)}>
+                Cancelar
+              </Button>
+              <AlertDialog open={confirmStart} onOpenChange={setConfirmStart}>
+                <AlertDialogTrigger asChild>
+                  <Button>
+                    <Zap className="h-4 w-4 mr-2" />
+                    Iniciar Avaliação
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Confirmar início da avaliação</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Tem certeza que deseja iniciar a avaliação? Uma vez iniciada, 
+                      o cronômetro começará e não poderá ser pausado.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleConfirmStart}>
+                      Sim, iniciar
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
           </div>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={fetchStudentEvaluations}
-          disabled={isLoading}
-          className="flex items-center gap-2"
-        >
-          {isLoading ? (
-            <Timer className="h-4 w-4 animate-spin" />
-          ) : (
-            <Calendar className="h-4 w-4" />
-          )}
-          {isLoading ? "Atualizando..." : "Atualizar"}
-        </Button>
-      </div>
+        </DialogContent>
+      </Dialog>
 
-      {/* Resumo rápido */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2">
-              <Play className="h-4 w-4 text-green-600" />
-              <div>
-                <div className="text-2xl font-bold text-green-600">{available.length}</div>
-                <p className="text-xs text-muted-foreground">Disponíveis Agora</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-blue-600" />
-              <div>
-                <div className="text-2xl font-bold text-blue-600">{upcoming.length}</div>
-                <p className="text-xs text-muted-foreground">Agendadas</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 text-red-600" />
-              <div>
-                <div className="text-2xl font-bold text-red-600">{expired.length}</div>
-                <p className="text-xs text-muted-foreground">Expiradas</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Tabs de avaliações */}
-      <Tabs defaultValue="available" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="available" className="flex items-center gap-2">
-            <Play className="h-4 w-4" />
-            Disponíveis ({available.length})
-          </TabsTrigger>
-          <TabsTrigger value="upcoming" className="flex items-center gap-2">
-            <Calendar className="h-4 w-4" />
-            Agendadas ({upcoming.length})
-          </TabsTrigger>
-          <TabsTrigger value="expired" className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4" />
-            Expiradas ({expired.length})
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="available" className="space-y-4">
-          {available.length > 0 ? (
-            <>
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-                <div className="flex items-center gap-2 text-green-800 mb-2">
-                  <Play className="h-5 w-5" />
-                  <span className="font-semibold">Avaliações Liberadas</span>
+      {/* Dialog de Resultados */}
+      <Dialog open={showResults} onOpenChange={setShowResults}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Resultado da Avaliação</DialogTitle>
+            <DialogDescription>
+              {selectedEvaluation?.title}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedEvaluation?.result && (
+            <div className="space-y-4">
+              {/* Score principal */}
+              <div className="text-center space-y-2">
+                <div className={`text-4xl font-bold ${getPerformanceColor(selectedEvaluation.result.percentage)}`}>
+                  {selectedEvaluation.result.percentage}%
                 </div>
-                <p className="text-sm text-green-700">
-                  Você tem {available.length} avaliações disponíveis para realizar agora.
-                  Clique em "Fazer Avaliação" para iniciar.
-                </p>
-              </div>
-              {available.map((evaluation) => (
-                <EvaluationCard key={evaluation.id} evaluation={evaluation} />
-              ))}
-            </>
-          ) : (
-            <Card>
-              <CardContent className="pt-6 text-center py-12">
-                <Play className="h-16 w-16 mx-auto mb-4 text-green-200" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  Nenhuma avaliação disponível
-                </h3>
-                <p className="text-muted-foreground mb-4">
-                  Não há avaliações liberadas para realização no momento.
-                </p>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        <TabsContent value="upcoming" className="space-y-4">
-          {upcoming.length > 0 ? (
-            <>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                <div className="flex items-center gap-2 text-blue-800 mb-2">
-                  <Calendar className="h-5 w-5" />
-                  <span className="font-semibold">Próximas Avaliações</span>
-                </div>
-                <p className="text-sm text-blue-700">
-                  Você tem {upcoming.length} avaliações agendadas.
-                  Elas serão liberadas automaticamente no horário marcado.
-                </p>
-              </div>
-              {upcoming.map((evaluation) => (
-                <EvaluationCard key={evaluation.id} evaluation={evaluation} />
-              ))}
-            </>
-          ) : (
-            <Card>
-              <CardContent className="pt-6 text-center py-12">
-                <Calendar className="h-16 w-16 mx-auto mb-4 text-blue-200" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  Nenhuma avaliação agendada
-                </h3>
-                <p className="text-muted-foreground mb-4">
-                  Você não possui avaliações programadas para os próximos dias.
-                </p>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        <TabsContent value="expired" className="space-y-4">
-          {expired.length > 0 ? (
-            <>
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-                <div className="flex items-center gap-2 text-red-800 mb-2">
-                  <AlertCircle className="h-5 w-5" />
-                  <span className="font-semibold">Avaliações Expiradas</span>
-                </div>
-                <p className="text-sm text-red-700">
-                  Estas avaliações não estão mais disponíveis para realização.
-                </p>
-              </div>
-              {expired.map((evaluation) => (
-                <EvaluationCard key={evaluation.id} evaluation={evaluation} />
-              ))}
-            </>
-          ) : (
-            <Card>
-              <CardContent className="pt-6 text-center py-12">
-                <AlertCircle className="h-16 w-16 mx-auto mb-4 text-red-200" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  Nenhuma avaliação expirada
-                </h3>
                 <p className="text-muted-foreground">
-                  Você não perdeu nenhuma avaliação até o momento.
+                  Nota: {selectedEvaluation.result.score}/{selectedEvaluation.maxScore}
                 </p>
-                </CardContent>
-              </Card>
+              </div>
+
+              {/* Detalhes */}
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div className="space-y-1">
+                  <div className="text-2xl font-bold text-green-600">
+                    {selectedEvaluation.result.correctAnswers}
+                  </div>
+                  <p className="text-sm text-muted-foreground">Acertos</p>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-2xl font-bold text-red-600">
+                    {selectedEvaluation.result.wrongAnswers}
+                  </div>
+                  <p className="text-sm text-muted-foreground">Erros</p>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-2xl font-bold text-gray-600">
+                    {selectedEvaluation.result.blankAnswers}
+                  </div>
+                  <p className="text-sm text-muted-foreground">Em branco</p>
+                </div>
+              </div>
+
+              {/* Informações adicionais */}
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <strong>Tempo gasto:</strong> {Math.floor(selectedEvaluation.result.timeSpent / 60)}min
+                </div>
+                <div>
+                  <strong>Concluída em:</strong> {format(parseISO(selectedEvaluation.result.completedAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                </div>
+              </div>
+
+              {/* Feedback */}
+              <Alert>
+                <Trophy className="h-4 w-4" />
+                <AlertDescription>
+                  {selectedEvaluation.result.percentage >= 80 
+                    ? "Excelente! Você demonstrou ótimo domínio do conteúdo."
+                    : selectedEvaluation.result.percentage >= 60
+                    ? "Bom trabalho! Continue estudando para melhorar ainda mais."
+                    : "Continue se esforçando! Revise o conteúdo e tire suas dúvidas com o professor."
+                  }
+                </AlertDescription>
+              </Alert>
+            </div>
           )}
-        </TabsContent>
-      </Tabs>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

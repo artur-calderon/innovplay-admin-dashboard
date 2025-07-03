@@ -330,9 +330,10 @@ export const CreateEvaluationStep2 = ({
 
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty) {
-      case 'Fácil': return 'bg-green-100 text-green-800';
-      case 'Médio': return 'bg-yellow-100 text-yellow-800';
-      case 'Difícil': return 'bg-red-100 text-red-800';
+      case 'Avançado': return 'bg-green-800 text-green-100';
+      case 'Adequado': return 'bg-green-100 text-green-800';
+      case 'Básico': return 'bg-yellow-100 text-yellow-800';
+      case 'Abaixo do Básico': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };

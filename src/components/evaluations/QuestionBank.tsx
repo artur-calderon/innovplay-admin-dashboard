@@ -111,7 +111,7 @@ export function QuestionBank({
   const [evaluationGrade, setEvaluationGrade] = useState("");
 
   // Filter options
-  const difficulties = ["Fácil", "Médio", "Difícil"];
+  const difficulties = ["Abaixo do Básico", "Básico", "Adequado", "Avançado"];
   const types = [
     { key: "multipleChoice", label: "Múltipla Escolha" },
     { key: "essay", label: "Dissertativa" }
@@ -145,7 +145,7 @@ export function QuestionBank({
         subjectId: q.subject_id,
         subject: q.subject || { id: q.subject_id || "", name: "Disciplina não definida" },
         grade: q.grade || { id: q.grade_id || "", name: "Série não definida" }, 
-        difficulty: q.difficulty_level || "Médio",
+        difficulty: q.difficulty_level || "Básico",
         type: q.question_type === "essay" ? "open" : q.question_type === "trueFalse" ? "trueFalse" : "multipleChoice",
         value: String(q.value || 1.0),
         solution: q.correct_answer || "",

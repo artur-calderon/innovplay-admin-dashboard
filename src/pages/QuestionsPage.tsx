@@ -80,7 +80,7 @@ interface SortOption {
   direction: 'asc' | 'desc';
 }
 
-const DIFFICULTIES = ['Fácil', 'Médio', 'Difícil'];
+const DIFFICULTIES = ['Abaixo do Básico', 'Básico', 'Adequado', 'Avançado'];
 const QUESTION_TYPES = [
   { value: 'multipleChoice', label: 'Múltipla Escolha' },
   { value: 'open', label: 'Dissertativa' }
@@ -95,8 +95,8 @@ const SORT_OPTIONS: SortOption[] = [
   { value: 'subject-desc', label: 'Disciplina (Z-A)', key: 'subjectName', direction: 'desc' },
   { value: 'grade-asc', label: 'Série (A-Z)', key: 'gradeName', direction: 'asc' },
   { value: 'grade-desc', label: 'Série (Z-A)', key: 'gradeName', direction: 'desc' },
-  { value: 'difficulty-easy', label: 'Dificuldade (Fácil → Difícil)', key: 'difficulty', direction: 'asc' },
-  { value: 'difficulty-hard', label: 'Dificuldade (Difícil → Fácil)', key: 'difficulty', direction: 'desc' },
+      { value: 'difficulty-easy', label: 'Dificuldade (Básico → Avançado)', key: 'difficulty', direction: 'asc' },
+    { value: 'difficulty-hard', label: 'Dificuldade (Avançado → Básico)', key: 'difficulty', direction: 'desc' },
   { value: 'value-asc', label: 'Valor (Menor → Maior)', key: 'value', direction: 'asc' },
   { value: 'value-desc', label: 'Valor (Maior → Menor)', key: 'value', direction: 'desc' },
   { value: 'type-asc', label: 'Tipo (Múltipla Escolha → Dissertativa)', key: 'type', direction: 'asc' },
@@ -273,7 +273,7 @@ const QuestionsPage = () => {
           break;
         case 'difficulty': {
           // Mapear dificuldades para valores numéricos
-          const difficultyOrder = { 'Fácil': 1, 'Médio': 2, 'Difícil': 3 };
+          const difficultyOrder = { 'Abaixo do Básico': 1, 'Básico': 2, 'Adequado': 3, 'Avançado': 4 };
           aValue = difficultyOrder[a.difficulty as keyof typeof difficultyOrder] || 0;
           bValue = difficultyOrder[b.difficulty as keyof typeof difficultyOrder] || 0;
           break;
@@ -1057,9 +1057,11 @@ const QuestionsPage = () => {
           <Badge 
             variant="outline"
             className={`text-xs font-medium ${
-              question.difficulty === 'Fácil' 
-                ? 'bg-green-100 text-green-800 border-green-300' 
-                : question.difficulty === 'Médio' 
+              question.difficulty === 'Avançado' 
+                ? 'bg-green-800 text-green-100 border-green-700' 
+                : question.difficulty === 'Adequado' 
+                ? 'bg-green-100 text-green-800 border-green-300'
+                : question.difficulty === 'Básico'
                 ? 'bg-yellow-100 text-yellow-800 border-yellow-300'
                 : 'bg-red-100 text-red-800 border-red-300'
             }`}
@@ -1373,9 +1375,11 @@ const QuestionsPage = () => {
                       <Badge 
                         variant="outline"
                         className={`text-xs ${
-                          question.difficulty === 'Fácil' 
-                            ? 'bg-green-100 text-green-800 border-green-300' 
-                            : question.difficulty === 'Médio' 
+                          question.difficulty === 'Avançado' 
+                            ? 'bg-green-800 text-green-100 border-green-700' 
+                            : question.difficulty === 'Adequado' 
+                            ? 'bg-green-100 text-green-800 border-green-300'
+                            : question.difficulty === 'Básico'
                             ? 'bg-yellow-100 text-yellow-800 border-yellow-300'
                             : 'bg-red-100 text-red-800 border-red-300'
                         }`}

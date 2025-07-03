@@ -64,7 +64,7 @@ interface SortOption {
   direction: 'asc' | 'desc';
 }
 
-const DIFFICULTIES = ['Fácil', 'Médio', 'Difícil'];
+const DIFFICULTIES = ['Abaixo do Básico', 'Básico', 'Adequado', 'Avançado'];
 const QUESTION_TYPES = [
   { value: 'multipleChoice', label: 'Múltipla Escolha' },
   { value: 'open', label: 'Dissertativa' }
@@ -75,8 +75,8 @@ const SORT_OPTIONS: SortOption[] = [
   { value: 'title-desc', label: 'Conteúdo (Z-A)', key: 'title', direction: 'desc' },
   { value: 'subject-asc', label: 'Disciplina (A-Z)', key: 'subjectName', direction: 'asc' },
   { value: 'subject-desc', label: 'Disciplina (Z-A)', key: 'subjectName', direction: 'desc' },
-  { value: 'difficulty-easy', label: 'Dificuldade (Fácil → Difícil)', key: 'difficulty', direction: 'asc' },
-  { value: 'difficulty-hard', label: 'Dificuldade (Difícil → Fácil)', key: 'difficulty', direction: 'desc' },
+      { value: 'difficulty-easy', label: 'Dificuldade (Básico → Avançado)', key: 'difficulty', direction: 'asc' },
+    { value: 'difficulty-hard', label: 'Dificuldade (Avançado → Básico)', key: 'difficulty', direction: 'desc' },
   { value: 'value-asc', label: 'Valor (Menor → Maior)', key: 'value', direction: 'asc' },
   { value: 'value-desc', label: 'Valor (Maior → Menor)', key: 'value', direction: 'desc' },
 ];
@@ -241,7 +241,7 @@ export default function QuestionBank({
           bValue = b.grade?.name?.toLowerCase() || '';
           break;
         case 'difficulty': {
-          const difficultyOrder = { 'Fácil': 1, 'Médio': 2, 'Difícil': 3 };
+          const difficultyOrder = { 'Abaixo do Básico': 1, 'Básico': 2, 'Adequado': 3, 'Avançado': 4 };
           aValue = difficultyOrder[a.difficulty as keyof typeof difficultyOrder] || 0;
           bValue = difficultyOrder[b.difficulty as keyof typeof difficultyOrder] || 0;
           break;
@@ -364,9 +364,10 @@ export default function QuestionBank({
 
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty) {
-      case 'Fácil': return 'bg-green-100 text-green-800';
-      case 'Médio': return 'bg-yellow-100 text-yellow-800';
-      case 'Difícil': return 'bg-red-100 text-red-800';
+      case 'Avançado': return 'bg-green-800 text-green-100';
+      case 'Adequado': return 'bg-green-100 text-green-800';
+      case 'Básico': return 'bg-yellow-100 text-yellow-800';
+      case 'Abaixo do Básico': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };

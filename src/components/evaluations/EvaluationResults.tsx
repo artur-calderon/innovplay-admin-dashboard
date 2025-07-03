@@ -1,84 +1,223 @@
 import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
 import { 
-  BarChart3, 
+  ArrowLeft, 
+  Filter, 
+  Download, 
+  FileText, 
   Users, 
-  CheckCircle, 
-  XCircle, 
-  Clock, 
-  Download,
-  ArrowLeft,
+  Target, 
+  Award, 
+  AlertCircle, 
+  Eye,
   TrendingUp,
   TrendingDown,
-  Minus,
-  BookOpen,
-  Target,
-  Award,
-  AlertCircle
+  BarChart3,
+  PieChart,
+  FileSpreadsheet,
+  X,
+  RefreshCw,
+  GitCompare
 } from "lucide-react";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { mockApi, EvaluationResult } from "@/lib/mockData";
-import { useToast } from "@/hooks/use-toast";
+
+// Importar os novos tipos
+import { 
+  EvaluationResultsData, 
+  ResultsFilters, 
+  StudentProficiency, 
+  ClassPerformance,
+  ProficiencyLevel,
+  proficiencyColors,
+  proficiencyLabels,
+  calculateProficiency
+} from "@/types/evaluation-results";
+
+// Importar o novo serviço da API
+import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
+
+// Importar componentes auxiliares
+import { FilterPanel } from "./FilterPanel";
+import { ResultsTable, ResultsTableSkeleton } from "./ResultsTable";
+import { BackendStatus } from "./BackendStatus";
+import { DetailedResultView } from "./DetailedResultView";
+import { ExportManager, useAdvancedExport } from "./ExportManager";
+import { ComparisonView } from "./ComparisonView";
 
 interface EvaluationResultsProps {
   onBack?: () => void;
 }
 
 export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
-  const [results, setResults] = useState<EvaluationResult[]>([]);
-  const [selectedResult, setSelectedResult] = useState<EvaluationResult | null>(null);
+  // Estados principais
+  const [results, setResults] = useState<EvaluationResultsData[]>([]);
+  const [selectedResult, setSelectedResult] = useState<EvaluationResultsData | null>(null);
+  const [showComparison, setShowComparison] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
+  const [isRecalculating, setIsRecalculating] = useState(false);
+  const [filters, setFilters] = useState<ResultsFilters>({});
+  const [filteredResults, setFilteredResults] = useState<EvaluationResultsData[]>([]);
+  
+  // Estados para filtros
+  const [availableCourses, setAvailableCourses] = useState<string[]>([]);
+  const [availableSubjects, setAvailableSubjects] = useState<string[]>([]);
+  const [availableClasses, setAvailableClasses] = useState<string[]>([]);
+  const [availableSchools, setAvailableSchools] = useState<string[]>([]);
+  
+  // Estados para paginação
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalResults, setTotalResults] = useState(0);
+  const [perPage] = useState(10);
+  
   const { toast } = useToast();
+  const [error, setError] = useState<string | null>(null);
+  const [isBackendConnected, setIsBackendConnected] = useState(true);
+  
+  // Hook para exportação avançada
+  const { handleExport: handleAdvancedExport } = useAdvancedExport();
 
+  // Carregamento inicial
+  useEffect(() => {
+    Promise.all([
+      fetchResults(),
+      fetchFilterOptions()
+    ]);
+  }, []);
+
+  // Aplicar filtros (recarregar da API quando filtros mudarem)
+  useEffect(() => {
+    setCurrentPage(1); // Reset para primeira página
+    fetchResults();
+  }, [filters]);
+
+  // Recarregar quando a página mudar
   useEffect(() => {
     fetchResults();
-  }, []);
+  }, [currentPage]);
 
   const fetchResults = async () => {
     try {
       setIsLoading(true);
-      const data = await mockApi.getEvaluationResults();
-      setResults(data);
+      setError(null);
+      
+      const [evaluationsData, filterOptionsData] = await Promise.all([
+        EvaluationResultsApiService.getEvaluations(
+          filters, 
+          currentPage, 
+          perPage
+        ),
+        EvaluationResultsApiService.getFilterOptions()
+      ]);
+
+      setResults(evaluationsData.results);
+      setFilteredResults(evaluationsData.results);
+      setTotalResults(evaluationsData.total);
+      setTotalPages(evaluationsData.totalPages);
+      
+      // ✅ CORRIGIDO: Usar o indicador de conectividade retornado pelo serviço
+      setIsBackendConnected(evaluationsData.isBackendConnected);
+      
+      console.log('🔍 Status de conectividade:', {
+        isBackendConnected: evaluationsData.isBackendConnected,
+        totalResults: evaluationsData.total,
+        resultsCount: evaluationsData.results.length
+      });
+
     } catch (error) {
       console.error("Erro ao buscar resultados:", error);
       toast({
         title: "Erro",
-        description: "Não foi possível carregar os resultados",
+        description: "Não foi possível carregar os resultados das avaliações",
         variant: "destructive",
       });
+      
+      // Em caso de erro, usar lista vazia
+      setResults([]);
+      setFilteredResults([]);
+      setTotalResults(0);
+      setTotalPages(1);
+      setIsBackendConnected(false);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleExport = async (resultId: string) => {
+  const fetchFilterOptions = async () => {
+    try {
+      const options = await EvaluationResultsApiService.getFilterOptions();
+      setAvailableCourses(options.courses);
+      setAvailableSubjects(options.subjects);
+      setAvailableClasses(options.classes);
+      setAvailableSchools(options.schools);
+    } catch (error) {
+      console.error("Erro ao buscar opções de filtros:", error);
+      // Em caso de erro, manter arrays vazios (já são o padrão)
+    }
+  };
+
+  const handleRecalculateEvaluation = async (evaluationId: string) => {
+    try {
+      setIsRecalculating(true);
+      
+      const result = await EvaluationResultsApiService.recalculateEvaluation(evaluationId);
+      
+      if (result.success) {
+        toast({
+          title: "Recálculo realizado com sucesso!",
+          description: result.message,
+        });
+        
+        // Recarregar os dados
+        await fetchResults();
+        
+        // Se estiver na visualização detalhada, recarregar também
+        if (selectedResult && selectedResult.id === evaluationId) {
+          const updatedResults = filteredResults.find(r => r.id === evaluationId);
+          if (updatedResults) {
+            setSelectedResult(updatedResults);
+          }
+        }
+      } else {
+        throw new Error(result.message);
+      }
+    } catch (error) {
+      console.error("Erro ao recalcular avaliação:", error);
+      toast({
+        title: "Erro no recálculo",
+        description: (error as Error).message || "Não foi possível recalcular a avaliação",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRecalculating(false);
+    }
+  };
+
+  const handleExportPDF = async (resultId?: string) => {
     try {
       setIsExporting(true);
-      const response = await mockApi.exportResults([resultId]);
-      
-      if (response.success) {
-        toast({
-          title: "Exportação realizada!",
-          description: "Os resultados foram exportados com sucesso.",
-        });
-      }
+      // TODO: Implementar exportação PDF real
+      toast({
+        title: "Exportação PDF iniciada",
+        description: "O relatório será gerado em breve.",
+      });
     } catch (error) {
       toast({
         title: "Erro na exportação",
-        description: "Não foi possível exportar os resultados",
+        description: "Não foi possível gerar o PDF",
         variant: "destructive",
       });
     } finally {
@@ -86,305 +225,87 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'bg-green-100 text-green-800 border-green-200';
-      case 'pending':
-        return 'bg-orange-100 text-orange-800 border-orange-200';
-      case 'in_progress':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+  const handleExportExcel = async (resultId?: string) => {
+    try {
+      setIsExporting(true);
+      // TODO: Implementar exportação Excel real
+      toast({
+        title: "Exportação Excel iniciada",
+        description: "A planilha será gerada em breve.",
+      });
+    } catch (error) {
+      toast({
+        title: "Erro na exportação",
+        description: "Não foi possível gerar a planilha",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
     }
   };
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'Concluída';
-      case 'pending':
-        return 'Pendente';
-      case 'in_progress':
-        return 'Em Andamento';
-      default:
-        return 'Desconhecido';
+  const handleViewDetails = async (result: EvaluationResultsData) => {
+    try {
+      setIsLoading(true);
+      
+      // Carregar dados dos alunos para a visualização detalhada
+      const studentsData = await EvaluationResultsApiService.getStudents(result.id, filters);
+      
+      // Atualizar o resultado com os dados dos alunos
+      const resultWithStudents = {
+        ...result,
+        studentsData
+      };
+      
+      setSelectedResult(resultWithStudents);
+    } catch (error) {
+      console.error("Erro ao carregar detalhes:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar os detalhes da avaliação",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
+  // Estatísticas gerais
+  const totalEvaluations = totalResults;
+  const completedEvaluations = filteredResults.filter(r => r.status === 'completed').length;
+  const pendingEvaluations = filteredResults.filter(r => r.status === 'pending').length;
+  const averageProficiency = filteredResults.length > 0 
+    ? filteredResults.reduce((sum, r) => sum + r.averageProficiency, 0) / filteredResults.length 
+    : 0;
 
+  // Se está visualizando resultado específico
   if (selectedResult) {
-    return (
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="outline" size="sm" onClick={() => setSelectedResult(null)}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Voltar
-            </Button>
-            <div>
-              <h2 className="text-xl font-bold">{selectedResult.evaluationTitle}</h2>
-              <p className="text-sm text-muted-foreground">
-                {selectedResult.school} • {selectedResult.grade}
-              </p>
-            </div>
-          </div>
-          <Badge className={getStatusColor(selectedResult.status)}>
-            {getStatusText(selectedResult.status)}
-          </Badge>
-        </div>
+    return <DetailedResultView 
+      result={selectedResult} 
+      onBack={() => setSelectedResult(null)}
+      onRecalculate={handleRecalculateEvaluation}
+      isRecalculating={isRecalculating}
+    />;
+  }
 
-        {/* Estatísticas Gerais */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Participação</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{selectedResult.completedStudents}</div>
-              <p className="text-xs text-muted-foreground">
-                de {selectedResult.totalStudents} alunos
-              </p>
-              <Progress 
-                value={(selectedResult.completedStudents / selectedResult.totalStudents) * 100} 
-                className="mt-2"
-              />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Média Geral</CardTitle>
-              <Target className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{selectedResult.averageScore.toFixed(1)}</div>
-              <p className="text-xs text-muted-foreground">
-                de 10.0 pontos
-              </p>
-              <Progress 
-                value={selectedResult.averageScore * 10} 
-                className="mt-2"
-              />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Taxa de Aprovação</CardTitle>
-              <Award className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{selectedResult.passRate}%</div>
-              <p className="text-xs text-muted-foreground">
-                dos alunos aprovados
-              </p>
-              <Progress 
-                value={selectedResult.passRate} 
-                className="mt-2"
-              />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pendências</CardTitle>
-              <AlertCircle className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{selectedResult.pendingStudents}</div>
-              <p className="text-xs text-muted-foreground">
-                correções pendentes
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Detalhes por Tabs */}
-        <Tabs defaultValue="students" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="students">Alunos</TabsTrigger>
-            <TabsTrigger value="questions">Análise de Questões</TabsTrigger>
-            <TabsTrigger value="difficulty">Dificuldade</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="students" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Desempenho dos Alunos</CardTitle>
-                <CardDescription>
-                  Resultados individuais dos {selectedResult.completedStudents} alunos que realizaram a avaliação
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Aluno</TableHead>
-                      <TableHead>Nota</TableHead>
-                      <TableHead>Acertos</TableHead>
-                      <TableHead>Erros</TableHead>
-                      <TableHead>Em Branco</TableHead>
-                      <TableHead>Percentual</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {selectedResult.studentResults.map((student) => (
-                      <TableRow key={student.studentId}>
-                        <TableCell className="font-medium">{student.studentName}</TableCell>
-                        <TableCell>{student.score.toFixed(1)}</TableCell>
-                        <TableCell className="text-green-600">{student.correctAnswers}</TableCell>
-                        <TableCell className="text-red-600">{student.wrongAnswers}</TableCell>
-                        <TableCell className="text-gray-600">{student.blankAnswers}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span>{student.percentage}%</span>
-                            <Progress value={student.percentage} className="w-16" />
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={student.status === 'passed' ? 'default' : 'destructive'}>
-                            {student.status === 'passed' ? 'Aprovado' : 'Reprovado'}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="questions" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Análise por Questão</CardTitle>
-                <CardDescription>
-                  Desempenho detalhado de cada questão da avaliação
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {selectedResult.questionAnalysis.map((question, index) => (
-                    <div key={question.questionId} className="border rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-medium">Questão {index + 1}</h4>
-                        <Badge variant="outline">
-                          {question.difficulty === 'easy' ? 'Fácil' : 
-                           question.difficulty === 'medium' ? 'Médio' : 'Difícil'}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground mb-3">{question.questionText}</p>
-                      
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                        <div className="flex items-center gap-2">
-                          <CheckCircle className="h-4 w-4 text-green-600" />
-                          <span>{question.correctAnswers} acertos</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <XCircle className="h-4 w-4 text-red-600" />
-                          <span>{question.wrongAnswers} erros</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Minus className="h-4 w-4 text-gray-600" />
-                          <span>{question.blankAnswers} em branco</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Target className="h-4 w-4 text-blue-600" />
-                          <span>{question.successRate.toFixed(1)}% acerto</span>
-                        </div>
-                      </div>
-                      
-                      <Progress value={question.successRate} className="mt-3" />
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="difficulty" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Análise por Dificuldade</CardTitle>
-                <CardDescription>
-                  Desempenho dos alunos por nível de dificuldade das questões
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <div className="border rounded-lg p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                        <h4 className="font-medium">Questões Fáceis</h4>
-                      </div>
-                      <div className="text-2xl font-bold">{selectedResult.difficultyAnalysis.easy.total}</div>
-                      <p className="text-sm text-muted-foreground">questões</p>
-                      <p className="text-sm font-medium text-green-600">
-                        {selectedResult.difficultyAnalysis.easy.averageSuccess.toFixed(1)}% de acerto médio
-                      </p>
-                    </div>
-
-                    <div className="border rounded-lg p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                        <h4 className="font-medium">Questões Médias</h4>
-                      </div>
-                      <div className="text-2xl font-bold">{selectedResult.difficultyAnalysis.medium.total}</div>
-                      <p className="text-sm text-muted-foreground">questões</p>
-                      <p className="text-sm font-medium text-yellow-600">
-                        {selectedResult.difficultyAnalysis.medium.averageSuccess.toFixed(1)}% de acerto médio
-                      </p>
-                    </div>
-
-                    <div className="border rounded-lg p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                        <h4 className="font-medium">Questões Difíceis</h4>
-                      </div>
-                      <div className="text-2xl font-bold">{selectedResult.difficultyAnalysis.hard.total}</div>
-                      <p className="text-sm text-muted-foreground">questões</p>
-                      <p className="text-sm font-medium text-red-600">
-                        {selectedResult.difficultyAnalysis.hard.averageSuccess.toFixed(1)}% de acerto médio
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-
-        <div className="flex justify-end">
-          <Button 
-            onClick={() => handleExport(selectedResult.id)}
-            disabled={isExporting}
-          >
-            <Download className="h-4 w-4 mr-2" />
-            {isExporting ? 'Exportando...' : 'Exportar Resultados'}
-          </Button>
-        </div>
-      </div>
-    );
+  // Se está visualizando comparação
+  if (showComparison) {
+    return <ComparisonView 
+      results={filteredResults}
+      onBack={() => setShowComparison(false)}
+    />;
   }
 
   return (
     <div className="space-y-6">
+      {/* Status do Backend */}
+      <BackendStatus 
+        isConnected={isBackendConnected} 
+        onRetry={() => fetchResults()}
+      />
+
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div className="flex items-center gap-4">
           {onBack && (
             <Button variant="outline" size="sm" onClick={onBack}>
@@ -395,76 +316,191 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
           <div>
             <h2 className="text-xl font-bold">Resultados das Avaliações</h2>
             <p className="text-sm text-muted-foreground">
-              Visualize o desempenho detalhado de todas as avaliações
+              Acompanhe o desempenho detalhado com proficiência e classificação
             </p>
           </div>
         </div>
+        
+        <div className="flex flex-wrap gap-2">
+          {/* Filtros */}
+          <FilterPanel 
+            filters={filters}
+            onFiltersChange={setFilters}
+            availableCourses={availableCourses}
+            availableSubjects={availableSubjects}
+            availableClasses={availableClasses}
+            availableSchools={availableSchools}
+          />
+          
+          {/* Botão de atualizar */}
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={fetchResults}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            Atualizar
+          </Button>
+          
+          {/* Botão de comparação */}
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setShowComparison(true)}
+            disabled={filteredResults.length < 2}
+          >
+            <GitCompare className="h-4 w-4 mr-2" />
+            Comparar
+          </Button>
+          
+          {/* Exportações */}
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => handleExportPDF()}
+            disabled={isExporting}
+          >
+            <FileText className="h-4 w-4 mr-2" />
+            PDF
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => handleExportExcel()}
+            disabled={isExporting}
+          >
+            <FileSpreadsheet className="h-4 w-4 mr-2" />
+            Excel
+          </Button>
+          
+          {/* Exportação Avançada */}
+          <ExportManager 
+            results={filteredResults}
+            onExport={(options) => handleAdvancedExport(filteredResults, options)}
+          />
+        </div>
       </div>
 
-      {/* Lista de Resultados */}
-      <div className="space-y-4">
-        {isLoading ? (
-          // Loading skeletons
-          Array.from({ length: 3 }).map((_, index) => (
-            <Card key={index}>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-2">
-                    <Skeleton className="h-5 w-64" />
-                    <Skeleton className="h-4 w-48" />
-                  </div>
-                  <Skeleton className="h-8 w-20" />
-                </div>
-              </CardContent>
-            </Card>
-          ))
-        ) : (
-          results.map((result) => (
-            <Card key={result.id} className="cursor-pointer hover:shadow-md transition-shadow">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-2">
-                    <h3 className="font-semibold text-lg">{result.evaluationTitle}</h3>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <BookOpen className="h-4 w-4" />
-                        {result.subject}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Users className="h-4 w-4" />
-                        {result.completedStudents}/{result.totalStudents} alunos
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Target className="h-4 w-4" />
-                        Média: {result.averageScore.toFixed(1)}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Award className="h-4 w-4" />
-                        {result.passRate}% aprovação
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Aplicada em: {formatDate(result.appliedAt)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Badge className={getStatusColor(result.status)}>
-                      {getStatusText(result.status)}
-                    </Badge>
-                    <Button 
-                      variant="outline" 
+      {/* Cards de Estatísticas */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total de Avaliações</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{isLoading ? <Skeleton className="h-8 w-16" /> : totalEvaluations}</div>
+            <p className="text-xs text-muted-foreground">
+              {completedEvaluations} concluídas • {pendingEvaluations} pendentes
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Avaliações Concluídas</CardTitle>
+            <Award className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">
+              {isLoading ? <Skeleton className="h-8 w-16" /> : completedEvaluations}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Com resultados disponíveis
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Correções Pendentes</CardTitle>
+            <AlertCircle className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-orange-600">
+              {isLoading ? <Skeleton className="h-8 w-16" /> : pendingEvaluations}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Aguardando correção
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Proficiência Média</CardTitle>
+            <Target className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-blue-600">
+              {isLoading ? <Skeleton className="h-8 w-16" /> : Math.round(averageProficiency)}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Escala de 0 a 1000
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Resultados */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Resultados das Avaliações</CardTitle>
+          <CardDescription>
+            {totalEvaluations} avaliação(ões) encontrada(s) • Página {currentPage} de {totalPages}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <ResultsTableSkeleton />
+          ) : (
+            <>
+              <ResultsTable 
+                results={filteredResults}
+                onViewDetails={handleViewDetails}
+                onExportPDF={handleExportPDF}
+                onExportExcel={handleExportExcel}
+              />
+              
+              {/* Paginação */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between mt-4">
+                  <p className="text-sm text-muted-foreground">
+                    Mostrando {(currentPage - 1) * perPage + 1} a {Math.min(currentPage * perPage, totalResults)} de {totalResults} resultados
+                  </p>
+                  
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
                       size="sm"
-                      onClick={() => setSelectedResult(result)}
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1 || isLoading}
                     >
-                      Ver Detalhes
+                      Anterior
+                    </Button>
+                    
+                    <span className="text-sm">
+                      Página {currentPage} de {totalPages}
+                    </span>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage === totalPages || isLoading}
+                    >
+                      Próxima
                     </Button>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          ))
-        )}
-      </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
-} 
+}
+
+ 
