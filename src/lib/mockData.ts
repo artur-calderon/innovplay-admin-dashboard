@@ -1,4 +1,3 @@
-// Mock data for evaluation results
 export interface EvaluationResult {
   id: string;
   evaluationId: string;
@@ -376,15 +375,15 @@ export const mockApi = {
     // Dados das avaliações
     results.forEach(result => {
       const row = [
-        `"${result.evaluationTitle}"`,
-        `"${result.subject}"`,
-        `"${result.grade}"`,
-        `"${result.school}"`,
-        `"${new Date(result.appliedAt).toLocaleDateString('pt-BR')}"`,
+        '"' + result.evaluationTitle + '"',
+        '"' + result.subject + '"',
+        '"' + result.grade + '"',
+        '"' + result.school + '"',
+        '"' + (new Date(result.appliedAt)).toLocaleDateString('pt-BR') + '"',
         result.totalStudents,
         result.completedStudents,
         result.averageScore.toFixed(1),
-        `${result.passRate}%`,
+        result.passRate + '%',
         result.maxScore.toFixed(1),
         result.minScore.toFixed(1)
       ].join(',');
@@ -440,13 +439,13 @@ export const mockApi = {
 
     results.forEach(result => {
       difficultyData.push([
-        result.evaluationTitle,
-        result.difficultyAnalysis.easy.total,
-        result.difficultyAnalysis.easy.averageSuccess,
-        result.difficultyAnalysis.medium.total,
-        result.difficultyAnalysis.medium.averageSuccess,
-        result.difficultyAnalysis.hard.total,
-        result.difficultyAnalysis.hard.averageSuccess
+        String(result.evaluationTitle),
+        String(result.difficultyAnalysis.easy.total),
+        String(result.difficultyAnalysis.easy.averageSuccess),
+        String(result.difficultyAnalysis.medium.total),
+        String(result.difficultyAnalysis.medium.averageSuccess),
+        String(result.difficultyAnalysis.hard.total),
+        String(result.difficultyAnalysis.hard.averageSuccess)
       ]);
     });
 
@@ -460,15 +459,15 @@ export const mockApi = {
     results.forEach(result => {
       result.studentResults.forEach(student => {
         studentsData.push([
-          result.evaluationTitle,
-          student.studentName,
-          student.score,
-          student.correctAnswers,
-          student.wrongAnswers,
-          student.blankAnswers,
-          student.percentage / 100,
+          String(result.evaluationTitle),
+          String(student.studentName),
+          String(student.score),
+          String(student.correctAnswers),
+          String(student.wrongAnswers),
+          String(student.blankAnswers),
+          String(student.percentage / 100),
           student.status === 'passed' ? 'Aprovado' : 'Reprovado',
-          student.timeSpent || ''
+          String(student.timeSpent ?? '')
         ]);
       });
     });
@@ -1203,4 +1202,4 @@ export const mockClasses = [
     school: { id: "school-1", name: "E.M. João Silva" },
     grade: { id: "5", name: "5º Ano" }
   }
-]; 
+];

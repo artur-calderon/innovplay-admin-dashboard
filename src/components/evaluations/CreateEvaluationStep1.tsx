@@ -193,25 +193,37 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
     }
   }, [selectedCourse, form]);
 
-  // Carregar turmas quando série mudar
+  // Carregar turmas reais da API quando série ou escola mudar
   useEffect(() => {
-    if (selectedGrade) {
-      // Usar dados mockados em vez de API
-      const classesFiltradas = mockClasses.filter(turma => turma.grade_id === selectedGrade);
-      setClasses(classesFiltradas);
-      // Limpar turmas selecionadas se não estiverem na nova lista
-      const currentClasses = form.getValues("selectedClasses");
-      if (currentClasses.length > 0) {
-        const validClasses = currentClasses.filter(c => 
-          classesFiltradas.find((cl) => cl.id === c.id)
-        );
-        form.setValue("selectedClasses", validClasses);
-      }
+    console.log("selectedGrade:", selectedGrade, "selectedSchools:", selectedSchools);
+    if (selectedGrade && selectedSchools.length > 0) {
+      const fetchClasses = async () => {
+        try {
+          let allClasses = [];
+          for (const school of selectedSchools) {
+            const response = await api.get(`/classes/school/${school.id}/grade/${selectedGrade}`);
+            allClasses = allClasses.concat(response.data || []);
+          }
+          setClasses(allClasses);
+          // Limpar turmas selecionadas se não estiverem na nova lista
+          const currentClasses = form.getValues("selectedClasses");
+          if (currentClasses.length > 0) {
+            const validClasses = currentClasses.filter(c =>
+              allClasses.find((cl) => cl.id === c.id)
+            );
+            form.setValue("selectedClasses", validClasses);
+          }
+        } catch (error) {
+          setClasses([]);
+          form.setValue("selectedClasses", []);
+        }
+      };
+      fetchClasses();
     } else {
       setClasses([]);
       form.setValue("selectedClasses", []);
     }
-  }, [selectedGrade, form]);
+  }, [selectedGrade, selectedSchools, form]);
 
   // Carregar municípios quando estado mudar
   useEffect(() => {
