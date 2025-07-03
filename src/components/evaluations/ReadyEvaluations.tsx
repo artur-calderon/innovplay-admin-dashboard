@@ -381,7 +381,7 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
 
   return (
     <TooltipProvider>
-      <div className="space-y-6">
+    <div className="space-y-6">
       {/* Header com busca e filtros */}
       <div className="flex flex-col lg:flex-row gap-4">
         <div className="relative flex-1">
@@ -718,7 +718,7 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      </div>
+    </div>
     </TooltipProvider>
   );
 }

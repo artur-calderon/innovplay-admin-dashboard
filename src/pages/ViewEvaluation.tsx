@@ -201,7 +201,7 @@ export default function ViewEvaluation() {
         };
       });
     }
-    
+
     // Se existe alguma estrutura de disciplinas, distribuir questões pelas matérias
     if (Object.keys(questionsBySubject).length > 0) {
       evaluation.questions?.forEach((question) => {

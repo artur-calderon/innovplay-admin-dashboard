@@ -118,11 +118,11 @@ export default function StudentEvaluations() {
       setEvaluations(evaluationsWithStatus);
     } catch (error) {
       console.error("Erro ao buscar avaliações:", error);
-      toast({
+        toast({
         title: "Erro",
         description: "Não foi possível carregar suas avaliações",
-        variant: "destructive",
-      });
+          variant: "destructive",
+        });
       
       // Dados mock para desenvolvimento
       setEvaluations(getMockEvaluations());
@@ -242,7 +242,7 @@ export default function StudentEvaluations() {
       <Badge variant={config.variant} className="flex items-center gap-1">
         <Icon className="h-3 w-3" />
         {config.label}
-      </Badge>
+                </Badge>
     );
   };
 
@@ -379,7 +379,7 @@ export default function StudentEvaluations() {
             </div>
           </CardContent>
         </Card>
-
+        
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -393,7 +393,7 @@ export default function StudentEvaluations() {
             </div>
           </CardContent>
         </Card>
-
+        
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -565,8 +565,8 @@ export default function StudentEvaluations() {
                   </Button>
                 )}
               </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
         ))}
       </div>
 

@@ -390,12 +390,12 @@ export default function QuestionBank({
         type: 'all'
       });
     } else {
-      setFilters({
-        subject: 'all',
-        difficulty: 'all',
-        grade: 'all',
-        type: 'all'
-      });
+    setFilters({
+      subject: 'all',
+      difficulty: 'all',
+      grade: 'all',
+      type: 'all'
+    });
     }
     setSearchTerm('');
     setCurrentPage(1);
@@ -450,12 +450,12 @@ export default function QuestionBank({
                   </SelectItem>
                 ) : (
                   <>
-                    <SelectItem value="all">Todas as Disciplinas</SelectItem>
-                    {subjects.map((subject) => (
-                      <SelectItem key={subject.id} value={subject.id}>
-                        {subject.name}
-                      </SelectItem>
-                    ))}
+                <SelectItem value="all">Todas as Disciplinas</SelectItem>
+                {subjects.map((subject) => (
+                  <SelectItem key={subject.id} value={subject.id}>
+                    {subject.name}
+                  </SelectItem>
+                ))}
                   </>
                 )}
               </SelectContent>
@@ -552,12 +552,12 @@ export default function QuestionBank({
                           </SelectItem>
                         ) : (
                           <>
-                            <SelectItem value="all">Todas</SelectItem>
-                            {subjects.map((subject) => (
-                              <SelectItem key={subject.id} value={subject.id}>
-                                {subject.name}
-                              </SelectItem>
-                            ))}
+                        <SelectItem value="all">Todas</SelectItem>
+                        {subjects.map((subject) => (
+                          <SelectItem key={subject.id} value={subject.id}>
+                            {subject.name}
+                          </SelectItem>
+                        ))}
                           </>
                         )}
                       </SelectContent>
@@ -684,11 +684,11 @@ export default function QuestionBank({
               </div>
 
               {/* Skeletons melhorados */}
-              <div className="space-y-3">
+            <div className="space-y-3">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <Card key={i} className="overflow-hidden relative">
-                    <CardContent className="p-4">
-                      <div className="flex items-start gap-3">
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-3">
                         {/* Checkbox skeleton */}
                         <div className="mt-1 flex-shrink-0">
                           <Skeleton className="h-4 w-4 rounded animate-pulse" />
@@ -703,26 +703,26 @@ export default function QuestionBank({
                           </div>
                           
                           {/* Badges skeleton */}
-                          <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap gap-2">
                             <Skeleton className="h-5 w-16 rounded-full animate-pulse" style={{ animationDelay: `${i * 100}ms` }} />
                             <Skeleton className="h-5 w-12 rounded-full animate-pulse" style={{ animationDelay: `${i * 150}ms` }} />
                             <Skeleton className="h-5 w-20 rounded-full animate-pulse" style={{ animationDelay: `${i * 200}ms` }} />
                             <Skeleton className="h-5 w-14 rounded-full animate-pulse" style={{ animationDelay: `${i * 250}ms` }} />
-                          </div>
                         </div>
+                      </div>
                         
                         {/* Botões de ação skeleton */}
                         <div className="flex items-center gap-1">
                           <Skeleton className="h-8 w-8 rounded flex-shrink-0 animate-pulse" style={{ animationDelay: `${i * 300}ms` }} />
                           <Skeleton className="h-8 w-8 rounded flex-shrink-0 animate-pulse" style={{ animationDelay: `${i * 350}ms` }} />
                         </div>
-                      </div>
-                    </CardContent>
+                    </div>
+                  </CardContent>
                     
                     {/* Efeito shimmer */}
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-[shimmer_3s_infinite] pointer-events-none"></div>
-                  </Card>
-                ))}
+                </Card>
+              ))}
               </div>
 
               {/* Estatísticas de carregamento */}
@@ -755,68 +755,68 @@ export default function QuestionBank({
                       )}
                       style={{ animationDelay: `${index * 50}ms` }}
                     >
-                      <CardContent className="p-3 md:p-4">
-                        <div className="flex items-start gap-3">
+                    <CardContent className="p-3 md:p-4">
+                      <div className="flex items-start gap-3">
                           <div className="flex items-center mt-1 flex-shrink-0">
-                            <Checkbox
-                              checked={selectedIds.includes(question.id)}
-                              onCheckedChange={(checked) => handleSelectOne(question.id, !!checked)}
+                        <Checkbox
+                          checked={selectedIds.includes(question.id)}
+                          onCheckedChange={(checked) => handleSelectOne(question.id, !!checked)}
                               className="transition-transform hover:scale-110"
-                            />
+                        />
                             <span className="ml-2 text-xs text-gray-400 font-mono">
                               #{index + 1 + (currentPage - 1) * pageSize}
                             </span>
                           </div>
-                          
-                          <div className="flex-1 min-w-0">
+                        
+                        <div className="flex-1 min-w-0">
                             <h4 className="font-medium text-sm md:text-base mb-2 line-clamp-2 group-hover:text-blue-700 transition-colors">
-                              {question.title}
-                            </h4>
-                            
-                            <div className="flex flex-wrap gap-1 md:gap-2">
-                              {question.subject && (
-                                <Badge variant="secondary" className="text-xs transition-colors hover:bg-blue-100">
-                                  {question.subject.name}
-                                </Badge>
-                              )}
-                              {question.grade && (
-                                <Badge variant="outline" className="text-xs">
-                                  {question.grade.name}
-                                </Badge>
-                              )}
-                              <Badge className={cn("text-xs transition-transform hover:scale-105", getDifficultyColor(question.difficulty))}>
-                                {question.difficulty}
-                              </Badge>
-                              <Badge variant="outline" className="text-xs">
-                                {getTypeLabel(question.type)}
-                              </Badge>
-                              <Badge variant="outline" className="text-xs font-semibold">
-                                {question.value} pt(s)
-                              </Badge>
-                            </div>
-                          </div>
+                            {question.title}
+                          </h4>
                           
-                          <div className="flex items-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleQuickAdd(question)}
-                              className="flex-shrink-0 transition-all hover:bg-green-50 hover:text-green-700 hover:scale-110"
-                              title="Adicionar questão"
-                            >
-                              <Plus className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setViewQuestion(question)}
-                              className="flex-shrink-0 transition-all hover:bg-blue-50 hover:text-blue-700 hover:scale-110"
-                              title="Visualizar questão"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
+                          <div className="flex flex-wrap gap-1 md:gap-2">
+                            {question.subject && (
+                                <Badge variant="secondary" className="text-xs transition-colors hover:bg-blue-100">
+                                {question.subject.name}
+                              </Badge>
+                            )}
+                            {question.grade && (
+                              <Badge variant="outline" className="text-xs">
+                                {question.grade.name}
+                              </Badge>
+                            )}
+                              <Badge className={cn("text-xs transition-transform hover:scale-105", getDifficultyColor(question.difficulty))}>
+                              {question.difficulty}
+                            </Badge>
+                            <Badge variant="outline" className="text-xs">
+                              {getTypeLabel(question.type)}
+                            </Badge>
+                              <Badge variant="outline" className="text-xs font-semibold">
+                              {question.value} pt(s)
+                            </Badge>
                           </div>
-                                              </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleQuickAdd(question)}
+                              className="flex-shrink-0 transition-all hover:bg-green-50 hover:text-green-700 hover:scale-110"
+                            title="Adicionar questão"
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setViewQuestion(question)}
+                              className="flex-shrink-0 transition-all hover:bg-blue-50 hover:text-blue-700 hover:scale-110"
+                            title="Visualizar questão"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
                     </CardContent>
                   </Card>
                 ))
@@ -829,8 +829,8 @@ export default function QuestionBank({
                       </div>
                       <div className="space-y-2">
                         <p className="text-lg font-medium text-gray-700">
-                          {error ? "Erro ao carregar questões" : "Nenhuma questão encontrada"}
-                        </p>
+                      {error ? "Erro ao carregar questões" : "Nenhuma questão encontrada"}
+                    </p>
                         <p className="text-sm text-gray-500">
                           {error 
                             ? "Verifique sua conexão e tente novamente" 
@@ -840,16 +840,16 @@ export default function QuestionBank({
                           }
                         </p>
                       </div>
-                      {error && (
+                    {error && (
                         <Button 
                           variant="outline" 
                           onClick={fetchQuestions} 
                           className="mt-2 hover:bg-blue-50 hover:border-blue-300"
                         >
                           <ArrowUpDown className="h-4 w-4 mr-2" />
-                          Tentar novamente
-                        </Button>
-                      )}
+                        Tentar novamente
+                      </Button>
+                    )}
                     </div>
                   </CardContent>
                 </Card>
