@@ -34,7 +34,8 @@ import {
   EvaluationResultsData, 
   ProficiencyLevel, 
   proficiencyColors, 
-  proficiencyLabels 
+  proficiencyLabels,
+  getProficiencyTableInfo
 } from "@/types/evaluation-results";
 
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
@@ -61,10 +62,19 @@ export function DetailedResultView({
   const participationRate = (result.completedStudents / result.totalStudents) * 100;
   const completedStudents = result.studentsData?.filter(s => s.status === 'completed') || [];
   
+  const actualCompletedCount = completedStudents.length;
+  const displayCompletedCount = Math.max(result.completedStudents, actualCompletedCount);
+  
+  const proficiencyTableInfo = getProficiencyTableInfo(result.grade, result.subject);
+  const maxProficiencyScale = proficiencyTableInfo.maxProficiency;
+  
+  // ✅ CORRIGIDO: Usar tabela de proficiência correta baseada no contexto
   const getProficiencyLevel = (proficiency: number): ProficiencyLevel => {
-    if (proficiency < 200) return 'abaixo_do_basico';
-    if (proficiency < 500) return 'basico';
-    if (proficiency < 750) return 'adequado';
+    const tableInfo = proficiencyTableInfo.table;
+    
+    if (proficiency <= tableInfo.abaixo_do_basico.max) return 'abaixo_do_basico';
+    if (proficiency <= tableInfo.basico.max) return 'basico';
+    if (proficiency <= tableInfo.adequado.max) return 'adequado';
     return 'avancado';
   };
 
@@ -294,13 +304,13 @@ export function DetailedResultView({
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{result.completedStudents}</div>
+            <div className="text-2xl font-bold">{displayCompletedCount}</div>
             <p className="text-xs text-muted-foreground">
               de {result.totalStudents} alunos
             </p>
-            <Progress value={participationRate} className="mt-2" />
+            <Progress value={(displayCompletedCount / result.totalStudents) * 100} className="mt-2" />
             <p className="text-xs text-muted-foreground mt-1">
-              {participationRate.toFixed(1)}% de participação
+              {((displayCompletedCount / result.totalStudents) * 100).toFixed(1)}% de participação
             </p>
           </CardContent>
         </Card>
@@ -331,9 +341,9 @@ export function DetailedResultView({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{Math.round(result.averageProficiency)}</div>
-            <p className="text-xs text-muted-foreground">escala de 0 a 1000</p>
+            <p className="text-xs text-muted-foreground">escala de 0 a {maxProficiencyScale}</p>
             <p className="text-xs text-muted-foreground">
-              Desvio padrão: {stats.standardDeviation.toFixed(1)}
+              {proficiencyTableInfo.pmDescription}
             </p>
           </CardContent>
         </Card>
@@ -443,7 +453,7 @@ export function DetailedResultView({
             <CardHeader>
               <CardTitle>Desempenho Individual dos Alunos</CardTitle>
               <CardDescription>
-                Resultados detalhados de {completedStudents.length} alunos que realizaram a avaliação
+                Resultados detalhados de {actualCompletedCount} alunos que realizaram a avaliação
               </CardDescription>
             </CardHeader>
             <CardContent>

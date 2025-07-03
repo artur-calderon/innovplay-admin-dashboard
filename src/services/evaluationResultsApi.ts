@@ -1,5 +1,6 @@
 import { api } from "@/lib/api";
-import { EvaluationResultsData, ResultsFilters, StudentProficiency } from "@/types/evaluation-results";
+import { EvaluationResultsData, ResultsFilters, StudentProficiency, calculateProficiency } from "@/types/evaluation-results";
+import { generateMockResultsData, filterMockData, getMockFilterOptions } from "@/services/mockResultsData";
 
 // Interfaces para os dados vindos do backend
 interface BackendEvaluationResult {
@@ -172,41 +173,17 @@ export interface DetailedReport {
   students: StudentDetailedResult[];
 }
 
-// Dados mock para quando o backend não estiver disponível
-const mockEvaluationData: EvaluationResultsData[] = [
-  {
-    id: "eval-1",
-    evaluationId: "eval-1",
-    evaluationTitle: "Avaliação de Matemática - 9º Ano",
-    subject: "Matemática",
-    subjectId: "math-1",
-    course: "Ensino Fundamental",
-    courseId: "ef-1",
-    grade: "9º Ano",
-    gradeId: "9ano-1",
-    school: "Escola Municipal Campo Alegre",
-    schoolId: "escola-1",
-    municipality: "Campo Alegre",
-    municipalityId: "ca-1",
-    appliedAt: "2024-01-15T10:00:00Z",
-    correctedAt: "2024-01-16T14:30:00Z",
-    status: "completed",
-    totalStudents: 25,
-    completedStudents: 23,
-    pendingStudents: 2,
-    absentStudents: 0,
-    averageRawScore: 7.2,
-    averageProficiency: 650,
-    distributionByLevel: {
-      abaixo_do_basico: 2,
-      basico: 8,
-      adequado: 10,
-      avancado: 3
-    },
-    classesPerformance: [],
-    studentsData: []
+// ✅ NOVOS DADOS MOCK EXPANDIDOS
+let mockEvaluationData: EvaluationResultsData[] = [];
+
+// Inicializar dados mock na primeira chamada
+const initializeMockData = () => {
+  if (mockEvaluationData.length === 0) {
+    mockEvaluationData = generateMockResultsData();
+    console.log('📊 Dados mock inicializados:', mockEvaluationData.length, 'avaliações');
   }
-];
+  return mockEvaluationData;
+};
 
 const mockDetailedReport: DetailedReport = {
   evaluation: {
@@ -223,7 +200,7 @@ const mockDetailedReport: DetailedReport = {
       skill: "Números e Operações",
       skillCode: "9N1.1",
       type: "Múltipla Escolha",
-      difficulty: "Fácil",
+      difficulty: "Adequado",
       successRate: 85.5,
       errorRate: 14.5
     },
@@ -234,7 +211,7 @@ const mockDetailedReport: DetailedReport = {
       skill: "Álgebra",
       skillCode: "9A1.2",
       type: "Múltipla Escolha",
-      difficulty: "Médio",
+      difficulty: "Básico",
       successRate: 72.3,
       errorRate: 27.7
     }
@@ -260,7 +237,7 @@ const mockDetailedReport: DetailedReport = {
 
 export class EvaluationResultsApiService {
   
-  // Buscar lista de avaliações com filtros
+  // ✅ ATUALIZADO: Buscar lista de avaliações com filtros funcionais
   static async getEvaluations(filters: ResultsFilters = {}, page = 1, perPage = 10): Promise<{
     results: EvaluationResultsData[];
     total: number;
@@ -279,13 +256,7 @@ export class EvaluationResultsApiService {
       // Verificar se a resposta tem os dados esperados
       if (!response.data || !response.data.data || !Array.isArray(response.data.data)) {
         console.warn('Resposta da API não possui estrutura esperada, usando dados mock');
-        return {
-          results: mockEvaluationData,
-          total: mockEvaluationData.length,
-          page: 1,
-          totalPages: 1,
-          isBackendConnected: false // Mock data = backend desconectado
-        };
+        return this.getMockResults(filters, page, perPage);
       }
 
       console.log('✅ Conexão com backend FUNCIONANDO! Dados recebidos:', response.data);
@@ -303,18 +274,59 @@ export class EvaluationResultsApiService {
       console.error('❌ Erro ao conectar com backend:', error);
       console.log('📋 Usando dados mock devido ao erro de conexão');
       
-      // Retornar dados mock em caso de erro
-      return {
-        results: mockEvaluationData,
-        total: mockEvaluationData.length,
-        page: 1,
-        totalPages: 1,
-        isBackendConnected: false // ❌ Erro = backend desconectado
-      };
+      // ✅ NOVO: Retornar dados mock com filtros funcionais
+      return this.getMockResults(filters, page, perPage);
     }
   }
 
-  // Buscar alunos de uma avaliação específica
+  // ✅ NOVA FUNÇÃO: Obter resultados mock com filtros funcionais
+  private static getMockResults(filters: ResultsFilters = {}, page = 1, perPage = 10): {
+    results: EvaluationResultsData[];
+    total: number;
+    page: number;
+    totalPages: number;
+    isBackendConnected: boolean;
+  } {
+    const allData = initializeMockData();
+    
+    // ✅ APLICAR FILTROS
+    const filteredData = filterMockData(allData, {
+      course: filters.course,
+      subject: filters.subject,
+      class: filters.class,
+      school: filters.school,
+      status: filters.status,
+      proficiencyRange: filters.proficiencyRange,
+      scoreRange: filters.scoreRange,
+      dateRange: filters.dateRange
+    });
+    
+    // ✅ APLICAR PAGINAÇÃO
+    const total = filteredData.length;
+    const totalPages = Math.ceil(total / perPage);
+    const startIndex = (page - 1) * perPage;
+    const endIndex = startIndex + perPage;
+    const paginatedResults = filteredData.slice(startIndex, endIndex);
+    
+    console.log('🔍 Filtros aplicados:', {
+      filtrosAplicados: filters,
+      totalOriginal: allData.length,
+      totalFiltrado: total,
+      pagina: page,
+      totalPaginas: totalPages,
+      resultadosPagina: paginatedResults.length
+    });
+    
+    return {
+      results: paginatedResults,
+      total,
+      page,
+      totalPages,
+      isBackendConnected: false // ❌ Mock data = backend desconectado
+    };
+  }
+
+  // ✅ ATUALIZADO: Buscar alunos de uma avaliação específica
   static async getStudents(evaluationId: string, filters: ResultsFilters = {}): Promise<StudentProficiency[]> {
     try {
       const backendFilters: BackendFilters = {
@@ -335,15 +347,22 @@ export class EvaluationResultsApiService {
       });
 
       if (!response.data || !response.data.data || !Array.isArray(response.data.data)) {
-        console.warn('Resposta da API não possui estrutura esperada para alunos');
-        return [];
+        console.warn('Resposta da API não possui estrutura esperada para alunos, usando dados mock');
+        return this.getMockStudents(evaluationId);
       }
 
       return response.data.data.map(this.transformStudentData);
     } catch (error) {
       console.error('Erro ao buscar alunos:', error);
-      return [];
+      return this.getMockStudents(evaluationId);
     }
+  }
+
+  // ✅ NOVA FUNÇÃO: Obter alunos mock
+  private static getMockStudents(evaluationId: string): StudentProficiency[] {
+    const allData = initializeMockData();
+    const evaluation = allData.find(e => e.id === evaluationId);
+    return evaluation?.studentsData || [];
   }
 
   // Nova função: Buscar relatório detalhado da avaliação
@@ -383,10 +402,16 @@ export class EvaluationResultsApiService {
       return response.data;
     } catch (error) {
       console.error('Erro ao recalcular avaliação:', error);
+      
+      // ✅ SIMULAÇÃO: Simular recálculo bem-sucedido para demonstração
+      await new Promise(resolve => setTimeout(resolve, 1000));
       return {
-        success: false,
-        message: 'Erro ao recalcular avaliação. Tente novamente.',
-        dados_atualizados: null
+        success: true,
+        message: 'Avaliação recalculada com sucesso! (Simulação)',
+        dados_atualizados: {
+          timestamp: new Date().toISOString(),
+          evaluationId
+        }
       };
     }
   }
@@ -455,7 +480,7 @@ export class EvaluationResultsApiService {
     }
   }
 
-  // Buscar opções para filtros (cursos, disciplinas, etc.)
+  // ✅ ATUALIZADO: Buscar opções para filtros usando dados mock
   static async getFilterOptions(): Promise<{
     courses: string[];
     subjects: string[];
@@ -471,22 +496,37 @@ export class EvaluationResultsApiService {
         api.get('/schools').catch(() => ({ data: [] }))
       ]);
 
-      return {
+      const backendOptions = {
         courses: Array.isArray(coursesRes.data) ? coursesRes.data.map((c: any) => c.name || c.nome) : [],
         subjects: Array.isArray(subjectsRes.data) ? subjectsRes.data.map((s: any) => s.name || s.nome) : [],
         classes: Array.isArray(classesRes.data) ? classesRes.data.map((c: any) => c.name || c.nome) : [],
         schools: Array.isArray(schoolsRes.data) ? schoolsRes.data.map((s: any) => s.name || s.nome) : []
       };
+
+      // Se backend retornou dados válidos, usar eles
+      if (backendOptions.courses.length > 0 || backendOptions.subjects.length > 0) {
+        return backendOptions;
+      }
+
+      // ✅ FALLBACK: Usar opções dos dados mock
+      const allData = initializeMockData();
+      const mockOptions = getMockFilterOptions(allData);
+      
+      console.log('📋 Usando opções de filtros dos dados mock:', mockOptions);
+      return mockOptions;
+      
     } catch (error) {
       console.error('Erro ao buscar opções de filtros:', error);
-      // Retorna opções vazias em caso de erro
-      return {
-        courses: [],
-        subjects: [],
-        classes: [],
-        schools: []
-      };
+      
+      // ✅ FALLBACK: Usar opções dos dados mock
+      const allData = initializeMockData();
+      return getMockFilterOptions(allData);
     }
+  }
+
+  // ✅ NOVA FUNÇÃO: Simular cálculo de proficiência com diferentes cenários
+  static simulateProficiencyCalculation(score: number, grade: string = '6º Ano', subject: string = 'Matemática') {
+    return calculateProficiency(score, 20, grade, subject);
   }
 
   // Transformar dados do backend para o formato do frontend

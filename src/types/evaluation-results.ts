@@ -139,25 +139,156 @@ export const proficiencyLabels = {
   avancado: 'Avançado'
 };
 
-// Função para calcular proficiência (exemplo)
-export function calculateProficiency(rawScore: number, totalQuestions: number): {
+// ✅ TABELAS DE PROFICIÊNCIA OFICIAIS BASEADAS NAS IMAGENS
+
+// Tabela para EDUCAÇÃO INFANTIL, ANOS INICIAIS, EDUCAÇÃO ESPECIAL E EJA - TODAS AS MATÉRIAS (EXCETO MATEMÁTICA)
+// Proficiência Máxima (P.M) = 350
+const PROFICIENCY_TABLE_ANOS_INICIAIS_GERAL = {
+  abaixo_do_basico: { min: 0, max: 149 },
+  basico: { min: 150, max: 199 },
+  adequado: { min: 200, max: 249 },
+  avancado: { min: 250, max: 350 }
+};
+
+// Tabela para EDUCAÇÃO INFANTIL, ANOS INICIAIS, EDUCAÇÃO ESPECIAL E EJA - MATEMÁTICA
+// Proficiência Máxima (P.M) = 375
+const PROFICIENCY_TABLE_ANOS_INICIAIS_MATEMATICA = {
+  abaixo_do_basico: { min: 0, max: 174 },
+  basico: { min: 175, max: 224 },
+  adequado: { min: 225, max: 274 },
+  avancado: { min: 275, max: 375 }
+};
+
+// Tabela para EDUCAÇÃO INFANTIL, ANOS INICIAIS, EDUCAÇÃO ESPECIAL E EJA - MÉDIA-NÍVEL
+// Proficiência Máxima (P.M) = 375 (usando mesmo valor da matemática para média-nível)
+const PROFICIENCY_TABLE_ANOS_INICIAIS_MEDIA = {
+  abaixo_do_basico: { min: 0, max: 162 },
+  basico: { min: 163, max: 212 },
+  adequado: { min: 213, max: 262 },
+  avancado: { min: 263, max: 375 }
+};
+
+// Tabela para ANOS FINAIS E ENSINO MÉDIO - TODAS AS MATÉRIAS (EXCETO MATEMÁTICA)
+// Proficiência Máxima (P.M) = 400
+const PROFICIENCY_TABLE_ANOS_FINAIS_GERAL = {
+  abaixo_do_basico: { min: 0, max: 199 },
+  basico: { min: 200, max: 274.99 },
+  adequado: { min: 275, max: 324.99 },
+  avancado: { min: 325, max: 400 }
+};
+
+// Tabela para ANOS FINAIS E ENSINO MÉDIO - MATEMÁTICA
+// Proficiência Máxima (P.M) = 425
+const PROFICIENCY_TABLE_ANOS_FINAIS_MATEMATICA = {
+  abaixo_do_basico: { min: 0, max: 224.99 },
+  basico: { min: 225, max: 299.99 },
+  adequado: { min: 300, max: 349.99 },
+  avancado: { min: 350, max: 425 }
+};
+
+// Tabela para ANOS FINAIS E ENSINO MÉDIO - MÉDIA-NÍVEL
+// Proficiência Máxima (P.M) = 425 (usando mesmo valor da matemática para média-nível)
+const PROFICIENCY_TABLE_ANOS_FINAIS_MEDIA = {
+  abaixo_do_basico: { min: 0, max: 224.99 },
+  basico: { min: 225, max: 299.99 },
+  adequado: { min: 300, max: 349.99 },
+  avancado: { min: 350, max: 425 }
+};
+
+// ✅ CONSTANTES DE PROFICIÊNCIA MÁXIMA OFICIAIS
+const PROFICIENCY_MAX_VALUES = {
+  ANOS_INICIAIS_GERAL: 350,      // Todas as matérias exceto Matemática
+  ANOS_INICIAIS_MATEMATICA: 375, // Matemática
+  ANOS_FINAIS_GERAL: 400,        // Todas as matérias exceto Matemática  
+  ANOS_FINAIS_MATEMATICA: 425    // Matemática
+};
+
+// Mapeamento de séries para cursos (baseado na página de cadastros/séries)
+const GRADE_TO_COURSE_MAPPING: Record<string, string> = {
+  // Educação Infantil
+  'Grupo 3': 'Anos Iniciais',
+  'Grupo 4': 'Anos Iniciais', 
+  'Grupo 5': 'Anos Iniciais',
+  // Anos Iniciais
+  '1º Ano': 'Anos Iniciais',
+  '2º Ano': 'Anos Iniciais',
+  '3º Ano': 'Anos Iniciais',
+  '4º Ano': 'Anos Iniciais',
+  '5º Ano': 'Anos Iniciais',
+  // Anos Finais
+  '6º Ano': 'Anos Finais',
+  '7º Ano': 'Anos Finais',
+  '8º Ano': 'Anos Finais',
+  '9º Ano': 'Anos Finais',
+  // Ensino Médio
+  '1º Ano EM': 'Ensino Médio',
+  '2º Ano EM': 'Ensino Médio',
+  '3º Ano EM': 'Ensino Médio'
+};
+
+// ✅ FUNÇÃO ATUALIZADA: Calcular proficiência usando as tabelas corretas
+export function calculateProficiency(
+  rawScore: number, 
+  totalQuestions: number, 
+  grade?: string, 
+  subject?: string,
+  course?: string
+): {
   proficiencyScore: number;
   proficiencyLevel: ProficiencyLevel;
   classification: string;
 } {
-  // Conversão da nota bruta para proficiência (escala 0-1000)
-  const proficiencyScore = Math.round((rawScore / 10) * 1000);
+  // Conversão da nota bruta para proficiência usando os valores máximos oficiais (P.M)
   
+  // Determinar o curso se não foi fornecido
+  let educationalLevel = course;
+  if (!educationalLevel && grade) {
+    educationalLevel = GRADE_TO_COURSE_MAPPING[grade] || 'Anos Iniciais';
+  }
+  
+  // Determinar se é matemática
+  const isMathematics = subject?.toLowerCase().includes('matemática') || 
+                       subject?.toLowerCase().includes('matematica') ||
+                       subject?.toLowerCase() === 'math';
+  
+  // Selecionar a tabela correta e a proficiência máxima oficial
+  let proficiencyTable;
+  let maxProficiency: number;
+  
+  if (educationalLevel === 'Anos Iniciais') {
+    if (isMathematics) {
+      proficiencyTable = PROFICIENCY_TABLE_ANOS_INICIAIS_MATEMATICA;
+      maxProficiency = PROFICIENCY_MAX_VALUES.ANOS_INICIAIS_MATEMATICA; // P.M = 375
+    } else {
+      proficiencyTable = PROFICIENCY_TABLE_ANOS_INICIAIS_GERAL;
+      maxProficiency = PROFICIENCY_MAX_VALUES.ANOS_INICIAIS_GERAL; // P.M = 350
+    }
+  } else {
+    // Anos Finais ou Ensino Médio
+    if (isMathematics) {
+      proficiencyTable = PROFICIENCY_TABLE_ANOS_FINAIS_MATEMATICA;
+      maxProficiency = PROFICIENCY_MAX_VALUES.ANOS_FINAIS_MATEMATICA; // P.M = 425
+    } else {
+      proficiencyTable = PROFICIENCY_TABLE_ANOS_FINAIS_GERAL;
+      maxProficiency = PROFICIENCY_MAX_VALUES.ANOS_FINAIS_GERAL; // P.M = 400
+    }
+  }
+  
+  // ✅ CÁLCULO OFICIAL: Usar a Proficiência Máxima (P.M) específica para cada categoria
+  // Fórmula: (nota / 10) × P.M
+  const proficiencyScore = Math.round((rawScore / 10) * maxProficiency);
+  
+  // Determinar o nível baseado na tabela selecionada
   let proficiencyLevel: ProficiencyLevel;
   let classification: string;
   
-  if (proficiencyScore < 200) {
+  if (proficiencyScore <= proficiencyTable.abaixo_do_basico.max) {
     proficiencyLevel = 'abaixo_do_basico';
     classification = 'Abaixo do Básico';
-  } else if (proficiencyScore < 500) {
+  } else if (proficiencyScore <= proficiencyTable.basico.max) {
     proficiencyLevel = 'basico';
     classification = 'Básico';
-  } else if (proficiencyScore < 750) {
+  } else if (proficiencyScore <= proficiencyTable.adequado.max) {
     proficiencyLevel = 'adequado';
     classification = 'Adequado';
   } else {
@@ -170,4 +301,62 @@ export function calculateProficiency(rawScore: number, totalQuestions: number): 
     proficiencyLevel,
     classification
   };
+}
+
+// ✅ NOVA FUNÇÃO: Obter informações da tabela de proficiência para uma série/disciplina
+export function getProficiencyTableInfo(grade?: string, subject?: string, course?: string) {
+  // Determinar o curso se não foi fornecido
+  let educationalLevel = course;
+  if (!educationalLevel && grade) {
+    educationalLevel = GRADE_TO_COURSE_MAPPING[grade] || 'Anos Iniciais';
+  }
+  
+  // Determinar se é matemática
+  const isMathematics = subject?.toLowerCase().includes('matemática') || 
+                       subject?.toLowerCase().includes('matematica') ||
+                       subject?.toLowerCase() === 'math';
+  
+  // Selecionar a tabela correta
+  if (educationalLevel === 'Anos Iniciais') {
+    if (isMathematics) {
+      return {
+        table: PROFICIENCY_TABLE_ANOS_INICIAIS_MATEMATICA,
+        tableName: 'Anos Iniciais - Matemática',
+        educationalLevel: 'Anos Iniciais',
+        subject: 'Matemática',
+        maxProficiency: PROFICIENCY_MAX_VALUES.ANOS_INICIAIS_MATEMATICA, // P.M = 375
+        pmDescription: 'P.M = 375 (Matemática - Anos Iniciais)'
+      };
+    } else {
+      return {
+        table: PROFICIENCY_TABLE_ANOS_INICIAIS_GERAL,
+        tableName: 'Anos Iniciais - Todas as Matérias (exceto Matemática)',
+        educationalLevel: 'Anos Iniciais',
+        subject: 'Geral',
+        maxProficiency: PROFICIENCY_MAX_VALUES.ANOS_INICIAIS_GERAL, // P.M = 350
+        pmDescription: 'P.M = 350 (Geral - Anos Iniciais)'
+      };
+    }
+  } else {
+    // Anos Finais ou Ensino Médio
+    if (isMathematics) {
+      return {
+        table: PROFICIENCY_TABLE_ANOS_FINAIS_MATEMATICA,
+        tableName: 'Anos Finais/Ensino Médio - Matemática',
+        educationalLevel: educationalLevel || 'Anos Finais',
+        subject: 'Matemática',
+        maxProficiency: PROFICIENCY_MAX_VALUES.ANOS_FINAIS_MATEMATICA, // P.M = 425
+        pmDescription: 'P.M = 425 (Matemática - Anos Finais/EM)'
+      };
+    } else {
+      return {
+        table: PROFICIENCY_TABLE_ANOS_FINAIS_GERAL,
+        tableName: 'Anos Finais/Ensino Médio - Todas as Matérias (exceto Matemática)',
+        educationalLevel: educationalLevel || 'Anos Finais',
+        subject: 'Geral',
+        maxProficiency: PROFICIENCY_MAX_VALUES.ANOS_FINAIS_GERAL, // P.M = 400
+        pmDescription: 'P.M = 400 (Geral - Anos Finais/EM)'
+      };
+    }
+  }
 } 

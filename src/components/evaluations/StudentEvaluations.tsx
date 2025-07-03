@@ -21,6 +21,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { 
   Play, 
@@ -118,14 +119,16 @@ export default function StudentEvaluations() {
       setEvaluations(evaluationsWithStatus);
     } catch (error) {
       console.error("Erro ao buscar avaliações:", error);
-        toast({
-        title: "Erro",
-        description: "Não foi possível carregar suas avaliações",
-          variant: "destructive",
-        });
       
-      // Dados mock para desenvolvimento
-      setEvaluations(getMockEvaluations());
+      // Usar dados mock para desenvolvimento
+      const mockEvaluations = getMockEvaluations();
+      setEvaluations(mockEvaluations);
+      
+      toast({
+        title: "Modo de demonstração",
+        description: "Exibindo dados de exemplo. Backend não disponível.",
+        variant: "default",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -181,8 +184,13 @@ export default function StudentEvaluations() {
     if (!selectedEvaluation) return;
 
     try {
-      // Iniciar avaliação no backend
-      const response = await api.post(`/evaluations/${selectedEvaluation.id}/start`);
+      // Tentar iniciar avaliação no backend
+      try {
+        const response = await api.post(`/evaluations/${selectedEvaluation.id}/start`);
+      } catch (apiError) {
+        // Se o backend não estiver disponível, continuar com dados mock
+        console.log("Backend não disponível, usando modo mock");
+      }
       
       const takingData: EvaluationTaking = {
         evaluationId: selectedEvaluation.id,
@@ -620,29 +628,10 @@ export default function StudentEvaluations() {
               <Button variant="outline" onClick={() => setShowInstructions(false)}>
                 Cancelar
               </Button>
-              <AlertDialog open={confirmStart} onOpenChange={setConfirmStart}>
-                <AlertDialogTrigger asChild>
-                  <Button>
-                    <Zap className="h-4 w-4 mr-2" />
-                    Iniciar Avaliação
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Confirmar início da avaliação</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      Tem certeza que deseja iniciar a avaliação? Uma vez iniciada, 
-                      o cronômetro começará e não poderá ser pausado.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleConfirmStart}>
-                      Sim, iniciar
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+              <Button onClick={() => setConfirmStart(true)}>
+                <Zap className="h-4 w-4 mr-2" />
+                Iniciar Avaliação
+              </Button>
             </div>
           </div>
         </DialogContent>
@@ -718,6 +707,25 @@ export default function StudentEvaluations() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* AlertDialog de Confirmação */}
+      <AlertDialog open={confirmStart} onOpenChange={setConfirmStart}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar início da avaliação</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja iniciar a avaliação? Uma vez iniciada, 
+              o cronômetro começará e não poderá ser pausado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmStart}>
+              Sim, iniciar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
 import { Eye, FileText, FileSpreadsheet, Users, Target, TrendingUp, TrendingDown } from "lucide-react";
-import { EvaluationResultsData, proficiencyColors, proficiencyLabels, ProficiencyLevel } from "@/types/evaluation-results";
+import { EvaluationResultsData, proficiencyColors, proficiencyLabels, ProficiencyLevel, getProficiencyTableInfo } from "@/types/evaluation-results";
 
 interface ResultsTableProps {
   results: EvaluationResultsData[];
@@ -43,10 +43,14 @@ export function ResultsTable({ results, onViewDetails, onExportPDF, onExportExce
     }
   };
 
-  const getProficiencyLevel = (proficiency: number): ProficiencyLevel => {
-    if (proficiency < 200) return 'abaixo_do_basico';
-    if (proficiency < 500) return 'basico';
-    if (proficiency < 750) return 'adequado';
+  // ✅ CORRIGIDO: Usar tabela de proficiência baseada no contexto da avaliação
+  const getProficiencyLevel = (proficiency: number, grade?: string, subject?: string): ProficiencyLevel => {
+    const tableInfo = getProficiencyTableInfo(grade, subject);
+    const table = tableInfo.table;
+    
+    if (proficiency <= table.abaixo_do_basico.max) return 'abaixo_do_basico';
+    if (proficiency <= table.basico.max) return 'basico';
+    if (proficiency <= table.adequado.max) return 'adequado';
     return 'avancado';
   };
 
@@ -95,7 +99,7 @@ export function ResultsTable({ results, onViewDetails, onExportPDF, onExportExce
         </TableHeader>
         <TableBody>
           {results.map((result) => {
-            const proficiencyLevel = getProficiencyLevel(result.averageProficiency);
+            const proficiencyLevel = getProficiencyLevel(result.averageProficiency, result.grade, result.subject);
             const proficiencyColor = proficiencyColors[proficiencyLevel];
             const participationRate = (result.completedStudents / result.totalStudents) * 100;
             const distribution = getDistributionSummary(result.distributionByLevel);

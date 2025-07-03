@@ -38,7 +38,7 @@ interface Answer {
 }
 
 export default function TakeEvaluationPage() {
-  const { evaluationId } = useParams<{ evaluationId: string }>();
+  const { id: evaluationId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
