@@ -17,7 +17,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useEvaluationActions, useQuestions } from "@/stores/useEvaluationStore";
-import { mockQuestions } from "@/lib/mockData";
 
 interface CreateEvaluationStep2Props {
   data: {
@@ -524,9 +523,8 @@ export const CreateEvaluationStep2 = ({
           setShowQuestionBank(false);
           setSelectedSubjectForQuestion("");
         }}
-        onSelect={handleQuestionSelected}
-        subjects={subjectOptions}
-        selectedSubjectId={selectedSubjectForQuestion}
+        subjectId={selectedSubjectForQuestion}
+        onQuestionSelected={handleQuestionSelected}
       />
 
       {/* Preview de questão */}

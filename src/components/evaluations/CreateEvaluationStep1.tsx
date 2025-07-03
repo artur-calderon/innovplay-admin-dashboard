@@ -193,37 +193,42 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
     }
   }, [selectedCourse, form]);
 
-  // Carregar turmas reais da API quando série ou escola mudar
+  // Carregar turmas filtradas da API quando série, escola ou município mudar
   useEffect(() => {
-    console.log("selectedGrade:", selectedGrade, "selectedSchools:", selectedSchools);
-    if (selectedGrade && selectedSchools.length > 0) {
-      const fetchClasses = async () => {
-        try {
-          let allClasses = [];
-          for (const school of selectedSchools) {
-            const response = await api.get(`/classes/school/${school.id}/grade/${selectedGrade}`);
-            allClasses = allClasses.concat(response.data || []);
-          }
-          setClasses(allClasses);
-          // Limpar turmas selecionadas se não estiverem na nova lista
-          const currentClasses = form.getValues("selectedClasses");
-          if (currentClasses.length > 0) {
-            const validClasses = currentClasses.filter(c =>
-              allClasses.find((cl) => cl.id === c.id)
-            );
-            form.setValue("selectedClasses", validClasses);
-          }
-        } catch (error) {
-          setClasses([]);
-          form.setValue("selectedClasses", []);
+    const fetchFilteredClasses = async () => {
+      if (!selectedGrade || selectedSchools.length === 0 || !selectedMunicipality) {
+        setClasses([]);
+        form.setValue("selectedClasses", []);
+        return;
+      }
+
+      try {
+        const queryParams = new URLSearchParams();
+        queryParams.append('municipality_id', selectedMunicipality);
+        queryParams.append('school_id', selectedSchools[0].id);
+        queryParams.append('grade_id', selectedGrade);
+
+        const response = await api.get(`/classes/filtered?${queryParams.toString()}`);
+        const data = response.data?.data || [];
+        setClasses(data);
+
+        // Limpar turmas selecionadas se não estiverem na nova lista
+        const currentClasses = form.getValues("selectedClasses");
+        if (currentClasses.length > 0) {
+          const validClasses = currentClasses.filter(c =>
+            data.find((cl: { id: string }) => cl.id === c.id)
+          );
+          form.setValue("selectedClasses", validClasses);
         }
-      };
-      fetchClasses();
-    } else {
-      setClasses([]);
-      form.setValue("selectedClasses", []);
-    }
-  }, [selectedGrade, selectedSchools, form]);
+      } catch (error) {
+        setClasses([]);
+        form.setValue("selectedClasses", []);
+        console.error("Erro ao buscar turmas filtradas:", error);
+      }
+    };
+
+    fetchFilteredClasses();
+  }, [selectedGrade, selectedSchools, selectedMunicipality, form]);
 
   // Carregar municípios quando estado mudar
   useEffect(() => {
