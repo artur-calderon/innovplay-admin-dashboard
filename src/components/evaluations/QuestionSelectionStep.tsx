@@ -69,9 +69,9 @@ interface QuestionPreviewData {
   isOpen: boolean;
 }
 
-export default function QuestionSelectionStep({ 
+export default function QuestionSelectionStep({
   evaluationData, 
-  selectedQuestions, 
+  selectedQuestions,
   onQuestionsChange 
 }: QuestionSelectionStepProps) {
   const [searchTerm, setSearchTerm] = useState("");
@@ -258,7 +258,7 @@ export default function QuestionSelectionStep({
         </div>
       </div>
     );
-  }
+    }
 
   const questionsBySubject = getQuestionsBySubject();
 
@@ -271,7 +271,7 @@ export default function QuestionSelectionStep({
             <div className="flex items-center gap-2">
               <CheckCircle className="h-5 w-5 text-green-500" />
               Questões Selecionadas
-            </div>
+          </div>
             <Badge variant="outline" className="text-lg px-3 py-1">
               {selectedQuestions.length} questões • {getTotalPoints().toFixed(1)} pts
             </Badge>
@@ -314,19 +314,19 @@ export default function QuestionSelectionStep({
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
+                      <Button
+                        variant="ghost"
+                        size="sm"
                             onClick={() => handleRemoveQuestion(question.id)}
                             className="text-red-600 hover:text-red-700"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    </div>
               ))}
             </div>
           ) : (
@@ -349,8 +349,8 @@ export default function QuestionSelectionStep({
               <Plus className="h-5 w-5 text-blue-500" />
               Adicionar Questões
             </div>
-            <Button
-              variant="outline"
+                <Button
+                  variant="outline"
               onClick={() => setShowQuestionBank(true)}
             >
               <BookOpen className="h-4 w-4 mr-2" />
@@ -422,7 +422,7 @@ export default function QuestionSelectionStep({
               </div>
               <Button variant="ghost" size="sm" onClick={clearFilters}>
                 Limpar filtros
-              </Button>
+                </Button>
             </div>
           )}
 
@@ -484,7 +484,7 @@ export default function QuestionSelectionStep({
                           onClick={() => handlePreviewQuestion(question)}
                         >
                           <Eye className="h-4 w-4" />
-                        </Button>
+                    </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -502,9 +502,9 @@ export default function QuestionSelectionStep({
               </AlertDescription>
             </Alert>
           )}
-        </CardContent>
-      </Card>
-
+              </CardContent>
+            </Card>
+            
       {/* Question Bank Modal */}
       <QuestionBank
         open={showQuestionBank}
@@ -516,14 +516,14 @@ export default function QuestionSelectionStep({
       {/* Question Preview Modal */}
       <Dialog open={previewData.isOpen} onOpenChange={(open) => setPreviewData({ ...previewData, isOpen: open })}>
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
+                    <DialogHeader>
             <DialogTitle>Visualizar Questão</DialogTitle>
             <DialogDescription>
               Disciplina: {previewData.question.subject?.name} • 
               Dificuldade: {previewData.question.difficulty} • 
               Pontos: {previewData.question.value}
             </DialogDescription>
-          </DialogHeader>
+                    </DialogHeader>
           <div className="space-y-4">
             <div>
               <Label className="text-sm font-medium">Enunciado:</Label>
