@@ -30,6 +30,7 @@ import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import React from "react";
 
 interface ApiQuestionOption {
   id?: string;
@@ -83,6 +84,23 @@ interface QuestionBankProps {
   onCreateEvaluation?: (evaluation: EvaluationFromBank) => void;
 }
 
+// ErrorBoundary local para QuestionBank
+class QuestionBankErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: unknown}> {
+  constructor(props: {children: React.ReactNode}) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: unknown) {
+    return { hasError: true, error };
+  }
+  render() {
+    if (this.state.hasError) {
+      return <div className="text-red-600 p-4">Erro inesperado no Banco de Questões: {String(this.state.error)}</div>;
+    }
+    return this.props.children;
+  }
+}
+
 export function QuestionBank({
   open,
   onClose,
@@ -117,6 +135,8 @@ export function QuestionBank({
     { key: "essay", label: "Dissertativa" }
   ];
 
+  const [erro, setErro] = useState<string | null>(null);
+
   useEffect(() => {
     if (open) {
       fetchQuestions();
@@ -129,41 +149,32 @@ export function QuestionBank({
     if (open) {
       fetchQuestions();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, subjectId]);
 
   const fetchQuestions = async () => {
     try {
       setIsLoading(true);
+      setErro(null);
       const response = await api.get("/questions/");
-      
-      // Transform API response to match our Question interface
-      const transformedQuestions = (response.data || []).map((q: ApiQuestion) => ({
-        id: q.id,
-        title: q.title || "",
-        text: q.text,
-        formattedText: q.formatted_text,
-        subjectId: q.subject_id,
-        subject: q.subject || { id: q.subject_id || "", name: "Disciplina não definida" },
-        grade: q.grade || { id: q.grade_id || "", name: "Série não definida" }, 
-        difficulty: q.difficulty_level || "Básico",
-        type: q.question_type === "essay" ? "open" : q.question_type === "trueFalse" ? "trueFalse" : "multipleChoice",
-        value: String(q.value || 1.0),
-        solution: q.correct_answer || "",
-        formattedSolution: q.formatted_solution,
-        options: q.alternatives || [],
-        skills: Array.isArray(q.skill) ? q.skill : [q.skill || ""],
-        created_by: q.created_by || "",
-      }));
-      
-      setQuestions(transformedQuestions);
+      // Garante que questions sempre é array
+      const data = response.data;
+      if (Array.isArray(data)) {
+        setQuestions(data);
+      } else if (Array.isArray(data?.questions)) {
+        setQuestions(data.questions);
+      } else {
+        setQuestions([]);
+      }
     } catch (error) {
       console.error("Erro ao buscar questões:", error);
+      setErro("Erro ao carregar questões do banco. Verifique sua conexão.");
+      setQuestions([]);
       toast({
         title: "Erro",
         description: "Erro ao carregar questões do banco. Verifique sua conexão.",
         variant: "destructive",
       });
-      setQuestions([]);
     } finally {
       setIsLoading(false);
     }
@@ -187,62 +198,48 @@ export function QuestionBank({
     }
   };
 
-  const filteredQuestions = questions.filter(
-    (question) => {
-      const matchesSearch = question.text.toLowerCase().includes(searchTerm.toLowerCase());
-      // Filter by subjectId prop if provided
-      const matchesSubjectId = !subjectId || question.subjectId === subjectId;
-      // Filter by filter state - usar strings para comparação
-      const matchesSubject = !filters.subject || question.subject.name === filters.subject;
-      const matchesGrade = !filters.grade || question.grade.name === filters.grade;
-      const matchesDifficulty = !filters.difficulty || question.difficulty === filters.difficulty;
-      const matchesType = !filters.type || question.type === filters.type;
-
-      return matchesSearch && matchesSubjectId && matchesSubject && matchesGrade && matchesDifficulty && matchesType;
-    }
-  );
+  // Filtro robusto, protegendo contra undefined
+  const filteredQuestions = (questions || []).filter((question) => {
+    const matchesSearch = (question.text || "").toLowerCase().includes(searchTerm.toLowerCase());
+    // subjectId prop pode ser null ou string
+    const matchesSubjectId = !subjectId || (question.subject && question.subject.id === subjectId);
+    const matchesSubject = !filters.subject || (question.subject && question.subject.name === filters.subject);
+    const matchesGrade = !filters.grade || (question.grade && question.grade.name === filters.grade);
+    const matchesDifficulty = !filters.difficulty || question.difficulty === filters.difficulty;
+    const matchesType = !filters.type || question.type === filters.type;
+    return matchesSearch && matchesSubjectId && matchesSubject && matchesGrade && matchesDifficulty && matchesType;
+  });
 
   const toggleQuestionSelection = (questionId: string) => {
-    if (selectedQuestions.includes(questionId)) {
-      setSelectedQuestions(selectedQuestions.filter(id => id !== questionId));
-    } else {
-      setSelectedQuestions([...selectedQuestions, questionId]);
-    }
+    setSelectedQuestions((prev) =>
+      prev.includes(questionId) ? prev.filter((id) => id !== questionId) : [...prev, questionId]
+    );
   };
 
   // This handler is for the internal 'Create Evaluation' button within QuestionBank
   const handleCreateEvaluation = () => {
-    const selectedQuestionObjects = questions.filter(q => selectedQuestions.includes(q.id));
-
+    const selectedQuestionObjects = (questions || []).filter(q => selectedQuestions.includes(q.id));
     if(onCreateEvaluation) {
-       onCreateEvaluation({
+      onCreateEvaluation({
         title: evaluationTitle,
-        subject: filters.subject || "Múltiplas disciplinas", // Use selected filter or a default
-        grade: evaluationGrade || filters.grade || "Múltiplas séries", // Use dialog input or filter
-        questions: selectedQuestionObjects, // Pass the full question objects
+        subject: filters.subject || "Múltiplas disciplinas",
+        grade: evaluationGrade || filters.grade || "Múltiplas séries",
+        questions: selectedQuestionObjects,
       });
     }
-
-    // Reset state after creating evaluation
     setSelectedQuestions([]);
     setIsCreateDialogOpen(false);
     setEvaluationTitle("");
     setEvaluationGrade("");
-     // Decide if closing the bank modal is needed here
-     // onClose();
   };
 
-  // This handler is for the 'Add Selected' button, used when QuestionBank is a selection tool
-   const handleSelectQuestions = () => {
-     const selectedQuestionObjects = questions.filter(q => selectedQuestions.includes(q.id));
-     // Assuming onQuestionSelected is meant to add questions one by one
-     selectedQuestionObjects.forEach(q => onQuestionSelected(q));
-     // If onQuestionsSelected (plural) is added, use that instead:
-     // if(onQuestionsSelected) { onQuestionsSelected(selectedQuestionObjects); }
-
-     setSelectedQuestions([]); // Clear selection
-     onClose(); // Close the modal after selecting
-   };
+  // Handler para adicionar questões selecionadas
+  const handleSelectQuestions = () => {
+    const selectedQuestionObjects = (questions || []).filter(q => selectedQuestions.includes(q.id));
+    selectedQuestionObjects.forEach(q => onQuestionSelected(q));
+    setSelectedQuestions([]);
+    onClose();
+  };
 
   const resetFilters = () => {
     setFilters({
@@ -253,17 +250,30 @@ export function QuestionBank({
     });
   };
 
+  // LOGS para depuração
+  // console.log({ questions, grades, subjects, types, filters, filteredQuestions });
+
+  // Checagem de dados essenciais
+  if (!Array.isArray(questions)) return <div className="text-red-600 p-4">Erro: Lista de questões inválida.</div>;
+  if (!Array.isArray(grades)) return <div className="text-red-600 p-4">Erro: Lista de séries inválida.</div>;
+  if (!Array.isArray(subjects)) return <div className="text-red-600 p-4">Erro: Lista de disciplinas inválida.</div>;
+  if (!Array.isArray(types)) return <div className="text-red-600 p-4">Erro: Lista de tipos inválida.</div>;
+  if (erro) return <div className="text-red-600 p-4">Erro: {erro}</div>;
+
   return (
-    <Dialog open={open} onOpenChange={onClose}> {/* Use Dialog to control visibility */}
-      <DialogContent className="max-w-screen-lg overflow-y-auto max-h-[90vh]"> {/* Increased max-width for better table view */}
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent 
+        className="max-w-screen-lg overflow-y-auto max-h-[90vh]"
+        aria-describedby="question-bank-description"
+      >
         <DialogHeader>
           <DialogTitle>Banco de Questões</DialogTitle>
-          <DialogDescription>
+          <DialogDescription id="question-bank-description">
             Selecione as questões que deseja adicionar.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="p-4 -mx-4"> {/* Added padding to content inside dialog */}
+        <div className="p-4 -mx-4">
           <div className="flex flex-col md:flex-row gap-4 mb-6">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
@@ -305,7 +315,7 @@ export function QuestionBank({
                           onChange={(e) => setFilters({ ...filters, subject: e.target.value })}
                         >
                           <option value="">Todas</option>
-                          {subjects.map((subject) => (
+                          {(subjects || []).map((subject) => (
                             <option key={subject.id} value={subject.name}>
                               {subject.name}
                             </option>
@@ -321,7 +331,7 @@ export function QuestionBank({
                           onChange={(e) => setFilters({ ...filters, grade: e.target.value })}
                         >
                           <option value="">Todas</option>
-                          {grades.map((grade) => (
+                          {(grades || []).map((grade) => (
                             <option key={grade.id} value={grade.name}>
                               {grade.name}
                             </option>
@@ -353,7 +363,7 @@ export function QuestionBank({
                           onChange={(e) => setFilters({ ...filters, type: e.target.value })}
                         >
                           <option value="">Todos</option>
-                          {types.map((type) => (
+                          {(types || []).map((type) => (
                             <option key={type.key} value={type.key}>
                               {type.label}
                             </option>
@@ -419,16 +429,16 @@ export function QuestionBank({
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-12">Select</TableHead>
-                      <TableHead className="min-w-[200px]">Questão</TableHead> {/* Added min-width */}
+                      <TableHead className="min-w-[200px]">Questão</TableHead>
                       <TableHead className="w-32 hidden sm:table-cell">Disciplina</TableHead>
                       <TableHead className="w-24 hidden md:table-cell">Série</TableHead>
                       <TableHead className="w-24 hidden lg:table-cell">Dificuldade</TableHead>
-                       <TableHead className="w-24 hidden lg:table-cell">Tipo</TableHead> {/* Added Type column */}
+                      <TableHead className="w-24 hidden lg:table-cell">Tipo</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredQuestions.length > 0 ? (
-                      filteredQuestions.map((question) => (
+                    {(filteredQuestions || []).length > 0 ? (
+                      (filteredQuestions || []).map((question) => (
                         <TableRow key={question.id}>
                           <TableCell className="w-12">
                             <Button
@@ -441,14 +451,14 @@ export function QuestionBank({
                             </Button>
                           </TableCell>
                           <TableCell className="max-w-xs truncate" title={question.text}>{question.text}</TableCell>
-                          <TableCell className="hidden sm:table-cell">{String(question.subject.name)}</TableCell>
-                          <TableCell className="hidden md:table-cell">{String(question.grade.name)}</TableCell>
-                          <TableCell className="hidden lg:table-cell">{question.difficulty}</TableCell>
-                           <TableCell className="w-24 hidden lg:table-cell">
-                             {question.type === 'multipleChoice' ? 'Múltipla Escolha' : 
+                          <TableCell className="hidden sm:table-cell">{question.subject ? question.subject.name : "-"}</TableCell>
+                          <TableCell className="hidden md:table-cell">{question.grade ? question.grade.name : "-"}</TableCell>
+                          <TableCell className="hidden lg:table-cell">{question.difficulty || "-"}</TableCell>
+                          <TableCell className="w-24 hidden lg:table-cell">
+                            {question.type === 'multipleChoice' ? 'Múltipla Escolha' : 
                               question.type === 'trueFalse' ? 'Verdadeiro/Falso' : 
                               question.type === 'open' ? 'Dissertativa' : 'Outro'}
-                           </TableCell>
+                          </TableCell>
                         </TableRow>
                       ))
                     ) : (
@@ -486,5 +496,14 @@ export function QuestionBank({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Exporta o componente com ErrorBoundary
+export default function QuestionBankWithBoundary(props: QuestionBankProps) {
+  return (
+    <QuestionBankErrorBoundary>
+      <QuestionBank {...props} />
+    </QuestionBankErrorBoundary>
   );
 }
