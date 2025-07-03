@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Eye, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown, Check } from "lucide-react";
 import { Question } from "../types";
-import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -16,6 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { mockQuestions } from "@/lib/mockData";
 
 interface Subject {
   id: string;
@@ -142,17 +142,15 @@ export default function QuestionBank({
 
   // Buscar dados iniciais
   useEffect(() => {
-    const fetchInitialData = async () => {
-      try {
-        const [gradesRes] = await Promise.all([
-          api.get("/grades/")
-        ]);
-        setGrades(gradesRes.data || []);
-      } catch (error) {
-        console.error("Erro ao buscar dados iniciais:", error);
-      }
-    };
-    fetchInitialData();
+    // Usar dados mockados em vez de API
+    const mockGrades: Grade[] = [
+      { id: "5", name: "5º Ano" },
+      { id: "6", name: "6º Ano" },
+      { id: "7", name: "7º Ano" },
+      { id: "8", name: "8º Ano" },
+      { id: "9", name: "9º Ano" }
+    ];
+    setGrades(mockGrades);
   }, []);
 
   // Buscar questões
@@ -161,42 +159,34 @@ export default function QuestionBank({
       setLoading(true);
       setError(null);
       
-      const params: Record<string, string> = {};
-      if (filters.subject !== 'all') params.subject_id = filters.subject;
-      if (filters.difficulty !== 'all') params.difficulty = filters.difficulty;
-      if (filters.grade !== 'all') params.grade_id = filters.grade;
-      if (filters.type !== 'all') params.type = filters.type;
+      // Usar dados mockados em vez de API
+      let filteredQuestions = [...mockQuestions];
       
-      const response = await api.get("/questions/", { params });
-      
-      if (response.data && Array.isArray(response.data)) {
-        const transformedQuestions = response.data.map((q: QuestionApiResponse) => ({
-          id: q.id,
-          title: q.title || q.text?.substring(0, 50) + '...',
-          text: q.text,
-          secondStatement: q.secondStatement,
-          type: q.type as "multipleChoice" | "open" | "trueFalse",
-          subjectId: q.subject?.id || '',
-          difficulty: q.difficulty,
-          value: q.value?.toString() || '1',
-          skills: Array.isArray(q.skills) ? q.skills : (q.skills ? [q.skills] : []),
-          subject: q.subject || { id: '', name: '' },
-          grade: q.grade || { id: '', name: '' },
-          created_by: q.created_by,
-          solution: q.solution || '',
-          formattedText: q.formattedText,
-          formattedSolution: q.formattedSolution,
-          options: q.options?.map(opt => ({
-            id: opt.id || Math.random().toString(),
-            text: opt.text,
-            isCorrect: opt.isCorrect
-          })) || []
-        }));
-        
-        setQuestions(transformedQuestions);
-      } else {
-        setQuestions([]);
+      // Aplicar filtros
+      if (filters.subject !== 'all') {
+        filteredQuestions = filteredQuestions.filter(q => q.subject?.id === filters.subject);
       }
+      if (filters.difficulty !== 'all') {
+        filteredQuestions = filteredQuestions.filter(q => q.difficulty === filters.difficulty);
+      }
+      if (filters.grade !== 'all') {
+        filteredQuestions = filteredQuestions.filter(q => q.grade?.id === filters.grade);
+      }
+      if (filters.type !== 'all') {
+        filteredQuestions = filteredQuestions.filter(q => q.type === filters.type);
+      }
+      
+      // Aplicar pesquisa
+      if (debouncedSearchTerm) {
+        const searchLower = debouncedSearchTerm.toLowerCase();
+        filteredQuestions = filteredQuestions.filter(q => 
+          q.title.toLowerCase().includes(searchLower) ||
+          q.text.toLowerCase().includes(searchLower) ||
+          q.subject?.name.toLowerCase().includes(searchLower)
+        );
+      }
+      
+      setQuestions(filteredQuestions);
     } catch (error) {
       console.error("Erro ao buscar questões:", error);
       setError("Erro ao carregar questões");
@@ -208,7 +198,7 @@ export default function QuestionBank({
     } finally {
       setLoading(false);
     }
-  }, [filters, toast]);
+  }, [filters, debouncedSearchTerm, toast]);
 
   useEffect(() => {
     if (open) {

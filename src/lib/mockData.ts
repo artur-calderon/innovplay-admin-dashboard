@@ -479,4 +479,728 @@ export const mockApi = {
       students: studentsData
     };
   }
-}; 
+};
+
+// ===== DADOS MOCKADOS BASE =====
+
+// 30 questões variadas (fácil, médio, difícil)
+export const mockQuestions = [
+  // MATEMÁTICA - FÁCIL
+  {
+    id: "q1",
+    title: "Adição de Números Decimais",
+    text: "Qual é o resultado da operação 2,5 + 3,7?",
+    type: "multipleChoice",
+    subjectId: "math",
+    subject: { id: "math", name: "Matemática" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Básico",
+    value: "2",
+    solution: "6,2",
+    options: [
+      { id: "a", text: "5,2", isCorrect: false },
+      { id: "b", text: "6,2", isCorrect: true },
+      { id: "c", text: "6,1", isCorrect: false },
+      { id: "d", text: "5,3", isCorrect: false }
+    ],
+    skills: ["Operações com decimais"],
+    created_by: "teacher-1"
+  },
+  {
+    id: "q2",
+    title: "Verdadeiro ou Falso - Frações",
+    text: "A fração 3/4 é equivalente a 0,75.",
+    type: "trueFalse",
+    subjectId: "math",
+    subject: { id: "math", name: "Matemática" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Básico",
+    value: "2",
+    solution: "Verdadeiro",
+    options: [
+      { id: "true", text: "Verdadeiro", isCorrect: true },
+      { id: "false", text: "Falso", isCorrect: false }
+    ],
+    skills: ["Frações equivalentes"],
+    created_by: "teacher-1"
+  },
+  {
+    id: "q3",
+    title: "Subtração Simples",
+    text: "Calcule: 15 - 8 = ?",
+    type: "multipleChoice",
+    subjectId: "math",
+    subject: { id: "math", name: "Matemática" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Básico",
+    value: "2",
+    solution: "7",
+    options: [
+      { id: "a", text: "5", isCorrect: false },
+      { id: "b", text: "6", isCorrect: false },
+      { id: "c", text: "7", isCorrect: true },
+      { id: "d", text: "8", isCorrect: false }
+    ],
+    skills: ["Subtração"],
+    created_by: "teacher-1"
+  },
+  {
+    id: "q4",
+    title: "Multiplicação Básica",
+    text: "Quanto é 6 x 7?",
+    type: "multipleChoice",
+    subjectId: "math",
+    subject: { id: "math", name: "Matemática" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Básico",
+    value: "2",
+    solution: "42",
+    options: [
+      { id: "a", text: "40", isCorrect: false },
+      { id: "b", text: "41", isCorrect: false },
+      { id: "c", text: "42", isCorrect: true },
+      { id: "d", text: "43", isCorrect: false }
+    ],
+    skills: ["Multiplicação"],
+    created_by: "teacher-1"
+  },
+  {
+    id: "q5",
+    title: "Divisão Simples",
+    text: "Divida 24 por 6.",
+    type: "multipleChoice",
+    subjectId: "math",
+    subject: { id: "math", name: "Matemática" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Básico",
+    value: "2",
+    solution: "4",
+    options: [
+      { id: "a", text: "3", isCorrect: false },
+      { id: "b", text: "4", isCorrect: true },
+      { id: "c", text: "5", isCorrect: false },
+      { id: "d", text: "6", isCorrect: false }
+    ],
+    skills: ["Divisão"],
+    created_by: "teacher-1"
+  },
+
+  // MATEMÁTICA - MÉDIO
+  {
+    id: "q6",
+    title: "Soma de Frações",
+    text: "Explique como você faria para somar as frações 1/4 + 2/3.",
+    type: "open",
+    subjectId: "math",
+    subject: { id: "math", name: "Matemática" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Adequado",
+    value: "3",
+    solution: "Primeiro encontro o denominador comum que é 12. Depois transformo: 1/4 = 3/12 e 2/3 = 8/12. Aí somo: 3/12 + 8/12 = 11/12.",
+    options: [],
+    skills: ["Soma de frações", "Denominador comum"],
+    created_by: "teacher-1"
+  },
+  {
+    id: "q7",
+    title: "Área do Retângulo",
+    text: "Calcule a área de um retângulo com base 8cm e altura 5cm.",
+    type: "multipleChoice",
+    subjectId: "math",
+    subject: { id: "math", name: "Matemática" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Adequado",
+    value: "2",
+    solution: "40cm²",
+    options: [
+      { id: "a", text: "13cm²", isCorrect: false },
+      { id: "b", text: "40cm²", isCorrect: true },
+      { id: "c", text: "26cm²", isCorrect: false },
+      { id: "d", text: "35cm²", isCorrect: false }
+    ],
+    skills: ["Cálculo de área"],
+    created_by: "teacher-1"
+  },
+  {
+    id: "q8",
+    title: "Perímetro do Quadrado",
+    text: "Um quadrado tem lado de 6cm. Qual é seu perímetro?",
+    type: "multipleChoice",
+    subjectId: "math",
+    subject: { id: "math", name: "Matemática" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Adequado",
+    value: "2",
+    solution: "24cm",
+    options: [
+      { id: "a", text: "12cm", isCorrect: false },
+      { id: "b", text: "18cm", isCorrect: false },
+      { id: "c", text: "24cm", isCorrect: true },
+      { id: "d", text: "36cm", isCorrect: false }
+    ],
+    skills: ["Cálculo de perímetro"],
+    created_by: "teacher-1"
+  },
+
+  // MATEMÁTICA - DIFÍCIL
+  {
+    id: "q9",
+    title: "Problema de Regra de Três",
+    text: "Se 3 operários fazem um trabalho em 8 dias, quantos dias 6 operários levariam para fazer o mesmo trabalho?",
+    type: "open",
+    subjectId: "math",
+    subject: { id: "math", name: "Matemática" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Avançado",
+    value: "4",
+    solution: "Se 3 operários fazem em 8 dias, então 6 operários (o dobro) farão na metade do tempo: 8 ÷ 2 = 4 dias.",
+    options: [],
+    skills: ["Regra de três", "Proporcionalidade"],
+    created_by: "teacher-1"
+  },
+  {
+    id: "q10",
+    title: "Equação do Primeiro Grau",
+    text: "Resolva a equação: 2x + 5 = 13",
+    type: "open",
+    subjectId: "math",
+    subject: { id: "math", name: "Matemática" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Avançado",
+    value: "3",
+    solution: "2x + 5 = 13 → 2x = 13 - 5 → 2x = 8 → x = 8 ÷ 2 → x = 4",
+    options: [],
+    skills: ["Equações do primeiro grau"],
+    created_by: "teacher-1"
+  },
+
+  // PORTUGUÊS - FÁCIL
+  {
+    id: "q11",
+    title: "Identificação de Substantivos",
+    text: "Qual das palavras abaixo é um substantivo?",
+    type: "multipleChoice",
+    subjectId: "port",
+    subject: { id: "port", name: "Português" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Básico",
+    value: "2",
+    solution: "casa",
+    options: [
+      { id: "a", text: "bonito", isCorrect: false },
+      { id: "b", text: "correr", isCorrect: false },
+      { id: "c", text: "casa", isCorrect: true },
+      { id: "d", text: "muito", isCorrect: false }
+    ],
+    skills: ["Classes gramaticais"],
+    created_by: "teacher-2"
+  },
+  {
+    id: "q12",
+    title: "Vogais e Consoantes",
+    text: "Quantas vogais existem na palavra 'EDUCAÇÃO'?",
+    type: "multipleChoice",
+    subjectId: "port",
+    subject: { id: "port", name: "Português" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Básico",
+    value: "2",
+    solution: "5",
+    options: [
+      { id: "a", text: "3", isCorrect: false },
+      { id: "b", text: "4", isCorrect: false },
+      { id: "c", text: "5", isCorrect: true },
+      { id: "d", text: "6", isCorrect: false }
+    ],
+    skills: ["Fonética"],
+    created_by: "teacher-2"
+  },
+  {
+    id: "q13",
+    title: "Sílaba Tônica",
+    text: "Em qual sílaba está a tônica da palavra 'ESCOLA'?",
+    type: "multipleChoice",
+    subjectId: "port",
+    subject: { id: "port", name: "Português" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Básico",
+    value: "2",
+    solution: "Segunda sílaba (co)",
+    options: [
+      { id: "a", text: "Primeira sílaba (es)", isCorrect: false },
+      { id: "b", text: "Segunda sílaba (co)", isCorrect: true },
+      { id: "c", text: "Terceira sílaba (la)", isCorrect: false }
+    ],
+    skills: ["Acentuação"],
+    created_by: "teacher-2"
+  },
+
+  // PORTUGUÊS - MÉDIO
+  {
+    id: "q14",
+    title: "Interpretação de Texto",
+    text: "Leia o texto: 'O gato dormia tranquilamente no sofá. De repente, um barulho o acordou.' Qual é o tema principal do texto?",
+    type: "open",
+    subjectId: "port",
+    subject: { id: "port", name: "Português" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Adequado",
+    value: "3",
+    solution: "O texto fala sobre um gato que estava dormindo e foi acordado por um barulho.",
+    options: [],
+    skills: ["Interpretação de texto"],
+    created_by: "teacher-2"
+  },
+  {
+    id: "q15",
+    title: "Sinônimos",
+    text: "Qual é o sinônimo de 'ALEGRE'?",
+    type: "multipleChoice",
+    subjectId: "port",
+    subject: { id: "port", name: "Português" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Adequado",
+    value: "2",
+    solution: "Feliz",
+    options: [
+      { id: "a", text: "Triste", isCorrect: false },
+      { id: "b", text: "Feliz", isCorrect: true },
+      { id: "c", text: "Bravo", isCorrect: false },
+      { id: "d", text: "Calmo", isCorrect: false }
+    ],
+    skills: ["Sinônimos"],
+    created_by: "teacher-2"
+  },
+
+  // CIÊNCIAS - FÁCIL
+  {
+    id: "q16",
+    title: "Estados da Matéria",
+    text: "A água em estado líquido pode se transformar em vapor quando:",
+    type: "multipleChoice",
+    subjectId: "cienc",
+    subject: { id: "cienc", name: "Ciências" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Básico",
+    value: "2",
+    solution: "É aquecida",
+    options: [
+      { id: "a", text: "É resfriada", isCorrect: false },
+      { id: "b", text: "É aquecida", isCorrect: true },
+      { id: "c", text: "É congelada", isCorrect: false },
+      { id: "d", text: "É misturada", isCorrect: false }
+    ],
+    skills: ["Estados da matéria"],
+    created_by: "teacher-3"
+  },
+  {
+    id: "q17",
+    title: "Órgãos dos Sentidos",
+    text: "Qual órgão é responsável pela visão?",
+    type: "multipleChoice",
+    subjectId: "cienc",
+    subject: { id: "cienc", name: "Ciências" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Básico",
+    value: "2",
+    solution: "Os olhos",
+    options: [
+      { id: "a", text: "Os ouvidos", isCorrect: false },
+      { id: "b", text: "Os olhos", isCorrect: true },
+      { id: "c", text: "O nariz", isCorrect: false },
+      { id: "d", text: "A boca", isCorrect: false }
+    ],
+    skills: ["Sistema sensorial"],
+    created_by: "teacher-3"
+  },
+
+  // CIÊNCIAS - MÉDIO
+  {
+    id: "q18",
+    title: "Ciclo da Água",
+    text: "Explique o que acontece durante a evaporação no ciclo da água.",
+    type: "open",
+    subjectId: "cienc",
+    subject: { id: "cienc", name: "Ciências" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Adequado",
+    value: "3",
+    solution: "Durante a evaporação, a água líquida se transforma em vapor d'água devido ao calor do sol, subindo para a atmosfera.",
+    options: [],
+    skills: ["Ciclo da água"],
+    created_by: "teacher-3"
+  },
+
+  // HISTÓRIA - FÁCIL
+  {
+    id: "q19",
+    title: "Descobrimento do Brasil",
+    text: "Em que ano o Brasil foi descoberto?",
+    type: "multipleChoice",
+    subjectId: "hist",
+    subject: { id: "hist", name: "História" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Básico",
+    value: "2",
+    solution: "1500",
+    options: [
+      { id: "a", text: "1492", isCorrect: false },
+      { id: "b", text: "1500", isCorrect: true },
+      { id: "c", text: "1501", isCorrect: false },
+      { id: "d", text: "1499", isCorrect: false }
+    ],
+    skills: ["História do Brasil"],
+    created_by: "teacher-4"
+  },
+
+  // GEOGRAFIA - FÁCIL
+  {
+    id: "q20",
+    title: "Capital do Brasil",
+    text: "Qual é a capital do Brasil?",
+    type: "multipleChoice",
+    subjectId: "geo",
+    subject: { id: "geo", name: "Geografia" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Básico",
+    value: "2",
+    solution: "Brasília",
+    options: [
+      { id: "a", text: "São Paulo", isCorrect: false },
+      { id: "b", text: "Rio de Janeiro", isCorrect: false },
+      { id: "c", text: "Brasília", isCorrect: true },
+      { id: "d", text: "Salvador", isCorrect: false }
+    ],
+    skills: ["Geografia do Brasil"],
+    created_by: "teacher-5"
+  },
+
+  // QUESTÕES ADICIONAIS PARA COMPLETAR 30
+  {
+    id: "q21",
+    title: "Multiplicação por 10",
+    text: "Quanto é 25 x 10?",
+    type: "multipleChoice",
+    subjectId: "math",
+    subject: { id: "math", name: "Matemática" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Básico",
+    value: "2",
+    solution: "250",
+    options: [
+      { id: "a", text: "250", isCorrect: true },
+      { id: "b", text: "25", isCorrect: false },
+      { id: "c", text: "2500", isCorrect: false },
+      { id: "d", text: "2.5", isCorrect: false }
+    ],
+    skills: ["Multiplicação"],
+    created_by: "teacher-1"
+  },
+  {
+    id: "q22",
+    title: "Antônimos",
+    text: "Qual é o antônimo de 'GRANDE'?",
+    type: "multipleChoice",
+    subjectId: "port",
+    subject: { id: "port", name: "Português" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Básico",
+    value: "2",
+    solution: "Pequeno",
+    options: [
+      { id: "a", text: "Alto", isCorrect: false },
+      { id: "b", text: "Pequeno", isCorrect: true },
+      { id: "c", text: "Largo", isCorrect: false },
+      { id: "d", text: "Forte", isCorrect: false }
+    ],
+    skills: ["Antônimos"],
+    created_by: "teacher-2"
+  },
+  {
+    id: "q23",
+    title: "Animais Vertebrados",
+    text: "Qual destes animais é vertebrado?",
+    type: "multipleChoice",
+    subjectId: "cienc",
+    subject: { id: "cienc", name: "Ciências" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Básico",
+    value: "2",
+    solution: "Cachorro",
+    options: [
+      { id: "a", text: "Aranha", isCorrect: false },
+      { id: "b", text: "Cachorro", isCorrect: true },
+      { id: "c", text: "Caracol", isCorrect: false },
+      { id: "d", text: "Minhoca", isCorrect: false }
+    ],
+    skills: ["Classificação dos animais"],
+    created_by: "teacher-3"
+  },
+  {
+    id: "q24",
+    title: "Divisão com Resto",
+    text: "Divida 17 por 3 e indique o resto.",
+    type: "open",
+    subjectId: "math",
+    subject: { id: "math", name: "Matemática" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Adequado",
+    value: "3",
+    solution: "17 ÷ 3 = 5 com resto 2",
+    options: [],
+    skills: ["Divisão com resto"],
+    created_by: "teacher-1"
+  },
+  {
+    id: "q25",
+    title: "Produção de Texto",
+    text: "Escreva um pequeno texto (5 linhas) sobre sua escola.",
+    type: "open",
+    subjectId: "port",
+    subject: { id: "port", name: "Português" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Adequado",
+    value: "4",
+    solution: "Resposta pessoal - deve incluir descrição da escola, atividades, professores, etc.",
+    options: [],
+    skills: ["Produção de texto"],
+    created_by: "teacher-2"
+  },
+  {
+    id: "q26",
+    title: "Sistema Solar",
+    text: "Qual é o planeta mais próximo do Sol?",
+    type: "multipleChoice",
+    subjectId: "cienc",
+    subject: { id: "cienc", name: "Ciências" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Básico",
+    value: "2",
+    solution: "Mercúrio",
+    options: [
+      { id: "a", text: "Vênus", isCorrect: false },
+      { id: "b", text: "Mercúrio", isCorrect: true },
+      { id: "c", text: "Terra", isCorrect: false },
+      { id: "d", text: "Marte", isCorrect: false }
+    ],
+    skills: ["Sistema solar"],
+    created_by: "teacher-3"
+  },
+  {
+    id: "q27",
+    title: "Problema de Porcentagem",
+    text: "Se 20% de uma turma tem 30 alunos, quantos alunos tem a turma toda?",
+    type: "open",
+    subjectId: "math",
+    subject: { id: "math", name: "Matemática" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Avançado",
+    value: "4",
+    solution: "Se 20% = 30 alunos, então 100% = 30 × 5 = 150 alunos",
+    options: [],
+    skills: ["Porcentagem"],
+    created_by: "teacher-1"
+  },
+  {
+    id: "q28",
+    title: "Independência do Brasil",
+    text: "Em que ano o Brasil se tornou independente de Portugal?",
+    type: "multipleChoice",
+    subjectId: "hist",
+    subject: { id: "hist", name: "História" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Básico",
+    value: "2",
+    solution: "1822",
+    options: [
+      { id: "a", text: "1808", isCorrect: false },
+      { id: "b", text: "1822", isCorrect: true },
+      { id: "c", text: "1889", isCorrect: false },
+      { id: "d", text: "1891", isCorrect: false }
+    ],
+    skills: ["História do Brasil"],
+    created_by: "teacher-4"
+  },
+  {
+    id: "q29",
+    title: "Regiões do Brasil",
+    text: "Quantas regiões o Brasil possui?",
+    type: "multipleChoice",
+    subjectId: "geo",
+    subject: { id: "geo", name: "Geografia" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Básico",
+    value: "2",
+    solution: "5",
+    options: [
+      { id: "a", text: "3", isCorrect: false },
+      { id: "b", text: "4", isCorrect: false },
+      { id: "c", text: "5", isCorrect: true },
+      { id: "d", text: "6", isCorrect: false }
+    ],
+    skills: ["Geografia do Brasil"],
+    created_by: "teacher-5"
+  },
+  {
+    id: "q30",
+    title: "Alimentação Saudável",
+    text: "Explique por que é importante ter uma alimentação balanceada.",
+    type: "open",
+    subjectId: "cienc",
+    subject: { id: "cienc", name: "Ciências" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Adequado",
+    value: "3",
+    solution: "Uma alimentação balanceada fornece todos os nutrientes necessários para o crescimento, desenvolvimento e manutenção da saúde.",
+    options: [],
+    skills: ["Saúde e nutrição"],
+    created_by: "teacher-3"
+  },
+  {
+    id: "q31",
+    title: "Proclamação da República",
+    text: "Em que ano foi proclamada a República no Brasil?",
+    type: "multipleChoice",
+    subjectId: "hist",
+    subject: { id: "hist", name: "História" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Básico",
+    value: "2",
+    solution: "1889",
+    options: [
+      { id: "a", text: "1822", isCorrect: false },
+      { id: "b", text: "1889", isCorrect: true },
+      { id: "c", text: "1891", isCorrect: false },
+      { id: "d", text: "1900", isCorrect: false }
+    ],
+    skills: ["História do Brasil"],
+    created_by: "teacher-4"
+  },
+  {
+    id: "q32",
+    title: "Clima do Brasil",
+    text: "Qual é o clima predominante na região Norte do Brasil?",
+    type: "multipleChoice",
+    subjectId: "geo",
+    subject: { id: "geo", name: "Geografia" },
+    grade: { id: "5ano", name: "5º Ano" },
+    difficulty: "Básico",
+    value: "2",
+    solution: "Equatorial",
+    options: [
+      { id: "a", text: "Tropical", isCorrect: false },
+      { id: "b", text: "Equatorial", isCorrect: true },
+      { id: "c", text: "Subtropical", isCorrect: false },
+      { id: "d", text: "Semiárido", isCorrect: false }
+    ],
+    skills: ["Geografia do Brasil"],
+    created_by: "teacher-5"
+  }
+];
+
+// 30 alunos com dados realistas
+export const mockStudents = [
+  { id: "student-1", name: "Ana Silva Santos", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-2", name: "Bruno Costa Lima", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-3", name: "Carlos Eduardo Oliveira", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-4", name: "Daniela Ferreira Costa", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-5", name: "Eduardo Santos Pereira", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-6", name: "Fernanda Almeida Silva", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-7", name: "Gabriel Martins Rodrigues", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-8", name: "Helena Costa Santos", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-9", name: "Igor Silva Oliveira", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-10", name: "Julia Ferreira Lima", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-11", name: "Kevin Santos Costa", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-12", name: "Larissa Oliveira Silva", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-13", name: "Marcos Costa Lima", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-14", name: "Natalia Silva Santos", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-15", name: "Otavio Ferreira Costa", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-16", name: "Paula Rodrigues Alves", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-17", name: "Rafael Silva Mendes", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-18", name: "Sofia Costa Pereira", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-19", name: "Thiago Oliveira Santos", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-20", name: "Valentina Lima Costa", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-21", name: "William Silva Rodrigues", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-22", name: "Yasmin Costa Almeida", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-23", name: "Zoe Silva Ferreira", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-24", name: "Arthur Santos Lima", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-25", name: "Beatriz Costa Silva", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-26", name: "Cauã Oliveira Costa", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-27", name: "Diana Silva Santos", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-28", name: "Enzo Costa Lima", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2024-01-00T00:00:00Z" },
+  { id: "student-29", name: "Flávia Silva Costa", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+  { id: "student-30", name: "Guilherme Costa Silva", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" }
+];
+
+// Avaliações em diferentes status
+export const mockEvaluations = [
+  {
+    id: "eval-1",
+    title: "Avaliação de Matemática - 1º Bimestre",
+    status: "active",
+    subject: "Matemática",
+    grade: "5º Ano",
+    startDate: "2024-01-15T08:00:00Z",
+    endDate: "2024-01-15T10:00:00Z",
+    duration: 120,
+    questions: mockQuestions.slice(0, 15),
+    students: mockStudents.slice(0, 15),
+    createdAt: "2024-01-10T10:00:00Z"
+  },
+  {
+    id: "eval-2",
+    title: "Simulado de Português - Preparatório",
+    status: "correction",
+    subject: "Português",
+    grade: "5º Ano",
+    startDate: "2024-01-14T14:00:00Z",
+    endDate: "2024-01-14T16:00:00Z",
+    duration: 90,
+    questions: mockQuestions.slice(15, 25),
+    students: mockStudents.slice(0, 12),
+    createdAt: "2024-01-08T09:00:00Z"
+  },
+  {
+    id: "eval-3",
+    title: "Prova de Ciências - Água e Solo",
+    status: "completed",
+    subject: "Ciências",
+    grade: "5º Ano",
+    startDate: "2024-01-12T10:00:00Z",
+    endDate: "2024-01-12T11:30:00Z",
+    duration: 90,
+    questions: mockQuestions.slice(25, 30),
+    students: mockStudents.slice(0, 18),
+    createdAt: "2024-01-05T14:00:00Z"
+  }
+];
+
+export const mockClasses = [
+  {
+    id: "class-5A",
+    name: "5A",
+    school_id: "school-1",
+    grade_id: "5",
+    students_count: 10,
+    school: { id: "school-1", name: "E.M. João Silva" },
+    grade: { id: "5", name: "5º Ano" }
+  },
+  {
+    id: "class-5B",
+    name: "5B",
+    school_id: "school-1",
+    grade_id: "5",
+    students_count: 10,
+    school: { id: "school-1", name: "E.M. João Silva" },
+    grade: { id: "5", name: "5º Ano" }
+  },
+  {
+    id: "class-5C",
+    name: "5C",
+    school_id: "school-1",
+    grade_id: "5",
+    students_count: 10,
+    school: { id: "school-1", name: "E.M. João Silva" },
+    grade: { id: "5", name: "5º Ano" }
+  }
+]; 

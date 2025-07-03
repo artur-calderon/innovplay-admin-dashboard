@@ -24,8 +24,6 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import EvaluationForm from "@/components/evaluations/EvaluationForm";
 import { ReadyEvaluations } from "@/components/evaluations/ReadyEvaluations";
 import { QuestionBank } from "@/components/evaluations/QuestionBank";
-import EvaluationResults from "@/components/evaluations/EvaluationResults";
-import EvaluationReport from "@/components/evaluations/EvaluationReport";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/authContext";
 import StudentEvaluations from "@/components/evaluations/StudentEvaluations";
@@ -49,8 +47,6 @@ interface EvaluationStats {
 export default function Evaluations() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("ready");
-  const [showResults, setShowResults] = useState(false);
-  const [showReport, setShowReport] = useState(false);
   const [stats, setStats] = useState<EvaluationStats>({
     total: 0,
     thisMonth: 0,
@@ -143,57 +139,11 @@ export default function Evaluations() {
     }
   };
 
-  // Handlers for results actions
-  const handleViewResults = () => {
-    setShowResults(true);
-  };
 
-  const handleCorrectNow = () => {
-    toast({
-      title: "Correção iniciada",
-      description: "Redirecionando para a tela de correção...",
-    });
-    navigate("/app/avaliacoes/correcao");
-  };
-
-  const handleGenerateReport = () => {
-    setShowReport(true);
-  };
-
-  const handleExportAll = async () => {
-    try {
-      const allResults = await mockApi.getEvaluationResults();
-      const allIds = allResults.map(result => result.id);
-      const response = await mockApi.exportResults(allIds);
-      
-      if (response.success) {
-        toast({
-          title: "Exportação concluída!",
-          description: "Todos os resultados foram exportados com sucesso.",
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Erro na exportação",
-        description: "Não foi possível exportar os resultados",
-        variant: "destructive",
-      });
-    }
-  };
 
   // Conditionally render teacher view or student view based on user role
   if (user.role === "aluno") {
     return <StudentEvaluations />;
-  }
-
-  // If showing results, render the EvaluationResults component
-  if (showResults) {
-    return <EvaluationResults onBack={() => setShowResults(false)} />;
-  }
-
-  // If showing report, render the EvaluationReport component
-  if (showReport) {
-    return <EvaluationReport onBack={() => setShowReport(false)} />;
   }
 
   // Default view for teachers and admins
@@ -282,7 +232,7 @@ export default function Evaluations() {
 
       {/* Tabs Expandidas */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4 gap-2">
+        <TabsList className="grid w-full grid-cols-3 gap-2">
           <TabsTrigger value="ready" className="flex items-center gap-2">
             <FileText className="h-4 w-4" />
             Minhas Avaliações
@@ -290,10 +240,6 @@ export default function Evaluations() {
           <TabsTrigger value="create" className="flex items-center gap-2">
             <Plus className="h-4 w-4" />
             Criar Nova
-          </TabsTrigger>
-          <TabsTrigger value="results" className="flex items-center gap-2">
-            <BarChart3 className="h-4 w-4" />
-            Resultados
           </TabsTrigger>
           <TabsTrigger value="physical" className="flex items-center gap-2">
             <ClipboardList className="h-4 w-4" />
@@ -421,89 +367,7 @@ export default function Evaluations() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="results" className="space-y-4">
-          <div className="space-y-4">
-            {/* Header de Resultados */}
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold">Resultados das Avaliações</h2>
-                <p className="text-sm text-muted-foreground">
-                  Acompanhe o desempenho e gere relatórios
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={handleExportAll}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Exportar Tudo
-                </Button>
-              </div>
-            </div>
 
-            {/* Cards de Resultados */}
-            <div className="grid gap-4 md:grid-cols-3">
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Avaliações Concluídas</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-green-600">{stats.completedEvaluations}</div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Com resultados disponíveis
-                  </p>
-                  <Button variant="outline" size="sm" className="w-full mt-3" onClick={handleViewResults}>
-                    Ver Resultados
-                  </Button>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Correções Pendentes</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-orange-600">{stats.pendingResults}</div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Aguardando correção
-                  </p>
-                  <Button variant="outline" size="sm" className="w-full mt-3" onClick={handleCorrectNow}>
-                    Corrigir Agora
-                  </Button>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Relatórios</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-blue-600">
-                    {stats.completedEvaluations + stats.pendingResults}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Relatórios disponíveis
-                  </p>
-                  <Button variant="outline" size="sm" className="w-full mt-3" onClick={handleGenerateReport}>
-                    Gerar Relatório
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Placeholder para lista de resultados */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Resultados Recentes</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8 text-muted-foreground">
-                  <BarChart3 className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
-                  <p>Sistema de resultados em desenvolvimento</p>
-                  <p className="text-sm">Em breve você poderá visualizar estatísticas detalhadas</p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
 
         <TabsContent value="physical" className="space-y-4">
           <div className="space-y-4">

@@ -34,6 +34,7 @@ import Disciplina from "./pages/Disciplina";
 import StudentAgenda from "./pages/StudentAgenda";
 import TakeEvaluationPage from "./pages/TakeEvaluationPage";
 import EvaluationCorrection from "./pages/EvaluationCorrection";
+import Results from "./pages/Results";
 
 const queryClient = new QueryClient();
 
@@ -94,6 +95,7 @@ const App = () => {
             <Route index element={<PrivateRoute><Index /></PrivateRoute>} />
             <Route path="/app/avaliacoes" element={<PrivateRoute><Evaluations /></PrivateRoute>} />
             <Route path="/app/avaliacoes/correcao" element={<PrivateRoute><EvaluationCorrection /></PrivateRoute>} />
+            <Route path="/app/resultados" element={<PrivateRoute><Results /></PrivateRoute>} />
             <Route path="/app/avaliacao/:id" element={<PrivateRoute><ViewEvaluation /></PrivateRoute>} />
             <Route path="/app/avaliacao/:id/editar" element={<PrivateRoute><EditEvaluation /></PrivateRoute>} />
             <Route path="/app/avaliacao/:id/fazer" element={<PrivateRoute><TakeEvaluationPage /></PrivateRoute>} />

@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Book, Eye, Trash2, Plus } from "lucide-react";
 import { Question, Subject } from "./types";
-import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/authContext";
 import { useNavigate } from "react-router-dom";
@@ -17,6 +16,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useEvaluationActions, useQuestions } from "@/stores/useEvaluationStore";
+import { mockQuestions } from "@/lib/mockData";
 
 interface CreateEvaluationStep2Props {
   data: {
@@ -29,9 +30,11 @@ interface CreateEvaluationStep2Props {
     type: "AVALIACAO" | "SIMULADO";
     model: "SAEB" | "PROVA" | "AVALIE";
     subjects: Subject[];
+    selectedClasses?: { id: string; name: string; }[];
     subject: string;
     description?: string;
     startDateTime?: string;
+    endDateTime?: string;
     duration?: string;
     classes?: string[];
   };
@@ -59,26 +62,22 @@ export const CreateEvaluationStep2 = ({
   const { toast } = useToast();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { createEvaluation } = useEvaluationActions();
+  const { questions } = useQuestions();
 
 
 
   useEffect(() => {
-    const fetchSubjects = async () => {
-      try {
-        const response = await api.get("/subjects");
-        setSubjectOptions(response.data);
-      } catch (error) {
-        console.error("Erro ao buscar disciplinas:", error);
-        toast({
-          title: "Erro",
-          description: "Não foi possível carregar as disciplinas",
-          variant: "destructive",
-        });
-      }
-    };
-
-    fetchSubjects();
-  }, [toast]);
+    // Usar disciplinas mockadas em vez de API
+    const mockSubjects: Subject[] = [
+      { id: "math", name: "Matemática" },
+      { id: "port", name: "Português" },
+      { id: "cienc", name: "Ciências" },
+      { id: "hist", name: "História" },
+      { id: "geo", name: "Geografia" }
+    ];
+    setSubjectOptions(mockSubjects);
+  }, []);
 
   // Inicializar estrutura de questões por disciplina
   useEffect(() => {
@@ -191,13 +190,8 @@ export const CreateEvaluationStep2 = ({
         return;
       }
 
-      // Preparar dados para envio
-      const allQuestions = Object.entries(questionsBySubject).flatMap(([subjectId, questions]) =>
-        questions.map(question => ({
-          id: question.id,
-          subject_id: subjectId
-        }))
-      );
+      // Preparar todas as questões selecionadas
+      const allQuestions = Object.entries(questionsBySubject).flatMap(([subjectId, questions]) => questions);
 
       if (allQuestions.length === 0) {
         toast({
@@ -208,98 +202,64 @@ export const CreateEvaluationStep2 = ({
         return;
       }
 
-      // Montar payload conforme backend espera
-      const payload = {
+      // Buscar alunos das turmas selecionadas (mockados)
+      const mockStudents = [
+        { id: "student-1", name: "Ana Silva Santos", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+        { id: "student-2", name: "Bruno Costa Lima", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+        { id: "student-3", name: "Carlos Eduardo Oliveira", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+        { id: "student-4", name: "Daniela Ferreira Costa", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+        { id: "student-5", name: "Eduardo Santos Pereira", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+        { id: "student-6", name: "Fernanda Almeida Silva", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+        { id: "student-7", name: "Gabriel Martins Rodrigues", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+        { id: "student-8", name: "Helena Costa Santos", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+        { id: "student-9", name: "Igor Silva Oliveira", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+        { id: "student-10", name: "Julia Ferreira Lima", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+        { id: "student-11", name: "Kevin Santos Costa", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+        { id: "student-12", name: "Larissa Oliveira Silva", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+        { id: "student-13", name: "Marcos Costa Lima", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+        { id: "student-14", name: "Natalia Silva Santos", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" },
+        { id: "student-15", name: "Otavio Ferreira Costa", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2024-01-01T00:00:00Z" }
+      ];
+
+      // Filtrar alunos das turmas selecionadas
+      const selectedClasses = data.selectedClasses || [];
+      const students = selectedClasses.length > 0 
+        ? mockStudents.filter(student => 
+            selectedClasses.some(cls => student.class === cls.name)
+          )
+        : mockStudents.slice(0, 15); // Padrão: 15 alunos
+
+      // Criar avaliação usando o store
+      const evaluationData = {
         title: data.title.trim(),
         description: data.description?.trim() || "Avaliação criada via painel",
+        subject: data.subjects[0], // Primeira disciplina como principal
+        grade: data.grade,
+        course: data.course,
+        school: data.schools[0] || "E.M. João Silva",
+        municipality: data.municipalities[0] || "São Paulo",
         type: data.type,
         model: data.model,
-        course: data.course,
-        grade: data.grade,
-        subject: data.subject, // Para compatibilidade (primeira disciplina)
-        subjects: data.subjects?.map(s => s.id) || [], // Múltiplas disciplinas
-        subjects_info: data.subjects || [], // Informações completas das disciplinas
-        municipalities: data.municipalities || [],
-        schools: Array.isArray(data.schools) ? data.schools : [data.schools],
-        time_limit: data.startDateTime,
-        duration: data.duration ? Number(data.duration) : undefined,
         questions: allQuestions,
-        created_by: user?.id || "",
-        classes: data.classes || []
+        students: students,
+        startDateTime: data.startDateTime || new Date().toISOString(),
+        endDateTime: data.endDateTime || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), // +2 horas
+        duration: data.duration ? Number(data.duration) : 120
       };
 
-      console.log("📤 Enviando payload para criar avaliação:", payload);
-      const response = await api.post("/test", payload);
-      const evaluationId = response.data.id;
-      console.log("✅ Avaliação criada com ID:", evaluationId);
+      console.log("📤 Criando avaliação com dados:", evaluationData);
+      
+      const newEvaluation = await createEvaluation(evaluationData);
+      console.log("✅ Avaliação criada com ID:", newEvaluation.id);
 
-      // ✅ Aplicar automaticamente às turmas selecionadas
-      if (data.classes && data.classes.length > 0) {
-        console.log("🎯 Aplicando avaliação às turmas:", data.classes);
-        console.log("📅 Data de aplicação:", data.startDateTime);
-        
-        const classApplications = data.classes.map(classId => ({
-          class_id: classId,
-          application: data.startDateTime || new Date().toISOString(),
-          expiration: null // Pode ser configurado no futuro
-        }));
-
-        console.log("📋 Payload de aplicação às turmas:", {
-          classes: classApplications
+      // Mostrar toast de sucesso
+      const selectedClassesCount = selectedClasses.length;
+      if (selectedClassesCount > 0) {
+        toast({
+          title: "Sucesso!",
+          description: `Avaliação criada e pronta para aplicação em ${selectedClassesCount} turma${selectedClassesCount > 1 ? 's' : ''}!`,
         });
-
-        try {
-          const applyResponse = await api.post(`/test/${evaluationId}/apply`, {
-            classes: classApplications
-          });
-          console.log("✅ Resposta da aplicação às turmas:", applyResponse.data);
-          console.log("✅ Avaliação aplicada às turmas com sucesso");
-          
-          // ✅ Mostrar toast de sucesso com detalhes
-          toast({
-            title: "Sucesso!",
-            description: `Avaliação criada e aplicada a ${data.classes.length} turma${data.classes.length > 1 ? 's' : ''}!`,
-          });
-          
-        } catch (applyError) {
-          console.error("❌ Erro ao aplicar avaliação às turmas:", applyError);
-          console.error("❌ Detalhes do erro:", applyError.response?.data);
-          
-          // Tentar aplicar uma por uma se falhou em lote
-          console.log("🔄 Tentando aplicar turmas individualmente...");
-          let successCount = 0;
-          
-          for (const classId of data.classes) {
-            try {
-              await api.post(`/test/${evaluationId}/apply`, {
-                classes: [{
-                  class_id: classId,
-                  application: data.startDateTime || new Date().toISOString(),
-                  expiration: null
-                }]
-              });
-              successCount++;
-              console.log(`✅ Turma ${classId} aplicada com sucesso`);
-            } catch (individualError) {
-              console.error(`❌ Erro ao aplicar turma ${classId}:`, individualError.response?.data);
-            }
-          }
-          
-          if (successCount > 0) {
-            toast({
-              title: "Avaliação criada",
-              description: `Avaliação criada e aplicada a ${successCount} de ${data.classes.length} turmas.`,
-            });
-          } else {
-            toast({
-              title: "Avaliação criada",
-              description: "Avaliação criada, mas houve erro ao aplicar às turmas. Aplique manualmente.",
-              variant: "default",
-            });
-          }
-        }
       } else {
-        console.log("⚠️ Nenhuma turma selecionada para aplicar a avaliação");
         toast({
           title: "Sucesso",
           description: "Avaliação criada com sucesso!",
@@ -311,12 +271,13 @@ export const CreateEvaluationStep2 = ({
         onComplete();
       }
 
+      // Redirecionar para lista de avaliações
       navigate("/app/avaliacoes");
     } catch (error) {
       console.error("Erro ao criar avaliação:", error);
       toast({
         title: "Erro",
-        description: error?.response?.data?.message || "Não foi possível criar a avaliação",
+        description: "Não foi possível criar a avaliação",
         variant: "destructive",
       });
     } finally {
