@@ -662,7 +662,7 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={result.averageProficiency >= 500 ? "default" : "destructive"}>
+                      <Badge variant={result.averageRawScore >= 6 ? "default" : "destructive"}>
                         {result.averageProficiency}
                       </Badge>
                     </TableCell>

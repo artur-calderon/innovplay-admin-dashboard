@@ -29,6 +29,48 @@ export function FilterPanel({
 }: FilterPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
 
+  const getMaxProficiencyScale = () => {
+    const selectedCourse = filters.course;
+    const selectedSubject = filters.subject;
+    
+    const isMathematics = selectedSubject?.toLowerCase().includes('matemática') || 
+                         selectedSubject?.toLowerCase().includes('matematica');
+    
+    if (selectedCourse === 'Anos Iniciais') {
+      return isMathematics ? 375 : 350;
+    } else if (selectedCourse === 'Anos Finais' || selectedCourse === 'Ensino Médio') {
+      return isMathematics ? 425 : 400;
+    }
+    
+    return 425;
+  };
+
+  const maxProficiencyScale = getMaxProficiencyScale();
+  
+  const getProficiencyScaleDescription = () => {
+    const selectedCourse = filters.course;
+    const selectedSubject = filters.subject;
+    
+    if (!selectedCourse && !selectedSubject) {
+      return "Escala dinâmica (350-425 conforme seleção)";
+    }
+    
+    const isMathematics = selectedSubject?.toLowerCase().includes('matemática') || 
+                         selectedSubject?.toLowerCase().includes('matematica');
+    
+    if (selectedCourse === 'Anos Iniciais') {
+      return isMathematics 
+        ? "P.M = 375 (Matemática - Anos Iniciais)"
+        : "P.M = 350 (Geral - Anos Iniciais)";
+    } else if (selectedCourse === 'Anos Finais' || selectedCourse === 'Ensino Médio') {
+      return isMathematics 
+        ? "P.M = 425 (Matemática - Anos Finais/EM)"
+        : "P.M = 400 (Geral - Anos Finais/EM)";
+    }
+    
+    return `P.M = ${maxProficiencyScale} (baseado na seleção atual)`;
+  };
+
   const updateFilter = (key: keyof ResultsFilters, value: any) => {
     onFiltersChange({ ...filters, [key]: value });
   };
@@ -243,21 +285,25 @@ export function FilterPanel({
             <div className="space-y-4">
               <h3 className="font-semibold text-sm">Filtros de Performance</h3>
               
-              {/* Faixa de Proficiência */}
               <div className="space-y-3">
-                <Label>Faixa de Proficiência (0-1000)</Label>
+                <div className="space-y-1">
+                  <Label>Faixa de Proficiência (0-{maxProficiencyScale})</Label>
+                  <p className="text-xs text-muted-foreground">
+                    {getProficiencyScaleDescription()}
+                  </p>
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label className="text-xs text-muted-foreground">Mínimo</Label>
                     <Input
                       type="number"
                       min="0"
-                      max="1000"
+                      max={maxProficiencyScale}
                       placeholder="0"
                       value={filters.proficiencyRange?.[0] || ""}
                       onChange={(e) => {
                         const min = parseInt(e.target.value) || 0;
-                        const max = filters.proficiencyRange?.[1] || 1000;
+                        const max = filters.proficiencyRange?.[1] || maxProficiencyScale;
                         updateFilter('proficiencyRange', [min, max]);
                       }}
                     />
@@ -267,11 +313,11 @@ export function FilterPanel({
                     <Input
                       type="number"
                       min="0"
-                      max="1000"
-                      placeholder="1000"
+                      max={maxProficiencyScale}
+                      placeholder={maxProficiencyScale.toString()}
                       value={filters.proficiencyRange?.[1] || ""}
                       onChange={(e) => {
-                        const max = parseInt(e.target.value) || 1000;
+                        const max = parseInt(e.target.value) || maxProficiencyScale;
                         const min = filters.proficiencyRange?.[0] || 0;
                         updateFilter('proficiencyRange', [min, max]);
                       }}

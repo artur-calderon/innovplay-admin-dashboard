@@ -30,7 +30,10 @@ import {
   FileSpreadsheet,
   X,
   RefreshCw,
-  GitCompare
+  GitCompare,
+  Calculator,
+  GraduationCap,
+  School
 } from "lucide-react";
 
 // Importar os novos tipos
@@ -42,7 +45,8 @@ import {
   ProficiencyLevel,
   proficiencyColors,
   proficiencyLabels,
-  calculateProficiency
+  calculateProficiency,
+  getProficiencyTableInfo
 } from "@/types/evaluation-results";
 
 // Importar o novo serviço da API
@@ -51,7 +55,6 @@ import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
 // Importar componentes auxiliares
 import { FilterPanel } from "./FilterPanel";
 import { ResultsTable, ResultsTableSkeleton } from "./ResultsTable";
-import { BackendStatus } from "./BackendStatus";
 import { DetailedResultView } from "./DetailedResultView";
 import { ExportManager, useAdvancedExport } from "./ExportManager";
 import { ComparisonView } from "./ComparisonView";
@@ -83,6 +86,16 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
   const [totalResults, setTotalResults] = useState(0);
   const [perPage] = useState(10);
   
+  // ✅ NOVOS ESTADOS: Usando os tipos importados
+  const [allStudentsData, setAllStudentsData] = useState<StudentProficiency[]>([]);
+  const [classesPerformance, setClassesPerformance] = useState<ClassPerformance[]>([]);
+  const [proficiencyAnalysis, setProficiencyAnalysis] = useState<{
+    distribution: Record<ProficiencyLevel, number>;
+    averageByLevel: Record<ProficiencyLevel, number>;
+    topPerformers: StudentProficiency[];
+    needsAttention: StudentProficiency[];
+  } | null>(null);
+  
   const { toast } = useToast();
   const [error, setError] = useState<string | null>(null);
   const [isBackendConnected, setIsBackendConnected] = useState(true);
@@ -109,6 +122,14 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
     fetchResults();
   }, [currentPage]);
 
+  // ✅ NOVO EFEITO: Analisar dados quando resultados mudarem
+  useEffect(() => {
+    if (filteredResults.length > 0) {
+      analyzeProficiencyData();
+      extractClassesPerformance();
+    }
+  }, [filteredResults]);
+
   const fetchResults = async () => {
     try {
       setIsLoading(true);
@@ -130,6 +151,9 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
       
       // ✅ CORRIGIDO: Usar o indicador de conectividade retornado pelo serviço
       setIsBackendConnected(evaluationsData.isBackendConnected);
+      
+      // ✅ NOVO: Carregar dados dos alunos para análise
+      await loadStudentsData(evaluationsData.results);
       
       console.log('🔍 Status de conectividade:', {
         isBackendConnected: evaluationsData.isBackendConnected,
@@ -154,6 +178,101 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // ✅ NOVA FUNÇÃO: Carregar dados dos alunos para análise
+  const loadStudentsData = async (evaluations: EvaluationResultsData[]) => {
+    try {
+      const allStudents: StudentProficiency[] = [];
+      
+      for (const evaluation of evaluations) {
+        if (evaluation.status === 'completed') {
+          const students = await EvaluationResultsApiService.getStudents(evaluation.id, filters);
+          allStudents.push(...students);
+        }
+      }
+      
+      setAllStudentsData(allStudents);
+    } catch (error) {
+      console.error("Erro ao carregar dados dos alunos:", error);
+    }
+  };
+
+  // ✅ NOVA FUNÇÃO: Analisar dados de proficiência usando os tipos importados
+  const analyzeProficiencyData = () => {
+    if (allStudentsData.length === 0) return;
+
+    // Distribuição por nível
+    const distribution: Record<ProficiencyLevel, number> = {
+      abaixo_do_basico: 0,
+      basico: 0,
+      adequado: 0,
+      avancado: 0
+    };
+
+    // Média por nível
+    const scoresByLevel: Record<ProficiencyLevel, number[]> = {
+      abaixo_do_basico: [],
+      basico: [],
+      adequado: [],
+      avancado: []
+    };
+
+    allStudentsData.forEach(student => {
+      distribution[student.proficiencyLevel]++;
+      scoresByLevel[student.proficiencyLevel].push(student.rawScore);
+    });
+
+    const averageByLevel: Record<ProficiencyLevel, number> = {
+      abaixo_do_basico: scoresByLevel.abaixo_do_basico.length > 0 
+        ? scoresByLevel.abaixo_do_basico.reduce((a, b) => a + b, 0) / scoresByLevel.abaixo_do_basico.length 
+        : 0,
+      basico: scoresByLevel.basico.length > 0 
+        ? scoresByLevel.basico.reduce((a, b) => a + b, 0) / scoresByLevel.basico.length 
+        : 0,
+      adequado: scoresByLevel.adequado.length > 0 
+        ? scoresByLevel.adequado.reduce((a, b) => a + b, 0) / scoresByLevel.adequado.length 
+        : 0,
+      avancado: scoresByLevel.avancado.length > 0 
+        ? scoresByLevel.avancado.reduce((a, b) => a + b, 0) / scoresByLevel.avancado.length 
+        : 0
+    };
+
+    // Top performers (10% melhores)
+    const sortedStudents = [...allStudentsData].sort((a, b) => b.proficiencyScore - a.proficiencyScore);
+    const topCount = Math.max(1, Math.ceil(allStudentsData.length * 0.1));
+    const topPerformers = sortedStudents.slice(0, topCount);
+
+    // Alunos que precisam de atenção (abaixo do básico + básico com nota baixa)
+    const needsAttention = allStudentsData.filter(student => 
+      student.proficiencyLevel === 'abaixo_do_basico' || 
+      (student.proficiencyLevel === 'basico' && student.rawScore < 6)
+    );
+
+    setProficiencyAnalysis({
+      distribution,
+      averageByLevel,
+      topPerformers,
+      needsAttention
+    });
+  };
+
+  // ✅ NOVA FUNÇÃO: Extrair dados de performance das turmas
+  const extractClassesPerformance = () => {
+    const classesMap = new Map<string, ClassPerformance>();
+
+    filteredResults.forEach(result => {
+      if (result.classesPerformance) {
+        result.classesPerformance.forEach(classData => {
+          const existing = classesMap.get(classData.classId);
+          if (!existing) {
+            classesMap.set(classData.classId, classData);
+          }
+        });
+      }
+    });
+
+    setClassesPerformance(Array.from(classesMap.values()));
   };
 
   const fetchFilterOptions = async () => {
@@ -204,6 +323,56 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
     } finally {
       setIsRecalculating(false);
     }
+  };
+
+  // ✅ NOVA FUNÇÃO: Simular cálculo de proficiência para demonstrar uso do calculateProficiency
+  const handleSimulateProficiency = (score: number) => {
+    // Simular com diferentes cenários para demonstrar as P.M oficiais
+    const scenarios = [
+      { grade: '3º Ano', subject: 'Português', course: 'Anos Iniciais', pm: 350 },
+      { grade: '3º Ano', subject: 'Matemática', course: 'Anos Iniciais', pm: 375 },
+      { grade: '6º Ano', subject: 'História', course: 'Anos Finais', pm: 400 },
+      { grade: '6º Ano', subject: 'Matemática', course: 'Anos Finais', pm: 425 },
+      { grade: '1º Ano EM', subject: 'Física', course: 'Ensino Médio', pm: 400 },
+      { grade: '1º Ano EM', subject: 'Matemática', course: 'Ensino Médio', pm: 425 }
+    ];
+    
+    const randomScenario = scenarios[Math.floor(Math.random() * scenarios.length)];
+    const result = calculateProficiency(score, 20, randomScenario.grade, randomScenario.subject, randomScenario.course);
+    
+    // Calcular a fórmula manualmente para mostrar
+    const calculatedScore = Math.round((score / 10) * randomScenario.pm);
+    
+    toast({
+      title: "Simulação de Proficiência",
+      description: `${randomScenario.grade} - ${randomScenario.subject} | P.M=${randomScenario.pm} | Nota ${score} → (${score}/10 × ${randomScenario.pm}) = ${calculatedScore} pts (${result.classification})`,
+      duration: 6000,
+    });
+  };
+
+  // ✅ NOVA FUNÇÃO: Mostrar informações das tabelas de proficiência
+  const handleShowTableInfo = () => {
+    const examples = [
+      { grade: '3º Ano', subject: 'Matemática' },
+      { grade: '3º Ano', subject: 'Português' },
+      { grade: '6º Ano', subject: 'Matemática' },
+      { grade: '6º Ano', subject: 'História' },
+      { grade: '1º Ano EM', subject: 'Matemática' },
+      { grade: '1º Ano EM', subject: 'Física' }
+    ];
+    
+    const example = examples[Math.floor(Math.random() * examples.length)];
+    const tableInfo = getProficiencyTableInfo(example.grade, example.subject);
+    
+    const tableDetails = Object.entries(tableInfo.table).map(([level, range]) => 
+      `${proficiencyLabels[level as ProficiencyLevel]}: ${range.min}-${range.max}`
+    ).join(' | ');
+    
+    toast({
+      title: `${tableInfo.tableName}`,
+      description: `${example.grade} - ${example.subject} | ${tableInfo.pmDescription} | ${tableDetails}`,
+      duration: 8000,
+    });
   };
 
   const handleExportPDF = async (resultId?: string) => {
@@ -274,8 +443,11 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
   const totalEvaluations = totalResults;
   const completedEvaluations = filteredResults.filter(r => r.status === 'completed').length;
   const pendingEvaluations = filteredResults.filter(r => r.status === 'pending').length;
-  const averageProficiency = filteredResults.length > 0 
-    ? filteredResults.reduce((sum, r) => sum + r.averageProficiency, 0) / filteredResults.length 
+
+  // ✅ ESTATÍSTICAS: Usando os dados de alunos
+  const totalStudentsAnalyzed = allStudentsData.length;
+  const averageStudentScore = allStudentsData.length > 0
+    ? allStudentsData.reduce((sum, s) => sum + s.rawScore, 0) / allStudentsData.length
     : 0;
 
   // Se está visualizando resultado específico
@@ -298,12 +470,6 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
 
   return (
     <div className="space-y-6">
-      {/* Status do Backend */}
-      <BackendStatus 
-        isConnected={isBackendConnected} 
-        onRetry={() => fetchResults()}
-      />
-
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div className="flex items-center gap-4">
@@ -341,6 +507,26 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             Atualizar
+          </Button>
+          
+          {/* ✅ NOVO: Botão de simulação de proficiência */}
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => handleSimulateProficiency(7.5)}
+          >
+            <Calculator className="h-4 w-4 mr-2" />
+            Simular
+          </Button>
+          
+          {/* ✅ NOVO: Botão para mostrar informações das tabelas */}
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleShowTableInfo}
+          >
+            <BarChart3 className="h-4 w-4 mr-2" />
+            Tabelas
           </Button>
           
           {/* Botão de comparação */}
@@ -382,8 +568,40 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
         </div>
       </div>
 
-      {/* Cards de Estatísticas */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      {/* ✅ NOVA SEÇÃO: Análise de Proficiência usando os tipos importados */}
+      {proficiencyAnalysis && (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {Object.entries(proficiencyAnalysis.distribution).map(([level, count]) => {
+            const proficiencyLevel = level as ProficiencyLevel;
+            const colors = proficiencyColors[proficiencyLevel];
+            const percentage = totalStudentsAnalyzed > 0 ? (count / totalStudentsAnalyzed) * 100 : 0;
+            const averageScore = proficiencyAnalysis.averageByLevel[proficiencyLevel];
+            
+            return (
+              <Card key={level} className={`border-l-4 ${colors.border}`}>
+                <CardHeader className="pb-2">
+                  <CardTitle className={`text-sm font-medium ${colors.text}`}>
+                    {proficiencyLabels[proficiencyLevel]}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className={`text-2xl font-bold ${colors.text}`}>{count}</div>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    {percentage.toFixed(1)}% dos alunos
+                  </p>
+                  <Progress value={percentage} className="h-2 mb-2" />
+                  <p className="text-xs text-muted-foreground">
+                    Média: {averageScore.toFixed(1)}
+                  </p>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Cards de Estatísticas Principais */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total de Avaliações</CardTitle>
@@ -399,49 +617,109 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
         
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Avaliações Concluídas</CardTitle>
-            <Award className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              {isLoading ? <Skeleton className="h-8 w-16" /> : completedEvaluations}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Com resultados disponíveis
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Correções Pendentes</CardTitle>
-            <AlertCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-600">
-              {isLoading ? <Skeleton className="h-8 w-16" /> : pendingEvaluations}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Aguardando correção
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Proficiência Média</CardTitle>
-            <Target className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Alunos Analisados</CardTitle>
+            <GraduationCap className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-600">
-              {isLoading ? <Skeleton className="h-8 w-16" /> : Math.round(averageProficiency)}
+              {isLoading ? <Skeleton className="h-8 w-16" /> : totalStudentsAnalyzed}
             </div>
             <p className="text-xs text-muted-foreground">
-              Escala de 0 a 1000
+              Média: {averageStudentScore.toFixed(1)}
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Turmas Participantes</CardTitle>
+            <School className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-purple-600">
+              {isLoading ? <Skeleton className="h-8 w-16" /> : classesPerformance.length}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Classes analisadas
             </p>
           </CardContent>
         </Card>
       </div>
+
+      {/* ✅ NOVA SEÇÃO: Insights usando StudentProficiency */}
+      {proficiencyAnalysis && (
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Award className="h-5 w-5 text-yellow-600" />
+                Top Performers
+              </CardTitle>
+              <CardDescription>
+                {proficiencyAnalysis.topPerformers.length} melhores alunos (10% do total)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {proficiencyAnalysis.topPerformers.slice(0, 5).map((student, index) => (
+                  <div key={student.studentId} className="flex items-center justify-between p-2 bg-yellow-50 rounded">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">#{index + 1}</Badge>
+                      <span className="font-medium text-sm">{student.studentName}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge className={`text-xs ${proficiencyColors[student.proficiencyLevel].bg} ${proficiencyColors[student.proficiencyLevel].text}`}>
+                        {student.proficiencyScore}
+                      </Badge>
+                      <span className="text-sm text-muted-foreground">{student.rawScore.toFixed(1)}</span>
+                    </div>
+                  </div>
+                ))}
+                {proficiencyAnalysis.topPerformers.length > 5 && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    +{proficiencyAnalysis.topPerformers.length - 5} mais...
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 text-orange-600" />
+                Precisam de Atenção
+              </CardTitle>
+              <CardDescription>
+                {proficiencyAnalysis.needsAttention.length} alunos abaixo do esperado
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {proficiencyAnalysis.needsAttention.slice(0, 5).map((student) => (
+                  <div key={student.studentId} className="flex items-center justify-between p-2 bg-orange-50 rounded">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm">{student.studentName}</span>
+                      <Badge variant="outline" className="text-xs">{student.studentClass}</Badge>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge className={`text-xs ${proficiencyColors[student.proficiencyLevel].bg} ${proficiencyColors[student.proficiencyLevel].text}`}>
+                        {proficiencyLabels[student.proficiencyLevel]}
+                      </Badge>
+                      <span className="text-sm text-muted-foreground">{student.rawScore.toFixed(1)}</span>
+                    </div>
+                  </div>
+                ))}
+                {proficiencyAnalysis.needsAttention.length > 5 && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    +{proficiencyAnalysis.needsAttention.length - 5} mais...
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Resultados */}
       <Card>

@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import Layout from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Eye, Pencil, Trash2, TrendingUp, Users, FileText, Clock, Calendar, BarChart3, ClipboardList, Download } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Plus, Eye, Pencil, Trash2, TrendingUp, Users, FileText, Clock, Calendar, BarChart3, ClipboardList, Download, ExternalLink, PlayCircle } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Table,
   TableBody,
@@ -63,6 +63,7 @@ export default function Evaluations() {
   });
   const [isLoadingStats, setIsLoadingStats] = useState(true);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (user.role !== "aluno") {
@@ -152,7 +153,7 @@ export default function Evaluations() {
       title: "Correção iniciada",
       description: "Redirecionando para a tela de correção...",
     });
-    // Aqui você pode redirecionar para a tela de correção
+    navigate("/app/avaliacoes/correcao");
   };
 
   const handleGenerateReport = () => {
