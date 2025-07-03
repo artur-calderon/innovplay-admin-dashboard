@@ -34,7 +34,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { EvaluationResult, mockApi } from "@/lib/mockData";
+import { EvaluationResultsData } from "@/types/evaluation-results";
+import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
 import { useToast } from "@/hooks/use-toast";
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -46,9 +47,10 @@ interface EvaluationReportProps {
 }
 
 export default function EvaluationReport({ onBack }: EvaluationReportProps) {
-  const [results, setResults] = useState<EvaluationResult[]>([]);
+  const [results, setResults] = useState<EvaluationResultsData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isBackendConnected, setIsBackendConnected] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -59,8 +61,17 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
   const fetchResults = async () => {
     try {
       setIsLoading(true);
-      const data = await mockApi.getEvaluationResults();
-      setResults(data);
+      const response = await EvaluationResultsApiService.getEvaluations();
+      setResults(response.results);
+      setIsBackendConnected(response.isBackendConnected);
+      
+      if (!response.isBackendConnected) {
+        toast({
+          title: "Usando dados de exemplo",
+          description: "Não foi possível conectar com o backend. Exibindo dados de exemplo.",
+          variant: "default",
+        });
+      }
     } catch (error) {
       console.error("Erro ao buscar resultados:", error);
       toast({
@@ -211,7 +222,9 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
   const generateCSVReport = async () => {
     try {
       setIsGenerating(true);
-      const csvContent = await mockApi.generateCSVReport();
+      
+      // Gerar conteúdo CSV a partir dos dados atuais
+      const csvContent = generateCSVFromResults(results);
       
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
@@ -243,7 +256,9 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
   const generateExcelReport = async () => {
     try {
       setIsGenerating(true);
-      const excelData = await mockApi.generateExcelData();
+      
+      // Gerar dados Excel a partir dos dados atuais
+      const excelData = generateExcelFromResults(results);
       
       // Criar um novo workbook
       const workbook = XLSX.utils.book_new();
@@ -256,9 +271,9 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
       const difficultyWorksheet = XLSX.utils.aoa_to_sheet(excelData.difficulty);
       XLSX.utils.book_append_sheet(workbook, difficultyWorksheet, 'Análise Dificuldade');
       
-      // Criar planilha de resultados dos alunos
-      const studentsWorksheet = XLSX.utils.aoa_to_sheet(excelData.students);
-      XLSX.utils.book_append_sheet(workbook, studentsWorksheet, 'Resultados Alunos');
+      // Criar planilha de resultados das avaliações
+      const evaluationsWorksheet = XLSX.utils.aoa_to_sheet(excelData.evaluations);
+      XLSX.utils.book_append_sheet(workbook, evaluationsWorksheet, 'Avaliações');
       
       // Aplicar formatação básica
       const range = XLSX.utils.decode_range(summaryWorksheet['!ref'] || 'A1');
@@ -282,7 +297,7 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
         { wch: 30 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }
       ];
       
-      studentsWorksheet['!cols'] = [
+      evaluationsWorksheet['!cols'] = [
         { wch: 30 }, { wch: 25 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }
       ];
       
@@ -344,7 +359,100 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
     }
   };
 
+  // Função para gerar CSV a partir dos resultados
+  const generateCSVFromResults = (results: EvaluationResultsData[]): string => {
+    const headers = [
+      'Avaliação',
+      'Disciplina',
+      'Curso',
+      'Série',
+      'Escola',
+      'Município',
+      'Data Aplicação',
+      'Status',
+      'Total Alunos',
+      'Participantes',
+      'Média',
+      'Proficiência',
+      'Abaixo Básico',
+      'Básico',
+      'Adequado',
+      'Avançado'
+    ];
+    
+    const rows = results.map(result => [
+      result.evaluationTitle,
+      result.subject,
+      result.course,
+      result.grade,
+      result.school,
+      result.municipality,
+      new Date(result.appliedAt).toLocaleDateString('pt-BR'),
+      result.status === 'completed' ? 'Concluída' : 'Pendente',
+      result.totalStudents.toString(),
+      result.completedStudents.toString(),
+      result.averageRawScore.toFixed(1),
+      result.averageProficiency.toString(),
+      result.distributionByLevel.abaixo_do_basico.toString(),
+      result.distributionByLevel.basico.toString(),
+      result.distributionByLevel.adequado.toString(),
+      result.distributionByLevel.avancado.toString()
+    ]);
+    
+    return [headers, ...rows].map(row => row.join(',')).join('\n');
+  };
 
+  // Função para gerar dados Excel a partir dos resultados
+  const generateExcelFromResults = (results: EvaluationResultsData[]) => {
+    const summary = [
+      ['Resumo Executivo - Relatório de Avaliações'],
+      [''],
+      ['Estatística', 'Valor'],
+      ['Total de Avaliações', results.length.toString()],
+      ['Avaliações Concluídas', results.filter(r => r.status === 'completed').length.toString()],
+      ['Total de Alunos', results.reduce((sum, r) => sum + r.totalStudents, 0).toString()],
+      ['Alunos Participantes', results.reduce((sum, r) => sum + r.completedStudents, 0).toString()],
+      ['Média Geral', (results.reduce((sum, r) => sum + r.averageRawScore, 0) / results.length).toFixed(1)],
+      ['Proficiência Média', (results.reduce((sum, r) => sum + r.averageProficiency, 0) / results.length).toFixed(0)]
+    ];
+
+    const difficulty = [
+      ['Análise por Nível de Dificuldade'],
+      [''],
+      ['Avaliação', 'Abaixo do Básico', 'Básico', 'Adequado', 'Avançado', 'Total'],
+      ...results.map(result => [
+        result.evaluationTitle,
+        result.distributionByLevel.abaixo_do_basico.toString(),
+        result.distributionByLevel.basico.toString(),
+        result.distributionByLevel.adequado.toString(),
+        result.distributionByLevel.avancado.toString(),
+        result.completedStudents.toString()
+      ])
+    ];
+
+    const evaluations = [
+      ['Detalhamento das Avaliações'],
+      [''],
+      ['Avaliação', 'Disciplina', 'Curso', 'Série', 'Escola', 'Município', 'Data', 'Status', 'Participação'],
+      ...results.map(result => [
+        result.evaluationTitle,
+        result.subject,
+        result.course,
+        result.grade,
+        result.school,
+        result.municipality,
+        new Date(result.appliedAt).toLocaleDateString('pt-BR'),
+        result.status === 'completed' ? 'Concluída' : 'Pendente',
+        `${result.completedStudents}/${result.totalStudents}`
+      ])
+    ];
+
+    return {
+      summary,
+      difficulty,
+      evaluations
+    };
+  };
 
   // Cálculos para estatísticas gerais
   const completedResults = results.filter(r => r.status === 'completed');
@@ -352,10 +460,10 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
   const totalStudents = results.reduce((sum, r) => sum + r.totalStudents, 0);
   const totalCompleted = results.reduce((sum, r) => sum + r.completedStudents, 0);
   const averageScore = completedResults.length > 0 
-    ? completedResults.reduce((sum, r) => sum + r.averageScore, 0) / completedResults.length 
+    ? completedResults.reduce((sum, r) => sum + r.averageRawScore, 0) / completedResults.length 
     : 0;
-  const averagePassRate = completedResults.length > 0
-    ? completedResults.reduce((sum, r) => sum + r.passRate, 0) / completedResults.length
+  const averageProficiency = completedResults.length > 0
+    ? completedResults.reduce((sum, r) => sum + r.averageProficiency, 0) / completedResults.length
     : 0;
 
   if (isLoading) {
@@ -381,6 +489,9 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
             <h2 className="text-2xl font-bold">Relatório de Avaliações</h2>
             <p className="text-sm text-muted-foreground">
               Relatório completo gerado em {new Date().toLocaleDateString('pt-BR')}
+              {!isBackendConnected && (
+                <span className="ml-2 text-orange-600">(dados de exemplo)</span>
+              )}
             </p>
           </div>
         </div>
@@ -448,8 +559,8 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
                 <div className="text-sm text-muted-foreground">Média Geral</div>
               </div>
               <div className="text-center">
-                <div className="text-3xl font-bold text-indigo-600">{averagePassRate.toFixed(1)}%</div>
-                <div className="text-sm text-muted-foreground">Taxa de Aprovação</div>
+                <div className="text-3xl font-bold text-indigo-600">{averageProficiency.toFixed(0)}</div>
+                <div className="text-sm text-muted-foreground">Proficiência Média</div>
               </div>
             </div>
           </CardContent>
@@ -496,7 +607,7 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
                   <Users className="h-8 w-8 text-blue-600" />
                 </div>
                 <div className="text-xs text-blue-600 mt-1">
-                  {totalCompleted} participaram ({((totalCompleted / totalStudents) * 100).toFixed(1)}%)
+                  {totalCompleted} participaram ({totalStudents > 0 ? ((totalCompleted / totalStudents) * 100).toFixed(1) : '0'}%)
                 </div>
               </div>
             </div>
@@ -519,7 +630,7 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
                   <TableHead>Disciplina</TableHead>
                   <TableHead>Participação</TableHead>
                   <TableHead>Média</TableHead>
-                  <TableHead>Aprovação</TableHead>
+                  <TableHead>Proficiência</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Data</TableHead>
                 </TableRow>
@@ -542,8 +653,8 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm">{result.averageScore.toFixed(1)}</span>
-                        {result.averageScore >= 7 ? (
+                        <span className="text-sm">{result.averageRawScore.toFixed(1)}</span>
+                        {result.averageRawScore >= 7 ? (
                           <TrendingUp className="h-4 w-4 text-green-600" />
                         ) : (
                           <TrendingDown className="h-4 w-4 text-red-600" />
@@ -551,8 +662,8 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={result.passRate >= 70 ? "default" : "destructive"}>
-                        {result.passRate}%
+                      <Badge variant={result.averageProficiency >= 500 ? "default" : "destructive"}>
+                        {result.averageProficiency}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -575,9 +686,9 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
         {/* Análise de Desempenho */}
         <Card>
           <CardHeader>
-            <CardTitle>Análise de Desempenho por Dificuldade</CardTitle>
+            <CardTitle>Análise de Desempenho por Nível</CardTitle>
             <CardDescription>
-              Comparativo de desempenho nas questões por nível de dificuldade
+              Distribuição dos alunos por nível de proficiência
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -591,8 +702,8 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
                         <div className="w-3 h-3 bg-red-500 rounded-full"></div>
                         <span className="text-sm font-medium">Abaixo do Básico</span>
                       </div>
-                      <div className="text-lg font-bold">{result.difficultyAnalysis.easy.averageSuccess.toFixed(1)}%</div>
-                      <div className="text-xs text-muted-foreground">{result.difficultyAnalysis.easy.total} questões</div>
+                      <div className="text-lg font-bold">{result.distributionByLevel.abaixo_do_basico}</div>
+                      <div className="text-xs text-muted-foreground">alunos</div>
                     </div>
                     
                     <div className="p-3 bg-yellow-50 rounded-lg">
@@ -600,8 +711,8 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
                         <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
                         <span className="text-sm font-medium">Básico</span>
                       </div>
-                      <div className="text-lg font-bold">{result.difficultyAnalysis.medium.averageSuccess.toFixed(1)}%</div>
-                      <div className="text-xs text-muted-foreground">{result.difficultyAnalysis.medium.total} questões</div>
+                      <div className="text-lg font-bold">{result.distributionByLevel.basico}</div>
+                      <div className="text-xs text-muted-foreground">alunos</div>
                     </div>
                     
                     <div className="p-3 bg-green-50 rounded-lg">
@@ -609,8 +720,8 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
                         <div className="w-3 h-3 bg-green-400 rounded-full"></div>
                         <span className="text-sm font-medium">Adequado</span>
                       </div>
-                      <div className="text-lg font-bold">{result.difficultyAnalysis.hard.averageSuccess.toFixed(1)}%</div>
-                      <div className="text-xs text-muted-foreground">{result.difficultyAnalysis.hard.total} questões</div>
+                      <div className="text-lg font-bold">{result.distributionByLevel.adequado}</div>
+                      <div className="text-xs text-muted-foreground">alunos</div>
                     </div>
                     
                     <div className="p-3 bg-green-800 rounded-lg">
@@ -618,8 +729,8 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
                         <div className="w-3 h-3 bg-green-700 rounded-full"></div>
                         <span className="text-sm font-medium text-white">Avançado</span>
                       </div>
-                                              <div className="text-lg font-bold text-white">{result.difficultyAnalysis.advanced?.averageSuccess?.toFixed(1) || '0.0'}%</div>
-                        <div className="text-xs text-green-200">{result.difficultyAnalysis.advanced?.total || 0} questões</div>
+                      <div className="text-lg font-bold text-white">{result.distributionByLevel.avancado}</div>
+                      <div className="text-xs text-green-200">alunos</div>
                     </div>
                   </div>
                 </div>
