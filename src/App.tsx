@@ -37,6 +37,8 @@ import EvaluationCorrection from "./pages/EvaluationCorrection";
 import Results from "./pages/Results";
 import GamesManagement from "./pages/GamesManagement";
 import AddGame from "./pages/AddGame";
+import GameViewPage from "./pages/GameViewPage";
+import StudentGames from "./pages/StudentGames";
 
 const queryClient = new QueryClient();
 
@@ -82,7 +84,8 @@ const App = () => {
             <Route path="/aluno/avaliacoes" element={<PrivateRoute><StudentEvaluations /></PrivateRoute>} />
             <Route path="/aluno/agenda" element={<PrivateRoute><StudentAgenda /></PrivateRoute>} />
             <Route path="/aluno/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
-            <Route path="/aluno/jogos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+            <Route path="/aluno/jogos" element={<PrivateRoute><StudentGames /></PrivateRoute>} />
+            <Route path="/aluno/jogos/:id" element={<PrivateRoute><GameViewPage /></PrivateRoute>} />
             <Route path="/aluno/play-tv" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/aluno/certificados" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/aluno/competicoes" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
@@ -106,6 +109,7 @@ const App = () => {
             <Route path="/app/agenda" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/app/jogos" element={<PrivateRoute><GamesManagement /></PrivateRoute>} />
             <Route path="/app/jogos/adicionar" element={<PrivateRoute><AddGame /></PrivateRoute>} />
+            <Route path="/app/jogos/:id" element={<PrivateRoute><GameViewPage /></PrivateRoute>} />
             <Route path="/app/play-tv" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/app/plantao" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/app/cartao-resposta" element={<PrivateRoute><EmBreve /></PrivateRoute>} />

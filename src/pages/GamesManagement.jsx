@@ -20,6 +20,7 @@ import {
 import { toast } from 'react-toastify';
 import { useAuth } from '@/context/authContext';
 import { useGamesCount } from '@/hooks/useGamesCount';
+import { useNavigate } from 'react-router-dom';
 
 const DISCIPLINAS = [
     'Português',
@@ -35,6 +36,7 @@ const DISCIPLINAS = [
 const GamesManagement = () => {
     const { user } = useAuth();
     const { refetch: refetchGamesCount } = useGamesCount();
+    const navigate = useNavigate();
     const [games, setGames] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isEditing, setIsEditing] = useState(false);
@@ -124,9 +126,9 @@ const GamesManagement = () => {
         setIsDeleteDialogOpen(true);
     };
 
-    // Abrir jogo em nova aba
-    const openGame = (url) => {
-        window.open(url, '_blank');
+    // Abrir jogo na página GameView
+    const openGame = (gameId) => {
+        navigate(`/app/jogos/${gameId}`);
     };
 
 
@@ -208,7 +210,7 @@ const GamesManagement = () => {
                                     <Button
                                         variant="outline"
                                         size="sm"
-                                        onClick={() => openGame(game.url)}
+                                        onClick={() => openGame(game.id)}
                                         className="flex-1"
                                     >
                                         <ExternalLink className="w-4 h-4 mr-1" />

@@ -12,9 +12,11 @@ export const useGamesCount = () => {
             setIsLoading(true);
             const response = await api.get('/games');
             const allGames = response.data.jogos || [];
-            // Filtrar apenas os jogos do usuário logado
-            const userGames = allGames.filter(game => game.userId === user.id);
-            setGamesCount(userGames.length);
+
+            // Para alunos, contar todos os jogos disponíveis
+            // Para admin/professor, contar apenas os próprios jogos
+            const gamesToCount = user.role === 'aluno' ? allGames : allGames.filter(game => game.userId === user.id);
+            setGamesCount(gamesToCount.length);
         } catch (error) {
             console.error('Erro ao buscar contagem de jogos:', error);
             setGamesCount(0);
