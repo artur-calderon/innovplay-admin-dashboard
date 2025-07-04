@@ -29,6 +29,7 @@ const ReadOnlyEditor = ({ content }: { content: string | null | undefined }) => 
         extensions: [
             StarterKit,
             ResizableImage.configure({
+                inline: true,
                 allowBase64: true,
                 HTMLAttributes: {
                     class: 'max-w-full h-auto',

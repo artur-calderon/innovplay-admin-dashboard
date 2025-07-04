@@ -17,7 +17,6 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import QuestionPreview from "@/components/evaluations/questions/QuestionPreview";
 import { useToast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
-import { getDifficultyColor } from "@/lib/utils";
 
 
 // Estilos customizados para skeleton mais fluído
@@ -390,7 +389,7 @@ const QuestionsPage = () => {
         
         await Promise.allSettled(promises);
       } catch (error) {
-        console.error("Erro ao buscar dados iniciais:", error);
+        console.error("Failed to fetch initial data", error);
       }
     };
     
@@ -403,7 +402,9 @@ const QuestionsPage = () => {
     
     // Verificar se já está fazendo fetch da mesma chave
     if (!forceRefresh && isCurrentlyFetching === cacheKey) {
-
+      if (isDebugMode) {
+        console.log('🚫 Fetch já em andamento para:', cacheKey);
+      }
       return;
     }
     
@@ -413,7 +414,9 @@ const QuestionsPage = () => {
       setLoading(false);
       setError(null);
       setLoadingProgress(0);
-
+      if (isDebugMode) {
+        console.log('📦 Usando cache para:', cacheKey, questionsCache[cacheKey].length, 'itens');
+      }
       return;
     }
     
@@ -423,7 +426,9 @@ const QuestionsPage = () => {
       setLoading(false);
       setError(null);
       setLoadingProgress(0);
-
+      if (isDebugMode) {
+        console.log('🗳️ Resultado vazio conhecido para:', cacheKey);
+      }
       return;
     }
 
@@ -1051,7 +1056,15 @@ const QuestionsPage = () => {
           </Badge>
           <Badge 
             variant="outline"
-            className={`text-xs font-medium ${getDifficultyColor(question.difficulty)}`}
+            className={`text-xs font-medium ${
+              question.difficulty === 'Avançado' 
+                ? 'bg-green-800 text-green-100 border-green-700' 
+                : question.difficulty === 'Adequado' 
+                ? 'bg-green-100 text-green-800 border-green-300' 
+                : question.difficulty === 'Básico'
+                ? 'bg-yellow-100 text-yellow-800 border-yellow-300'
+                : 'bg-red-100 text-red-800 border-red-300'
+            }`}
           >
             {question.difficulty}
           </Badge>
@@ -1361,7 +1374,15 @@ const QuestionsPage = () => {
                     <td className="px-3 py-2">
                       <Badge 
                         variant="outline"
-                        className={`text-xs ${getDifficultyColor(question.difficulty)}`}
+                        className={`text-xs ${
+                          question.difficulty === 'Avançado' 
+                            ? 'bg-green-800 text-green-100 border-green-700' 
+                            : question.difficulty === 'Adequado' 
+                            ? 'bg-green-100 text-green-800 border-green-300' 
+                            : question.difficulty === 'Básico'
+                            ? 'bg-yellow-100 text-yellow-800 border-yellow-300'
+                            : 'bg-red-100 text-red-800 border-red-300'
+                        }`}
                       >
                         {question.difficulty}
                       </Badge>

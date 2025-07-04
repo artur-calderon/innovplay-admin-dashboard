@@ -129,8 +129,6 @@ interface QuestionFormProps {
 }
 
 interface SkillOption {
-  subjectId: string;
-  educationStageId: string;
   id: string;
   name: string;
   code: string;
@@ -364,13 +362,13 @@ const QuestionForm = ({
               }
               
               // Se é array de objetos com id
-              return (skills as { id: string }[]).map((skill) => skill.id);
+              return skills.map((skill: { id: string }) => skill.id);
             }
             
             return [];
           };
 
-          const formData: QuestionFormValues = { // Keep the explicit type here for clarity
+          const formData = {
             title: questionData.title || "",
             text: questionData.formattedText || questionData.text || "",
             educationStageId: questionData.educationStage?.id || "",
@@ -382,8 +380,7 @@ const QuestionForm = ({
             options: questionData.options || [],
             secondStatement: questionData.secondStatement || "",
             skills: normalizeSkills(questionData.skills),
-            // Now that questionData.type is correctly typed, you can use it directly
-            questionType: questionData.type as "multipleChoice" | "open",
+            questionType: questionData.type === 'open' ? 'open' : 'multipleChoice',
           };
 
           // Map API data to form values
@@ -465,8 +462,6 @@ const QuestionForm = ({
               name: `${skill.code} - ${skill.description}`,
               code: skill.code,
               description: skill.description,
-              subjectId: selectedSubjectId,
-              educationStageId: selectedEducationStageId,
             }));
             setSkills(formattedSkills);
           } else {
@@ -581,16 +576,16 @@ const QuestionForm = ({
   useEffect(() => {
     if (selectedEducationStageId && selectedSubjectId) {
       const matchingSkill = skills.find(skill => 
-        skill.educationStageId === selectedEducationStageId && 
-        skill.subjectId === selectedSubjectId
+        skill.education_stage === selectedEducationStageId && 
+        skill.subject === selectedSubjectId
       );
       
       if (matchingSkill) {
         // Resetar a seleção anterior
-        form.setValue('skills', []);
+        form.setValue('skill', '');
         
         // Configurar nova skill
-        form.setValue('skills', [matchingSkill.id]);
+        form.setValue('skill', matchingSkill.id);
       }
     }
   }, [selectedEducationStageId, selectedSubjectId, skills, form]);
@@ -628,7 +623,7 @@ const QuestionForm = ({
               subject: subjects.find(s => s.id === formData.subjectId) || { id: formData.subjectId, name: 'Carregando...' },
               grade: grades.find(g => g.id === formData.grade) || { id: formData.grade, name: 'Carregando...' },
               difficulty: formData.difficulty,
-              value: Number(formData.value),
+              value: formData.value,
               solution: formData.solution || '',
               formattedSolution: formData.solution || '',
               options: formData.questionType === 'multipleChoice' ? formData.options.map((o, i) => ({ 

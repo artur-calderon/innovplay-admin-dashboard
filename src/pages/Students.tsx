@@ -98,24 +98,24 @@ export default function Students() {
   useEffect(() => {
     api.get(`/students/school/${id}`).then((res) => {
       setStudents(res.data);
-    }).catch(() => {});
+    }).catch(e => console.log(e));
   }, [reloadAlunos, id]);
 
   useEffect(() => {
     api.get("/education_stages").then((res) => {
       setCourses(res.data);
-    }).catch(() => {});
+    }).catch(e => { console.log(e) });
 
     api.get("/grades/").then(res => {
       setGrades(res.data);
-    }).catch(() => {});
+    }).catch(e => console.log(e));
   }, []);
 
   useEffect(() => {
     if (selectedCourse.id) {
       api.get(`/education_stages/${selectedCourse.id}`).then(res => {
         setGradesByStage(res.data);
-      }).catch(() => {});
+      }).catch(e => console.log(e));
     }
   }, [selectedCourse]);
 
@@ -181,6 +181,7 @@ export default function Students() {
         description: `${data.fullName} foi adicionado com sucesso.`,
       });
     }).catch(e => {
+      console.log(e);
       toast({
         title: "Erro ao adicionar o aluno!",
         description: e.response?.data?.error || "Erro desconhecido",
@@ -217,7 +218,8 @@ export default function Students() {
   };
 
   const handleDeleteStudent = async (id: string) => {
-    await api.delete(`/students/${id}`).then(() => {
+    await api.delete(`/students/${id}`).then(res => {
+      console.log(res);
       toast({
         title: "Aluno removido",
         variant: "destructive",

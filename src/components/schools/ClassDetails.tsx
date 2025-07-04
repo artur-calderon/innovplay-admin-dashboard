@@ -60,7 +60,7 @@ interface Grade {
   education_stage_id: string;
 }
 
-export default function ClassDetails() {
+export function ClassDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();

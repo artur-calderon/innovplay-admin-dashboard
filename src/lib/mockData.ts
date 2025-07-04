@@ -1,5 +1,3 @@
-import { format, subDays, addDays } from 'date-fns';
-
 export interface EvaluationResult {
   id: string;
   evaluationId: string;
@@ -1134,66 +1132,45 @@ export const mockStudents = [
 ];
 
 // Avaliações em diferentes status
-export const mockEvaluations: MockEvaluation[] = [
+export const mockEvaluations = [
   {
     id: "eval-1",
     title: "Avaliação de Matemática - 1º Bimestre",
-    description: "Avaliação bimestral focada em operações básicas, frações e geometria plana",
     status: "active",
     subject: "Matemática",
     grade: "5º Ano",
-    startDate: format(new Date(), "yyyy-MM-dd'T'08:00:00'Z'"),
-    endDate: format(addDays(new Date(), 1), "yyyy-MM-dd'T'10:00:00'Z'"),
+    startDate: "2024-01-15T08:00:00Z",
+    endDate: "2024-01-15T10:00:00Z",
     duration: 120,
-    questions: 15,
-    students: 25,
-    createdAt: format(subDays(new Date(), 5), "yyyy-MM-dd'T'10:00:00'Z'"),
-    createdBy: "Prof. Maria Silva"
+    questions: mockQuestions.slice(0, 15),
+    students: mockStudents.slice(0, 15),
+    createdAt: "2024-01-10T10:00:00Z"
   },
   {
-    id: "eval-2", 
-    title: "Simulado de Português - Interpretação",
-    description: "Simulado preparatório com foco em interpretação de texto e gramática",
+    id: "eval-2",
+    title: "Simulado de Português - Preparatório",
     status: "correction",
-    subject: "Português", 
+    subject: "Português",
     grade: "5º Ano",
-    startDate: format(subDays(new Date(), 2), "yyyy-MM-dd'T'14:00:00'Z'"),
-    endDate: format(subDays(new Date(), 2), "yyyy-MM-dd'T'16:00:00'Z'"),
+    startDate: "2024-01-14T14:00:00Z",
+    endDate: "2024-01-14T16:00:00Z",
     duration: 90,
-    questions: 12,
-    students: 23,
-    createdAt: format(subDays(new Date(), 7), "yyyy-MM-dd'T'09:00:00'Z'"),
-    createdBy: "Prof. João Santos"
+    questions: mockQuestions.slice(15, 25),
+    students: mockStudents.slice(0, 12),
+    createdAt: "2024-01-08T09:00:00Z"
   },
   {
     id: "eval-3",
-    title: "Prova de Ciências - Sistema Solar",
-    description: "Avaliação sobre sistema solar, estados da matéria e seres vivos",
+    title: "Prova de Ciências - Água e Solo",
     status: "completed",
-    subject: "Ciências",  grade: "5º Ano", 
-    startDate: format(subDays(new Date(), 5), "yyyy-MM-dd'T'10:00:00'Z'"),
-    endDate: format(subDays(new Date(), 5), "yyyy-MM-dd'T'11:30:00'Z'"),
-    duration: 90,    questions: 10,
-    students: 25,
-    createdAt: format(subDays(new Date(), 10), "yyyy-MM-dd'T'14:00:00'Z'"),
-    createdBy: "Prof. Ana Costa",
-    results: {
-      totalStudents: 25,
-      completedStudents: 23,
-      pendingStudents: 2,
-      averageScore: 7.8,
-      maxScore: 9.5,
-      minScore: 4.2,
-      passRate: 87,
-      completionRate: 92,
-      topPerformers: ["student-1", "student-6", "student-12"],
-      needsSupport: ["student-4", "student-9", "student-14"],
-      byQuestion: {
-        "q1": { correctAnswers: 21, totalAnswers: 23, successRate: 91, averageTime: 45 },
-        "q2": { correctAnswers: 19, totalAnswers: 23, successRate: 83, averageTime: 62 },
-        "q3": { correctAnswers: 15, totalAnswers: 23, successRate: 65, averageTime: 120 }
-      }
-    }
+    subject: "Ciências",
+    grade: "5º Ano",
+    startDate: "2024-01-12T10:00:00Z",
+    endDate: "2024-01-12T11:30:00Z",
+    duration: 90,
+    questions: mockQuestions.slice(25, 30),
+    students: mockStudents.slice(0, 18),
+    createdAt: "2024-01-05T14:00:00Z"
   }
 ];
 
@@ -1226,176 +1203,3 @@ export const mockClasses = [
     grade: { id: "5", name: "5º Ano" }
   }
 ];
-
-// Dados mockados estruturados para demonstração completa
-import { allMockStudents } from './extendedMockData';
-export interface MockEvaluation {
-  id: string;
-  title: string;
-  description: string;
-  status: 'draft' | 'active' | 'correction' | 'completed' | 'expired';
-  subject: string;
-  grade: string;
-  startDate: string;
-  endDate: string;
-  duration: number; // em minutos
-  questions: number;
-  students: number;
-  createdAt: string;
-  createdBy: string;
-  studentAnswers?: Record<string, Record<string, string | number>>;
-  corrections?: Record<string, Record<string, string | number | boolean>>;
-  results?: MockEvaluationResults;
-}
-
-export interface MockQuestion {
-  id: string;
-  text: string;
-  type: 'multiple_choice' | 'true_false' | 'open' | 'multiple_answer' | string;
-  options?: string[] | { id: string; text: string; isCorrect: boolean }[];
-  correctAnswer?: string | string[];
-  points?: number;
-  difficulty: 'easy' | 'medium' | 'hard' | string;
-  subject: string | { id: string; name: string };
-  grade: string | { id: string; name: string };
-  skills: string[];
-  topic?: string;
-  createdBy?: string;
-  createdAt?: string;
-}
-
-export interface MockStudent {
-  id: string;
-  name: string;
-  email?: string;
-  grade: string;
-  class: string;
-  school: string;
-  status: 'active' | 'inactive';
-  profileType?: 'excellent' | 'good' | 'average' | 'struggling' | 'improving';
-  characteristics?: string[];
-  createdAt: string;
-}
-
-export interface MockEvaluationResults {
-  totalStudents: number;
-  completedStudents: number;
-  pendingStudents: number;
-  averageScore: number;
-  maxScore: number;
-  minScore: number;
-  passRate: number;
-  completionRate: number;
-  topPerformers: string[];
-  needsSupport: string[];
-  byQuestion: Record<string, {
-    correctAnswers: number;
-    totalAnswers: number;
-    successRate: number;
-    averageTime: number;
-  }>;
-}
-
-// ===== FUNÇÕES UTILITÁRIAS =====
-export const getEvaluationById = (id: string): MockEvaluation | undefined => {
-  return mockEvaluations.find(evaluation => evaluation.id === id);
-};
-
-export const getQuestionsBySubject = (subject: string): MockQuestion[] => {
-  return mockQuestions.filter(q => q.subject.name === subject);
-};
-
-export const getStudentsByClass = (className: string): MockStudent[] => {
-  return mockStudents.filter(s => s.class === className) as MockStudent[];
-};
-
-export const getAnswersForEvaluation = (evaluationId: string): Record<string, Record<string, string | number>> => {
-  // Filtrar respostas por avaliação (simplificado para demo)
-  return {
-    "student-1": {
-      "q1": "6,2",
-      "q2": "Verdadeiro",
-      "q3": "Resposta completa",
-      timeSpent: 85
-    },
-    "student-2": {
-      "q1": "6,2",
-      "q2": "Verdadeiro", 
-      "q3": "Resposta parcial",
-      timeSpent: 95
-    }
-  };
-};
-
-export const getCorrectionsForEvaluation = (evaluationId: string): Record<string, Record<string, string | number | boolean>> => {
-  // Filtrar correções por avaliação (simplificado para demo)
-  return {
-    "student-1": {
-      "q1": 2,
-      "q2": 2,
-      "q3": 3,
-      totalScore: 11,
-      percentage: 100,
-      isCorrect: true
-    },
-    "student-2": {
-      "q1": 2,
-      "q2": 2,
-      "q3": 2,
-      totalScore: 8,
-      percentage: 73,
-      isCorrect: false
-    }
-  };
-};
-
-// ===== DADOS PARA DASHBOARD =====
-export const getDashboardStats = () => {
-  return {
-    totalEvaluations: mockEvaluations.length,
-    activeEvaluations: mockEvaluations.filter(e => e.status === 'active').length,
-    pendingCorrections: mockEvaluations.filter(e => e.status === 'correction').length,
-    completedEvaluations: mockEvaluations.filter(e => e.status === 'completed').length,
-    totalStudents: 30, // Agora temos 30 alunos completos
-    activeStudents: 30, // Todos ativos
-    totalQuestions: 30, // 30 questões completas
-    questionsBySubject: {
-      'Matemática': 10, // 10 questões de matemática
-      'Português': 10, // 10 questões de português
-      'Ciências': 10  // 10 questões de ciências
-    },
-    // Estatísticas adicionais para demonstração
-    averagePerformance: 73.5,
-    studentsByProfile: {
-      excellent: 6,   // 20% - Excelentes
-      good: 8,        // 27% - Bons
-      average: 8,     // 27% - Médios
-      struggling: 4,  // 13% - Com dificuldades
-      improving: 4    // 13% - Melhorando
-    },
-    classDistribution: {
-      '5A': 10,
-      '5B': 10,
-      '5C': 10
-    },
-    recentActivity: {
-      evaluationsThisWeek: 2,
-      correctionsToday: 3,
-      newStudentsThisMonth: 5
-    },
-    bestSubject: 'Matemática',
-    averageTime: 85 // minutos
-  };
-};
-
-export default {
-  mockEvaluations,
-  mockQuestions,
-  mockStudents,
-  getEvaluationById,
-  getQuestionsBySubject,
-  getStudentsByClass,
-  getAnswersForEvaluation,
-  getCorrectionsForEvaluation,
-  getDashboardStats
-};

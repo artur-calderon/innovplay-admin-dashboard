@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Eye, Pencil, Trash2, ChevronLeft, ChevronRight, Filter, RefreshCw, Play } from "lucide-react";
+import { Search, Eye, Pencil, Trash2, ChevronLeft, ChevronRight, Filter, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
-import StartEvaluationModal from "./StartEvaluationModal";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,9 +51,6 @@ interface Evaluation {
   status?: string;
   grade?: { id: string; name: string };
   created_by?: string;
-  duration?: number; // Duração em minutos
-  startDateTime?: string; // Data de início quando ativada
-  endDateTime?: string; // Data de fim quando ativada
 }
 
 interface Subject {
@@ -186,8 +182,6 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
     model: 'all',
     grade: 'all'
   });
-  const [startModalOpen, setStartModalOpen] = useState(false);
-  const [selectedEvaluationToStart, setSelectedEvaluationToStart] = useState<Evaluation | null>(null);
   const itemsPerPage = 10;
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -381,38 +375,6 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
       model: 'all',
       grade: 'all'
     });
-  };
-
-  const handleStartEvaluation = (evaluation: Evaluation) => {
-    setSelectedEvaluationToStart(evaluation);
-    setStartModalOpen(true);
-  };
-
-  const handleConfirmStartEvaluation = async (startDateTime: string, endDateTime: string) => {
-    if (!selectedEvaluationToStart) return;
-
-    try {
-      // Aqui seria chamada a API para ativar a avaliação com as datas
-      await api.put(`/test/${selectedEvaluationToStart.id}/start`, {
-        startDateTime,
-        endDateTime,
-        status: 'active'
-      });
-
-      toast({
-        title: "Avaliação iniciada com sucesso!",
-        description: "A avaliação agora está disponível para os alunos na agenda",
-      });
-
-      // Recarregar a lista para refletir as mudanças
-      fetchEvaluations();
-    } catch (error) {
-      console.error("Erro ao iniciar avaliação:", error);
-      throw error; // Deixar o modal lidar com o erro
-    } finally {
-      setStartModalOpen(false);
-      setSelectedEvaluationToStart(null);
-    }
   };
 
   const hasActiveFilters = Object.values(filters).some(value => value !== 'all');
@@ -640,15 +602,6 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleStartEvaluation(evaluation)}
-                            title="Iniciar Avaliação"
-                            className="text-green-600 hover:text-green-700"
-                          >
-                            <Play className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
                             onClick={() => handleView(evaluation.id)}
                             title="Visualizar"
                           >
@@ -765,17 +718,6 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* Modal de Iniciar Avaliação */}
-      <StartEvaluationModal
-        isOpen={startModalOpen}
-        onClose={() => {
-          setStartModalOpen(false);
-          setSelectedEvaluationToStart(null);
-        }}
-        onConfirm={handleConfirmStartEvaluation}
-        evaluation={selectedEvaluationToStart}
-      />
     </div>
     </TooltipProvider>
   );

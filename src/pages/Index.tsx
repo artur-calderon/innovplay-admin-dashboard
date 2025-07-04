@@ -48,22 +48,29 @@ const Index = () => {
         try {
           setIsLoading(true);
 
-          // Simular delay de carregamento
-          await new Promise(resolve => setTimeout(resolve, 800));
+          // Fazer várias chamadas em paralelo para buscar as estatísticas
+          const promises = [
+            api.get("/school").then(res => res.data?.length || 0).catch(() => 0),
+            api.get("/test/").then(res => res.data?.length || 0).catch(() => 0),
+            api.get("/users/list").then(res => res.data?.users?.length || 0).catch(() => 0),
+            api.get("/questions/").then(res => res.data?.length || 0).catch(() => 0),
+          ];
 
-          // Usar dados mockados realistas
+          const [schoolCount, evaluationCount, userCount, questionCount] = await Promise.all(promises);
+
+          // Para dados que ainda não temos endpoints específicos, usar valores calculados ou padrão
           setStats({
-            students: 30, // 30 alunos mockados implementados
-            schools: 5, // Escolas mockadas
-            evaluations: 12, // Avaliações mockadas
-            games: 36, // Jogos mockados
-            users: 45, // Total de usuários (alunos + professores + admin)
-            onlineSupport: 18, // Plantões online
-            notices: 57, // Avisos sistema
-            certificates: 356, // Certificados emitidos
-            competitions: 12, // Competições ativas
-            olympics: 8, // Olimpíadas
-            playTv: 64, // Conteúdo Play TV
+            students: Math.floor(userCount * 0.7), // Estimativa: 70% dos usuários são alunos
+            schools: schoolCount,
+            evaluations: evaluationCount,
+            games: 36, // Placeholder - necessário criar endpoint
+            users: userCount,
+            onlineSupport: 18, // Placeholder - necessário criar endpoint
+            notices: 57, // Placeholder - necessário criar endpoint
+            certificates: 356, // Placeholder - necessário criar endpoint
+            competitions: 12, // Placeholder - necessário criar endpoint
+            olympics: 8, // Placeholder - necessário criar endpoint
+            playTv: 64, // Placeholder - necessário criar endpoint
           });
 
         } catch (error) {
