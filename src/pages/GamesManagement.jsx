@@ -154,7 +154,7 @@ const GamesManagement = () => {
                 <div className="flex gap-2">
                     <Button
                         variant="outline"
-                        onClick={() => window.location.href = '/app/jogos/adicionar'}
+                        onClick={() => navigate('/app/jogos/adicionar')}
                         className="flex items-center gap-2"
                     >
                         <Plus className="w-4 h-4" />

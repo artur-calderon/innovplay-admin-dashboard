@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
@@ -19,6 +20,7 @@ const DISCIPLINAS = [
 ];
 
 const WordwallGameForm = () => {
+    const navigate = useNavigate();
     const { refetch: refetchGamesCount } = useGamesCount();
     const [url, setUrl] = useState('');
     const [subject, setSubject] = useState('Português');
@@ -106,7 +108,7 @@ const WordwallGameForm = () => {
 
             // Redirecionar para a página de jogos após 2 segundos
             setTimeout(() => {
-                window.location.href = '/app/jogos';
+                navigate('/app/jogos');
             }, 2000);
         } catch (error) {
             setError('Erro ao salvar o jogo. Tente novamente.');

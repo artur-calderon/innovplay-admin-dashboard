@@ -39,6 +39,12 @@ const TakeEvaluationPage = React.lazy(() => import("./pages/TakeEvaluationPage")
 const EvaluationCorrection = React.lazy(() => import("./pages/EvaluationCorrection"));
 const Results = React.lazy(() => import("./pages/Results"));
 
+// Lazy loading para componentes de jogos
+const GamesManagement = React.lazy(() => import("./pages/GamesManagement"));
+const AddGame = React.lazy(() => import("./pages/AddGame"));
+const StudentGames = React.lazy(() => import("./pages/StudentGames"));
+const GameView = React.lazy(() => import("./components/games/GameView"));
+
 // Loading component
 const LoadingSpinner = () => (
   <div className="flex items-center justify-center min-h-[50vh]">
@@ -77,78 +83,81 @@ const App = () => {
 
         <Suspense fallback={<LoadingSpinner />}>
           <Routes>
-          {/* Rota raiz - redireciona baseado no papel do usuário */}
-          <Route
-            path="/"
-            element={
-              user.id ? <Navigate to={getBaseRoute()} /> : <Login />
-            }
-          />
+            {/* Rota raiz - redireciona baseado no papel do usuário */}
+            <Route
+              path="/"
+              element={
+                user.id ? <Navigate to={getBaseRoute()} /> : <Login />
+              }
+            />
 
-          {/* Rotas do aluno */}
-          <Route path="/aluno" element={<Layout />}>
-            <Route index element={<PrivateRoute><Index /></PrivateRoute>} />
-            <Route path="/aluno/avaliacoes" element={<PrivateRoute><StudentEvaluations /></PrivateRoute>} />
-            <Route path="/aluno/agenda" element={<PrivateRoute><StudentAgenda /></PrivateRoute>} />
-            <Route path="/aluno/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
-            <Route path="/aluno/jogos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-            <Route path="/aluno/play-tv" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-            <Route path="/aluno/certificados" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-            <Route path="/aluno/competicoes" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-            <Route path="/aluno/olimpiadas" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-            <Route path="/aluno/escolas" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-            <Route path="/aluno/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
-            <Route path="/aluno/avisos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-          </Route>
+            {/* Rotas do aluno */}
+            <Route path="/aluno" element={<Layout />}>
+              <Route index element={<PrivateRoute><Index /></PrivateRoute>} />
+              <Route path="/aluno/avaliacoes" element={<PrivateRoute><StudentEvaluations /></PrivateRoute>} />
+              <Route path="/aluno/agenda" element={<PrivateRoute><StudentAgenda /></PrivateRoute>} />
+              <Route path="/aluno/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
+              <Route path="/aluno/jogos" element={<PrivateRoute><StudentGames /></PrivateRoute>} />
+              <Route path="/aluno/jogos/:id" element={<PrivateRoute><GameView /></PrivateRoute>} />
+              <Route path="/aluno/play-tv" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/aluno/certificados" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/aluno/competicoes" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/aluno/olimpiadas" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/aluno/escolas" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/aluno/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
+              <Route path="/aluno/avisos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+            </Route>
 
-          {/* Rotas do app (admin/professor/etc) */}
-          <Route path="/app" element={<Layout />}>
-            <Route index element={<PrivateRoute><Index /></PrivateRoute>} />
-            <Route path="/app/avaliacoes" element={<PrivateRoute><Evaluations /></PrivateRoute>} />
-            <Route path="/app/avaliacoes/correcao" element={<PrivateRoute><EvaluationCorrection /></PrivateRoute>} />
-            <Route path="/app/resultados" element={<PrivateRoute><Results /></PrivateRoute>} />
-            <Route path="/app/avaliacao/:id" element={<PrivateRoute><ViewEvaluation /></PrivateRoute>} />
-            <Route path="/app/avaliacao/:id/editar" element={<PrivateRoute><EditEvaluation /></PrivateRoute>} />
-            <Route path="/app/avaliacao/:id/fazer" element={<PrivateRoute><TakeEvaluationPage /></PrivateRoute>} />
-            <Route path="/app/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
-            <Route path="/app/criar-avaliacao" element={<PrivateRoute><CreateEvaluation /></PrivateRoute>} />
-            <Route path="/app/agenda" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-            <Route path="/app/jogos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-            <Route path="/app/play-tv" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-            <Route path="/app/plantao" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-            <Route path="/app/cartao-resposta" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-            <Route path="/app/certificados" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-            <Route path="/app/competicoes" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-            <Route path="/app/olimpiadas" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-            <Route path="/app/escolas" element={<PrivateRoute><Schools /></PrivateRoute>} />
-            <Route path="/app/city" element={<PrivateRoute><Cities /></PrivateRoute>} />
-            <Route path="/app/escola/:id" element={<PrivateRoute><SchoolDetails /></PrivateRoute>} />
-            <Route path="/app/turma/:id" element={<PrivateRoute><ClassDetails /></PrivateRoute>} />
-            <Route path="/app/escola/:id/adicionar-aluno" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-            <Route path="/app/escola/:id/criar-turma" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-            <Route path="/app/usuarios" element={<PrivateRoute><Users /></PrivateRoute>} />
-            <Route path="/app/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
-            <Route path="/app/avisos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-            <Route path="/app/configuracoes" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+            {/* Rotas do app (admin/professor/etc) */}
+            <Route path="/app" element={<Layout />}>
+              <Route index element={<PrivateRoute><Index /></PrivateRoute>} />
+              <Route path="/app/avaliacoes" element={<PrivateRoute><Evaluations /></PrivateRoute>} />
+              <Route path="/app/avaliacoes/correcao" element={<PrivateRoute><EvaluationCorrection /></PrivateRoute>} />
+              <Route path="/app/resultados" element={<PrivateRoute><Results /></PrivateRoute>} />
+              <Route path="/app/avaliacao/:id" element={<PrivateRoute><ViewEvaluation /></PrivateRoute>} />
+              <Route path="/app/avaliacao/:id/editar" element={<PrivateRoute><EditEvaluation /></PrivateRoute>} />
+              <Route path="/app/avaliacao/:id/fazer" element={<PrivateRoute><TakeEvaluationPage /></PrivateRoute>} />
+              <Route path="/app/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
+              <Route path="/app/criar-avaliacao" element={<PrivateRoute><CreateEvaluation /></PrivateRoute>} />
+              <Route path="/app/agenda" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/app/jogos" element={<PrivateRoute><GamesManagement /></PrivateRoute>} />
+              <Route path="/app/jogos/adicionar" element={<PrivateRoute><AddGame /></PrivateRoute>} />
+              <Route path="/app/jogos/:id" element={<PrivateRoute><GameView /></PrivateRoute>} />
+              <Route path="/app/play-tv" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/app/plantao" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/app/cartao-resposta" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/app/certificados" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/app/competicoes" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/app/olimpiadas" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/app/escolas" element={<PrivateRoute><Schools /></PrivateRoute>} />
+              <Route path="/app/city" element={<PrivateRoute><Cities /></PrivateRoute>} />
+              <Route path="/app/escola/:id" element={<PrivateRoute><SchoolDetails /></PrivateRoute>} />
+              <Route path="/app/turma/:id" element={<PrivateRoute><ClassDetails /></PrivateRoute>} />
+              <Route path="/app/escola/:id/adicionar-aluno" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/app/escola/:id/criar-turma" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/app/usuarios" element={<PrivateRoute><Users /></PrivateRoute>} />
+              <Route path="/app/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
+              <Route path="/app/avisos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/app/configuracoes" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
 
-            {/* Rotas de gerenciamento de questões */}
-            <Route path="/app/cadastros/questao" element={<PrivateRoute><QuestionsPage /></PrivateRoute>} />
-            <Route path="/app/cadastros/questao/criar" element={<PrivateRoute><CreateQuestionPage /></PrivateRoute>} />
-            <Route path="/app/cadastros/questao/editar/:id" element={<PrivateRoute><EditQuestionPage /></PrivateRoute>} />
-            
-            {/* Rotas de gerenciamento de turmas */}
-            <Route path="/app/cadastros/turma" element={<PrivateRoute><Turmas /></PrivateRoute>} />
-            
-            {/* Rotas de cadastros institucionais */}
-            <Route path="/app/cadastros/instituicao" element={<PrivateRoute><Instituicao /></PrivateRoute>} />
-            <Route path="/app/cadastros/curso" element={<PrivateRoute><Curso /></PrivateRoute>} />
-            <Route path="/app/cadastros/serie" element={<PrivateRoute><Serie /></PrivateRoute>} />
-            <Route path="/app/cadastros/disciplina" element={<PrivateRoute><Disciplina /></PrivateRoute>} />
-          </Route>
+              {/* Rotas de gerenciamento de questões */}
+              <Route path="/app/cadastros/questao" element={<PrivateRoute><QuestionsPage /></PrivateRoute>} />
+              <Route path="/app/cadastros/questao/criar" element={<PrivateRoute><CreateQuestionPage /></PrivateRoute>} />
+              <Route path="/app/cadastros/questao/editar/:id" element={<PrivateRoute><EditQuestionPage /></PrivateRoute>} />
 
-          {/* Rota 404 para outras rotas não encontradas */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+              {/* Rotas de gerenciamento de turmas */}
+              <Route path="/app/cadastros/turma" element={<PrivateRoute><Turmas /></PrivateRoute>} />
+
+              {/* Rotas de cadastros institucionais */}
+              <Route path="/app/cadastros/instituicao" element={<PrivateRoute><Instituicao /></PrivateRoute>} />
+              <Route path="/app/cadastros/curso" element={<PrivateRoute><Curso /></PrivateRoute>} />
+              <Route path="/app/cadastros/serie" element={<PrivateRoute><Serie /></PrivateRoute>} />
+              <Route path="/app/cadastros/disciplina" element={<PrivateRoute><Disciplina /></PrivateRoute>} />
+            </Route>
+
+            {/* Rota 404 para outras rotas não encontradas */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
         </Suspense>
       </TooltipProvider>
     </QueryClientProvider>
