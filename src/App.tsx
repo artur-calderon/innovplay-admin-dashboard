@@ -35,6 +35,8 @@ import StudentAgenda from "./pages/StudentAgenda";
 import TakeEvaluationPage from "./pages/TakeEvaluationPage";
 import EvaluationCorrection from "./pages/EvaluationCorrection";
 import Results from "./pages/Results";
+import GamesManagement from "./pages/GamesManagement";
+import AddGame from "./pages/AddGame";
 
 const queryClient = new QueryClient();
 
@@ -102,7 +104,8 @@ const App = () => {
             <Route path="/app/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
             <Route path="/app/criar-avaliacao" element={<PrivateRoute><CreateEvaluation /></PrivateRoute>} />
             <Route path="/app/agenda" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-            <Route path="/app/jogos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+            <Route path="/app/jogos" element={<PrivateRoute><GamesManagement /></PrivateRoute>} />
+            <Route path="/app/jogos/adicionar" element={<PrivateRoute><AddGame /></PrivateRoute>} />
             <Route path="/app/play-tv" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/app/plantao" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
             <Route path="/app/cartao-resposta" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
@@ -124,10 +127,10 @@ const App = () => {
             <Route path="/app/cadastros/questao" element={<PrivateRoute><QuestionsPage /></PrivateRoute>} />
             <Route path="/app/cadastros/questao/criar" element={<PrivateRoute><CreateQuestionPage /></PrivateRoute>} />
             <Route path="/app/cadastros/questao/editar/:id" element={<PrivateRoute><EditQuestionPage /></PrivateRoute>} />
-            
+
             {/* Rotas de gerenciamento de turmas */}
             <Route path="/app/cadastros/turma" element={<PrivateRoute><Turmas /></PrivateRoute>} />
-            
+
             {/* Rotas de cadastros institucionais */}
             <Route path="/app/cadastros/instituicao" element={<PrivateRoute><Instituicao /></PrivateRoute>} />
             <Route path="/app/cadastros/curso" element={<PrivateRoute><Curso /></PrivateRoute>} />
