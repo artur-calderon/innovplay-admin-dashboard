@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,283 +8,475 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Clock, ChevronLeft, ChevronRight, Send, Flag, Home, AlertTriangle, Loader2 } from "lucide-react";
+import { Clock, ChevronLeft, ChevronRight, Send, Flag, Home, Play } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { useEvaluationStore } from "@/stores/useEvaluationStore"; // Importa o store!
+
+interface Question {
+  id: string;
+  number: number;
+  type: "multiple_choice" | "true_false" | "essay" | "multiple_answer";
+  text: string;
+  options?: { id: string; text: string; }[];
+  points: number;
+}
+
+interface EvaluationData {
+  id: string;
+  title: string;
+  subject: { name: string };
+  duration: number;
+  questions: Question[];
+}
+
+interface Answer {
+  questionId: string;
+  answer: string | string[] | null;
+  isMarked: boolean;
+}
 
 export default function TakeEvaluationPage() {
-    const { id: evaluationId } = useParams<{ id: string }>();
-    const navigate = useNavigate();
-    const { user } = useAuth(); // Assume que o user.id existe, ou pode usar um ID mockado
-    const { toast } = useToast();
+  const { id: evaluationId } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { toast } = useToast();
 
-    const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-    const [showSubmitDialog, setShowSubmitDialog] = useState(false);
+  const [evaluationData, setEvaluationData] = useState<EvaluationData | null>(null);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [answers, setAnswers] = useState<Record<string, Answer>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSubmitDialog, setShowSubmitDialog] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(true);
+  const [timeRemaining, setTimeRemaining] = useState(0);
+  const [isTimeUp, setIsTimeUp] = useState(false);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    loadEvaluationData();
+  }, [evaluationId]);
+
+  useEffect(() => {
+    if (timeRemaining > 0 && !isTimeUp) {
+      intervalRef.current = setInterval(() => {
+        setTimeRemaining(prev => {
+          const newTime = prev - 1;
+          
+          if (newTime === 300) {
+            toast({
+              title: "⏰ Atenção!",
+              description: "Restam apenas 5 minutos",
+              variant: "destructive",
+            });
+          }
+          
+          if (newTime <= 0) {
+            setIsTimeUp(true);
+            handleTimeUp();
+            return 0;
+          }
+          
+          return newTime;
+        });
+      }, 1000);
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [timeRemaining, isTimeUp]);
+
+  const loadEvaluationData = async () => {
+    try {
+      // Tentar carregar dados reais
+      const response = await api.get(`/evaluations/${evaluationId}/take`);
+      setEvaluationData(response.data);
+      setTimeRemaining(response.data.timeRemaining);
+    } catch (error) {
+      // Dados mock para desenvolvimento
+      const mockData: EvaluationData = {
+        id: "eval-1",
+        title: "Avaliação de Matemática - 1º Bimestre",
+        subject: { name: "Matemática" },
+        duration: 90,
+        questions: [
+          {
+            id: "q1",
+            number: 1,
+            type: "multiple_choice",
+            text: "Qual é o resultado da operação 2,5 + 3,7?",
+            options: [
+              { id: "a", text: "5,2" },
+              { id: "b", text: "6,2" },
+              { id: "c", text: "6,1" },
+              { id: "d", text: "5,3" }
+            ],
+            points: 2
+          },
+          {
+            id: "q2",
+            number: 2,
+            type: "true_false",
+            text: "A fração 3/4 é equivalente a 0,75.",
+            points: 2
+          },
+          {
+            id: "q3",
+            number: 3,
+            type: "essay",
+            text: "Explique como você faria para somar as frações 1/4 + 2/3.",
+            points: 3
+          }
+        ]
+      };
+      
+      setEvaluationData(mockData);
+      setTimeRemaining(90 * 60); // 90 minutos
+    }
+  };
+
+  const handleAnswerChange = (questionId: string, answer: string | string[] | null) => {
+    setAnswers(prev => ({
+      ...prev,
+      [questionId]: {
+        questionId,
+        answer,
+        isMarked: prev[questionId]?.isMarked || false
+      }
+    }));
+  };
+
+  const handleMarkQuestion = (questionId: string) => {
+    setAnswers(prev => ({
+      ...prev,
+      [questionId]: {
+        ...prev[questionId],
+        questionId,
+        answer: prev[questionId]?.answer || null,
+        isMarked: !prev[questionId]?.isMarked
+      }
+    }));
+  };
+
+  const handleTimeUp = () => {
+    toast({
+      title: "⏰ Tempo esgotado!",
+      description: "A avaliação será enviada automaticamente",
+      variant: "destructive",
+    });
     
-    // Consumindo o store
-    const evaluationStore = useEvaluationStore();
-    const evaluationData = evaluationStore.evaluations;
-    const answers = (evaluationStore as any).answers || {};
-    const status = (evaluationStore as any).status || "";
-    const timeRemaining = (evaluationStore as any).timeRemaining || 0;
-    const isTimeUp = (evaluationStore as any).isTimeUp || false;
-    const error = (evaluationStore as any).error;
-    const loadAndStartEvaluation = (evaluationStore as any).loadAndStartEvaluation;
-    const setAnswer = (evaluationStore as any).setAnswer;
-    const toggleMark = (evaluationStore as any).toggleMark;
-    const tick = (evaluationStore as any).tick;
-    const submitEvaluation = (evaluationStore as any).submitEvaluation;
-    const resetState = (evaluationStore as any).resetState;
-    const studentId = user?.id || 'mock-student-id';
+    setTimeout(() => {
+      handleSubmitEvaluation(true);
+    }, 3000);
+  };
 
-    // Carregar avaliação ao montar o componente
-    useEffect(() => {
-        if (evaluationId) {
-            loadAndStartEvaluation(evaluationId, studentId);
-        }
-        return () => resetState();
-    }, [evaluationId, studentId, loadAndStartEvaluation, resetState]);
+  const handleSubmitEvaluation = async (automatic = false) => {
+    if (isSubmitting) return;
 
-    // Lógica do timer
-    useEffect(() => {
-        if (status === 'in_progress' && !isTimeUp) {
-            const interval = setInterval(tick, 1000);
-            return () => clearInterval(interval);
-        }
-    }, [status, isTimeUp, tick]);
+    try {
+      setIsSubmitting(true);
+      
+      const submissionData = {
+        evaluationId: evaluationData?.id,
+        studentId: user?.id,
+        answers: Object.values(answers),
+        submittedAt: new Date().toISOString(),
+        automatic
+      };
 
-    // Notificações e redirecionamento
-    useEffect(() => {
-        if (timeRemaining === 300) { // 5 minutos
-            toast({ title: "⏰ Atenção!", description: "Restam apenas 5 minutos.", variant: "destructive" });
-        }
-        if (isTimeUp && status !== 'submitting' && status !== 'completed') {
-            toast({ title: "⏰ Tempo esgotado!", description: "A avaliação foi enviada automaticamente.", variant: "destructive" });
-        }
-    }, [timeRemaining, isTimeUp, status, toast]);
+      // Enviar para o backend - POST /answers
+      await api.post(`/evaluations/${evaluationId}/answers`, submissionData);
 
-    useEffect(() => {
-        if (status === 'completed') {
-            toast({ title: "✅ Sucesso!", description: "Sua avaliação foi enviada." });
-            navigate("/app/avaliacoes");
-        }
-    }, [status, navigate, toast]);
+      toast({
+        title: "✅ Avaliação enviada com sucesso!",
+        description: automatic 
+          ? "Sua avaliação foi enviada automaticamente"
+          : "Suas respostas foram salvas",
+      });
 
-    // Função para confirmar e enviar
-    const handleSubmit = async () => {
-        await submitEvaluation(studentId);
-        setShowSubmitDialog(false);
-    };
-    
-    const formatTime = (seconds: number) => {
-        const minutes = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    };
+      navigate("/app/avaliacoes");
 
-    // --- Renderização Condicional ---
-
-    if (status === 'loading' || status === 'idle') {
-        return <div className="flex justify-center items-center h-screen gap-2"><Loader2 className="h-6 w-6 animate-spin" /> Carregando avaliação...</div>;
+    } catch (error) {
+      toast({
+        title: "Erro no envio",
+        description: "Não foi possível enviar a avaliação",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+      setShowSubmitDialog(false);
     }
+  };
 
-    if (status === 'error' || status === 'forbidden') {
-        return (
-            <div className="container mx-auto text-center py-10">
-                <AlertTriangle className="h-12 w-12 mx-auto text-red-500 mb-4" />
-                <h2 className="text-xl font-bold">Ocorreu um problema</h2>
-                <p className="text-muted-foreground">{error}</p>
-                <Button onClick={() => navigate('/app/avaliacoes')} className="mt-4"><Home className="mr-2 h-4 w-4"/> Voltar</Button>
-            </div>
-        );
-    }
+  const formatTime = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${minutes}:${secs.toString().padStart(2, '0')}`;
+  };
 
-    if (!evaluationData) {
-        return <div className="p-4">Nenhuma avaliação encontrada.</div>;
-    }
+  if (!evaluationData) {
+    return <div className="p-4">Carregando avaliação...</div>;
+  }
 
-    // A partir daqui, seu JSX completo da tela de avaliação...
-    // Ele funcionará perfeitamente com os dados do store mockado.
-    // Garante que evaluationData é um objeto antes de acessar .questions
-    type Question = {
-        id: string | number;
-        number: number;
-        [x: string]: any;
-        // ...outros campos relevantes
-    };
-
-    const questions: Question[] = (
-        evaluationData &&
-        typeof evaluationData === 'object' &&
-        !Array.isArray(evaluationData) &&
-        Array.isArray((evaluationData as any).questions)
-    )
-        ? (evaluationData as { questions: Question[] }).questions ?? []
-        : [];
-
-    const currentQuestion = questions[currentQuestionIndex];
-
-    const answeredCount = Object.values(answers).filter(
-        (a: any) => a && (a.answer !== null && a.answer !== '')
-    ).length;
-
+  // Tela de instruções
+  if (showInstructions) {
     return (
-        <div className="min-h-screen bg-gray-50">
-            {/* Header Fixo */}
-            <div className="sticky top-0 z-50 bg-white border-b shadow-sm">
-                <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-                    <div>
-                        <h1 className="font-semibold">
-                            {typeof evaluationData === 'object' && !Array.isArray(evaluationData) && 'title' in evaluationData
-                                ? (evaluationData as { title?: string }).title
-                                : ''}
-                        </h1>
-                        <div className="text-sm text-muted-foreground">
-                            Questão {currentQuestionIndex + 1} de {typeof evaluationData === 'object' && !Array.isArray(evaluationData) && Array.isArray((evaluationData as any).questions)
-                                ? ((evaluationData as { questions: any[] }).questions?.length ?? 0)
-                                : 0}
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        <Badge variant={timeRemaining <= 300 ? "destructive" : "default"} className={`flex items-center gap-1 font-mono text-lg px-3 py-1 ${timeRemaining <= 60 ? 'animate-pulse' : ''}`}>
-                            <Clock className="h-4 w-4" />
-                            {isTimeUp ? "ESGOTADO" : formatTime(timeRemaining)}
-                        </Badge>
-                        <Button className="w-full" onClick={() => setShowSubmitDialog(true)} disabled={isTimeUp || status === 'submitting'}>
-                            <Send className="h-4 w-4 mr-2" />
-                            Enviar Avaliação
-                        </Button>
-                    </div>
-                </div>
+      <div className="container mx-auto px-4 py-6 max-w-4xl">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-center">Instruções da Avaliação</CardTitle>
+            <div className="text-center space-y-2">
+              <h2 className="text-xl font-semibold">{evaluationData.title}</h2>
+              <Badge variant="outline">{evaluationData.subject.name}</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="text-center p-4 border rounded-lg">
+                <Clock className="h-8 w-8 mx-auto mb-2 text-blue-600" />
+                <div className="font-semibold">{evaluationData.duration} minutos</div>
+                <div className="text-sm text-muted-foreground">Tempo disponível</div>
+              </div>
+              <div className="text-center p-4 border rounded-lg">
+                <div className="font-semibold">{evaluationData.questions.length} questões</div>
+                <div className="text-sm text-muted-foreground">Total de questões</div>
+              </div>
+              <div className="text-center p-4 border rounded-lg">
+                <div className="font-semibold">Auto-save</div>
+                <div className="text-sm text-muted-foreground">Respostas salvas automaticamente</div>
+              </div>
             </div>
 
-            {/* Conteúdo Principal */}
-            <div className="container mx-auto px-4 py-6 grid gap-6 lg:grid-cols-4">
-                
-                {/* Navegação */}
-                <div className="lg:col-span-1">
-                    <Card className="sticky top-24">
-                        <CardHeader><CardTitle className="text-base">Navegação</CardTitle></CardHeader>
-                        <CardContent>
-                            <div className="grid grid-cols-5 gap-2">
-                                {questions.map((q, index) => (
-                                    <Button
-                                        key={q.id}
-                                        variant={currentQuestionIndex === index ? 'default' : answers[q.id]?.answer ? 'secondary' : 'outline'}
-                                        size="icon"
-                                        className={`relative ${answers[q.id]?.isMarked ? 'ring-2 ring-yellow-400' : ''}`}
-                                        onClick={() => setCurrentQuestionIndex(index)}
-                                    >
-                                        {q.number}
-                                        {answers[q.id]?.isMarked && <Flag className="h-3 w-3 absolute -top-1 -right-1 text-yellow-500 fill-current" />}
-                                    </Button>
-                                ))}
-                            </div>
-                            <Progress value={(answeredCount / questions.length) * 100} className="mt-4" />
-                            <p className="text-sm text-center text-muted-foreground mt-2">{answeredCount} de {questions.length} respondidas</p>
-                        </CardContent>
-                    </Card>
-                </div>
-
-                {/* Questão Atual */}
-                <div className="lg:col-span-3">
-                    <Card>
-                        <CardHeader>
-                            <div className="flex justify-between items-start">
-                                <CardTitle className="text-lg leading-relaxed">{currentQuestion.text ?? ""}</CardTitle>
-                                <Button variant="ghost" size="icon" onClick={() => toggleMark(currentQuestion.id)} disabled={isTimeUp}>
-                                    <Flag className={`h-5 w-5 ${answers[currentQuestion.id]?.isMarked ? 'text-yellow-500 fill-current' : 'text-muted-foreground'}`} />
-                                </Button>
-                            </div>
-                            <Badge variant="secondary">{currentQuestion.points} ponto(s)</Badge>
-                        </CardHeader>
-                        <CardContent>
-                            {/* Renderização da Resposta */}
-                            {"type" in currentQuestion && currentQuestion.type === "multiple_choice" && Array.isArray((currentQuestion as any).options) && (
-                                <RadioGroup
-                                    value={answers[currentQuestion.id]?.answer as string ?? ""}
-                                    onValueChange={(val) => setAnswer(currentQuestion.id, val, studentId)}
-                                    disabled={isTimeUp}
-                                    className="space-y-2"
-                                >
-                                    {(currentQuestion as any).options.map((opt: any) => (
-                                        <div key={opt.id} className="flex items-center space-x-2 p-3 border rounded-md has-[[data-state=checked]]:bg-blue-50">
-                                            <RadioGroupItem value={opt.id} id={`${currentQuestion.id}-${opt.id}`} />
-                                            <Label htmlFor={`${currentQuestion.id}-${opt.id}`} className="cursor-pointer text-base">{opt.text}</Label>
-                                        </div>
-                                    ))}
-                                </RadioGroup>
-                            )}
-                            {currentQuestion.type === "true_false" && (
-                                <RadioGroup
-                                    value={answers[currentQuestion.id]?.answer as string ?? ""}
-                                    onValueChange={(val) => setAnswer(currentQuestion.id, val, studentId)}
-                                    disabled={isTimeUp}
-                                    className="space-y-2"
-                                >
-                                    <div className="flex items-center space-x-2 p-3 border rounded-md has-[[data-state=checked]]:bg-blue-50">
-                                        <RadioGroupItem value="true" id={`${currentQuestion.id}-true`} />
-                                        <Label htmlFor={`${currentQuestion.id}-true`} className="cursor-pointer text-base">Verdadeiro</Label>
-                                    </div>
-                                    <div className="flex items-center space-x-2 p-3 border rounded-md has-[[data-state=checked]]:bg-blue-50">
-                                        <RadioGroupItem value="false" id={`${currentQuestion.id}-false`} />
-                                        <Label htmlFor={`${currentQuestion.id}-false`} className="cursor-pointer text-base">Falso</Label>
-                                    </div>
-                                </RadioGroup>
-                            )}
-                            {currentQuestion.type === "essay" && (
-                                <Textarea
-                                    value={answers[currentQuestion.id]?.answer as string ?? ""}
-                                    onChange={(e) => setAnswer(currentQuestion.id, e.target.value, studentId)}
-                                    disabled={isTimeUp}
-                                    rows={8}
-                                    placeholder="Digite sua resposta aqui..."
-                                />
-                            )}
-                        </CardContent>
-                        <div className="flex justify-between p-6 border-t">
-                            <Button
-                                variant="outline"
-                                onClick={() => setCurrentQuestionIndex(Math.max(0, currentQuestionIndex - 1))}
-                                disabled={currentQuestionIndex === 0 || isTimeUp}
-                            >
-                                <ChevronLeft className="h-4 w-4 mr-1" /> Anterior
-                            </Button>
-                            <Button
-                                onClick={() => setCurrentQuestionIndex(Math.min(questions.length - 1, currentQuestionIndex + 1))}
-                                disabled={currentQuestionIndex === questions.length - 1 || isTimeUp}
-                            >
-                                Próxima <ChevronRight className="h-4 w-4 ml-1" />
-                            </Button>
-                        </div>
-                    </Card>
-                </div>
+            <div className="text-center">
+              <p className="mb-4">Leia atentamente cada questão antes de responder. Você pode navegar entre as questões e marcar questões para revisão.</p>
+              <div className="flex justify-center gap-4">
+                <Button variant="outline" onClick={() => navigate("/app/avaliacoes")}>
+                  <Home className="h-4 w-4 mr-2" />
+                  Cancelar
+                </Button>
+                <Button onClick={() => setShowInstructions(false)} size="lg">
+                  <Play className="h-4 w-4 mr-2" />
+                  Iniciar Avaliação
+                </Button>
+              </div>
             </div>
-             
-             {/* Dialog de Confirmação */}
-            <AlertDialog open={showSubmitDialog} onOpenChange={setShowSubmitDialog}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Confirmar Envio</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Você tem certeza que deseja enviar a avaliação? Esta ação não pode ser desfeita.
-                            <div className="mt-4 space-y-1 text-sm text-foreground">
-                                <div>Respondidas: {answeredCount} de {questions.length}</div>
-                                <div>Tempo Restante: {formatTime(timeRemaining)}</div>
-                            </div>
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel disabled={status === 'submitting'}>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleSubmit} disabled={status === 'submitting'}>
-                            {status === 'submitting' ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Enviando...</> : "Confirmar e Enviar"}
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
-        </div>
+          </CardContent>
+        </Card>
+      </div>
     );
-}
+  }
+
+  const currentQuestion = evaluationData.questions[currentQuestionIndex];
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="sticky top-0 z-50 bg-white border-b shadow-sm">
+        <div className="container mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="font-semibold">{evaluationData.title}</h1>
+              <div className="text-sm text-muted-foreground">
+                Questão {currentQuestionIndex + 1} de {evaluationData.questions.length}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <Badge 
+                variant={timeRemaining <= 300 ? "destructive" : "default"}
+                className={`flex items-center gap-1 font-mono text-sm px-3 py-1 ${
+                  timeRemaining <= 300 ? 'animate-pulse' : ''
+                }`}
+              >
+                <Clock className="h-4 w-4" />
+                {isTimeUp ? "TEMPO ESGOTADO" : formatTime(timeRemaining)}
+              </Badge>
+              
+              <div className="text-right">
+                <div className="text-sm font-medium">
+                  {Math.round((Object.keys(answers).length / evaluationData.questions.length) * 100)}% concluído
+                </div>
+                <Progress 
+                  value={(Object.keys(answers).length / evaluationData.questions.length) * 100} 
+                  className="w-24 h-2" 
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="container mx-auto px-4 py-6">
+        <div className="grid gap-6 lg:grid-cols-4">
+          <div className="lg:col-span-1">
+            <Card className="sticky top-24">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Navegação</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-3 gap-2">
+                  {evaluationData.questions.map((question, index) => {
+                    const hasAnswer = answers[question.id]?.answer !== null && answers[question.id]?.answer !== "";
+                    const isMarked = answers[question.id]?.isMarked;
+                    
+                    return (
+                      <Button
+                        key={question.id}
+                        variant="outline"
+                        size="sm"
+                        className={`h-10 relative ${
+                          index === currentQuestionIndex ? 'ring-2 ring-blue-500' : ''
+                        } ${
+                          hasAnswer ? 'bg-green-100 border-green-300' :
+                          isMarked ? 'bg-yellow-100 border-yellow-300' :
+                          'bg-white'
+                        }`}
+                        onClick={() => setCurrentQuestionIndex(index)}
+                      >
+                        {question.number}
+                        {isMarked && (
+                          <Flag className="h-3 w-3 absolute -top-1 -right-1 text-orange-500" />
+                        )}
+                      </Button>
+                    );
+                  })}
+                </div>
+
+                <Button 
+                  className="w-full" 
+                  onClick={() => setShowSubmitDialog(true)}
+                  disabled={isTimeUp || isSubmitting}
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  Enviar Avaliação
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="lg:col-span-3">
+            <Card>
+              <CardHeader>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-3">
+                      <Badge variant="outline">Questão {currentQuestion.number}</Badge>
+                      <Badge variant="secondary">{currentQuestion.points} ponto{currentQuestion.points !== 1 ? 's' : ''}</Badge>
+                    </div>
+                    <CardTitle className="text-base leading-relaxed">
+                      {currentQuestion.text}
+                    </CardTitle>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleMarkQuestion(currentQuestion.id)}
+                    className={answers[currentQuestion.id]?.isMarked ? 'text-orange-600' : ''}
+                    disabled={isTimeUp}
+                  >
+                    <Flag className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {currentQuestion.type === "multiple_choice" && (
+                  <RadioGroup 
+                    value={answers[currentQuestion.id]?.answer as string || ""} 
+                    onValueChange={(value) => handleAnswerChange(currentQuestion.id, value)}
+                    disabled={isTimeUp}
+                  >
+                    {currentQuestion.options?.map((option) => (
+                      <div key={option.id} className="flex items-center space-x-2">
+                        <RadioGroupItem value={option.id} id={option.id} />
+                        <Label htmlFor={option.id} className="flex-1 cursor-pointer">
+                          {option.text}
+                        </Label>
+                      </div>
+                    ))}
+                  </RadioGroup>
+                )}
+
+                {currentQuestion.type === "true_false" && (
+                  <RadioGroup 
+                    value={answers[currentQuestion.id]?.answer as string || ""} 
+                    onValueChange={(value) => handleAnswerChange(currentQuestion.id, value)}
+                    disabled={isTimeUp}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="true" id="true" />
+                      <Label htmlFor="true" className="cursor-pointer">Verdadeiro</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="false" id="false" />
+                      <Label htmlFor="false" className="cursor-pointer">Falso</Label>
+                    </div>
+                  </RadioGroup>
+                )}
+
+                {currentQuestion.type === "essay" && (
+                  <Textarea
+                    placeholder="Digite sua resposta aqui..."
+                    value={answers[currentQuestion.id]?.answer as string || ""}
+                    onChange={(e) => handleAnswerChange(currentQuestion.id, e.target.value)}
+                    rows={6}
+                    disabled={isTimeUp}
+                  />
+                )}
+
+                <div className="flex justify-between pt-4">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setCurrentQuestionIndex(Math.max(0, currentQuestionIndex - 1))}
+                    disabled={currentQuestionIndex === 0 || isTimeUp}
+                  >
+                    <ChevronLeft className="h-4 w-4 mr-1" />
+                    Anterior
+                  </Button>
+
+                  <Button 
+                    onClick={() => setCurrentQuestionIndex(Math.min(evaluationData.questions.length - 1, currentQuestionIndex + 1))}
+                    disabled={currentQuestionIndex === evaluationData.questions.length - 1 || isTimeUp}
+                  >
+                    Próxima
+                    <ChevronRight className="h-4 w-4 ml-1" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+
+      <AlertDialog open={showSubmitDialog} onOpenChange={setShowSubmitDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar envio da avaliação</AlertDialogTitle>
+            <AlertDialogDescription>
+              Você tem certeza que deseja enviar sua avaliação?
+              
+              <div className="mt-4 space-y-2">
+                <div>Questões respondidas: {Object.keys(answers).length} de {evaluationData.questions.length}</div>
+                <div>Tempo restante: {formatTime(timeRemaining)}</div>
+              </div>
+
+              <div className="mt-4 text-sm text-orange-600">
+                ⚠️ Após enviar, você não poderá mais alterar suas respostas.
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSubmitting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => handleSubmitEvaluation(false)}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Enviando..." : "Confirmar Envio"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+} 

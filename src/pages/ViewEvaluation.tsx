@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Pencil, Trash2, ArrowLeft, Eye, Users, BookOpen, FileText, Calendar, User, MapPin, School } from "lucide-react";
+import { Pencil, Trash2, ArrowLeft, Eye, Users, BookOpen, FileText, Calendar, User, MapPin, School, Play } from "lucide-react";
 import { api } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +25,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import StartEvaluationModal from "@/components/evaluations/StartEvaluationModal";
 
 // Interfaces based on the provided JSON structure
 interface Author {
@@ -115,6 +116,7 @@ export default function ViewEvaluation() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showStartEvaluationModal, setShowStartEvaluationModal] = useState(false);
 
   useEffect(() => {
     const fetchEvaluation = async () => {
@@ -173,6 +175,42 @@ export default function ViewEvaluation() {
 
   const handleBack = () => {
     navigate("/app/avaliacoes");
+  };
+
+  const handleStartEvaluation = () => {
+    setShowStartEvaluationModal(true);
+  };
+
+  const handleConfirmStartEvaluation = async (startDateTime: string, endDateTime: string) => {
+    if (!evaluation) return;
+
+    try {
+      // Aqui seria chamada a API para ativar a avaliação com as datas
+      await api.put(`/test/${evaluation.id}/start`, {
+        startDateTime,
+        endDateTime,
+        status: 'active'
+      });
+
+      toast({
+        title: "Avaliação iniciada!",
+        description: `A avaliação "${evaluation.title}" foi ativada e agora está disponível na agenda dos alunos.`,
+      });
+
+      setShowStartEvaluationModal(false);
+      
+      // Recarregar os dados da avaliação para refletir o novo status
+      const response = await api.get(`/test/${evaluation.id}`);
+      setEvaluation(response.data);
+      
+    } catch (error) {
+      console.error("Erro ao iniciar avaliação:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível iniciar a avaliação. Tente novamente.",
+        variant: "destructive",
+      });
+    }
   };
 
   // Função para agrupar questões por matéria
@@ -362,6 +400,15 @@ export default function ViewEvaluation() {
         </div>
         
         <div className="flex flex-wrap gap-2">
+          <Button 
+            variant="default" 
+            size="sm" 
+            onClick={handleStartEvaluation}
+            className="bg-green-600 hover:bg-green-700 text-white"
+          >
+            <Play className="h-4 w-4 mr-2" />
+            Iniciar Avaliação
+          </Button>
           <Button variant="outline" size="sm" onClick={handleEdit}>
             <Pencil className="h-4 w-4 mr-2" />
             Editar
@@ -844,6 +891,14 @@ export default function ViewEvaluation() {
           ))
         )}
       </div>
+
+      {/* Modal de Iniciar Avaliação */}
+      <StartEvaluationModal
+        isOpen={showStartEvaluationModal}
+        onClose={() => setShowStartEvaluationModal(false)}
+        onConfirm={handleConfirmStartEvaluation}
+        evaluation={evaluation}
+      />
 
       {/* Dialog de confirmação de exclusão */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>

@@ -1,21 +1,20 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { api } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Users } from "lucide-react";
+import { allMockStudents } from "@/lib/extendedMockData";
 
 interface Student {
   id: string;
   name: string;
   email: string;
-  role: string;
-  created_at: string;
+  role?: string;
+  created_at?: string;
+  createdAt?: string;
   registration?: string;
-}
-
-interface ApiResponse {
-  users: Student[];
+  class?: string;
+  profileType?: string;
 }
 
 export default function RecentStudents() {
@@ -26,14 +25,25 @@ export default function RecentStudents() {
     const fetchRecentStudents = async () => {
       try {
         setIsLoading(true);
-        const response = await api.get<ApiResponse>("/users/list");
-        const allUsers = response.data?.users || [];
         
-        // Filtrar apenas alunos e pegar os 5 mais recentes
-        const recentStudents = allUsers
-          .filter((user: Student) => user.role === "aluno")
-          .sort((a: Student, b: Student) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-          .slice(0, 5);
+        // Simular delay de carregamento
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Usar dados mockados dos 30 alunos implementados
+        const recentStudents = allMockStudents
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, 5)
+          .map(student => ({
+            id: student.id,
+            name: student.name,
+            email: student.email,
+            role: "aluno",
+            created_at: student.createdAt,
+            createdAt: student.createdAt,
+            registration: `MAT-${student.id.split('-')[1].padStart(4, '0')}`,
+            class: student.class,
+            profileType: student.profileType
+          }));
         
         setStudents(recentStudents);
       } catch (error) {
@@ -88,13 +98,38 @@ export default function RecentStudents() {
               <div className="space-y-1">
                 <p className="font-medium text-sm">{student.name}</p>
                 <p className="text-xs text-muted-foreground">{student.email}</p>
-                {student.registration && (
-                  <p className="text-xs text-muted-foreground">Mat: {student.registration}</p>
+                <div className="flex items-center gap-2">
+                  {student.registration && (
+                    <p className="text-xs text-muted-foreground">Mat: {student.registration}</p>
+                  )}
+                  {student.class && (
+                    <p className="text-xs text-muted-foreground">Turma: {student.class}</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <Badge variant="secondary" className="text-xs">
+                  {student.role || "aluno"}
+                </Badge>
+                {student.profileType && (
+                  <Badge 
+                    variant="outline" 
+                    className={`text-xs ${
+                      student.profileType === 'excellent' ? 'border-green-500 text-green-700' :
+                      student.profileType === 'good' ? 'border-blue-500 text-blue-700' :
+                      student.profileType === 'average' ? 'border-yellow-500 text-yellow-700' :
+                      student.profileType === 'struggling' ? 'border-red-500 text-red-700' :
+                      'border-purple-500 text-purple-700'
+                    }`}
+                  >
+                    {student.profileType === 'excellent' ? 'Excelente' :
+                     student.profileType === 'good' ? 'Bom' :
+                     student.profileType === 'average' ? 'Médio' :
+                     student.profileType === 'struggling' ? 'Dificuldade' :
+                     'Melhorando'}
+                  </Badge>
                 )}
               </div>
-              <Badge variant="secondary" className="text-xs">
-                {student.role}
-              </Badge>
             </div>
           ))
         ) : (

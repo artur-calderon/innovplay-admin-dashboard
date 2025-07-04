@@ -100,8 +100,8 @@ export default function EvaluationStepper({ mode = "virtual", editMode = false, 
       const formData: EvaluationFormData = {
         title: evaluation.title,
         description: evaluation.description || "",
-        municipalities: evaluation.municipalities?.map((m: any) => m.id) || [],  
-        schools: evaluation.schools?.map((s: any) => s.id) || [],
+        municipalities: evaluation.municipalities?.map((m: { id: string }) => m.id) || [],  
+        schools: evaluation.schools?.map((s: { id: string }) => s.id) || [],
         course: evaluation.course?.id || "",
         grade: evaluation.grade?.id || "",
         classId: "", // Será preenchido com as classes
@@ -112,7 +112,7 @@ export default function EvaluationStepper({ mode = "virtual", editMode = false, 
         questions: evaluation.questions || [],
         startDateTime: evaluation.startDateTime || "",
         duration: evaluation.duration || "",
-        classes: evaluation.classes?.map((c: any) => c.id) || []
+        classes: evaluation.classes?.map((c: { id: string }) => c.id) || []
       };
       
       setEvaluationData(formData);
@@ -232,9 +232,11 @@ export default function EvaluationStepper({ mode = "virtual", editMode = false, 
       setHasUnsavedChanges(false);
       navigate("/app/avaliacoes");
       
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Erro ao salvar avaliação:", error);
-      const errorMessage = error.response?.data?.message || error.message || "Erro desconhecido";
+      const errorMessage = (error as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message || 
+                          (error as { message?: string })?.message || 
+                          "Erro desconhecido";
       toast({
         title: "Erro ao salvar avaliação",
         description: errorMessage,
