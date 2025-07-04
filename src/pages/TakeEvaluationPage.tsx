@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,22 +8,38 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Clock, ChevronLeft, ChevronRight, Send, Flag, Home, AlertTriangle, Loader2 } from "lucide-react";
+import { Clock, ChevronLeft, ChevronRight, Send, Flag, Home, Play, Loader2, AlertTriangle } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { useEvaluationStore } from "@/stores/useEvaluationStore"; // Importa o store!
+import { useEvaluationStore } from "@/stores/useEvaluationStore";
 import { Question } from "@/components/evaluations/types";
+
+interface EvaluationData {
+    id: string;
+    title: string;
+    subject: { name: string };
+    duration: number;
+    questions: Question[];
+}
+
+interface Answer {
+    questionId: string;
+    answer: string | string[] | null;
+    isMarked: boolean;
+}
 
 export default function TakeEvaluationPage() {
     const { id: evaluationId } = useParams<{ id: string }>();
     const navigate = useNavigate();
-    const { user } = useAuth(); // Assume que o user.id existe, ou pode usar um ID mockado
+    const { user } = useAuth();
     const { toast } = useToast();
 
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [showSubmitDialog, setShowSubmitDialog] = useState(false);
+    const [showInstructions, setShowInstructions] = useState(true);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Consumindo o store
     const evaluationStore = useEvaluationStore();
@@ -75,31 +91,6 @@ export default function TakeEvaluationPage() {
         }
     }, [evaluationId, studentId, evaluationData, startEvaluation]);
 
-    // Lógica do timer
-    useEffect(() => {
-        if (status === 'in_progress' && !isTimeUp) {
-            const interval = setInterval(tick, 1000);
-            return () => clearInterval(interval);
-        }
-    }, [status, isTimeUp, tick]);
-
-    // Notificações e redirecionamento
-    useEffect(() => {
-        if (timeRemaining === 300) { // 5 minutos
-            toast({ title: "⏰ Atenção!", description: "Restam apenas 5 minutos.", variant: "destructive" });
-        }
-        if (isTimeUp && status !== 'submitting' && status !== 'completed') {
-            toast({ title: "⏰ Tempo esgotado!", description: "A avaliação foi enviada automaticamente.", variant: "destructive" });
-        }
-    }, [timeRemaining, isTimeUp, status, toast]);
-
-    useEffect(() => {
-        if (status === 'completed') {
-            toast({ title: "✅ Sucesso!", description: "Sua avaliação foi enviada." });
-            navigate("/app/avaliacoes");
-        }
-    }, [status, navigate, toast]);
-
     // Função para confirmar e enviar
     const handleSubmit = async () => {
         await submitEvaluation(studentId);
@@ -132,10 +123,6 @@ export default function TakeEvaluationPage() {
     if (!evaluationData) {
         return <div className="p-4">Nenhuma avaliação encontrada.</div>;
     }
-
-    // A partir daqui, seu JSX completo da tela de avaliação...
-    // Ele funcionará perfeitamente com os dados do store mockado.
-    // Garante que evaluationData é um objeto antes de acessar .questions
 
     // Extrair questões da estrutura da API
     const questions: Question[] = (() => {
@@ -189,6 +176,121 @@ export default function TakeEvaluationPage() {
     const answeredCount = Object.values(answers).filter(
         (a: any) => a && (a.answer !== null && a.answer !== '')
     ).length;
+
+    // Tela de instruções
+    if (showInstructions) {
+        return (
+            <div className="container mx-auto px-4 py-6 max-w-4xl">
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="text-center">Instruções da Avaliação</CardTitle>
+                        <div className="text-center space-y-2">
+                            <h2 className="text-xl font-semibold">
+                                {(() => {
+                                    if (!evaluationData || typeof evaluationData !== 'object' || Array.isArray(evaluationData)) {
+                                        return '';
+                                    }
+
+                                    // Se tem title diretamente
+                                    if ((evaluationData as any).title) {
+                                        return (evaluationData as any).title;
+                                    }
+
+                                    // Se tem tests e o primeiro test tem title
+                                    if (Array.isArray((evaluationData as any).tests) && (evaluationData as any).tests.length > 0) {
+                                        const test = (evaluationData as any).tests[0];
+                                        if (test.test && test.test.title) {
+                                            return test.test.title;
+                                        }
+                                        if (test.test && test.test.description) {
+                                            return test.test.description;
+                                        }
+                                    }
+
+                                    // Se tem test diretamente
+                                    if ((evaluationData as any).test && (evaluationData as any).test.title) {
+                                        return (evaluationData as any).test.title;
+                                    }
+
+                                    return 'Avaliação';
+                                })()}
+                            </h2>
+                            <Badge variant="outline">
+                                {(() => {
+                                    if (!evaluationData || typeof evaluationData !== 'object' || Array.isArray(evaluationData)) {
+                                        return 'Matéria';
+                                    }
+
+                                    if ((evaluationData as any).subject?.name) {
+                                        return (evaluationData as any).subject.name;
+                                    }
+
+                                    if (Array.isArray((evaluationData as any).tests) && (evaluationData as any).tests.length > 0) {
+                                        const test = (evaluationData as any).tests[0];
+                                        if (test.test && test.test.subject?.name) {
+                                            return test.test.subject.name;
+                                        }
+                                    }
+
+                                    return 'Matéria';
+                                })()}
+                            </Badge>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        <div className="grid gap-4 md:grid-cols-3">
+                            <div className="text-center p-4 border rounded-lg">
+                                <Clock className="h-8 w-8 mx-auto mb-2 text-blue-600" />
+                                <div className="font-semibold">
+                                    {(() => {
+                                        if (!evaluationData || typeof evaluationData !== 'object' || Array.isArray(evaluationData)) {
+                                            return '90';
+                                        }
+
+                                        if ((evaluationData as any).duration) {
+                                            return (evaluationData as any).duration;
+                                        }
+
+                                        if (Array.isArray((evaluationData as any).tests) && (evaluationData as any).tests.length > 0) {
+                                            const test = (evaluationData as any).tests[0];
+                                            if (test.test && test.test.duration) {
+                                                return test.test.duration;
+                                            }
+                                        }
+
+                                        return '90';
+                                    })()} minutos
+                                </div>
+                                <div className="text-sm text-muted-foreground">Tempo disponível</div>
+                            </div>
+                            <div className="text-center p-4 border rounded-lg">
+                                <div className="font-semibold">{questions.length} questões</div>
+                                <div className="text-sm text-muted-foreground">Total de questões</div>
+                            </div>
+                            <div className="text-center p-4 border rounded-lg">
+                                <div className="font-semibold">Auto-save</div>
+                                <div className="text-sm text-muted-foreground">Respostas salvas automaticamente</div>
+                            </div>
+                        </div>
+
+                        <div className="text-center">
+                            <p className="mb-4">Leia atentamente cada questão antes de responder. Você pode navegar entre as questões e marcar questões para revisão.</p>
+                            <div className="flex justify-center gap-4">
+                                <Button variant="outline" onClick={() => navigate("/app/avaliacoes")}>
+                                    <Home className="h-4 w-4 mr-2" />
+                                    Cancelar
+                                </Button>
+                                <Button onClick={() => setShowInstructions(false)} size="lg">
+                                    <Play className="h-4 w-4 mr-2" />
+                                    Iniciar Avaliação
+                                </Button>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -371,4 +473,4 @@ export default function TakeEvaluationPage() {
             </AlertDialog>
         </div>
     );
-}
+} 

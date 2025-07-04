@@ -88,7 +88,7 @@ export function generateMockResultsData(): EvaluationResultsData[] {
   // Calcular quantos alunos cada avaliação deve ter para atingir o total
   const numEvaluations = 25;
   let remainingStudents = TARGET_TOTAL_STUDENTS;
-  let evaluationStudentCounts: number[] = [];
+  const evaluationStudentCounts: number[] = [];
   
   // Distribuir alunos entre as avaliações de forma realista (20-35 por avaliação)
   for (let i = 0; i < numEvaluations; i++) {
@@ -208,7 +208,7 @@ export function generateMockResultsData(): EvaluationResultsData[] {
       municipalityId: school.municipality.toLowerCase().replace(/\s+/g, '-'),
       appliedAt: appliedDate.toISOString(),
       correctedAt: status === 'completed' ? new Date(appliedDate.getTime() + 24 * 60 * 60 * 1000).toISOString() : undefined,
-      status: status as any,
+      status: status as 'pending' | 'in_progress' | 'completed',
       totalStudents,
       completedStudents,
       pendingStudents,
@@ -301,7 +301,7 @@ function generateStudentsData(
       wrongAnswers,
       blankAnswers,
       timeSpent,
-      status: Math.random() > 0.98 ? 'pending' : 'completed' as any
+      status: Math.random() > 0.98 ? 'pending' : 'completed' as 'pending' | 'completed'
     });
   }
   
@@ -417,7 +417,7 @@ function generateStudentsDataWithDistribution(
         wrongAnswers,
         blankAnswers,
         timeSpent,
-        status: Math.random() > 0.98 ? 'pending' : 'completed' as any
+        status: Math.random() > 0.98 ? 'pending' : 'completed' as 'pending' | 'completed'
       });
       
       studentIndex++;
@@ -539,4 +539,568 @@ export async function exportResults(ids: string[]): Promise<{ success: boolean; 
     success: true,
     message: `Exportação concluída para ${ids.length} avaliações`
   };
-} 
+}
+
+// Mock data for evaluation results - Enhanced for presentation
+export interface MockStudent {
+  id: string;
+  name: string;
+  email: string;
+  class: string;
+  grade: string;
+  profileType: 'excellent' | 'good' | 'average' | 'struggling' | 'improving';
+  characteristics: string[];
+}
+
+export interface MockEvaluationResult {
+  id: string;
+  studentId: string;
+  studentName: string;
+  evaluationId: string;
+  evaluationTitle: string;
+  subject: string;
+  grade: string;
+  class: string;
+  score: number;
+  maxScore: number;
+  percentage: number;
+  duration: number; // in minutes
+  submittedAt: string;
+  correctedAt?: string;
+  status: 'pending' | 'corrected' | 'reviewed';
+  questionResults: MockQuestionResult[];
+  feedback?: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  topics: string[];
+  skills: string[];
+  improvement_suggestions: string[];
+}
+
+export interface MockQuestionResult {
+  id: string;
+  questionNumber: number;
+  topic: string;
+  skill: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  points: number;
+  maxPoints: number;
+  correct: boolean;
+  timeSpent: number; // in seconds
+  attempts: number;
+  studentAnswer: string;
+  correctAnswer: string;
+  explanation?: string;
+}
+
+// Realistic student profiles for demonstration
+export const mockStudents: MockStudent[] = [
+  {
+    id: 'student-1',
+    name: 'Ana Clara Silva Santos',
+    email: 'ana.santos@escola.com',
+    class: '6º A',
+    grade: '6º Ano',
+    profileType: 'excellent',
+    characteristics: ['Participativa', 'Organizada', 'Líder natural', 'Boa concentração']
+  },
+  {
+    id: 'student-2', 
+    name: 'Bruno Henrique Costa Lima',
+    email: 'bruno.lima@escola.com',
+    class: '6º A',
+    grade: '6º Ano',
+    profileType: 'good',
+    characteristics: ['Colaborativo', 'Criativo', 'Questionador', 'Bom raciocínio']
+  },
+  {
+    id: 'student-3',
+    name: 'Carolina Oliveira Pereira',
+    email: 'carolina.pereira@escola.com',
+    class: '6º A',
+    grade: '6º Ano',
+    profileType: 'average',
+    characteristics: ['Esforçada', 'Tímida', 'Precisa de incentivo', 'Melhora com prática']
+  },
+  {
+    id: 'student-4',
+    name: 'Diego Alves Rodrigues',
+    email: 'diego.rodrigues@escola.com',
+    class: '6º A',
+    grade: '6º Ano',
+    profileType: 'struggling',
+    characteristics: ['Dispersa facilmente', 'Dificuldade em conceitos abstratos', 'Precisa apoio extra']
+  },
+  {
+    id: 'student-5',
+    name: 'Eduarda Fernandes Martins',
+    email: 'eduarda.martins@escola.com',
+    class: '6º A',
+    grade: '6º Ano',
+    profileType: 'improving',
+    characteristics: ['Dedicada', 'Melhorando gradualmente', 'Boa memória', 'Precisa confiança']
+  },
+  {
+    id: 'student-6',
+    name: 'Felipe Santos Barbosa',
+    email: 'felipe.barbosa@escola.com',
+    class: '6º A',
+    grade: '6º Ano',
+    profileType: 'excellent',
+    characteristics: ['Rápido para aprender', 'Independente', 'Ajuda colegas', 'Gosta de desafios']
+  },
+  {
+    id: 'student-7',
+    name: 'Gabriela Reis Souza',
+    email: 'gabriela.souza@escola.com',
+    class: '6º A',
+    grade: '6º Ano',
+    profileType: 'good',
+    characteristics: ['Detalhista', 'Caprichosa', 'Boa expressão escrita', 'Gosta de explicações']
+  },
+  {
+    id: 'student-8',
+    name: 'Henrique Cardoso Moreira',
+    email: 'henrique.moreira@escola.com',
+    class: '6º A',
+    grade: '6º Ano',
+    profileType: 'average',
+    characteristics: ['Sociável', 'Gosta de trabalho em grupo', 'Precisa organização', 'Potencial']
+  },
+  {
+    id: 'student-9',
+    name: 'Isabela Gomes Teixeira',
+    email: 'isabela.teixeira@escola.com',
+    class: '6º A',
+    grade: '6º Ano',
+    profileType: 'struggling',
+    characteristics: ['Falta confiança', 'Boa em atividades práticas', 'Precisa reforço', 'Colaborativa']
+  },
+  {
+    id: 'student-10',
+    name: 'João Pedro Almeida Cruz',
+    email: 'joao.cruz@escola.com',
+    class: '6º A',
+    grade: '6º Ano',
+    profileType: 'improving',
+    characteristics: ['Persistente', 'Curioso', 'Melhora com exemplos', 'Aprende fazendo']
+  },
+  {
+    id: 'student-11',
+    name: 'Larissa Mendes Rocha',
+    email: 'larissa.rocha@escola.com',
+    class: '6º A',
+    grade: '6º Ano',
+    profileType: 'good',
+    characteristics: ['Organizada', 'Faz perguntas relevantes', 'Boa concentração', 'Gosta de leitura']
+  },
+  {
+    id: 'student-12',
+    name: 'Matheus Ferreira Dias',
+    email: 'matheus.dias@escola.com',
+    class: '6º A',
+    grade: '6º Ano',
+    profileType: 'excellent',
+    characteristics: ['Pensamento crítico', 'Resolve problemas', 'Liderança', 'Ensina colegas']
+  },
+  {
+    id: 'student-13',
+    name: 'Nathalia Ribeiro Castro',
+    email: 'nathalia.castro@escola.com',
+    class: '6º A',
+    grade: '6º Ano',
+    profileType: 'average',
+    characteristics: ['Aplicada', 'Seguidor de instruções', 'Precisa estímulo', 'Melhora com prática']
+  },
+  {
+    id: 'student-14',
+    name: 'Otávio Monteiro Cunha',
+    email: 'otavio.cunha@escola.com',
+    class: '6º A',
+    grade: '6º Ano',
+    profileType: 'struggling',
+    characteristics: ['Dificuldade de concentração', 'Responde melhor ao visual', 'Precisa paciência']
+  },
+  {
+    id: 'student-15',
+    name: 'Priscila Araújo Nunes',
+    email: 'priscila.nunes@escola.com',
+    class: '6º A',
+    grade: '6º Ano',
+    profileType: 'improving',
+    characteristics: ['Esforçada', 'Aprende no seu ritmo', 'Gosta de reconhecimento', 'Criativa']
+  },
+  {
+    id: 'student-16',
+    name: 'Rafael Campos Lopes',
+    email: 'rafael.lopes@escola.com',
+    class: '6º A',
+    grade: '6º Ano',
+    profileType: 'good',
+    characteristics: ['Analítico', 'Gosta de desafios', 'Bom raciocínio lógico', 'Questionador']
+  },
+  {
+    id: 'student-17',
+    name: 'Sofia Carvalho Freitas',
+    email: 'sofia.freitas@escola.com',
+    class: '6º A',
+    grade: '6º Ano',
+    profileType: 'excellent',
+    characteristics: ['Comunicativa', 'Autodidata', 'Iniciativa', 'Inspira colegas']
+  },
+  {
+    id: 'student-18',
+    name: 'Thiago Melo Andrade',
+    email: 'thiago.andrade@escola.com',
+    class: '6º A',
+    grade: '6º Ano',
+    profileType: 'average',
+    characteristics: ['Participativo', 'Gosta de exemplos práticos', 'Precisa orientação', 'Colaborativo']
+  },
+  {
+    id: 'student-19',
+    name: 'Valentina Pires Correia',
+    email: 'valentina.correia@escola.com',
+    class: '6º A',
+    grade: '6º Ano',
+    profileType: 'struggling',
+    characteristics: ['Tímida', 'Precisa encorajamento', 'Melhora com apoio', 'Esforçada']
+  },
+  {
+    id: 'student-20',
+    name: 'William Navarro Silva',
+    email: 'william.silva@escola.com',
+    class: '6º A',
+    grade: '6º Ano',
+    profileType: 'improving',
+    characteristics: ['Determinado', 'Aprende com erros', 'Gosta de feedback', 'Evolui constantemente']
+  },
+  {
+    id: 'student-21',
+    name: 'Yasmin Torres Ribeiro',
+    email: 'yasmin.ribeiro@escola.com',
+    class: '6º A',
+    grade: '6º Ano',
+    profileType: 'good',
+    characteristics: ['Responsável', 'Pontual', 'Gosta de ordem', 'Boa memória']
+  },
+  {
+    id: 'student-22',
+    name: 'Zeca Moraes Santana',
+    email: 'zeca.santana@escola.com',
+    class: '6º A',
+    grade: '6º Ano',
+    profileType: 'average',
+    characteristics: ['Sociável', 'Aprende conversando', 'Precisa motivação', 'Bom potencial']
+  }
+];
+
+// Performance mapping based on profile types
+const performanceMapping = {
+  excellent: { min: 85, max: 100, consistency: 0.9 },
+  good: { min: 70, max: 89, consistency: 0.8 },
+  average: { min: 55, max: 75, consistency: 0.6 },
+  struggling: { min: 30, max: 60, consistency: 0.4 },
+  improving: { min: 45, max: 80, consistency: 0.5 }
+};
+
+// Generate realistic question results based on student profile
+function generateQuestionResults(studentProfile: MockStudent['profileType'], evaluationDifficulty: 'easy' | 'medium' | 'hard'): MockQuestionResult[] {
+  const questions: MockQuestionResult[] = [];
+  const performance = performanceMapping[studentProfile];
+  
+  // Topics for Mathematics 6th grade
+  const mathTopics = [
+    'Números Decimais', 'Frações', 'Porcentagem', 'Geometria Básica', 
+    'Medidas', 'Expressões Algébricas', 'Equações Simples', 'Gráficos',
+    'Razão e Proporção', 'Área e Perímetro'
+  ];
+  
+  const skills = [
+    'Cálculo Mental', 'Resolução de Problemas', 'Interpretação', 'Aplicação de Conceitos',
+    'Raciocínio Lógico', 'Análise de Dados', 'Comunicação Matemática', 'Modelagem'
+  ];
+  
+  for (let i = 1; i <= 15; i++) {
+    const topic = mathTopics[Math.floor(Math.random() * mathTopics.length)];
+    const skill = skills[Math.floor(Math.random() * skills.length)];
+    const maxPoints = Math.floor(Math.random() * 3) + 2; // 2-4 points per question
+    
+    // Determine if student got it right based on their profile and question difficulty
+    const difficultyMultiplier = evaluationDifficulty === 'easy' ? 1.2 : evaluationDifficulty === 'hard' ? 0.8 : 1.0;
+    const successProbability = (performance.min + Math.random() * (performance.max - performance.min)) / 100 * difficultyMultiplier;
+    const correct = Math.random() < successProbability;
+    
+    const baseTime = 120; // 2 minutes base
+    const timeMultiplier = studentProfile === 'excellent' ? 0.7 : studentProfile === 'struggling' ? 1.8 : 1.0;
+    const timeSpent = Math.floor(baseTime * timeMultiplier * (0.5 + Math.random()));
+    
+    questions.push({
+      id: `q${i}`,
+      questionNumber: i,
+      topic,
+      skill,
+      difficulty: evaluationDifficulty,
+      points: correct ? maxPoints : Math.floor(Math.random() * maxPoints),
+      maxPoints,
+      correct,
+      timeSpent,
+      attempts: Math.floor(Math.random() * 3) + 1,
+      studentAnswer: correct ? 'Resposta correta' : 'Resposta incorreta',
+      correctAnswer: 'Resposta modelo',
+      explanation: correct ? undefined : 'Revisar conceitos fundamentais deste tópico'
+    });
+  }
+  
+  return questions;
+}
+
+// Generate comprehensive evaluation results
+export function generateMockEvaluationResults(): MockEvaluationResult[] {
+  const results: MockEvaluationResult[] = [];
+  
+  // Different evaluation scenarios
+  const evaluations = [
+    {
+      id: 'eval-1',
+      title: 'Avaliação Bimestral - Matemática 1º Bimestre',
+      subject: 'Matemática',
+      difficulty: 'medium' as const,
+      topics: ['Números Decimais', 'Frações', 'Porcentagem'],
+      skills: ['Cálculo Mental', 'Resolução de Problemas', 'Interpretação']
+    },
+    {
+      id: 'eval-2',
+      title: 'Prova de Geometria - Figuras Planas',
+      subject: 'Matemática',
+      difficulty: 'hard' as const,
+      topics: ['Geometria Básica', 'Área e Perímetro', 'Figuras Geométricas'],
+      skills: ['Visualização Espacial', 'Aplicação de Fórmulas', 'Raciocínio Lógico']
+    },
+    {
+      id: 'eval-3',
+      title: 'Avaliação Diagnóstica - Operações Básicas',
+      subject: 'Matemática',
+      difficulty: 'easy' as const,
+      topics: ['Adição', 'Subtração', 'Multiplicação', 'Divisão'],
+      skills: ['Cálculo Mental', 'Algoritmos', 'Verificação']
+    }
+  ];
+  
+  mockStudents.forEach(student => {
+    evaluations.forEach(evaluation => {
+      const questionResults = generateQuestionResults(student.profileType, evaluation.difficulty);
+      const totalScore = questionResults.reduce((sum, q) => sum + q.points, 0);
+      const maxScore = questionResults.reduce((sum, q) => sum + q.maxPoints, 0);
+      const percentage = Math.round((totalScore / maxScore) * 100);
+      
+      // Generate realistic timestamps
+      const submittedAt = new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString();
+      const correctedAt = Math.random() > 0.3 ? new Date(Date.now() - Math.random() * 3 * 24 * 60 * 60 * 1000).toISOString() : undefined;
+      
+      // Calculate duration based on student profile
+      const baseDuration = 60; // 60 minutes
+      const durationMultiplier = student.profileType === 'excellent' ? 0.8 : student.profileType === 'struggling' ? 1.3 : 1.0;
+      const duration = Math.floor(baseDuration * durationMultiplier * (0.8 + Math.random() * 0.4));
+      
+      // Generate improvement suggestions based on performance
+      const improvementSuggestions = [];
+      const lowPerformanceTopics = questionResults
+        .filter(q => !q.correct)
+        .map(q => q.topic)
+        .filter((topic, index, arr) => arr.indexOf(topic) === index);
+      
+      if (lowPerformanceTopics.length > 0) {
+        improvementSuggestions.push(`Revisar conceitos de: ${lowPerformanceTopics.join(', ')}`);
+      }
+      
+      if (percentage < 60) {
+        improvementSuggestions.push('Praticar exercícios básicos para fortalecer a base');
+        improvementSuggestions.push('Buscar apoio pedagógico adicional');
+      } else if (percentage < 80) {
+        improvementSuggestions.push('Fazer mais exercícios de aplicação');
+        improvementSuggestions.push('Participar de grupos de estudo');
+      } else {
+        improvementSuggestions.push('Explorar exercícios mais desafiadores');
+        improvementSuggestions.push('Ajudar colegas com dificuldades');
+      }
+      
+      // Generate personalized feedback
+      const feedback = generatePersonalizedFeedback(student, percentage, questionResults);
+      
+      results.push({
+        id: `result-${student.id}-${evaluation.id}`,
+        studentId: student.id,
+        studentName: student.name,
+        evaluationId: evaluation.id,
+        evaluationTitle: evaluation.title,
+        subject: evaluation.subject,
+        grade: student.grade,
+        class: student.class,
+        score: totalScore,
+        maxScore,
+        percentage,
+        duration,
+        submittedAt,
+        correctedAt,
+        status: correctedAt ? 'corrected' : 'pending',
+        questionResults,
+        feedback,
+        difficulty: evaluation.difficulty,
+        topics: evaluation.topics,
+        skills: evaluation.skills,
+        improvement_suggestions: improvementSuggestions
+      });
+    });
+  });
+  
+  return results;
+}
+
+// Generate personalized feedback based on student profile and performance
+function generatePersonalizedFeedback(student: MockStudent, percentage: number, questionResults: MockQuestionResult[]): string {
+  const feedbackParts = [];
+  
+  // Opening based on performance
+  if (percentage >= 90) {
+    feedbackParts.push(`Excelente trabalho, ${student.name.split(' ')[0]}! Você demonstrou domínio excepcional dos conceitos.`);
+  } else if (percentage >= 80) {
+    feedbackParts.push(`Muito bom, ${student.name.split(' ')[0]}! Você teve um desempenho sólido.`);
+  } else if (percentage >= 70) {
+    feedbackParts.push(`Bom trabalho, ${student.name.split(' ')[0]}! Você está no caminho certo.`);
+  } else if (percentage >= 60) {
+    feedbackParts.push(`${student.name.split(' ')[0]}, você mostrou esforço, mas ainda há espaço para melhorias.`);
+  } else {
+    feedbackParts.push(`${student.name.split(' ')[0]}, vamos trabalhar juntos para superar essas dificuldades.`);
+  }
+  
+  // Specific strengths and areas for improvement
+  const correctAnswers = questionResults.filter(q => q.correct).length;
+  const totalQuestions = questionResults.length;
+  
+  if (correctAnswers > totalQuestions * 0.8) {
+    feedbackParts.push('Você demonstrou boa compreensão dos conceitos principais.');
+  } else if (correctAnswers > totalQuestions * 0.6) {
+    feedbackParts.push('Você acertou uma boa parte das questões, mas pode melhorar ainda mais.');
+  } else {
+    feedbackParts.push('Precisamos reforçar alguns conceitos fundamentais.');
+  }
+  
+  // Time management feedback
+  const avgTimePerQuestion = questionResults.reduce((sum, q) => sum + q.timeSpent, 0) / questionResults.length;
+  if (avgTimePerQuestion > 180) { // More than 3 minutes per question
+    feedbackParts.push('Tente gerenciar melhor o tempo durante as avaliações.');
+  } else if (avgTimePerQuestion < 60) { // Less than 1 minute per question
+    feedbackParts.push('Parabéns pelo bom gerenciamento do tempo!');
+  }
+  
+  // Personalized suggestions based on student characteristics
+  const characteristics = student.characteristics;
+  if (characteristics.includes('Precisa de incentivo')) {
+    feedbackParts.push('Continue se esforçando - você tem potencial para crescer muito!');
+  }
+  if (characteristics.includes('Gosta de desafios')) {
+    feedbackParts.push('Considere explorar exercícios mais avançados para continuar crescendo.');
+  }
+  if (characteristics.includes('Colaborativo')) {
+    feedbackParts.push('Sua participação e colaboração são valiosas para a turma.');
+  }
+  
+  return feedbackParts.join(' ');
+}
+
+// Demo scenarios for presentation
+export const presentationScenarios = {
+  teacherDashboard: {
+    title: 'Dashboard do Professor',
+    description: 'Visão geral das avaliações, desempenho da turma e tarefas pendentes',
+    highlights: [
+      'Métricas em tempo real',
+      'Identificação de alunos com dificuldades',
+      'Progresso da turma',
+      'Correções pendentes'
+    ]
+  },
+  
+  evaluationCreation: {
+    title: 'Criação de Avaliação',
+    description: 'Processo completo de criação de uma avaliação personalizada',
+    highlights: [
+      'Formulário intuitivo',
+      'Seleção de questões do banco',
+      'Configuração de tempo e dificuldade',
+      'Preview antes da publicação'
+    ]
+  },
+  
+  studentExperience: {
+    title: 'Experiência do Aluno',
+    description: 'Interface amigável para realização de avaliações',
+    highlights: [
+      'Timer visual',
+      'Navegação entre questões',
+      'Salvamento automático',
+      'Interface responsiva'
+    ]
+  },
+  
+  correctionProcess: {
+    title: 'Processo de Correção',
+    description: 'Correção eficiente com feedback personalizado',
+    highlights: [
+      'Correção automática para múltipla escolha',
+      'Interface para correção manual',
+      'Feedback personalizado',
+      'Análise estatística'
+    ]
+  },
+  
+  detailedReports: {
+    title: 'Relatórios Detalhados',
+    description: 'Análise completa do desempenho individual e da turma',
+    highlights: [
+      'Gráficos interativos',
+      'Identificação de dificuldades',
+      'Sugestões de melhoria',
+      'Comparação temporal'
+    ]
+  },
+  
+  exportFeatures: {
+    title: 'Funcionalidades de Exportação',
+    description: 'Exportação de dados em múltiplos formatos',
+    highlights: [
+      'Relatórios em PDF',
+      'Planilhas Excel',
+      'Dados CSV',
+      'Impressão otimizada'
+    ]
+  }
+};
+
+// Generate the complete mock dataset
+export const mockEvaluationResults = generateMockEvaluationResults();
+
+// Export summary statistics for quick access
+export const mockDataSummary = {
+  totalStudents: mockStudents.length,
+  totalEvaluations: mockEvaluationResults.length,
+  averageScore: Math.round(mockEvaluationResults.reduce((sum, r) => sum + r.percentage, 0) / mockEvaluationResults.length),
+  completionRate: Math.round((mockEvaluationResults.filter(r => r.status === 'corrected').length / mockEvaluationResults.length) * 100),
+  subjects: ['Matemática'],
+  grades: ['6º Ano'],
+  classes: ['6º A'],
+  profileDistribution: {
+    excellent: mockStudents.filter(s => s.profileType === 'excellent').length,
+    good: mockStudents.filter(s => s.profileType === 'good').length,
+    average: mockStudents.filter(s => s.profileType === 'average').length,
+    struggling: mockStudents.filter(s => s.profileType === 'struggling').length,
+    improving: mockStudents.filter(s => s.profileType === 'improving').length
+  }
+};
+
+export default {
+  mockStudents,
+  mockEvaluationResults,
+  mockDataSummary,
+  presentationScenarios
+}; 

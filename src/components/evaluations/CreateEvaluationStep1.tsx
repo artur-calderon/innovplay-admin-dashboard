@@ -52,8 +52,6 @@ const step1Schema = z.object({
     id: z.string(),
     name: z.string(),
   })).min(1, "Selecione pelo menos uma turma"),
-  startDateTime: z.string().min(1, "Selecione a data e hora de início"),
-  endDateTime: z.string().min(1, "Selecione a data e hora de término"),
   duration: z.string().min(1, "Informe a duração em minutos").regex(/^\d+$/, "Duração deve ser um número"),
 });
 
@@ -120,8 +118,6 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
       selectedSchools: [],
       subjects: initialData?.subjects || [],
       selectedClasses: initialData?.selectedClasses || [],
-      startDateTime: initialData?.startDateTime || "",
-      endDateTime: initialData?.endDateTime || "",
       duration: initialData?.duration || "60",
     },
   });
@@ -386,8 +382,6 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
         subjects: values.subjects as Subject[],
         selectedClasses: values.selectedClasses as ClassInfo[],
         subject: values.subjects[0]?.id || "", // Para compatibilidade
-        startDateTime: values.startDateTime,
-        endDateTime: values.endDateTime,
         duration: values.duration,
         state: values.state,
         municipality: values.municipality,
@@ -592,47 +586,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <FormField
-                control={form.control}
-                name="startDateTime"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Data e Hora de Início *</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="datetime-local"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      Quando a avaliação ficará disponível
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="endDateTime"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Data e Hora de Término *</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="datetime-local"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      Quando a avaliação será encerrada
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
+            <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
               <FormField
                 control={form.control}
                 name="duration"

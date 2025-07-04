@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { api } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FileText } from "lucide-react";
+import { mockEvaluations } from "@/lib/mockData";
 
 interface Evaluation {
   id: string;
@@ -13,7 +13,7 @@ interface Evaluation {
   created_at?: string;
   status?: string;
   questions_count?: number;
-  questions?: any[];
+  questions?: number | { length?: number };
 }
 
 export default function RecentEvaluations() {
@@ -24,14 +24,47 @@ export default function RecentEvaluations() {
     const fetchRecentEvaluations = async () => {
       try {
         setIsLoading(true);
-        const response = await api.get<Evaluation[]>("/test/");
-        const allEvaluations = response.data || [];
+        
+        // Simular delay de carregamento
+        await new Promise(resolve => setTimeout(resolve, 600));
+        
+        // Usar dados mockados das 3 avaliações implementadas + algumas adicionais
+        const additionalEvaluations = [
+          {
+            id: "eval-4",
+            title: "Simulado de História - Brasil Colonial",
+            subject: "História",
+            createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+            status: "active",
+            questions: 15
+          },
+          {
+            id: "eval-5", 
+            title: "Prova de Geografia - Regiões do Brasil",
+            subject: "Geografia",
+            createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+            status: "completed",
+            questions: 12
+          }
+        ];
+        
+        const allEvaluations = [
+          ...mockEvaluations.map(evaluation => ({
+            id: evaluation.id,
+            title: evaluation.title,
+            subject: evaluation.subject,
+            createdAt: evaluation.createdAt,
+            status: evaluation.status,
+            questions: evaluation.questions
+          })),
+          ...additionalEvaluations
+        ];
         
         // Pegar as 5 avaliações mais recentes
         const recentEvaluations = allEvaluations
-          .sort((a: Evaluation, b: Evaluation) => {
-            const dateA = new Date(a.createdAt || a.created_at || '').getTime();
-            const dateB = new Date(b.createdAt || b.created_at || '').getTime();
+          .sort((a, b) => {
+            const dateA = new Date(a.createdAt).getTime();
+            const dateB = new Date(b.createdAt).getTime();
             return dateB - dateA;
           })
           .slice(0, 5);
@@ -86,25 +119,43 @@ export default function RecentEvaluations() {
         {evaluations.length > 0 ? (
           evaluations.map((evaluation) => (
             <div key={evaluation.id} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
-              <div className="space-y-1">
+              <div className="space-y-1 flex-1">
                 <p className="font-medium text-sm line-clamp-1">{evaluation.title}</p>
-                {evaluation.subject && (
-                  <p className="text-xs text-muted-foreground">
-                    {typeof evaluation.subject === 'string' 
-                      ? evaluation.subject 
-                      : evaluation.subject.name
-                    }
-                  </p>
-                )}
-                {(evaluation.questions_count || evaluation.questions?.length) && (
-                  <p className="text-xs text-muted-foreground">
-                    {evaluation.questions_count || evaluation.questions?.length} questões
-                  </p>
-                )}
+                <div className="flex items-center gap-3">
+                  {evaluation.subject && (
+                    <p className="text-xs text-muted-foreground">
+                      {typeof evaluation.subject === 'string' 
+                        ? evaluation.subject 
+                        : evaluation.subject.name || evaluation.subject
+                      }
+                    </p>
+                  )}
+                  {(evaluation.questions_count || evaluation.questions) && (
+                    <p className="text-xs text-muted-foreground">
+                      {evaluation.questions_count || evaluation.questions || 0} questões
+                    </p>
+                  )}
+                </div>
               </div>
-              <Badge variant="outline" className="text-xs">
-                {evaluation.status || "Ativa"}
-              </Badge>
+              <div className="flex flex-col items-end gap-1">
+                <Badge 
+                  variant={
+                    evaluation.status === "active" ? "default" :
+                    evaluation.status === "correction" ? "secondary" :
+                    evaluation.status === "completed" ? "outline" :
+                    "outline"
+                  }
+                  className="text-xs"
+                >
+                  {evaluation.status === "active" ? "Ativa" :
+                   evaluation.status === "correction" ? "Correção" :
+                   evaluation.status === "completed" ? "Concluída" :
+                   evaluation.status || "Ativa"}
+                </Badge>
+                <p className="text-xs text-muted-foreground">
+                  {new Date(evaluation.createdAt || evaluation.created_at || Date.now()).toLocaleDateString('pt-BR')}
+                </p>
+              </div>
             </div>
           ))
         ) : (

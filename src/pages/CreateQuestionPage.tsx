@@ -27,7 +27,6 @@ const CreateQuestionPage = () => {
         value: questionData.value,
         solution: questionData.solution,
         skills: questionData.skills,
-        topics: questionData.topics,
         options: questionData.options,
         created_by: user?.id
       });
