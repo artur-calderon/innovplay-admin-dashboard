@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/componen
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { api } from '@/lib/api';
 import { ExternalLink, Plus, Save, AlertCircle, CheckCircle } from 'lucide-react';
+import { useGamesCount } from '@/hooks/useGamesCount';
 
 const DISCIPLINAS = [
     'Português',
@@ -18,6 +19,7 @@ const DISCIPLINAS = [
 ];
 
 const WordwallGameForm = () => {
+    const { refetch: refetchGamesCount } = useGamesCount();
     const [url, setUrl] = useState('');
     const [subject, setSubject] = useState('Português');
     const [isLoading, setIsLoading] = useState(false);
@@ -98,6 +100,14 @@ const WordwallGameForm = () => {
             setUrl('');
             setGameData(null);
             setSubject('Português');
+
+            // Atualizar contador no sidebar
+            refetchGamesCount();
+
+            // Redirecionar para a página de jogos após 2 segundos
+            setTimeout(() => {
+                window.location.href = '/app/jogos';
+            }, 2000);
         } catch (error) {
             setError('Erro ao salvar o jogo. Tente novamente.');
         } finally {
@@ -111,8 +121,7 @@ const WordwallGameForm = () => {
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <h2 className="text-2xl font-bold">Gerenciar Jogos Wordwall</h2>
+            <div className="flex justify-end">
                 <Button onClick={handleCreateGame} className="flex items-center gap-2">
                     <Plus className="w-4 h-4" />
                     Criar Jogo no Wordwall

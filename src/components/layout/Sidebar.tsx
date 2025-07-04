@@ -32,6 +32,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/context/authContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useGamesCount } from "@/hooks/useGamesCount";
 
 type SidebarLink = {
   icon: React.ElementType;
@@ -74,6 +75,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
 
   const navigate = useNavigate();
   const { logout, user } = useAuth();
+  const { gamesCount } = useGamesCount();
 
   function handleLogout() {
     logout().then(() => {
@@ -126,7 +128,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           label: "Jogos",
           href: `${user.role === 'aluno' ? "/aluno/jogos" : "/app/jogos"}`,
           role: ["admin", "professor", "aluno"],
-          badge: "3"
+          badge: gamesCount > 0 ? gamesCount.toString() : "0"
         },
         {
           icon: Tv,

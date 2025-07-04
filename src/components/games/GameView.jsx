@@ -21,8 +21,11 @@ const GameView = () => {
         try {
             setIsLoading(true);
             const response = await api.get(`/games/${id}`);
-            setGame(response.data);
+            // Verificar se a resposta tem a estrutura correta
+            const gameData = response.data.jogo || response.data;
+            setGame(gameData);
         } catch (error) {
+            console.error('Erro ao carregar jogo:', error);
             setError('Erro ao carregar o jogo');
         } finally {
             setIsLoading(false);
@@ -30,7 +33,9 @@ const GameView = () => {
     };
 
     const handleBack = () => {
-        navigate('/aluno/jogos');
+        // Verificar se o usuário é aluno ou admin/professor
+        const isStudent = window.location.pathname.includes('/aluno');
+        navigate(isStudent ? '/aluno/jogos' : '/app/jogos');
     };
 
     if (isLoading) {
@@ -66,10 +71,10 @@ const GameView = () => {
                     <div>
                         <h1 className="text-2xl font-bold">{game.title}</h1>
                         <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-                            {game.discipline && (
+                            {game.subject && (
                                 <div className="flex items-center gap-1">
                                     <BookOpen className="w-4 h-4" />
-                                    {game.discipline}
+                                    {game.subject}
                                 </div>
                             )}
                             {game.author && (
@@ -82,6 +87,12 @@ const GameView = () => {
                                 <div className="flex items-center gap-1">
                                     <Calendar className="w-4 h-4" />
                                     {new Date(game.createdAt).toLocaleDateString('pt-BR')}
+                                </div>
+                            )}
+                            {game.created_at && (
+                                <div className="flex items-center gap-1">
+                                    <Calendar className="w-4 h-4" />
+                                    {new Date(game.created_at).toLocaleDateString('pt-BR')}
                                 </div>
                             )}
                         </div>
@@ -133,10 +144,10 @@ const GameView = () => {
                             <p className="text-muted-foreground">{game.title}</p>
                         </div>
 
-                        {game.discipline && (
+                        {game.subject && (
                             <div>
                                 <h4 className="font-medium mb-2">Disciplina</h4>
-                                <p className="text-muted-foreground">{game.discipline}</p>
+                                <p className="text-muted-foreground">{game.subject}</p>
                             </div>
                         )}
 
@@ -147,11 +158,11 @@ const GameView = () => {
                             </div>
                         )}
 
-                        {game.createdAt && (
+                        {(game.createdAt || game.created_at) && (
                             <div>
                                 <h4 className="font-medium mb-2">Data de Criação</h4>
                                 <p className="text-muted-foreground">
-                                    {new Date(game.createdAt).toLocaleDateString('pt-BR', {
+                                    {new Date(game.createdAt || game.created_at).toLocaleDateString('pt-BR', {
                                         year: 'numeric',
                                         month: 'long',
                                         day: 'numeric'
