@@ -183,18 +183,32 @@ export function QuestionBank({
   const fetchSubjects = async () => {
     try {
       const response = await api.get("/subjects");
-      setSubjects(response.data || []);
+      // VERIFICAÇÃO EXPLÍCITA: Garante que o estado será sempre um array.
+      if (Array.isArray(response.data)) {
+        setSubjects(response.data);
+      } else {
+        console.error("A resposta da API para 'subjects' não é um array:", response.data);
+        setSubjects([]); // Define como um array vazio em caso de falha ou formato inesperado
+      }
     } catch (error) {
       console.error("Erro ao buscar disciplinas:", error);
+      setSubjects([]); // Garante que é um array mesmo em caso de exceção na API
     }
   };
 
   const fetchGrades = async () => {
     try {
       const response = await api.get("/grades/");
-      setGrades(response.data || []);
+      // VERIFICAÇÃO EXPLÍCITA: Garante que o estado será sempre um array.
+      if (Array.isArray(response.data)) {
+        setGrades(response.data);
+      } else {
+        console.error("A resposta da API para 'grades' não é um array:", response.data);
+        setGrades([]); // Define como um array vazio
+      }
     } catch (error) {
       console.error("Erro ao buscar séries:", error);
+      setGrades([]); // Garante que é um array
     }
   };
 
