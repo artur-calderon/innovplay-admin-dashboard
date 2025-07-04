@@ -14,7 +14,7 @@ import QuestionPreview from "./QuestionPreview";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { cn, getDifficultyColor } from "@/lib/utils";
 import { mockQuestions } from "@/lib/mockData";
 import { api } from "@/lib/api";
 
@@ -337,15 +337,7 @@ export default function QuestionBank({
     setCurrentPage(page);
   };
 
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case 'Avançado': return 'bg-green-800 text-green-100';
-      case 'Adequado': return 'bg-green-100 text-green-800';
-      case 'Básico': return 'bg-yellow-100 text-yellow-800';
-      case 'Abaixo do Básico': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
+
 
   const getTypeLabel = (type: string) => {
     switch (type) {

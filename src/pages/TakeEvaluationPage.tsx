@@ -200,7 +200,6 @@ export default function TakeEvaluationPage() {
       navigate("/app/avaliacoes");
 
     } catch (error) {
-      console.error("Erro ao enviar avaliação:", error);
       toast({
         title: "Erro no envio",
         description: "Não foi possível enviar a avaliação",
@@ -274,7 +273,6 @@ export default function TakeEvaluationPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header fixo com timer */}
       <div className="sticky top-0 z-50 bg-white border-b shadow-sm">
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
@@ -286,7 +284,6 @@ export default function TakeEvaluationPage() {
             </div>
 
             <div className="flex items-center gap-4">
-              {/* Timer regressivo */}
               <Badge 
                 variant={timeRemaining <= 300 ? "destructive" : "default"}
                 className={`flex items-center gap-1 font-mono text-sm px-3 py-1 ${
@@ -313,7 +310,6 @@ export default function TakeEvaluationPage() {
 
       <div className="container mx-auto px-4 py-6">
         <div className="grid gap-6 lg:grid-cols-4">
-          {/* Navegação das questões */}
           <div className="lg:col-span-1">
             <Card className="sticky top-24">
               <CardHeader className="pb-3">
@@ -348,7 +344,6 @@ export default function TakeEvaluationPage() {
                   })}
                 </div>
 
-                {/* Botão de enviar avaliação */}
                 <Button 
                   className="w-full" 
                   onClick={() => setShowSubmitDialog(true)}
@@ -361,7 +356,6 @@ export default function TakeEvaluationPage() {
             </Card>
           </div>
 
-          {/* Área principal da questão */}
           <div className="lg:col-span-3">
             <Card>
               <CardHeader>
@@ -387,7 +381,6 @@ export default function TakeEvaluationPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Renderizar opções baseado no tipo da questão */}
                 {currentQuestion.type === "multiple_choice" && (
                   <RadioGroup 
                     value={answers[currentQuestion.id]?.answer as string || ""} 
@@ -432,7 +425,6 @@ export default function TakeEvaluationPage() {
                   />
                 )}
 
-                {/* Navegação entre questões */}
                 <div className="flex justify-between pt-4">
                   <Button 
                     variant="outline" 
@@ -457,7 +449,6 @@ export default function TakeEvaluationPage() {
         </div>
       </div>
 
-      {/* Dialog de confirmação de envio */}
       <AlertDialog open={showSubmitDialog} onOpenChange={setShowSubmitDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>

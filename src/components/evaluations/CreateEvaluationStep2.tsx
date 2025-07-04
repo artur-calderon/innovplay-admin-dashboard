@@ -5,7 +5,7 @@ import { Book, Eye, Trash2, Plus } from "lucide-react";
 import { EvaluationData, Question, Student, Subject } from "./types";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
-import QuestionBank from "./questions/QuestionBank";
+import { QuestionBank } from "./QuestionBank";
 import QuestionPreview from "./questions/QuestionPreview";
 import QuestionForm from "./questions/QuestionForm";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useEvaluationActions } from "@/stores/useEvaluationStore";
+import { useEvaluationActions, useQuestions } from "@/stores/useEvaluationStore";
 
 interface CreateEvaluationStep2Props {
   data: {
@@ -58,7 +58,10 @@ export const CreateEvaluationStep2 = ({
   const [previewQuestion, setPreviewQuestion] = useState<Question | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
+  
+  // Usar o store para criação de avaliação
   const { createEvaluation } = useEvaluationActions();
+  const allQuestions = useQuestions(); // Pegar questões do store
 
   // Inicializar estrutura de questões por disciplina
   useEffect(() => {
@@ -182,35 +185,38 @@ export const CreateEvaluationStep2 = ({
         return;
       }
 
+      // Criar dados de estudantes mockados realistas
       const mockStudents: Student[] = [
-        { id: "student-1", name: "Ana Silva Santos", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2025-07-03T22:38:00Z" },
-        { id: "student-2", name: "Bruno Costa Lima", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2025-07-03T22:38:00Z" },
-        { id: "student-3", name: "Carlos Eduardo Oliveira", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2025-07-03T22:38:00Z" },
-        { id: "student-4", name: "Daniela Ferreira Costa", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2025-07-03T22:38:00Z" },
-        { id: "student-5", name: "Eduardo Santos Pereira", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2025-07-03T22:38:00Z" },
-        { id: "student-6", name: "Fernanda Almeida Silva", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2025-07-03T22:38:00Z" },
-        { id: "student-7", name: "Gabriel Martins Rodrigues", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2025-07-03T22:38:00Z" },
-        { id: "student-8", name: "Helena Costa Santos", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2025-07-03T22:38:00Z" },
-        { id: "student-9", name: "Igor Silva Oliveira", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2025-07-03T22:38:00Z" },
-        { id: "student-10", name: "Julia Ferreira Lima", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2025-07-03T22:38:00Z" },
-        { id: "student-11", name: "Kevin Santos Costa", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2025-07-03T22:38:00Z" },
-        { id: "student-12", name: "Larissa Oliveira Silva", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2025-07-03T22:38:00Z" },
-        { id: "student-13", name: "Marcos Costa Lima", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2025-07-03T22:38:00Z" },
-        { id: "student-14", name: "Natalia Silva Santos", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2025-07-03T22:38:00Z" },
-        { id: "student-15", name: "Otavio Ferreira Costa", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2025-07-03T22:38:00Z" }
+        { id: "student-1", name: "Ana Silva Santos", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
+        { id: "student-2", name: "Bruno Costa Lima", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
+        { id: "student-3", name: "Carlos Eduardo Oliveira", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
+        { id: "student-4", name: "Daniela Ferreira Costa", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
+        { id: "student-5", name: "Eduardo Santos Pereira", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
+        { id: "student-6", name: "Fernanda Almeida Silva", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
+        { id: "student-7", name: "Gabriel Martins Rodrigues", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
+        { id: "student-8", name: "Helena Costa Santos", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
+        { id: "student-9", name: "Igor Silva Oliveira", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
+        { id: "student-10", name: "Julia Ferreira Lima", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
+        { id: "student-11", name: "Kevin Santos Costa", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
+        { id: "student-12", name: "Larissa Oliveira Silva", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
+        { id: "student-13", name: "Marcos Costa Lima", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
+        { id: "student-14", name: "Natalia Silva Santos", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
+        { id: "student-15", name: "Otavio Ferreira Costa", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" }
       ];
 
+      // Filtrar estudantes baseado nas turmas selecionadas
       const selectedClasses = data.selectedClasses || [];
-      const students = selectedClasses.length > 0 
+      const filteredStudents = selectedClasses.length > 0 
         ? mockStudents.filter(student => 
             selectedClasses.some((cls: { name: string }) => student.class === cls.name)
           )
         : mockStudents.slice(0, 15);
 
+      // Estruturar dados da avaliação para o store
       const evaluationData: EvaluationData = {
         title: data.title.trim(),
-        description: data.description?.trim() || "Avaliação criada via painel",
-        subject: data.subjects[0],
+        description: data.description?.trim() || "Avaliação criada via painel administrativo",
+        subject: data.subjects[0], // Usar o primeiro subject como principal
         grade: data.grade,
         course: data.course,
         school: data.schools[0] || "E.M. João Silva",
@@ -218,7 +224,7 @@ export const CreateEvaluationStep2 = ({
         type: data.type,
         model: data.model,
         questions: allQuestions,
-        students: students,
+        students: filteredStudents,
         startDateTime: data.startDateTime || new Date().toISOString(),
         endDateTime: data.endDateTime || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
         duration: data.duration ? Number(data.duration) : 120
@@ -226,33 +232,30 @@ export const CreateEvaluationStep2 = ({
 
       console.log("📤 Criando avaliação com dados:", evaluationData);
       
+      // Usar o store para criar a avaliação
       const newEvaluation = await createEvaluation(evaluationData);
       console.log("✅ Avaliação criada com ID:", newEvaluation.id);
 
       const selectedClassesCount = selectedClasses.length;
-      if (selectedClassesCount > 0) {
-        toast({
-          title: "Sucesso!",
-          description: `Avaliação criada e pronta para aplicação em ${selectedClassesCount} turma${selectedClassesCount > 1 ? 's' : ''}!`,
-        });
-      } else {
-        toast({
-          title: "Sucesso!",
-          description: "Avaliação criada com sucesso!",
-        });
-      }
+      const questionsCount = allQuestions.length;
+      
+      toast({
+        title: "🎉 Sucesso!",
+        description: `Avaliação criada com ${questionsCount} questões para ${selectedClassesCount || 'todas as'} turma${selectedClassesCount > 1 ? 's' : ''}!`,
+      });
 
       if (onComplete) {
         onComplete();
       }
 
+      // Redirecionar para lista de avaliações
       navigate("/app/avaliacoes");
 
     } catch (error) {
-      console.error("Erro ao criar avaliação:", error);
+      console.error("❌ Erro ao criar avaliação:", error);
       toast({
         title: "Erro Inesperado",
-        description: "Não foi possível criar a avaliação. Verifique a consola para mais detalhes.",
+        description: "Não foi possível criar a avaliação. Verifique o console para mais detalhes.",
         variant: "destructive",
       });
     } finally {
@@ -278,6 +281,7 @@ export const CreateEvaluationStep2 = ({
     switch (type) {
       case 'multipleChoice': return 'Múltipla Escolha';
       case 'open': return 'Dissertativa';
+      case 'trueFalse': return 'Verdadeiro/Falso';
       default: return type;
     }
   };
@@ -286,7 +290,7 @@ export const CreateEvaluationStep2 = ({
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">Questões por Disciplina</h2>
+          <h2 className="text-2xl font-bold">📝 Questões por Disciplina</h2>
           <div className="text-sm text-muted-foreground mt-1">
             {data.subjects?.length > 0 ? (
               <>
@@ -363,9 +367,20 @@ export const CreateEvaluationStep2 = ({
                               <CardContent className="p-4">
                                 <div className="flex items-start justify-between gap-4">
                                   <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-foreground line-clamp-2">
+                                    <p className="text-sm font-medium text-foreground line-clamp-2 mb-2">
                                       {question.title || question.text}
                                     </p>
+                                    <div className="flex flex-wrap gap-1">
+                                      <Badge className={getDifficultyColor(question.difficulty)} variant="secondary">
+                                        {question.difficulty}
+                                      </Badge>
+                                      <Badge variant="outline">
+                                        {getTypeLabel(question.type)}
+                                      </Badge>
+                                      <Badge variant="outline">
+                                        {question.value} pt{question.value !== 1 ? 's' : ''}
+                                      </Badge>
+                                    </div>
                                   </div>
                                   <div className="flex items-center gap-1">
                                     <Button variant="ghost" size="icon" onClick={() => handleViewQuestion(question)}>
@@ -382,7 +397,11 @@ export const CreateEvaluationStep2 = ({
                         </div>
                       ) : (
                         <div className="text-center py-8 text-muted-foreground text-sm bg-muted/30 rounded-lg">
-                          <p>Nenhuma questão adicionada para esta disciplina.</p>
+                          <div className="flex flex-col items-center gap-2">
+                            <Book className="h-8 w-8 text-muted-foreground/50" />
+                            <p>Nenhuma questão adicionada para {subject.name}.</p>
+                            <p className="text-xs">Use os botões acima para adicionar questões.</p>
+                          </div>
                         </div>
                       )}
                     </CardContent>
@@ -392,7 +411,10 @@ export const CreateEvaluationStep2 = ({
             </div>
           ) : (
             <div className="text-center py-8 text-muted-foreground">
-              Nenhuma disciplina selecionada.
+              <div className="flex flex-col items-center gap-2">
+                <Book className="h-12 w-12 text-muted-foreground/50" />
+                <p>Nenhuma disciplina selecionada.</p>
+              </div>
             </div>
           )}
         </CardContent>
@@ -420,8 +442,8 @@ export const CreateEvaluationStep2 = ({
           setShowQuestionBank(false);
           setSelectedSubjectForQuestion("");
         }}
-        subjects={data.subjects.filter(s => s.id === selectedSubjectForQuestion)}
-        onSelectQuestion={handleQuestionSelected}
+        subjectId={selectedSubjectForQuestion || null}
+        onQuestionSelected={handleQuestionSelected}
       />
 
       <Dialog open={showQuestionPreview} onOpenChange={setShowQuestionPreview}>
@@ -435,20 +457,33 @@ export const CreateEvaluationStep2 = ({
         </DialogContent>
       </Dialog>
 
-      <div className="flex justify-end gap-2">
+      <div className="flex justify-between items-center gap-2 pt-4 border-t">
         <Button
           variant="outline"
           onClick={onBack}
           disabled={loading}
         >
-          Voltar
+          ← Voltar
         </Button>
-        <Button
-          onClick={handleSubmit}
-          disabled={loading || getTotalQuestions() === 0}
-        >
-          {loading ? "A guardar..." : "Guardar Avaliação"}
-        </Button>
+        
+        <div className="flex items-center gap-3">
+          <div className="text-sm text-muted-foreground">
+            {getTotalQuestions() > 0 ? (
+              <span className="flex items-center gap-2">
+                ✅ <strong>{getTotalQuestions()}</strong> questões adicionadas
+              </span>
+            ) : (
+              <span className="text-orange-600">⚠️ Adicione pelo menos uma questão</span>
+            )}
+          </div>
+          <Button
+            onClick={handleSubmit}
+            disabled={loading || getTotalQuestions() === 0}
+            className="min-w-32"
+          >
+            {loading ? "Criando..." : "🚀 Criar Avaliação"}
+          </Button>
+        </div>
       </div>
     </div>
   );

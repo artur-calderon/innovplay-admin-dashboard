@@ -52,8 +52,11 @@ type SidebarCategory = {
 
 // Helper function to check if a link or any of its children is active
 const isLinkActive = (link: SidebarLink, currentPath: string): boolean => {
-  if (link.href && currentPath.startsWith(link.href)) {
-    return true;
+  if (link.href) {
+    // Exact match only
+    if (currentPath === link.href) {
+      return true;
+    }
   }
   if (link.children) {
     return link.children.some(child => isLinkActive(child, currentPath));

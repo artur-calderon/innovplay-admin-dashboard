@@ -74,7 +74,7 @@ export interface Question {
   educationStage?: EducationStage; // Assuming EducationStage is also defined
   grade?: Grade; // Assuming Grade is also defined
   difficulty: string;
-  value: number; // Or string, depending on your API response
+  value: number; // Garantir que é number
   solution?: string;
   formattedSolution?: string;
   options?: { id?: string; text: string; isCorrect: boolean; }[];
