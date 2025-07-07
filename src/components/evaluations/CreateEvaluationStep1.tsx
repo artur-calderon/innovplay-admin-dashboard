@@ -25,6 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { EvaluationFormData, Subject, ClassInfo } from "./types";
 import { mockClasses } from "@/lib/mockData";
+import { useAuth } from "@/context/authContext";
 
 // Schema de validação simplificado e mais robusto
 const step1Schema = z.object({
@@ -101,7 +102,20 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
   const [schools, setSchools] = useState<School[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
-  
+  const { user } = useAuth();
+
+  // Novo estado para escolas filtradas (apenas admin)
+  const [filteredSchools, setFilteredSchools] = useState<School[]>([]);
+  const [schoolsLoading, setSchoolsLoading] = useState(false);
+  const [noSchoolsMessage, setNoSchoolsMessage] = useState("");
+  const [noClassesMessage, setNoClassesMessage] = useState("");
+
+  // Novo estado para municípios filtrados
+  const [filteredMunicipalities, setFilteredMunicipalities] = useState<Municipality[]>([]);
+
+  // Novo estado para loading das turmas
+  const [classesLoading, setClassesLoading] = useState(false);
+
   const { toast } = useToast();
 
   const form = useForm<Step1FormValues>({
@@ -135,19 +149,19 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
     const loadInitialData = async () => {
       try {
         setLoadingData(true);
-        
+
         // Buscar cursos (education stages)
         const coursesRes = await api.get("/education_stages");
         setCourses(coursesRes.data || []);
-        
+
         // Buscar disciplinas
         const subjectsRes = await api.get("/subjects");
         setSubjects(subjectsRes.data || []);
-        
+
         // Buscar estados
         const statesRes = await api.get("/city/states");
         setStates(statesRes.data || []);
-        
+
       } catch (error) {
         console.error("Erro ao carregar dados:", error);
         toast({
@@ -170,7 +184,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
         try {
           const response = await api.get(`/grades/education-stage/${selectedCourse}`);
           setGrades(response.data || []);
-          
+
           // Limpar série selecionada se não estiver na nova lista
           const currentGrade = form.getValues("grade");
           if (currentGrade && !response.data.find((g: Grade) => g.id === currentGrade)) {
@@ -199,27 +213,46 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
       }
 
       try {
-        const queryParams = new URLSearchParams();
-        queryParams.append('municipality_id', selectedMunicipality);
-        queryParams.append('school_id', selectedSchools[0].id);
-        queryParams.append('grade_id', selectedGrade);
+        // Usar o endpoint existente /classes/school/{schoolId} para buscar todas as turmas da escola
+        const schoolId = selectedSchools[0].id;
+        const response = await api.get(`/classes/school/${schoolId}`);
+        const allClasses = response.data || [];
 
-        const response = await api.get(`/classes/filtered?${queryParams.toString()}`);
-        const data = response.data?.data || [];
-        setClasses(data);
+        // Log apenas os nomes das turmas e o nome da série selecionada
+        console.log('Série selecionada:', grades.find(g => g.id === selectedGrade)?.name || '');
+        console.log('Turmas retornadas:', allClasses.map(c => c.name));
+
+        // Filtrar turmas por série no frontend (comparação por string, sem espaços)
+        const filteredClasses = allClasses.filter((classItem: any) =>
+          String(classItem.grade_id).trim() === String(selectedGrade).trim()
+        );
+
+        setClasses(filteredClasses);
 
         // Limpar turmas selecionadas se não estiverem na nova lista
         const currentClasses = form.getValues("selectedClasses");
         if (currentClasses.length > 0) {
           const validClasses = currentClasses.filter(c =>
-            data.find((cl: { id: string }) => cl.id === c.id)
+            filteredClasses.find((cl: { id: string }) => cl.id === c.id)
           );
           form.setValue("selectedClasses", validClasses);
         }
       } catch (error) {
         setClasses([]);
         form.setValue("selectedClasses", []);
-        console.error("Erro ao buscar turmas filtradas:", error);
+        console.error("Erro ao buscar turmas da escola:", error);
+
+        // Fallback: usar dados mock se a API falhar
+        try {
+          const mockClasses = await import("@/lib/mockData").then(m => m.mockClasses);
+          const filteredMockClasses = mockClasses.filter((classItem: any) =>
+            String(classItem.grade_id).trim() === String(selectedGrade).trim() &&
+            classItem.school_id === selectedSchools[0].id
+          );
+          setClasses(filteredMockClasses);
+        } catch (mockError) {
+          console.error("Erro ao carregar dados mock:", mockError);
+        }
       }
     };
 
@@ -228,64 +261,225 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
 
   // Carregar municípios quando estado mudar
   useEffect(() => {
-    if (selectedState) {
-      const loadMunicipalities = async () => {
-        try {
-          const response = await api.get(`/city/municipalities/state/${selectedState}`);
-          setMunicipalities(response.data || []);
-          
-          // Limpar município selecionado se não estiver na nova lista
-          const currentMunicipality = form.getValues("municipality");
-          if (currentMunicipality && !response.data.find((m: Municipality) => m.id === currentMunicipality)) {
-            form.setValue("municipality", "");
-          }
-        } catch (error) {
-          console.error("Erro ao carregar municípios:", error);
+    if (selectedState === 'all') {
+      setMunicipalities([]); // só mostra opção 'Todos os municípios'
+      setFilteredMunicipalities([]);
+      form.setValue("municipality", "all");
+      setSchools([]);
+      setFilteredSchools([]);
+      setClasses([]);
+      setNoSchoolsMessage("");
+      setNoClassesMessage("");
+      form.setValue("selectedSchools", []);
+      form.setValue("selectedClasses", []);
+    } else if (selectedState) {
+      // Buscar municípios do estado selecionado
+      api.get(`/city/municipalities/state/${selectedState}`)
+        .then(res => {
+          setMunicipalities(res.data || []);
+          setFilteredMunicipalities(res.data || []);
+        })
+        .catch(() => {
           setMunicipalities([]);
-        }
-      };
-
-      loadMunicipalities();
+          setFilteredMunicipalities([]);
+        });
+      form.setValue("municipality", "");
+      setSchools([]);
+      setFilteredSchools([]);
+      setClasses([]);
+      setNoSchoolsMessage("");
+      setNoClassesMessage("");
+      form.setValue("selectedSchools", []);
+      form.setValue("selectedClasses", []);
     } else {
       setMunicipalities([]);
+      setFilteredMunicipalities([]);
       form.setValue("municipality", "");
+      setSchools([]);
+      setFilteredSchools([]);
+      setClasses([]);
+      setNoSchoolsMessage("");
+      setNoClassesMessage("");
       form.setValue("selectedSchools", []);
+      form.setValue("selectedClasses", []);
     }
-  }, [selectedState, form]);
+  }, [selectedState]);
 
   // Carregar escolas quando município mudar
   useEffect(() => {
-    if (selectedMunicipality) {
-      const loadSchools = async () => {
+    if (!selectedMunicipality) {
+      setSchools([]);
+      setFilteredSchools([]);
+      setClasses([]);
+      setNoSchoolsMessage("");
+      setNoClassesMessage("");
+      form.setValue("selectedSchools", []);
+      form.setValue("selectedClasses", []);
+      return;
+    }
+
+    if (selectedMunicipality === 'all') {
+      setSchoolsLoading(true);
+      setNoSchoolsMessage("");
+      setFilteredSchools([]);
+      setClasses([]);
+      setNoClassesMessage("");
+      form.setValue("selectedSchools", []);
+      form.setValue("selectedClasses", []);
+
+      if (user?.role === "admin" && selectedCourse && selectedGrade) {
+        // Buscar todas as escolas de todos os municípios e filtrar por curso e série
+        api.get(`/school`).then(async (res) => {
+          const allSchools = res.data || [];
+          const validSchools: School[] = [];
+          for (const school of allSchools) {
+            try {
+              const turmasRes = await api.get(`/classes/school/${school.id}`);
+              const turmas = turmasRes.data || [];
+              const hasValidClass = turmas.some((t: any) => String(t.grade_id) === String(selectedGrade));
+              if (hasValidClass) {
+                validSchools.push(school);
+              }
+            } catch (err) { }
+          }
+          setFilteredSchools(validSchools);
+          if (validSchools.length === 0) {
+            setNoSchoolsMessage("Nenhuma escola encontrada com turma para o curso e série selecionados.");
+          }
+        }).catch(() => {
+          setFilteredSchools([]);
+          setNoSchoolsMessage("Erro ao buscar escolas.");
+        }).finally(() => setSchoolsLoading(false));
+      } else {
+        // Para não-admin, buscar todas as escolas
+        api.get(`/school`).then((res) => {
+          setSchools(res.data || []);
+        }).catch(() => {
+          setSchools([]);
+          setNoSchoolsMessage("Erro ao buscar escolas.");
+        }).finally(() => setSchoolsLoading(false));
+      }
+    } else if (selectedMunicipality) {
+      setSchools([]);
+      setFilteredSchools([]);
+      setClasses([]);
+      setNoSchoolsMessage("");
+      setNoClassesMessage("");
+      form.setValue("selectedSchools", []);
+      form.setValue("selectedClasses", []);
+
+      if (user?.role === "admin" && selectedCourse && selectedGrade) {
+        // Fluxo para admin: filtrar escolas por curso e série
+        setSchoolsLoading(true);
+        api.get(`/school/city/${selectedMunicipality}`)
+          .then(async (response) => {
+            const allSchools = response.data || [];
+            const validSchools: School[] = [];
+
+            for (const school of allSchools) {
+              try {
+                const turmasRes = await api.get(`/classes/school/${school.id}`);
+                const turmas = turmasRes.data || [];
+                // Verifica se tem turma com a série selecionada
+                const hasValidClass = turmas.some((t: any) => String(t.grade_id) === String(selectedGrade));
+                if (hasValidClass) {
+                  validSchools.push(school);
+                }
+              } catch (err) {
+                // Ignorar erro de escola específica
+              }
+            }
+
+            setFilteredSchools(validSchools);
+            if (validSchools.length === 0) {
+              setNoSchoolsMessage("Nenhuma escola encontrada com turma para o curso e série selecionados.");
+            }
+          })
+          .catch(() => {
+            setFilteredSchools([]);
+            setNoSchoolsMessage("Erro ao buscar escolas.");
+          })
+          .finally(() => setSchoolsLoading(false));
+      } else {
+        // Fluxo para outros usuários: buscar todas as escolas do município
+        const loadSchoolsForNonAdmin = async () => {
+          try {
+            const response = await api.get(`/school/city/${selectedMunicipality}`);
+            setSchools(response.data || []);
+            // Limpar escolas selecionadas se não estiverem na nova lista
+            const currentSchools = form.getValues("selectedSchools");
+            if (currentSchools.length > 0) {
+              const validSchools = currentSchools.filter(s =>
+                response.data.find((school: School) => school.id === s.id)
+              );
+              form.setValue("selectedSchools", validSchools);
+            }
+          } catch (error) {
+            console.error("Erro ao carregar escolas:", error);
+            setSchools([]);
+          }
+        };
+        loadSchoolsForNonAdmin();
+      }
+    }
+  }, [selectedMunicipality, selectedGrade, selectedCourse, user?.role, form]);
+
+  // Novo fluxo: Buscar turmas válidas para admin
+  useEffect(() => {
+    if (
+      user?.role === "admin" &&
+      selectedSchools.length > 0 &&
+      selectedGrade &&
+      selectedMunicipality
+    ) {
+      setClassesLoading(true);
+      setNoClassesMessage("");
+
+      // Buscar turmas de todas as escolas selecionadas
+      const fetchAllClasses = async () => {
         try {
-          const response = await api.get(`/school/city/${selectedMunicipality}`);
-          setSchools(response.data || []);
-          
-          // Limpar escolas selecionadas se não estiverem na nova lista
-          const currentSchools = form.getValues("selectedSchools");
-          if (currentSchools.length > 0) {
-            const validSchools = currentSchools.filter(s => 
-              response.data.find((school: School) => school.id === s.id)
-            );
-            form.setValue("selectedSchools", validSchools);
+          const allClasses: any[] = [];
+
+          for (const school of selectedSchools) {
+            try {
+              const response = await api.get(`/classes/school/${school.id}`);
+              const schoolClasses = response.data || [];
+              // Adicionar informação da escola em cada turma
+              const classesWithSchool = schoolClasses.map((classItem: any) => ({
+                ...classItem,
+                school: { id: school.id, name: school.name }
+              }));
+              allClasses.push(...classesWithSchool);
+            } catch (err) {
+              console.error(`Erro ao buscar turmas da escola ${school.name}:`, err);
+            }
+          }
+
+          // Filtrar turmas por série
+          const filteredClasses = allClasses.filter((classItem: any) =>
+            String(classItem.grade_id) === String(selectedGrade)
+          );
+
+          setClasses(filteredClasses);
+          if (filteredClasses.length === 0) {
+            setNoClassesMessage("Não existe turma cadastrada para essas escolas, curso e série.");
           }
         } catch (error) {
-          console.error("Erro ao carregar escolas:", error);
-          setSchools([]);
+          setClasses([]);
+          setNoClassesMessage("Erro ao buscar turmas das escolas.");
+        } finally {
+          setClassesLoading(false);
         }
       };
 
-      loadSchools();
-    } else {
-      setSchools([]);
-      form.setValue("selectedSchools", []);
+      fetchAllClasses();
     }
-  }, [selectedMunicipality, form]);
+  }, [user?.role, selectedSchools, selectedGrade, selectedMunicipality]);
 
   const handleSubjectToggle = (subject: Subject) => {
     const current = selectedSubjects;
     const exists = current.find(s => s.id === subject.id);
-    
+
     if (exists) {
       // Remover disciplina
       const updated = current.filter(s => s.id !== subject.id);
@@ -305,7 +499,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
   const handleClassToggle = (classItem: ClassInfo) => {
     const current = selectedClasses;
     const exists = current.find(c => c.id === classItem.id);
-    
+
     if (exists) {
       // Remover turma
       const updated = current.filter(c => c.id !== classItem.id);
@@ -341,7 +535,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
   const handleSchoolToggle = (school: School) => {
     const current = selectedSchools;
     const exists = current.find(s => s.id === school.id);
-    
+
     if (exists) {
       // Remover escola
       const updated = current.filter(s => s.id !== school.id);
@@ -359,18 +553,22 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
   };
 
   const handleSelectAllSchools = () => {
-    const schoolsToSelect = schools.map(s => ({ id: s.id, name: s.name }));
+    // Para admin, usar filteredSchools; para outros, usar schools
+    const schoolsToSelect = user?.role === "admin"
+      ? filteredSchools.map(s => ({ id: s.id, name: s.name }))
+      : schools.map(s => ({ id: s.id, name: s.name }));
+
     form.setValue("selectedSchools", schoolsToSelect);
     toast({
       title: "Todas as escolas selecionadas",
-      description: `${schools.length} escolas foram selecionadas`,
+      description: `${schoolsToSelect.length} escolas foram selecionadas`,
     });
   };
 
   const onSubmit = async (values: Step1FormValues) => {
     try {
       setIsLoading(true);
-      
+
       // Converter para o formato esperado pelo stepper
       const evaluationData: EvaluationFormData = {
         title: values.title,
@@ -380,19 +578,26 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
         course: values.course,
         grade: values.grade,
         subjects: values.subjects as Subject[],
-        selectedClasses: values.selectedClasses as ClassInfo[],
         subject: values.subjects[0]?.id || "", // Para compatibilidade
         duration: values.duration,
-        state: values.state,
-        municipality: values.municipality,
-        selectedSchools: values.selectedSchools as { id: string; name: string; }[],
-        municipalities: [values.municipality],
+        // Tratar estado e município "all"
+        state: values.state === "all" ? undefined : values.state,
+        municipality: values.municipality === "all" ? undefined : values.municipality,
+        // Usar apenas os arrays de IDs para a API
+        municipalities: values.municipality === "all"
+          ? [] // Se "all", enviar array vazio ou todos os municípios
+          : [values.municipality],
         schools: values.selectedSchools.map(s => s.id),
         classes: values.selectedClasses.map(c => c.id),
+        // Manter objetos completos para uso no frontend
+        selectedSchools: values.selectedSchools as { id: string; name: string; }[],
+        selectedClasses: values.selectedClasses as ClassInfo[],
+        // Para compatibilidade (primeiro item)
         classId: values.selectedClasses[0]?.id || "",
         questions: [],
       };
 
+      console.log("📤 Dados estruturados para envio:", evaluationData);
       onNext(evaluationData);
     } catch (error) {
       console.error("Erro no Step 1:", error);
@@ -562,8 +767,8 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Série *</FormLabel>
-                    <Select 
-                      onValueChange={field.onChange} 
+                    <Select
+                      onValueChange={field.onChange}
                       defaultValue={field.value}
                       disabled={!selectedCourse}
                     >
@@ -636,6 +841,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
+                        <SelectItem value="all">Todos os estados</SelectItem>
                         {states.map((state) => (
                           <SelectItem key={state.id} value={state.id}>
                             {state.name} ({state.uf})
@@ -654,8 +860,8 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Município *</FormLabel>
-                    <Select 
-                      onValueChange={field.onChange} 
+                    <Select
+                      onValueChange={field.onChange}
                       defaultValue={field.value}
                       disabled={!selectedState}
                     >
@@ -665,7 +871,8 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {municipalities.map((municipality) => (
+                        <SelectItem value="all">Todos os municípios</SelectItem>
+                        {filteredMunicipalities.map((municipality) => (
                           <SelectItem key={municipality.id} value={municipality.id}>
                             {municipality.name}
                           </SelectItem>
@@ -688,7 +895,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
                   <FormDescription>
                     Escolha as escolas onde a avaliação será aplicada
                   </FormDescription>
-                  
+
                   {/* Escolas Selecionadas */}
                   {selectedSchools.length > 0 && (
                     <div className="space-y-2">
@@ -717,56 +924,96 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
                   )}
 
                   {/* Botão Selecionar Todas */}
-                  {schools.length > 0 && (
+                  {(user?.role === "admin" ? filteredSchools.length > 0 : schools.length > 0) && (
                     <div className="flex justify-end">
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
                         onClick={handleSelectAllSchools}
-                        disabled={selectedSchools.length === schools.length || !selectedMunicipality}
+                        disabled={selectedSchools.length === (user?.role === "admin" ? filteredSchools.length : schools.length) || !selectedMunicipality}
                       >
                         <Plus className="h-4 w-4 mr-2" />
-                        Selecionar Todas ({schools.length})
+                        Selecionar Todas ({user?.role === "admin" ? filteredSchools.length : schools.length})
                       </Button>
                     </div>
                   )}
 
                   {/* Lista de Escolas Disponíveis */}
                   {selectedMunicipality ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto border rounded-md p-3">
-                      {schools.length > 0 ? (
-                        schools.map((school) => {
-                          const isSelected = selectedSchools.find(s => s.id === school.id);
-                          return (
-                            <div key={school.id} className="flex items-center space-x-2">
-                              <Checkbox
-                                id={school.id}
-                                checked={!!isSelected}
-                                onCheckedChange={() => handleSchoolToggle(school)}
-                              />
-                              <Label
-                                htmlFor={school.id}
-                                className="text-sm cursor-pointer flex-1"
-                              >
-                                <div className="flex flex-col">
-                                  <span>{school.name}</span>
-                                  {school.address && (
-                                    <span className="text-xs text-muted-foreground">
-                                      {school.address}
-                                    </span>
-                                  )}
+                    <>
+                      {user?.role === "admin" ? (
+                        schoolsLoading ? (
+                          <div className="text-center py-4">Carregando escolas...</div>
+                        ) : filteredSchools.length > 0 ? (
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto border rounded-md p-3">
+                            {filteredSchools.map((school) => {
+                              const isSelected = selectedSchools.find(s => s.id === school.id);
+                              return (
+                                <div key={school.id} className="flex items-center space-x-2">
+                                  <Checkbox
+                                    id={school.id}
+                                    checked={!!isSelected}
+                                    onCheckedChange={() => handleSchoolToggle(school)}
+                                  />
+                                  <Label
+                                    htmlFor={school.id}
+                                    className="text-sm cursor-pointer flex-1"
+                                  >
+                                    <div className="flex flex-col">
+                                      <span>{school.name}</span>
+                                      {school.address && (
+                                        <span className="text-xs text-muted-foreground">
+                                          {school.address}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </Label>
                                 </div>
-                              </Label>
-                            </div>
-                          );
-                        })
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="col-span-full text-center text-muted-foreground py-4">
+                            {noSchoolsMessage || "Nenhuma escola encontrada neste município"}
+                          </div>
+                        )
                       ) : (
-                        <div className="col-span-full text-center text-muted-foreground py-4">
-                          Nenhuma escola encontrada neste município
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto border rounded-md p-3">
+                          {schools.length > 0 ? (
+                            schools.map((school) => {
+                              const isSelected = selectedSchools.find(s => s.id === school.id);
+                              return (
+                                <div key={school.id} className="flex items-center space-x-2">
+                                  <Checkbox
+                                    id={school.id}
+                                    checked={!!isSelected}
+                                    onCheckedChange={() => handleSchoolToggle(school)}
+                                  />
+                                  <Label
+                                    htmlFor={school.id}
+                                    className="text-sm cursor-pointer flex-1"
+                                  >
+                                    <div className="flex flex-col">
+                                      <span>{school.name}</span>
+                                      {school.address && (
+                                        <span className="text-xs text-muted-foreground">
+                                          {school.address}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </Label>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <div className="col-span-full text-center text-muted-foreground py-4">
+                              Nenhuma escola encontrada neste município
+                            </div>
+                          )}
                         </div>
                       )}
-                    </div>
+                    </>
                   ) : (
                     <div className="border rounded-md p-6 text-center text-muted-foreground">
                       Selecione um município para carregar as escolas disponíveis
@@ -797,7 +1044,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
                   <FormDescription>
                     Escolha as disciplinas que farão parte desta avaliação
                   </FormDescription>
-                  
+
                   {/* Disciplinas Selecionadas */}
                   {selectedSubjects.length > 0 && (
                     <div className="space-y-2">
@@ -887,7 +1134,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
                   <FormDescription>
                     Escolha as turmas que participarão desta avaliação
                   </FormDescription>
-                  
+
                   {/* Turmas Selecionadas */}
                   {selectedClasses.length > 0 && (
                     <div className="space-y-2">
@@ -936,44 +1183,52 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
 
                   {/* Lista de Turmas Disponíveis */}
                   {selectedGrade ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto border rounded-md p-3">
-                      {classes.length > 0 ? (
-                        classes.map((classItem: ClassInfo) => {
-                          const isSelected = selectedClasses.find(c => c.id === classItem.id);
-                          return (
-                            <div key={classItem.id} className="flex items-center space-x-2">
-                              <Checkbox
-                                id={classItem.id}
-                                checked={!!isSelected}
-                                onCheckedChange={() => handleClassToggle(classItem)}
-                              />
-                              <Label
-                                htmlFor={classItem.id}
-                                className="text-sm cursor-pointer flex-1"
-                              >
-                                <div className="flex flex-col">
-                                  <span>{classItem.name}</span>
-                                  {classItem.students_count && (
-                                    <span className="text-xs text-muted-foreground">
-                                      {classItem.students_count} alunos
-                                    </span>
-                                  )}
-                                  {classItem.school && (
-                                    <span className="text-xs text-muted-foreground">
-                                      {classItem.school.name}
-                                    </span>
-                                  )}
-                                </div>
-                              </Label>
-                            </div>
-                          );
-                        })
-                      ) : (
+                    <>
+                      {classesLoading ? (
+                        <div className="text-center py-4">
+                          <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+                          <span className="text-sm text-muted-foreground">Carregando turmas...</span>
+                        </div>
+                      ) : noClassesMessage ? (
                         <div className="col-span-full text-center text-muted-foreground py-4">
-                          Nenhuma turma encontrada para esta série
+                          {noClassesMessage}
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto border rounded-md p-3">
+                          {classes.length > 0 ? (
+                            classes.map((classItem: ClassInfo) => {
+                              const isSelected = selectedClasses.find(c => c.id === classItem.id);
+                              return (
+                                <div key={classItem.id} className="flex items-center space-x-2">
+                                  <Checkbox
+                                    id={classItem.id}
+                                    checked={!!isSelected}
+                                    onCheckedChange={() => handleClassToggle(classItem)}
+                                  />
+                                  <Label
+                                    htmlFor={classItem.id}
+                                    className="text-sm cursor-pointer flex-1"
+                                  >
+                                    <div className="flex flex-col">
+                                      <span>{classItem.name} - {classItem.school?.name || "Escola não definida"}</span>
+                                      {classItem.students_count && (
+                                        <span className="text-xs text-muted-foreground">
+                                          {classItem.students_count} alunos
+                                        </span>
+                                      )}
+                                    </div>
+                                  </Label>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <div className="col-span-full text-center text-muted-foreground py-4">
+                              Nenhuma turma encontrada para esta série
+                            </div>
+                          )}
                         </div>
                       )}
-                    </div>
+                    </>
                   ) : (
                     <div className="border rounded-md p-6 text-center text-muted-foreground">
                       Selecione uma série para carregar as turmas disponíveis
