@@ -1,0 +1,165 @@
+variables:
+    APP: innovplay_site
+    ENVIRONMENT: prod
+    RUNNER: vps
+    IMAGE_TAG: "$APP:latest"
+    CONTAINER_NAME: "$APP"
+    HOST_PORT: 8000
+    CONTAINER_PORT: 80
+
+workflow:
+    rules:
+        - if: "$CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME != 'dev'"
+          variables:
+              ENVIRONMENT: local
+              RUNNER: local
+              IMAGE_TAG: "$APP:local"
+              CONTAINER_NAME: "$APP-local"
+        - if: "$CI_COMMIT_BRANCH == 'dev'"
+          variables:
+              ENVIRONMENT: dev
+              IMAGE_TAG: "$APP:dev"
+              CONTAINER_NAME: "$APP-dev"
+              HOST_PORT: 8001
+        - if: "$CI_COMMIT_BRANCH == 'main'"
+        - when: never
+
+stages:
+    - validation
+    - prebuild
+    - build
+    - predeploy
+    - deploy
+    - clean
+
+invalid_merge_request:
+    stage: validation
+    tags:
+        - $RUNNER
+    variables:
+        GIT_STRATEGY: none
+    rules:
+        - if: "$CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == 'main'"
+    script:
+        - echo "MR para 'main' só é permitido a partir da branch 'dev'."
+        - exit 1
+
+image_clean:
+    stage: prebuild
+    tags:
+        - $RUNNER
+    variables:
+        GIT_STRATEGY: none
+    script:
+        - RUNNING_CONTAINER_ID=$(docker container ls -f ancestor=$IMAGE_TAG -q)
+        - >
+            if [ -z "$RUNNING_CONTAINER_ID" ]; then
+                echo "Sem container ativo."
+            else
+                docker container stop $RUNNING_CONTAINER_ID
+
+                echo "Container $RUNNING_CONTAINER_ID parado."
+            fi
+        - CONTAINER_ID=$(docker container ls -a -f ancestor=$IMAGE_TAG -q)
+        - >
+            if [ -z "$CONTAINER_ID" ]; then
+                echo "Container não existe."
+            else
+                docker container rm $CONTAINER_ID
+
+                echo "Container $CONTAINER_ID removido."
+            fi
+        - IMAGE_ID=$(docker image ls -f reference=$IMAGE_TAG -q)
+        - >
+            if [ -z "$IMAGE_ID" ]; then
+                echo "Imagem não existe."
+            else
+                docker image rm $IMAGE_ID
+
+                echo "Imagem $IMAGE_ID removida."
+            fi
+
+image_build:
+    stage: build
+    tags:
+        - $RUNNER
+    script:
+        - docker build --no-cache -t $IMAGE_TAG .
+
+network_create:
+    stage: predeploy
+    tags:
+        - $RUNNER
+    variables:
+        GIT_STRATEGY: none
+    script:
+        - NETWORK=$(docker network ls -f name=$ENVIRONMENT -q)
+        - >
+            if [ -z "$NETWORK" ]; then
+                docker network create $ENVIRONMENT
+
+                echo "Network $ENVIRONMENT criada."
+            else
+                echo "Network $ENVIRONMENT já existe."
+            fi
+
+container_run:
+    stage: deploy
+    tags:
+        - $RUNNER
+    variables:
+        GIT_STRATEGY: none
+    environment:
+        name: $ENVIRONMENT
+        on_stop: environment_clean
+    script:
+        - docker container run --network $ENVIRONMENT -p $HOST_PORT:$CONTAINER_PORT --name $CONTAINER_NAME -d $IMAGE_TAG
+
+environment_clean:
+    stage: clean
+    variables:
+        GIT_STRATEGY: none
+    environment:
+        name: $ENVIRONMENT
+        action: stop
+    rules:
+        - if: "$ENVIRONMENT == 'local'"
+          when: manual
+    allow_failure: true
+    script:
+        - RUNNING_CONTAINER_ID=$(docker container ls -f ancestor=$IMAGE_TAG -q)
+        - >
+            if [ -z "$RUNNING_CONTAINER_ID" ]; then
+                echo "Sem container ativo."
+            else
+                docker container stop $RUNNING_CONTAINER_ID
+
+                echo "Container $RUNNING_CONTAINER_ID parado."
+            fi
+        - CONTAINER_ID=$(docker container ls -a -f ancestor=$IMAGE_TAG -q)
+        - >
+            if [ -z "$CONTAINER_ID" ]; then
+                echo "Container não existe."
+            else
+                docker container rm $CONTAINER_ID
+
+                echo "Container $CONTAINER_ID removido."
+            fi
+        - IMAGE_ID=$(docker image ls -f reference=$IMAGE_TAG -q)
+        - >
+            if [ -z "$IMAGE_ID" ]; then
+                echo "Imagem não existe."
+            else
+                docker image rm $IMAGE_ID
+
+                echo "Imagem $IMAGE_ID removida."
+            fi
+        - NETWORK_ID=$(docker network ls -f name=$ENVIRONMENT -q)
+        - >
+            if [ -z "$NETWORK_ID" ]; then
+                echo "Network $ENVIRONMENT não existe"
+            else
+                docker network rm $NETWORK_ID
+
+                echo "Network $ENVIRONMENT removida."
+            fi
