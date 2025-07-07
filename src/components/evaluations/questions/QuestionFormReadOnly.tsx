@@ -26,6 +26,7 @@ import './QuestionForm.css';
 import MyEditor from './MyEditor';
 import './MyEditor.css';
 import { MultiSelect, Option } from "@/components/ui/multi-select";
+import { useAuth } from "@/context/authContext";
 
 // Form schema
 const questionSchema = z.object({
@@ -240,6 +241,8 @@ const QuestionFormReadOnly = ({
     const { toast } = useToast();
     const navigate = useNavigate();
 
+
+
     const form = useForm<QuestionFormValues>({
         resolver: zodResolver(questionSchema),
         defaultValues: {
@@ -388,7 +391,7 @@ const QuestionFormReadOnly = ({
                 subject: selectedSubject || { id: data.subjectId, name: '' },
                 grade: selectedGrade || { id: data.grade, name: '' },
                 difficulty: data.difficulty,
-                value: data.value,
+                value: Number(data.value),
                 solution: data.solution || '',
                 options,
                 skills,
@@ -413,291 +416,431 @@ const QuestionFormReadOnly = ({
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold">Questão {questionNumber}</h2>
-                <div className="flex items-center gap-2">
-                    <Button
-                        variant="outline"
-                        onClick={() => setShowPreview(!showPreview)}
-                        type="button"
-                    >
-                        <Eye className="h-4 w-4 mr-2" />
-                        {showPreview ? "Editar" : "Visualizar"}
-                    </Button>
-                </div>
-            </div>
-
-            {/* Botões para alternar tipo de questão */}
-            <div className="flex items-center gap-4 mb-2">
-                <span className="font-medium">Tipo de Questão:</span>
+            {/* Botão de preview */}
+            <div className="flex justify-end">
                 <Button
+                    variant="outline"
+                    onClick={() => setShowPreview(!showPreview)}
                     type="button"
-                    variant={questionType === 'multipleChoice' ? 'default' : 'outline'}
-                    onClick={() => setQuestionType('multipleChoice')}
-                    className={questionType === 'multipleChoice' ? 'bg-primary text-white' : ''}
+                    className="flex items-center gap-2"
                 >
-                    Múltipla Escolha
-                </Button>
-                <Button
-                    type="button"
-                    variant={questionType === 'open' ? 'default' : 'outline'}
-                    onClick={() => setQuestionType('open')}
-                    className={questionType === 'open' ? 'bg-primary text-white' : ''}
-                >
-                    Dissertativa
+                    <Eye className="h-4 w-4" />
+                    {showPreview ? "Voltar à Edição" : "Visualizar"}
                 </Button>
             </div>
 
             {showPreview ? (
-                <div className="border rounded-lg p-4">
+                <div className="bg-gray-50 rounded-xl border-2 border-gray-200 p-6">
+                    <div className="flex items-center gap-2 mb-4">
+                        <Eye className="h-5 w-5 text-blue-600" />
+                        <h3 className="text-lg font-semibold text-gray-800">Preview da Questão</h3>
+                    </div>
                     <QuestionPreview data={{ ...form.getValues(), questionType }} />
                 </div>
             ) : (
                 <Form {...form}>
-                    <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-6">
-                        <div className="grid grid-cols-2 gap-4">
-                            <FormField
-                                control={form.control}
-                                name="title"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Conteúdo</FormLabel>
-                                        <FormControl>
-                                            <Input {...field} />
-                                        </FormControl>
-                                        {form.formState.errors.title && (
-                                            <FormMessage />
-                                        )}
-                                    </FormItem>
-                                )}
-                            />
+                    <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-8">
 
-                            <FormField
-                                control={form.control}
-                                name="grade"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Série</FormLabel>
-                                        <FormControl>
-                                            <Input value={grades.find(g => g.id === evaluationData.grade)?.name || ""} readOnly />
-                                        </FormControl>
-                                        {form.formState.errors.grade && (
-                                            <FormMessage />
-                                        )}
-                                    </FormItem>
-                                )}
-                            />
+                        {/* Seção: Informações Básicas */}
+                        <div className="bg-blue-50 rounded-xl p-6 border border-blue-200">
+                            <div className="flex items-center gap-2 mb-4">
+                                <Book className="h-5 w-5 text-blue-600" />
+                                <h3 className="text-lg font-semibold text-gray-800">Informações Básicas</h3>
+                            </div>
 
-                            <FormField
-                                control={form.control}
-                                name="subjectId"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Disciplina</FormLabel>
-                                        <FormControl>
-                                            <Input value={subjects.find(s => s.id === evaluationData.subject)?.name || ""} readOnly />
-                                        </FormControl>
-                                        {form.formState.errors.subjectId && (
-                                            <FormMessage />
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+                                <div className="sm:col-span-2">
+                                    <FormField
+                                        control={form.control}
+                                        name="title"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel className="text-sm font-semibold text-gray-700">Titulo da Questão *</FormLabel>
+                                                <FormControl>
+                                                    <Input
+                                                        {...field}
+                                                        placeholder="Ex: Propriedades dos números naturais"
+                                                        className="h-11 text-base"
+                                                    />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
                                         )}
-                                    </FormItem>
-                                )}
-                            />
+                                    />
+                                </div>
 
-                            <FormField
-                                control={form.control}
-                                name="difficulty"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Dificuldade</FormLabel>
-                                        <Select
-                                            onValueChange={field.onChange}
-                                            value={field.value}
-                                        >
+                                <FormField
+                                    control={form.control}
+                                    name="grade"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel className="text-sm font-semibold text-gray-700">Série *</FormLabel>
                                             <FormControl>
-                                                <SelectTrigger>
-                                                    <SelectValue placeholder="Selecione a dificuldade" />
-                                                </SelectTrigger>
+                                                <Input
+                                                    value={grades.find(g => g.id === evaluationData.grade)?.name || ""}
+                                                    readOnly
+                                                    className="h-11 bg-gray-50"
+                                                />
                                             </FormControl>
-                                            <SelectContent>
-                                                                        <SelectItem value="Abaixo do Básico">Abaixo do Básico</SelectItem>
-                        <SelectItem value="Básico">Básico</SelectItem>
-                        <SelectItem value="Adequado">Adequado</SelectItem>
-                        <SelectItem value="Avançado">Avançado</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                        {form.formState.errors.difficulty && (
                                             <FormMessage />
-                                        )}
-                                    </FormItem>
-                                )}
-                            />
+                                        </FormItem>
+                                    )}
+                                />
 
-                            <FormField
-                                control={form.control}
-                                name="value"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Valor</FormLabel>
-                                        <FormControl>
-                                            <Input {...field} type="number" step="0.1" />
-                                        </FormControl>
-                                        {form.formState.errors.value && (
+                                <FormField
+                                    control={form.control}
+                                    name="subjectId"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel className="text-sm font-semibold text-gray-700">Disciplina *</FormLabel>
+                                            <FormControl>
+                                                <Input
+                                                    value={subjects.find(s => s.id === evaluationData.subject)?.name || ""}
+                                                    readOnly
+                                                    className="h-11 bg-gray-50"
+                                                />
+                                            </FormControl>
                                             <FormMessage />
-                                        )}
-                                    </FormItem>
-                                )}
-                            />
+                                        </FormItem>
+                                    )}
+                                />
 
-                            <FormField
-                                control={form.control}
-                                name="skills"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Habilidades</FormLabel>
-                                        <FormControl>
-                                            <MultiSelect
-                                                options={skills}
-                                                selected={field.value || []}
-                                                onChange={field.onChange}
-                                                placeholder="Selecione as habilidades"
-                                                className="w-full"
-                                                label=""
-                                            />
-                                        </FormControl>
-                                        {form.formState.errors.skills && (
+                                <FormField
+                                    control={form.control}
+                                    name="difficulty"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel className="text-sm font-semibold text-gray-700">Dificuldade *</FormLabel>
+                                            <FormControl>
+                                                <Select onValueChange={field.onChange} value={field.value}>
+                                                    <SelectTrigger className="h-11">
+                                                        <SelectValue placeholder="Selecione a dificuldade" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="Abaixo do Básico">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                                                                Abaixo do Básico
+                                                            </div>
+                                                        </SelectItem>
+                                                        <SelectItem value="Básico">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                                                                Básico
+                                                            </div>
+                                                        </SelectItem>
+                                                        <SelectItem value="Adequado">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="w-3 h-3 rounded-full bg-green-400"></div>
+                                                                Adequado
+                                                            </div>
+                                                        </SelectItem>
+                                                        <SelectItem value="Avançado">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="w-3 h-3 rounded-full bg-green-700"></div>
+                                                                Avançado
+                                                            </div>
+                                                        </SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </FormControl>
                                             <FormMessage />
-                                        )}
-                                    </FormItem>
-                                )}
-                            />
+                                        </FormItem>
+                                    )}
+                                />
+
+                                <FormField
+                                    control={form.control}
+                                    name="value"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel className="text-sm font-semibold text-gray-700">Valor da Questão *</FormLabel>
+                                            <FormControl>
+                                                <Input
+                                                    {...field}
+                                                    type="number"
+                                                    step="0.1"
+                                                    placeholder="Ex: 2.5"
+                                                    className="h-11"
+                                                />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+
+                                <FormField
+                                    control={form.control}
+                                    name="skills"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel className="text-sm font-semibold text-gray-700">
+                                                Habilidades (BNCC)
+                                                <span className="text-gray-500 font-normal ml-1">
+                                                    {skills.length > 0 ? `(${skills.length} disponíveis)` : ''}
+                                                </span>
+                                            </FormLabel>
+                                            <FormControl>
+                                                <MultiSelect
+                                                    options={skills}
+                                                    selected={field.value || []}
+                                                    onChange={field.onChange}
+                                                    placeholder="Selecione as habilidades"
+                                                    className="w-full"
+                                                    label=""
+                                                />
+                                            </FormControl>
+                                            <FormMessage />
+                                            {(field.value || []).length > 0 && (
+                                                <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                                    <div className="text-sm font-medium text-blue-800 mb-2">
+                                                        Habilidades Selecionadas ({(field.value || []).length}):
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {(field.value || []).map((skillId: string) => {
+                                                            const skill = skills.find(opt => opt.id === skillId);
+                                                            return skill ? (
+                                                                <Badge key={skillId} variant="outline" className="text-xs bg-white border-blue-300">
+                                                                    {skill.code}
+                                                                </Badge>
+                                                            ) : null;
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </FormItem>
+                                    )}
+                                />
+                            </div>
                         </div>
 
-                        <FormField
-                            control={form.control}
-                            name="text"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Enunciado</FormLabel>
-                                    <FormControl>
-                                        <MyEditor
-                                            value={field.value}
-                                            onChange={field.onChange}
-                                        />
-                                    </FormControl>
-                                    {form.formState.errors.text && (
-                                        <FormMessage />
-                                    )}
-                                </FormItem>
-                            )}
-                        />
+                        {/* Seção: Tipo de Questão */}
+                        <div className="bg-purple-50 rounded-xl p-6 border border-purple-200">
+                            <div className="flex items-center gap-2 mb-4">
+                                <ListIcon className="h-5 w-5 text-purple-600" />
+                                <h3 className="text-lg font-semibold text-gray-800">Tipo de Questão</h3>
+                            </div>
 
-                        <FormField
-                            control={form.control}
-                            name="secondStatement"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Segundo Enunciado (opcional)</FormLabel>
-                                    <FormControl>
-                                        <MyEditor
-                                            value={field.value || ""}
-                                            onChange={field.onChange}
-                                        />
-                                    </FormControl>
-                                    {form.formState.errors.secondStatement && (
-                                        <FormMessage />
-                                    )}
-                                </FormItem>
-                            )}
-                        />
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                                <Button
+                                    type="button"
+                                    variant={questionType === 'multipleChoice' ? 'default' : 'outline'}
+                                    size="lg"
+                                    onClick={() => setQuestionType('multipleChoice')}
+                                    className={`w-full h-auto min-h-[4rem] p-4 ${questionType === 'multipleChoice'
+                                        ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg'
+                                        : 'hover:bg-purple-50 hover:border-purple-300'
+                                        }`}
+                                >
+                                    <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3">
+                                        <Check className="h-5 w-5 flex-shrink-0" />
+                                        <div className="text-center sm:text-left">
+                                            <div className="font-semibold text-sm sm:text-base">Múltipla Escolha</div>
+                                            <div className="text-xs opacity-80 hidden sm:block">Questão com alternativas A, B, C, D...</div>
+                                        </div>
+                                    </div>
+                                </Button>
 
-                        {/* Alternativas apenas se for múltipla escolha */}
+                                <Button
+                                    type="button"
+                                    variant={questionType === 'open' ? 'default' : 'outline'}
+                                    size="lg"
+                                    onClick={() => setQuestionType('open')}
+                                    className={`w-full h-auto min-h-[4rem] p-4 ${questionType === 'open'
+                                        ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg'
+                                        : 'hover:bg-purple-50 hover:border-purple-300'
+                                        }`}
+                                >
+                                    <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3">
+                                        <Type className="h-5 w-5 flex-shrink-0" />
+                                        <div className="text-center sm:text-left">
+                                            <div className="font-semibold text-sm sm:text-base">Dissertativa</div>
+                                            <div className="text-xs opacity-80 hidden sm:block">Questão com resposta livre do aluno</div>
+                                        </div>
+                                    </div>
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* Seção: Enunciados */}
+                        <div className="bg-green-50 rounded-xl p-6 border border-green-200">
+                            <div className="flex items-center gap-2 mb-4">
+                                <Type className="h-5 w-5 text-green-600" />
+                                <h3 className="text-lg font-semibold text-gray-800">Enunciados</h3>
+                            </div>
+
+                            <div className="space-y-6">
+                                <FormField
+                                    control={form.control}
+                                    name="text"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel className="text-sm font-semibold text-gray-700">Enunciado Principal *</FormLabel>
+                                            <FormControl>
+                                                <MyEditor
+                                                    value={field.value}
+                                                    onChange={field.onChange}
+                                                />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+
+                                <FormField
+                                    control={form.control}
+                                    name="secondStatement"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel className="text-sm font-semibold text-gray-700">
+                                                Segundo Enunciado
+                                                <span className="text-gray-500 font-normal ml-1">(opcional)</span>
+                                            </FormLabel>
+                                            <FormControl>
+                                                <MyEditor
+                                                    value={field.value || ""}
+                                                    onChange={field.onChange}
+                                                />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Seção: Alternativas (apenas para múltipla escolha) */}
                         {questionType === 'multipleChoice' && (
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <Label>Alternativas</Label>
+                            <div className="bg-orange-50 rounded-xl p-6 border border-orange-200">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center gap-2">
+                                        <Check className="h-5 w-5 text-orange-600" />
+                                        <h3 className="text-lg font-semibold text-gray-800">Alternativas</h3>
+                                    </div>
                                     {fields.length < 5 && (
                                         <Button
                                             type="button"
                                             variant="outline"
                                             size="sm"
                                             onClick={addOption}
+                                            className="flex items-center gap-2 border-orange-300 text-orange-700 hover:bg-orange-100"
                                         >
-                                            <Plus className="h-4 w-4 mr-2" />
+                                            <Plus className="h-4 w-4" />
                                             Adicionar Alternativa
                                         </Button>
                                     )}
                                 </div>
+
                                 <div className="space-y-4">
                                     {fields.map((field, index) => (
-                                        <div key={field.id} className="flex items-center gap-2">
+                                        <div key={field.id} className="flex items-center gap-4 p-4 bg-white rounded-lg border border-gray-200 shadow-sm">
                                             <button
                                                 type="button"
                                                 onClick={() => handleRadioChange(index)}
-                                                className={`w-6 h-6 rounded-full border flex items-center justify-center transition-colors ${form.watch(`options.${index}.isCorrect`) ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground'}`}
+                                                className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${form.watch("options")[index].isCorrect
+                                                    ? 'bg-green-500 border-green-500 text-white shadow-lg'
+                                                    : 'bg-white border-gray-300 hover:border-gray-400'
+                                                    }`}
                                                 aria-label={`Marcar alternativa ${String.fromCharCode(65 + index)} como correta`}
                                             >
-                                                {form.watch(`options.${index}.isCorrect`) ? <Check className="w-4 h-4" /> : null}
+                                                {form.watch("options")[index].isCorrect ? <Check className="w-4 h-4" /> : null}
                                             </button>
-                                            <Label className="text-sm text-muted-foreground">
+
+                                            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center font-semibold text-gray-600">
                                                 {String.fromCharCode(65 + index)}
-                                            </Label>
+                                            </div>
+
                                             <FormField
                                                 control={form.control}
                                                 name={`options.${index}.text`}
                                                 render={({ field }) => (
                                                     <FormItem className="flex-1">
                                                         <FormControl>
-                                                            <Input {...field} />
+                                                            <Input
+                                                                {...field}
+                                                                placeholder={`Digite a alternativa ${String.fromCharCode(65 + index)}`}
+                                                                className="h-11 text-base"
+                                                            />
                                                         </FormControl>
-                                                        {form.formState.errors.options?.[index]?.text && (
-                                                            <FormMessage />
-                                                        )}
+                                                        <FormMessage />
                                                     </FormItem>
                                                 )}
                                             />
+
                                             {fields.length > 3 && (
-                                                <button
+                                                <Button
                                                     type="button"
+                                                    variant="ghost"
+                                                    size="sm"
                                                     onClick={() => remove(index)}
-                                                    className="ml-2 text-destructive hover:bg-destructive/10 rounded p-1"
+                                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
                                                     aria-label="Remover alternativa"
                                                 >
                                                     <Trash className="w-4 h-4" />
-                                                </button>
+                                                </Button>
                                             )}
                                         </div>
                                     ))}
                                 </div>
+
+                                {form.formState.errors.options && (
+                                    <p className="text-red-600 text-sm mt-2">
+                                        {form.formState.errors.options.message}
+                                    </p>
+                                )}
                             </div>
                         )}
 
-                        <FormField
-                            control={form.control}
-                            name="solution"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Solução</FormLabel>
-                                    <FormControl>
-                                        <Textarea {...field} />
-                                    </FormControl>
-                                    {form.formState.errors.solution && (
-                                        <FormMessage />
-                                    )}
-                                </FormItem>
-                            )}
-                        />
+                        {/* Seção: Resolução */}
+                        <div className="bg-indigo-50 rounded-xl p-6 border border-indigo-200">
+                            <div className="flex items-center gap-2 mb-4">
+                                <Save className="h-5 w-5 text-indigo-600" />
+                                <h3 className="text-lg font-semibold text-gray-800">
+                                    Resolução
+                                    <span className="text-gray-500 font-normal ml-1">(opcional)</span>
+                                </h3>
+                            </div>
 
-                        <div className="flex justify-end gap-2">
+                            <FormField
+                                control={form.control}
+                                name="solution"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel className="text-sm font-semibold text-gray-700">
+                                            Explicação detalhada da resolução
+                                        </FormLabel>
+                                        <FormControl>
+                                            <MyEditor
+                                                value={field.value || ""}
+                                                onChange={field.onChange}
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                        </div>
+
+                        {/* Botões de ação */}
+                        <div className="flex flex-col sm:flex-row sm:justify-end gap-3 sm:gap-4 pt-6 border-t border-gray-200">
                             <Button
                                 type="button"
                                 variant="outline"
                                 onClick={onClose}
+                                size="lg"
+                                className="w-full sm:w-auto px-6 sm:px-8 order-2 sm:order-1"
                             >
                                 Cancelar
                             </Button>
-                            <Button type="submit">
-                                Salvar
+                            <Button
+                                type="submit"
+                                size="lg"
+                                className="w-full sm:w-auto px-6 sm:px-8 bg-blue-600 hover:bg-blue-700 order-1 sm:order-2"
+                            >
+                                <div className="flex items-center justify-center gap-2">
+                                    <Plus className="h-4 w-4" />
+                                    <span>Criar Questão</span>
+                                </div>
                             </Button>
                         </div>
                     </form>

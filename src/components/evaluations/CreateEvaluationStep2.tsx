@@ -2,12 +2,12 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Book, Eye, Trash2, Plus } from "lucide-react";
-import { EvaluationData, Question, Student, Subject } from "./types";
+import { EvaluationData, Question, Subject } from "./types";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { QuestionBank } from "./QuestionBank";
 import QuestionPreview from "./questions/QuestionPreview";
-import QuestionForm from "./questions/QuestionForm";
+import QuestionFormReadOnly from "./questions/QuestionFormReadOnly";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -16,6 +16,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useEvaluationActions, useQuestions } from "@/stores/useEvaluationStore";
+import { api } from "@/lib/api";
+import { useAuth } from "@/context/authContext";
 
 interface CreateEvaluationStep2Props {
   data: {
@@ -28,13 +30,15 @@ interface CreateEvaluationStep2Props {
     type: "AVALIACAO" | "SIMULADO";
     model: "SAEB" | "PROVA" | "AVALIE";
     subjects: Subject[];
-    selectedClasses?: { id: string; name: string; }[];
+    selectedClasses?: { id: string; name: string; school?: { id: string; name: string; } }[];
+    selectedSchools?: { id: string; name: string; }[];
     subject: string;
     description?: string;
     startDateTime?: string;
     endDateTime?: string;
     duration?: string;
     classes?: string[];
+    municipality?: string;
   };
   onBack: () => void;
   onComplete?: () => void;
@@ -58,7 +62,8 @@ export const CreateEvaluationStep2 = ({
   const [previewQuestion, setPreviewQuestion] = useState<Question | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
-  
+  const { user } = useAuth();
+
   // Usar o store para criação de avaliação
   const { createEvaluation } = useEvaluationActions();
   const allQuestions = useQuestions(); // Pegar questões do store
@@ -88,7 +93,7 @@ export const CreateEvaluationStep2 = ({
         ...prev,
         [selectedSubjectForQuestion]: [...(prev[selectedSubjectForQuestion] || []), question]
       }));
-      
+
       toast({
         title: "Questão criada e adicionada",
         description: "A nova questão foi criada e adicionada à avaliação com sucesso!",
@@ -122,7 +127,7 @@ export const CreateEvaluationStep2 = ({
 
       const currentQuestions = questionsBySubject[selectedSubjectForQuestion] || [];
       const isAlreadyAdded = currentQuestions.some(q => q.id === question.id);
-      
+
       if (isAlreadyAdded) {
         toast({
           title: "Atenção",
@@ -136,7 +141,7 @@ export const CreateEvaluationStep2 = ({
         ...prev,
         [selectedSubjectForQuestion]: [...(prev[selectedSubjectForQuestion] || []), question]
       }));
-      
+
       toast({
         title: "Questão adicionada",
         description: "A questão foi adicionada à avaliação.",
@@ -152,6 +157,16 @@ export const CreateEvaluationStep2 = ({
   const handleSubmit = async () => {
     try {
       setLoading(true);
+
+      if (!user) {
+        toast({
+          title: "Erro de Autenticação",
+          description: "Você precisa estar logado para criar uma avaliação.",
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
+      }
 
       if (!data.title || data.title.trim() === "") {
         toast({
@@ -185,60 +200,82 @@ export const CreateEvaluationStep2 = ({
         return;
       }
 
-      // Criar dados de estudantes mockados realistas
-      const mockStudents: Student[] = [
-        { id: "student-1", name: "Ana Silva Santos", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
-        { id: "student-2", name: "Bruno Costa Lima", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
-        { id: "student-3", name: "Carlos Eduardo Oliveira", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
-        { id: "student-4", name: "Daniela Ferreira Costa", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
-        { id: "student-5", name: "Eduardo Santos Pereira", grade: "5º Ano", class: "5A", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
-        { id: "student-6", name: "Fernanda Almeida Silva", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
-        { id: "student-7", name: "Gabriel Martins Rodrigues", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
-        { id: "student-8", name: "Helena Costa Santos", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
-        { id: "student-9", name: "Igor Silva Oliveira", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
-        { id: "student-10", name: "Julia Ferreira Lima", grade: "5º Ano", class: "5B", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
-        { id: "student-11", name: "Kevin Santos Costa", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
-        { id: "student-12", name: "Larissa Oliveira Silva", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
-        { id: "student-13", name: "Marcos Costa Lima", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
-        { id: "student-14", name: "Natalia Silva Santos", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" },
-        { id: "student-15", name: "Otavio Ferreira Costa", grade: "5º Ano", class: "5C", school: "E.M. João Silva", status: "active", createdAt: "2025-01-03T22:38:00Z" }
-      ];
 
-      // Filtrar estudantes baseado nas turmas selecionadas
-      const selectedClasses = data.selectedClasses || [];
-      const filteredStudents = selectedClasses.length > 0 
-        ? mockStudents.filter(student => 
-            selectedClasses.some((cls: { name: string }) => student.class === cls.name)
-          )
-        : mockStudents.slice(0, 15);
 
-      // Estruturar dados da avaliação para o store
-      const evaluationData: EvaluationData = {
+      // Estruturar dados da avaliação no formato que o backend espera
+      const backendEvaluationData = {
         title: data.title.trim(),
         description: data.description?.trim() || "Avaliação criada via painel administrativo",
-        subject: data.subjects[0], // Usar o primeiro subject como principal
-        grade: data.grade,
-        course: data.course,
-        school: data.schools[0] || "E.M. João Silva",
-        municipality: data.municipalities[0] || "São Paulo",
         type: data.type,
         model: data.model,
-        questions: allQuestions,
-        students: filteredStudents,
-        startDateTime: data.startDateTime || new Date().toISOString(),
-        endDateTime: data.endDateTime || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-        duration: data.duration ? Number(data.duration) : 120
+        course: data.course,
+        created_by: user?.id || "",
+        subject: data.subjects[0]?.id || data.subject, // Disciplina principal
+        grade: data.grade,
+        grade_id: data.grade,
+        intructions: "Leia atentamente cada questão antes de responder",
+        max_score: allQuestions.reduce((total, q) => total + (q.value || 0), 0),
+        time_limit: data.endDateTime || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+        end_time: data.endDateTime || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+        evaluation_mode: "virtual",
+        municipalities: data.municipalities || [],
+        schools: data.selectedSchools?.map(s => s.id) || data.schools || [],
+        subjects_info: data.subjects.map(subject => ({
+          subject: subject.id,
+          weight: Math.round(100 / data.subjects.length) // Peso igual para todas as disciplinas
+        })),
+        questions: allQuestions.map((question, index) => {
+          // Se a questão já tem ID (vem do banco), usar apenas id e number
+          if (question.id && question.id !== 'preview') {
+            return {
+              id: question.id,
+              number: index + 1
+            };
+          }
+
+          // Se é uma nova questão, enviar todos os dados
+          return {
+            number: index + 1,
+            text: question.text,
+            formattedText: question.formattedText || question.text,
+            subjectId: question.subjectId,
+            subject_id: question.subjectId,
+            title: question.title,
+            description: question.title,
+            command: question.title,
+            subtitle: question.title,
+            options: question.options?.map((opt, optIndex) => ({
+              text: opt.text,
+              value: String.fromCharCode(65 + optIndex) // A, B, C, D...
+            })) || [],
+            skills: question.skills || [],
+            grade: { id: question.grade?.id || data.grade },
+            difficulty: question.difficulty,
+            solution: question.options?.find(opt => opt.isCorrect)?.text || "",
+            formattedSolution: question.formattedSolution || question.solution || "",
+            type: question.type === 'multipleChoice' ? 'multiple_choice' : 'open',
+            value: question.value || 0,
+            topics: [],
+            created_by: user?.id || ""
+          };
+        })
       };
 
-      console.log("📤 Criando avaliação com dados:", evaluationData);
-      
-      // Usar o store para criar a avaliação
-      const newEvaluation = await createEvaluation(evaluationData);
+      console.log("📤 Criando avaliação com dados no formato do backend:", {
+        ...backendEvaluationData,
+        totalQuestions: allQuestions.length,
+        selectedClasses: data.selectedClasses?.map(c => c.name),
+        selectedSchools: data.selectedSchools?.map(s => s.name)
+      });
+
+      // Criar avaliação no backend usando o endpoint correto
+      const response = await api.post("/test", backendEvaluationData);
+      const newEvaluation = response.data;
       console.log("✅ Avaliação criada com ID:", newEvaluation.id);
 
-      const selectedClassesCount = selectedClasses.length;
+      const selectedClassesCount = data.selectedClasses?.length || 0;
       const questionsCount = allQuestions.length;
-      
+
       toast({
         title: "🎉 Sucesso!",
         description: `Avaliação criada com ${questionsCount} questões para ${selectedClassesCount || 'todas as'} turma${selectedClassesCount > 1 ? 's' : ''}!`,
@@ -425,13 +462,19 @@ export const CreateEvaluationStep2 = ({
           <DialogHeader>
             <DialogTitle>Criar Nova Questão</DialogTitle>
           </DialogHeader>
-          <QuestionForm
+          <QuestionFormReadOnly
             open={showCreateQuestion}
             onClose={() => {
               setShowCreateQuestion(false);
               setSelectedSubjectForQuestion("");
             }}
             onQuestionAdded={handleQuestionCreated}
+            questionNumber={questionsBySubject[selectedSubjectForQuestion]?.length + 1 || 1}
+            evaluationData={{
+              course: data.course,
+              grade: data.grade,
+              subject: selectedSubjectForQuestion
+            }}
           />
         </DialogContent>
       </Dialog>
@@ -465,7 +508,7 @@ export const CreateEvaluationStep2 = ({
         >
           ← Voltar
         </Button>
-        
+
         <div className="flex items-center gap-3">
           <div className="text-sm text-muted-foreground">
             {getTotalQuestions() > 0 ? (
