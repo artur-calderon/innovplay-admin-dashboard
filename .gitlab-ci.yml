@@ -2,7 +2,7 @@ variables:
     APP: innovplay_admin_dashboard
     IMAGE_TAG: "$APP:$CI_COMMIT_REF_NAME"
     DEPLOY_NAME: "$APP-$CI_COMMIT_REF_NAME"
-    PORT: 82
+    PORT: 8002
     RUNNER_TAG: local
 
 workflow:
@@ -11,13 +11,14 @@ workflow:
           variables:
               IMAGE_TAG: "$APP:latest"
               DEPLOY_NAME: "$APP"
-              PORT: 80
+              PORT: 8000
               RUNNER_TAG: vps
         - if: "$CI_COMMIT_BRANCH == 'dev'"
           variables:
-              PORT: 81
+              PORT: 8001
               RUNNER_TAG: vps
-        - when: always
+        - if: "$CI_PIPELINE_SOURCE == 'merge_request_event'"
+        - when: never
 
 stages:
     - prebuild
