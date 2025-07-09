@@ -44,9 +44,12 @@ import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { format, isAfter, isBefore, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { EvaluationApiService, SessionStorage } from "@/services/evaluationApi";
+import { TestSession } from "@/types/evaluation-types";
 
 interface StudentEvaluation {
   id: string;
+  class_test_id?: string; // ID da avaliação da turma
   title: string;
   description: string;
   subject: { id: string; name: string };
@@ -76,6 +79,10 @@ interface StudentEvaluation {
     timeSpent: number;
     completedAt: string;
   };
+  // Dados adicionais da API
+  questions?: any[];
+  availability?: any;
+  class_test_info?: any;
 }
 
 interface EvaluationTaking {
@@ -129,9 +136,14 @@ export default function StudentEvaluations() {
 
   useEffect(() => {
     fetchStudentEvaluations();
-    // Verificar se há avaliação em andamento no localStorage
-    checkInProgressEvaluation();
   }, []);
+
+  // Verificar avaliações em progresso após carregar as avaliações
+  useEffect(() => {
+    if (evaluations.length > 0) {
+      checkInProgressEvaluation();
+    }
+  }, [evaluations]);
 
   const fetchStudentEvaluations = async () => {
     try {
@@ -141,8 +153,7 @@ export default function StudentEvaluations() {
       const classResponse = await api.get(`/students/${user?.id}/class`);
       const studentClass: StudentClass = classResponse.data;
 
-      console.log('Resposta da API de turma:', classResponse);
-      console.log('Dados da turma:', studentClass);
+
 
       if (!studentClass || !studentClass.id) {
         setEvaluations([]);
@@ -157,22 +168,32 @@ export default function StudentEvaluations() {
       // Buscar todas as avaliações da turma usando o class_id
       try {
         const evaluationsResponse = await api.get(`/test/class/${studentClass.id}/tests/complete`);
-        console.log('Resposta da API de avaliações:', evaluationsResponse);
 
         // Os dados das avaliações estão em evaluationsResponse.data.tests
         const testsData = evaluationsResponse.data.tests;
 
         if (!testsData || !Array.isArray(testsData)) {
-          console.log('Nenhuma avaliação encontrada ou formato inválido');
           setEvaluations([]);
           return;
         }
 
         // Transformar e adicionar as avaliações encontradas
         const evaluationsWithStatus = testsData.map((testData: any) => {
+          const statusData = {
+            id: testData.test.id,
+            startDateTime: testData.class_test_info.application,
+            endDateTime: testData.class_test_info.expiration,
+            availability: testData.availability,
+            class_test_info: testData.class_test_info,
+            test: testData.test
+          };
+
+          const determinedStatus = determineEvaluationStatus(statusData);
+
           // Mapear os dados da API para o formato esperado pelo componente
           const evaluation = {
-            id: testData.class_test_info.class_test_id,
+            id: testData.test.id, // Usar o ID do teste, não o class_test_id
+            class_test_id: testData.class_test_info.class_test_id, // Guardar o class_test_id separadamente
             title: testData.test.title || testData.test.description,
             description: testData.test.description,
             subject: testData.test.subject || { id: 'default', name: 'Disciplina' },
@@ -180,17 +201,12 @@ export default function StudentEvaluations() {
             course: { id: testData.test.course, name: 'Curso' },
             startDateTime: testData.class_test_info.application,
             endDateTime: testData.class_test_info.expiration,
-            duration: testData.test.duration || 60, // em minutos
+            duration: 60, // Duração padrão em minutos - ajustar conforme necessário
             totalQuestions: testData.total_questions,
             maxScore: testData.total_value,
             type: testData.test.type || 'AVALIACAO',
             model: testData.test.model || 'SAEB',
-            status: determineEvaluationStatus({
-              startDateTime: testData.class_test_info.application,
-              endDateTime: testData.class_test_info.expiration,
-              availability: testData.availability,
-              class_test_info: testData.class_test_info
-            }),
+            status: determinedStatus,
             // Adicionar dados adicionais se disponíveis
             questions: testData.questions,
             availability: testData.availability,
@@ -231,32 +247,52 @@ export default function StudentEvaluations() {
   };
 
   const determineEvaluationStatus = (evaluation: any): StudentEvaluation["status"] => {
-    const now = new Date();
-    const startDate = parseISO(evaluation.startDateTime);
-    const endDate = evaluation.endDateTime ? parseISO(evaluation.endDateTime) : null;
-
-    // Verificar se já foi completada
-    if (evaluation.result) {
+    // Verificar se já foi completada baseado no status do teste
+    if (evaluation.test?.status === 'concluida') {
       return "completed";
     }
 
-    // Verificar se está em progresso
-    if (evaluation.currentProgress) {
-      return "in_progress";
+    // Verificar se está em progresso (sessão ativa)
+    if (evaluation.id) {
+      const savedSession = SessionStorage.getSession(evaluation.id);
+      if (savedSession) {
+        return "in_progress";
+      }
     }
 
-    // Usar informações de disponibilidade da API se disponível
+    // Usar informações de disponibilidade da API
     if (evaluation.availability) {
-      if (evaluation.availability.status === 'not_available') {
+      if (evaluation.availability.status === 'not_available' || !evaluation.availability.is_available) {
         return "pending";
       }
-      if (evaluation.availability.status === 'available') {
+      if (evaluation.availability.status === 'available' || evaluation.availability.is_available) {
         return "available";
       }
       if (evaluation.availability.status === 'expired') {
         return "expired";
       }
     }
+
+    // Verificar status do class_test_info
+    if (evaluation.class_test_info) {
+      if (evaluation.class_test_info.status === 'agendada') {
+        return "pending";
+      }
+      if (evaluation.class_test_info.status === 'disponivel') {
+        return "available";
+      }
+      if (evaluation.class_test_info.status === 'concluida') {
+        return "completed";
+      }
+      if (evaluation.class_test_info.status === 'expirada') {
+        return "expired";
+      }
+    }
+
+    // Fallback: verificar datas
+    const now = new Date();
+    const startDate = parseISO(evaluation.startDateTime);
+    const endDate = evaluation.endDateTime ? parseISO(evaluation.endDateTime) : null;
 
     // Verificar se expirou
     if (endDate && isAfter(now, endDate)) {
@@ -272,14 +308,41 @@ export default function StudentEvaluations() {
     return "pending";
   };
 
-  const checkInProgressEvaluation = () => {
-    const inProgress = localStorage.getItem("evaluation_in_progress");
-    if (inProgress) {
-      try {
-        const data = JSON.parse(inProgress);
-        setCurrentTaking(data);
-      } catch (error) {
-        localStorage.removeItem("evaluation_in_progress");
+  const checkInProgressEvaluation = async () => {
+    // Verificar se há avaliações em progresso usando o novo sistema
+    const evaluationsInProgress = evaluations.filter(evaluation => {
+      const savedSession = SessionStorage.getSession(evaluation.id);
+      return savedSession !== null;
+    });
+
+    if (evaluationsInProgress.length > 0) {
+      // Verificar status das sessões
+      for (const evaluation of evaluationsInProgress) {
+        try {
+          const savedSession = SessionStorage.getSession(evaluation.id);
+          if (savedSession) {
+            const sessionStatus = await EvaluationApiService.getSessionStatus(savedSession.session_id);
+
+            if (sessionStatus.status === 'em_andamento') {
+              // Criar dados de taking compatíveis com o sistema antigo
+              const takingData: EvaluationTaking = {
+                evaluationId: evaluation.id,
+                currentQuestion: 0,
+                answers: {},
+                timeRemaining: sessionStatus.remaining_time_minutes * 60,
+                startedAt: savedSession.started_at,
+              };
+              setCurrentTaking(takingData);
+              break; // Usar apenas a primeira avaliação em progresso
+            } else {
+              // Sessão expirada ou finalizada, limpar
+              SessionStorage.removeSession(evaluation.id);
+            }
+          }
+        } catch (error) {
+          console.error("Erro ao verificar sessão:", error);
+          SessionStorage.removeSession(evaluation.id);
+        }
       }
     }
   };
@@ -292,52 +355,57 @@ export default function StudentEvaluations() {
   const handleConfirmStart = async () => {
     if (!selectedEvaluation) return;
 
-    try {
-      // Tentar iniciar avaliação no backend
-      try {
-        const response = await api.post(`/evaluations/${selectedEvaluation.id}/start`);
-      } catch (apiError) {
-        // Se o backend não estiver disponível, continuar com dados mock
-        console.log("Backend não disponível, usando modo mock");
-      }
 
-      const takingData: EvaluationTaking = {
-        evaluationId: selectedEvaluation.id,
-        currentQuestion: 0,
-        answers: {},
-        timeRemaining: selectedEvaluation.duration * 60, // converter para segundos
-        startedAt: new Date().toISOString(),
+
+    try {
+      // Iniciar sessão usando o novo sistema de avaliações
+      const sessionData = await EvaluationApiService.startSession({
+        test_id: selectedEvaluation.id,
+        time_limit_minutes: selectedEvaluation.duration
+      });
+
+
+
+      // Salvar sessão no localStorage
+      SessionStorage.saveSession(selectedEvaluation.id, {
+        session_id: sessionData.session_id,
+        started_at: sessionData.started_at
+      });
+
+
+
+      // Preparar dados da avaliação para o componente TakeEvaluation
+      const evaluationData = {
+        id: selectedEvaluation.id,
+        title: selectedEvaluation.title,
+        description: selectedEvaluation.description,
+        subject: selectedEvaluation.subject,
+        duration: selectedEvaluation.duration,
+        totalQuestions: selectedEvaluation.totalQuestions,
+        instructions: selectedEvaluation.description || "Leia atentamente cada questão antes de responder.",
+        questions: selectedEvaluation.questions || [],
+        // Dados adicionais da API
+        class_test_id: selectedEvaluation.class_test_id,
+        availability: selectedEvaluation.availability,
+        class_test_info: selectedEvaluation.class_test_info,
+        // Dados da sessão
+        session_id: sessionData.session_id,
+        started_at: sessionData.started_at
       };
 
-      // Salvar no localStorage para persistência
-      localStorage.setItem("evaluation_in_progress", JSON.stringify(takingData));
-      setCurrentTaking(takingData);
-
-      // Buscar os dados completos da avaliação da API antes de redirecionar
-      try {
-        // Usar o class_test_id da avaliação para buscar os dados completos
-        const evaluationResponse = await api.get(`/test/${selectedEvaluation.id}/details`);
-        const evaluationData = evaluationResponse.data;
-
-        // Salvar os dados completos da avaliação no sessionStorage
-        sessionStorage.setItem("current_evaluation", JSON.stringify(evaluationData));
-        console.log("Dados da avaliação salvos:", evaluationData);
-      } catch (apiError) {
-        console.error("Erro ao buscar dados da avaliação:", apiError);
-        // Fallback: salvar apenas os dados básicos
-        sessionStorage.setItem("current_evaluation", JSON.stringify(selectedEvaluation));
-      }
+      // Salvar dados da avaliação no localStorage
+      localStorage.setItem("current_evaluation_data", JSON.stringify(evaluationData));
 
       setShowInstructions(false);
       setConfirmStart(false);
 
       toast({
-        title: "Avaliação iniciada!",
+        title: "✅ Avaliação iniciada!",
         description: `Você tem ${selectedEvaluation.duration} minutos para completar`,
       });
 
-      // Redirecionar para tela de avaliação
-      window.location.href = `/app/avaliacao/${selectedEvaluation.id}/fazer`;
+      // Redirecionar para tela de avaliação do aluno
+      window.location.href = `/aluno/take-evaluation/${selectedEvaluation.id}`;
 
     } catch (error) {
       console.error("Erro ao iniciar avaliação:", error);
@@ -351,20 +419,46 @@ export default function StudentEvaluations() {
 
   const handleContinueEvaluation = async (evaluation: StudentEvaluation) => {
     try {
-      // Buscar os dados completos da avaliação da API
-      const evaluationResponse = await api.get(`/test/${evaluation.id}/details`);
-      const evaluationData = evaluationResponse.data;
+      // Verificar se existe sessão ativa
+      const savedSession = SessionStorage.getSession(evaluation.id);
+      if (savedSession) {
+        // Verificar status da sessão
+        const sessionStatus = await EvaluationApiService.getSessionStatus(savedSession.session_id);
 
-      // Salvar os dados completos da avaliação no sessionStorage
-      sessionStorage.setItem("current_evaluation", JSON.stringify(evaluationData));
-      console.log("Dados da avaliação salvos para continuar:", evaluationData);
-    } catch (apiError) {
-      console.error("Erro ao buscar dados da avaliação:", apiError);
-      // Fallback: salvar apenas os dados básicos
-      sessionStorage.setItem("current_evaluation", JSON.stringify(evaluation));
+        if (sessionStatus.status === 'em_andamento') {
+          // Buscar dados completos da avaliação
+          try {
+            const testData = await EvaluationApiService.getTestData(evaluation.id);
+            sessionStorage.setItem("current_evaluation", JSON.stringify(testData));
+          } catch (apiError) {
+            console.error("Erro ao buscar dados da avaliação:", apiError);
+            sessionStorage.setItem("current_evaluation", JSON.stringify(evaluation));
+          }
+        } else {
+          // Sessão expirada ou finalizada, limpar dados
+          SessionStorage.removeSession(evaluation.id);
+          toast({
+            title: "Sessão expirada",
+            description: "A sessão da avaliação expirou. Inicie uma nova avaliação.",
+            variant: "destructive",
+          });
+          return;
+        }
+      } else {
+        // Buscar dados básicos da avaliação
+        sessionStorage.setItem("current_evaluation", JSON.stringify(evaluation));
+      }
+
+      // Redirecionar para tela de avaliação do aluno
+      window.location.href = `/aluno/take-evaluation/${evaluation.id}`;
+    } catch (error) {
+      console.error("Erro ao continuar avaliação:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível continuar a avaliação",
+        variant: "destructive",
+      });
     }
-
-    window.location.href = `/app/avaliacao/${evaluation.id}/fazer`;
   };
 
   const handleViewResults = (evaluation: StudentEvaluation) => {

@@ -36,6 +36,7 @@ const Serie = React.lazy(() => import("./pages/Serie"));
 const Disciplina = React.lazy(() => import("./pages/Disciplina"));
 const StudentAgenda = React.lazy(() => import("./pages/StudentAgenda"));
 const TakeEvaluationPage = React.lazy(() => import("./pages/TakeEvaluationPage"));
+const TakeEvaluation = React.lazy(() => import("./components/evaluations/TakeEvaluation"));
 const EvaluationCorrection = React.lazy(() => import("./pages/EvaluationCorrection"));
 const Results = React.lazy(() => import("./pages/Results"));
 
@@ -95,6 +96,7 @@ const App = () => {
             <Route path="/aluno" element={<Layout />}>
               <Route index element={<PrivateRoute><Index /></PrivateRoute>} />
               <Route path="/aluno/avaliacoes" element={<PrivateRoute><StudentEvaluations /></PrivateRoute>} />
+              <Route path="/aluno/take-evaluation/:evaluationId" element={<PrivateRoute><TakeEvaluation /></PrivateRoute>} />
               <Route path="/aluno/agenda" element={<PrivateRoute><StudentAgenda /></PrivateRoute>} />
               <Route path="/aluno/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
               <Route path="/aluno/jogos" element={<PrivateRoute><StudentGames /></PrivateRoute>} />
