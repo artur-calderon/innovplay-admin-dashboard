@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -21,10 +21,12 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, Clock, Loader2, Play } from "lucide-react";
+import { CalendarDays, Clock, Loader2, Play, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-// Schema de validação para as datas
+// Interface removida - não precisamos mais gerenciar turmas aqui
+
+// Schema de validação simplificado (sem seleção de turmas)
 const startEvaluationSchema = z.object({
   startDateTime: z.string().min(1, "Selecione a data e hora de início"),
   endDateTime: z.string().min(1, "Selecione a data e hora de término"),
@@ -43,13 +45,16 @@ type StartEvaluationFormValues = z.infer<typeof startEvaluationSchema>;
 interface StartEvaluationModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (startDateTime: string, endDateTime: string) => Promise<void>;
+  onConfirm: (startDateTime: string, endDateTime: string, classIds: string[]) => Promise<void>;
   evaluation: {
     id: string;
     title: string;
     subject: { id: string; name: string };
+    subjects?: Array<{ id: string; name: string }>;
     questions: Array<any>;
     duration?: number;
+    schools?: Array<{ id: string; name: string }>;
+    municipalities?: Array<{ id: string; name: string }>;
   } | null;
 }
 
@@ -60,6 +65,7 @@ export default function StartEvaluationModal({
   evaluation
 }: StartEvaluationModalProps) {
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
   const form = useForm<StartEvaluationFormValues>({
@@ -70,9 +76,22 @@ export default function StartEvaluationModal({
     },
   });
 
-  // Watch dos campos de data para calcular duração total
+  // Watch dos campos
   const startDateTime = form.watch("startDateTime");
   const endDateTime = form.watch("endDateTime");
+
+  // Não precisamos mais buscar turmas aqui, pois elas já foram selecionadas na criação
+  useEffect(() => {
+    if (isOpen && evaluation) {
+      // Limpar formulário quando abrir
+      form.reset({
+        startDateTime: "",
+        endDateTime: "",
+      });
+    }
+  }, [isOpen, evaluation]);
+
+  // Função removida - não precisamos mais buscar turmas aqui
 
   // Função para calcular a duração total do período
   const calculateTotalPeriod = () => {
@@ -97,22 +116,25 @@ export default function StartEvaluationModal({
     }
   };
 
+  // Funções removidas - não precisamos mais gerenciar seleção de turmas
+
   const handleSubmit = async (values: StartEvaluationFormValues) => {
     try {
       setIsLoading(true);
-      await onConfirm(values.startDateTime, values.endDateTime);
+      // Usar array vazio para classIds, pois as turmas já foram selecionadas na criação
+      await onConfirm(values.startDateTime, values.endDateTime, []);
       
       toast({
-        title: "Avaliação iniciada com sucesso!",
-        description: "A avaliação agora está disponível para os alunos na agenda",
+        title: "Avaliação aplicada com sucesso!",
+        description: `A avaliação "${evaluation?.title}" foi aplicada para as turmas configuradas`,
       });
       
       form.reset();
       onClose();
     } catch (error) {
-      console.error("Erro ao iniciar avaliação:", error);
+      console.error("Erro ao aplicar avaliação:", error);
       toast({
-        title: "Erro ao iniciar avaliação",
+        title: "Erro ao aplicar avaliação",
         description: "Ocorreu um erro. Tente novamente.",
         variant: "destructive",
       });
@@ -123,6 +145,7 @@ export default function StartEvaluationModal({
 
   const handleClose = () => {
     form.reset();
+    setError(null);
     onClose();
   };
 
@@ -130,14 +153,14 @@ export default function StartEvaluationModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[700px] max-h-[90vh]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Play className="h-5 w-5 text-green-600" />
-            Iniciar Avaliação
+            Aplicar Avaliação
           </DialogTitle>
           <DialogDescription>
-            Configure quando a avaliação "{evaluation.title}" ficará disponível para os alunos
+            Configure quando e para quais turmas a avaliação "{evaluation.title}" ficará disponível
           </DialogDescription>
         </DialogHeader>
 
@@ -149,10 +172,26 @@ export default function StartEvaluationModal({
                 Informações da Avaliação
               </h4>
               <div className="space-y-1 text-sm text-blue-700">
-                <p><strong>Disciplina:</strong> {evaluation.subject.name}</p>
+                <p><strong>Disciplina(s):</strong> {
+                  evaluation.subjects && evaluation.subjects.length > 0 
+                    ? evaluation.subjects.map(s => s.name).join(", ")
+                    : evaluation.subject.name
+                }</p>
                 <p><strong>Questões:</strong> {evaluation.questions.length}</p>
                 <p><strong>Duração individual:</strong> {evaluation.duration || 60} minutos</p>
               </div>
+            </div>
+
+            {/* Informações das Turmas Selecionadas */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Users className="h-4 w-4 text-blue-600" />
+                <h3 className="font-medium text-blue-800">Turmas Selecionadas</h3>
+              </div>
+              <p className="text-sm text-blue-700">
+                As turmas foram selecionadas durante a criação da avaliação. 
+                A avaliação será aplicada para todas as turmas configuradas.
+              </p>
             </div>
 
             {/* Campos de Data */}
@@ -232,12 +271,12 @@ export default function StartEvaluationModal({
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Iniciando...
+                    Aplicando...
                   </>
                 ) : (
                   <>
                     <Play className="mr-2 h-4 w-4" />
-                    Iniciar Avaliação
+                    Aplicar Avaliação
                   </>
                 )}
               </Button>
