@@ -388,27 +388,36 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
     setStartModalOpen(true);
   };
 
-  const handleConfirmStartEvaluation = async (startDateTime: string, endDateTime: string) => {
+  const handleConfirmStartEvaluation = async (startDateTime: string, endDateTime: string, classIds: string[]) => {
     if (!selectedEvaluationToStart) return;
 
     try {
-      // Aqui seria chamada a API para ativar a avaliação com as datas
-      await api.put(`/test/${selectedEvaluationToStart.id}/start`, {
-        startDateTime,
-        endDateTime,
-        status: 'active'
+      // ✅ FORMATO CORRETO - Enviar como um único request com array de classes
+      const classesData = classIds.map(classId => ({
+        class_id: classId,
+        application: startDateTime,
+        expiration: endDateTime
+      }));
+  
+      await api.post(`/test/${selectedEvaluationToStart.id}/apply`, {
+        classes: classesData
       });
-
-      toast({
-        title: "Avaliação iniciada com sucesso!",
-        description: "A avaliação agora está disponível para os alunos na agenda",
-      });
-
+  
       // Recarregar a lista para refletir as mudanças
       fetchEvaluations();
+      
+      toast({
+        title: "Avaliação aplicada com sucesso!",
+        description: `A avaliação foi aplicada para ${classIds.length} turma(s).`,
+      });
     } catch (error) {
-      console.error("Erro ao iniciar avaliação:", error);
-      throw error; // Deixar o modal lidar com o erro
+      console.error("Erro ao aplicar avaliação:", error);
+      toast({
+        title: "Erro ao aplicar avaliação",
+        description: "Verifique se as turmas estão selecionadas corretamente.",
+        variant: "destructive",
+      });
+      throw error;
     } finally {
       setStartModalOpen(false);
       setSelectedEvaluationToStart(null);
@@ -641,7 +650,7 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleStartEvaluation(evaluation)}
-                            title="Iniciar Avaliação"
+                            title="Aplicar Avaliação"
                             className="text-green-600 hover:text-green-700"
                           >
                             <Play className="h-4 w-4" />
@@ -780,3 +789,8 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
     </TooltipProvider>
   );
 }
+console.log('Dados sendo enviados:', {
+  test_id: selectedEvaluationToStart.id,
+  classes: classesData,
+  classIds
+});

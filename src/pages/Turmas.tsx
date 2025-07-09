@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { PlusCircle, Search, Edit, Trash2, Users, Building, Loader2, AlertCircle, UserPlus, X, Eye, RefreshCw } from "lucide-react";
+import { PlusCircle, Search, Edit, Trash2, Users, Building, Loader2, AlertCircle, UserPlus, X, Eye, RefreshCw, GraduationCap } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -47,9 +47,19 @@ interface School {
   name: string;
 }
 
+interface EducationStage {
+  id: string;
+  name: string;
+}
+
 interface Grade {
   id: string;
   name: string;
+  education_stage_id: string;
+  education_stage?: {
+    id: string;
+    name: string;
+  };
 }
 
 interface Student {
@@ -73,6 +83,11 @@ interface Turma {
   grade?: {
     id: string;
     name: string;
+    education_stage_id: string;
+    education_stage?: {
+      id: string;
+      name: string;
+    };
   };
 }
 
@@ -136,11 +151,11 @@ export default function Turmas() {
   const fetchTurmas = async () => {
     try {
       setIsLoading(true);
-      
+
       // Buscar todas as escolas primeiro
       const schoolsResponse = await api.get("/school");
       const allSchools = schoolsResponse.data || [];
-      
+
       // Buscar turmas de todas as escolas com contador de alunos
       const turmasPromises = allSchools.map(async (school: School) => {
         try {
@@ -151,10 +166,10 @@ export default function Turmas() {
           return [];
         }
       });
-      
+
       const turmasArrays = await Promise.all(turmasPromises);
       const allTurmas = turmasArrays.flat();
-      
+
       setTurmas(allTurmas);
     } catch (error) {
       console.error("Erro ao buscar turmas:", error);
@@ -213,20 +228,20 @@ export default function Turmas() {
   const updateClassStudentCount = async (classId: string, schoolId: string) => {
     try {
       setUpdatingCounters(prev => new Set(prev).add(classId));
-      
+
       const response = await api.get(`/classes/school/${schoolId}`);
       const schoolClasses = response.data || [];
       const updatedClass = schoolClasses.find((c: Turma) => c.id === classId);
-      
+
       if (updatedClass) {
-        setTurmas(prevTurmas => 
-          prevTurmas.map(turma => 
-            turma.id === classId 
+        setTurmas(prevTurmas =>
+          prevTurmas.map(turma =>
+            turma.id === classId
               ? { ...turma, students_count: updatedClass.students_count }
               : turma
           )
         );
-        
+
         // Atualizar também o item sendo editado se for o mesmo
         if (editingItem?.id === classId) {
           setEditingItem(prev => prev ? { ...prev, students_count: updatedClass.students_count } : null);
@@ -267,7 +282,7 @@ export default function Turmas() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.name.trim()) {
       toast({
         title: "Erro",
@@ -288,13 +303,13 @@ export default function Turmas() {
 
     try {
       setIsSubmitting(true);
-      
+
       const payload = {
         name: formData.name,
         school_id: formData.school_id,
         grade_id: formData.grade_id || null,
       };
-      
+
       if (editingItem) {
         // Atualizar turma existente
         await api.put(`/classes/${editingItem.id}`, payload);
@@ -310,7 +325,7 @@ export default function Turmas() {
           description: "Turma criada com sucesso!",
         });
       }
-      
+
       setIsModalOpen(false);
       fetchTurmas(); // Recarregar a lista
     } catch (error: any) {
@@ -373,7 +388,7 @@ export default function Turmas() {
 
     try {
       setIsAddingStudent(true);
-      
+
       const studentData = {
         name: addStudentForm.name,
         email: addStudentForm.email || generateEmail(addStudentForm.name),
@@ -386,7 +401,7 @@ export default function Turmas() {
       };
 
       await api.post("/students", studentData);
-      
+
       toast({
         title: "Sucesso",
         description: "Aluno adicionado com sucesso!",
@@ -542,10 +557,18 @@ export default function Turmas() {
                   </p>
                 </div>
                 {turma.grade && (
-                  <div>
-                    <p className="text-sm">
-                      <strong>Série:</strong> {turma.grade.name}
-                    </p>
+                  <div className="flex items-center gap-2">
+                    <GraduationCap className="h-4 w-4 text-muted-foreground" />
+                    <div className="text-sm">
+                      <p>
+                        <strong>Série:</strong> {turma.grade.name}
+                      </p>
+                      {turma.grade.education_stage && (
+                        <p className="text-xs text-muted-foreground">
+                          <strong>Curso:</strong> {turma.grade.education_stage.name}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 )}
                 <div className="flex items-center justify-between mt-3">
@@ -562,16 +585,16 @@ export default function Turmas() {
                   </div>
                 </div>
                 <div className="flex gap-2 mt-4">
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     size="sm"
                     onClick={() => openEditModal(turma)}
                   >
                     <Edit className="h-3 w-3 mr-1" />
                     Editar
                   </Button>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     size="sm"
                     onClick={() => updateClassStudentCount(turma.id, turma.school_id)}
                     disabled={updatingCounters.has(turma.id)}
@@ -579,8 +602,8 @@ export default function Turmas() {
                   >
                     <RefreshCw className={`h-3 w-3 ${updatingCounters.has(turma.id) ? 'animate-spin' : ''}`} />
                   </Button>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     size="sm"
                     onClick={() => openDeleteDialog(turma)}
                   >
@@ -602,8 +625,8 @@ export default function Turmas() {
               {searchTerm ? "Nenhuma turma encontrada" : "Nenhuma turma cadastrada"}
             </h3>
             <p className="text-muted-foreground text-center mb-4">
-              {searchTerm 
-                ? "Tente ajustar sua pesquisa" 
+              {searchTerm
+                ? "Tente ajustar sua pesquisa"
                 : "Comece criando sua primeira turma no sistema"}
             </p>
             {!searchTerm && (
@@ -624,12 +647,12 @@ export default function Turmas() {
               {editingItem ? "Editar Turma" : "Nova Turma"}
             </DialogTitle>
             <DialogDescription>
-              {editingItem 
-                ? "Atualize as informações da turma e gerencie os alunos" 
+              {editingItem
+                ? "Atualize as informações da turma e gerencie os alunos"
                 : "Preencha os dados para criar uma nova turma"}
             </DialogDescription>
           </DialogHeader>
-          
+
           <Tabs defaultValue="info" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="info">Informações da Turma</TabsTrigger>
@@ -637,7 +660,7 @@ export default function Turmas() {
                 Alunos ({students.length})
               </TabsTrigger>
             </TabsList>
-            
+
             <TabsContent value="info" className="space-y-4">
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
@@ -645,16 +668,16 @@ export default function Turmas() {
                   <Input
                     id="name"
                     value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     placeholder="Ex: 5º Ano A"
                     required
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="school">Escola *</Label>
-                  <Select 
-                    value={formData.school_id} 
-                    onValueChange={(value) => setFormData({...formData, school_id: value})}
+                  <Select
+                    value={formData.school_id}
+                    onValueChange={(value) => setFormData({ ...formData, school_id: value })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione uma escola" />
@@ -670,9 +693,9 @@ export default function Turmas() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="grade">Série (Opcional)</Label>
-                  <Select 
-                    value={formData.grade_id || "none"} 
-                    onValueChange={(value) => setFormData({...formData, grade_id: value === "none" ? "" : value})}
+                  <Select
+                    value={formData.grade_id || "none"}
+                    onValueChange={(value) => setFormData({ ...formData, grade_id: value === "none" ? "" : value })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione uma série" />
@@ -681,16 +704,23 @@ export default function Turmas() {
                       <SelectItem value="none">Nenhuma série</SelectItem>
                       {grades.filter(grade => grade.id && grade.name).map((grade) => (
                         <SelectItem key={grade.id} value={grade.id}>
-                          {grade.name}
+                          <div className="flex flex-col">
+                            <span>{grade.name}</span>
+                            {grade.education_stage && (
+                              <span className="text-xs text-muted-foreground">
+                                {grade.education_stage.name}
+                              </span>
+                            )}
+                          </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="flex justify-end space-x-2 pt-4">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
+                  <Button
+                    type="button"
+                    variant="outline"
                     onClick={() => setIsModalOpen(false)}
                     disabled={isSubmitting}
                   >
@@ -709,7 +739,7 @@ export default function Turmas() {
                 </div>
               </form>
             </TabsContent>
-            
+
             <TabsContent value="students" className="space-y-4">
               {editingItem && (
                 <div className="space-y-6">
@@ -746,7 +776,7 @@ export default function Turmas() {
                             onChange={(e) => {
                               const name = e.target.value;
                               setAddStudentForm({
-                                ...addStudentForm, 
+                                ...addStudentForm,
                                 name,
                                 email: name ? generateEmail(name) : ""
                               });
@@ -756,7 +786,7 @@ export default function Turmas() {
                             className="text-lg"
                           />
                         </div>
-                        
+
                         {/* Credenciais geradas automaticamente */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-2">
@@ -782,7 +812,7 @@ export default function Turmas() {
                             />
                           </div>
                         </div>
-                        
+
                         {/* Campos adicionais */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-2">
@@ -790,7 +820,7 @@ export default function Turmas() {
                             <Input
                               id="student-registration"
                               value={addStudentForm.registration}
-                              onChange={(e) => setAddStudentForm({...addStudentForm, registration: e.target.value})}
+                              onChange={(e) => setAddStudentForm({ ...addStudentForm, registration: e.target.value })}
                               placeholder="Número de matrícula"
                               disabled={isAddingStudent}
                             />
@@ -801,13 +831,13 @@ export default function Turmas() {
                               id="student-birthdate"
                               type="date"
                               value={addStudentForm.birthDate}
-                              onChange={(e) => setAddStudentForm({...addStudentForm, birthDate: e.target.value})}
+                              onChange={(e) => setAddStudentForm({ ...addStudentForm, birthDate: e.target.value })}
                               disabled={isAddingStudent}
                             />
                           </div>
                         </div>
                       </div>
-                      <Button 
+                      <Button
                         onClick={handleAddStudent}
                         disabled={isAddingStudent}
                         className="w-full"
@@ -894,13 +924,13 @@ export default function Turmas() {
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir a turma "{deletingItem?.name}"? 
+              Tem certeza que deseja excluir a turma "{deletingItem?.name}"?
               Esta ação não pode ser desfeita e todos os alunos associados serão removidos da turma.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isSubmitting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={handleDelete}
               disabled={isSubmitting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"

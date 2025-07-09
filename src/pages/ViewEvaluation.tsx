@@ -204,7 +204,7 @@ export default function ViewEvaluation() {
       setEvaluation(response.data);
       
     } catch (error) {
-      console.error("Erro ao iniciar avaliação:", error);
+      console.error("Erro ao aplicar avaliação:", error);
       toast({
         title: "Erro",
         description: "Não foi possível iniciar a avaliação. Tente novamente.",
@@ -407,7 +407,7 @@ export default function ViewEvaluation() {
             className="bg-green-600 hover:bg-green-700 text-white"
           >
             <Play className="h-4 w-4 mr-2" />
-            Iniciar Avaliação
+            Aplicar Avaliação
           </Button>
           <Button variant="outline" size="sm" onClick={handleEdit}>
             <Pencil className="h-4 w-4 mr-2" />
@@ -892,7 +892,7 @@ export default function ViewEvaluation() {
         )}
       </div>
 
-      {/* Modal de Iniciar Avaliação */}
+      {/* Modal de Aplicar Avaliação */}
       <StartEvaluationModal
         isOpen={showStartEvaluationModal}
         onClose={() => setShowStartEvaluationModal(false)}
