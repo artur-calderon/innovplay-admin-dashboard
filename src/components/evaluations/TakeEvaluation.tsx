@@ -106,6 +106,14 @@ export default function TakeEvaluation() {
   const [showTimeWarning, setShowTimeWarning] = useState(false);
   const [showInstructions, setShowInstructions] = useState(true);
   const [autoSaveStatus, setAutoSaveStatus] = useState<"saving" | "saved" | "error" | null>(null);
+  const [progressDetails, setProgressDetails] = useState({
+    answered: 0,
+    marked: 0,
+    unanswered: 0,
+    timeSpentPerQuestion: {} as Record<string, number>
+  });
+  const [networkStatus, setNetworkStatus] = useState<"online" | "offline" | "reconnecting">("online");
+  const [showProgressPanel, setShowProgressPanel] = useState(false);
 
   // Controle de tempo
   const [timeRemaining, setTimeRemaining] = useState(0);
@@ -180,24 +188,110 @@ export default function TakeEvaluation() {
       // Verificar se há progresso salvo
       const savedProgress = localStorage.getItem(`evaluation_progress_${evaluationId}`);
       
+      // Primeiro, tentar usar os dados salvos no sessionStorage das APIs reais
+      const sessionEvaluation = sessionStorage.getItem("current_evaluation");
+      const sessionEvaluationData = sessionEvaluation ? JSON.parse(sessionEvaluation) : null;
+      
+      if (sessionEvaluationData) {
+        console.log('Usando dados da sessão:', sessionEvaluationData);
+        
+        // Mapear os dados da API para o formato esperado pelo componente
+        const evaluationData: EvaluationData = {
+          id: sessionEvaluationData.id,
+          title: sessionEvaluationData.title || sessionEvaluationData.description,
+          description: sessionEvaluationData.description,
+          subject: sessionEvaluationData.subject || { id: 'default', name: 'Disciplina' },
+          duration: sessionEvaluationData.duration || 60,
+          totalQuestions: sessionEvaluationData.questions ? sessionEvaluationData.questions.length : 0,
+          maxScore: sessionEvaluationData.total_value || 10,
+          instructions: sessionEvaluationData.instructions || "Leia atentamente cada questão antes de responder.",
+          questions: sessionEvaluationData.questions ? sessionEvaluationData.questions.map((q: any, index: number) => ({
+            id: q.id,
+            number: index + 1,
+            type: q.question_type === 'multiple_choice' ? 'multiple_choice' : 
+                  q.question_type === 'true_false' ? 'true_false' : 
+                  q.question_type === 'essay' ? 'essay' : 'multiple_choice',
+            text: q.command || q.title,
+            imageUrl: q.image_url,
+            options: q.alternatives ? q.alternatives.map((alt: any) => ({
+              id: alt.id,
+              text: alt.text,
+              imageUrl: alt.image_url
+            })) : [],
+            points: q.value || 1,
+            difficulty: q.difficulty || 'medium',
+            subject: sessionEvaluationData.subject?.name || 'Disciplina',
+            skill: q.skill || 'Habilidade'
+          })) : [],
+          startedAt: new Date().toISOString(),
+          timeRemaining: sessionEvaluationData.duration ? sessionEvaluationData.duration * 60 : 60 * 60
+        };
+        
+        // Restaurar progresso se existir
+        if (savedProgress) {
+          const progress = JSON.parse(savedProgress);
+          setAnswers(progress.answers || {});
+          setCurrentQuestionIndex(progress.currentQuestionIndex || 0);
+          setTimeRemaining(progress.timeRemaining || evaluationData.timeRemaining);
+        } else {
+          setTimeRemaining(evaluationData.timeRemaining);
+        }
+        
+        setEvaluationData(evaluationData);
+        return;
+      }
+      
+      // Fallback: tentar usar as APIs (caso não haja dados na sessão)
       const [evaluationResponse, progressResponse] = await Promise.all([
-        api.get(`/evaluations/${evaluationId}/take`),
-        savedProgress ? Promise.resolve({ data: JSON.parse(savedProgress) }) : api.get(`/evaluations/${evaluationId}/progress`)
+        api.get(`/test/${evaluationId}/details`),
+        savedProgress ? Promise.resolve({ data: JSON.parse(savedProgress) }) : Promise.resolve({ data: null })
       ]);
 
       const evaluation = evaluationResponse.data;
       const progress = progressResponse?.data;
 
+      // Mapear os dados da API para o formato esperado pelo componente
+      const evaluationData: EvaluationData = {
+        id: evaluation.id,
+        title: evaluation.title || evaluation.description,
+        description: evaluation.description,
+        subject: evaluation.subject || { id: 'default', name: 'Disciplina' },
+        duration: evaluation.duration || 60,
+        totalQuestions: evaluation.questions ? evaluation.questions.length : 0,
+        maxScore: evaluation.total_value || 10,
+        instructions: evaluation.instructions || "Leia atentamente cada questão antes de responder.",
+        questions: evaluation.questions ? evaluation.questions.map((q: any, index: number) => ({
+          id: q.id,
+          number: index + 1,
+          type: q.question_type === 'multiple_choice' ? 'multiple_choice' : 
+                q.question_type === 'true_false' ? 'true_false' : 
+                q.question_type === 'essay' ? 'essay' : 'multiple_choice',
+          text: q.command || q.title,
+          imageUrl: q.image_url,
+          options: q.alternatives ? q.alternatives.map((alt: any) => ({
+            id: alt.id,
+            text: alt.text,
+            imageUrl: alt.image_url
+          })) : [],
+          points: q.value || 1,
+          difficulty: q.difficulty || 'medium',
+          subject: evaluation.subject?.name || 'Disciplina',
+          skill: q.skill || 'Habilidade'
+        })) : [],
+        startedAt: new Date().toISOString(),
+        timeRemaining: evaluation.duration ? evaluation.duration * 60 : 60 * 60
+      };
+
       // Restaurar progresso se existir
       if (progress?.answers) {
         setAnswers(progress.answers);
         setCurrentQuestionIndex(progress.currentQuestionIndex || 0);
-        setTimeRemaining(progress.timeRemaining || evaluation.timeRemaining);
+        setTimeRemaining(progress.timeRemaining || evaluationData.timeRemaining);
       } else {
-        setTimeRemaining(evaluation.timeRemaining);
+        setTimeRemaining(evaluationData.timeRemaining);
       }
 
-      setEvaluationData(evaluation);
+      setEvaluationData(evaluationData);
       
     } catch (error) {
       console.error("Erro ao carregar avaliação:", error);
@@ -250,18 +344,93 @@ export default function TakeEvaluation() {
   const handleAnswerChange = useCallback((questionId: string, answer: string | string[] | null) => {
     const timeSpent = Date.now() - questionStartTimeRef.current;
     
-    setAnswers(prev => ({
-      ...prev,
-      [questionId]: {
-        questionId,
-        answer,
-        timeSpent: (prev[questionId]?.timeSpent || 0) + timeSpent,
-        isMarked: prev[questionId]?.isMarked || false
-      }
-    }));
+    setAnswers(prev => {
+      const newAnswers = {
+        ...prev,
+        [questionId]: {
+          questionId,
+          answer,
+          timeSpent: (prev[questionId]?.timeSpent || 0) + timeSpent,
+          isMarked: prev[questionId]?.isMarked || false
+        }
+      };
+      
+      // Atualizar detalhes do progresso
+      updateProgressDetails(newAnswers);
+      
+      return newAnswers;
+    });
 
     questionStartTimeRef.current = Date.now();
   }, []);
+
+  // ✅ NOVO: Atualizar detalhes do progresso em tempo real
+  const updateProgressDetails = useCallback((currentAnswers: Record<string, Answer>) => {
+    if (!evaluationData) return;
+    
+    let answered = 0;
+    let marked = 0;
+    let unanswered = 0;
+    const timeSpentPerQuestion: Record<string, number> = {};
+    
+    evaluationData.questions.forEach(question => {
+      const answer = currentAnswers[question.id];
+      
+      if (answer) {
+        timeSpentPerQuestion[question.id] = answer.timeSpent;
+        
+        if (answer.isMarked) {
+          marked++;
+        } else if (answer.answer !== null && answer.answer !== "") {
+          answered++;
+        } else {
+          unanswered++;
+        }
+      } else {
+        unanswered++;
+      }
+    });
+    
+    setProgressDetails({
+      answered,
+      marked,
+      unanswered,
+      timeSpentPerQuestion
+    });
+  }, [evaluationData]);
+
+  // ✅ NOVO: Monitorar conectividade
+  useEffect(() => {
+    const handleOnline = () => {
+      setNetworkStatus("online");
+      toast({
+        title: "🟢 Conectado",
+        description: "Suas respostas serão salvas automaticamente",
+      });
+    };
+
+    const handleOffline = () => {
+      setNetworkStatus("offline");
+      toast({
+        title: "🔴 Sem conexão",
+        description: "Suas respostas serão salvas localmente",
+        variant: "destructive",
+      });
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // ✅ NOVO: Atualizar progresso quando answers mudam
+  useEffect(() => {
+    updateProgressDetails(answers);
+  }, [answers, updateProgressDetails]);
 
   const handleMarkQuestion = (questionId: string) => {
     setAnswers(prev => ({
@@ -313,27 +482,29 @@ export default function TakeEvaluation() {
     try {
       setIsSubmitting(true);
       
-      // Preparar dados para envio
+      // Preparar dados para envio no formato esperado pela API real
       const submissionData = {
-        evaluationId: evaluationData?.id,
-        studentId: user?.id,
         answers: Object.values(answers).map(answer => ({
-          questionId: answer.questionId,
+          question_id: answer.questionId,
           answer: answer.answer,
-          timeSpent: answer.timeSpent,
-          isMarked: answer.isMarked
+          time_spent: answer.timeSpent,
+          is_marked: answer.isMarked
         })),
-        timeSpent: (evaluationData?.duration || 0) * 60 - timeRemaining,
-        submittedAt: new Date().toISOString(),
+        time_spent: (evaluationData?.duration || 0) * 60 - timeRemaining,
+        submitted_at: new Date().toISOString(),
         automatic
       };
 
-      // Enviar para o backend
-      const response = await api.post(`/evaluations/${evaluationId}/submit`, submissionData);
+      // Enviar para o backend usando a API real
+      const response = await api.post(`/test/${evaluationId}/submit`, submissionData);
+
+      console.log('Resposta da API de submissão:', response);
 
       // Limpar dados locais
       localStorage.removeItem(`evaluation_progress_${evaluationId}`);
       localStorage.removeItem("evaluation_in_progress");
+      sessionStorage.removeItem("current_evaluation");
+      sessionStorage.removeItem("evaluation_session");
 
       toast({
         title: "✅ Avaliação enviada com sucesso!",
@@ -464,6 +635,116 @@ export default function TakeEvaluation() {
     startedAt: new Date().toISOString(),
     timeRemaining: 90 * 60
   });
+
+  // ✅ NOVA FUNÇÃO: Tratamento de erros com fallbacks
+  const handleApiError = (error: any, operationName: string) => {
+    console.error(`❌ Erro em ${operationName}:`, error);
+    
+    // Verificar se é erro de rede
+    if (error.response?.status === 500) {
+      return {
+        type: 'server_error',
+        message: 'Erro interno do servidor. Tente novamente em alguns minutos.'
+      };
+    }
+    
+    if (error.response?.status === 404) {
+      return {
+        type: 'not_found',
+        message: 'Avaliação não encontrada. Verifique se ainda está disponível.'
+      };
+    }
+    
+    if (error.response?.status === 401) {
+      return {
+        type: 'unauthorized',
+        message: 'Sessão expirada. Faça login novamente.'
+      };
+    }
+    
+    if (error.code === 'NETWORK_ERROR' || !error.response) {
+      return {
+        type: 'network_error',
+        message: 'Erro de conexão. Verifique sua internet e tente novamente.'
+      };
+    }
+    
+    return {
+      type: 'generic_error',
+      message: 'Erro inesperado. Tente novamente mais tarde.'
+    };
+  };
+
+  // ✅ NOVA FUNÇÃO: Retry com backoff exponencial
+  const retryWithBackoff = async (fn: () => Promise<any>, maxRetries = 3, delay = 1000) => {
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        return await fn();
+      } catch (error) {
+        if (i === maxRetries - 1) throw error;
+        
+        const nextDelay = delay * Math.pow(2, i);
+        console.log(`🔄 Tentativa ${i + 1} falhou. Tentando novamente em ${nextDelay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, nextDelay));
+      }
+    }
+  };
+
+  // ✅ NOVA FUNÇÃO: Salvar estado local para recuperação
+  const saveEvaluationState = (evaluationId: string, state: any) => {
+    try {
+      const stateData = {
+        ...state,
+        timestamp: new Date().toISOString(),
+        version: '1.0'
+      };
+      
+      localStorage.setItem(`evaluation_state_${evaluationId}`, JSON.stringify(stateData));
+      console.log('💾 Estado da avaliação salvo localmente');
+    } catch (error) {
+      console.warn('⚠️ Erro ao salvar estado local:', error);
+    }
+  };
+
+  // ✅ NOVA FUNÇÃO: Recuperar estado local
+  const loadEvaluationState = (evaluationId: string) => {
+    try {
+      const savedState = localStorage.getItem(`evaluation_state_${evaluationId}`);
+      if (savedState) {
+        const state = JSON.parse(savedState);
+        const maxAge = 24 * 60 * 60 * 1000; // 24 horas
+        
+        if (Date.now() - new Date(state.timestamp).getTime() < maxAge) {
+          console.log('📂 Estado da avaliação recuperado do armazenamento local');
+          return state;
+        }
+      }
+      return null;
+    } catch (error) {
+      console.warn('⚠️ Erro ao carregar estado local:', error);
+      return null;
+    }
+  };
+
+  // ✅ NOVA FUNÇÃO: Sincronizar estado com servidor
+  const syncWithServer = async (evaluationId: string, currentState: any) => {
+    try {
+      const response = await api.get(`/test/${evaluationId}/sync-state`);
+      const serverState = response.data;
+      
+      // Resolver conflitos priorizando dados mais recentes
+      const mergedState = {
+        ...currentState,
+        ...serverState,
+        lastSyncAt: new Date().toISOString()
+      };
+      
+      return mergedState;
+    } catch (error) {
+      console.warn('⚠️ Erro ao sincronizar com servidor, mantendo estado local:', error);
+      return currentState;
+    }
+  };
 
   if (isLoading) {
     return (

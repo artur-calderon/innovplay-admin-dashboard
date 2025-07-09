@@ -2,8 +2,12 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FileText } from "lucide-react";
+import { FileText, Wifi, WifiOff, Clock, Users, BookOpen, AlertCircle, RefreshCw } from "lucide-react";
 import { mockEvaluations } from "@/lib/mockData";
+import { api } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 
 interface Evaluation {
   id: string;
@@ -14,72 +18,266 @@ interface Evaluation {
   status?: string;
   questions_count?: number;
   questions?: number | { length?: number };
+  active_applications?: number;
+  total_students?: number;
+  completion_rate?: number;
+}
+
+interface DashboardStats {
+  totalEvaluations: number;
+  activeEvaluations: number;
+  completedEvaluations: number;
+  totalStudents: number;
+  averageCompletion: number;
+  lastSync: string;
+}
+
+// ✅ NOVO: Sistema de Cache Inteligente
+class CacheManager {
+  private static instance: CacheManager;
+  private cache: Map<string, { data: any; timestamp: number; ttl: number }> = new Map();
+  
+  static getInstance(): CacheManager {
+    if (!CacheManager.instance) {
+      CacheManager.instance = new CacheManager();
+    }
+    return CacheManager.instance;
+  }
+
+  set(key: string, data: any, ttlMs: number = 300000) { // 5 minutos default
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now(),
+      ttl: ttlMs
+    });
+  }
+
+  get(key: string): any | null {
+    const cached = this.cache.get(key);
+    if (!cached) return null;
+
+    const now = Date.now();
+    if (now - cached.timestamp > cached.ttl) {
+      this.cache.delete(key);
+      return null;
+    }
+
+    return cached.data;
+  }
+
+  invalidate(key: string) {
+    this.cache.delete(key);
+  }
+
+  clear() {
+    this.cache.clear();
+  }
 }
 
 export default function RecentEvaluations() {
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [error, setError] = useState<string | null>(null);
+  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  const { toast } = useToast();
+  const cache = CacheManager.getInstance();
 
+  // ✅ NOVO: Monitorar conectividade
   useEffect(() => {
-    const fetchRecentEvaluations = async () => {
-      try {
-        setIsLoading(true);
-        
-        // Simular delay de carregamento
-        await new Promise(resolve => setTimeout(resolve, 600));
-        
-        // Usar dados mockados das 3 avaliações implementadas + algumas adicionais
-        const additionalEvaluations = [
-          {
-            id: "eval-4",
-            title: "Simulado de História - Brasil Colonial",
-            subject: "História",
-            createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-            status: "active",
-            questions: 15
-          },
-          {
-            id: "eval-5", 
-            title: "Prova de Geografia - Regiões do Brasil",
-            subject: "Geografia",
-            createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-            status: "completed",
-            questions: 12
+    const handleOnline = () => {
+      setIsOnline(true);
+      // Recarregar dados quando voltar online
+      fetchRecentEvaluations();
+      toast({
+        title: "Conectado!",
+        description: "Dados atualizados com sucesso.",
+      });
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+      toast({
+        title: "Sem conexão",
+        description: "Usando dados em cache.",
+        variant: "default",
+      });
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // ✅ NOVO: Buscar avaliações com fallback inteligente
+  const fetchRecentEvaluations = async (useCache = true) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      // Verificar cache primeiro
+      const cacheKey = 'recent-evaluations';
+      if (useCache && isOnline) {
+        const cachedData = cache.get(cacheKey);
+        if (cachedData) {
+          setEvaluations(cachedData.evaluations);
+          setStats(cachedData.stats);
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      let evaluationsData: Evaluation[] = [];
+      let dashboardStats: DashboardStats | null = null;
+
+      if (isOnline) {
+        try {
+          // Buscar avaliações reais da API
+          const [evaluationsResponse, statsResponse] = await Promise.all([
+            api.get('/test?limit=5&sort=created_at&order=desc'),
+            api.get('/dashboard/stats')
+          ]);
+
+          if (evaluationsResponse.data && Array.isArray(evaluationsResponse.data)) {
+            evaluationsData = evaluationsResponse.data.map((test: any) => ({
+              id: test.id,
+              title: test.title,
+              subject: test.subject ? test.subject.name : 'Sem disciplina',
+              createdAt: test.created_at,
+              status: mapTestStatus(test.status),
+              questions_count: test.questions?.length || 0,
+              active_applications: test.active_applications || 0,
+              total_students: test.total_students || 0,
+              completion_rate: test.completion_rate || 0
+            }));
           }
-        ];
-        
-        const allEvaluations = [
-          ...mockEvaluations.map(evaluation => ({
+
+          if (statsResponse.data) {
+            dashboardStats = {
+              totalEvaluations: statsResponse.data.total_evaluations || 0,
+              activeEvaluations: statsResponse.data.active_evaluations || 0,
+              completedEvaluations: statsResponse.data.completed_evaluations || 0,
+              totalStudents: statsResponse.data.total_students || 0,
+              averageCompletion: statsResponse.data.average_completion || 0,
+              lastSync: new Date().toISOString()
+            };
+          }
+
+          // Salvar no cache
+          cache.set(cacheKey, {
+            evaluations: evaluationsData,
+            stats: dashboardStats
+          }, 300000); // 5 minutos
+
+        } catch (apiError: any) {
+          console.error("Erro na API:", apiError);
+          
+          // Fallback para dados mock se API falhar
+          evaluationsData = mockEvaluations.slice(0, 5).map(evaluation => ({
             id: evaluation.id,
             title: evaluation.title,
             subject: evaluation.subject,
             createdAt: evaluation.createdAt,
             status: evaluation.status,
-            questions: evaluation.questions
-          })),
-          ...additionalEvaluations
-        ];
-        
-        // Pegar as 5 avaliações mais recentes
-        const recentEvaluations = allEvaluations
-          .sort((a, b) => {
-            const dateA = new Date(a.createdAt).getTime();
-            const dateB = new Date(b.createdAt).getTime();
-            return dateB - dateA;
-          })
-          .slice(0, 5);
-        
-        setEvaluations(recentEvaluations);
-      } catch (error) {
-        console.error("Erro ao buscar avaliações recentes:", error);
-        setEvaluations([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+            questions_count: evaluation.questions,
+            active_applications: Math.floor(Math.random() * 5) + 1,
+            total_students: Math.floor(Math.random() * 100) + 10,
+            completion_rate: Math.floor(Math.random() * 100) + 1
+          }));
 
+          dashboardStats = {
+            totalEvaluations: 12,
+            activeEvaluations: 4,
+            completedEvaluations: 8,
+            totalStudents: 234,
+            averageCompletion: 78,
+            lastSync: new Date().toISOString()
+          };
+
+          setError("Conectado com dados locais");
+          toast({
+            title: "Modo offline",
+            description: "Usando dados locais. Verifique sua conexão.",
+            variant: "default",
+          });
+        }
+      } else {
+        // Modo offline - usar cache ou dados mock
+        const cachedData = cache.get(cacheKey);
+        if (cachedData) {
+          evaluationsData = cachedData.evaluations;
+          dashboardStats = cachedData.stats;
+        } else {
+          // Fallback para dados mock
+          evaluationsData = mockEvaluations.slice(0, 5);
+          dashboardStats = {
+            totalEvaluations: 12,
+            activeEvaluations: 4,
+            completedEvaluations: 8,
+            totalStudents: 234,
+            averageCompletion: 78,
+            lastSync: new Date().toISOString()
+          };
+        }
+        setError("Sem conexão - dados em cache");
+      }
+
+      setEvaluations(evaluationsData);
+      setStats(dashboardStats);
+      setLastRefresh(new Date());
+      
+    } catch (error) {
+      console.error("Erro ao buscar avaliações:", error);
+      setError("Erro ao carregar dados");
+      setEvaluations([]);
+      setStats(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ✅ NOVO: Mapear status do teste
+  const mapTestStatus = (status: string) => {
+    switch (status) {
+      case 'active':
+      case 'published':
+        return 'active';
+      case 'correction':
+      case 'reviewing':
+        return 'correction';
+      case 'completed':
+      case 'finished':
+        return 'completed';
+      default:
+        return 'active';
+    }
+  };
+
+  // ✅ NOVO: Refresh manual
+  const handleRefresh = () => {
+    cache.clear();
+    fetchRecentEvaluations(false);
+  };
+
+  useEffect(() => {
     fetchRecentEvaluations();
   }, []);
+
+  // ✅ NOVO: Auto-refresh a cada 30 segundos se online
+  useEffect(() => {
+    if (!isOnline) return;
+
+    const interval = setInterval(() => {
+      fetchRecentEvaluations(true);
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [isOnline]);
 
   if (isLoading) {
     return (
@@ -109,31 +307,103 @@ export default function RecentEvaluations() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <FileText className="h-5 w-5" />
-          Avaliações Recentes
-        </CardTitle>
-        <CardDescription>Últimas avaliações criadas no sistema</CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Avaliações Recentes
+              {/* Status de conectividade */}
+              {isOnline ? (
+                <Wifi className="h-4 w-4 text-green-500" />
+              ) : (
+                <WifiOff className="h-4 w-4 text-red-500" />
+              )}
+            </CardTitle>
+            <CardDescription>
+              Últimas avaliações criadas no sistema
+              {stats && (
+                <span className="ml-2 text-xs">
+                  • {stats.totalEvaluations} total • {stats.activeEvaluations} ativas
+                </span>
+              )}
+            </CardDescription>
+          </div>
+          
+          {/* Botão de refresh */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+          </Button>
+        </div>
       </CardHeader>
+      
       <CardContent className="space-y-3">
+        {/* Alerta de status */}
+        {error && (
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="text-sm">
+              {error}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Estatísticas rápidas */}
+        {stats && (
+          <div className="grid grid-cols-3 gap-2 p-3 bg-muted/50 rounded-lg">
+            <div className="text-center">
+              <div className="text-lg font-semibold text-primary">{stats.activeEvaluations}</div>
+              <div className="text-xs text-muted-foreground">Ativas</div>
+            </div>
+            <div className="text-center">
+              <div className="text-lg font-semibold text-blue-600">{stats.totalStudents}</div>
+              <div className="text-xs text-muted-foreground">Alunos</div>
+            </div>
+            <div className="text-center">
+              <div className="text-lg font-semibold text-green-600">{stats.averageCompletion}%</div>
+              <div className="text-xs text-muted-foreground">Conclusão</div>
+            </div>
+          </div>
+        )}
+
+        {/* Lista de avaliações */}
         {evaluations.length > 0 ? (
           evaluations.map((evaluation) => (
             <div key={evaluation.id} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
               <div className="space-y-1 flex-1">
                 <p className="font-medium text-sm line-clamp-1">{evaluation.title}</p>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-4">
                   {evaluation.subject && (
-                    <p className="text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <BookOpen className="h-3 w-3" />
                       {typeof evaluation.subject === 'string' 
                         ? evaluation.subject 
                         : evaluation.subject.name || evaluation.subject
                       }
-                    </p>
+                    </div>
                   )}
                   {(evaluation.questions_count || evaluation.questions) && (
-                    <p className="text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <FileText className="h-3 w-3" />
                       {evaluation.questions_count || evaluation.questions || 0} questões
-                    </p>
+                    </div>
+                  )}
+                  {evaluation.total_students && (
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Users className="h-3 w-3" />
+                      {evaluation.total_students} alunos
+                    </div>
+                  )}
+                  {evaluation.completion_rate && (
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Clock className="h-3 w-3" />
+                      {evaluation.completion_rate}% concluído
+                    </div>
                   )}
                 </div>
               </div>
@@ -163,6 +433,11 @@ export default function RecentEvaluations() {
             Nenhuma avaliação encontrada
           </p>
         )}
+
+        {/* Timestamp da última atualização */}
+        <div className="text-xs text-muted-foreground text-center pt-2 border-t">
+          Última atualização: {lastRefresh.toLocaleTimeString('pt-BR')}
+        </div>
       </CardContent>
     </Card>
   );
