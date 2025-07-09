@@ -103,15 +103,22 @@ export default function EvaluationCorrection() {
       if (filters.grade !== "all") params.append('grade', filters.grade);
       if (filters.search) params.append('search', filters.search);
       
-      // API call para buscar avaliações enviadas
-      const response = await api.get(`/evaluation-results/admin/submitted-evaluations?${params.toString()}`);
-      setEvaluations(response.data);
+      // ✅ ATUALIZADO: Usar as APIs reais implementadas
+      const response = await api.get(`/test-sessions/submitted?${params.toString()}`);
       
-      if (response.data.length === 0) {
-        toast({
-          title: "Nenhuma avaliação encontrada",
-          description: "Ainda não há avaliações enviadas pelos alunos.",
-        });
+      if (response.data && Array.isArray(response.data.sessions)) {
+        // Transformar dados da API para o formato esperado
+        const transformedEvaluations = response.data.sessions.map(transformSessionToEvaluation);
+        setEvaluations(transformedEvaluations);
+        
+        if (transformedEvaluations.length === 0) {
+          toast({
+            title: "Nenhuma avaliação encontrada",
+            description: "Ainda não há avaliações enviadas pelos alunos.",
+          });
+        }
+      } else {
+        throw new Error("Formato de resposta inválido");
       }
       
     } catch (error) {
@@ -123,12 +130,76 @@ export default function EvaluationCorrection() {
       
       toast({
         title: "Modo de demonstração",
-        description: "Exibindo dados mock. Verifique a conexão com o backend.",
+        description: "Usando dados mock. Verifique a conexão com o backend.",
         variant: "default",
       });
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // ✅ NOVA FUNÇÃO: Transformar dados da API para o formato esperado
+  const transformSessionToEvaluation = (session: any): SubmittedEvaluation => {
+    return {
+      id: session.id,
+      sessionId: session.id,
+      studentId: session.student_id,
+      studentName: session.student_name,
+      testId: session.test_id,
+      testTitle: session.test_title,
+      subject: { 
+        id: session.subject_id, 
+        name: session.subject_name 
+      },
+      grade: { 
+        id: session.grade_id, 
+        name: session.grade_name 
+      },
+      submittedAt: session.submitted_at,
+      duration: Math.floor(session.time_spent / 60), // converter segundos para minutos
+      status: mapSessionStatus(session.status),
+      totalQuestions: session.total_questions,
+      answeredQuestions: session.total_questions - session.blank_answers,
+      autoScore: session.auto_score,
+      manualScore: session.manual_score,
+      finalScore: session.final_score,
+      percentage: session.percentage,
+      correctedBy: session.corrected_by,
+      correctedAt: session.corrected_at,
+      feedback: session.feedback,
+      questions: session.answers ? session.answers.map(transformAnswerToQuestion) : []
+    };
+  };
+
+  // ✅ NOVA FUNÇÃO: Mapear status da sessão
+  const mapSessionStatus = (status: string): SubmittedEvaluation["status"] => {
+    switch (status) {
+      case 'completed':
+        return 'pending';
+      case 'corrected':
+        return 'corrected';
+      case 'reviewed':
+        return 'reviewed';
+      default:
+        return 'pending';
+    }
+  };
+
+  // ✅ NOVA FUNÇÃO: Transformar respostas em questões
+  const transformAnswerToQuestion = (answer: any, index: number): QuestionWithAnswer => {
+    return {
+      id: answer.question_id,
+      number: index + 1,
+      type: answer.question_type || 'multiple_choice',
+      text: answer.question_text,
+      options: answer.options || [],
+      points: answer.max_points || 1,
+      correctAnswer: answer.correct_answer,
+      studentAnswer: answer.student_answer,
+      isCorrect: answer.is_correct,
+      manualPoints: answer.manual_points,
+      feedback: answer.feedback
+    };
   };
 
   const getMockSubmittedEvaluations = (): SubmittedEvaluation[] => [
@@ -315,19 +386,19 @@ export default function EvaluationCorrection() {
       const percentage = calculatePercentage();
 
       const correctionData = {
-        sessionId: selectedEvaluation.sessionId,
         questions: selectedEvaluation.questions.map(q => ({
-          questionId: q.id,
-          manualPoints: q.manualPoints,
+          question_id: q.id,
+          manual_points: q.manualPoints,
           feedback: q.feedback
         })),
-        finalScore,
+        final_score: finalScore,
         percentage,
-        generalFeedback: selectedEvaluation.feedback,
+        general_feedback: selectedEvaluation.feedback,
         status: "corrected"
       };
 
-      await api.patch(`/evaluation-results/admin/evaluations/${selectedEvaluation.id}/correct`, correctionData);
+      // ✅ ATUALIZADO: Usar API real implementada
+      await api.post(`/test-session/${selectedEvaluation.sessionId}/correct`, correctionData);
 
       toast({
         title: "Correção salva!",
@@ -364,19 +435,19 @@ export default function EvaluationCorrection() {
       const percentage = calculatePercentage();
 
       const correctionData = {
-        sessionId: selectedEvaluation.sessionId,
         questions: selectedEvaluation.questions.map(q => ({
-          questionId: q.id,
-          manualPoints: q.manualPoints,
+          question_id: q.id,
+          manual_points: q.manualPoints,
           feedback: q.feedback
         })),
-        finalScore,
+        final_score: finalScore,
         percentage,
-        generalFeedback: selectedEvaluation.feedback,
+        general_feedback: selectedEvaluation.feedback,
         status: "reviewed"
       };
 
-      await api.patch(`/evaluation-results/admin/evaluations/${selectedEvaluation.id}/finish`, correctionData);
+      // ✅ ATUALIZADO: Usar API real implementada
+      await api.post(`/test-session/${selectedEvaluation.sessionId}/finalize`, correctionData);
 
       toast({
         title: "Correção finalizada!",
