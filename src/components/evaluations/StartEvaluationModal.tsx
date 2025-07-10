@@ -28,6 +28,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 
+// Interface removida - não precisamos mais gerenciar turmas aqui
+
+// Schema de validação simplificado (sem seleção de turmas)
 const startEvaluationSchema = z.object({
   startDateTime: z.string().min(1, "Selecione a data e hora de início"),
   endDateTime: z.string().min(1, "Selecione a data e hora de término"),
@@ -71,13 +74,16 @@ interface Class {
 interface StartEvaluationModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (startDateTime: string, endDateTime: string) => Promise<void>;
+  onConfirm: (startDateTime: string, endDateTime: string, classIds: string[]) => Promise<void>;
   evaluation: {
     id: string;
     title: string;
     subject: { id: string; name: string };
+    subjects?: Array<{ id: string; name: string }>;
     questions: Array<any>;
     duration?: number;
+    schools?: Array<{ id: string; name: string }>;
+    municipalities?: Array<{ id: string; name: string }>;
   } | null;
 }
 
@@ -88,8 +94,7 @@ export default function StartEvaluationModal({
   evaluation
 }: StartEvaluationModalProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const [classes, setClasses] = useState<Class[]>([]);
-  const [isLoadingClasses, setIsLoadingClasses] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
   const form = useForm<StartEvaluationFormValues>({
@@ -100,27 +105,24 @@ export default function StartEvaluationModal({
     },
   });
 
+  // Watch dos campos
   const startDateTime = form.watch("startDateTime");
   const endDateTime = form.watch("endDateTime");
 
-  const loadEvaluationClasses = async () => {
-    if (!evaluation) return;
-    try {
-      setIsLoadingClasses(true);
-      const response = await api.get(`/test/${evaluation.id}/classes`);
-      setClasses(response.data || []);
-    } catch (error) {
-      console.error("Erro ao carregar turmas da avaliação:", error);
-      toast({
-        title: "Erro",
-        description: "Erro ao carregar turmas vinculadas à avaliação. Verifique sua conexão.",
-        variant: "destructive",
+  // Não precisamos mais buscar turmas aqui, pois elas já foram selecionadas na criação
+  useEffect(() => {
+    if (isOpen && evaluation) {
+      // Limpar formulário quando abrir
+      form.reset({
+        startDateTime: "",
+        endDateTime: "",
       });
-    } finally {
-      setIsLoadingClasses(false);
     }
-  };
+  }, [isOpen, evaluation]);
 
+  // Função removida - não precisamos mais buscar turmas aqui
+
+  // Função para calcular a duração total do período
   const calculateTotalPeriod = () => {
     if (!startDateTime || !endDateTime) return null;
     const start = new Date(startDateTime);
@@ -139,19 +141,17 @@ export default function StartEvaluationModal({
     }
   };
 
-  const applyEvaluation = async (values: StartEvaluationFormValues) => {
-    if (!evaluation) return;
+  // Funções removidas - não precisamos mais gerenciar seleção de turmas
+
+  const handleSubmit = async (values: StartEvaluationFormValues) => {
     try {
       setIsLoading(true);
-      // Log para depuração
-      console.log("CLASSES PARA APLICAR:", classes);
-      const classesData = classes.map(classItem => {
-        console.log("classItem:", classItem);
-        return {
-          class_id: classItem.class?.id,
-          application: startDateTime,
-          expiration: endDateTime
-        };
+      // Usar array vazio para classIds, pois as turmas já foram selecionadas na criação
+      await onConfirm(values.startDateTime, values.endDateTime, []);
+      
+      toast({
+        title: "Avaliação aplicada com sucesso!",
+        description: `A avaliação "${evaluation?.title}" foi aplicada para as turmas configuradas`,
       });
       const payload = { classes: classesData };
       console.log("PAYLOAD PARA O BACKEND:", payload);
@@ -174,19 +174,11 @@ export default function StartEvaluationModal({
       }
       form.reset();
       onClose();
-    } catch (error: any) {
-      let errorMessage = "Erro ao aplicar avaliação. Tente novamente.";
-      if (error.response?.status === 400) {
-        const errorData = error.response.data;
-        if (errorData.error === "No classes were applied") {
-          errorMessage = "Nenhuma turma foi aplicada. Verifique os dados e tente novamente.";
-        } else if (errorData.details) {
-          errorMessage = `Erro: ${errorData.details.join(', ')}`;
-        }
-      }
+    } catch (error) {
+      console.error("Erro ao aplicar avaliação:", error);
       toast({
         title: "Erro ao aplicar avaliação",
-        description: errorMessage,
+        description: "Ocorreu um erro. Tente novamente.",
         variant: "destructive",
       });
     } finally {
@@ -200,6 +192,7 @@ export default function StartEvaluationModal({
 
   const handleClose = () => {
     form.reset();
+    setError(null);
     onClose();
   };
 
@@ -213,14 +206,14 @@ export default function StartEvaluationModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[700px] max-h-[90vh]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Play className="h-5 w-5 text-green-600" />
             Aplicar Avaliação
           </DialogTitle>
           <DialogDescription>
-            Configure quando a avaliação "{evaluation.title}" ficará disponível para os alunos
+            Configure quando e para quais turmas a avaliação "{evaluation.title}" ficará disponível
           </DialogDescription>
         </DialogHeader>
 
@@ -232,28 +225,26 @@ export default function StartEvaluationModal({
                 Informações da Avaliação
               </h4>
               <div className="space-y-1 text-sm text-blue-700">
-                <p><strong>Disciplina:</strong> {evaluation.subject.name}</p>
+                <p><strong>Disciplina(s):</strong> {
+                  evaluation.subjects && evaluation.subjects.length > 0 
+                    ? evaluation.subjects.map(s => s.name).join(", ")
+                    : evaluation.subject.name
+                }</p>
                 <p><strong>Questões:</strong> {evaluation.questions.length}</p>
                 <p><strong>Duração individual:</strong> {evaluation.duration || 60} minutos</p>
               </div>
             </div>
 
-            {/* Informações das Turmas */}
-            <div className="space-y-4">
-              {/* <div className="flex items-center">
-                <Label className="flex items-center gap-2">
-                  <Users className="h-4 w-4" />
-                  Turmas
-                </Label>
-              </div> */}
-
-              {classes.length > 0 && (
-                <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-                  <p className="text-sm text-green-800">
-                    <strong>{classes.length}</strong> turma{classes.length > 1 ? 's' : ''} receberá{classes.length > 1 ? 'ão' : ''} esta avaliação
-                  </p>
-                </div>
-              )}
+            {/* Informações das Turmas Selecionadas */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Users className="h-4 w-4 text-blue-600" />
+                <h3 className="font-medium text-blue-800">Turmas Selecionadas</h3>
+              </div>
+              <p className="text-sm text-blue-700">
+                As turmas foram selecionadas durante a criação da avaliação. 
+                A avaliação será aplicada para todas as turmas configuradas.
+              </p>
             </div>
 
             {/* Campos de Data */}

@@ -388,20 +388,36 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
     setStartModalOpen(true);
   };
 
-  const handleConfirmStartEvaluation = async (startDateTime: string, endDateTime: string) => {
+  const handleConfirmStartEvaluation = async (startDateTime: string, endDateTime: string, classIds: string[]) => {
     if (!selectedEvaluationToStart) return;
 
     try {
-      // Removido: chamada para ativar avaliação (rota /test/{id}/start)
-      // Apenas feedback de sucesso e recarregar lista
+      // ✅ FORMATO CORRETO - Enviar como um único request com array de classes
+      const classesData = classIds.map(classId => ({
+        class_id: classId,
+        application: startDateTime,
+        expiration: endDateTime
+      }));
+  
+      await api.post(`/test/${selectedEvaluationToStart.id}/apply`, {
+        classes: classesData
+      });
+  
+      // Recarregar a lista para refletir as mudanças
+      fetchEvaluations();
+      
       toast({
         title: "Avaliação aplicada com sucesso!",
-        description: "A avaliação agora está disponível para os alunos na agenda",
+        description: `A avaliação foi aplicada para ${classIds.length} turma(s).`,
       });
-      fetchEvaluations();
     } catch (error) {
-      console.error("Erro ao iniciar avaliação:", error);
-      throw error; // Deixar o modal lidar com o erro
+      console.error("Erro ao aplicar avaliação:", error);
+      toast({
+        title: "Erro ao aplicar avaliação",
+        description: "Verifique se as turmas estão selecionadas corretamente.",
+        variant: "destructive",
+      });
+      throw error;
     } finally {
       setStartModalOpen(false);
       setSelectedEvaluationToStart(null);
@@ -498,42 +514,160 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
           </div>
         </div>
 
-        {/* Ações em lote */}
-        {selectedIds.length > 0 && (
-          <div className="flex items-center justify-between bg-blue-50 p-3 rounded-lg">
-            <span className="text-sm text-blue-800">
-              {selectedIds.length} avaliação(ões) selecionada(s)
-            </span>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => {
-                setEvaluationToDelete(null);
-                setDeleteDialogOpen(true);
-              }}
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Excluir ({selectedIds.length})
-            </Button>
-          </div>
-        )}
-
-        {/* Tabela de avaliações */}
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableCaption className="caption-top text-left p-6 pb-0">
-                  <div className="flex items-center justify-between">
-                    <span>Lista de avaliações disponíveis</span>
-                    {!isLoading && (
-                      <span className="text-sm text-muted-foreground">
-                        {filteredEvaluations.length} avaliação(ões) encontrada(s)
-                      </span>
-                    )}
-                  </div>
-                </TableCaption>
-                <TableHeader>
+      {/* Tabela de avaliações */}
+      <Card>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableCaption className="caption-top text-left p-6 pb-0">
+                <div className="flex items-center justify-between">
+                  <span>Lista de avaliações disponíveis</span>
+                  {!isLoading && (
+                    <span className="text-sm text-muted-foreground">
+                      {filteredEvaluations.length} avaliação(ões) encontrada(s)
+                    </span>
+                  )}
+                </div>
+              </TableCaption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[50px]">
+                    <Checkbox
+                      checked={
+                        currentItems.length > 0 &&
+                        selectedIds.length === currentItems.length
+                      }
+                      onCheckedChange={handleSelectAll}
+                      aria-label="Selecionar todos"
+                    />
+                  </TableHead>
+                  <TableHead className="min-w-[250px]">Título</TableHead>
+                  <TableHead className="hidden sm:table-cell">Disciplina(s)</TableHead>
+                  <TableHead className="hidden md:table-cell">Tipo/Modelo</TableHead>
+                  <TableHead className="hidden md:table-cell">Questões</TableHead>
+                  <TableHead className="hidden lg:table-cell">Série</TableHead>
+                  <TableHead className="hidden lg:table-cell">Data</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell><Skeleton className="h-4 w-4" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-48" /></TableCell>
+                      <TableCell className="hidden sm:table-cell"><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
+                      <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-12" /></TableCell>
+                      <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-16" /></TableCell>
+                      <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Skeleton className="h-8 w-8" />
+                          <Skeleton className="h-8 w-8" />
+                          <Skeleton className="h-8 w-8" />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : currentItems.length > 0 ? (
+                  currentItems.map((evaluation) => (
+                    <TableRow key={evaluation.id} data-state={selectedIds.includes(evaluation.id) && "selected"}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedIds.includes(evaluation.id)}
+                          onCheckedChange={(checked) => handleSelectOne(evaluation.id, !!checked)}
+                          aria-label={`Selecionar ${evaluation.title}`}
+                        />
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        <div>
+                          <div className="line-clamp-1">{evaluation.title}</div>
+                          {evaluation.description && (
+                            <div className="text-xs text-muted-foreground line-clamp-1 mt-1">
+                              {evaluation.description}
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        <SubjectsList evaluation={evaluation} />
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        <div className="flex flex-col gap-1">
+                          {evaluation.type && (
+                            <Badge className={`text-xs ${getTypeColor(evaluation.type)} w-fit`}>
+                              {evaluation.type}
+                            </Badge>
+                          )}
+                          {evaluation.model && (
+                            <Badge className={`text-xs ${getModelColor(evaluation.model)} w-fit`}>
+                              {evaluation.model}
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        <Badge variant="outline" className="text-xs">
+                          {evaluation.questions.length}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell">
+                        {evaluation.grade && (
+                          <Badge variant="outline" className="text-xs">
+                            {evaluation.grade.name}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell">
+                        <span className="text-xs text-muted-foreground">
+                          {formatDate(evaluation.createdAt)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleStartEvaluation(evaluation)}
+                            title="Aplicar Avaliação"
+                            className="text-green-600 hover:text-green-700"
+                          >
+                            <Play className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleView(evaluation.id)}
+                            title="Visualizar"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEdit(evaluation.id)}
+                            title="Editar"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setEvaluationToDelete(evaluation.id);
+                              setDeleteDialogOpen(true);
+                            }}
+                            title="Excluir"
+                            className="text-red-500 hover:text-red-700"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
                   <TableRow>
                     <TableHead className="w-[50px]">
                       <Checkbox
@@ -773,3 +907,8 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
     </TooltipProvider>
   );
 }
+console.log('Dados sendo enviados:', {
+  test_id: selectedEvaluationToStart.id,
+  classes: classesData,
+  classIds
+});
