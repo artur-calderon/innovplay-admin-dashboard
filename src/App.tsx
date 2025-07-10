@@ -95,7 +95,6 @@ const App = () => {
             <Route path="/aluno" element={<Layout />}>
               <Route index element={<PrivateRoute><Index /></PrivateRoute>} />
               <Route path="/aluno/avaliacoes" element={<PrivateRoute><StudentEvaluations /></PrivateRoute>} />
-              <Route path="/aluno/take-evaluation/:evaluationId" element={<PrivateRoute><TakeEvaluation /></PrivateRoute>} />
               <Route path="/aluno/agenda" element={<PrivateRoute><StudentAgenda /></PrivateRoute>} />
               <Route path="/aluno/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
               <Route path="/aluno/jogos" element={<PrivateRoute><StudentGames /></PrivateRoute>} />

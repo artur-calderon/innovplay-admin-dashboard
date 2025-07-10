@@ -23,10 +23,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { CalendarDays, Clock, Loader2, Play, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { api } from "@/lib/api";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
 
 // Interface removida - não precisamos mais gerenciar turmas aqui
 
@@ -45,31 +41,6 @@ const startEvaluationSchema = z.object({
 });
 
 type StartEvaluationFormValues = z.infer<typeof startEvaluationSchema>;
-
-interface Class {
-  id?: string;
-  class?: {
-    id: string;
-    name: string;
-  };
-  name?: string;
-  school_id?: string;
-  grade_id?: string;
-  students_count?: number;
-  school?: {
-    id: string;
-    name: string;
-  };
-  grade?: {
-    id: string;
-    name: string;
-    education_stage_id: string;
-    education_stage?: {
-      id: string;
-      name: string;
-    };
-  };
-}
 
 interface StartEvaluationModalProps {
   isOpen: boolean;
@@ -125,13 +96,17 @@ export default function StartEvaluationModal({
   // Função para calcular a duração total do período
   const calculateTotalPeriod = () => {
     if (!startDateTime || !endDateTime) return null;
+    
     const start = new Date(startDateTime);
     const end = new Date(endDateTime);
+    
     if (end <= start) return null;
+    
     const diffMs = end.getTime() - start.getTime();
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
     const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    
     if (diffDays > 0) {
       return `${diffDays} dia${diffDays > 1 ? 's' : ''} e ${diffHours}h${diffMinutes}min`;
     } else if (diffHours > 0) {
@@ -153,25 +128,7 @@ export default function StartEvaluationModal({
         title: "Avaliação aplicada com sucesso!",
         description: `A avaliação "${evaluation?.title}" foi aplicada para as turmas configuradas`,
       });
-      const payload = { classes: classesData };
-      console.log("PAYLOAD PARA O BACKEND:", payload);
-      // Corrigir endpoint para aplicar avaliação (singular)
-      const response = await api.post(`/test/${evaluation.id}/apply`, payload);
-      if (response.data.warnings && response.data.warnings.length > 0) {
-        toast({
-          title: "Avaliação aplicada com avisos",
-          description: `Avaliação aplicada com sucesso para ${response.data.applied_classes.length} turmas. Avisos: ${response.data.warnings.join(', ')}`,
-          variant: "default",
-        });
-      } else {
-        toast({
-          title: "Avaliação aplicada com sucesso!",
-          description: `Avaliação aplicada para ${response.data.applied_classes.length} turmas`,
-        });
-      }
-      if (onConfirm) {
-        await onConfirm(values.startDateTime, values.endDateTime);
-      }
+      
       form.reset();
       onClose();
     } catch (error) {
@@ -186,21 +143,11 @@ export default function StartEvaluationModal({
     }
   };
 
-  const handleSubmit = async (values: StartEvaluationFormValues) => {
-    await applyEvaluation(values);
-  };
-
   const handleClose = () => {
     form.reset();
     setError(null);
     onClose();
   };
-
-  useEffect(() => {
-    if (isOpen && evaluation) {
-      loadEvaluationClasses();
-    }
-  }, [isOpen, evaluation]);
 
   if (!evaluation) return null;
 
@@ -290,6 +237,8 @@ export default function StartEvaluationModal({
                   )}
                 />
               </div>
+
+              {/* Resumo do Período */}
               {calculateTotalPeriod() && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                   <div className="flex items-center gap-2">
@@ -316,7 +265,7 @@ export default function StartEvaluationModal({
               </Button>
               <Button
                 type="submit"
-                disabled={isLoading || !calculateTotalPeriod() || classes.length === 0}
+                disabled={isLoading || !calculateTotalPeriod()}
                 className="bg-green-600 hover:bg-green-700"
               >
                 {isLoading ? (
