@@ -27,11 +27,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { 
-  Clock, 
-  ChevronLeft, 
-  ChevronRight, 
-  Send, 
+import {
+  Clock,
+  ChevronLeft,
+  ChevronRight,
+  Send,
   AlertTriangle,
   CheckCircle,
   List,
@@ -39,13 +39,15 @@ import {
   Save,
   Flag,
   Home,
-  Play
+  Play,
+  Loader2
 } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { EvaluationTimer } from "./EvaluationTimer";
+import { EvaluationApiService, SessionStorage } from "@/services/evaluationApi";
 
 // Interfaces
 interface Question {
@@ -64,6 +66,23 @@ interface Question {
   difficulty: "easy" | "medium" | "hard";
   subject: string;
   skill: string;
+}
+
+// Interface para questões da API
+interface ApiQuestion {
+  id: string;
+  alternatives?: Array<{
+    isCorrect: boolean;
+    text: string;
+  }>;
+  question_type?: string;
+  text?: string;
+  title?: string;
+  value?: number;
+  subject?: {
+    name: string;
+  };
+  topics?: string[];
 }
 
 interface EvaluationData {
@@ -135,7 +154,7 @@ export default function TakeEvaluation() {
       intervalRef.current = setInterval(() => {
         setTimeRemaining(prev => {
           const newTime = prev - 1;
-          
+
           // Avisos de tempo
           if (newTime === 300) { // 5 minutos
             setShowTimeWarning(true);
@@ -151,13 +170,13 @@ export default function TakeEvaluation() {
               variant: "destructive",
             });
           }
-          
+
           if (newTime <= 0) {
             setIsTimeUp(true);
             handleTimeUp();
             return 0;
           }
-          
+
           return newTime;
         });
       }, 1000);
@@ -184,8 +203,12 @@ export default function TakeEvaluation() {
   const loadEvaluationData = async () => {
     try {
       setIsLoading(true);
-      
-      // Verificar se há progresso salvo
+
+      console.log('=== DEBUG: loadEvaluationData ===');
+      console.log('evaluationId:', evaluationId);
+
+      // Verificar se há dados salvos no localStorage
+      const savedData = localStorage.getItem("current_evaluation_data");
       const savedProgress = localStorage.getItem(`evaluation_progress_${evaluationId}`);
       
       // Primeiro, tentar usar os dados salvos no sessionStorage das APIs reais
@@ -247,8 +270,8 @@ export default function TakeEvaluation() {
         savedProgress ? Promise.resolve({ data: JSON.parse(savedProgress) }) : Promise.resolve({ data: null })
       ]);
 
-      const evaluation = evaluationResponse.data;
-      const progress = progressResponse?.data;
+      console.log('savedData:', savedData);
+      console.log('savedProgress:', savedProgress);
 
       // Mapear os dados da API para o formato esperado pelo componente
       const evaluationData: EvaluationData = {
@@ -300,7 +323,7 @@ export default function TakeEvaluation() {
         description: "Não foi possível carregar a avaliação",
         variant: "destructive",
       });
-      
+
       // Dados mock para desenvolvimento
       setEvaluationData(getMockEvaluationData());
       setTimeRemaining(90 * 60); // 90 minutos
@@ -314,7 +337,7 @@ export default function TakeEvaluation() {
 
     try {
       setAutoSaveStatus("saving");
-      
+
       const progressData = {
         evaluationId: evaluationData.id,
         answers,
@@ -326,14 +349,15 @@ export default function TakeEvaluation() {
       // Salvar localmente
       localStorage.setItem(`evaluation_progress_${evaluationId}`, JSON.stringify(progressData));
 
-      // Tentar salvar no servidor
-      await api.post(`/evaluations/${evaluationId}/save-progress`, progressData);
-      
+      // Salvar apenas localmente por enquanto
+      // TODO: Implementar integração com o novo sistema de sessões
+      console.log('Salvando progresso localmente:', progressData);
+
       setAutoSaveStatus("saved");
       lastAutoSaveRef.current = Date.now();
-      
+
       setTimeout(() => setAutoSaveStatus(null), 2000);
-      
+
     } catch (error) {
       console.error("Erro no auto-save:", error);
       setAutoSaveStatus("error");
@@ -470,7 +494,7 @@ export default function TakeEvaluation() {
       description: "A avaliação será enviada automaticamente",
       variant: "destructive",
     });
-    
+
     setTimeout(() => {
       handleSubmitEvaluation(true);
     }, 3000);
@@ -501,6 +525,8 @@ export default function TakeEvaluation() {
       console.log('Resposta da API de submissão:', response);
 
       // Limpar dados locais
+      SessionStorage.removeSession(evaluationId!);
+      SessionStorage.removeAnswers(evaluationId!);
       localStorage.removeItem(`evaluation_progress_${evaluationId}`);
       localStorage.removeItem("evaluation_in_progress");
       sessionStorage.removeItem("current_evaluation");
@@ -508,14 +534,14 @@ export default function TakeEvaluation() {
 
       toast({
         title: "✅ Avaliação enviada com sucesso!",
-        description: automatic 
+        description: automatic
           ? "Sua avaliação foi enviada automaticamente devido ao fim do tempo"
           : "Suas respostas foram salvas com sucesso",
       });
 
       // Redirecionar para resultados ou página inicial
-      navigate("/app/avaliacoes", { 
-        state: { 
+      navigate("/aluno/avaliacoes", {
+        state: {
           message: "Avaliação concluída com sucesso!",
           evaluationId: evaluationData?.id
         }
@@ -811,7 +837,7 @@ export default function TakeEvaluation() {
                 <li>O timer irá contar regressivamente - fique atento ao tempo</li>
                 <li>A avaliação será enviada automaticamente quando o tempo acabar</li>
               </ul>
-              
+
               {evaluationData.instructions && (
                 <div className="mt-4 p-4 bg-blue-50 rounded-lg">
                   <h4>Instruções específicas:</h4>
@@ -837,6 +863,40 @@ export default function TakeEvaluation() {
   }
 
   const currentQuestion = evaluationData.questions[currentQuestionIndex];
+
+  // Verificação de segurança para currentQuestion
+  if (!currentQuestion) {
+    console.log("=== DEBUG: currentQuestion undefined ===");
+    console.log("evaluationData.questions:", evaluationData.questions);
+    console.log("currentQuestionIndex:", currentQuestionIndex);
+    console.log("questions length:", evaluationData.questions.length);
+
+    // Tentar corrigir o índice se estiver fora dos limites
+    if (currentQuestionIndex >= evaluationData.questions.length) {
+      const correctedIndex = evaluationData.questions.length - 1;
+      console.log("Corrigindo índice para:", correctedIndex);
+      setCurrentQuestionIndex(correctedIndex);
+      return (
+        <div className="container mx-auto px-4 py-6">
+          <div className="flex justify-center items-center">
+            <Loader2 className="h-6 w-6 animate-spin" />
+            <span className="ml-2">Ajustando questão...</span>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="container mx-auto px-4 py-6">
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            Erro ao carregar a questão atual. Tente recarregar a página.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -881,7 +941,7 @@ export default function TakeEvaluation() {
               )}
 
               {/* Timer */}
-              <EvaluationTimer 
+              <EvaluationTimer
                 timeRemaining={timeRemaining}
                 isTimeUp={isTimeUp}
                 showWarning={showTimeWarning}
@@ -927,19 +987,17 @@ export default function TakeEvaluation() {
                   {evaluationData.questions.map((question, index) => {
                     const status = getQuestionStatus(question.id);
                     const isMarked = answers[question.id]?.isMarked;
-                    
+
                     return (
                       <Button
                         key={question.id}
                         variant="outline"
                         size="sm"
-                        className={`h-10 relative ${
-                          index === currentQuestionIndex ? 'ring-2 ring-blue-500' : ''
-                        } ${
-                          status === 'answered' ? 'bg-green-100 border-green-300' :
-                          status === 'marked' ? 'bg-yellow-100 border-yellow-300' :
-                          'bg-white'
-                        }`}
+                        className={`h-10 relative ${index === currentQuestionIndex ? 'ring-2 ring-blue-500' : ''
+                          } ${status === 'answered' ? 'bg-green-100 border-green-300' :
+                            status === 'marked' ? 'bg-yellow-100 border-yellow-300' :
+                              'bg-white'
+                          }`}
                         onClick={() => navigateToQuestion(index)}
                       >
                         {question.number}
@@ -968,8 +1026,8 @@ export default function TakeEvaluation() {
                 </div>
 
                 {/* Botão de enviar */}
-                <Button 
-                  className="w-full" 
+                <Button
+                  className="w-full"
                   onClick={() => setShowSubmitDialog(true)}
                   disabled={isTimeUp || isSubmitting}
                 >
@@ -983,7 +1041,7 @@ export default function TakeEvaluation() {
           {/* Área principal */}
           <div className="lg:col-span-3">
             {displayMode === "one_by_one" ? (
-              <QuestionCard 
+              <QuestionCard
                 question={currentQuestion}
                 answer={answers[currentQuestion.id]}
                 onAnswerChange={handleAnswerChange}
@@ -995,7 +1053,7 @@ export default function TakeEvaluation() {
                 isTimeUp={isTimeUp}
               />
             ) : (
-              <AllQuestionsView 
+              <AllQuestionsView
                 questions={evaluationData.questions}
                 answers={answers}
                 onAnswerChange={handleAnswerChange}
@@ -1013,8 +1071,8 @@ export default function TakeEvaluation() {
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar envio da avaliação</AlertDialogTitle>
             <AlertDialogDescription>
-              Você tem certeza que deseja enviar sua avaliação? 
-              
+              Você tem certeza que deseja enviar sua avaliação?
+
               <div className="mt-4 space-y-2">
                 <div>Questões respondidas: {Object.keys(answers).filter(id => answers[id]?.answer !== null && answers[id]?.answer !== "").length} de {evaluationData.totalQuestions}</div>
                 <div>Tempo restante: {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}</div>
@@ -1027,7 +1085,7 @@ export default function TakeEvaluation() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isSubmitting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={() => handleSubmitEvaluation(false)}
               disabled={isSubmitting}
             >
@@ -1046,7 +1104,7 @@ export default function TakeEvaluation() {
               Atenção: Tempo Limitado
             </DialogTitle>
             <DialogDescription>
-              Restam poucos minutos para finalizar sua avaliação. 
+              Restam poucos minutos para finalizar sua avaliação.
               Revise suas respostas e envie quando estiver pronto.
             </DialogDescription>
           </DialogHeader>
@@ -1062,16 +1120,16 @@ export default function TakeEvaluation() {
 }
 
 // Componente para exibir uma questão
-function QuestionCard({ 
-  question, 
-  answer, 
-  onAnswerChange, 
-  onMarkQuestion, 
-  onNext, 
-  onPrevious, 
-  canGoNext, 
+function QuestionCard({
+  question,
+  answer,
+  onAnswerChange,
+  onMarkQuestion,
+  onNext,
+  onPrevious,
+  canGoNext,
   canGoPrevious,
-  isTimeUp 
+  isTimeUp
 }: {
   question: Question;
   answer?: Answer;
@@ -1091,17 +1149,17 @@ function QuestionCard({
             <div className="flex items-center gap-3 mb-3">
               <Badge variant="outline">Questão {question.number}</Badge>
               <Badge variant="secondary">{question.points} ponto{question.points !== 1 ? 's' : ''}</Badge>
-              <Badge 
-                variant="outline" 
+              <Badge
+                variant="outline"
                 className={
                   question.difficulty === 'easy' ? 'border-green-300 text-green-700' :
-                  question.difficulty === 'medium' ? 'border-yellow-300 text-yellow-700' :
-                  'border-red-300 text-red-700'
+                    question.difficulty === 'medium' ? 'border-yellow-300 text-yellow-700' :
+                      'border-red-300 text-red-700'
                 }
               >
-                {question.difficulty === 'easy' ? 'Avançado' : 
-                 question.difficulty === 'medium' ? 'Adequado' : 
-                 question.difficulty === 'basic' ? 'Básico' : 'Abaixo do Básico'}
+                {question.difficulty === 'easy' ? 'Fácil' :
+                  question.difficulty === 'medium' ? 'Médio' :
+                    'Difícil'}
               </Badge>
             </div>
             <CardTitle className="text-base leading-relaxed">
@@ -1121,15 +1179,15 @@ function QuestionCard({
       </CardHeader>
       <CardContent className="space-y-4">
         {question.imageUrl && (
-          <img 
-            src={question.imageUrl} 
-            alt="Imagem da questão" 
+          <img
+            src={question.imageUrl}
+            alt="Imagem da questão"
             className="max-w-full h-auto rounded-lg border"
           />
         )}
 
         {/* Opções de resposta */}
-        <QuestionOptions 
+        <QuestionOptions
           question={question}
           answer={answer?.answer}
           onAnswerChange={(newAnswer) => onAnswerChange(question.id, newAnswer)}
@@ -1138,8 +1196,8 @@ function QuestionCard({
 
         {/* Navegação */}
         <div className="flex justify-between pt-4">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={onPrevious}
             disabled={!canGoPrevious || isTimeUp}
           >
@@ -1147,7 +1205,7 @@ function QuestionCard({
             Anterior
           </Button>
 
-          <Button 
+          <Button
             onClick={onNext}
             disabled={!canGoNext || isTimeUp}
           >
@@ -1161,11 +1219,11 @@ function QuestionCard({
 }
 
 // Componente para opções de resposta
-function QuestionOptions({ 
-  question, 
-  answer, 
-  onAnswerChange, 
-  disabled 
+function QuestionOptions({
+  question,
+  answer,
+  onAnswerChange,
+  disabled
 }: {
   question: Question;
   answer?: string | string[] | null;
@@ -1174,8 +1232,8 @@ function QuestionOptions({
 }) {
   if (question.type === "multiple_choice") {
     return (
-      <RadioGroup 
-        value={answer as string || ""} 
+      <RadioGroup
+        value={answer as string || ""}
         onValueChange={onAnswerChange}
         disabled={disabled}
       >
@@ -1185,9 +1243,9 @@ function QuestionOptions({
             <Label htmlFor={option.id} className="flex-1 cursor-pointer">
               {option.text}
               {option.imageUrl && (
-                <img 
-                  src={option.imageUrl} 
-                  alt="Opção" 
+                <img
+                  src={option.imageUrl}
+                  alt="Opção"
                   className="mt-2 max-w-xs h-auto rounded border"
                 />
               )}
@@ -1200,8 +1258,8 @@ function QuestionOptions({
 
   if (question.type === "true_false") {
     return (
-      <RadioGroup 
-        value={answer as string || ""} 
+      <RadioGroup
+        value={answer as string || ""}
         onValueChange={onAnswerChange}
         disabled={disabled}
       >
@@ -1219,12 +1277,12 @@ function QuestionOptions({
 
   if (question.type === "multiple_answer") {
     const selectedAnswers = Array.isArray(answer) ? answer : [];
-    
+
     return (
       <div className="space-y-2">
         {question.options?.map((option) => (
           <div key={option.id} className="flex items-center space-x-2">
-            <Checkbox 
+            <Checkbox
               id={option.id}
               checked={selectedAnswers.includes(option.id)}
               onCheckedChange={(checked) => {
@@ -1260,12 +1318,12 @@ function QuestionOptions({
 }
 
 // Componente para visualizar todas as questões
-function AllQuestionsView({ 
-  questions, 
-  answers, 
-  onAnswerChange, 
+function AllQuestionsView({
+  questions,
+  answers,
+  onAnswerChange,
   onMarkQuestion,
-  isTimeUp 
+  isTimeUp
 }: {
   questions: Question[];
   answers: Record<string, Answer>;
@@ -1282,8 +1340,8 @@ function AllQuestionsView({
           answer={answers[question.id]}
           onAnswerChange={onAnswerChange}
           onMarkQuestion={onMarkQuestion}
-          onNext={() => {}}
-          onPrevious={() => {}}
+          onNext={() => { }}
+          onPrevious={() => { }}
           canGoNext={false}
           canGoPrevious={false}
           isTimeUp={isTimeUp}

@@ -1,0 +1,102 @@
+// Interfaces para o sistema de provas/avaliações
+
+export interface TestSession {
+    session_id: string;
+    status: 'em_andamento' | 'finalizada' | 'expirada';
+    started_at: string;
+    remaining_time_minutes: number;
+    is_expired: boolean;
+    total_questions: number;
+    correct_answers: number;
+    score: number;
+    grade: string | null;
+}
+
+export interface Question {
+    id: string;
+    number: number;
+    type: "multiple_choice" | "true_false" | "essay" | "multiple_answer";
+    text: string;
+    imageUrl?: string;
+    options?: {
+        id: string;
+        text: string;
+    }[];
+    points: number;
+    difficulty: "easy" | "medium" | "hard";
+}
+
+export interface TestData {
+    id: string;
+    title: string;
+    subject: { id: string; name: string };
+    duration: number;
+    totalQuestions: number;
+    instructions: string;
+    questions: Question[];
+}
+
+export interface StudentAnswer {
+    question_id: string;
+    answer: string;
+}
+
+export interface TestResults {
+    total_questions: number;
+    correct_answers: number;
+    score_percentage: number;
+    grade: string;
+    answers_saved: number;
+}
+
+export type EvaluationState = 'loading' | 'instructions' | 'active' | 'completed' | 'expired' | 'error';
+
+// Interfaces para as APIs
+export interface StartSessionRequest {
+    test_id: string;
+    time_limit_minutes: number;
+}
+
+export interface StartSessionResponse {
+    message: string;
+    session_id: string;
+    started_at: string;
+    time_limit_minutes: number;
+    remaining_time_minutes: number;
+}
+
+export interface SessionStatusResponse {
+    session_id: string;
+    status: 'em_andamento' | 'finalizada' | 'expirada';
+    started_at: string;
+    remaining_time_minutes: number;
+    is_expired: boolean;
+    total_questions: number;
+    correct_answers: number;
+    score: number;
+    grade: string | null;
+}
+
+export interface SavePartialRequest {
+    session_id: string;
+    answers: {
+        question_id: string;
+        answer: string;
+    }[];
+}
+
+export interface SubmitTestRequest {
+    session_id: string;
+    answers: {
+        question_id: string;
+        answer: string;
+    }[];
+}
+
+export interface SubmitTestResponse {
+    message: string;
+    session_id: string;
+    submitted_at: string;
+    duration_minutes: number;
+    results: TestResults;
+} 
