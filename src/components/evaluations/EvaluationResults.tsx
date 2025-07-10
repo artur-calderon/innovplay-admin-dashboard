@@ -187,8 +187,14 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
       
       for (const evaluation of evaluations) {
         if (evaluation.status === 'completed') {
-          const students = await EvaluationResultsApiService.getStudents(evaluation.id, filters);
-          allStudents.push(...students);
+          // Usar studentsData já carregado se disponível
+          if (evaluation.studentsData && evaluation.studentsData.length > 0) {
+            allStudents.push(...evaluation.studentsData);
+          } else {
+            // Buscar dados dos alunos via API
+            const students = await EvaluationResultsApiService.getStudents(evaluation.id, filters);
+            allStudents.push(...students);
+          }
         }
       }
       

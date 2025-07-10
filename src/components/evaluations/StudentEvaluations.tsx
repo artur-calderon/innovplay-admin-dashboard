@@ -37,19 +37,20 @@ import {
   RefreshCw,
   Trophy,
   Target,
-  Zap
+  Zap,
+  Wifi,
+  WifiOff,
+  Bell
 } from "lucide-react";
 import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { useRealTimeNotifications } from "@/hooks/useRealTimeNotifications";
 import { format, isAfter, isBefore, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { EvaluationApiService, SessionStorage } from "@/services/evaluationApi";
-import { TestSession } from "@/types/evaluation-types";
 
 interface StudentEvaluation {
   id: string;
-  class_test_id?: string; // ID da avaliação da turma
   title: string;
   description: string;
   subject: { id: string; name: string };
@@ -79,10 +80,6 @@ interface StudentEvaluation {
     timeSpent: number;
     completedAt: string;
   };
-  // Dados adicionais da API
-  questions?: any[];
-  availability?: any;
-  class_test_info?: any;
 }
 
 interface EvaluationTaking {
@@ -133,107 +130,25 @@ export default function StudentEvaluations() {
 
   const { user } = useAuth();
   const { toast } = useToast();
-
-  // Função para forçar atualização do status das avaliações
-  const refreshEvaluationStatuses = () => {
-    setEvaluations(prevEvaluations =>
-      prevEvaluations.map(evaluation => {
-        const statusData = {
-          id: evaluation.id,
-          startDateTime: evaluation.startDateTime,
-          endDateTime: evaluation.endDateTime,
-          availability: evaluation.availability,
-          class_test_info: evaluation.class_test_info,
-          test: { status: evaluation.status === 'completed' ? 'concluida' : undefined }
-        };
-
-        const newStatus = determineEvaluationStatus(statusData);
-
-        return {
-          ...evaluation,
-          status: newStatus
-        };
-      })
-    );
-  };
+  const { notifications, isConnected, unreadCount } = useRealTimeNotifications();
 
   useEffect(() => {
     fetchStudentEvaluations();
+    // Verificar se há avaliação em andamento no localStorage
+    checkInProgressEvaluation();
   }, []);
-
-  // Verificar avaliações em progresso após carregar as avaliações
-  useEffect(() => {
-    if (evaluations.length > 0) {
-      checkInProgressEvaluation();
-    }
-  }, [evaluations]);
-
-  // Atualizar status das avaliações periodicamente
-  useEffect(() => {
-    if (evaluations.length > 0) {
-      // Atualizar status a cada minuto
-      const interval = setInterval(() => {
-        setEvaluations(prevEvaluations =>
-          prevEvaluations.map(evaluation => {
-            const statusData = {
-              id: evaluation.id,
-              startDateTime: evaluation.startDateTime,
-              endDateTime: evaluation.endDateTime,
-              availability: evaluation.availability,
-              class_test_info: evaluation.class_test_info,
-              test: { status: evaluation.status === 'completed' ? 'concluida' : undefined }
-            };
-
-            const newStatus = determineEvaluationStatus(statusData);
-
-            return {
-              ...evaluation,
-              status: newStatus
-            };
-          })
-        );
-      }, 60000); // Atualizar a cada minuto
-
-      return () => clearInterval(interval);
-    }
-  }, [evaluations.length]);
-
-  // Função para debug do status das avaliações
-  const debugEvaluationStatus = (evaluation: StudentEvaluation) => {
-    const now = new Date();
-    const startDate = parseISO(evaluation.startDateTime);
-    const endDate = evaluation.endDateTime ? parseISO(evaluation.endDateTime) : null;
-
-    console.log(`=== Debug Avaliação: ${evaluation.title} ===`);
-    console.log(`Status atual: ${evaluation.status}`);
-    console.log(`Data atual: ${now.toISOString()}`);
-    console.log(`Data início: ${evaluation.startDateTime}`);
-    console.log(`Data fim: ${evaluation.endDateTime || 'N/A'}`);
-    console.log(`Disponível hoje: ${isEvaluationAvailableToday(now, startDate)}`);
-    console.log(`Já passou da data de início: ${isAfter(now, startDate)}`);
-    console.log(`Já passou da data de fim: ${endDate ? isAfter(now, endDate) : false}`);
-    console.log(`É o mesmo dia: ${now.getFullYear() === startDate.getFullYear() && now.getMonth() === startDate.getMonth() && now.getDate() === startDate.getDate()}`);
-    console.log('=====================================');
-  };
-
-  // Debug das avaliações quando carregadas
-  useEffect(() => {
-    if (evaluations.length > 0) {
-      evaluations.forEach(debugEvaluationStatus);
-    }
-  }, [evaluations]);
 
   const fetchStudentEvaluations = async () => {
     try {
       setIsLoading(true);
 
-      // Buscar a turma do aluno
-      const classResponse = await api.get(`/students/${user?.id}/class`);
-      const studentClass: StudentClass = classResponse.data;
+      // Buscar dados do aluno logado usando a nova API
+      const studentResponse = await api.get('/students/me');
+      const studentData = studentResponse.data;
 
+      console.log('Dados do aluno:', studentData);
 
-
-      if (!studentClass || !studentClass.id) {
+      if (!studentData || !studentData.class || !studentData.class.id) {
         setEvaluations([]);
         toast({
           title: "Nenhuma turma encontrada",
@@ -243,72 +158,57 @@ export default function StudentEvaluations() {
         return;
       }
 
-      // Buscar todas as avaliações da turma usando o class_id
-      try {
-        const evaluationsResponse = await api.get(`/test/class/${studentClass.id}/tests/complete`);
+      const classId = studentData.class.id;
 
-        // Os dados das avaliações estão em evaluationsResponse.data.tests
-        const testsData = evaluationsResponse.data.tests;
+      // Buscar todas as avaliações da turma usando a API real
+      const evaluationsResponse = await api.get(`/test/class/${classId}/tests/complete`);
+      console.log('Resposta da API de avaliações:', evaluationsResponse);
 
-        if (!testsData || !Array.isArray(testsData)) {
-          setEvaluations([]);
-          return;
-        }
+      // Os dados das avaliações estão em evaluationsResponse.data.tests
+      const testsData = evaluationsResponse.data.tests;
 
-        // Transformar e adicionar as avaliações encontradas
-        const evaluationsWithStatus = testsData.map((testData: any) => {
-          const statusData = {
-            id: testData.test.id,
-            startDateTime: testData.class_test_info.application,
-            endDateTime: testData.class_test_info.expiration,
-            availability: testData.availability,
-            class_test_info: testData.class_test_info,
-            test: testData.test
-          };
-
-          const determinedStatus = determineEvaluationStatus(statusData);
-
-          // Mapear os dados da API para o formato esperado pelo componente
-          const evaluation = {
-            id: testData.test.id, // Usar o ID do teste, não o class_test_id
-            class_test_id: testData.class_test_info.class_test_id, // Guardar o class_test_id separadamente
-            title: testData.test.title || testData.test.description,
-            description: testData.test.description,
-            subject: testData.test.subject || { id: 'default', name: 'Disciplina' },
-            grade: testData.test.grade,
-            course: { id: testData.test.course, name: 'Curso' },
-            startDateTime: testData.class_test_info.application,
-            endDateTime: testData.class_test_info.expiration,
-            duration: 60, // Duração padrão em minutos - ajustar conforme necessário
-            totalQuestions: testData.total_questions,
-            maxScore: testData.total_value,
-            type: testData.test.type || 'AVALIACAO',
-            model: testData.test.model || 'SAEB',
-            status: determinedStatus,
-            // Adicionar dados adicionais se disponíveis
-            questions: testData.questions,
-            availability: testData.availability,
-            class_test_info: testData.class_test_info
-          };
-
-          return evaluation;
-        });
-
-        setEvaluations(evaluationsWithStatus);
-      } catch (evaluationsError) {
-        console.error(`Erro ao buscar avaliações da turma ${studentClass.id}:`, evaluationsError);
+      if (!testsData || !Array.isArray(testsData)) {
+        console.log('Nenhuma avaliação encontrada ou formato inválido');
         setEvaluations([]);
-        toast({
-          title: "Erro ao carregar avaliações",
-          description: "Não foi possível carregar as avaliações da turma.",
-          variant: "destructive",
-        });
+        return;
       }
 
-      // setEvaluations já é chamado dentro do try/catch acima
+      // Transformar e adicionar as avaliações encontradas
+      const evaluationsWithStatus = testsData.map((testData: any) => {
+        // Mapear os dados da API para o formato esperado pelo componente
+        const evaluation = {
+          id: testData.test.id,
+          title: testData.test.title || testData.test.description,
+          description: testData.test.description,
+          subject: testData.test.subject || { id: 'default', name: 'Disciplina' },
+          grade: testData.test.grade,
+          course: { id: testData.test.course, name: 'Curso' },
+          startDateTime: testData.class_test_info.application,
+          endDateTime: testData.class_test_info.expiration,
+          duration: testData.test.duration || 60, // em minutos
+          totalQuestions: testData.total_questions,
+          maxScore: testData.total_value,
+          type: testData.test.type || 'AVALIACAO',
+          model: testData.test.model || 'SAEB',
+          status: determineEvaluationStatus({
+            startDateTime: testData.class_test_info.application,
+            endDateTime: testData.class_test_info.expiration,
+            availability: testData.availability,
+            class_test_info: testData.class_test_info
+          }),
+          // Adicionar dados adicionais se disponíveis
+          questions: testData.questions,
+          availability: testData.availability,
+          class_test_info: testData.class_test_info
+        };
+
+        return evaluation;
+      });
+
+      setEvaluations(evaluationsWithStatus);
 
     } catch (error) {
-      console.error("Erro ao buscar turma ou avaliações:", error);
+      console.error("Erro ao buscar avaliações do aluno:", error);
 
       // Usar dados mock para desenvolvimento
       const mockEvaluations = getMockEvaluations();
@@ -325,25 +225,26 @@ export default function StudentEvaluations() {
   };
 
   const determineEvaluationStatus = (evaluation: any): StudentEvaluation["status"] => {
-    // Verificar se já foi completada baseado no status do teste
-    if (evaluation.test?.status === 'concluida') {
+    const now = new Date();
+    const startDate = parseISO(evaluation.startDateTime);
+    const endDate = evaluation.endDateTime ? parseISO(evaluation.endDateTime) : null;
+
+    // Verificar se já foi completada
+    if (evaluation.result) {
       return "completed";
     }
 
-    // Verificar se está em progresso (sessão ativa)
-    if (evaluation.id) {
-      const savedSession = SessionStorage.getSession(evaluation.id);
-      if (savedSession) {
-        return "in_progress";
-      }
+    // Verificar se está em progresso
+    if (evaluation.currentProgress) {
+      return "in_progress";
     }
 
-    // Usar informações de disponibilidade da API
+    // Usar informações de disponibilidade da API se disponível
     if (evaluation.availability) {
-      if (evaluation.availability.status === 'not_available' || !evaluation.availability.is_available) {
+      if (evaluation.availability.status === 'not_available') {
         return "pending";
       }
-      if (evaluation.availability.status === 'available' || evaluation.availability.is_available) {
+      if (evaluation.availability.status === 'available') {
         return "available";
       }
       if (evaluation.availability.status === 'expired') {
@@ -351,34 +252,13 @@ export default function StudentEvaluations() {
       }
     }
 
-    // Verificar status do class_test_info
-    if (evaluation.class_test_info) {
-      if (evaluation.class_test_info.status === 'agendada') {
-        return "pending";
-      }
-      if (evaluation.class_test_info.status === 'disponivel') {
-        return "available";
-      }
-      if (evaluation.class_test_info.status === 'concluida') {
-        return "completed";
-      }
-      if (evaluation.class_test_info.status === 'expirada') {
-        return "expired";
-      }
-    }
-
-    // Fallback: verificar datas com lógica melhorada
-    const now = new Date();
-    const startDate = parseISO(evaluation.startDateTime);
-    const endDate = evaluation.endDateTime ? parseISO(evaluation.endDateTime) : null;
-
     // Verificar se expirou
     if (endDate && isAfter(now, endDate)) {
       return "expired";
     }
 
-    // Verificar se está disponível - lógica melhorada para verificar se é hoje
-    if (isEvaluationAvailableToday(now, startDate)) {
+    // Verificar se está disponível
+    if (isAfter(now, startDate)) {
       return "available";
     }
 
@@ -386,62 +266,21 @@ export default function StudentEvaluations() {
     return "pending";
   };
 
-  // Função auxiliar para verificar se a avaliação está disponível hoje
-  const isEvaluationAvailableToday = (currentDate: Date, evaluationDate: Date): boolean => {
-    // Verificar se é o mesmo dia (ignorando horário)
-    const isSameDay =
-      currentDate.getFullYear() === evaluationDate.getFullYear() &&
-      currentDate.getMonth() === evaluationDate.getMonth() &&
-      currentDate.getDate() === evaluationDate.getDate();
-
-    // Se for o mesmo dia, verificar se já passou do horário de início
-    if (isSameDay) {
-      const isAvailable = isAfter(currentDate, evaluationDate);
-      console.log(`Avaliação no mesmo dia: ${evaluationDate.toISOString()}, Disponível: ${isAvailable}`);
-      return isAvailable;
-    }
-
-    // Se não for o mesmo dia, verificar se já passou da data de início
-    const isAvailable = isAfter(currentDate, evaluationDate);
-    console.log(`Avaliação em data diferente: ${evaluationDate.toISOString()}, Disponível: ${isAvailable}`);
-    return isAvailable;
-  };
-
-  const checkInProgressEvaluation = async () => {
-    // Verificar se há avaliações em progresso usando o novo sistema
-    const evaluationsInProgress = evaluations.filter(evaluation => {
-      const savedSession = SessionStorage.getSession(evaluation.id);
-      return savedSession !== null;
-    });
-
-    if (evaluationsInProgress.length > 0) {
-      // Verificar status das sessões
-      for (const evaluation of evaluationsInProgress) {
-        try {
-          const savedSession = SessionStorage.getSession(evaluation.id);
-          if (savedSession) {
-            const sessionStatus = await EvaluationApiService.getSessionStatus(savedSession.session_id);
-
-            if (sessionStatus.status === 'em_andamento') {
-              // Criar dados de taking compatíveis com o sistema antigo
-              const takingData: EvaluationTaking = {
-                evaluationId: evaluation.id,
-                currentQuestion: 0,
-                answers: {},
-                timeRemaining: sessionStatus.remaining_time_minutes * 60,
-                startedAt: savedSession.started_at,
-              };
-              setCurrentTaking(takingData);
-              break; // Usar apenas a primeira avaliação em progresso
-            } else {
-              // Sessão expirada ou finalizada, limpar
-              SessionStorage.removeSession(evaluation.id);
-            }
-          }
-        } catch (error) {
-          console.error("Erro ao verificar sessão:", error);
-          SessionStorage.removeSession(evaluation.id);
+  const checkInProgressEvaluation = () => {
+    const inProgress = localStorage.getItem("evaluation_in_progress");
+    if (inProgress) {
+      try {
+        const data = JSON.parse(inProgress);
+        // Verificar se os dados são válidos
+        if (data && data.evaluationId && typeof data.evaluationId === 'string') {
+          setCurrentTaking(data);
+        } else {
+          console.warn("Dados de avaliação em progresso inválidos:", data);
+          localStorage.removeItem("evaluation_in_progress");
         }
+      } catch (error) {
+        console.error("Erro ao carregar avaliação em progresso:", error);
+        localStorage.removeItem("evaluation_in_progress");
       }
     }
   };
@@ -454,57 +293,47 @@ export default function StudentEvaluations() {
   const handleConfirmStart = async () => {
     if (!selectedEvaluation) return;
 
-
-
     try {
-      // Iniciar sessão usando o novo sistema de avaliações
-      const sessionData = await EvaluationApiService.startSession({
-        test_id: selectedEvaluation.id,
-        time_limit_minutes: selectedEvaluation.duration
-      });
+      // Usar a API real para iniciar a sessão da avaliação
+      const testId = selectedEvaluation.id;
+      const response = await api.post(`/test/${testId}/start-session`);
+      
+      console.log('Resposta da API de iniciar sessão:', response);
+      const sessionData = response.data;
 
+      // Buscar os dados completos da avaliação usando a API real
+      const evaluationResponse = await api.get(`/test/${testId}/details`);
+      const evaluationData = evaluationResponse.data;
 
+      // Salvar os dados completos da avaliação no sessionStorage
+      sessionStorage.setItem("current_evaluation", JSON.stringify(evaluationData));
+      sessionStorage.setItem("evaluation_session", JSON.stringify(sessionData));
+      
+      console.log("Dados da avaliação salvos:", evaluationData);
+      console.log("Dados da sessão salvos:", sessionData);
 
-      // Salvar sessão no localStorage
-      SessionStorage.saveSession(selectedEvaluation.id, {
-        session_id: sessionData.session_id,
-        started_at: sessionData.started_at
-      });
-
-
-
-      // Preparar dados da avaliação para o componente TakeEvaluation
-      const evaluationData = {
-        id: selectedEvaluation.id,
-        title: selectedEvaluation.title,
-        description: selectedEvaluation.description,
-        subject: selectedEvaluation.subject,
-        duration: selectedEvaluation.duration,
-        totalQuestions: selectedEvaluation.totalQuestions,
-        instructions: selectedEvaluation.description || "Leia atentamente cada questão antes de responder.",
-        questions: selectedEvaluation.questions || [],
-        // Dados adicionais da API
-        class_test_id: selectedEvaluation.class_test_id,
-        availability: selectedEvaluation.availability,
-        class_test_info: selectedEvaluation.class_test_info,
-        // Dados da sessão
-        session_id: sessionData.session_id,
-        started_at: sessionData.started_at
+      const takingData: EvaluationTaking = {
+        evaluationId: testId,
+        currentQuestion: 0,
+        answers: {},
+        timeRemaining: selectedEvaluation.duration * 60, // converter para segundos
+        startedAt: new Date().toISOString(),
       };
 
-      // Salvar dados da avaliação no localStorage
-      localStorage.setItem("current_evaluation_data", JSON.stringify(evaluationData));
+      // Salvar no localStorage para persistência
+      localStorage.setItem("evaluation_in_progress", JSON.stringify(takingData));
+      setCurrentTaking(takingData);
 
       setShowInstructions(false);
       setConfirmStart(false);
 
       toast({
-        title: "✅ Avaliação iniciada!",
+        title: "Avaliação iniciada!",
         description: `Você tem ${selectedEvaluation.duration} minutos para completar`,
       });
 
-      // Redirecionar para tela de avaliação do aluno
-      window.location.href = `/aluno/take-evaluation/${selectedEvaluation.id}`;
+      // Redirecionar para tela de avaliação
+      window.location.href = `/app/avaliacao/${testId}/fazer`;
 
     } catch (error) {
       console.error("Erro ao iniciar avaliação:", error);
@@ -517,47 +346,32 @@ export default function StudentEvaluations() {
   };
 
   const handleContinueEvaluation = async (evaluation: StudentEvaluation) => {
-    try {
-      // Verificar se existe sessão ativa
-      const savedSession = SessionStorage.getSession(evaluation.id);
-      if (savedSession) {
-        // Verificar status da sessão
-        const sessionStatus = await EvaluationApiService.getSessionStatus(savedSession.session_id);
-
-        if (sessionStatus.status === 'em_andamento') {
-          // Buscar dados completos da avaliação
-          try {
-            const testData = await EvaluationApiService.getTestData(evaluation.id);
-            sessionStorage.setItem("current_evaluation", JSON.stringify(testData));
-          } catch (apiError) {
-            console.error("Erro ao buscar dados da avaliação:", apiError);
-            sessionStorage.setItem("current_evaluation", JSON.stringify(evaluation));
-          }
-        } else {
-          // Sessão expirada ou finalizada, limpar dados
-          SessionStorage.removeSession(evaluation.id);
-          toast({
-            title: "Sessão expirada",
-            description: "A sessão da avaliação expirou. Inicie uma nova avaliação.",
-            variant: "destructive",
-          });
-          return;
-        }
-      } else {
-        // Buscar dados básicos da avaliação
-        sessionStorage.setItem("current_evaluation", JSON.stringify(evaluation));
-      }
-
-      // Redirecionar para tela de avaliação do aluno
-      window.location.href = `/aluno/take-evaluation/${evaluation.id}`;
-    } catch (error) {
-      console.error("Erro ao continuar avaliação:", error);
+    // Verificação de segurança
+    if (!evaluation || !evaluation.id) {
+      console.error("Avaliação inválida:", evaluation);
       toast({
         title: "Erro",
-        description: "Não foi possível continuar a avaliação",
+        description: "Dados da avaliação inválidos. Tente atualizar a página.",
         variant: "destructive",
       });
+      return;
     }
+
+    try {
+      // Buscar os dados completos da avaliação usando a API real
+      const evaluationResponse = await api.get(`/test/${evaluation.id}/details`);
+      const evaluationData = evaluationResponse.data;
+
+      // Salvar os dados completos da avaliação no sessionStorage
+      sessionStorage.setItem("current_evaluation", JSON.stringify(evaluationData));
+      console.log("Dados da avaliação salvos para continuar:", evaluationData);
+    } catch (apiError) {
+      console.error("Erro ao buscar dados da avaliação:", apiError);
+      // Fallback: salvar apenas os dados básicos
+      sessionStorage.setItem("current_evaluation", JSON.stringify(evaluation));
+    }
+
+    window.location.href = `/app/avaliacao/${evaluation.id}/fazer`;
   };
 
   const handleViewResults = (evaluation: StudentEvaluation) => {
@@ -706,22 +520,52 @@ export default function StudentEvaluations() {
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="space-y-2">
-          <h1 className="text-2xl font-bold">Minhas Avaliações</h1>
-          <p className="text-muted-foreground">
-            Acompanhe suas avaliações agendadas e resultados
-          </p>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Minhas Avaliações</h1>
+            <p className="text-muted-foreground">
+              Acompanhe suas avaliações agendadas e resultados
+            </p>
+          </div>
+          
+          {/* ✅ NOVO: Indicadores de conectividade e notificações */}
+          <div className="flex items-center gap-3">
+            {/* Indicador de conectividade */}
+            <div className="flex items-center gap-2">
+              {isConnected ? (
+                <div className="flex items-center gap-1 text-green-600">
+                  <Wifi className="h-4 w-4" />
+                  <span className="text-sm">Online</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1 text-gray-500">
+                  <WifiOff className="h-4 w-4" />
+                  <span className="text-sm">Offline</span>
+                </div>
+              )}
+              
+              {/* Indicador de notificações */}
+              {unreadCount > 0 && (
+                <div className="flex items-center gap-1 text-blue-600">
+                  <Bell className="h-4 w-4" />
+                  <span className="text-sm">{unreadCount}</span>
+                </div>
+              )}
+            </div>
+            
+            {/* Botão de atualizar */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchStudentEvaluations}
+              disabled={isLoading}
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Atualizar
+            </Button>
+          </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={refreshEvaluationStatuses}
-          className="flex items-center gap-2"
-        >
-          <RefreshCw className="h-4 w-4" />
-          Atualizar
-        </Button>
       </div>
 
       {/* Estatísticas Rápidas */}
@@ -787,27 +631,36 @@ export default function StudentEvaluations() {
       </div>
 
       {/* Avaliação em Progresso */}
-      {currentTaking && (
+      {currentTaking && currentTaking.evaluationId && (
         <Alert className="border-blue-200 bg-blue-50">
           <Timer className="h-4 w-4" />
           <AlertDescription className="flex items-center justify-between">
             <span>
               Você tem uma avaliação em progresso.
               <strong className="ml-1">
-                {evaluations.find(e => e.id === currentTaking.evaluationId)?.title}
+                {evaluations.find(e => e.id === currentTaking.evaluationId)?.title || 'Avaliação'}
               </strong>
             </span>
             <Button
               size="sm"
-              onClick={() => handleContinueEvaluation(evaluations.find(e => e.id === currentTaking.evaluationId)!)}
+              onClick={() => {
+                const evaluation = evaluations.find(e => e.id === currentTaking.evaluationId);
+                if (evaluation) {
+                  handleContinueEvaluation(evaluation);
+                } else {
+                  toast({
+                    title: "Erro",
+                    description: "Avaliação não encontrada. Tente atualizar a página.",
+                    variant: "destructive",
+                  });
+                }
+              }}
             >
               Continuar
             </Button>
           </AlertDescription>
         </Alert>
       )}
-
-
 
       {/* Lista de Avaliações */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -844,26 +697,9 @@ export default function StudentEvaluations() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <div className="flex flex-col">
-                    <span>
-                      {format(parseISO(evaluation.startDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                    </span>
-                    {evaluation.status === "pending" && (
-                      <span className="text-xs text-orange-600">
-                        Disponível em {format(parseISO(evaluation.startDateTime), "dd/MM 'às' HH:mm", { locale: ptBR })}
-                      </span>
-                    )}
-                    {evaluation.status === "available" && (
-                      <span className="text-xs text-green-600">
-                        Disponível agora
-                      </span>
-                    )}
-                    {evaluation.status === "expired" && evaluation.endDateTime && (
-                      <span className="text-xs text-red-600">
-                        Expirada em {format(parseISO(evaluation.endDateTime), "dd/MM 'às' HH:mm", { locale: ptBR })}
-                      </span>
-                    )}
-                  </div>
+                  <span>
+                    {format(parseISO(evaluation.startDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                  </span>
                 </div>
               </div>
 
