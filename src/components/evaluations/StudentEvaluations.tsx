@@ -134,6 +134,29 @@ export default function StudentEvaluations() {
   const { user } = useAuth();
   const { toast } = useToast();
 
+  // Função para forçar atualização do status das avaliações
+  const refreshEvaluationStatuses = () => {
+    setEvaluations(prevEvaluations =>
+      prevEvaluations.map(evaluation => {
+        const statusData = {
+          id: evaluation.id,
+          startDateTime: evaluation.startDateTime,
+          endDateTime: evaluation.endDateTime,
+          availability: evaluation.availability,
+          class_test_info: evaluation.class_test_info,
+          test: { status: evaluation.status === 'completed' ? 'concluida' : undefined }
+        };
+
+        const newStatus = determineEvaluationStatus(statusData);
+
+        return {
+          ...evaluation,
+          status: newStatus
+        };
+      })
+    );
+  };
+
   useEffect(() => {
     fetchStudentEvaluations();
   }, []);
@@ -142,6 +165,61 @@ export default function StudentEvaluations() {
   useEffect(() => {
     if (evaluations.length > 0) {
       checkInProgressEvaluation();
+    }
+  }, [evaluations]);
+
+  // Atualizar status das avaliações periodicamente
+  useEffect(() => {
+    if (evaluations.length > 0) {
+      // Atualizar status a cada minuto
+      const interval = setInterval(() => {
+        setEvaluations(prevEvaluations =>
+          prevEvaluations.map(evaluation => {
+            const statusData = {
+              id: evaluation.id,
+              startDateTime: evaluation.startDateTime,
+              endDateTime: evaluation.endDateTime,
+              availability: evaluation.availability,
+              class_test_info: evaluation.class_test_info,
+              test: { status: evaluation.status === 'completed' ? 'concluida' : undefined }
+            };
+
+            const newStatus = determineEvaluationStatus(statusData);
+
+            return {
+              ...evaluation,
+              status: newStatus
+            };
+          })
+        );
+      }, 60000); // Atualizar a cada minuto
+
+      return () => clearInterval(interval);
+    }
+  }, [evaluations.length]);
+
+  // Função para debug do status das avaliações
+  const debugEvaluationStatus = (evaluation: StudentEvaluation) => {
+    const now = new Date();
+    const startDate = parseISO(evaluation.startDateTime);
+    const endDate = evaluation.endDateTime ? parseISO(evaluation.endDateTime) : null;
+
+    console.log(`=== Debug Avaliação: ${evaluation.title} ===`);
+    console.log(`Status atual: ${evaluation.status}`);
+    console.log(`Data atual: ${now.toISOString()}`);
+    console.log(`Data início: ${evaluation.startDateTime}`);
+    console.log(`Data fim: ${evaluation.endDateTime || 'N/A'}`);
+    console.log(`Disponível hoje: ${isEvaluationAvailableToday(now, startDate)}`);
+    console.log(`Já passou da data de início: ${isAfter(now, startDate)}`);
+    console.log(`Já passou da data de fim: ${endDate ? isAfter(now, endDate) : false}`);
+    console.log(`É o mesmo dia: ${now.getFullYear() === startDate.getFullYear() && now.getMonth() === startDate.getMonth() && now.getDate() === startDate.getDate()}`);
+    console.log('=====================================');
+  };
+
+  // Debug das avaliações quando carregadas
+  useEffect(() => {
+    if (evaluations.length > 0) {
+      evaluations.forEach(debugEvaluationStatus);
     }
   }, [evaluations]);
 
@@ -289,7 +367,7 @@ export default function StudentEvaluations() {
       }
     }
 
-    // Fallback: verificar datas
+    // Fallback: verificar datas com lógica melhorada
     const now = new Date();
     const startDate = parseISO(evaluation.startDateTime);
     const endDate = evaluation.endDateTime ? parseISO(evaluation.endDateTime) : null;
@@ -299,13 +377,34 @@ export default function StudentEvaluations() {
       return "expired";
     }
 
-    // Verificar se está disponível
-    if (isAfter(now, startDate)) {
+    // Verificar se está disponível - lógica melhorada para verificar se é hoje
+    if (isEvaluationAvailableToday(now, startDate)) {
       return "available";
     }
 
     // Ainda não começou
     return "pending";
+  };
+
+  // Função auxiliar para verificar se a avaliação está disponível hoje
+  const isEvaluationAvailableToday = (currentDate: Date, evaluationDate: Date): boolean => {
+    // Verificar se é o mesmo dia (ignorando horário)
+    const isSameDay =
+      currentDate.getFullYear() === evaluationDate.getFullYear() &&
+      currentDate.getMonth() === evaluationDate.getMonth() &&
+      currentDate.getDate() === evaluationDate.getDate();
+
+    // Se for o mesmo dia, verificar se já passou do horário de início
+    if (isSameDay) {
+      const isAvailable = isAfter(currentDate, evaluationDate);
+      console.log(`Avaliação no mesmo dia: ${evaluationDate.toISOString()}, Disponível: ${isAvailable}`);
+      return isAvailable;
+    }
+
+    // Se não for o mesmo dia, verificar se já passou da data de início
+    const isAvailable = isAfter(currentDate, evaluationDate);
+    console.log(`Avaliação em data diferente: ${evaluationDate.toISOString()}, Disponível: ${isAvailable}`);
+    return isAvailable;
   };
 
   const checkInProgressEvaluation = async () => {
@@ -607,11 +706,22 @@ export default function StudentEvaluations() {
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
       {/* Header */}
-      <div className="space-y-2">
-        <h1 className="text-2xl font-bold">Minhas Avaliações</h1>
-        <p className="text-muted-foreground">
-          Acompanhe suas avaliações agendadas e resultados
-        </p>
+      <div className="flex items-center justify-between">
+        <div className="space-y-2">
+          <h1 className="text-2xl font-bold">Minhas Avaliações</h1>
+          <p className="text-muted-foreground">
+            Acompanhe suas avaliações agendadas e resultados
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={refreshEvaluationStatuses}
+          className="flex items-center gap-2"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Atualizar
+        </Button>
       </div>
 
       {/* Estatísticas Rápidas */}
@@ -697,6 +807,8 @@ export default function StudentEvaluations() {
         </Alert>
       )}
 
+
+
       {/* Lista de Avaliações */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {evaluations.map((evaluation) => (
@@ -732,9 +844,26 @@ export default function StudentEvaluations() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <span>
-                    {format(parseISO(evaluation.startDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                  </span>
+                  <div className="flex flex-col">
+                    <span>
+                      {format(parseISO(evaluation.startDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                    </span>
+                    {evaluation.status === "pending" && (
+                      <span className="text-xs text-orange-600">
+                        Disponível em {format(parseISO(evaluation.startDateTime), "dd/MM 'às' HH:mm", { locale: ptBR })}
+                      </span>
+                    )}
+                    {evaluation.status === "available" && (
+                      <span className="text-xs text-green-600">
+                        Disponível agora
+                      </span>
+                    )}
+                    {evaluation.status === "expired" && evaluation.endDateTime && (
+                      <span className="text-xs text-red-600">
+                        Expirada em {format(parseISO(evaluation.endDateTime), "dd/MM 'às' HH:mm", { locale: ptBR })}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 

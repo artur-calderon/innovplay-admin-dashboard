@@ -79,17 +79,17 @@ const SubjectsList = ({ evaluation }: { evaluation: Evaluation }) => {
     if (evaluation.subjects && Array.isArray(evaluation.subjects) && evaluation.subjects.length > 0) {
       return evaluation.subjects;
     }
-    
+
     // Prioridade 2: subjects_info (fallback)
     if (evaluation.subjects_info && Array.isArray(evaluation.subjects_info) && evaluation.subjects_info.length > 0) {
       return evaluation.subjects_info;
     }
-    
+
     // Prioridade 3: subject único (fallback)
     if (evaluation.subject && evaluation.subject.name) {
       return [evaluation.subject];
     }
-    
+
     return [];
   };
 
@@ -123,21 +123,21 @@ const SubjectsList = ({ evaluation }: { evaluation: Evaluation }) => {
     <div className="flex flex-wrap gap-1 max-w-[200px]">
       {/* Mostrar as duas primeiras disciplinas */}
       {subjects.slice(0, 2).map((subject, index) => (
-        <Badge 
-          key={subject.id || index} 
-          variant="secondary" 
+        <Badge
+          key={subject.id || index}
+          variant="secondary"
           className="text-xs bg-blue-100 text-blue-800 font-medium"
         >
           {subject.name}
         </Badge>
       ))}
-      
+
       {/* Mostrar +n se houver mais de 2 disciplinas */}
       {subjectsCount > 2 && (
         <Tooltip>
           <TooltipTrigger asChild>
-            <Badge 
-              variant="outline" 
+            <Badge
+              variant="outline"
               className="text-xs cursor-help hover:bg-blue-50 border-blue-300 text-blue-700 font-semibold"
             >
               +{subjectsCount - 2}
@@ -201,14 +201,14 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
     try {
       setIsLoading(true);
       const params: any = {};
-      
+
       if (filters.subject !== 'all') params.subject_id = filters.subject;
       if (filters.type !== 'all') params.type = filters.type;
       if (filters.model !== 'all') params.model = filters.model;
       if (filters.grade !== 'all') params.grade_id = filters.grade;
-      
+
       const response = await api.get("/test", { params });
-      
+
       if (response.data && Array.isArray(response.data)) {
         setEvaluations(response.data);
       } else if (response.data?.message === "Nenhuma avaliação encontrada para este usuário") {
@@ -244,7 +244,7 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
         api.get("/subjects"),
         api.get("/grades/")
       ]);
-      
+
       setSubjects(subjectsRes.data || []);
       setGrades(gradesRes.data || []);
     } catch (error) {
@@ -392,19 +392,12 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
     if (!selectedEvaluationToStart) return;
 
     try {
-      // Aqui seria chamada a API para ativar a avaliação com as datas
-      await api.put(`/test/${selectedEvaluationToStart.id}/start`, {
-        startDateTime,
-        endDateTime,
-        status: 'active'
-      });
-
+      // Removido: chamada para ativar avaliação (rota /test/{id}/start)
+      // Apenas feedback de sucesso e recarregar lista
       toast({
-        title: "Avaliação iniciada com sucesso!",
+        title: "Avaliação aplicada com sucesso!",
         description: "A avaliação agora está disponível para os alunos na agenda",
       });
-
-      // Recarregar a lista para refletir as mudanças
       fetchEvaluations();
     } catch (error) {
       console.error("Erro ao iniciar avaliação:", error);
@@ -419,364 +412,364 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
 
   return (
     <TooltipProvider>
-    <div className="space-y-6">
-      {/* Header com busca e filtros */}
-      <div className="flex flex-col lg:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
-          <Input
-            placeholder="Buscar avaliações..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-        
-        <div className="flex flex-wrap gap-2">
-          <Select value={filters.subject} onValueChange={(value) => handleFilterChange('subject', value)}>
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="Disciplina" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas</SelectItem>
-              {subjects.map((subject) => (
-                <SelectItem key={subject.id} value={subject.id}>
-                  {subject.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      <div className="space-y-6">
+        {/* Header com busca e filtros */}
+        <div className="flex flex-col lg:flex-row gap-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+            <Input
+              placeholder="Buscar avaliações..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9"
+            />
+          </div>
 
-          <Select value={filters.type} onValueChange={(value) => handleFilterChange('type', value)}>
-            <SelectTrigger className="w-32">
-              <SelectValue placeholder="Tipo" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="AVALIACAO">Avaliação</SelectItem>
-              <SelectItem value="SIMULADO">Simulado</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex flex-wrap gap-2">
+            <Select value={filters.subject} onValueChange={(value) => handleFilterChange('subject', value)}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Disciplina" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas</SelectItem>
+                {subjects.map((subject) => (
+                  <SelectItem key={subject.id} value={subject.id}>
+                    {subject.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          <Select value={filters.model} onValueChange={(value) => handleFilterChange('model', value)}>
-            <SelectTrigger className="w-32">
-              <SelectValue placeholder="Modelo" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="SAEB">SAEB</SelectItem>
-              <SelectItem value="PROVA">Prova</SelectItem>
-              <SelectItem value="AVALIE">Avalie</SelectItem>
-            </SelectContent>
-          </Select>
+            <Select value={filters.type} onValueChange={(value) => handleFilterChange('type', value)}>
+              <SelectTrigger className="w-32">
+                <SelectValue placeholder="Tipo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="AVALIACAO">Avaliação</SelectItem>
+                <SelectItem value="SIMULADO">Simulado</SelectItem>
+              </SelectContent>
+            </Select>
 
-          <Select value={filters.grade} onValueChange={(value) => handleFilterChange('grade', value)}>
-            <SelectTrigger className="w-32">
-              <SelectValue placeholder="Série" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas</SelectItem>
-              {grades.map((grade) => (
-                <SelectItem key={grade.id} value={grade.id}>
-                  {grade.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <Select value={filters.model} onValueChange={(value) => handleFilterChange('model', value)}>
+              <SelectTrigger className="w-32">
+                <SelectValue placeholder="Modelo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="SAEB">SAEB</SelectItem>
+                <SelectItem value="PROVA">Prova</SelectItem>
+                <SelectItem value="AVALIE">Avalie</SelectItem>
+              </SelectContent>
+            </Select>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchEvaluations}
-            disabled={isLoading}
-          >
-            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-          </Button>
+            <Select value={filters.grade} onValueChange={(value) => handleFilterChange('grade', value)}>
+              <SelectTrigger className="w-32">
+                <SelectValue placeholder="Série" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas</SelectItem>
+                {grades.map((grade) => (
+                  <SelectItem key={grade.id} value={grade.id}>
+                    {grade.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          {hasActiveFilters && (
             <Button
               variant="outline"
               size="sm"
-              onClick={clearFilters}
+              onClick={fetchEvaluations}
+              disabled={isLoading}
             >
-              Limpar Filtros
+              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
             </Button>
-          )}
-        </div>
-      </div>
 
-      {/* Ações em lote */}
-      {selectedIds.length > 0 && (
-        <div className="flex items-center justify-between bg-blue-50 p-3 rounded-lg">
-          <span className="text-sm text-blue-800">
-            {selectedIds.length} avaliação(ões) selecionada(s)
-          </span>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => {
-              setEvaluationToDelete(null);
-              setDeleteDialogOpen(true);
-            }}
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Excluir ({selectedIds.length})
-          </Button>
+            {hasActiveFilters && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearFilters}
+              >
+                Limpar Filtros
+              </Button>
+            )}
+          </div>
         </div>
-      )}
 
-      {/* Tabela de avaliações */}
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableCaption className="caption-top text-left p-6 pb-0">
-                <div className="flex items-center justify-between">
-                  <span>Lista de avaliações disponíveis</span>
-                  {!isLoading && (
-                    <span className="text-sm text-muted-foreground">
-                      {filteredEvaluations.length} avaliação(ões) encontrada(s)
-                    </span>
-                  )}
-                </div>
-              </TableCaption>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[50px]">
-                    <Checkbox
-                      checked={
-                        currentItems.length > 0 &&
-                        selectedIds.length === currentItems.length
-                      }
-                      onCheckedChange={handleSelectAll}
-                      aria-label="Selecionar todos"
-                    />
-                  </TableHead>
-                  <TableHead className="min-w-[250px]">Título</TableHead>
-                  <TableHead className="hidden sm:table-cell">Disciplina(s)</TableHead>
-                  <TableHead className="hidden md:table-cell">Tipo/Modelo</TableHead>
-                  <TableHead className="hidden md:table-cell">Questões</TableHead>
-                  <TableHead className="hidden lg:table-cell">Série</TableHead>
-                  <TableHead className="hidden lg:table-cell">Data</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
-                  Array.from({ length: 5 }).map((_, i) => (
-                    <TableRow key={i}>
-                      <TableCell><Skeleton className="h-4 w-4" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-48" /></TableCell>
-                      <TableCell className="hidden sm:table-cell"><Skeleton className="h-4 w-24" /></TableCell>
-                      <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
-                      <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-12" /></TableCell>
-                      <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-16" /></TableCell>
-                      <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Skeleton className="h-8 w-8" />
-                          <Skeleton className="h-8 w-8" />
-                          <Skeleton className="h-8 w-8" />
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : currentItems.length > 0 ? (
-                  currentItems.map((evaluation) => (
-                    <TableRow key={evaluation.id} data-state={selectedIds.includes(evaluation.id) && "selected"}>
-                      <TableCell>
-                        <Checkbox
-                          checked={selectedIds.includes(evaluation.id)}
-                          onCheckedChange={(checked) => handleSelectOne(evaluation.id, !!checked)}
-                          aria-label={`Selecionar ${evaluation.title}`}
-                        />
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        <div>
-                          <div className="line-clamp-1">{evaluation.title}</div>
-                          {evaluation.description && (
-                            <div className="text-xs text-muted-foreground line-clamp-1 mt-1">
-                              {evaluation.description}
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden sm:table-cell">
-                        <SubjectsList evaluation={evaluation} />
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        <div className="flex flex-col gap-1">
-                          {evaluation.type && (
-                            <Badge className={`text-xs ${getTypeColor(evaluation.type)} w-fit`}>
-                              {evaluation.type}
-                            </Badge>
-                          )}
-                          {evaluation.model && (
-                            <Badge className={`text-xs ${getModelColor(evaluation.model)} w-fit`}>
-                              {evaluation.model}
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        <Badge variant="outline" className="text-xs">
-                          {evaluation.questions.length}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="hidden lg:table-cell">
-                        {evaluation.grade && (
-                          <Badge variant="outline" className="text-xs">
-                            {evaluation.grade.name}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="hidden lg:table-cell">
-                        <span className="text-xs text-muted-foreground">
-                          {formatDate(evaluation.createdAt)}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleStartEvaluation(evaluation)}
-                            title="Iniciar Avaliação"
-                            className="text-green-600 hover:text-green-700"
-                          >
-                            <Play className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleView(evaluation.id)}
-                            title="Visualizar"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEdit(evaluation.id)}
-                            title="Editar"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setEvaluationToDelete(evaluation.id);
-                              setDeleteDialogOpen(true);
-                            }}
-                            title="Excluir"
-                            className="text-red-500 hover:text-red-700"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
+        {/* Ações em lote */}
+        {selectedIds.length > 0 && (
+          <div className="flex items-center justify-between bg-blue-50 p-3 rounded-lg">
+            <span className="text-sm text-blue-800">
+              {selectedIds.length} avaliação(ões) selecionada(s)
+            </span>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                setEvaluationToDelete(null);
+                setDeleteDialogOpen(true);
+              }}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Excluir ({selectedIds.length})
+            </Button>
+          </div>
+        )}
+
+        {/* Tabela de avaliações */}
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableCaption className="caption-top text-left p-6 pb-0">
+                  <div className="flex items-center justify-between">
+                    <span>Lista de avaliações disponíveis</span>
+                    {!isLoading && (
+                      <span className="text-sm text-muted-foreground">
+                        {filteredEvaluations.length} avaliação(ões) encontrada(s)
+                      </span>
+                    )}
+                  </div>
+                </TableCaption>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8">
-                      <div className="flex flex-col items-center gap-2">
-                        <p className="text-muted-foreground">
-                          {searchTerm || hasActiveFilters 
-                            ? "Nenhuma avaliação encontrada com os filtros aplicados" 
-                            : "Nenhuma avaliação encontrada"}
-                        </p>
-                        {(searchTerm || hasActiveFilters) && (
-                          <Button variant="outline" size="sm" onClick={() => {
-                            setSearchTerm("");
-                            clearFilters();
-                          }}>
-                            Limpar filtros
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
+                    <TableHead className="w-[50px]">
+                      <Checkbox
+                        checked={
+                          currentItems.length > 0 &&
+                          selectedIds.length === currentItems.length
+                        }
+                        onCheckedChange={handleSelectAll}
+                        aria-label="Selecionar todos"
+                      />
+                    </TableHead>
+                    <TableHead className="min-w-[250px]">Título</TableHead>
+                    <TableHead className="hidden sm:table-cell">Disciplina(s)</TableHead>
+                    <TableHead className="hidden md:table-cell">Tipo/Modelo</TableHead>
+                    <TableHead className="hidden md:table-cell">Questões</TableHead>
+                    <TableHead className="hidden lg:table-cell">Série</TableHead>
+                    <TableHead className="hidden lg:table-cell">Data</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    Array.from({ length: 5 }).map((_, i) => (
+                      <TableRow key={i}>
+                        <TableCell><Skeleton className="h-4 w-4" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-48" /></TableCell>
+                        <TableCell className="hidden sm:table-cell"><Skeleton className="h-4 w-24" /></TableCell>
+                        <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
+                        <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-12" /></TableCell>
+                        <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-16" /></TableCell>
+                        <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Skeleton className="h-8 w-8" />
+                            <Skeleton className="h-8 w-8" />
+                            <Skeleton className="h-8 w-8" />
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : currentItems.length > 0 ? (
+                    currentItems.map((evaluation) => (
+                      <TableRow key={evaluation.id} data-state={selectedIds.includes(evaluation.id) && "selected"}>
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedIds.includes(evaluation.id)}
+                            onCheckedChange={(checked) => handleSelectOne(evaluation.id, !!checked)}
+                            aria-label={`Selecionar ${evaluation.title}`}
+                          />
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          <div>
+                            <div className="line-clamp-1">{evaluation.title}</div>
+                            {evaluation.description && (
+                              <div className="text-xs text-muted-foreground line-clamp-1 mt-1">
+                                {evaluation.description}
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden sm:table-cell">
+                          <SubjectsList evaluation={evaluation} />
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          <div className="flex flex-col gap-1">
+                            {evaluation.type && (
+                              <Badge className={`text-xs ${getTypeColor(evaluation.type)} w-fit`}>
+                                {evaluation.type}
+                              </Badge>
+                            )}
+                            {evaluation.model && (
+                              <Badge className={`text-xs ${getModelColor(evaluation.model)} w-fit`}>
+                                {evaluation.model}
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          <Badge variant="outline" className="text-xs">
+                            {evaluation.questions.length}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="hidden lg:table-cell">
+                          {evaluation.grade && (
+                            <Badge variant="outline" className="text-xs">
+                              {evaluation.grade.name}
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="hidden lg:table-cell">
+                          <span className="text-xs text-muted-foreground">
+                            {formatDate(evaluation.createdAt)}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleStartEvaluation(evaluation)}
+                              title="Iniciar Avaliação"
+                              className="text-green-600 hover:text-green-700"
+                            >
+                              <Play className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleView(evaluation.id)}
+                              title="Visualizar"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEdit(evaluation.id)}
+                              title="Editar"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setEvaluationToDelete(evaluation.id);
+                                setDeleteDialogOpen(true);
+                              }}
+                              title="Excluir"
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-8">
+                        <div className="flex flex-col items-center gap-2">
+                          <p className="text-muted-foreground">
+                            {searchTerm || hasActiveFilters
+                              ? "Nenhuma avaliação encontrada com os filtros aplicados"
+                              : "Nenhuma avaliação encontrada"}
+                          </p>
+                          {(searchTerm || hasActiveFilters) && (
+                            <Button variant="outline" size="sm" onClick={() => {
+                              setSearchTerm("");
+                              clearFilters();
+                            }}>
+                              Limpar filtros
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
 
-      {/* Paginação */}
-      {!isLoading && filteredEvaluations.length > 0 && totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-gray-500">
-            Mostrando {indexOfFirstItem + 1} a {Math.min(indexOfLastItem, filteredEvaluations.length)} de {filteredEvaluations.length} avaliações
+        {/* Paginação */}
+        {!isLoading && filteredEvaluations.length > 0 && totalPages > 1 && (
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-gray-500">
+              Mostrando {indexOfFirstItem + 1} a {Math.min(indexOfLastItem, filteredEvaluations.length)} de {filteredEvaluations.length} avaliações
+            </div>
+            <div className="flex items-center space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                const page = i + 1;
+                return (
+                  <Button
+                    key={page}
+                    variant={currentPage === page ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => handlePageChange(page)}
+                  >
+                    {page}
+                  </Button>
+                );
+              })}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
-          <div className="flex items-center space-x-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage === 1}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-              const page = i + 1;
-              return (
-                <Button
-                  key={page}
-                  variant={currentPage === page ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => handlePageChange(page)}
-                >
-                  {page}
-                </Button>
-              );
-            })}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={currentPage === totalPages}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
+        )}
 
-      {/* Dialog de confirmação de exclusão */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
-            <AlertDialogDescription>
-              {evaluationToDelete
-                ? "Tem certeza que deseja excluir esta avaliação? Esta ação não pode ser desfeita."
-                : `Tem certeza que deseja excluir ${selectedIds.length} avaliações? Esta ação não pode ser desfeita.`
-              }
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={evaluationToDelete ? handleDelete : handleBulkDelete}>
-              Confirmar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        {/* Dialog de confirmação de exclusão */}
+        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+              <AlertDialogDescription>
+                {evaluationToDelete
+                  ? "Tem certeza que deseja excluir esta avaliação? Esta ação não pode ser desfeita."
+                  : `Tem certeza que deseja excluir ${selectedIds.length} avaliações? Esta ação não pode ser desfeita.`
+                }
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={evaluationToDelete ? handleDelete : handleBulkDelete}>
+                Confirmar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
-      {/* Modal de Iniciar Avaliação */}
-      <StartEvaluationModal
-        isOpen={startModalOpen}
-        onClose={() => {
-          setStartModalOpen(false);
-          setSelectedEvaluationToStart(null);
-        }}
-        onConfirm={handleConfirmStartEvaluation}
-        evaluation={selectedEvaluationToStart}
-      />
-    </div>
+        {/* Modal de Iniciar Avaliação */}
+        <StartEvaluationModal
+          isOpen={startModalOpen}
+          onClose={() => {
+            setStartModalOpen(false);
+            setSelectedEvaluationToStart(null);
+          }}
+          onConfirm={handleConfirmStartEvaluation}
+          evaluation={selectedEvaluationToStart}
+        />
+      </div>
     </TooltipProvider>
   );
 }
