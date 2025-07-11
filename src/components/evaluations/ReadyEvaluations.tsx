@@ -31,6 +31,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useEvaluations, useCache } from "@/hooks/use-cache";
+import ErrorBoundary from "./ErrorBoundary";
 
 interface Evaluation {
   id: string;
@@ -172,10 +174,6 @@ const SubjectsList = ({ evaluation }: { evaluation: Evaluation }) => {
 
 export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [grades, setGrades] = useState<Grade[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [evaluationToDelete, setEvaluationToDelete] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -192,93 +190,75 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  useEffect(() => {
-    fetchEvaluations();
-    fetchFiltersData();
-  }, []);
+  // ✅ Verificação inicial de segurança
+  if (!navigate || !toast) {
+    return <div>Carregando...</div>;
+  }
 
-  const fetchEvaluations = async () => {
-    try {
-      setIsLoading(true);
-      const params: any = {};
+  // ✅ NOVO: Usar hook de cache otimizado para avaliações com paginação
+  const {
+    data: evaluationsData,
+    isLoading,
+    error: evaluationsError,
+    refetch: refetchEvaluations,
+    invalidateCache
+  } = useEvaluations({
+    page: currentPage,
+    per_page: itemsPerPage,
+    ...(filters.subject !== 'all' && { subject_id: filters.subject }),
+    ...(filters.type !== 'all' && { type: filters.type }),
+    ...(filters.model !== 'all' && { model: filters.model }),
+    ...(filters.grade !== 'all' && { grade_id: filters.grade })
+  });
 
-      if (filters.subject !== 'all') params.subject_id = filters.subject;
-      if (filters.type !== 'all') params.type = filters.type;
-      if (filters.model !== 'all') params.model = filters.model;
-      if (filters.grade !== 'all') params.grade_id = filters.grade;
+  // ✅ NOVO: Hooks para dados de filtros (cache longo)
+  const {
+    data: subjects = [],
+    isLoading: isLoadingSubjects
+  } = useCache<Subject[]>('/subjects', {
+    staleTime: 30 * 60 * 1000 // 30 minutos
+  });
 
-      const response = await api.get("/test", { params });
+  const {
+    data: grades = [],
+    isLoading: isLoadingGrades  
+  } = useCache<Grade[]>('/grades/', {
+    staleTime: 30 * 60 * 1000 // 30 minutos
+  });
 
-      if (response.data && Array.isArray(response.data)) {
-        setEvaluations(response.data);
-      } else if (response.data?.message === "Nenhuma avaliação encontrada para este usuário") {
-        setEvaluations([]);
-      } else {
-        setEvaluations([]);
-      }
-    } catch (error: any) {
-      console.error("Erro ao buscar avaliações:", error);
-      if (error.response?.status === 404) {
-        setEvaluations([]);
-      } else if (error.response?.data?.error) {
-        toast({
-          title: "Erro",
-          description: error.response.data.error,
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Erro ao carregar avaliações",
-          description: "Não foi possível carregar as avaliações.",
-          variant: "destructive",
-        });
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Preparar dados das avaliações com verificações de segurança
+  const evaluations = Array.isArray(evaluationsData?.data) ? evaluationsData.data : [];
+  const pagination = evaluationsData?.pagination;
 
-  const fetchFiltersData = async () => {
-    try {
-      const [subjectsRes, gradesRes] = await Promise.all([
-        api.get("/subjects"),
-        api.get("/grades/")
-      ]);
 
-      setSubjects(subjectsRes.data || []);
-      setGrades(gradesRes.data || []);
-    } catch (error) {
-      console.error("Erro ao buscar dados dos filtros:", error);
-    }
-  };
 
-  // Refetch when filters change
-  useEffect(() => {
-    fetchEvaluations();
-  }, [filters]);
+  // ✅ NOVO: Filtro de busca local (aplicado após dados já paginados)
+  const filteredEvaluations = (evaluations || [])
+    .filter(evaluation => evaluation && typeof evaluation === 'object' && evaluation.id)
+    .filter(
+      (evaluation) =>
+        evaluation?.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        evaluation?.subject?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        evaluation?.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        evaluation?.id?.includes(searchTerm)
+    );
 
-  const filteredEvaluations = evaluations.filter(
-    (evaluation) =>
-      evaluation.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      evaluation.subject?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      evaluation.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      evaluation.id.includes(searchTerm)
-  );
-
-  // Calcular índices para paginação
-  const indexOfLastItem = currentPage * itemsPerPage;
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentItems = filteredEvaluations.slice(indexOfFirstItem, indexOfLastItem);
-  const totalPages = Math.ceil(filteredEvaluations.length / itemsPerPage);
+  // ✅ NOVO: Usar paginação do backend
+  const currentItems = Array.isArray(searchTerm ? filteredEvaluations : evaluations) 
+    ? (searchTerm ? filteredEvaluations : evaluations) 
+    : [];
+  const totalPages = pagination?.pages || 1;
+  const hasNextPage = pagination?.has_next || false;
+  const hasPrevPage = pagination?.has_prev || false;
 
   const handlePageChange = (pageNumber: number) => {
     setCurrentPage(pageNumber);
   };
 
-  // Resetar para primeira página quando o termo de busca mudar
+  // ✅ NOVO: Resetar para primeira página quando filtros mudarem
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filters]);
+  }, [filters]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('pt-BR');
@@ -293,20 +273,51 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
   };
 
   const handleDelete = async () => {
-    if (!evaluationToDelete) return;
+    if (!evaluationToDelete) {
+      console.error("Nenhuma avaliação selecionada para exclusão");
+      return;
+    }
+
+    console.log("🗑️ Iniciando exclusão da avaliação:", evaluationToDelete);
 
     try {
-      await api.delete(`/test/${evaluationToDelete}`);
+      console.log("📡 Fazendo chamada DELETE para:", `/test/${evaluationToDelete}`);
+      const response = await api.delete(`/test/${evaluationToDelete}`);
+      console.log("✅ Resposta da API:", response);
+      
       toast({
         title: "Sucesso",
         description: "Avaliação excluída com sucesso",
       });
-      fetchEvaluations();
-    } catch (error) {
-      console.error("Erro ao excluir avaliação:", error);
+      
+      // ✅ NOVO: Invalidar cache e recarregar dados
+      console.log("🔄 Invalidando cache e recarregando dados...");
+      invalidateCache();
+      refetchEvaluations();
+    } catch (error: any) {
+      console.error("❌ Erro detalhado ao excluir avaliação:", {
+        error,
+        message: error.message,
+        response: error.response,
+        status: error.response?.status,
+        data: error.response?.data
+      });
+      
+      let errorMessage = "Não foi possível excluir a avaliação";
+      
+      if (error.response?.status === 404) {
+        errorMessage = "Avaliação não encontrada";
+      } else if (error.response?.status === 403) {
+        errorMessage = "Sem permissão para excluir esta avaliação";
+      } else if (error.response?.status === 401) {
+        errorMessage = "Sessão expirada. Faça login novamente.";
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      }
+      
       toast({
         title: "Erro",
-        description: "Não foi possível excluir a avaliação",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -316,19 +327,48 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
   };
 
   const handleBulkDelete = async () => {
+    console.log("🗑️ Iniciando exclusão em massa de avaliações:", selectedIds);
+    
     try {
-      await api.delete("/test", { data: { ids: selectedIds } });
+      console.log("📡 Fazendo chamada DELETE em massa para /test com IDs:", selectedIds);
+      const response = await api.delete("/test", { data: { ids: selectedIds } });
+      console.log("✅ Resposta da API:", response);
+      
       toast({
         title: "Sucesso",
         description: `${selectedIds.length} avaliações foram excluídas.`,
       });
-      fetchEvaluations();
+      
+      // ✅ NOVO: Invalidar cache e recarregar dados
+      console.log("🔄 Invalidando cache e recarregando dados...");
+      invalidateCache();
+      refetchEvaluations();
       setSelectedIds([]);
-    } catch (error) {
-      console.error("Erro ao excluir avaliações:", error);
+    } catch (error: any) {
+      console.error("❌ Erro detalhado ao excluir avaliações em massa:", {
+        error,
+        message: error.message,
+        response: error.response,
+        status: error.response?.status,
+        data: error.response?.data,
+        selectedIds
+      });
+      
+      let errorMessage = "Não foi possível excluir as avaliações selecionadas";
+      
+      if (error.response?.status === 404) {
+        errorMessage = "Uma ou mais avaliações não foram encontradas";
+      } else if (error.response?.status === 403) {
+        errorMessage = "Sem permissão para excluir estas avaliações";
+      } else if (error.response?.status === 401) {
+        errorMessage = "Sessão expirada. Faça login novamente.";
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      }
+      
       toast({
         title: "Erro",
-        description: "Não foi possível excluir as avaliações selecionadas.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -338,7 +378,7 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedIds(currentItems.map((item) => item.id));
+      setSelectedIds((currentItems || []).map((item) => item.id));
     } else {
       setSelectedIds([]);
     }
@@ -391,6 +431,13 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
   const handleConfirmStartEvaluation = async (startDateTime: string, endDateTime: string, classIds: string[]) => {
     if (!selectedEvaluationToStart) return;
 
+    console.log("🚀 Aplicando avaliação:", {
+      evaluationId: selectedEvaluationToStart.id,
+      classIds,
+      startDateTime,
+      endDateTime
+    });
+
     try {
       // ✅ FORMATO CORRETO - Enviar como um único request com array de classes
       const classesData = classIds.map(classId => ({
@@ -399,22 +446,43 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
         expiration: endDateTime
       }));
 
-      await api.post(`/test/${selectedEvaluationToStart.id}/apply`, {
+      console.log("📡 Enviando dados para API:", {
+        url: `/test/${selectedEvaluationToStart.id}/apply`,
+        data: { classes: classesData }
+      });
+
+      const response = await api.post(`/test/${selectedEvaluationToStart.id}/apply`, {
         classes: classesData
       });
 
-      // Recarregar a lista para refletir as mudanças
-      fetchEvaluations();
+      console.log("✅ Resposta da API:", response.data);
+
+      // ✅ NOVO: Invalidar cache e recarregar dados
+      invalidateCache();
+      refetchEvaluations();
 
       toast({
-        title: "Avaliação aplicada com sucesso!",
-        description: `A avaliação foi aplicada para ${classIds.length} turma(s).`,
+        title: "🎉 Avaliação aplicada com sucesso!",
+        description: `A avaliação "${selectedEvaluationToStart.title}" foi aplicada para ${classIds.length} turma(s) e ficará disponível no horário configurado.`,
       });
-    } catch (error) {
-      console.error("Erro ao aplicar avaliação:", error);
+    } catch (error: any) {
+      console.error("❌ Erro ao aplicar avaliação:", error);
+      
+      let errorMessage = "Erro ao aplicar avaliação. Tente novamente.";
+      
+      if (error.response?.status === 404) {
+        errorMessage = "Avaliação não encontrada";
+      } else if (error.response?.status === 403) {
+        errorMessage = "Sem permissão para aplicar esta avaliação";
+      } else if (error.response?.status === 400) {
+        errorMessage = error.response.data?.error || "Dados inválidos para aplicação";
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      }
+      
       toast({
         title: "Erro ao aplicar avaliação",
-        description: "Verifique se as turmas estão selecionadas corretamente.",
+        description: errorMessage,
         variant: "destructive",
       });
       throw error;
@@ -426,9 +494,27 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
 
   const hasActiveFilters = Object.values(filters).some(value => value !== 'all');
 
-  return (
-    <TooltipProvider>
+  // ✅ NOVO: Proteção adicional - se há erro de carregamento, mostrar componente simplificado
+  if (evaluationsError && !evaluationsData) {
+    return (
       <div className="space-y-6">
+        <div className="text-center py-8">
+          <p className="text-muted-foreground mb-4">
+            Erro ao carregar avaliações. Tente novamente.
+          </p>
+          <Button onClick={() => refetchEvaluations()}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Tentar novamente
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <ErrorBoundary>
+      <TooltipProvider>
+        <div className="space-y-6">
         {/* Header com busca e filtros */}
         <div className="flex flex-col lg:flex-row gap-4">
           <div className="relative flex-1">
@@ -448,7 +534,7 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas</SelectItem>
-                {subjects.map((subject) => (
+                {(subjects || []).map((subject) => (
                   <SelectItem key={subject.id} value={subject.id}>
                     {subject.name}
                   </SelectItem>
@@ -485,7 +571,7 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas</SelectItem>
-                {grades.map((grade) => (
+                {(grades || []).map((grade) => (
                   <SelectItem key={grade.id} value={grade.id}>
                     {grade.name}
                   </SelectItem>
@@ -496,7 +582,7 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={fetchEvaluations}
+              onClick={() => refetchEvaluations()}
               disabled={isLoading}
             >
               <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
@@ -544,7 +630,7 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
                     <span>Lista de avaliações disponíveis</span>
                     {!isLoading && (
                       <span className="text-sm text-muted-foreground">
-                        {filteredEvaluations.length} avaliação(ões) encontrada(s)
+                        {searchTerm ? filteredEvaluations.length : pagination?.total || 0} avaliação(ões) encontrada(s)
                       </span>
                     )}
                   </div>
@@ -554,8 +640,8 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
                     <TableHead className="w-[50px]">
                       <Checkbox
                         checked={
-                          currentItems.length > 0 &&
-                          selectedIds.length === currentItems.length
+                          (currentItems || []).length > 0 &&
+                          selectedIds.length === (currentItems || []).length
                         }
                         onCheckedChange={handleSelectAll}
                         aria-label="Selecionar todos"
@@ -590,8 +676,10 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
                         </TableCell>
                       </TableRow>
                     ))
-                  ) : currentItems.length > 0 ? (
-                    currentItems.map((evaluation) => (
+                  ) : (currentItems || []).length > 0 ? (
+                    (currentItems || [])
+                      .filter(evaluation => evaluation && evaluation.id)
+                      .map((evaluation) => (
                       <TableRow key={evaluation.id} data-state={selectedIds.includes(evaluation.id) && "selected"}>
                         <TableCell>
                           <Checkbox
@@ -629,7 +717,7 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
                         </TableCell>
                         <TableCell className="hidden md:table-cell">
                           <Badge variant="outline" className="text-xs">
-                            {evaluation.questions.length}
+                            {(evaluation?.questions || []).length}
                           </Badge>
                         </TableCell>
                         <TableCell className="hidden lg:table-cell">
@@ -715,17 +803,17 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
         </Card>
 
         {/* Paginação */}
-        {!isLoading && filteredEvaluations.length > 0 && totalPages > 1 && (
+        {!isLoading && !searchTerm && pagination && totalPages > 1 && (
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-500">
-              Mostrando {indexOfFirstItem + 1} a {Math.min(indexOfLastItem, filteredEvaluations.length)} de {filteredEvaluations.length} avaliações
+              Mostrando {((currentPage - 1) * itemsPerPage) + 1} a {Math.min(currentPage * itemsPerPage, pagination.total)} de {pagination.total} avaliações
             </div>
             <div className="flex items-center space-x-2">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => handlePageChange(currentPage - 1)}
-                disabled={currentPage === 1}
+                disabled={!hasPrevPage}
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
@@ -746,7 +834,7 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
                 variant="outline"
                 size="sm"
                 onClick={() => handlePageChange(currentPage + 1)}
-                disabled={currentPage === totalPages}
+                disabled={!hasNextPage}
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>
@@ -787,5 +875,6 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
         />
       </div>
     </TooltipProvider>
+    </ErrorBoundary>
   );
 }

@@ -32,6 +32,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { mockApi } from "@/lib/mockData";
+import { useEvaluationStats } from "@/hooks/use-cache";
+import ErrorBoundary from "@/components/evaluations/ErrorBoundary";
 
 interface EvaluationStats {
   total: number;
@@ -47,7 +49,28 @@ interface EvaluationStats {
 export default function Evaluations() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("ready");
-  const [stats, setStats] = useState<EvaluationStats>({
+  const { toast } = useToast();
+  const navigate = useNavigate();
+
+  // ✅ NOVO: Usar hook de cache otimizado para estatísticas
+  const {
+    data: statsData,
+    isLoading: isLoadingStats,
+    error: statsError,
+    refetch: refetchStats
+  } = useEvaluationStats();
+
+  // ✅ NOVO: Preparar dados das estatísticas com fallback
+  const stats = statsData ? {
+    total: statsData.total,
+    thisMonth: statsData.this_month,
+    totalQuestions: statsData.total_questions,
+    averageQuestions: statsData.average_questions,
+    virtualEvaluations: statsData.virtual_evaluations,
+    physicalEvaluations: statsData.physical_evaluations,
+    completedEvaluations: statsData.by_status?.concluida || 0,
+    pendingResults: statsData.by_status?.pendente || 0
+  } : {
     total: 0,
     thisMonth: 0,
     totalQuestions: 0,
@@ -56,87 +79,15 @@ export default function Evaluations() {
     physicalEvaluations: 0,
     completedEvaluations: 0,
     pendingResults: 0
-  });
-  const [isLoadingStats, setIsLoadingStats] = useState(true);
-  const { toast } = useToast();
-  const navigate = useNavigate();
+  };
 
-  useEffect(() => {
-    if (user.role !== "aluno") {
-      fetchStats();
-    }
-  }, [user.role]);
-
-  const fetchStats = async () => {
-    try {
-      setIsLoadingStats(true);
-      
-      // Buscar estatísticas das avaliações (API real)
-      const [evaluationsRes, questionsRes] = await Promise.all([
-        api.get("/test"),
-        api.get("/questions/")
-      ]);
-
-      const evaluations = evaluationsRes.data || [];
-      const questions = questionsRes.data || [];
-
-      // Buscar dados dos resultados (mock)
-      const resultsData = await mockApi.getEvaluationResults();
-      const completedResults = resultsData.filter(result => result.status === 'completed');
-      const pendingResults = resultsData.filter(result => result.status === 'pending');
-
-      // Calcular estatísticas
-      const currentMonth = new Date().getMonth();
-      const currentYear = new Date().getFullYear();
-      
-      const thisMonthEvaluations = evaluations.filter((evaluation: any) => {
-        const evalDate = new Date(evaluation.createdAt);
-        return evalDate.getMonth() === currentMonth && evalDate.getFullYear() === currentYear;
-      });
-
-      const totalQuestions = evaluations.reduce((sum: number, evaluation: any) => {
-        return sum + (evaluation.questions?.length || 0);
-      }, 0);
-
-      // Estatísticas por tipo (assumindo que temos campo evaluation_mode no futuro)
-      const virtualEvaluations = evaluations.filter((evaluation: any) => evaluation.evaluation_mode === 'virtual').length;
-      const physicalEvaluations = evaluations.filter((evaluation: any) => evaluation.evaluation_mode === 'physical').length;
-
-      setStats({
-        total: evaluations.length,
-        thisMonth: thisMonthEvaluations.length,
-        totalQuestions: questions.length,
-        averageQuestions: evaluations.length > 0 ? Math.round(totalQuestions / evaluations.length) : 0,
-        virtualEvaluations: virtualEvaluations || Math.floor(evaluations.length * 0.7), // Fallback
-        physicalEvaluations: physicalEvaluations || Math.ceil(evaluations.length * 0.3), // Fallback
-        completedEvaluations: completedResults.length, // Usando dados mock
-        pendingResults: pendingResults.length // Usando dados mock
-      });
-
-    } catch (error) {
-      console.error("Erro ao buscar estatísticas:", error);
-      // Se houver erro na API, usar apenas dados mock
-      try {
-        const resultsData = await mockApi.getEvaluationResults();
-        const completedResults = resultsData.filter(result => result.status === 'completed');
-        const pendingResults = resultsData.filter(result => result.status === 'pending');
-        
-        setStats({
-          total: resultsData.length,
-          thisMonth: 1,
-          totalQuestions: 50,
-          averageQuestions: 15,
-          virtualEvaluations: Math.floor(resultsData.length * 0.7),
-          physicalEvaluations: Math.ceil(resultsData.length * 0.3),
-          completedEvaluations: completedResults.length,
-          pendingResults: pendingResults.length
-        });
-      } catch (mockError) {
-        console.error("Erro ao buscar dados mock:", mockError);
-      }
-    } finally {
-      setIsLoadingStats(false);
-    }
+  // ✅ NOVO: Função para refresh manual das estatísticas
+  const handleRefreshStats = () => {
+    refetchStats();
+    toast({
+      title: "Atualizando estatísticas",
+      description: "Os dados estão sendo atualizados...",
+    });
   };
 
 
@@ -248,7 +199,9 @@ export default function Evaluations() {
         </TabsList>
 
         <TabsContent value="ready" className="space-y-4">
-          <ReadyEvaluations />
+          <ErrorBoundary>
+            <ReadyEvaluations />
+          </ErrorBoundary>
         </TabsContent>
 
         <TabsContent value="create" className="space-y-4">
