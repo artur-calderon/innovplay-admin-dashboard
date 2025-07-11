@@ -74,6 +74,42 @@ class CacheManager {
   }
 }
 
+// ✅ NOVO: Teste de conectividade
+const testConnection = async (): Promise<{ success: boolean; message: string }> => {
+  try {
+    // Primeiro, tenta fazer uma requisição simples
+    const response = await api.get('/dashboard/stats');
+    return {
+      success: true,
+      message: `Conectado com sucesso! Status: ${response.status}`
+    };
+  } catch (error: any) {
+    console.error("Erro no teste de conectividade:", error);
+    
+    if (error.code === 'ERR_NETWORK') {
+      return {
+        success: false,
+        message: "Erro de rede - verifique se o servidor está rodando"
+      };
+    } else if (error.response?.status === 401) {
+      return {
+        success: false,
+        message: "Não autorizado - token inválido ou expirado"
+      };
+    } else if (error.response?.status === 404) {
+      return {
+        success: false,
+        message: "Endpoint não encontrado - verifique a configuração do backend"
+      };
+    } else {
+      return {
+        success: false,
+        message: `Erro: ${error.message || 'Erro desconhecido'}`
+      };
+    }
+  }
+};
+
 export default function RecentEvaluations() {
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -139,7 +175,7 @@ export default function RecentEvaluations() {
         try {
           // Buscar avaliações reais da API
           const [evaluationsResponse, statsResponse] = await Promise.all([
-            api.get('/test?limit=5&sort=created_at&order=desc'),
+            api.get('/test/?limit=5&sort=created_at&order=desc'),
             api.get('/dashboard/stats')
           ]);
 
@@ -177,6 +213,15 @@ export default function RecentEvaluations() {
         } catch (apiError: any) {
           console.error("Erro na API:", apiError);
           
+          // Log detalhado do erro
+          if (apiError.code === 'ERR_NETWORK') {
+            console.error("Erro de rede - possível servidor offline ou problema de conectividade");
+          } else if (apiError.response) {
+            console.error("Erro HTTP:", apiError.response.status, apiError.response.data);
+          } else {
+            console.error("Erro desconhecido:", apiError.message);
+          }
+          
           // Fallback para dados mock se API falhar
           evaluationsData = mockEvaluations.slice(0, 5).map(evaluation => ({
             id: evaluation.id,
@@ -199,11 +244,23 @@ export default function RecentEvaluations() {
             lastSync: new Date().toISOString()
           };
 
-          setError("Conectado com dados locais");
+          // Mensagem de erro mais específica
+          let errorMessage = "Erro na conexão com o servidor";
+          if (apiError.code === 'ERR_NETWORK') {
+            errorMessage = "Servidor offline - usando dados locais";
+          } else if (apiError.response?.status === 401) {
+            errorMessage = "Não autorizado - faça login novamente";
+          } else if (apiError.response?.status === 404) {
+            errorMessage = "Endpoints não encontrados - verifique o backend";
+          } else if (apiError.response?.status >= 500) {
+            errorMessage = "Erro interno do servidor";
+          }
+
+          setError(errorMessage);
           toast({
-            title: "Modo offline",
-            description: "Usando dados locais. Verifique sua conexão.",
-            variant: "default",
+            title: "Problema de conectividade",
+            description: errorMessage,
+            variant: "destructive",
           });
         }
       } else {
