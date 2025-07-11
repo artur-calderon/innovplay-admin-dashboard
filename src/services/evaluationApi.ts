@@ -17,8 +17,8 @@ export class EvaluationApiService {
             console.log('Testando conectividade com a API...');
             console.log('Base URL:', api.defaults.baseURL);
 
-            const response = await api.get('/health');
-            console.log('API está respondendo:', response.data);
+            const response = await api.get('/');
+            console.log('API está respondendo');
             return true;
         } catch (error) {
             console.error('Erro de conectividade:', error);
@@ -31,24 +31,19 @@ export class EvaluationApiService {
     static async getTestData(testId: string): Promise<TestData> {
         console.log('Chamando API para buscar dados do teste:', testId);
         try {
-            // Tentar primeiro o endpoint padrão
-            const response = await api.get(`/tests/${testId}`);
+            const response = await api.get(`/test/${testId}/details`);
             console.log('Resposta da API getTestData:', response.data);
+            console.log('Questões recebidas:', response.data.questions);
+            if (response.data.questions && response.data.questions.length > 0) {
+                console.log('Primeira questão:', response.data.questions[0]);
+                console.log('Primeira questão - alternatives:', response.data.questions[0].alternatives);
+                console.log('Primeira questão - options:', response.data.questions[0].options);
+            }
             return response.data;
         } catch (error) {
             console.error('Erro ao buscar dados do teste:', error);
             console.error('Detalhes do erro:', error.response?.data);
-
-            // Se falhar, tentar endpoint alternativo
-            try {
-                console.log('Tentando endpoint alternativo...');
-                const response = await api.get(`/test/${testId}`);
-                console.log('Resposta da API getTestData (alternativo):', response.data);
-                return response.data;
-            } catch (altError) {
-                console.error('Erro no endpoint alternativo:', altError);
-                throw error; // Re-throw o erro original
-            }
+            throw error;
         }
     }
 
@@ -100,11 +95,8 @@ export class EvaluationApiService {
 
     // Finalizar teste
     static async submitTest(data: SubmitTestRequest): Promise<SubmitTestResponse> {
-        console.log('Finalizando teste com dados:', data);
-
         try {
             const response = await api.post('/student-answers/submit', data);
-            console.log('Resposta da API submitTest:', response.data);
             return response.data;
         } catch (error) {
             console.error('Erro ao finalizar teste:', error);

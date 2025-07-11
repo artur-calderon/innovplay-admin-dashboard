@@ -15,12 +15,21 @@ export interface TestSession {
 export interface Question {
     id: string;
     number: number;
-    type: "multiple_choice" | "true_false" | "essay" | "multiple_answer";
+    type: "multiple_choice" | "true_false" | "essay" | "multiple_answer" | "multipleChoice" | "truefalse" | "open" | "dissertativa";
     text: string;
+    formattedText?: string;
     imageUrl?: string;
+    images?: (string | { url?: string; src?: string; name?: string })[];
+    secondstatement?: string;
+    secondStatement?: string;
     options?: {
         id: string;
         text: string;
+    }[];
+    alternatives?: {
+        id?: string;
+        text: string;
+        isCorrect?: boolean;
     }[];
     points: number;
     difficulty: "easy" | "medium" | "hard";

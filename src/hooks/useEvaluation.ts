@@ -28,12 +28,16 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
     const [isSaving, setIsSaving] = useState(false);
     const [results, setResults] = useState<TestResults | null>(null);
 
-    // Controle de tempo
+    // Controle de tempo individual por sessão
     const [timeRemaining, setTimeRemaining] = useState(0);
     const [isTimeUp, setIsTimeUp] = useState(false);
+    const [isPaused, setIsPaused] = useState(false); // ✅ NOVO: controle de pausa
+    const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null); // ✅ NOVO: início da sessão
+    const [totalPausedTime, setTotalPausedTime] = useState(0); // ✅ NOVO: tempo total pausado
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
     const statusCheckRef = useRef<NodeJS.Timeout | null>(null);
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const pauseStartTime = useRef<Date | null>(null); // ✅ NOVO: início da pausa atual
 
     // Carregar dados do teste
     const loadTestData = useCallback(async () => {
@@ -51,15 +55,9 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             if (savedData) {
                 try {
                     const parsedData = JSON.parse(savedData);
-                    console.log("=== DEBUG: loadTestData - Dados salvos encontrados ===");
-                    console.log("parsedData:", parsedData);
-                    console.log("parsedData.id:", parsedData.id);
-                    console.log("testId:", testId);
-                    console.log("parsedData.session_id:", parsedData.session_id);
 
                     // Verificar se os dados são para o teste atual
                     if (parsedData.id === testId) {
-                        console.log("Dados correspondem ao teste atual");
 
                         // Converter dados salvos para o formato TestData
                         const testData: TestData = {
@@ -74,7 +72,6 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
                         // Se há dados de sessão, criar uma sessão inicial
                         if (parsedData.session_id) {
-                            console.log("Criando sessão inicial com session_id:", parsedData.session_id);
                             const initialSession: TestSession = {
                                 session_id: parsedData.session_id,
                                 status: 'em_andamento',
@@ -88,22 +85,15 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                             };
                             setSession(initialSession);
                             setTimeRemaining(parsedData.duration * 60);
-                            console.log("Sessão inicial criada:", initialSession);
-                        } else {
-                            console.log("Nenhum session_id encontrado nos dados salvos");
                         }
 
                         setTestData(testData);
                         setEvaluationState('instructions');
                         return;
-                    } else {
-                        console.log("Dados não correspondem ao teste atual");
                     }
                 } catch (parseError) {
                     console.error("Erro ao parsear dados salvos:", parseError);
                 }
-            } else {
-                console.log("Nenhum dado salvo encontrado no localStorage");
             }
 
             // Se não há dados salvos e API está disponível, buscar da API
@@ -118,117 +108,40 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
         } catch (error) {
             console.error("Erro ao carregar dados do teste:", error);
-
-            // Dados mock para desenvolvimento
-            const mockData: TestData = {
-                id: "test-1",
-                title: "Avaliação de Matemática - 1º Bimestre",
-                subject: { id: "math", name: "Matemática" },
-                duration: 60,
-                totalQuestions: 5,
-                instructions: "Leia atentamente cada questão antes de responder. Você tem 60 minutos para completar a avaliação.",
-                questions: [
-                    {
-                        id: "q1",
-                        number: 1,
-                        type: "multiple_choice",
-                        text: "Qual é o resultado da operação 2,5 + 3,7?",
-                        options: [
-                            { id: "a", text: "5,2" },
-                            { id: "b", text: "6,2" },
-                            { id: "c", text: "6,1" },
-                            { id: "d", text: "5,3" }
-                        ],
-                        points: 2,
-                        difficulty: "easy"
-                    },
-                    {
-                        id: "q2",
-                        number: 2,
-                        type: "true_false",
-                        text: "A fração 3/4 é equivalente a 0,75.",
-                        points: 2,
-                        difficulty: "medium"
-                    },
-                    {
-                        id: "q3",
-                        number: 3,
-                        type: "multiple_choice",
-                        text: "Em uma pizza dividida em 8 fatias iguais, se João comeu 3 fatias, que fração da pizza ele comeu?",
-                        options: [
-                            { id: "a", text: "3/8" },
-                            { id: "b", text: "3/5" },
-                            { id: "c", text: "5/8" },
-                            { id: "d", text: "8/3" }
-                        ],
-                        points: 3,
-                        difficulty: "medium"
-                    },
-                    {
-                        id: "q4",
-                        number: 4,
-                        type: "multiple_answer",
-                        text: "Quais das seguintes frações são maiores que 1/2?",
-                        options: [
-                            { id: "a", text: "3/4" },
-                            { id: "b", text: "2/5" },
-                            { id: "c", text: "5/8" },
-                            { id: "d", text: "1/3" }
-                        ],
-                        points: 2,
-                        difficulty: "hard"
-                    },
-                    {
-                        id: "q5",
-                        number: 5,
-                        type: "essay",
-                        text: "Explique como você faria para somar as frações 1/4 + 2/3.",
-                        points: 1,
-                        difficulty: "hard"
-                    }
-                ]
-            };
-
-            setTestData(mockData);
-            setEvaluationState('instructions');
+            toast({
+                title: "Erro",
+                description: "Não foi possível carregar a avaliação. Verifique sua conexão e tente novamente.",
+                variant: "destructive",
+            });
+            setEvaluationState('error');
         }
     }, [testId, toast]);
 
     // Verificar sessão existente
     const checkExistingSession = useCallback(async () => {
         try {
-            console.log('=== DEBUG: checkExistingSession ===');
-            console.log('Verificando sessão existente para teste:', testId);
-
             const savedSession = SessionStorage.getSession(testId);
-            console.log('Sessão salva encontrada:', savedSession);
-            console.log('testId usado para buscar sessão:', testId);
 
             if (savedSession) {
-                console.log('Verificando status da sessão:', savedSession.session_id);
-
                 const sessionData = await EvaluationApiService.getSessionStatus(savedSession.session_id);
-                console.log('Status da sessão:', sessionData);
 
                 if (sessionData.status === 'em_andamento') {
-                    console.log('Sessão em andamento, ativando avaliação');
                     setSession(sessionData);
                     setTimeRemaining(sessionData.remaining_time_minutes * 60);
                     setEvaluationState('active');
 
+                    // ✅ NOVO: Restaurar controle de tempo individual para sessão existente
+                    const sessionStart = new Date(savedSession.started_at);
+                    setSessionStartTime(sessionStart);
+                    setTotalPausedTime(0); // Reset - tempo pausado não é persistido
+                    setIsPaused(false);
+
                     // Recuperar respostas salvas
                     const savedAnswers = SessionStorage.getAnswers(testId);
-                    console.log('Respostas salvas recuperadas:', savedAnswers);
                     setAnswers(savedAnswers);
 
                     return;
-                } else {
-                    console.log('Sessão não está em andamento, status:', sessionData.status);
                 }
-            } else {
-                console.log('Nenhuma sessão salva encontrada');
-                console.log('Chaves no localStorage:', Object.keys(localStorage));
-                console.log('Chaves que começam com test_session_:', Object.keys(localStorage).filter(key => key.startsWith('test_session_')));
             }
 
             setEvaluationState('instructions');
@@ -263,16 +176,10 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         try {
             setIsSubmitting(true);
 
-            console.log('=== DEBUG: startTestSession ===');
-            console.log('Iniciando sessão para teste:', testId);
-            console.log('Dados do teste:', testData);
-
             const sessionData = await EvaluationApiService.startSession({
                 test_id: testId,
                 time_limit_minutes: testData.duration
             });
-
-            console.log('Sessão iniciada:', sessionData);
 
             const newSession: TestSession = {
                 session_id: sessionData.session_id,
@@ -286,19 +193,20 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 grade: null
             };
 
-            console.log('Nova sessão criada:', newSession);
-
             setSession(newSession);
             setTimeRemaining(sessionData.remaining_time_minutes * 60);
             setEvaluationState('active');
+
+            // ✅ NOVO: Inicializar controle de tempo individual
+            setSessionStartTime(new Date());
+            setTotalPausedTime(0);
+            setIsPaused(false);
 
             // Salvar sessão no localStorage
             SessionStorage.saveSession(testId, {
                 session_id: sessionData.session_id,
                 started_at: sessionData.started_at
             });
-
-            console.log('Sessão salva no SessionStorage');
 
             toast({
                 title: "✅ Sessão iniciada!",
@@ -368,30 +276,83 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         };
     }, [answers, saveAnswers]);
 
-    // Timer countdown
+    // ✅ NOVO: Controle de visibilidade da página (detectar quando aluno sai da aba)
     useEffect(() => {
-        if (timeRemaining > 0 && !isTimeUp && session?.status === 'em_andamento') {
+        const handleVisibilityChange = () => {
+            if (document.hidden) {
+                // Aluno saiu da aba - pausar timer
+                if (session?.status === 'em_andamento' && !isPaused) {
+                    setIsPaused(true);
+                    pauseStartTime.current = new Date();
+                    console.log('⏸️ Timer pausado - aluno saiu da aba');
+                }
+            } else {
+                // Aluno voltou para a aba - retomar timer
+                if (session?.status === 'em_andamento' && isPaused) {
+                    if (pauseStartTime.current) {
+                        const pauseDuration = new Date().getTime() - pauseStartTime.current.getTime();
+                        setTotalPausedTime(prev => prev + pauseDuration);
+                        pauseStartTime.current = null;
+                    }
+                    setIsPaused(false);
+                    console.log('▶️ Timer retomado - aluno voltou para a aba');
+                }
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [session?.status, isPaused]);
+
+    // ✅ NOVO: Calcular tempo restante baseado na sessão individual
+    const calculateRemainingTime = useCallback(() => {
+        if (!session || !sessionStartTime || !session.time_limit_minutes) {
+            return 0;
+        }
+
+        const now = new Date();
+        const sessionDuration = now.getTime() - sessionStartTime.getTime();
+        const effectiveSessionDuration = sessionDuration - totalPausedTime;
+        
+        // Se está pausado, não contar o tempo da pausa atual
+        let currentPauseDuration = 0;
+        if (isPaused && pauseStartTime.current) {
+            currentPauseDuration = now.getTime() - pauseStartTime.current.getTime();
+        }
+        
+        const totalEffectiveTime = effectiveSessionDuration - currentPauseDuration;
+        const timeLimitMs = session.time_limit_minutes * 60 * 1000;
+        const remainingMs = timeLimitMs - totalEffectiveTime;
+        
+        return Math.max(0, Math.floor(remainingMs / 1000));
+    }, [session, sessionStartTime, totalPausedTime, isPaused]);
+
+    // ✅ MODIFICADO: Timer countdown individual por sessão
+    useEffect(() => {
+        if (session?.status === 'em_andamento' && sessionStartTime && !isPaused) {
             intervalRef.current = setInterval(() => {
-                setTimeRemaining(prev => {
-                    const newTime = prev - 1;
+                const remaining = calculateRemainingTime();
+                setTimeRemaining(remaining);
 
-                    if (newTime === 300) { // 5 minutos
-                        toast({
-                            title: "⏰ Atenção!",
-                            description: "Restam apenas 5 minutos",
-                            variant: "destructive",
-                        });
-                    }
+                if (remaining === 300) { // 5 minutos
+                    toast({
+                        title: "⏰ Atenção!",
+                        description: "Restam apenas 5 minutos",
+                        variant: "destructive",
+                    });
+                }
 
-                    if (newTime <= 0) {
-                        setIsTimeUp(true);
-                        handleTimeUp();
-                        return 0;
-                    }
-
-                    return newTime;
-                });
+                if (remaining <= 0) {
+                    setIsTimeUp(true);
+                    handleTimeUp();
+                }
             }, 1000);
+        } else {
+            // Limpar interval se pausado ou sessão não ativa
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+                intervalRef.current = null;
+            }
         }
 
         return () => {
@@ -399,7 +360,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 clearInterval(intervalRef.current);
             }
         };
-    }, [timeRemaining, isTimeUp, session?.status, toast]);
+    }, [session?.status, sessionStartTime, isPaused, calculateRemainingTime, toast]);
 
     // Verificar status da sessão periodicamente
     useEffect(() => {
@@ -423,15 +384,8 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
     // Verificar sessão existente quando dados carregados
     useEffect(() => {
-        console.log('=== DEBUG: useEffect checkExistingSession ===');
-        console.log('testData:', testData);
-        console.log('user:', user);
-
         if (testData && user) {
-            console.log('Chamando checkExistingSession...');
             checkExistingSession();
-        } else {
-            console.log('Não chamando checkExistingSession - testData ou user não disponível');
         }
     }, [testData, user, checkExistingSession]);
 
@@ -454,53 +408,62 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
     }, [testData?.questions.length]);
 
     const handleTimeUp = useCallback(async () => {
+        // ✅ NOVO: Verificar se realmente é desta sessão
+        if (!session?.session_id || isTimeUp) {
+            return; // Evitar múltiplas execuções
+        }
+
+        console.log(`⏰ Tempo esgotado para sessão ${session.session_id}`);
+        
         toast({
             title: "⏰ Tempo esgotado!",
-            description: "A avaliação será enviada automaticamente",
+            description: "Sua avaliação será enviada automaticamente em 3 segundos",
             variant: "destructive",
         });
+
+        // ✅ NOVO: Pausar timer e limpar intervals
+        setIsPaused(true);
+        if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+        }
 
         setTimeout(() => {
             handleSubmitTest(true);
         }, 3000);
-    }, [toast]);
+    }, [session?.session_id, isTimeUp, toast]);
 
     const handleSubmitTest = useCallback(async (automatic = false) => {
-        console.log('=== DEBUG: handleSubmitTest ===');
-        console.log('isSubmitting:', isSubmitting);
-        console.log('session:', session);
-        console.log('session?.session_id:', session?.session_id);
-        console.log('answers:', answers);
-
         if (isSubmitting || !session?.session_id) {
-            console.error('Não é possível enviar: isSubmitting =', isSubmitting, 'session_id =', session?.session_id);
             return;
         }
 
         try {
             setIsSubmitting(true);
 
-            console.log('Enviando avaliação com session_id:', session.session_id);
-            console.log('Respostas:', answers);
-
-            const answersArray = Object.values(answers).map(answer => ({
-                question_id: answer.question_id,
-                answer: answer.answer
-            }));
-
-            console.log('Respostas formatadas:', answersArray);
-
-            const response = await EvaluationApiService.submitTest({
-                session_id: session.session_id,
-                answers: answersArray
+            // Validar e filtrar respostas
+            const validAnswers = Object.values(answers).filter(answer => {
+                return answer && 
+                       typeof answer.question_id === 'string' && 
+                       answer.question_id.trim() !== '' &&
+                       typeof answer.answer === 'string';
             });
 
-            console.log('Resposta do envio:', response);
+            const answersArray = validAnswers.map(answer => ({
+                question_id: answer.question_id,
+                answer: answer.answer || ''
+            }));
+
+            const submitData = {
+                session_id: session.session_id,
+                answers: answersArray
+            };
+
+            const response = await EvaluationApiService.submitTest(submitData);
 
             // Encerrar a sessão para marcar a avaliação como indisponível
             try {
                 await EvaluationApiService.endSession(session.session_id);
-                console.log('Sessão encerrada com sucesso');
             } catch (endSessionError) {
                 console.error('Erro ao encerrar sessão:', endSessionError);
                 // Não falhar o envio se o encerramento falhar
@@ -548,6 +511,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         results,
         timeRemaining,
         isTimeUp,
+        isPaused, // ✅ NOVO: estado de pausa
 
         // Ações
         startTestSession,
