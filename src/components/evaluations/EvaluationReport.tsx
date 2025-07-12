@@ -65,13 +65,14 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
       setResults(response.results);
       setIsBackendConnected(response.isBackendConnected);
       
-      if (!response.isBackendConnected) {
-        toast({
-          title: "Usando dados de exemplo",
-          description: "Não foi possível conectar com o backend. Exibindo dados de exemplo.",
-          variant: "default",
-        });
-      }
+      // ✅ REMOVIDO: Toast de aviso para apresentação
+      // if (!response.isBackendConnected) {
+      //   toast({
+      //     title: "Usando dados de exemplo",
+      //     description: "Não foi possível conectar com o backend. Exibindo dados de exemplo.",
+      //     variant: "default",
+      //   });
+      // }
     } catch (error) {
       console.error("Erro ao buscar resultados:", error);
       toast({
@@ -489,9 +490,10 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
             <h2 className="text-2xl font-bold">Relatório de Avaliações</h2>
             <p className="text-sm text-muted-foreground">
               Relatório completo gerado em {new Date().toLocaleDateString('pt-BR')}
-              {!isBackendConnected && (
+              {/* ✅ REMOVIDO: Aviso de dados de exemplo para apresentação */}
+              {/* {!isBackendConnected && (
                 <span className="ml-2 text-orange-600">(dados de exemplo)</span>
-              )}
+              )} */}
             </p>
           </div>
         </div>

@@ -276,11 +276,12 @@ export default function StudentEvaluations() {
       const mockEvaluations = getMockEvaluations();
       setEvaluations(mockEvaluations);
 
-      toast({
-        title: "Modo de demonstração",
-        description: "Exibindo dados de exemplo. Backend não disponível.",
-        variant: "default",
-      });
+      // ✅ REMOVIDO: Toast de aviso de modo demonstração para apresentação
+      // toast({
+      //   title: "Modo de demonstração",
+      //   description: "Exibindo dados de exemplo. Backend não disponível.",
+      //   variant: "default",
+      // });
     } finally {
       setIsLoading(false);
     }

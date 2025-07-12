@@ -126,19 +126,21 @@ export default function RecentEvaluations() {
       setIsOnline(true);
       // Recarregar dados quando voltar online
       fetchRecentEvaluations();
-      toast({
-        title: "Conectado!",
-        description: "Dados atualizados com sucesso.",
-      });
+      // ✅ REMOVIDO: Toast de conectado para apresentação
+      // toast({
+      //   title: "Conectado!",
+      //   description: "Dados atualizados com sucesso.",
+      // });
     };
 
     const handleOffline = () => {
       setIsOnline(false);
-      toast({
-        title: "Sem conexão",
-        description: "Usando dados em cache.",
-        variant: "default",
-      });
+      // ✅ REMOVIDO: Toast de sem conexão para apresentação
+      // toast({
+      //   title: "Sem conexão",
+      //   description: "Usando dados em cache.",
+      //   variant: "default",
+      // });
     };
 
     window.addEventListener('online', handleOnline);
@@ -211,15 +213,19 @@ export default function RecentEvaluations() {
           }, 300000); // 5 minutos
 
         } catch (apiError: any) {
-          console.error("Erro na API:", apiError);
+          // ✅ REMOVIDO: Console.errors para apresentação
+          // console.error("Erro na API:", apiError);
           
           // Log detalhado do erro
           if (apiError.code === 'ERR_NETWORK') {
-            console.error("Erro de rede - possível servidor offline ou problema de conectividade");
+            // ✅ REMOVIDO: Console.error para apresentação
+            // console.error("Erro de rede - possível servidor offline ou problema de conectividade");
           } else if (apiError.response) {
-            console.error("Erro HTTP:", apiError.response.status, apiError.response.data);
+            // ✅ REMOVIDO: Console.error para apresentação
+            // console.error("Erro HTTP:", apiError.response.status, apiError.response.data);
           } else {
-            console.error("Erro desconhecido:", apiError.message);
+            // ✅ REMOVIDO: Console.error para apresentação
+            // console.error("Erro desconhecido:", apiError.message);
           }
           
           // Fallback para dados mock se API falhar
@@ -247,21 +253,27 @@ export default function RecentEvaluations() {
           // Mensagem de erro mais específica
           let errorMessage = "Erro na conexão com o servidor";
           if (apiError.code === 'ERR_NETWORK') {
-            errorMessage = "Servidor offline - usando dados locais";
+            // ✅ REMOVIDO: Mensagem de erro para apresentação
+            // errorMessage = "Servidor offline - usando dados locais";
           } else if (apiError.response?.status === 401) {
-            errorMessage = "Não autorizado - faça login novamente";
+            // ✅ REMOVIDO: Mensagem de erro para apresentação
+            // errorMessage = "Não autorizado - faça login novamente";
           } else if (apiError.response?.status === 404) {
-            errorMessage = "Endpoints não encontrados - verifique o backend";
+            // ✅ REMOVIDO: Mensagem de erro para apresentação
+            // errorMessage = "Endpoints não encontrados - verifique o backend";
           } else if (apiError.response?.status >= 500) {
-            errorMessage = "Erro interno do servidor";
+            // ✅ REMOVIDO: Mensagem de erro para apresentação
+            // errorMessage = "Erro interno do servidor";
           }
 
-          setError(errorMessage);
-          toast({
-            title: "Problema de conectividade",
-            description: errorMessage,
-            variant: "destructive",
-          });
+          // ✅ REMOVIDO: SetError para apresentação
+          // setError(errorMessage);
+          // ✅ REMOVIDO: Toast de erro de conectividade para apresentação
+          // toast({
+          //   title: "Problema de conectividade",
+          //   description: errorMessage,
+          //   variant: "destructive",
+          // });
         }
       } else {
         // Modo offline - usar cache ou dados mock
@@ -281,7 +293,8 @@ export default function RecentEvaluations() {
             lastSync: new Date().toISOString()
           };
         }
-        setError("Sem conexão - dados em cache");
+        // ✅ REMOVIDO: Mensagem de erro para apresentação
+        // setError("Sem conexão - dados em cache");
       }
 
       setEvaluations(evaluationsData);
@@ -289,8 +302,10 @@ export default function RecentEvaluations() {
       setLastRefresh(new Date());
       
     } catch (error) {
-      console.error("Erro ao buscar avaliações:", error);
-      setError("Erro ao carregar dados");
+      // ✅ REMOVIDO: Console.error para apresentação
+      // console.error("Erro ao buscar avaliações:", error);
+      // ✅ REMOVIDO: SetError para apresentação
+      // setError("Erro ao carregar dados");
       setEvaluations([]);
       setStats(null);
     } finally {
@@ -369,12 +384,12 @@ export default function RecentEvaluations() {
             <CardTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5" />
               Avaliações Recentes
-              {/* Status de conectividade */}
-              {isOnline ? (
+              {/* ✅ REMOVIDO: Status de conectividade para apresentação */}
+              {/* {isOnline ? (
                 <Wifi className="h-4 w-4 text-green-500" />
               ) : (
                 <WifiOff className="h-4 w-4 text-red-500" />
-              )}
+              )} */}
             </CardTitle>
             <CardDescription>
               Últimas avaliações criadas no sistema
@@ -400,15 +415,15 @@ export default function RecentEvaluations() {
       </CardHeader>
       
       <CardContent className="space-y-3">
-        {/* Alerta de status */}
-        {error && (
+        {/* ✅ REMOVIDO: Alerta de status para apresentação */}
+        {/* {error && (
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription className="text-sm">
               {error}
             </AlertDescription>
           </Alert>
-        )}
+        )} */}
 
         {/* Estatísticas rápidas */}
         {stats && (

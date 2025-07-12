@@ -122,7 +122,8 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             // Testar conectividade primeiro
             const isConnected = await EvaluationApiService.testConnection();
             if (!isConnected) {
-                console.warn('API não está disponível, usando dados salvos ou mock');
+                // ✅ REMOVIDO: Console.warn para apresentação
+                // console.warn('API não está disponível, usando dados salvos ou mock');
             }
 
             // Primeiro, verificar se há dados salvos no localStorage

@@ -618,10 +618,12 @@ const QuestionsPage = () => {
       // Tentar usar cache antigo se disponível
       if (questionsCache[cacheKey] && questionsCache[cacheKey].length > 0) {
         if (isDebugMode) {
-          console.log('📦 Usando dados do cache devido ao erro');
+          // ✅ REMOVIDO: Console.log para apresentação
+          // console.log('📦 Usando dados do cache devido ao erro');
         }
         setQuestions(questionsCache[cacheKey]);
-        setError(`${errorMessage} (usando dados em cache)`);
+        // ✅ REMOVIDO: Mensagem de erro para apresentação
+        // setError(`${errorMessage} (usando dados em cache)`);
       } else {
         setQuestions([]);
       }

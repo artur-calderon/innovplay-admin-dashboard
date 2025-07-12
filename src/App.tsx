@@ -38,6 +38,7 @@ const StudentAgenda = React.lazy(() => import("./pages/StudentAgenda"));
 const TakeEvaluation = React.lazy(() => import("./components/evaluations/TakeEvaluation/index"));
 const EvaluationCorrection = React.lazy(() => import("./pages/EvaluationCorrection"));
 const Results = React.lazy(() => import("./pages/Results"));
+const EvaluationResults = React.lazy(() => import("./components/evaluations/EvaluationResults"));
 
 // Lazy loading para componentes de jogos
 const GamesManagement = React.lazy(() => import("./pages/GamesManagement"));
@@ -115,6 +116,7 @@ const App = () => {
               <Route path="/app/avaliacoes" element={<PrivateRoute><Evaluations /></PrivateRoute>} />
               <Route path="/app/avaliacoes/correcao" element={<PrivateRoute><EvaluationCorrection /></PrivateRoute>} />
               <Route path="/app/resultados" element={<PrivateRoute><Results /></PrivateRoute>} />
+              <Route path="/app/avaliacao/:id/resultados" element={<PrivateRoute><EvaluationResults /></PrivateRoute>} />
               <Route path="/app/avaliacao/:id" element={<PrivateRoute><ViewEvaluation /></PrivateRoute>} />
               <Route path="/app/avaliacao/:id/editar" element={<PrivateRoute><EditEvaluation /></PrivateRoute>} />
                               <Route path="/app/avaliacao/:id/fazer" element={<PrivateRoute><TakeEvaluation /></PrivateRoute>} />
