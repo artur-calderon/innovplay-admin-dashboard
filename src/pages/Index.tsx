@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import Layout from "@/components/layout/Layout";
 import StatCard from "@/components/dashboard/StatCard";
-import RecentStudents from "@/components/dashboard/RecentStudents";
+import RecentSchools from "@/components/dashboard/RecentSchools";
 import RecentEvaluations from "@/components/dashboard/RecentEvaluations";
 import QuestionsTable from "@/components/dashboard/QuestionsTable";
 import { 
@@ -48,22 +48,32 @@ const Index = () => {
         try {
           setIsLoading(true);
 
-          // Simular delay de carregamento
-          await new Promise(resolve => setTimeout(resolve, 800));
+          // Buscar dados reais da API
+          const [
+            comprehensiveStatsResponse,
+            usersResponse
+          ] = await Promise.all([
+            api.get('/dashboard/comprehensive-stats'),
+            api.get('/users/list')
+          ]);
 
-          // Usar dados mockados realistas
+          // Extrair dados das respostas
+          const comprehensiveStats = comprehensiveStatsResponse.data;
+          const users = usersResponse.data?.users || [];
+
+          // Calcular estatísticas
           setStats({
-            students: 30, // 30 alunos mockados implementados
-            schools: 5, // Escolas mockadas
-            evaluations: 12, // Avaliações mockadas
-            games: 36, // Jogos mockados
-            users: 45, // Total de usuários (alunos + professores + admin)
-            onlineSupport: 18, // Plantões online
-            notices: 57, // Avisos sistema
-            certificates: 356, // Certificados emitidos
-            competitions: 12, // Competições ativas
-            olympics: 8, // Olimpíadas
-            playTv: 64, // Conteúdo Play TV
+            students: comprehensiveStats?.students || 0,
+            schools: comprehensiveStats?.schools || 0,
+            evaluations: comprehensiveStats?.evaluations || 0,
+            games: comprehensiveStats?.games || 0,
+            users: comprehensiveStats?.users || 0,
+            onlineSupport: Math.floor(Math.random() * 20) + 10, // Mock - não há endpoint específico
+            notices: Math.floor(Math.random() * 50) + 30, // Mock - não há endpoint específico
+            certificates: Math.floor(Math.random() * 300) + 200, // Mock - não há endpoint específico
+            competitions: Math.floor(Math.random() * 15) + 5, // Mock - não há endpoint específico
+            olympics: Math.floor(Math.random() * 10) + 3, // Mock - não há endpoint específico
+            playTv: Math.floor(Math.random() * 80) + 40, // Mock - não há endpoint específico
           });
 
         } catch (error) {
@@ -198,9 +208,9 @@ const Index = () => {
         <div className="hidden lg:block"></div>
       </div>
       
-      {/* Recent Students and Evaluations */}
+      {/* Recent Schools and Evaluations */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
-        <RecentStudents />
+        <RecentSchools />
         <RecentEvaluations />
       </div>
       

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/authContext';
-import { EvaluationApiService, SessionStorage } from '@/services/evaluationApi';
+import { EvaluationApiService, SessionStorage, TestSessionInfo } from '@/services/evaluationApi';
 import {
     TestData,
     TestSession,
@@ -22,18 +22,97 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
     const [evaluationState, setEvaluationState] = useState<EvaluationState>('loading');
     const [testData, setTestData] = useState<TestData | null>(null);
     const [session, setSession] = useState<TestSession | null>(null);
+    const [sessionInfo, setSessionInfo] = useState<TestSessionInfo | null>(null); // ✅ NOVO: informações da sessão
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [answers, setAnswers] = useState<Record<string, StudentAnswer>>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [results, setResults] = useState<TestResults | null>(null);
 
-    // Controle de tempo
+    // Controle de tempo individual por sessão
     const [timeRemaining, setTimeRemaining] = useState(0);
     const [isTimeUp, setIsTimeUp] = useState(false);
+    const [isPaused, setIsPaused] = useState(false); // ✅ NOVO: controle de pausa
+    const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null); // ✅ NOVO: início da sessão
+    const [totalPausedTime, setTotalPausedTime] = useState(0); // ✅ NOVO: tempo total pausado
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
     const statusCheckRef = useRef<NodeJS.Timeout | null>(null);
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const pauseStartTime = useRef<Date | null>(null); // ✅ NOVO: início da pausa atual
+
+    // ✅ NOVO: Buscar informações da sessão do teste
+    const loadSessionInfo = useCallback(async () => {
+        try {
+            console.log('Buscando informações da sessão para o teste:', testId);
+            const sessionInfoData = await EvaluationApiService.getTestSessionInfo(testId);
+            setSessionInfo(sessionInfoData);
+
+            console.log('Informações da sessão carregadas:', sessionInfoData);
+
+            // Se existe uma sessão ativa, configurar o cronômetro
+            if (sessionInfoData.session_exists && sessionInfoData.status === 'em_andamento') {
+                console.log('Sessão ativa encontrada, configurando cronômetro...');
+
+                // ✅ AJUSTE FINAL: Nunca usar testData.duration
+                const isNovaSessao = !sessionInfoData.timer_started;
+                const minutos = isNovaSessao
+                    ? sessionInfoData.time_limit_minutes
+                    : sessionInfoData.remaining_time_minutes;
+                setTimeRemaining((minutos || 1) * 60);
+
+                if (sessionInfoData.timer_started && sessionInfoData.actual_start_time) {
+                    const sessionStart = new Date(sessionInfoData.actual_start_time);
+                    setSessionStartTime(sessionStart);
+                    setTotalPausedTime(0);
+                    setIsPaused(false);
+
+                    console.log('Cronômetro já iniciado, tempo restante:', minutos * 60, 'segundos');
+                } else {
+                    setSessionStartTime(null);
+                    setTotalPausedTime(0);
+                    setIsPaused(false);
+
+                    console.log('Cronômetro não iniciado, aguardando início manual');
+
+                    if (!sessionInfoData.timer_started) {
+                        toast({
+                            title: "⏸️ Cronômetro não iniciado",
+                            description: "Clique em 'Iniciar Cronômetro' para começar a contagem",
+                            variant: "default",
+                        });
+                    }
+                }
+
+                const sessionData: TestSession = {
+                    session_id: sessionInfoData.session_id,
+                    status: sessionInfoData.status as 'em_andamento' | 'finalizada' | 'expirada',
+                    started_at: sessionInfoData.started_at,
+                    actual_start_time: sessionInfoData.actual_start_time,
+                    remaining_time_minutes: sessionInfoData.remaining_time_minutes,
+                    time_limit_minutes: sessionInfoData.time_limit_minutes,
+                    is_expired: sessionInfoData.is_expired,
+                    total_questions: sessionInfoData.total_questions,
+                    correct_answers: sessionInfoData.correct_answers,
+                    score: sessionInfoData.score,
+                    grade: sessionInfoData.grade
+                };
+
+                setSession(sessionData);
+                setEvaluationState('active');
+
+                const savedAnswers = SessionStorage.getAnswers(testId);
+                setAnswers(savedAnswers);
+
+                return;
+            }
+
+            setEvaluationState('instructions');
+
+        } catch (error) {
+            console.error('Erro ao carregar informações da sessão:', error);
+            setEvaluationState('instructions');
+        }
+    }, [testId, toast]);
 
     // Carregar dados do teste
     const loadTestData = useCallback(async () => {
@@ -51,15 +130,9 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             if (savedData) {
                 try {
                     const parsedData = JSON.parse(savedData);
-                    console.log("=== DEBUG: loadTestData - Dados salvos encontrados ===");
-                    console.log("parsedData:", parsedData);
-                    console.log("parsedData.id:", parsedData.id);
-                    console.log("testId:", testId);
-                    console.log("parsedData.session_id:", parsedData.session_id);
 
                     // Verificar se os dados são para o teste atual
                     if (parsedData.id === testId) {
-                        console.log("Dados correspondem ao teste atual");
 
                         // Converter dados salvos para o formato TestData
                         const testData: TestData = {
@@ -74,7 +147,6 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
                         // Se há dados de sessão, criar uma sessão inicial
                         if (parsedData.session_id) {
-                            console.log("Criando sessão inicial com session_id:", parsedData.session_id);
                             const initialSession: TestSession = {
                                 session_id: parsedData.session_id,
                                 status: 'em_andamento',
@@ -88,22 +160,15 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                             };
                             setSession(initialSession);
                             setTimeRemaining(parsedData.duration * 60);
-                            console.log("Sessão inicial criada:", initialSession);
-                        } else {
-                            console.log("Nenhum session_id encontrado nos dados salvos");
                         }
 
                         setTestData(testData);
                         setEvaluationState('instructions');
                         return;
-                    } else {
-                        console.log("Dados não correspondem ao teste atual");
                     }
                 } catch (parseError) {
                     console.error("Erro ao parsear dados salvos:", parseError);
                 }
-            } else {
-                console.log("Nenhum dado salvo encontrado no localStorage");
             }
 
             // Se não há dados salvos e API está disponível, buscar da API
@@ -118,125 +183,25 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
         } catch (error) {
             console.error("Erro ao carregar dados do teste:", error);
-
-            // Dados mock para desenvolvimento
-            const mockData: TestData = {
-                id: "test-1",
-                title: "Avaliação de Matemática - 1º Bimestre",
-                subject: { id: "math", name: "Matemática" },
-                duration: 60,
-                totalQuestions: 5,
-                instructions: "Leia atentamente cada questão antes de responder. Você tem 60 minutos para completar a avaliação.",
-                questions: [
-                    {
-                        id: "q1",
-                        number: 1,
-                        type: "multiple_choice",
-                        text: "Qual é o resultado da operação 2,5 + 3,7?",
-                        options: [
-                            { id: "a", text: "5,2" },
-                            { id: "b", text: "6,2" },
-                            { id: "c", text: "6,1" },
-                            { id: "d", text: "5,3" }
-                        ],
-                        points: 2,
-                        difficulty: "easy"
-                    },
-                    {
-                        id: "q2",
-                        number: 2,
-                        type: "true_false",
-                        text: "A fração 3/4 é equivalente a 0,75.",
-                        points: 2,
-                        difficulty: "medium"
-                    },
-                    {
-                        id: "q3",
-                        number: 3,
-                        type: "multiple_choice",
-                        text: "Em uma pizza dividida em 8 fatias iguais, se João comeu 3 fatias, que fração da pizza ele comeu?",
-                        options: [
-                            { id: "a", text: "3/8" },
-                            { id: "b", text: "3/5" },
-                            { id: "c", text: "5/8" },
-                            { id: "d", text: "8/3" }
-                        ],
-                        points: 3,
-                        difficulty: "medium"
-                    },
-                    {
-                        id: "q4",
-                        number: 4,
-                        type: "multiple_answer",
-                        text: "Quais das seguintes frações são maiores que 1/2?",
-                        options: [
-                            { id: "a", text: "3/4" },
-                            { id: "b", text: "2/5" },
-                            { id: "c", text: "5/8" },
-                            { id: "d", text: "1/3" }
-                        ],
-                        points: 2,
-                        difficulty: "hard"
-                    },
-                    {
-                        id: "q5",
-                        number: 5,
-                        type: "essay",
-                        text: "Explique como você faria para somar as frações 1/4 + 2/3.",
-                        points: 1,
-                        difficulty: "hard"
-                    }
-                ]
-            };
-
-            setTestData(mockData);
-            setEvaluationState('instructions');
+            toast({
+                title: "Erro",
+                description: "Não foi possível carregar a avaliação. Verifique sua conexão e tente novamente.",
+                variant: "destructive",
+            });
+            setEvaluationState('error');
         }
     }, [testId, toast]);
 
-    // Verificar sessão existente
+    // ✅ MODIFICADO: Verificar sessão existente usando a nova rota
     const checkExistingSession = useCallback(async () => {
         try {
-            console.log('=== DEBUG: checkExistingSession ===');
-            console.log('Verificando sessão existente para teste:', testId);
-
-            const savedSession = SessionStorage.getSession(testId);
-            console.log('Sessão salva encontrada:', savedSession);
-            console.log('testId usado para buscar sessão:', testId);
-
-            if (savedSession) {
-                console.log('Verificando status da sessão:', savedSession.session_id);
-
-                const sessionData = await EvaluationApiService.getSessionStatus(savedSession.session_id);
-                console.log('Status da sessão:', sessionData);
-
-                if (sessionData.status === 'em_andamento') {
-                    console.log('Sessão em andamento, ativando avaliação');
-                    setSession(sessionData);
-                    setTimeRemaining(sessionData.remaining_time_minutes * 60);
-                    setEvaluationState('active');
-
-                    // Recuperar respostas salvas
-                    const savedAnswers = SessionStorage.getAnswers(testId);
-                    console.log('Respostas salvas recuperadas:', savedAnswers);
-                    setAnswers(savedAnswers);
-
-                    return;
-                } else {
-                    console.log('Sessão não está em andamento, status:', sessionData.status);
-                }
-            } else {
-                console.log('Nenhuma sessão salva encontrada');
-                console.log('Chaves no localStorage:', Object.keys(localStorage));
-                console.log('Chaves que começam com test_session_:', Object.keys(localStorage).filter(key => key.startsWith('test_session_')));
-            }
-
-            setEvaluationState('instructions');
+            // Usar a nova rota para buscar informações da sessão
+            await loadSessionInfo();
         } catch (error) {
             console.error("Erro ao verificar sessão existente:", error);
             setEvaluationState('instructions');
         }
-    }, [testId]);
+    }, [loadSessionInfo]);
 
     // Verificar status da sessão
     const checkSessionStatus = useCallback(async () => {
@@ -249,7 +214,8 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             setTimeRemaining(statusData.remaining_time_minutes * 60);
 
             if (statusData.is_expired || statusData.status === 'expirada') {
-                handleTimeUp();
+                // ✅ CORRIGIDO: Apenas marcar como expirado, a lógica será tratada no useEffect do timer
+                setIsTimeUp(true);
             }
         } catch (error) {
             console.error("Erro ao verificar status da sessão:", error);
@@ -263,47 +229,94 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         try {
             setIsSubmitting(true);
 
-            console.log('=== DEBUG: startTestSession ===');
-            console.log('Iniciando sessão para teste:', testId);
-            console.log('Dados do teste:', testData);
+            // ✅ MODIFICADO: Usar a nova rota para buscar informações da sessão
+            const sessionInfoData = await EvaluationApiService.getTestSessionInfo(testId);
 
-            const sessionData = await EvaluationApiService.startSession({
-                test_id: testId,
-                time_limit_minutes: testData.duration
-            });
+            if (!sessionInfoData.session_exists) {
+                // Se não existe sessão, criar uma nova
+                const sessionData = await EvaluationApiService.startSession({
+                    test_id: testId,
+                    time_limit_minutes: testData.duration
+                });
 
-            console.log('Sessão iniciada:', sessionData);
+                // Iniciar o cronômetro explicitamente
+                const timerData = await EvaluationApiService.startTimer(sessionData.session_id);
 
-            const newSession: TestSession = {
-                session_id: sessionData.session_id,
-                status: 'em_andamento',
-                started_at: sessionData.started_at,
-                remaining_time_minutes: sessionData.remaining_time_minutes,
-                is_expired: false,
-                total_questions: testData.totalQuestions,
-                correct_answers: 0,
-                score: 0,
-                grade: null
-            };
+                // ✅ CORRIGIDO: Atualizar sessionInfo com os dados mais recentes
+                const updatedSessionInfo = await EvaluationApiService.getTestSessionInfo(testId);
+                setSessionInfo(updatedSessionInfo);
 
-            console.log('Nova sessão criada:', newSession);
+                const newSession: TestSession = {
+                    session_id: sessionData.session_id,
+                    status: 'em_andamento',
+                    started_at: timerData.actual_start_time,
+                    actual_start_time: timerData.actual_start_time,
+                    remaining_time_minutes: timerData.remaining_time_minutes,
+                    time_limit_minutes: testData.duration, // ✅ NOVO: usar duração do teste
+                    is_expired: false,
+                    total_questions: testData.totalQuestions,
+                    correct_answers: 0,
+                    score: 0,
+                    grade: null
+                };
 
-            setSession(newSession);
-            setTimeRemaining(sessionData.remaining_time_minutes * 60);
-            setEvaluationState('active');
+                setSession(newSession);
+                setTimeRemaining(timerData.remaining_time_minutes * 60);
+                setEvaluationState('active');
 
-            // Salvar sessão no localStorage
-            SessionStorage.saveSession(testId, {
-                session_id: sessionData.session_id,
-                started_at: sessionData.started_at
-            });
+                // ✅ CORRIGIDO: Inicializar controle de tempo individual com o tempo real do cronômetro
+                setSessionStartTime(new Date(timerData.actual_start_time));
+                setTotalPausedTime(0);
+                setIsPaused(false);
 
-            console.log('Sessão salva no SessionStorage');
+                // Salvar sessão no localStorage
+                SessionStorage.saveSession(testId, {
+                    session_id: sessionData.session_id,
+                    started_at: timerData.actual_start_time
+                });
 
-            toast({
-                title: "✅ Sessão iniciada!",
-                description: "A avaliação foi iniciada com sucesso",
-            });
+                toast({
+                    title: "✅ Avaliação iniciada!",
+                    description: "O cronômetro foi iniciado com sucesso",
+                });
+            } else {
+                // Se já existe uma sessão, usar os dados existentes
+                const sessionData: TestSession = {
+                    session_id: sessionInfoData.session_id,
+                    status: sessionInfoData.status as 'em_andamento' | 'finalizada' | 'expirada',
+                    started_at: sessionInfoData.started_at,
+                    actual_start_time: sessionInfoData.actual_start_time,
+                    remaining_time_minutes: sessionInfoData.remaining_time_minutes,
+                    time_limit_minutes: sessionInfoData.time_limit_minutes,
+                    is_expired: sessionInfoData.is_expired,
+                    total_questions: sessionInfoData.total_questions,
+                    correct_answers: sessionInfoData.correct_answers,
+                    score: sessionInfoData.score,
+                    grade: sessionInfoData.grade
+                };
+
+                setSession(sessionData);
+                setSessionInfo(sessionInfoData);
+                setTimeRemaining(sessionInfoData.remaining_time_minutes * 60);
+                setEvaluationState('active');
+
+                // ✅ CORRIGIDO: Configurar controle de tempo baseado no status do timer
+                if (sessionInfoData.timer_started && sessionInfoData.actual_start_time) {
+                    setSessionStartTime(new Date(sessionInfoData.actual_start_time));
+                    setTotalPausedTime(0);
+                    setIsPaused(false);
+                } else {
+                    // ✅ CORRIGIDO: Não pausar automaticamente, apenas aguardar início manual
+                    setSessionStartTime(null);
+                    setTotalPausedTime(0);
+                    setIsPaused(false); // ✅ MUDANÇA: Não pausar automaticamente
+                }
+
+                toast({
+                    title: "✅ Sessão recuperada!",
+                    description: "Sua sessão de avaliação foi carregada",
+                });
+            }
 
         } catch (error) {
             console.error("Erro ao iniciar sessão:", error);
@@ -316,6 +329,57 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             setIsSubmitting(false);
         }
     }, [testData, user, testId, toast]);
+
+    // ✅ NOVO: Iniciar cronômetro manualmente (para sessões existentes)
+    const startTimerManually = useCallback(async () => {
+        if (!session?.session_id) return;
+
+        try {
+            setIsSubmitting(true);
+
+            const timerData = await EvaluationApiService.startTimer(session.session_id);
+
+            // ✅ MODIFICADO: Atualizar informações da sessão usando a nova rota
+            const sessionInfoData = await EvaluationApiService.getTestSessionInfo(testId);
+            setSessionInfo(sessionInfoData);
+
+            // Atualizar sessão com dados do cronômetro
+            setSession(prev => prev ? {
+                ...prev,
+                started_at: timerData.actual_start_time,
+                remaining_time_minutes: timerData.remaining_time_minutes,
+                time_limit_minutes: sessionInfoData.time_limit_minutes
+            } : null);
+
+            setTimeRemaining(timerData.remaining_time_minutes * 60);
+
+            // Inicializar controle de tempo
+            setSessionStartTime(new Date(timerData.actual_start_time));
+            setTotalPausedTime(0);
+            setIsPaused(false);
+
+            // Atualizar localStorage
+            SessionStorage.saveSession(testId, {
+                session_id: session.session_id,
+                started_at: timerData.actual_start_time
+            });
+
+            toast({
+                title: "▶️ Cronômetro iniciado!",
+                description: "A contagem de tempo foi iniciada",
+            });
+
+        } catch (error) {
+            console.error("Erro ao iniciar cronômetro:", error);
+            toast({
+                title: "Erro",
+                description: "Não foi possível iniciar o cronômetro",
+                variant: "destructive",
+            });
+        } finally {
+            setIsSubmitting(false);
+        }
+    }, [session?.session_id, testId, toast]);
 
     // Salvar respostas
     const saveAnswers = useCallback(async (answersToSave: Record<string, StudentAnswer>) => {
@@ -368,30 +432,68 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         };
     }, [answers, saveAnswers]);
 
-    // Timer countdown
+    // ✅ NOVO: Calcular tempo restante baseado na sessão individual
+    const calculateRemainingTime = useCallback(() => {
+        // ✅ CORRIGIDO: Usar diretamente o remaining_time_minutes da API
+        if (sessionInfo?.remaining_time_minutes !== undefined) {
+            return sessionInfo.remaining_time_minutes * 60;
+        }
+
+        // Fallback para cálculo local se não há dados da API
+        if (!session || !sessionStartTime) {
+            return 0;
+        }
+
+        const timeLimitMinutes = session.time_limit_minutes || sessionInfo?.time_limit_minutes || 60;
+        const timeLimitMs = timeLimitMinutes * 60 * 1000;
+
+        const now = new Date();
+        const sessionDuration = now.getTime() - sessionStartTime.getTime();
+        const effectiveSessionDuration = sessionDuration - totalPausedTime;
+
+        // Se está pausado, não contar o tempo da pausa atual
+        let currentPauseDuration = 0;
+        if (isPaused && pauseStartTime.current) {
+            currentPauseDuration = now.getTime() - pauseStartTime.current.getTime();
+        }
+
+        const totalEffectiveTime = effectiveSessionDuration - currentPauseDuration;
+        const remainingMs = timeLimitMs - totalEffectiveTime;
+
+        return Math.max(0, Math.floor(remainingMs / 1000));
+    }, [session, sessionInfo, sessionStartTime, totalPausedTime, isPaused]);
+
+    // ✅ MODIFICADO: Timer countdown individual por sessão
     useEffect(() => {
-        if (timeRemaining > 0 && !isTimeUp && session?.status === 'em_andamento') {
+        if (session?.status === 'em_andamento' && !isPaused) {
             intervalRef.current = setInterval(() => {
-                setTimeRemaining(prev => {
-                    const newTime = prev - 1;
+                const remaining = calculateRemainingTime();
+                setTimeRemaining(remaining);
 
-                    if (newTime === 300) { // 5 minutos
-                        toast({
-                            title: "⏰ Atenção!",
-                            description: "Restam apenas 5 minutos",
-                            variant: "destructive",
-                        });
-                    }
+                // ✅ CORRIGIDO: Sincronizar com a API a cada 30 segundos
+                if (sessionInfo?.session_id && Math.floor(remaining / 30) % 30 === 0) {
+                    checkSessionStatus();
+                }
 
-                    if (newTime <= 0) {
-                        setIsTimeUp(true);
-                        handleTimeUp();
-                        return 0;
-                    }
+                if (remaining === 300) { // 5 minutos
+                    toast({
+                        title: "⏰ Atenção!",
+                        description: "Restam apenas 5 minutos",
+                        variant: "destructive",
+                    });
+                }
 
-                    return newTime;
-                });
+                if (remaining <= 0) {
+                    setIsTimeUp(true);
+                    // handleTimeUp(); // This function is no longer needed here
+                }
             }, 1000);
+        } else {
+            // Limpar interval se pausado ou sessão não ativa
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+                intervalRef.current = null;
+            }
         }
 
         return () => {
@@ -399,9 +501,58 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 clearInterval(intervalRef.current);
             }
         };
-    }, [timeRemaining, isTimeUp, session?.status, toast]);
+    }, [session?.status, sessionStartTime, isPaused, calculateRemainingTime, toast, sessionInfo?.session_id, checkSessionStatus]);
 
-    // Verificar status da sessão periodicamente
+    // Timer decrementa localmente
+    useEffect(() => {
+        if (session?.status === 'em_andamento' && !isPaused && timeRemaining > 0) {
+            const interval = setInterval(() => {
+                setTimeRemaining(prev => Math.max(0, prev - 1));
+            }, 1000);
+            return () => clearInterval(interval);
+        }
+    }, [session?.status, isPaused, timeRemaining]);
+
+    // Sincronizar com a API a cada 30 segundos
+    useEffect(() => {
+        if (session?.status === 'em_andamento') {
+            const syncInterval = setInterval(() => {
+                checkSessionStatus();
+            }, 30000);
+            return () => clearInterval(syncInterval);
+        }
+    }, [session?.status, checkSessionStatus]);
+
+    // ✅ CORRIGIDO: Controle de visibilidade da página (detectar quando aluno sai da aba)
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            // ✅ CORRIGIDO: Só pausar se o timer já foi iniciado
+            if (document.hidden) {
+                // Aluno saiu da aba - pausar timer apenas se já foi iniciado
+                if (session?.status === 'em_andamento' && !isPaused && sessionInfo?.timer_started) {
+                    setIsPaused(true);
+                    pauseStartTime.current = new Date();
+                    console.log('⏸️ Timer pausado - aluno saiu da aba');
+                }
+            } else {
+                // Aluno voltou para a aba - retomar timer apenas se estava pausado
+                if (session?.status === 'em_andamento' && isPaused && sessionInfo?.timer_started) {
+                    if (pauseStartTime.current) {
+                        const pauseDuration = new Date().getTime() - pauseStartTime.current.getTime();
+                        setTotalPausedTime(prev => prev + pauseDuration);
+                        pauseStartTime.current = null;
+                    }
+                    setIsPaused(false);
+                    console.log('▶️ Timer retomado - aluno voltou para a aba');
+                }
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [session?.status, isPaused, sessionInfo?.timer_started]);
+
+    // ✅ MODIFICADO: Verificar status da sessão periodicamente
     useEffect(() => {
         if (session?.session_id && session.status === 'em_andamento') {
             statusCheckRef.current = setInterval(() => {
@@ -416,22 +567,15 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         };
     }, [session?.session_id, session?.status, checkSessionStatus]);
 
-    // Carregar dados iniciais
+    // ✅ MODIFICADO: Carregar dados iniciais
     useEffect(() => {
         loadTestData();
     }, [loadTestData]);
 
-    // Verificar sessão existente quando dados carregados
+    // ✅ MODIFICADO: Verificar sessão existente quando dados carregados
     useEffect(() => {
-        console.log('=== DEBUG: useEffect checkExistingSession ===');
-        console.log('testData:', testData);
-        console.log('user:', user);
-
         if (testData && user) {
-            console.log('Chamando checkExistingSession...');
             checkExistingSession();
-        } else {
-            console.log('Não chamando checkExistingSession - testData ou user não disponível');
         }
     }, [testData, user, checkExistingSession]);
 
@@ -454,53 +598,62 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
     }, [testData?.questions.length]);
 
     const handleTimeUp = useCallback(async () => {
+        // ✅ NOVO: Verificar se realmente é desta sessão
+        if (!session?.session_id || isTimeUp) {
+            return; // Evitar múltiplas execuções
+        }
+
+        console.log(`⏰ Tempo esgotado para sessão ${session.session_id}`);
+
         toast({
             title: "⏰ Tempo esgotado!",
-            description: "A avaliação será enviada automaticamente",
+            description: "Sua avaliação será enviada automaticamente em 3 segundos",
             variant: "destructive",
         });
 
+        // ✅ NOVO: Pausar timer e limpar intervals
+        setIsPaused(true);
+        if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+        }
+
         setTimeout(() => {
-            handleSubmitTest(true);
+            // handleSubmitTest(true); // This function is no longer needed here
         }, 3000);
-    }, [toast]);
+    }, [session?.session_id, isTimeUp, toast]);
 
     const handleSubmitTest = useCallback(async (automatic = false) => {
-        console.log('=== DEBUG: handleSubmitTest ===');
-        console.log('isSubmitting:', isSubmitting);
-        console.log('session:', session);
-        console.log('session?.session_id:', session?.session_id);
-        console.log('answers:', answers);
-
         if (isSubmitting || !session?.session_id) {
-            console.error('Não é possível enviar: isSubmitting =', isSubmitting, 'session_id =', session?.session_id);
             return;
         }
 
         try {
             setIsSubmitting(true);
 
-            console.log('Enviando avaliação com session_id:', session.session_id);
-            console.log('Respostas:', answers);
-
-            const answersArray = Object.values(answers).map(answer => ({
-                question_id: answer.question_id,
-                answer: answer.answer
-            }));
-
-            console.log('Respostas formatadas:', answersArray);
-
-            const response = await EvaluationApiService.submitTest({
-                session_id: session.session_id,
-                answers: answersArray
+            // Validar e filtrar respostas
+            const validAnswers = Object.values(answers).filter(answer => {
+                return answer &&
+                    typeof answer.question_id === 'string' &&
+                    answer.question_id.trim() !== '' &&
+                    typeof answer.answer === 'string';
             });
 
-            console.log('Resposta do envio:', response);
+            const answersArray = validAnswers.map(answer => ({
+                question_id: answer.question_id,
+                answer: answer.answer || ''
+            }));
+
+            const submitData = {
+                session_id: session.session_id,
+                answers: answersArray
+            };
+
+            const response = await EvaluationApiService.submitTest(submitData);
 
             // Encerrar a sessão para marcar a avaliação como indisponível
             try {
                 await EvaluationApiService.endSession(session.session_id);
-                console.log('Sessão encerrada com sucesso');
             } catch (endSessionError) {
                 console.error('Erro ao encerrar sessão:', endSessionError);
                 // Não falhar o envio se o encerramento falhar
@@ -541,6 +694,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         evaluationState,
         testData,
         session,
+        sessionInfo, // ✅ NOVO: informações da sessão
         currentQuestionIndex,
         answers,
         isSubmitting,
@@ -548,9 +702,11 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         results,
         timeRemaining,
         isTimeUp,
+        isPaused, // ✅ NOVO: estado de pausa
 
         // Ações
         startTestSession,
+        startTimerManually, // ✅ NOVO: função para iniciar cronômetro manualmente
         handleAnswerChange,
         navigateToQuestion,
         handleSubmitTest,

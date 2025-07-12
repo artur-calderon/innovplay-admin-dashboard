@@ -4,7 +4,10 @@ export interface TestSession {
     session_id: string;
     status: 'em_andamento' | 'finalizada' | 'expirada';
     started_at: string;
+    actual_start_time?: string; // ✅ NOVO: campo para cronômetro real
+    created_at?: string; // ✅ NOVO: campo para data de criação
     remaining_time_minutes: number;
+    time_limit_minutes?: number; // ✅ NOVO: tempo limite da sessão
     is_expired: boolean;
     total_questions: number;
     correct_answers: number;
@@ -15,12 +18,21 @@ export interface TestSession {
 export interface Question {
     id: string;
     number: number;
-    type: "multiple_choice" | "true_false" | "essay" | "multiple_answer";
+    type: "multiple_choice" | "true_false" | "essay" | "multiple_answer" | "multipleChoice" | "truefalse" | "open" | "dissertativa";
     text: string;
+    formattedText?: string;
     imageUrl?: string;
+    images?: (string | { url?: string; src?: string; name?: string })[];
+    secondstatement?: string;
+    secondStatement?: string;
     options?: {
         id: string;
         text: string;
+    }[];
+    alternatives?: {
+        id?: string;
+        text: string;
+        isCorrect?: boolean;
     }[];
     points: number;
     difficulty: "easy" | "medium" | "hard";
@@ -69,6 +81,7 @@ export interface SessionStatusResponse {
     session_id: string;
     status: 'em_andamento' | 'finalizada' | 'expirada';
     started_at: string;
+    actual_start_time?: string; // ✅ NOVO: campo para cronômetro real
     remaining_time_minutes: number;
     is_expired: boolean;
     total_questions: number;

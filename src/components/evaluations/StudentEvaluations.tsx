@@ -38,15 +38,12 @@ import {
   Trophy,
   Target,
   Zap,
-  Wifi,
-  WifiOff,
-  Bell,
   Info
 } from "lucide-react";
 import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { useRealTimeNotifications } from "@/hooks/useRealTimeNotifications";
+
 import { format, isAfter, isBefore, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -73,6 +70,15 @@ interface StudentEvaluation {
     lastAccess: string;
   };
   result?: {
+    score: number;
+    percentage: number;
+    correctAnswers: number;
+    wrongAnswers: number;
+    blankAnswers: number;
+    timeSpent: number;
+    completedAt: string;
+  };
+  student_result?: { // Adicionado para verificar o resultado do aluno
     score: number;
     percentage: number;
     correctAnswers: number;
@@ -131,7 +137,6 @@ export default function StudentEvaluations() {
 
   const { user } = useAuth();
   const { toast } = useToast();
-  const { notifications, isConnected, unreadCount } = useRealTimeNotifications();
 
   useEffect(() => {
     fetchStudentEvaluations();
@@ -152,17 +157,34 @@ export default function StudentEvaluations() {
       const updatedEvaluations = currentEvaluations.map(evaluation => {
         const newStatus = determineEvaluationStatus(evaluation);
         
-        // Log apenas se o status mudou
-        if (newStatus !== evaluation.status) {
-          console.log(`🔄 Status da avaliação "${evaluation.title}" mudou: ${evaluation.status} → ${newStatus}`);
-          
-          // Mostrar notificação quando uma avaliação ficar disponível
-          if (newStatus === "available" && evaluation.status === "pending") {
-            toast({
-              title: "📢 Avaliação disponível!",
-              description: `A avaliação "${evaluation.title}" está disponível para início.`,
-            });
+        // Se o status mudou para completed, limpar dados de progresso
+        if (newStatus === "completed" && evaluation.status !== "completed") {
+          const inProgress = localStorage.getItem("evaluation_in_progress");
+          if (inProgress) {
+            try {
+              const progressData = JSON.parse(inProgress);
+              if (progressData.evaluationId === evaluation.id) {
+                localStorage.removeItem("evaluation_in_progress");
+                localStorage.removeItem("current_evaluation_data");
+                setCurrentTaking(null);
+              }
+            } catch (e) {
+              // Ignorar erros de parsing
+            }
           }
+          
+          toast({
+            title: "✅ Avaliação concluída!",
+            description: `A avaliação "${evaluation.title}" foi finalizada com sucesso.`,
+          });
+        }
+        
+        // Mostrar notificação quando uma avaliação ficar disponível
+        if (newStatus === "available" && evaluation.status === "pending") {
+          toast({
+            title: "📢 Avaliação disponível!",
+            description: `A avaliação "${evaluation.title}" está disponível para início.`,
+          });
         }
         
         return {
@@ -219,7 +241,7 @@ export default function StudentEvaluations() {
           description: testData.test.description,
           subject: testData.test.subject || { id: 'default', name: 'Disciplina' },
           grade: testData.test.grade,
-          course: { id: testData.test.course, name: 'Curso' },
+          course: { id: 'course', name: 'Curso' },
           startDateTime: testData.class_test_info.application,
           endDateTime: testData.class_test_info.expiration,
           duration: testData.test.duration || 60, // em minutos
@@ -228,15 +250,18 @@ export default function StudentEvaluations() {
           type: testData.test.type || 'AVALIACAO',
           model: testData.test.model || 'SAEB',
           status: determineEvaluationStatus({
+            id: testData.test.id,
             startDateTime: testData.class_test_info.application,
             endDateTime: testData.class_test_info.expiration,
             availability: testData.availability,
-            class_test_info: testData.class_test_info
+            class_test_info: testData.class_test_info,
+            student_result: testData.student_result // ✅ Incluir resultado individual do aluno
           }),
           // Adicionar dados adicionais se disponíveis
           questions: testData.questions,
           availability: testData.availability,
-          class_test_info: testData.class_test_info
+          class_test_info: testData.class_test_info,
+          student_result: testData.student_result // ✅ Incluir resultado individual do aluno
         };
 
         return evaluation;
@@ -262,76 +287,67 @@ export default function StudentEvaluations() {
   };
 
   const determineEvaluationStatus = (evaluation: any): StudentEvaluation["status"] => {
+    if (evaluation.status === "finalizada" || (evaluation.availability && evaluation.availability.status === "finalizada")) {
+      localStorage.removeItem("evaluation_in_progress");
+      localStorage.removeItem("current_evaluation_data");
+      return "completed";
+    }
     const now = new Date();
     const startDate = parseISO(evaluation.startDateTime);
     const endDate = evaluation.endDateTime ? parseISO(evaluation.endDateTime) : null;
 
-    console.log("🕐 Determinando status da avaliação:", {
-      title: evaluation.title,
-      now: now.toISOString(),
-      startDate: startDate.toISOString(),
-      endDate: endDate?.toISOString(),
-      hasResult: !!evaluation.result,
-      hasProgress: !!evaluation.currentProgress,
-      availability: evaluation.availability
-    });
-
-    // Verificar se já foi completada
-    if (evaluation.result) {
-      console.log("✅ Status: completed (tem resultado)");
+    // PRIORIDADE 1: Se o backend diz que está expirada, sempre retorna expired
+    if (evaluation.availability && evaluation.availability.status === 'expired') {
+      localStorage.removeItem("evaluation_in_progress");
+      localStorage.removeItem("current_evaluation_data");
+      return "expired";
+    }
+    // PRIORIDADE 2: Se o backend diz que está concluída, sempre retorna completed
+    if (evaluation.student_result || evaluation.result || (evaluation.availability && evaluation.availability.status === 'completed')) {
+      localStorage.removeItem("evaluation_in_progress");
+      localStorage.removeItem("current_evaluation_data");
       return "completed";
     }
 
-    // Verificar se está em progresso (há dados salvos no localStorage)
+    // PRIORIDADE 3: Se há sessão ativa no localStorage
     const inProgress = localStorage.getItem("evaluation_in_progress");
     if (inProgress) {
       try {
         const progressData = JSON.parse(inProgress);
         if (progressData.evaluationId === evaluation.id) {
-          console.log("⏳ Status: in_progress (encontrado no localStorage)");
           return "in_progress";
         }
       } catch (e) {
-        console.warn("Erro ao verificar progresso:", e);
+        localStorage.removeItem("evaluation_in_progress");
       }
     }
 
-    // Verificar se há progresso atual
+    // PRIORIDADE 4: Progresso atual da API
     if (evaluation.currentProgress) {
-      console.log("⏳ Status: in_progress (currentProgress existe)");
       return "in_progress";
     }
 
-    // Usar informações de disponibilidade da API se disponível
+    // PRIORIDADE 5: Disponibilidade da API
     if (evaluation.availability) {
-      if (evaluation.availability.status === 'not_available') {
-        console.log("⏰ Status: pending (API: not_available)");
-        return "pending";
-      }
-      if (evaluation.availability.status === 'available') {
-        console.log("✅ Status: available (API: available)");
-        return "available";
-      }
-      if (evaluation.availability.status === 'expired') {
-        console.log("❌ Status: expired (API: expired)");
-        return "expired";
+      switch (evaluation.availability.status) {
+        case 'not_available':
+          return "pending";
+        case 'available':
+          return "available";
+        default:
+          break;
       }
     }
 
-    // Verificar se expirou
+    // PRIORIDADE 6: Datas
     if (endDate && isAfter(now, endDate)) {
-      console.log("❌ Status: expired (data de fim passou)");
+      localStorage.removeItem("evaluation_in_progress");
+      localStorage.removeItem("current_evaluation_data");
       return "expired";
     }
-
-    // Verificar se está disponível (horário de início já passou)
     if (isAfter(now, startDate)) {
-      console.log("✅ Status: available (horário de início passou)");
       return "available";
     }
-
-    // Ainda não começou
-    console.log("⏰ Status: pending (ainda não começou)");
     return "pending";
   };
 
@@ -342,9 +358,17 @@ export default function StudentEvaluations() {
         const data = JSON.parse(inProgress);
         // Verificar se os dados são válidos
         if (data && data.evaluationId && typeof data.evaluationId === 'string') {
-          setCurrentTaking(data);
+          // Verificar se a avaliação ainda está em progresso
+          const evaluation = evaluations.find(e => e.id === data.evaluationId);
+          if (evaluation && evaluation.status === 'completed') {
+            // Avaliação foi concluída, limpar localStorage
+            localStorage.removeItem("evaluation_in_progress");
+            localStorage.removeItem("current_evaluation_data");
+            setCurrentTaking(null);
+          } else {
+            setCurrentTaking(data);
+          }
         } else {
-          console.warn("Dados de avaliação em progresso inválidos:", data);
           localStorage.removeItem("evaluation_in_progress");
         }
       } catch (error) {
@@ -644,42 +668,16 @@ export default function StudentEvaluations() {
             </p>
           </div>
           
-          {/* ✅ NOVO: Indicadores de conectividade e notificações */}
-          <div className="flex items-center gap-3">
-            {/* Indicador de conectividade */}
-            <div className="flex items-center gap-2">
-              {isConnected ? (
-                <div className="flex items-center gap-1 text-green-600">
-                  <Wifi className="h-4 w-4" />
-                  <span className="text-sm">Online</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1 text-gray-500">
-                  <WifiOff className="h-4 w-4" />
-                  <span className="text-sm">Offline</span>
-                </div>
-              )}
-              
-              {/* Indicador de notificações */}
-              {unreadCount > 0 && (
-                <div className="flex items-center gap-1 text-blue-600">
-                  <Bell className="h-4 w-4" />
-                  <span className="text-sm">{unreadCount}</span>
-                </div>
-              )}
-            </div>
-            
-            {/* Botão de atualizar */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchStudentEvaluations}
-              disabled={isLoading}
-            >
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Atualizar
-            </Button>
-          </div>
+          {/* Botão de atualizar */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchStudentEvaluations}
+            disabled={isLoading}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Atualizar
+          </Button>
         </div>
       </div>
 
@@ -746,36 +744,37 @@ export default function StudentEvaluations() {
       </div>
 
       {/* Avaliação em Progresso */}
-      {currentTaking && currentTaking.evaluationId && (
-        <Alert className="border-blue-200 bg-blue-50">
-          <Timer className="h-4 w-4" />
-          <AlertDescription className="flex items-center justify-between">
-            <span>
-              Você tem uma avaliação em progresso.
-              <strong className="ml-1">
-                {evaluations.find(e => e.id === currentTaking.evaluationId)?.title || 'Avaliação'}
-              </strong>
-            </span>
-            <Button
-              size="sm"
-              onClick={() => {
-                const evaluation = evaluations.find(e => e.id === currentTaking.evaluationId);
-                if (evaluation) {
-                  handleContinueEvaluation(evaluation);
-                } else {
-                  toast({
-                    title: "Erro",
-                    description: "Avaliação não encontrada. Tente atualizar a página.",
-                    variant: "destructive",
-                  });
-                }
-              }}
-            >
-              Continuar
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
+      {currentTaking && currentTaking.evaluationId &&
+        evaluations.find(e => e.id === currentTaking.evaluationId && e.status === 'in_progress') && (
+          <Alert className="border-blue-200 bg-blue-50">
+            <Timer className="h-4 w-4" />
+            <AlertDescription className="flex items-center justify-between">
+              <span>
+                Você tem uma avaliação em progresso.
+                <strong className="ml-1">
+                  {evaluations.find(e => e.id === currentTaking.evaluationId)?.title || 'Avaliação'}
+                </strong>
+              </span>
+              <Button
+                size="sm"
+                onClick={() => {
+                  const evaluation = evaluations.find(e => e.id === currentTaking.evaluationId);
+                  if (evaluation) {
+                    handleContinueEvaluation(evaluation);
+                  } else {
+                    toast({
+                      title: "Erro",
+                      description: "Avaliação não encontrada. Tente atualizar a página.",
+                      variant: "destructive",
+                    });
+                  }
+                }}
+              >
+                Continuar
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
 
       {/* Lista de Avaliações */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
