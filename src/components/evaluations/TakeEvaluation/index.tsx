@@ -106,9 +106,9 @@ export default function TakeEvaluation() {
               <div className="text-sm">
                 Possíveis causas:
                 <ul className="list-disc list-inside mt-2 space-y-1">
-                  <li>API do backend não está disponível (verifique se está rodando em http://localhost:5000)</li>
                   <li>Problemas de conectividade de rede</li>
                   <li>ID da avaliação inválido: {evaluationId}</li>
+                  <li>Tente recarregar a página</li>
                 </ul>
               </div>
               <div className="flex gap-2">

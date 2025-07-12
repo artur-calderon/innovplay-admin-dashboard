@@ -254,18 +254,346 @@ export function DetailedEvaluationReport({ evaluationId, onBack }: DetailedEvalu
     setInsights(insights);
   };
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
+    try {
+      // Importar bibliotecas necessárias
+      const { jsPDF } = await import('jspdf');
+      const html2canvas = (await import('html2canvas')).default;
+      
+      if (!reportData) {
     toast({
-      title: "Exportação PDF iniciada",
-      description: "O relatório detalhado será gerado em breve.",
-    });
+          title: "Erro na exportação",
+          description: "Não há dados para exportar",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Criar elemento temporário para renderizar o relatório
+      const reportElement = document.createElement('div');
+      reportElement.style.cssText = `
+        position: absolute;
+        top: -10000px;
+        left: -10000px;
+        width: 800px;
+        background: white;
+        padding: 20px;
+        font-family: Arial, sans-serif;
+      `;
+      
+      // Gerar HTML do relatório detalhado
+      const reportHTML = `
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h1 style="color: #1f2937; margin-bottom: 10px;">Relatório Detalhado da Avaliação</h1>
+          <h2 style="color: #374151; margin-bottom: 5px;">${reportData.evaluation.title}</h2>
+          <p style="color: #6b7280; margin: 0;">
+            ${reportData.evaluation.subject} • ${reportData.evaluation.totalQuestions} questões • 
+            Gerado em ${new Date().toLocaleDateString('pt-BR')}
+          </p>
+        </div>
+        
+        <div style="margin-bottom: 30px;">
+          <h2 style="color: #374151; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">Resumo Estatístico</h2>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 20px; margin: 20px 0;">
+            <div style="text-align: center; padding: 15px; border: 1px solid #e5e7eb; border-radius: 8px; background-color: #f0fdf4;">
+              <div style="font-size: 24px; font-weight: bold; color: #15803d;">
+                ${reportData.students.filter(s => s.classification.toLowerCase().includes('avançado')).length}
+              </div>
+              <div style="font-size: 12px; color: #16a34a;">Avançado</div>
+            </div>
+            <div style="text-align: center; padding: 15px; border: 1px solid #e5e7eb; border-radius: 8px; background-color: #f0fdf4;">
+              <div style="font-size: 24px; font-weight: bold; color: #15803d;">
+                ${reportData.students.filter(s => s.classification.toLowerCase().includes('adequado')).length}
+              </div>
+              <div style="font-size: 12px; color: #16a34a;">Adequado</div>
+            </div>
+            <div style="text-align: center; padding: 15px; border: 1px solid #e5e7eb; border-radius: 8px; background-color: #fffbeb;">
+              <div style="font-size: 24px; font-weight: bold; color: #b45309;">
+                ${reportData.students.filter(s => s.classification.toLowerCase().includes('básico')).length}
+              </div>
+              <div style="font-size: 12px; color: #d97706;">Básico</div>
+            </div>
+            <div style="text-align: center; padding: 15px; border: 1px solid #e5e7eb; border-radius: 8px; background-color: #fef2f2;">
+              <div style="font-size: 24px; font-weight: bold; color: #dc2626;">
+                ${reportData.students.filter(s => s.classification.toLowerCase().includes('abaixo')).length}
+              </div>
+              <div style="font-size: 12px; color: #dc2626;">Abaixo do Básico</div>
+            </div>
+          </div>
+        </div>
+        
+        <div style="margin-bottom: 30px;">
+          <h2 style="color: #374151; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">Análise por Questão</h2>
+          <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+            <thead>
+              <tr style="background-color: #f9fafb;">
+                <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left;">Questão</th>
+                <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left;">Dificuldade</th>
+                <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: center;">% Acertos</th>
+                <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: center;">% Erros</th>
+                <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: center;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${reportData.questions.map(question => {
+                const isProblematic = question.successRate < 50;
+                const isExcellent = question.successRate > 80;
+                return `
+                  <tr>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">Q${question.number}</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">${question.difficulty}</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: center; color: #15803d;">
+                      ${question.successRate.toFixed(1)}%
+                    </td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: center; color: #dc2626;">
+                      ${question.errorRate.toFixed(1)}%
+                    </td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: center;">
+                      ${isProblematic ? 'Problemática' : isExcellent ? 'Ótima' : 'Normal'}
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+        
+        <div style="margin-bottom: 30px;">
+          <h2 style="color: #374151; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">Desempenho dos Alunos</h2>
+          <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+            <thead>
+              <tr style="background-color: #f9fafb;">
+                <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left;">Aluno</th>
+                <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: center;">Acertos</th>
+                <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: center;">Proficiência</th>
+                <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: center;">Nota</th>
+                <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: center;">Classificação</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${reportData.students.slice(0, 20).map(student => `
+                <tr>
+                  <td style="border: 1px solid #e5e7eb; padding: 8px;">${student.name}</td>
+                  <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: center;">
+                    ${student.totalCorrect}/${reportData.evaluation.totalQuestions}
+                  </td>
+                  <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: center;">
+                    ${student.proficiency.toFixed(0)}
+                  </td>
+                  <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: center;">
+                    ${student.finalScore.toFixed(1)}
+                  </td>
+                  <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: center;">
+                    ${student.classification}
+                  </td>
+                </tr>
+              `).join('')}
+              ${reportData.students.length > 20 ? `
+                <tr>
+                  <td colspan="5" style="border: 1px solid #e5e7eb; padding: 8px; text-align: center; font-style: italic;">
+                    ... e mais ${reportData.students.length - 20} alunos
+                  </td>
+                </tr>
+              ` : ''}
+            </tbody>
+          </table>
+        </div>
+      `;
+      
+      reportElement.innerHTML = reportHTML;
+      document.body.appendChild(reportElement);
+      
+      // Gerar canvas da imagem
+      const canvas = await html2canvas(reportElement, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff'
+      });
+      
+      // Remover elemento temporário
+      document.body.removeChild(reportElement);
+      
+      // Criar PDF
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      
+      const imgWidth = 210; // A4 width in mm
+      const pageHeight = 295; // A4 height in mm
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      
+      let position = 0;
+      
+      // Adicionar primeira página
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+      
+      // Adicionar páginas adicionais se necessário
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+      
+      // Salvar PDF
+      const fileName = `relatorio-detalhado-${reportData.evaluation.title.replace(/[^a-zA-Z0-9]/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf`;
+      pdf.save(fileName);
+      
+      toast({
+        title: "PDF gerado com sucesso!",
+        description: "O relatório detalhado foi baixado em formato PDF.",
+      });
+      
+    } catch (error) {
+      console.error('Erro ao gerar PDF:', error);
+      toast({
+        title: "Erro na exportação",
+        description: "Não foi possível gerar o PDF. Verifique se todas as dependências estão instaladas.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
+    try {
+      // Importar bibliotecas necessárias
+      const XLSX = await import('xlsx');
+      const { saveAs } = await import('file-saver');
+      
+      if (!reportData) {
     toast({
-      title: "Exportação Excel iniciada", 
-      description: "A planilha detalhada será gerada em breve.",
-    });
+          title: "Erro na exportação",
+          description: "Não há dados para exportar",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Criar workbook
+      const workbook = XLSX.utils.book_new();
+      
+      // Dados do resumo
+      const summaryData = [
+        ['Relatório Detalhado da Avaliação'],
+        [''],
+        ['Avaliação:', reportData.evaluation.title],
+        ['Disciplina:', reportData.evaluation.subject],
+        ['Total de Questões:', reportData.evaluation.totalQuestions],
+        ['Total de Alunos:', reportData.students.length],
+        ['Data do Relatório:', new Date().toLocaleDateString('pt-BR')],
+        [''],
+        ['Distribuição por Classificação:'],
+        ['Avançado', reportData.students.filter(s => s.classification.toLowerCase().includes('avançado')).length],
+        ['Adequado', reportData.students.filter(s => s.classification.toLowerCase().includes('adequado')).length],
+        ['Básico', reportData.students.filter(s => s.classification.toLowerCase().includes('básico')).length],
+        ['Abaixo do Básico', reportData.students.filter(s => s.classification.toLowerCase().includes('abaixo')).length],
+        [''],
+        ['Médias Gerais:'],
+        ['Proficiência Média', (reportData.students.reduce((sum, s) => sum + s.proficiency, 0) / reportData.students.length).toFixed(0)],
+        ['Nota Média', (reportData.students.reduce((sum, s) => sum + s.finalScore, 0) / reportData.students.length).toFixed(1)],
+        ['Taxa de Acerto Geral', ((reportData.students.reduce((sum, s) => sum + s.totalCorrect, 0) / (reportData.students.length * reportData.evaluation.totalQuestions)) * 100).toFixed(1) + '%']
+      ];
+      
+      // Dados das questões
+      const questionsData = [
+        ['Análise por Questão'],
+        [''],
+        ['Questão', 'Dificuldade', '% Acertos', '% Erros', '% Branco', 'Status'],
+        ...reportData.questions.map(question => {
+          const isProblematic = question.successRate < 50;
+          const isExcellent = question.successRate > 80;
+          return [
+            `Q${question.number}`,
+            question.difficulty,
+            question.successRate.toFixed(1),
+            question.errorRate.toFixed(1),
+            (100 - question.successRate - question.errorRate).toFixed(1),
+            isProblematic ? 'Problemática' : isExcellent ? 'Ótima' : 'Normal'
+          ];
+        })
+      ];
+      
+      // Dados dos alunos
+      const studentsData = [
+        ['Desempenho dos Alunos'],
+        [''],
+        ['Aluno', 'Turma', 'Acertos', 'Total Questões', '% Acertos', 'Proficiência', 'Nota', 'Classificação'],
+        ...reportData.students.map(student => [
+          student.name,
+          student.class,
+          student.totalCorrect,
+          reportData.evaluation.totalQuestions,
+          ((student.totalCorrect / reportData.evaluation.totalQuestions) * 100).toFixed(1),
+          student.proficiency.toFixed(0),
+          student.finalScore.toFixed(1),
+          student.classification
+        ])
+      ];
+      
+      // Matriz de respostas (alunos x questões)
+      const answersMatrix = [
+        ['Matriz de Respostas'],
+        [''],
+        ['Aluno', ...reportData.questions.map(q => `Q${q.number}`), 'Total Acertos', 'Proficiência', 'Classificação'],
+        ...reportData.students.map(student => [
+          student.name,
+          ...reportData.questions.map(question => {
+            const answer = student.answers.find(a => a.questionId === question.id);
+            return answer ? (answer.isBlank ? 'B' : answer.isCorrect ? 'C' : 'E') : '-';
+          }),
+          student.totalCorrect,
+          student.proficiency.toFixed(0),
+          student.classification
+        ])
+      ];
+      
+      // Criar planilhas
+      const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+      const questionsSheet = XLSX.utils.aoa_to_sheet(questionsData);
+      const studentsSheet = XLSX.utils.aoa_to_sheet(studentsData);
+      const answersSheet = XLSX.utils.aoa_to_sheet(answersMatrix);
+      
+      // Definir larguras das colunas
+      summarySheet['!cols'] = [{ wch: 25 }, { wch: 15 }];
+      questionsSheet['!cols'] = [{ wch: 10 }, { wch: 15 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 15 }];
+      studentsSheet['!cols'] = [
+        { wch: 25 }, { wch: 15 }, { wch: 8 }, { wch: 12 }, { wch: 10 }, 
+        { wch: 12 }, { wch: 8 }, { wch: 20 }
+      ];
+      answersSheet['!cols'] = [
+        { wch: 25 }, 
+        ...reportData.questions.map(() => ({ wch: 5 })), 
+        { wch: 12 }, { wch: 12 }, { wch: 20 }
+      ];
+      
+      // Adicionar planilhas ao workbook
+      XLSX.utils.book_append_sheet(workbook, summarySheet, 'Resumo');
+      XLSX.utils.book_append_sheet(workbook, questionsSheet, 'Questões');
+      XLSX.utils.book_append_sheet(workbook, studentsSheet, 'Alunos');
+      XLSX.utils.book_append_sheet(workbook, answersSheet, 'Respostas');
+      
+      // Gerar arquivo Excel
+      const fileName = `relatorio-detalhado-${reportData.evaluation.title.replace(/[^a-zA-Z0-9]/g, '-')}-${new Date().toISOString().split('T')[0]}.xlsx`;
+      const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      
+      saveAs(blob, fileName);
+      
+      toast({
+        title: "Excel gerado com sucesso!",
+        description: "A planilha detalhada foi baixada em formato Excel (.xlsx).",
+      });
+      
+    } catch (error) {
+      console.error('Erro ao gerar Excel:', error);
+      toast({
+        title: "Erro na exportação",
+        description: "Não foi possível gerar a planilha. Verifique se todas as dependências estão instaladas.",
+        variant: "destructive",
+      });
+    }
   };
 
   const getClassificationColor = (classification: string): ProficiencyLevel => {

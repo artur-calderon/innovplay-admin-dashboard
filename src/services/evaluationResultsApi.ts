@@ -86,7 +86,8 @@ let mockEvaluationData: EvaluationResultsData[] = [];
 const initializeMockData = () => {
   if (mockEvaluationData.length === 0) {
     mockEvaluationData = generateMockResultsData();
-    console.log('📊 Dados mock inicializados:', mockEvaluationData.length, 'avaliações');
+    // ✅ REMOVIDO: Console.log para apresentação
+    // console.log('📊 Dados mock inicializados:', mockEvaluationData.length, 'avaliações');
   }
   return mockEvaluationData;
 };
@@ -104,7 +105,7 @@ export class EvaluationResultsApiService {
     isBackendConnected: boolean;
   }> {
     try {
-      console.log('🔄 Buscando resultados de avaliações do backend...');
+      // console.log('🔄 Buscando resultados de avaliações do backend...');
       
       // Construir parâmetros para a API real
       const params: any = {
@@ -124,11 +125,11 @@ export class EvaluationResultsApiService {
       const response = await api.get('/test-sessions/results', { params });
 
       if (!response.data || !Array.isArray(response.data.sessions)) {
-        console.warn('Resposta da API não possui estrutura esperada, usando dados mock');
+        // console.warn('Resposta da API não possui estrutura esperada, usando dados mock');
         return this.getMockResults(filters, page, perPage);
       }
 
-      console.log('✅ Resultados recebidos do backend:', response.data);
+      // console.log('✅ Resultados recebidos do backend:', response.data);
       
       // Transformar dados da API para o formato esperado
       const sessions: BackendEvaluationResult[] = response.data.sessions;
@@ -143,8 +144,8 @@ export class EvaluationResultsApiService {
       };
       
     } catch (error) {
-      console.error('❌ Erro ao conectar com backend para resultados:', error);
-      console.log('📋 Usando dados mock devido ao erro de conexão');
+      // console.error('❌ Erro ao conectar com backend para resultados:', error);
+      // console.log('📋 Usando dados mock devido ao erro de conexão');
       
       return this.getMockResults(filters, page, perPage);
     }
@@ -254,7 +255,7 @@ export class EvaluationResultsApiService {
   // ✅ NOVO: Buscar alunos de uma avaliação específica (API REAL)
   static async getStudents(evaluationId: string, filters: ResultsFilters = {}): Promise<StudentProficiency[]> {
     try {
-      console.log('🔄 Buscando alunos do teste:', evaluationId);
+      // console.log('🔄 Buscando alunos do teste:', evaluationId);
       
       const params: any = { test_id: evaluationId };
       if (filters.class) params.class_id = filters.class;
@@ -270,7 +271,7 @@ export class EvaluationResultsApiService {
       const response = await api.get('/test-sessions/students', { params });
 
       if (!response.data || !Array.isArray(response.data.students)) {
-        console.warn('Resposta da API não possui estrutura esperada para alunos, usando dados mock');
+        // console.warn('Resposta da API não possui estrutura esperada para alunos, usando dados mock');
         return this.getMockStudents(evaluationId);
       }
 
@@ -293,7 +294,7 @@ export class EvaluationResultsApiService {
       }));
 
     } catch (error) {
-      console.error('❌ Erro ao buscar alunos:', error);
+      // console.error('❌ Erro ao buscar alunos:', error);
       return this.getMockStudents(evaluationId);
     }
   }
@@ -305,7 +306,7 @@ export class EvaluationResultsApiService {
     dados_atualizados: any;
   }> {
     try {
-      console.log('🔄 Recalculando avaliação:', evaluationId);
+      // console.log('🔄 Recalculando avaliação:', evaluationId);
       
       const response = await api.post(`/test/${evaluationId}/recalculate`);
 
@@ -316,7 +317,7 @@ export class EvaluationResultsApiService {
       };
 
     } catch (error) {
-      console.error('❌ Erro ao recalcular avaliação:', error);
+      // console.error('❌ Erro ao recalcular avaliação:', error);
       
       // Simulação de sucesso para demonstração
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -334,19 +335,19 @@ export class EvaluationResultsApiService {
   // ✅ NOVO: Buscar submissões de uma avaliação para correção (API REAL)
   static async getSubmissionsForCorrection(evaluationId: string): Promise<BackendSubmissionResult[]> {
     try {
-      console.log('🔄 Buscando submissões para correção:', evaluationId);
+      // console.log('🔄 Buscando submissões para correção:', evaluationId);
       
       const response = await api.get(`/test/${evaluationId}/submissions`);
 
       if (!response.data || !Array.isArray(response.data.submissions)) {
-        console.warn('Nenhuma submissão encontrada');
+        // console.warn('Nenhuma submissão encontrada');
         return [];
       }
 
       return response.data.submissions;
 
     } catch (error) {
-      console.error('❌ Erro ao buscar submissões:', error);
+      // console.error('❌ Erro ao buscar submissões:', error);
       return [];
     }
   }
@@ -357,7 +358,7 @@ export class EvaluationResultsApiService {
     message: string;
   }> {
     try {
-      console.log('🔄 Corrigindo submissão:', sessionId);
+      // console.log('🔄 Corrigindo submissão:', sessionId);
       
       const response = await api.post(`/test-session/${sessionId}/correct`, corrections);
 
@@ -367,7 +368,7 @@ export class EvaluationResultsApiService {
       };
 
     } catch (error) {
-      console.error('❌ Erro ao corrigir submissão:', error);
+      // console.error('❌ Erro ao corrigir submissão:', error);
       
       // Simulação de sucesso
       return {
@@ -469,11 +470,11 @@ export class EvaluationResultsApiService {
       const allData = initializeMockData();
       const mockOptions = getMockFilterOptions(allData);
       
-      console.log('📋 Usando opções de filtros dos dados mock:', mockOptions);
+      // console.log('📋 Usando opções de filtros dos dados mock:', mockOptions);
       return mockOptions;
       
     } catch (error) {
-      console.error('Erro ao buscar opções de filtros:', error);
+      // console.error('Erro ao buscar opções de filtros:', error);
       
       const allData = initializeMockData();
       return getMockFilterOptions(allData);

@@ -33,5 +33,6 @@ api.interceptors.response.use(
 );
 
 // Configuração padrão para desenvolvimento
-console.log('API Base URL:', BASE_URL);
+// ✅ REMOVIDO: Console.log para apresentação
+// console.log('API Base URL:', BASE_URL);
 

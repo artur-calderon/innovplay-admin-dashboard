@@ -34,15 +34,17 @@ export class EvaluationApiService {
     // Teste de conectividade
     static async testConnection(): Promise<boolean> {
         try {
-            console.log('Testando conectividade com a API...');
-            console.log('Base URL:', api.defaults.baseURL);
+            // ✅ REMOVIDO: Console.logs para apresentação
+            // console.log('Testando conectividade com a API...');
+            // console.log('Base URL:', api.defaults.baseURL);
 
             const response = await api.get('/');
-            console.log('API está respondendo');
+            // console.log('API está respondendo');
             return true;
         } catch (error) {
-            console.error('Erro de conectividade:', error);
-            console.error('Verifique se a API está rodando em:', api.defaults.baseURL);
+            // ✅ REMOVIDO: Console.errors para apresentação
+            // console.error('Erro de conectividade:', error);
+            // console.error('Verifique se a API está rodando em:', api.defaults.baseURL);
             return false;
         }
     }

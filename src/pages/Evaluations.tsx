@@ -84,10 +84,11 @@ export default function Evaluations() {
   // ✅ NOVO: Função para refresh manual das estatísticas
   const handleRefreshStats = () => {
     refetchStats();
-    toast({
-      title: "Atualizando estatísticas",
-      description: "Os dados estão sendo atualizados...",
-    });
+    // ✅ REMOVIDO: Toast de atualização para apresentação
+    // toast({
+    //   title: "Atualizando estatísticas",
+    //   description: "Os dados estão sendo atualizados...",
+    // });
   };
 
 

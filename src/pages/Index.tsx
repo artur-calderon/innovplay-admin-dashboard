@@ -78,11 +78,12 @@ const Index = () => {
 
         } catch (error) {
           console.error("Erro ao buscar estatísticas do dashboard:", error);
-          toast({
-            title: "Erro",
-            description: "Não foi possível carregar as estatísticas do dashboard",
-            variant: "destructive",
-          });
+          // ✅ REMOVIDO: Toast de erro para apresentação
+          // toast({
+          //   title: "Erro",
+          //   description: "Não foi possível carregar as estatísticas do dashboard",
+          //   variant: "destructive",
+          // });
           
           // Valores padrão em caso de erro
           setStats({
