@@ -130,11 +130,25 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                     setTimeRemaining(sessionData.remaining_time_minutes * 60);
                     setEvaluationState('active');
 
-                    // ✅ NOVO: Restaurar controle de tempo individual para sessão existente
-                    const sessionStart = new Date(savedSession.started_at);
-                    setSessionStartTime(sessionStart);
-                    setTotalPausedTime(0); // Reset - tempo pausado não é persistido
-                    setIsPaused(false);
+                    // ✅ NOVO: Verificar se cronômetro foi iniciado (actual_start_time existe)
+                    if (sessionData.actual_start_time) {
+                        // Cronômetro já foi iniciado - restaurar controle de tempo
+                        const sessionStart = new Date(sessionData.actual_start_time);
+                        setSessionStartTime(sessionStart);
+                        setTotalPausedTime(0); // Reset - tempo pausado não é persistido
+                        setIsPaused(false);
+                    } else {
+                        // Cronômetro ainda não foi iniciado - mostrar como pausado
+                        setSessionStartTime(null);
+                        setTotalPausedTime(0);
+                        setIsPaused(true);
+                        
+                        toast({
+                            title: "⏸️ Cronômetro não iniciado",
+                            description: "Clique em 'Iniciar Cronômetro' para começar a contagem",
+                            variant: "default",
+                        });
+                    }
 
                     // Recuperar respostas salvas
                     const savedAnswers = SessionStorage.getAnswers(testId);
@@ -149,7 +163,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             console.error("Erro ao verificar sessão existente:", error);
             setEvaluationState('instructions');
         }
-    }, [testId]);
+    }, [testId, toast]);
 
     // Verificar status da sessão
     const checkSessionStatus = useCallback(async () => {
@@ -176,16 +190,20 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         try {
             setIsSubmitting(true);
 
+            // 1. Primeiro, criar a sessão (sem iniciar cronômetro)
             const sessionData = await EvaluationApiService.startSession({
                 test_id: testId,
                 time_limit_minutes: testData.duration
             });
 
+            // 2. Depois, iniciar o cronômetro explicitamente
+            const timerData = await EvaluationApiService.startTimer(sessionData.session_id);
+
             const newSession: TestSession = {
                 session_id: sessionData.session_id,
                 status: 'em_andamento',
-                started_at: sessionData.started_at,
-                remaining_time_minutes: sessionData.remaining_time_minutes,
+                started_at: timerData.actual_start_time,
+                remaining_time_minutes: timerData.remaining_time_minutes,
                 is_expired: false,
                 total_questions: testData.totalQuestions,
                 correct_answers: 0,
@@ -194,23 +212,23 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             };
 
             setSession(newSession);
-            setTimeRemaining(sessionData.remaining_time_minutes * 60);
+            setTimeRemaining(timerData.remaining_time_minutes * 60);
             setEvaluationState('active');
 
-            // ✅ NOVO: Inicializar controle de tempo individual
-            setSessionStartTime(new Date());
+            // ✅ NOVO: Inicializar controle de tempo individual com o tempo real do cronômetro
+            setSessionStartTime(new Date(timerData.actual_start_time));
             setTotalPausedTime(0);
             setIsPaused(false);
 
             // Salvar sessão no localStorage
             SessionStorage.saveSession(testId, {
                 session_id: sessionData.session_id,
-                started_at: sessionData.started_at
+                started_at: timerData.actual_start_time
             });
 
             toast({
-                title: "✅ Sessão iniciada!",
-                description: "A avaliação foi iniciada com sucesso",
+                title: "✅ Avaliação iniciada!",
+                description: "O cronômetro foi iniciado com sucesso",
             });
 
         } catch (error) {
@@ -224,6 +242,52 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             setIsSubmitting(false);
         }
     }, [testData, user, testId, toast]);
+
+    // ✅ NOVO: Iniciar cronômetro manualmente (para sessões existentes)
+    const startTimerManually = useCallback(async () => {
+        if (!session?.session_id) return;
+
+        try {
+            setIsSubmitting(true);
+
+            const timerData = await EvaluationApiService.startTimer(session.session_id);
+
+            // Atualizar sessão com dados do cronômetro
+            setSession(prev => prev ? {
+                ...prev,
+                started_at: timerData.actual_start_time,
+                remaining_time_minutes: timerData.remaining_time_minutes
+            } : null);
+
+            setTimeRemaining(timerData.remaining_time_minutes * 60);
+
+            // Inicializar controle de tempo
+            setSessionStartTime(new Date(timerData.actual_start_time));
+            setTotalPausedTime(0);
+            setIsPaused(false);
+
+            // Atualizar localStorage
+            SessionStorage.saveSession(testId, {
+                session_id: session.session_id,
+                started_at: timerData.actual_start_time
+            });
+
+            toast({
+                title: "▶️ Cronômetro iniciado!",
+                description: "A contagem de tempo foi iniciada",
+            });
+
+        } catch (error) {
+            console.error("Erro ao iniciar cronômetro:", error);
+            toast({
+                title: "Erro",
+                description: "Não foi possível iniciar o cronômetro",
+                variant: "destructive",
+            });
+        } finally {
+            setIsSubmitting(false);
+        }
+    }, [session?.session_id, testId, toast]);
 
     // Salvar respostas
     const saveAnswers = useCallback(async (answersToSave: Record<string, StudentAnswer>) => {
@@ -515,6 +579,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
         // Ações
         startTestSession,
+        startTimerManually, // ✅ NOVO: função para iniciar cronômetro manualmente
         handleAnswerChange,
         navigateToQuestion,
         handleSubmitTest,

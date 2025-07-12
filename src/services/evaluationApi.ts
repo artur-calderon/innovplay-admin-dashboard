@@ -47,7 +47,7 @@ export class EvaluationApiService {
         }
     }
 
-    // Iniciar sessão de teste
+    // Iniciar sessão de teste (apenas criar a sessão, sem iniciar cronômetro)
     static async startSession(data: { test_id: string; time_limit_minutes: number }): Promise<StartSessionResponse> {
         console.log('Iniciando sessão com dados:', data);
         console.log('URL da API:', api.defaults.baseURL);
@@ -60,6 +60,21 @@ export class EvaluationApiService {
             console.error('Erro ao iniciar sessão:', error);
             console.error('Detalhes do erro:', error.response?.data);
             console.error('Status do erro:', error.response?.status);
+            throw error;
+        }
+    }
+
+    // Iniciar cronômetro da sessão (novo endpoint)
+    static async startTimer(sessionId: string): Promise<{ message: string; actual_start_time: string; remaining_time_minutes: number; timer_started: boolean }> {
+        console.log('Iniciando cronômetro para sessão:', sessionId);
+
+        try {
+            const response = await api.post(`/student-answers/sessions/${sessionId}/start-timer`, {});
+            console.log('Resposta da API startTimer:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('Erro ao iniciar cronômetro:', error);
+            console.error('Detalhes do erro:', error.response?.data);
             throw error;
         }
     }

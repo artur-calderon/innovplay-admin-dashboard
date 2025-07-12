@@ -7,7 +7,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { 
   ArrowLeft, 
@@ -22,7 +21,6 @@ import {
   Eye,
   Filter,
   Search,
-  MoreHorizontal,
   Download,
   MessageSquare
 } from "lucide-react";
@@ -59,11 +57,11 @@ interface QuestionWithAnswer {
   type: "multiple_choice" | "true_false" | "essay" | "multiple_answer";
   text: string;
   options?: { id: string; text: string }[];
-  points: number;
+  points: number; // Sempre será 1
   correctAnswer?: string;
   studentAnswer: string;
   isCorrect?: boolean;
-  manualPoints?: number;
+  manualPoints?: number; // 0 ou 1 para questões dissertativas
   feedback?: string;
 }
 
@@ -90,7 +88,7 @@ export default function EvaluationCorrection() {
 
   useEffect(() => {
     fetchSubmittedEvaluations();
-  }, []);
+  }, [filters]);
 
   const fetchSubmittedEvaluations = async () => {
     try {
@@ -103,42 +101,35 @@ export default function EvaluationCorrection() {
       if (filters.grade !== "all") params.append('grade', filters.grade);
       if (filters.search) params.append('search', filters.search);
       
-      // ✅ ATUALIZADO: Usar as APIs reais implementadas
+      // Buscar avaliações enviadas da API real
       const response = await api.get(`/test-sessions/submitted?${params.toString()}`);
       
-      if (response.data && Array.isArray(response.data.sessions)) {
+      if (response.data && Array.isArray(response.data)) {
         // Transformar dados da API para o formato esperado
-        const transformedEvaluations = response.data.sessions.map(transformSessionToEvaluation);
+        const transformedEvaluations = response.data.map(transformSessionToEvaluation);
         setEvaluations(transformedEvaluations);
-        
-        if (transformedEvaluations.length === 0) {
-          toast({
-            title: "Nenhuma avaliação encontrada",
-            description: "Ainda não há avaliações enviadas pelos alunos.",
-          });
-        }
       } else {
-        throw new Error("Formato de resposta inválido");
+        setEvaluations([]);
+        toast({
+          title: "Nenhuma avaliação encontrada",
+          description: "Ainda não há avaliações enviadas pelos alunos.",
+        });
       }
       
     } catch (error) {
       console.error("Erro ao buscar avaliações enviadas:", error);
-      
-      // Fallback para dados mock se a API falhar
-      const mockEvaluations = getMockSubmittedEvaluations();
-      setEvaluations(mockEvaluations);
-      
+      setEvaluations([]);
       toast({
-        title: "Modo de demonstração",
-        description: "Usando dados mock. Verifique a conexão com o backend.",
-        variant: "default",
+        title: "Erro ao carregar avaliações",
+        description: "Não foi possível carregar as avaliações enviadas. Verifique a conexão com o servidor.",
+        variant: "destructive",
       });
     } finally {
       setIsLoading(false);
     }
   };
 
-  // ✅ NOVA FUNÇÃO: Transformar dados da API para o formato esperado
+  // Transformar dados da API para o formato esperado
   const transformSessionToEvaluation = (session: any): SubmittedEvaluation => {
     return {
       id: session.id,
@@ -148,18 +139,18 @@ export default function EvaluationCorrection() {
       testId: session.test_id,
       testTitle: session.test_title,
       subject: { 
-        id: session.subject_id, 
-        name: session.subject_name 
+        id: session.subject_id || 'unknown', 
+        name: session.subject_name || 'Sem disciplina'
       },
       grade: { 
-        id: session.grade_id, 
-        name: session.grade_name 
+        id: session.grade_id || 'unknown', 
+        name: session.grade_name || 'Sem série'
       },
       submittedAt: session.submitted_at,
-      duration: Math.floor(session.time_spent / 60), // converter segundos para minutos
+      duration: Math.floor((session.time_spent || 0) / 60), // converter segundos para minutos
       status: mapSessionStatus(session.status),
-      totalQuestions: session.total_questions,
-      answeredQuestions: session.total_questions - session.blank_answers,
+      totalQuestions: session.total_questions || 0,
+      answeredQuestions: (session.total_questions || 0) - (session.blank_answers || 0),
       autoScore: session.auto_score,
       manualScore: session.manual_score,
       finalScore: session.final_score,
@@ -171,21 +162,26 @@ export default function EvaluationCorrection() {
     };
   };
 
-  // ✅ NOVA FUNÇÃO: Mapear status da sessão
+  // Mapear status da sessão
   const mapSessionStatus = (status: string): SubmittedEvaluation["status"] => {
     switch (status) {
+      case 'finalizada':
       case 'completed':
+      case 'submitted':
         return 'pending';
+      case 'correcting':
+        return 'correcting';
       case 'corrected':
         return 'corrected';
       case 'reviewed':
+      case 'finalized':
         return 'reviewed';
       default:
         return 'pending';
     }
   };
 
-  // ✅ NOVA FUNÇÃO: Transformar respostas em questões
+  // Transformar respostas em questões (todas valem 1 ponto)
   const transformAnswerToQuestion = (answer: any, index: number): QuestionWithAnswer => {
     return {
       id: answer.question_id,
@@ -193,7 +189,7 @@ export default function EvaluationCorrection() {
       type: answer.question_type || 'multiple_choice',
       text: answer.question_text,
       options: answer.options || [],
-      points: answer.max_points || 1,
+      points: 1, // Todas as questões valem 1 ponto
       correctAnswer: answer.correct_answer,
       studentAnswer: answer.student_answer,
       isCorrect: answer.is_correct,
@@ -202,130 +198,15 @@ export default function EvaluationCorrection() {
     };
   };
 
-  const getMockSubmittedEvaluations = (): SubmittedEvaluation[] => [
-    {
-      id: "sub-1",
-      sessionId: "session-1",
-      studentId: "student-1",
-      studentName: "Ana Silva Santos",
-      testId: "eval-1",
-      testTitle: "Avaliação de Matemática - 1º Bimestre",
-      subject: { id: "math", name: "Matemática" },
-      grade: { id: "5ano", name: "5º Ano" },
-      submittedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-      duration: 85,
-      status: "pending",
-      totalQuestions: 3,
-      answeredQuestions: 3,
-      autoScore: 4,
-      questions: [
-        {
-          id: "q1",
-          number: 1,
-          type: "multiple_choice",
-          text: "Qual é o resultado da operação 2,5 + 3,7?",
-          options: [
-            { id: "a", text: "5,2" },
-            { id: "b", text: "6,2" },
-            { id: "c", text: "6,1" },
-            { id: "d", text: "5,3" }
-          ],
-          points: 2,
-          correctAnswer: "b",
-          studentAnswer: "b",
-          isCorrect: true
-        },
-        {
-          id: "q2",
-          number: 2,
-          type: "true_false",
-          text: "A fração 3/4 é equivalente a 0,75.",
-          points: 2,
-          correctAnswer: "true",
-          studentAnswer: "true",
-          isCorrect: true
-        },
-        {
-          id: "q3",
-          number: 3,
-          type: "essay",
-          text: "Explique como você faria para somar as frações 1/4 + 2/3.",
-          points: 3,
-          studentAnswer: "Primeiro encontro o denominador comum que é 12. Depois transformo: 1/4 = 3/12 e 2/3 = 8/12. Aí somo: 3/12 + 8/12 = 11/12."
-        }
-      ]
-    },
-    {
-      id: "sub-2",
-      sessionId: "session-2", 
-      studentId: "student-2",
-      studentName: "Bruno Costa Lima",
-      testId: "eval-1",
-      testTitle: "Avaliação de Matemática - 1º Bimestre",
-      subject: { id: "math", name: "Matemática" },
-      grade: { id: "5ano", name: "5º Ano" },
-      submittedAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
-      duration: 75,
-      status: "corrected",
-      totalQuestions: 3,
-      answeredQuestions: 2,
-      autoScore: 2,
-      manualScore: 6,
-      finalScore: 6,
-      percentage: 85.7,
-      correctedBy: "admin",
-      correctedAt: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
-      feedback: "Bom trabalho! Demonstrou compreensão dos conceitos básicos.",
-      questions: [
-        {
-          id: "q1",
-          number: 1,
-          type: "multiple_choice",
-          text: "Qual é o resultado da operação 2,5 + 3,7?",
-          options: [
-            { id: "a", text: "5,2" },
-            { id: "b", text: "6,2" },
-            { id: "c", text: "6,1" },
-            { id: "d", text: "5,3" }
-          ],
-          points: 2,
-          correctAnswer: "b",
-          studentAnswer: "c",
-          isCorrect: false
-        },
-        {
-          id: "q2",
-          number: 2,
-          type: "true_false",
-          text: "A fração 3/4 é equivalente a 0,75.",
-          points: 2,
-          correctAnswer: "true",
-          studentAnswer: "true",
-          isCorrect: true
-        },
-        {
-          id: "q3",
-          number: 3,
-          type: "essay",
-          text: "Explique como você faria para somar as frações 1/4 + 2/3.",
-          points: 3,
-          studentAnswer: "Uso o mmc para igualar os denominadores",
-          manualPoints: 1,
-          feedback: "Resposta incompleta. Faltou mostrar o cálculo completo."
-        }
-      ]
-    }
-  ];
-
   const handleSelectEvaluation = (evaluation: SubmittedEvaluation) => {
     setSelectedEvaluation(evaluation);
   };
 
-  const handleQuestionScoreChange = (questionId: string, manualPoints: number) => {
+  const handleQuestionScoreChange = (questionId: string, isCorrect: boolean) => {
     if (!selectedEvaluation) return;
 
     const updatedQuestions = selectedEvaluation.questions.map(q => 
-      q.id === questionId ? { ...q, manualPoints } : q
+      q.id === questionId ? { ...q, manualPoints: isCorrect ? 1 : 0, isCorrect } : q
     );
 
     const updatedEvaluation = {
@@ -358,9 +239,11 @@ export default function EvaluationCorrection() {
     
     selectedEvaluation.questions.forEach(question => {
       if (question.type === "essay") {
+        // Para questões dissertativas, usar pontuação manual (0 ou 1)
         totalScore += question.manualPoints || 0;
       } else if (question.isCorrect) {
-        totalScore += question.points;
+        // Para questões objetivas, 1 ponto se correta
+        totalScore += 1;
       }
     });
 
@@ -370,10 +253,10 @@ export default function EvaluationCorrection() {
   const calculatePercentage = () => {
     if (!selectedEvaluation) return 0;
 
-    const totalPossiblePoints = selectedEvaluation.questions.reduce((sum, q) => sum + q.points, 0);
+    const totalPossiblePoints = selectedEvaluation.questions.length; // Cada questão vale 1 ponto
     const finalScore = calculateFinalScore();
     
-    return Math.round((finalScore / totalPossiblePoints) * 100);
+    return totalPossiblePoints > 0 ? Math.round((finalScore / totalPossiblePoints) * 100) : 0;
   };
 
   const handleSaveCorrection = async () => {
@@ -388,7 +271,8 @@ export default function EvaluationCorrection() {
       const correctionData = {
         questions: selectedEvaluation.questions.map(q => ({
           question_id: q.id,
-          manual_points: q.manualPoints,
+          is_correct: q.type === "essay" ? (q.manualPoints === 1) : q.isCorrect,
+          manual_points: q.type === "essay" ? q.manualPoints : (q.isCorrect ? 1 : 0),
           feedback: q.feedback
         })),
         final_score: finalScore,
@@ -397,7 +281,6 @@ export default function EvaluationCorrection() {
         status: "corrected"
       };
 
-      // ✅ ATUALIZADO: Usar API real implementada
       await api.post(`/test-session/${selectedEvaluation.sessionId}/correct`, correctionData);
 
       toast({
@@ -437,7 +320,8 @@ export default function EvaluationCorrection() {
       const correctionData = {
         questions: selectedEvaluation.questions.map(q => ({
           question_id: q.id,
-          manual_points: q.manualPoints,
+          is_correct: q.type === "essay" ? (q.manualPoints === 1) : q.isCorrect,
+          manual_points: q.type === "essay" ? q.manualPoints : (q.isCorrect ? 1 : 0),
           feedback: q.feedback
         })),
         final_score: finalScore,
@@ -446,7 +330,6 @@ export default function EvaluationCorrection() {
         status: "reviewed"
       };
 
-      // ✅ ATUALIZADO: Usar API real implementada
       await api.post(`/test-session/${selectedEvaluation.sessionId}/finalize`, correctionData);
 
       toast({
@@ -613,7 +496,7 @@ export default function EvaluationCorrection() {
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">Nota Final:</span>
                     <span className="text-sm font-medium">
-                      {calculateFinalScore()}/{selectedEvaluation.questions.reduce((sum, q) => sum + q.points, 0)}
+                      {calculateFinalScore()}/{selectedEvaluation.questions.length}
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -644,7 +527,7 @@ export default function EvaluationCorrection() {
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-base">
-                      Questão {question.number} ({question.points} ponto{question.points !== 1 ? 's' : ''})
+                      Questão {question.number} (1 ponto)
                     </CardTitle>
                     {question.type !== "essay" && (
                       <Badge variant={question.isCorrect ? "default" : "destructive"}>
@@ -661,10 +544,10 @@ export default function EvaluationCorrection() {
                   </div>
 
                   {/* Opções (para múltipla escolha) */}
-                  {question.options && (
+                  {question.options && question.options.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-sm font-medium">Opções:</p>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 gap-2">
                         {question.options.map((option, optIndex) => {
                           const letter = String.fromCharCode(65 + optIndex);
                           const isCorrect = option.id === question.correctAnswer;
@@ -698,30 +581,36 @@ export default function EvaluationCorrection() {
                       question.isCorrect ? "border-green-200 bg-green-50" : 
                       "border-red-200 bg-red-50"
                     }`}>
-                      <p>{question.studentAnswer}</p>
+                      <p>{question.studentAnswer || "Não respondida"}</p>
                     </div>
                   </div>
 
-                  {/* Correção Manual (para questões dissertativas) */}
+                  {/* Correção Manual (apenas para questões dissertativas) */}
                   {question.type === "essay" && (
                     <div className="space-y-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
                       <h4 className="font-medium text-yellow-800">Correção Manual Necessária</h4>
                       
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor={`points-${question.id}`}>
-                            Pontos (máx: {question.points})
-                          </Label>
-                          <Input
-                            id={`points-${question.id}`}
-                            type="number"
-                            min="0"
-                            max={question.points}
-                            step="0.5"
-                            value={question.manualPoints || ""}
-                            onChange={(e) => handleQuestionScoreChange(question.id, parseFloat(e.target.value) || 0)}
-                            placeholder="0"
-                          />
+                          <Label>Avaliação da Resposta</Label>
+                          <div className="flex gap-2">
+                            <Button
+                              variant={question.manualPoints === 1 ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => handleQuestionScoreChange(question.id, true)}
+                            >
+                              <CheckCircle className="h-4 w-4 mr-2" />
+                              Correta (1 ponto)
+                            </Button>
+                            <Button
+                              variant={question.manualPoints === 0 ? "destructive" : "outline"}
+                              size="sm"
+                              onClick={() => handleQuestionScoreChange(question.id, false)}
+                            >
+                              <XCircle className="h-4 w-4 mr-2" />
+                              Incorreta (0 pontos)
+                            </Button>
+                          </div>
                         </div>
                         
                         <div className="space-y-2">
@@ -754,7 +643,7 @@ export default function EvaluationCorrection() {
                 <div className="mt-4 space-y-2">
                   <div><strong>Aluno:</strong> {selectedEvaluation.studentName}</div>
                   <div><strong>Avaliação:</strong> {selectedEvaluation.testTitle}</div>
-                  <div><strong>Nota Final:</strong> {calculateFinalScore()}/{selectedEvaluation.questions.reduce((sum, q) => sum + q.points, 0)} ({calculatePercentage()}%)</div>
+                  <div><strong>Nota Final:</strong> {calculateFinalScore()}/{selectedEvaluation.questions.length} ({calculatePercentage()}%)</div>
                 </div>
 
                 <div className="mt-4 text-sm text-orange-600">
@@ -787,9 +676,9 @@ export default function EvaluationCorrection() {
         </div>
         
         <div className="flex items-center gap-2">
-          <Button variant="outline">
+          <Button variant="outline" onClick={fetchSubmittedEvaluations}>
             <Download className="h-4 w-4 mr-2" />
-            Exportar Relatório
+            Atualizar Lista
           </Button>
         </div>
       </div>
@@ -825,9 +714,6 @@ export default function EvaluationCorrection() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todas</SelectItem>
-                  <SelectItem value="math">Matemática</SelectItem>
-                  <SelectItem value="port">Português</SelectItem>
-                  <SelectItem value="cienc">Ciências</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -840,9 +726,6 @@ export default function EvaluationCorrection() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todas</SelectItem>
-                  <SelectItem value="5ano">5º Ano</SelectItem>
-                  <SelectItem value="6ano">6º Ano</SelectItem>
-                  <SelectItem value="7ano">7º Ano</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -934,7 +817,7 @@ export default function EvaluationCorrection() {
                 <div className="text-sm">
                   <span className="font-medium">Nota: </span>
                   <span className={`font-bold ${evaluation.percentage! >= 70 ? 'text-green-600' : evaluation.percentage! >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
-                    {evaluation.finalScore}/{evaluation.questions.reduce((sum, q) => sum + q.points, 0)} ({evaluation.percentage}%)
+                    {evaluation.finalScore}/{evaluation.questions.length} ({evaluation.percentage}%)
                   </span>
                 </div>
               )}

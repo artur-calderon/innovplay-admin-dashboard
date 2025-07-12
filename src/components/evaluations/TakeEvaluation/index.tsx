@@ -74,6 +74,7 @@ export default function TakeEvaluation() {
     isTimeUp,
     isPaused, // ✅ NOVO: estado de pausa
     startTestSession,
+    startTimerManually, // ✅ NOVO: função para iniciar cronômetro manualmente
     handleAnswerChange,
     navigateToQuestion,
     handleSubmitTest
@@ -300,10 +301,35 @@ export default function TakeEvaluation() {
                 <Alert className="border-yellow-300 bg-yellow-50">
                   <Pause className="h-4 w-4" />
                   <AlertDescription className="flex items-center justify-between">
-                    <span>
-                      ⏸️ <strong>Avaliação pausada</strong> - O timer foi pausado porque você saiu desta aba. 
-                      Volte para esta aba para continuar.
-                    </span>
+                    <div className="flex-1">
+                      <span>
+                        ⏸️ <strong>Cronômetro pausado</strong> - 
+                        {!session?.started_at || session?.started_at === session?.created_at 
+                          ? " Clique em 'Iniciar Cronômetro' para começar a contagem."
+                          : " O timer foi pausado porque você saiu desta aba. Volte para esta aba para continuar."
+                        }
+                      </span>
+                    </div>
+                    {(!session?.started_at || session?.started_at === session?.created_at) && (
+                      <Button
+                        onClick={startTimerManually}
+                        disabled={isSubmitting}
+                        size="sm"
+                        className="ml-4"
+                      >
+                        {isSubmitting ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Iniciando...
+                          </>
+                        ) : (
+                          <>
+                            <Play className="h-4 w-4 mr-2" />
+                            Iniciar Cronômetro
+                          </>
+                        )}
+                      </Button>
+                    )}
                   </AlertDescription>
                 </Alert>
               </div>
@@ -445,16 +471,18 @@ export default function TakeEvaluation() {
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Confirmar envio da avaliação</AlertDialogTitle>
-              <AlertDialogDescription>
-                Você tem certeza que deseja enviar sua avaliação?
+              <AlertDialogDescription asChild>
+                <div>
+                  <p className="mb-4">Você tem certeza que deseja enviar sua avaliação?</p>
+                  
+                  <div className="space-y-2 mb-4">
+                    <div>Questões respondidas: {Object.keys(answers).length} de {testData.questions.length || 0}</div>
+                    <div>Tempo restante: {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}</div>
+                  </div>
 
-                <div className="mt-4 space-y-2">
-                  <div>Questões respondidas: {Object.keys(answers).length} de {testData.questions.length || 0}</div>
-                  <div>Tempo restante: {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}</div>
-                </div>
-
-                <div className="mt-4 text-sm text-orange-600">
-                  ⚠️ Após enviar, você não poderá mais alterar suas respostas.
+                  <div className="text-sm text-orange-600">
+                    ⚠️ Após enviar, você não poderá mais alterar suas respostas.
+                  </div>
                 </div>
               </AlertDialogDescription>
             </AlertDialogHeader>

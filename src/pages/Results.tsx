@@ -9,10 +9,8 @@ import {
   BarChart3, 
   Download,
   TrendingUp,
-  TrendingDown,
   Users,
   FileText,
-  Calendar,
   ClipboardCheck,
   Eye,
   CheckCircle2,
@@ -23,11 +21,8 @@ import {
   ChartLine
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import EvaluationResults from "@/components/evaluations/EvaluationResults";
-import EvaluationReport from "@/components/evaluations/EvaluationReport";
 import { useToast } from "@/hooks/use-toast";
-import { useEvaluations } from "@/stores/useEvaluationStore";
-import * as mockApi from "@/services/mockResultsData";
+import { api } from "@/lib/api";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -36,12 +31,9 @@ interface ResultsStats {
   pendingResults: number;
   totalEvaluations: number;
   averageScore: number;
-  lastWeekEvaluations: number;
-  correctedToday: number;
   totalStudents: number;
   averageCompletionTime: number;
   topPerformanceSubject: string;
-  improvementRate: number;
 }
 
 interface EvaluationSummary {
@@ -53,7 +45,7 @@ interface EvaluationSummary {
   averageScore: number;
   status: 'completed' | 'pending' | 'correcting';
   lastUpdated: string;
-  difficulty: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+  proficiencyLevel: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
 }
 
 export default function Results() {
@@ -62,21 +54,16 @@ export default function Results() {
     pendingResults: 0,
     totalEvaluations: 0,
     averageScore: 0,
-    lastWeekEvaluations: 0,
-    correctedToday: 0,
     totalStudents: 0,
     averageCompletionTime: 0,
     topPerformanceSubject: '',
-    improvementRate: 0
   });
   const [evaluationsList, setEvaluationsList] = useState<EvaluationSummary[]>([]);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
   const [isLoadingList, setIsLoadingList] = useState(true);
-  const [showResults, setShowResults] = useState(false);
-  const [showReport, setShowReport] = useState(false);
+  const [selectedEvaluationId, setSelectedEvaluationId] = useState<string | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
-  const { evaluations, getEvaluations } = useEvaluations();
 
   useEffect(() => {
     fetchResultsStats();
@@ -87,56 +74,27 @@ export default function Results() {
     try {
       setIsLoadingStats(true);
       
-      // Simular dados mais ricos
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Buscar estatísticas reais da API
+      const response = await api.get('/evaluation-results/stats');
       
-      const resultsData = await mockApi.getEvaluationResults();
-      const completedResults = resultsData.filter(r => r.status === 'completed');
-      const pendingResults = resultsData.filter(r => r.status === 'pending');
-      
-      // Dados do store
-      const storeEvaluations = getEvaluations();
-      
-      // Calcular métricas avançadas
-      const totalStudents = resultsData.reduce((sum, r) => sum + (r.totalStudents || 0), 0);
-      const averageCompletionTime = completedResults.length > 0
-        ? completedResults.reduce((sum, r) => sum + (r.completionTime || 45), 0) / completedResults.length
-        : 0;
-      
-      // Análise por disciplina
-      const subjectScores: Record<string, number[]> = {};
-      completedResults.forEach(result => {
-        if (!subjectScores[result.subject]) {
-          subjectScores[result.subject] = [];
-        }
-        subjectScores[result.subject].push(result.score || 0);
-      });
-      
-      const subjectAverages = Object.entries(subjectScores).map(([subject, scores]) => ({
-        subject,
-        average: scores.reduce((sum, score) => sum + score, 0) / scores.length
-      }));
-      
-      const topSubject = subjectAverages.length > 0
-        ? subjectAverages.sort((a, b) => b.average - a.average)[0].subject
-        : 'Matemática';
-
-      setStats({
-        completedEvaluations: completedResults.length,
-        pendingResults: pendingResults.length,
-        totalEvaluations: resultsData.length,
-        averageScore: completedResults.length > 0 
-          ? Math.round(completedResults.reduce((sum, r) => sum + (r.score || 0), 0) / completedResults.length) 
-          : 0,
-        lastWeekEvaluations: Math.floor(resultsData.length * 0.6),
-        correctedToday: Math.floor(pendingResults.length * 0.3),
-        totalStudents,
-        averageCompletionTime: Math.round(averageCompletionTime),
-        topPerformanceSubject: topSubject,
-        improvementRate: Math.round(Math.random() * 20 + 5) // Simulado
-      });
+      if (response.data) {
+        setStats({
+          completedEvaluations: response.data.completed_evaluations || 0,
+          pendingResults: response.data.pending_results || 0,
+          totalEvaluations: response.data.total_evaluations || 0,
+          averageScore: response.data.average_score || 0,
+          totalStudents: response.data.total_students || 0,
+          averageCompletionTime: response.data.average_completion_time || 0,
+          topPerformanceSubject: response.data.top_performance_subject || 'Não disponível',
+        });
+      }
     } catch (error) {
       console.error("Erro ao buscar estatísticas de resultados:", error);
+      toast({
+        title: "Erro ao carregar estatísticas",
+        description: "Não foi possível carregar as estatísticas. Verifique a conexão com o servidor.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoadingStats(false);
     }
@@ -146,33 +104,57 @@ export default function Results() {
     try {
       setIsLoadingList(true);
       
-      const resultsData = await mockApi.getEvaluationResults();
-      const storeEvaluations = getEvaluations();
+      // Buscar lista de avaliações com resultados da API
+      const response = await api.get('/evaluation-results/list');
       
-      // Combinar dados do store com resultados
-      const evaluationsWithResults: EvaluationSummary[] = storeEvaluations.map(evaluation => {
-        const result = resultsData.find(r => r.evaluationId === evaluation.id);
-        
-        return {
+      if (response.data && Array.isArray(response.data)) {
+        const evaluationsWithResults: EvaluationSummary[] = response.data.map((evaluation: any) => ({
           id: evaluation.id,
           title: evaluation.title,
-          subject: evaluation.subject.name,
-          completedStudents: result?.completedStudents || 0,
-          totalStudents: evaluation.students?.length || 0,
-          averageScore: result?.score || 0,
-          status: result?.status === 'completed' ? 'completed' : 
-                  result?.status === 'pending' ? 'correcting' : 'pending',
-          lastUpdated: result?.submittedAt || evaluation.createdAt,
-          difficulty: ['Abaixo do Básico', 'Básico', 'Adequado', 'Avançado'][Math.floor(Math.random() * 4)] as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado'
-        };
-      });
+          subject: evaluation.subject_name || 'Sem disciplina',
+          completedStudents: evaluation.completed_students || 0,
+          totalStudents: evaluation.total_students || 0,
+          averageScore: evaluation.average_score || 0,
+          status: mapEvaluationStatus(evaluation.status),
+          lastUpdated: evaluation.last_updated || evaluation.created_at,
+          proficiencyLevel: calculateProficiencyLevel(evaluation.average_score || 0)
+        }));
 
-      setEvaluationsList(evaluationsWithResults);
+        setEvaluationsList(evaluationsWithResults);
+      } else {
+        setEvaluationsList([]);
+      }
     } catch (error) {
       console.error("Erro ao buscar lista de avaliações:", error);
+      toast({
+        title: "Erro ao carregar avaliações",
+        description: "Não foi possível carregar a lista de avaliações.",
+        variant: "destructive",
+      });
+      setEvaluationsList([]);
     } finally {
       setIsLoadingList(false);
     }
+  };
+
+  const mapEvaluationStatus = (status: string): EvaluationSummary['status'] => {
+    switch (status) {
+      case 'completed':
+      case 'finalized':
+        return 'completed';
+      case 'correcting':
+      case 'in_correction':
+        return 'correcting';
+      default:
+        return 'pending';
+    }
+  };
+
+  const calculateProficiencyLevel = (score: number): EvaluationSummary['proficiencyLevel'] => {
+    if (score >= 80) return 'Avançado';
+    if (score >= 65) return 'Adequado';
+    if (score >= 50) return 'Básico';
+    return 'Abaixo do Básico';
   };
 
   const getStatusBadge = (status: EvaluationSummary['status']) => {
@@ -193,8 +175,8 @@ export default function Results() {
     );
   };
 
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
+  const getProficiencyColor = (proficiency: string) => {
+    switch (proficiency) {
       case 'Avançado': return 'text-green-100 bg-green-800 border-green-700';
       case 'Adequado': return 'text-green-800 bg-green-100 border-green-300';
       case 'Básico': return 'text-yellow-800 bg-yellow-100 border-yellow-300';
@@ -203,35 +185,37 @@ export default function Results() {
     }
   };
 
-  const handleViewResults = () => {
-    setShowResults(true);
+  const handleViewEvaluationResults = (evaluationId: string) => {
+    navigate(`/app/avaliacao/${evaluationId}/resultados`);
   };
 
   const handleCorrectNow = () => {
-    toast({
-      title: "Redirecionando",
-      description: "Abrindo página de correção...",
-    });
     navigate("/app/avaliacoes/correcao");
   };
 
-  const handleGenerateReport = () => {
-    setShowReport(true);
-  };
-
-  const handleExportAll = async () => {
+  const handleExportResults = async (evaluationId?: string) => {
     try {
-      const allResults = await mockApi.getEvaluationResults();
-      const allIds = allResults.map(result => result.id);
-      const response = await mockApi.exportResults(allIds);
+      const endpoint = evaluationId 
+        ? `/evaluation-results/${evaluationId}/export`
+        : '/evaluation-results/export-all';
       
-      if (response.success) {
-        toast({
-          title: "Exportação concluída!",
-          description: "Todos os resultados foram exportados com sucesso.",
-        });
-      }
+      const response = await api.get(endpoint, { responseType: 'blob' });
+      
+      // Criar download do arquivo
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `resultados-${evaluationId || 'todos'}-${new Date().toISOString().split('T')[0]}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      
+      toast({
+        title: "Exportação concluída!",
+        description: "Os resultados foram exportados com sucesso.",
+      });
     } catch (error) {
+      console.error("Erro na exportação:", error);
       toast({
         title: "Erro na exportação",
         description: "Não foi possível exportar os resultados",
@@ -239,16 +223,6 @@ export default function Results() {
       });
     }
   };
-
-  // If showing results, render the EvaluationResults component
-  if (showResults) {
-    return <EvaluationResults onBack={() => setShowResults(false)} />;
-  }
-
-  // If showing report, render the EvaluationReport component
-  if (showReport) {
-    return <EvaluationReport onBack={() => setShowReport(false)} />;
-  }
 
   return (
     <div className="container mx-auto px-2 md:px-4 py-4 md:py-6 space-y-6">
@@ -261,14 +235,14 @@ export default function Results() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleExportAll}>
+          <Button variant="outline" size="sm" onClick={() => handleExportResults()}>
             <Download className="h-4 w-4 mr-2" />
             Exportar Tudo
           </Button>
         </div>
       </div>
 
-      {/* Estatísticas Principais - Primeira Linha */}
+      {/* Estatísticas Principais */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -281,10 +255,9 @@ export default function Results() {
             <div className="text-2xl font-bold text-green-600">
               {isLoadingStats ? <Skeleton className="h-8 w-16" /> : stats.completedEvaluations}
             </div>
-            <div className="flex items-center text-xs text-muted-foreground">
-              <TrendingUp className="h-3 w-3 mr-1 text-green-500" />
-              +{stats.improvementRate}% este mês
-            </div>
+            <p className="text-xs text-muted-foreground">
+              Avaliações finalizadas
+            </p>
           </CardContent>
         </Card>
         
@@ -300,7 +273,7 @@ export default function Results() {
               {isLoadingStats ? <Skeleton className="h-8 w-16" /> : stats.pendingResults}
             </div>
             <p className="text-xs text-muted-foreground">
-              Aguardando correção manual
+              Aguardando correção
             </p>
           </CardContent>
         </Card>
@@ -340,8 +313,8 @@ export default function Results() {
         </Card>
       </div>
 
-      {/* Métricas de Performance - Segunda Linha */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      {/* Métricas Adicionais */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
@@ -379,33 +352,16 @@ export default function Results() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Esta Semana
+              Total de Avaliações
             </CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {isLoadingStats ? <Skeleton className="h-8 w-16" /> : stats.lastWeekEvaluations}
+              {isLoadingStats ? <Skeleton className="h-8 w-16" /> : stats.totalEvaluations}
             </div>
             <p className="text-xs text-muted-foreground">
-              Avaliações realizadas
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Correções Hoje
-            </CardTitle>
-            <ChartLine className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              {isLoadingStats ? <Skeleton className="h-8 w-16" /> : stats.correctedToday}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Finalizadas hoje
+              Avaliações no sistema
             </p>
           </CardContent>
         </Card>
@@ -416,7 +372,7 @@ export default function Results() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            Avaliações Recentes
+            Avaliações com Resultados
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -431,7 +387,7 @@ export default function Results() {
                 </div>
               ))}
             </div>
-          ) : (
+          ) : evaluationsList.length > 0 ? (
             <div className="rounded-md border">
               <Table>
                 <TableHeader>
@@ -441,20 +397,20 @@ export default function Results() {
                     <TableHead>Progresso</TableHead>
                     <TableHead>Média</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Dificuldade</TableHead>
+                    <TableHead>Proficiência</TableHead>
                     <TableHead>Atualizado</TableHead>
                     <TableHead>Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {evaluationsList.slice(0, 8).map((evaluation) => (
+                  {evaluationsList.map((evaluation) => (
                     <TableRow key={evaluation.id}>
                       <TableCell className="font-medium">{evaluation.title}</TableCell>
                       <TableCell>{evaluation.subject}</TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-2">
                           <Progress 
-                            value={(evaluation.completedStudents / evaluation.totalStudents) * 100} 
+                            value={evaluation.totalStudents > 0 ? (evaluation.completedStudents / evaluation.totalStudents) * 100 : 0} 
                             className="w-16"
                           />
                           <span className="text-xs text-muted-foreground">
@@ -463,14 +419,18 @@ export default function Results() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span className={`font-semibold ${evaluation.averageScore >= 70 ? 'text-green-600' : evaluation.averageScore >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+                        <span className={`font-semibold ${
+                          evaluation.averageScore >= 70 ? 'text-green-600' : 
+                          evaluation.averageScore >= 50 ? 'text-yellow-600' : 
+                          'text-red-600'
+                        }`}>
                           {evaluation.averageScore}%
                         </span>
                       </TableCell>
                       <TableCell>{getStatusBadge(evaluation.status)}</TableCell>
                       <TableCell>
-                        <Badge className={getDifficultyColor(evaluation.difficulty)}>
-                          {evaluation.difficulty}
+                        <Badge className={getProficiencyColor(evaluation.proficiencyLevel)}>
+                          {evaluation.proficiencyLevel}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
@@ -480,15 +440,38 @@ export default function Results() {
                         })}
                       </TableCell>
                       <TableCell>
-                        <Button variant="outline" size="sm" onClick={() => navigate(`/app/avaliacoes/${evaluation.id}`)}>
-                          <Eye className="h-3 w-3 mr-1" />
-                          Ver
-                        </Button>
+                        <div className="flex gap-1">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => handleViewEvaluationResults(evaluation.id)}
+                          >
+                            <Eye className="h-3 w-3 mr-1" />
+                            Ver
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => handleExportResults(evaluation.id)}
+                          >
+                            <Download className="h-3 w-3" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <FileText className="h-16 w-16 mx-auto text-gray-400 mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                Nenhuma avaliação com resultados
+              </h3>
+              <p className="text-gray-600">
+                Ainda não há avaliações finalizadas com resultados disponíveis.
+              </p>
             </div>
           )}
         </CardContent>
@@ -496,11 +479,11 @@ export default function Results() {
 
       {/* Cards de Ações */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={handleViewResults}>
+        <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => navigate('/app/avaliacoes/resultados')}>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Eye className="h-5 w-5 text-green-600" />
-              Visualizar Resultados
+              Visualizar Resultados Detalhados
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -508,7 +491,7 @@ export default function Results() {
               {stats.completedEvaluations}
             </div>
             <p className="text-sm text-muted-foreground mb-3">
-              Resultados prontos para visualização
+              Resultados prontos para análise
             </p>
             <Button variant="outline" size="sm" className="w-full">
               <Eye className="h-4 w-4 mr-2" />
@@ -538,7 +521,7 @@ export default function Results() {
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={handleGenerateReport}>
+        <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => handleExportResults()}>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <BarChart3 className="h-5 w-5 text-blue-600" />
@@ -547,14 +530,14 @@ export default function Results() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-600 mb-2">
-              {stats.completedEvaluations + stats.pendingResults}
+              {stats.totalEvaluations}
             </div>
             <p className="text-sm text-muted-foreground mb-3">
               Relatórios disponíveis
             </p>
             <Button variant="outline" size="sm" className="w-full">
               <BarChart3 className="h-4 w-4 mr-2" />
-              Gerar Relatório
+              Exportar Relatório
             </Button>
           </CardContent>
         </Card>
@@ -567,7 +550,7 @@ export default function Results() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 md:grid-cols-4">
-            <Button variant="outline" onClick={handleViewResults} className="h-auto py-3">
+            <Button variant="outline" onClick={() => navigate('/app/avaliacoes/resultados')} className="h-auto py-3">
               <div className="text-center">
                 <Eye className="h-6 w-6 mx-auto mb-2" />
                 <div className="text-sm">Ver Resultados</div>
@@ -579,16 +562,16 @@ export default function Results() {
                 <div className="text-sm">Corrigir Avaliações</div>
               </div>
             </Button>
-            <Button variant="outline" onClick={handleGenerateReport} className="h-auto py-3">
+            <Button variant="outline" onClick={() => handleExportResults()} className="h-auto py-3">
               <div className="text-center">
                 <BarChart3 className="h-6 w-6 mx-auto mb-2" />
                 <div className="text-sm">Gerar Relatórios</div>
               </div>
             </Button>
-            <Button variant="outline" onClick={handleExportAll} className="h-auto py-3">
+            <Button variant="outline" onClick={fetchResultsStats} className="h-auto py-3">
               <div className="text-center">
-                <Download className="h-6 w-6 mx-auto mb-2" />
-                <div className="text-sm">Exportar Dados</div>
+                <TrendingUp className="h-6 w-6 mx-auto mb-2" />
+                <div className="text-sm">Atualizar Dados</div>
               </div>
             </Button>
           </div>

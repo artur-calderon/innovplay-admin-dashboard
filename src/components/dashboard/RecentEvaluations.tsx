@@ -175,12 +175,12 @@ export default function RecentEvaluations() {
         try {
           // Buscar avaliações reais da API
           const [evaluationsResponse, statsResponse] = await Promise.all([
-            api.get('/test/?limit=5&sort=created_at&order=desc'),
+            api.get('/test/?per_page=5&sort=created_at&order=desc'),
             api.get('/dashboard/stats')
           ]);
 
-          if (evaluationsResponse.data && Array.isArray(evaluationsResponse.data)) {
-            evaluationsData = evaluationsResponse.data.map((test: any) => ({
+          if (evaluationsResponse.data?.data && Array.isArray(evaluationsResponse.data.data)) {
+            evaluationsData = evaluationsResponse.data.data.map((test: any) => ({
               id: test.id,
               title: test.title,
               subject: test.subject ? test.subject.name : 'Sem disciplina',

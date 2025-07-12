@@ -18,9 +18,9 @@ interface Question {
     id: string;
     name: string;
   };
-  difficulty: string;
+  difficulty_level?: string;
   value: number;
-  type: string;
+  question_type: string;
 }
 
 export default function QuestionsTable() {
@@ -33,12 +33,10 @@ export default function QuestionsTable() {
       try {
         setIsLoading(true);
         
-        // Buscar questões da API (limitando a 5 para o dashboard)
-        const response = await api.get("/questions/");
+        // Buscar questões recentes da API
+        const response = await api.get("/questions/recent");
         if (response.data && Array.isArray(response.data)) {
-          // Pegar apenas as 5 primeiras questões para o dashboard
-          const dashboardQuestions = response.data.slice(0, 5);
-          setQuestions(dashboardQuestions);
+          setQuestions(response.data);
         }
       } catch (error) {
         console.error("Erro ao buscar questões:", error);
@@ -177,8 +175,8 @@ export default function QuestionsTable() {
                     </TableCell>
                     <TableCell>{question.subject?.name || "N/A"}</TableCell>
                     <TableCell>{question.grade?.name || "N/A"}</TableCell>
-                    <TableCell>{question.difficulty}</TableCell>
-                    <TableCell>{getQuestionTypeLabel(question.type)}</TableCell>
+                    <TableCell>{question.difficulty_level || "N/A"}</TableCell>
+                    <TableCell>{getQuestionTypeLabel(question.question_type)}</TableCell>
                     <TableCell>{question.value}</TableCell>
                     <TableCell>
                       <Button 
@@ -216,10 +214,10 @@ export default function QuestionsTable() {
                 <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
                   <div><span className="font-medium">Disciplina:</span> {question.subject?.name || "N/A"}</div>
                   <div><span className="font-medium">Série:</span> {question.grade?.name || "N/A"}</div>
-                  <div><span className="font-medium">Dificuldade:</span> {question.difficulty}</div>
+                  <div><span className="font-medium">Dificuldade:</span> {question.difficulty_level || "N/A"}</div>
                   <div><span className="font-medium">Valor:</span> {question.value}</div>
                   <div className="col-span-2">
-                    <span className="font-medium">Tipo:</span> {getQuestionTypeLabel(question.type)}
+                    <span className="font-medium">Tipo:</span> {getQuestionTypeLabel(question.question_type)}
                   </div>
                 </div>
               </div>

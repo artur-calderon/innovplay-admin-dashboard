@@ -4,6 +4,8 @@ export interface TestSession {
     session_id: string;
     status: 'em_andamento' | 'finalizada' | 'expirada';
     started_at: string;
+    actual_start_time?: string; // ✅ NOVO: campo para cronômetro real
+    created_at?: string; // ✅ NOVO: campo para data de criação
     remaining_time_minutes: number;
     is_expired: boolean;
     total_questions: number;
@@ -78,6 +80,7 @@ export interface SessionStatusResponse {
     session_id: string;
     status: 'em_andamento' | 'finalizada' | 'expirada';
     started_at: string;
+    actual_start_time?: string; // ✅ NOVO: campo para cronômetro real
     remaining_time_minutes: number;
     is_expired: boolean;
     total_questions: number;
