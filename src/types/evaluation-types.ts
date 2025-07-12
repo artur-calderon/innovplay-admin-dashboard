@@ -7,6 +7,7 @@ export interface TestSession {
     actual_start_time?: string; // ✅ NOVO: campo para cronômetro real
     created_at?: string; // ✅ NOVO: campo para data de criação
     remaining_time_minutes: number;
+    time_limit_minutes?: number; // ✅ NOVO: tempo limite da sessão
     is_expired: boolean;
     total_questions: number;
     correct_answers: number;

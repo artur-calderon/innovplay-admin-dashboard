@@ -65,6 +65,7 @@ export default function TakeEvaluation() {
     evaluationState,
     testData,
     session,
+    sessionInfo, // ✅ NOVO: informações da sessão
     currentQuestionIndex,
     answers,
     isSubmitting,
@@ -111,16 +112,16 @@ export default function TakeEvaluation() {
                 </ul>
               </div>
               <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => window.location.reload()}
                 >
                   Tentar Novamente
                 </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => navigate("/aluno/avaliacoes")}
                 >
                   Voltar às Avaliações
@@ -149,7 +150,10 @@ export default function TakeEvaluation() {
             <div className="grid gap-4 md:grid-cols-3">
               <div className="text-center p-4 border rounded-lg">
                 <Clock className="h-8 w-8 mx-auto mb-2 text-blue-600" />
-                <div className="font-semibold">{testData.duration} minutos</div>
+                <div className="font-semibold">
+                  {/* ✅ MODIFICADO: Usar time_limit_minutes da API se disponível */}
+                  {sessionInfo?.time_limit_minutes || testData?.duration || 60} minutos
+                </div>
                 <div className="text-sm text-muted-foreground">Tempo disponível</div>
               </div>
               <div className="text-center p-4 border rounded-lg">
@@ -166,6 +170,34 @@ export default function TakeEvaluation() {
 
             <div className="text-center">
               <p className="mb-4">{testData.instructions}</p>
+
+              {/* ✅ NOVO: Informações adicionais sobre o cronômetro */}
+              {sessionInfo && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="text-sm text-blue-800">
+                    <div className="font-medium mb-1">Informações do Cronômetro:</div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="font-medium">Tempo limite:</span> {sessionInfo.time_limit_minutes} minutos
+                      </div>
+                      <div>
+                        <span className="font-medium">Status:</span> {sessionInfo.timer_started ? 'Iniciado' : 'Pausado'}
+                      </div>
+                      {sessionInfo.timer_started && (
+                        <>
+                          <div>
+                            <span className="font-medium">Iniciado em:</span> {new Date(sessionInfo.actual_start_time).toLocaleString('pt-BR')}
+                          </div>
+                          <div>
+                            <span className="font-medium">Tempo restante:</span> {sessionInfo.remaining_time_minutes} minutos
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="flex justify-center gap-4">
                 <Button variant="outline" onClick={() => navigate("/aluno/avaliacoes")}>
                   <Home className="h-4 w-4 mr-2" />
@@ -270,6 +302,8 @@ export default function TakeEvaluation() {
                   timeRemaining={timeRemaining}
                   isTimeUp={isTimeUp}
                   isPaused={isPaused} // ✅ NOVO: passar estado de pausa
+                  timeLimitMinutes={sessionInfo?.time_limit_minutes} // ✅ NOVO: tempo limite da API
+                  remainingMinutes={sessionInfo?.remaining_time_minutes} // ✅ NOVO: tempo restante da API
                 />
 
                 <div className="text-right">
@@ -303,14 +337,33 @@ export default function TakeEvaluation() {
                   <AlertDescription className="flex items-center justify-between">
                     <div className="flex-1">
                       <span>
-                        ⏸️ <strong>Cronômetro pausado</strong> - 
-                        {!session?.started_at || session?.started_at === session?.created_at 
+                        ⏸️ <strong>Cronômetro pausado</strong> -
+                        {!sessionInfo?.timer_started
                           ? " Clique em 'Iniciar Cronômetro' para começar a contagem."
                           : " O timer foi pausado porque você saiu desta aba. Volte para esta aba para continuar."
                         }
                       </span>
+
+                      {/* ✅ NOVO: Informações detalhadas do cronômetro */}
+                      {sessionInfo && (
+                        <div className="mt-2 text-xs text-yellow-800">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <span className="font-medium">Tempo limite:</span> {sessionInfo.time_limit_minutes} minutos
+                            </div>
+                            <div>
+                              <span className="font-medium">Tempo restante:</span> {sessionInfo.remaining_time_minutes} minutos
+                            </div>
+                            {sessionInfo.timer_started && (
+                              <div className="col-span-2">
+                                <span className="font-medium">Iniciado em:</span> {new Date(sessionInfo.actual_start_time).toLocaleString('pt-BR')}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    {(!session?.started_at || session?.started_at === session?.created_at) && (
+                    {(!sessionInfo?.timer_started) && (
                       <Button
                         onClick={startTimerManually}
                         disabled={isSubmitting}
@@ -407,7 +460,7 @@ export default function TakeEvaluation() {
                           // Se image é um objeto com url
                           const imageUrl = typeof image === 'string' ? image : image?.url || image?.src;
                           if (!imageUrl) return null;
-                          
+
                           return (
                             <div key={index} className="max-w-md">
                               <img
@@ -474,7 +527,7 @@ export default function TakeEvaluation() {
               <AlertDialogDescription asChild>
                 <div>
                   <p className="mb-4">Você tem certeza que deseja enviar sua avaliação?</p>
-                  
+
                   <div className="space-y-2 mb-4">
                     <div>Questões respondidas: {Object.keys(answers).length} de {testData.questions.length || 0}</div>
                     <div>Tempo restante: {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}</div>
@@ -519,7 +572,7 @@ function QuestionOptions({
   if (question.type === "multiple_choice" || question.type === "multipleChoice") {
     // Usar options (que existe) ou alternatives (fallback)
     const questionOptions = question.options || question.alternatives || [];
-    
+
     return (
       <div className="space-y-3">
         <div className="text-sm font-medium text-gray-700 mb-3">
@@ -534,24 +587,23 @@ function QuestionOptions({
             const optionId = option.id || `option-${index}`;
             const optionText = option.text || option;
             const isSelected = answer === optionId;
-            
+
             return (
-              <div 
-                key={optionId} 
-                className={`flex items-start space-x-3 p-4 rounded-lg border cursor-pointer transition-all hover:bg-gray-50 ${
-                  isSelected 
-                    ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' 
-                    : 'border-gray-200 hover:border-gray-300'
-                } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+              <div
+                key={optionId}
+                className={`flex items-start space-x-3 p-4 rounded-lg border cursor-pointer transition-all hover:bg-gray-50 ${isSelected
+                  ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+                  : 'border-gray-200 hover:border-gray-300'
+                  } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                 onClick={() => !disabled && onAnswerChange(optionId)}
               >
-                <RadioGroupItem 
-                  value={optionId} 
-                  id={optionId} 
+                <RadioGroupItem
+                  value={optionId}
+                  id={optionId}
                   className="mt-0.5"
                 />
-                <Label 
-                  htmlFor={optionId} 
+                <Label
+                  htmlFor={optionId}
                   className="flex-1 cursor-pointer text-sm leading-relaxed"
                 >
                   <div className="flex items-start gap-2">
@@ -585,15 +637,14 @@ function QuestionOptions({
             { id: "false", text: "Falso" }
           ].map((option) => {
             const isSelected = answer === option.id;
-            
+
             return (
-              <div 
-                key={option.id} 
-                className={`flex items-center space-x-3 p-4 rounded-lg border cursor-pointer transition-all hover:bg-gray-50 ${
-                  isSelected 
-                    ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' 
-                    : 'border-gray-200 hover:border-gray-300'
-                } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+              <div
+                key={option.id}
+                className={`flex items-center space-x-3 p-4 rounded-lg border cursor-pointer transition-all hover:bg-gray-50 ${isSelected
+                  ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+                  : 'border-gray-200 hover:border-gray-300'
+                  } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                 onClick={() => !disabled && onAnswerChange(option.id)}
               >
                 <RadioGroupItem value={option.id} id={option.id} />
@@ -623,15 +674,14 @@ function QuestionOptions({
             const optionId = option.id || `option-${index}`;
             const optionText = option.text || option;
             const isSelected = selectedAnswers.includes(optionId);
-            
+
             return (
-              <div 
-                key={optionId} 
-                className={`flex items-start space-x-3 p-4 rounded-lg border cursor-pointer transition-all hover:bg-gray-50 ${
-                  isSelected 
-                    ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' 
-                    : 'border-gray-200 hover:border-gray-300'
-                } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+              <div
+                key={optionId}
+                className={`flex items-start space-x-3 p-4 rounded-lg border cursor-pointer transition-all hover:bg-gray-50 ${isSelected
+                  ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+                  : 'border-gray-200 hover:border-gray-300'
+                  } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                 onClick={() => {
                   if (!disabled) {
                     const newAnswers = isSelected
@@ -655,8 +705,8 @@ function QuestionOptions({
                   disabled={disabled}
                   className="mt-0.5"
                 />
-                <Label 
-                  htmlFor={optionId} 
+                <Label
+                  htmlFor={optionId}
                   className="flex-1 cursor-pointer text-sm leading-relaxed"
                 >
                   <div className="flex items-start gap-2">

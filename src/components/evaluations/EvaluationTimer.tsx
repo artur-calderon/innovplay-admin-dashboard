@@ -7,9 +7,18 @@ interface EvaluationTimerProps {
   isTimeUp: boolean;
   isPaused?: boolean; // ✅ NOVO: estado de pausa
   showWarning?: boolean;
+  timeLimitMinutes?: number; // ✅ NOVO: tempo limite em minutos
+  remainingMinutes?: number; // ✅ NOVO: tempo restante em minutos
 }
 
-export function EvaluationTimer({ timeRemaining, isTimeUp, isPaused = false, showWarning }: EvaluationTimerProps) {
+export function EvaluationTimer({
+  timeRemaining,
+  isTimeUp,
+  isPaused = false,
+  showWarning,
+  timeLimitMinutes,
+  remainingMinutes
+}: EvaluationTimerProps) {
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -44,15 +53,39 @@ export function EvaluationTimer({ timeRemaining, isTimeUp, isPaused = false, sho
     return formatTime(timeRemaining);
   };
 
+  // ✅ NOVO: Calcular porcentagem de tempo restante
+  const getTimePercentage = () => {
+    if (!timeLimitMinutes) return 0;
+    const totalSeconds = timeLimitMinutes * 60;
+    return Math.max(0, (timeRemaining / totalSeconds) * 100);
+  };
+
   return (
-    <Badge 
-      variant={getTimerColor()} 
-      className={`flex items-center gap-1 font-mono text-sm px-3 py-1 ${
-        showWarning || timeRemaining <= 300 ? 'animate-pulse' : ''
-      } ${isPaused ? 'bg-yellow-100 text-yellow-800 border-yellow-300' : ''}`} // ✅ NOVO: estilo especial para pausado
-    >
-      {getTimerIcon()}
-      {getTimerText()}
-    </Badge>
+    <div className="flex flex-col items-end gap-1">
+      <Badge
+        variant={getTimerColor()}
+        className={`flex items-center gap-1 font-mono text-sm px-3 py-1 ${showWarning || timeRemaining <= 300 ? 'animate-pulse' : ''
+          } ${isPaused ? 'bg-yellow-100 text-yellow-800 border-yellow-300' : ''}`} // ✅ NOVO: estilo especial para pausado
+      >
+        {getTimerIcon()}
+        {getTimerText()}
+      </Badge>
+
+      {/* ✅ NOVO: Informações adicionais do cronômetro */}
+      {timeLimitMinutes && remainingMinutes !== undefined && (
+        <div className="text-xs text-muted-foreground text-right">
+          <div className="flex items-center gap-2">
+            <span>{remainingMinutes}/{timeLimitMinutes} min</span>
+            <div className="w-16 h-1 bg-gray-200 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-500 transition-all duration-300"
+                style={{ width: `${getTimePercentage()}%` }}
+              />
+            </div>
+            <span>{Math.round(getTimePercentage())}%</span>
+          </div>
+        </div>
+      )}
+    </div>
   );
 } 

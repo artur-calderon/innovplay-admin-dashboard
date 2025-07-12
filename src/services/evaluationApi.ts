@@ -10,6 +10,26 @@ import {
     SubmitTestResponse
 } from '@/types/evaluation-types';
 
+// ✅ NOVO: Interface para a resposta da rota de sessão
+export interface TestSessionInfo {
+    session_id: string;
+    test_id: string;
+    student_id: string;
+    status: string;
+    started_at: string;
+    actual_start_time: string;
+    time_limit_minutes: number;
+    remaining_time_minutes: number;
+    duration_minutes: number;
+    is_expired: boolean;
+    timer_started: boolean;
+    total_questions: number;
+    correct_answers: number;
+    score: number;
+    grade: string;
+    session_exists: boolean;
+}
+
 export class EvaluationApiService {
     // Teste de conectividade
     static async testConnection(): Promise<boolean> {
@@ -24,6 +44,21 @@ export class EvaluationApiService {
             console.error('Erro de conectividade:', error);
             console.error('Verifique se a API está rodando em:', api.defaults.baseURL);
             return false;
+        }
+    }
+
+    // ✅ NOVO: Buscar informações da sessão do teste
+    static async getTestSessionInfo(testId: string): Promise<TestSessionInfo> {
+        console.log('Buscando informações da sessão do teste:', testId);
+
+        try {
+            const response = await api.get(`/student-answers/test/${testId}/session`);
+            console.log('Resposta da API getTestSessionInfo:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('Erro ao buscar informações da sessão:', error);
+            console.error('Detalhes do erro:', error.response?.data);
+            throw error;
         }
     }
 

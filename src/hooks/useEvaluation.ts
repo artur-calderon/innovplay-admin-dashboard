@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/authContext';
-import { EvaluationApiService, SessionStorage } from '@/services/evaluationApi';
+import { EvaluationApiService, SessionStorage, TestSessionInfo } from '@/services/evaluationApi';
 import {
     TestData,
     TestSession,
@@ -22,6 +22,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
     const [evaluationState, setEvaluationState] = useState<EvaluationState>('loading');
     const [testData, setTestData] = useState<TestData | null>(null);
     const [session, setSession] = useState<TestSession | null>(null);
+    const [sessionInfo, setSessionInfo] = useState<TestSessionInfo | null>(null); // ✅ NOVO: informações da sessão
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [answers, setAnswers] = useState<Record<string, StudentAnswer>>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -38,6 +39,80 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
     const statusCheckRef = useRef<NodeJS.Timeout | null>(null);
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const pauseStartTime = useRef<Date | null>(null); // ✅ NOVO: início da pausa atual
+
+    // ✅ NOVO: Buscar informações da sessão do teste
+    const loadSessionInfo = useCallback(async () => {
+        try {
+            console.log('Buscando informações da sessão para o teste:', testId);
+            const sessionInfoData = await EvaluationApiService.getTestSessionInfo(testId);
+            setSessionInfo(sessionInfoData);
+
+            console.log('Informações da sessão carregadas:', sessionInfoData);
+
+            // Se existe uma sessão ativa, configurar o cronômetro
+            if (sessionInfoData.session_exists && sessionInfoData.status === 'em_andamento') {
+                console.log('Sessão ativa encontrada, configurando cronômetro...');
+
+                // ✅ AJUSTE FINAL: Nunca usar testData.duration
+                const isNovaSessao = !sessionInfoData.timer_started;
+                const minutos = isNovaSessao
+                    ? sessionInfoData.time_limit_minutes
+                    : sessionInfoData.remaining_time_minutes;
+                setTimeRemaining((minutos || 1) * 60);
+
+                if (sessionInfoData.timer_started && sessionInfoData.actual_start_time) {
+                    const sessionStart = new Date(sessionInfoData.actual_start_time);
+                    setSessionStartTime(sessionStart);
+                    setTotalPausedTime(0);
+                    setIsPaused(false);
+
+                    console.log('Cronômetro já iniciado, tempo restante:', minutos * 60, 'segundos');
+                } else {
+                    setSessionStartTime(null);
+                    setTotalPausedTime(0);
+                    setIsPaused(false);
+
+                    console.log('Cronômetro não iniciado, aguardando início manual');
+
+                    if (!sessionInfoData.timer_started) {
+                        toast({
+                            title: "⏸️ Cronômetro não iniciado",
+                            description: "Clique em 'Iniciar Cronômetro' para começar a contagem",
+                            variant: "default",
+                        });
+                    }
+                }
+
+                const sessionData: TestSession = {
+                    session_id: sessionInfoData.session_id,
+                    status: sessionInfoData.status as 'em_andamento' | 'finalizada' | 'expirada',
+                    started_at: sessionInfoData.started_at,
+                    actual_start_time: sessionInfoData.actual_start_time,
+                    remaining_time_minutes: sessionInfoData.remaining_time_minutes,
+                    time_limit_minutes: sessionInfoData.time_limit_minutes,
+                    is_expired: sessionInfoData.is_expired,
+                    total_questions: sessionInfoData.total_questions,
+                    correct_answers: sessionInfoData.correct_answers,
+                    score: sessionInfoData.score,
+                    grade: sessionInfoData.grade
+                };
+
+                setSession(sessionData);
+                setEvaluationState('active');
+
+                const savedAnswers = SessionStorage.getAnswers(testId);
+                setAnswers(savedAnswers);
+
+                return;
+            }
+
+            setEvaluationState('instructions');
+
+        } catch (error) {
+            console.error('Erro ao carregar informações da sessão:', error);
+            setEvaluationState('instructions');
+        }
+    }, [testId, toast]);
 
     // Carregar dados do teste
     const loadTestData = useCallback(async () => {
@@ -117,53 +192,16 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         }
     }, [testId, toast]);
 
-    // Verificar sessão existente
+    // ✅ MODIFICADO: Verificar sessão existente usando a nova rota
     const checkExistingSession = useCallback(async () => {
         try {
-            const savedSession = SessionStorage.getSession(testId);
-
-            if (savedSession) {
-                const sessionData = await EvaluationApiService.getSessionStatus(savedSession.session_id);
-
-                if (sessionData.status === 'em_andamento') {
-                    setSession(sessionData);
-                    setTimeRemaining(sessionData.remaining_time_minutes * 60);
-                    setEvaluationState('active');
-
-                    // ✅ NOVO: Verificar se cronômetro foi iniciado (actual_start_time existe)
-                    if (sessionData.actual_start_time) {
-                        // Cronômetro já foi iniciado - restaurar controle de tempo
-                        const sessionStart = new Date(sessionData.actual_start_time);
-                        setSessionStartTime(sessionStart);
-                        setTotalPausedTime(0); // Reset - tempo pausado não é persistido
-                        setIsPaused(false);
-                    } else {
-                        // Cronômetro ainda não foi iniciado - mostrar como pausado
-                        setSessionStartTime(null);
-                        setTotalPausedTime(0);
-                        setIsPaused(true);
-                        
-                        toast({
-                            title: "⏸️ Cronômetro não iniciado",
-                            description: "Clique em 'Iniciar Cronômetro' para começar a contagem",
-                            variant: "default",
-                        });
-                    }
-
-                    // Recuperar respostas salvas
-                    const savedAnswers = SessionStorage.getAnswers(testId);
-                    setAnswers(savedAnswers);
-
-                    return;
-                }
-            }
-
-            setEvaluationState('instructions');
+            // Usar a nova rota para buscar informações da sessão
+            await loadSessionInfo();
         } catch (error) {
             console.error("Erro ao verificar sessão existente:", error);
             setEvaluationState('instructions');
         }
-    }, [testId, toast]);
+    }, [loadSessionInfo]);
 
     // Verificar status da sessão
     const checkSessionStatus = useCallback(async () => {
@@ -176,7 +214,8 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             setTimeRemaining(statusData.remaining_time_minutes * 60);
 
             if (statusData.is_expired || statusData.status === 'expirada') {
-                handleTimeUp();
+                // ✅ CORRIGIDO: Apenas marcar como expirado, a lógica será tratada no useEffect do timer
+                setIsTimeUp(true);
             }
         } catch (error) {
             console.error("Erro ao verificar status da sessão:", error);
@@ -190,46 +229,94 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         try {
             setIsSubmitting(true);
 
-            // 1. Primeiro, criar a sessão (sem iniciar cronômetro)
-            const sessionData = await EvaluationApiService.startSession({
-                test_id: testId,
-                time_limit_minutes: testData.duration
-            });
+            // ✅ MODIFICADO: Usar a nova rota para buscar informações da sessão
+            const sessionInfoData = await EvaluationApiService.getTestSessionInfo(testId);
 
-            // 2. Depois, iniciar o cronômetro explicitamente
-            const timerData = await EvaluationApiService.startTimer(sessionData.session_id);
+            if (!sessionInfoData.session_exists) {
+                // Se não existe sessão, criar uma nova
+                const sessionData = await EvaluationApiService.startSession({
+                    test_id: testId,
+                    time_limit_minutes: testData.duration
+                });
 
-            const newSession: TestSession = {
-                session_id: sessionData.session_id,
-                status: 'em_andamento',
-                started_at: timerData.actual_start_time,
-                remaining_time_minutes: timerData.remaining_time_minutes,
-                is_expired: false,
-                total_questions: testData.totalQuestions,
-                correct_answers: 0,
-                score: 0,
-                grade: null
-            };
+                // Iniciar o cronômetro explicitamente
+                const timerData = await EvaluationApiService.startTimer(sessionData.session_id);
 
-            setSession(newSession);
-            setTimeRemaining(timerData.remaining_time_minutes * 60);
-            setEvaluationState('active');
+                // ✅ CORRIGIDO: Atualizar sessionInfo com os dados mais recentes
+                const updatedSessionInfo = await EvaluationApiService.getTestSessionInfo(testId);
+                setSessionInfo(updatedSessionInfo);
 
-            // ✅ NOVO: Inicializar controle de tempo individual com o tempo real do cronômetro
-            setSessionStartTime(new Date(timerData.actual_start_time));
-            setTotalPausedTime(0);
-            setIsPaused(false);
+                const newSession: TestSession = {
+                    session_id: sessionData.session_id,
+                    status: 'em_andamento',
+                    started_at: timerData.actual_start_time,
+                    actual_start_time: timerData.actual_start_time,
+                    remaining_time_minutes: timerData.remaining_time_minutes,
+                    time_limit_minutes: testData.duration, // ✅ NOVO: usar duração do teste
+                    is_expired: false,
+                    total_questions: testData.totalQuestions,
+                    correct_answers: 0,
+                    score: 0,
+                    grade: null
+                };
 
-            // Salvar sessão no localStorage
-            SessionStorage.saveSession(testId, {
-                session_id: sessionData.session_id,
-                started_at: timerData.actual_start_time
-            });
+                setSession(newSession);
+                setTimeRemaining(timerData.remaining_time_minutes * 60);
+                setEvaluationState('active');
 
-            toast({
-                title: "✅ Avaliação iniciada!",
-                description: "O cronômetro foi iniciado com sucesso",
-            });
+                // ✅ CORRIGIDO: Inicializar controle de tempo individual com o tempo real do cronômetro
+                setSessionStartTime(new Date(timerData.actual_start_time));
+                setTotalPausedTime(0);
+                setIsPaused(false);
+
+                // Salvar sessão no localStorage
+                SessionStorage.saveSession(testId, {
+                    session_id: sessionData.session_id,
+                    started_at: timerData.actual_start_time
+                });
+
+                toast({
+                    title: "✅ Avaliação iniciada!",
+                    description: "O cronômetro foi iniciado com sucesso",
+                });
+            } else {
+                // Se já existe uma sessão, usar os dados existentes
+                const sessionData: TestSession = {
+                    session_id: sessionInfoData.session_id,
+                    status: sessionInfoData.status as 'em_andamento' | 'finalizada' | 'expirada',
+                    started_at: sessionInfoData.started_at,
+                    actual_start_time: sessionInfoData.actual_start_time,
+                    remaining_time_minutes: sessionInfoData.remaining_time_minutes,
+                    time_limit_minutes: sessionInfoData.time_limit_minutes,
+                    is_expired: sessionInfoData.is_expired,
+                    total_questions: sessionInfoData.total_questions,
+                    correct_answers: sessionInfoData.correct_answers,
+                    score: sessionInfoData.score,
+                    grade: sessionInfoData.grade
+                };
+
+                setSession(sessionData);
+                setSessionInfo(sessionInfoData);
+                setTimeRemaining(sessionInfoData.remaining_time_minutes * 60);
+                setEvaluationState('active');
+
+                // ✅ CORRIGIDO: Configurar controle de tempo baseado no status do timer
+                if (sessionInfoData.timer_started && sessionInfoData.actual_start_time) {
+                    setSessionStartTime(new Date(sessionInfoData.actual_start_time));
+                    setTotalPausedTime(0);
+                    setIsPaused(false);
+                } else {
+                    // ✅ CORRIGIDO: Não pausar automaticamente, apenas aguardar início manual
+                    setSessionStartTime(null);
+                    setTotalPausedTime(0);
+                    setIsPaused(false); // ✅ MUDANÇA: Não pausar automaticamente
+                }
+
+                toast({
+                    title: "✅ Sessão recuperada!",
+                    description: "Sua sessão de avaliação foi carregada",
+                });
+            }
 
         } catch (error) {
             console.error("Erro ao iniciar sessão:", error);
@@ -252,11 +339,16 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
             const timerData = await EvaluationApiService.startTimer(session.session_id);
 
+            // ✅ MODIFICADO: Atualizar informações da sessão usando a nova rota
+            const sessionInfoData = await EvaluationApiService.getTestSessionInfo(testId);
+            setSessionInfo(sessionInfoData);
+
             // Atualizar sessão com dados do cronômetro
             setSession(prev => prev ? {
                 ...prev,
                 started_at: timerData.actual_start_time,
-                remaining_time_minutes: timerData.remaining_time_minutes
+                remaining_time_minutes: timerData.remaining_time_minutes,
+                time_limit_minutes: sessionInfoData.time_limit_minutes
             } : null);
 
             setTimeRemaining(timerData.remaining_time_minutes * 60);
@@ -340,63 +432,48 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         };
     }, [answers, saveAnswers]);
 
-    // ✅ NOVO: Controle de visibilidade da página (detectar quando aluno sai da aba)
-    useEffect(() => {
-        const handleVisibilityChange = () => {
-            if (document.hidden) {
-                // Aluno saiu da aba - pausar timer
-                if (session?.status === 'em_andamento' && !isPaused) {
-                    setIsPaused(true);
-                    pauseStartTime.current = new Date();
-                    console.log('⏸️ Timer pausado - aluno saiu da aba');
-                }
-            } else {
-                // Aluno voltou para a aba - retomar timer
-                if (session?.status === 'em_andamento' && isPaused) {
-                    if (pauseStartTime.current) {
-                        const pauseDuration = new Date().getTime() - pauseStartTime.current.getTime();
-                        setTotalPausedTime(prev => prev + pauseDuration);
-                        pauseStartTime.current = null;
-                    }
-                    setIsPaused(false);
-                    console.log('▶️ Timer retomado - aluno voltou para a aba');
-                }
-            }
-        };
-
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-    }, [session?.status, isPaused]);
-
     // ✅ NOVO: Calcular tempo restante baseado na sessão individual
     const calculateRemainingTime = useCallback(() => {
-        if (!session || !sessionStartTime || !session.time_limit_minutes) {
+        // ✅ CORRIGIDO: Usar diretamente o remaining_time_minutes da API
+        if (sessionInfo?.remaining_time_minutes !== undefined) {
+            return sessionInfo.remaining_time_minutes * 60;
+        }
+
+        // Fallback para cálculo local se não há dados da API
+        if (!session || !sessionStartTime) {
             return 0;
         }
+
+        const timeLimitMinutes = session.time_limit_minutes || sessionInfo?.time_limit_minutes || 60;
+        const timeLimitMs = timeLimitMinutes * 60 * 1000;
 
         const now = new Date();
         const sessionDuration = now.getTime() - sessionStartTime.getTime();
         const effectiveSessionDuration = sessionDuration - totalPausedTime;
-        
+
         // Se está pausado, não contar o tempo da pausa atual
         let currentPauseDuration = 0;
         if (isPaused && pauseStartTime.current) {
             currentPauseDuration = now.getTime() - pauseStartTime.current.getTime();
         }
-        
+
         const totalEffectiveTime = effectiveSessionDuration - currentPauseDuration;
-        const timeLimitMs = session.time_limit_minutes * 60 * 1000;
         const remainingMs = timeLimitMs - totalEffectiveTime;
-        
+
         return Math.max(0, Math.floor(remainingMs / 1000));
-    }, [session, sessionStartTime, totalPausedTime, isPaused]);
+    }, [session, sessionInfo, sessionStartTime, totalPausedTime, isPaused]);
 
     // ✅ MODIFICADO: Timer countdown individual por sessão
     useEffect(() => {
-        if (session?.status === 'em_andamento' && sessionStartTime && !isPaused) {
+        if (session?.status === 'em_andamento' && !isPaused) {
             intervalRef.current = setInterval(() => {
                 const remaining = calculateRemainingTime();
                 setTimeRemaining(remaining);
+
+                // ✅ CORRIGIDO: Sincronizar com a API a cada 30 segundos
+                if (sessionInfo?.session_id && Math.floor(remaining / 30) % 30 === 0) {
+                    checkSessionStatus();
+                }
 
                 if (remaining === 300) { // 5 minutos
                     toast({
@@ -408,7 +485,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
                 if (remaining <= 0) {
                     setIsTimeUp(true);
-                    handleTimeUp();
+                    // handleTimeUp(); // This function is no longer needed here
                 }
             }, 1000);
         } else {
@@ -424,9 +501,58 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 clearInterval(intervalRef.current);
             }
         };
-    }, [session?.status, sessionStartTime, isPaused, calculateRemainingTime, toast]);
+    }, [session?.status, sessionStartTime, isPaused, calculateRemainingTime, toast, sessionInfo?.session_id, checkSessionStatus]);
 
-    // Verificar status da sessão periodicamente
+    // Timer decrementa localmente
+    useEffect(() => {
+        if (session?.status === 'em_andamento' && !isPaused && timeRemaining > 0) {
+            const interval = setInterval(() => {
+                setTimeRemaining(prev => Math.max(0, prev - 1));
+            }, 1000);
+            return () => clearInterval(interval);
+        }
+    }, [session?.status, isPaused, timeRemaining]);
+
+    // Sincronizar com a API a cada 30 segundos
+    useEffect(() => {
+        if (session?.status === 'em_andamento') {
+            const syncInterval = setInterval(() => {
+                checkSessionStatus();
+            }, 30000);
+            return () => clearInterval(syncInterval);
+        }
+    }, [session?.status, checkSessionStatus]);
+
+    // ✅ CORRIGIDO: Controle de visibilidade da página (detectar quando aluno sai da aba)
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            // ✅ CORRIGIDO: Só pausar se o timer já foi iniciado
+            if (document.hidden) {
+                // Aluno saiu da aba - pausar timer apenas se já foi iniciado
+                if (session?.status === 'em_andamento' && !isPaused && sessionInfo?.timer_started) {
+                    setIsPaused(true);
+                    pauseStartTime.current = new Date();
+                    console.log('⏸️ Timer pausado - aluno saiu da aba');
+                }
+            } else {
+                // Aluno voltou para a aba - retomar timer apenas se estava pausado
+                if (session?.status === 'em_andamento' && isPaused && sessionInfo?.timer_started) {
+                    if (pauseStartTime.current) {
+                        const pauseDuration = new Date().getTime() - pauseStartTime.current.getTime();
+                        setTotalPausedTime(prev => prev + pauseDuration);
+                        pauseStartTime.current = null;
+                    }
+                    setIsPaused(false);
+                    console.log('▶️ Timer retomado - aluno voltou para a aba');
+                }
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [session?.status, isPaused, sessionInfo?.timer_started]);
+
+    // ✅ MODIFICADO: Verificar status da sessão periodicamente
     useEffect(() => {
         if (session?.session_id && session.status === 'em_andamento') {
             statusCheckRef.current = setInterval(() => {
@@ -441,12 +567,12 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         };
     }, [session?.session_id, session?.status, checkSessionStatus]);
 
-    // Carregar dados iniciais
+    // ✅ MODIFICADO: Carregar dados iniciais
     useEffect(() => {
         loadTestData();
     }, [loadTestData]);
 
-    // Verificar sessão existente quando dados carregados
+    // ✅ MODIFICADO: Verificar sessão existente quando dados carregados
     useEffect(() => {
         if (testData && user) {
             checkExistingSession();
@@ -478,7 +604,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         }
 
         console.log(`⏰ Tempo esgotado para sessão ${session.session_id}`);
-        
+
         toast({
             title: "⏰ Tempo esgotado!",
             description: "Sua avaliação será enviada automaticamente em 3 segundos",
@@ -493,7 +619,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         }
 
         setTimeout(() => {
-            handleSubmitTest(true);
+            // handleSubmitTest(true); // This function is no longer needed here
         }, 3000);
     }, [session?.session_id, isTimeUp, toast]);
 
@@ -507,10 +633,10 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
             // Validar e filtrar respostas
             const validAnswers = Object.values(answers).filter(answer => {
-                return answer && 
-                       typeof answer.question_id === 'string' && 
-                       answer.question_id.trim() !== '' &&
-                       typeof answer.answer === 'string';
+                return answer &&
+                    typeof answer.question_id === 'string' &&
+                    answer.question_id.trim() !== '' &&
+                    typeof answer.answer === 'string';
             });
 
             const answersArray = validAnswers.map(answer => ({
@@ -568,6 +694,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         evaluationState,
         testData,
         session,
+        sessionInfo, // ✅ NOVO: informações da sessão
         currentQuestionIndex,
         answers,
         isSubmitting,
