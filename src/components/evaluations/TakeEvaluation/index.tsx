@@ -65,7 +65,6 @@ export default function TakeEvaluation() {
     evaluationState,
     testData,
     session,
-    sessionInfo, // ✅ NOVO: informações da sessão
     currentQuestionIndex,
     answers,
     isSubmitting,
@@ -73,12 +72,11 @@ export default function TakeEvaluation() {
     results,
     timeRemaining,
     isTimeUp,
-    isPaused, // ✅ NOVO: estado de pausa
+    isPaused,
     startTestSession,
-    startTimerManually, // ✅ NOVO: função para iniciar cronômetro manualmente
-    handleAnswerChange,
-    navigateToQuestion,
-    handleSubmitTest
+    saveAnswer,
+    submitTest,
+    navigateToQuestion
   } = useEvaluation({ testId: evaluationId });
 
 
@@ -151,8 +149,8 @@ export default function TakeEvaluation() {
               <div className="text-center p-4 border rounded-lg">
                 <Clock className="h-8 w-8 mx-auto mb-2 text-blue-600" />
                 <div className="font-semibold">
-                  {/* ✅ MODIFICADO: Usar time_limit_minutes da API se disponível */}
-                  {sessionInfo?.time_limit_minutes || testData?.duration || 60} minutos
+                  {/* ✅ MODIFICADO: Usar duration do backend */}
+                  {testData?.duration || 60} minutos
                 </div>
                 <div className="text-sm text-muted-foreground">Tempo disponível</div>
               </div>
@@ -171,25 +169,25 @@ export default function TakeEvaluation() {
             <div className="text-center">
               <p className="mb-4">{testData.instructions}</p>
 
-              {/* ✅ NOVO: Informações adicionais sobre o cronômetro */}
-              {sessionInfo && (
+              {/* ✅ NOVO: Informações sobre o cronômetro */}
+              {session && (
                 <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <div className="text-sm text-blue-800">
                     <div className="font-medium mb-1">Informações do Cronômetro:</div>
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div>
-                        <span className="font-medium">Tempo limite:</span> {sessionInfo.time_limit_minutes} minutos
+                        <span className="font-medium">Tempo limite:</span> {session.time_limit_minutes} minutos
                       </div>
                       <div>
-                        <span className="font-medium">Status:</span> {sessionInfo.timer_started ? 'Iniciado' : 'Pausado'}
+                        <span className="font-medium">Status:</span> {session.status === 'em_andamento' ? 'Ativo' : 'Pausado'}
                       </div>
-                      {sessionInfo.timer_started && (
+                      {session.actual_start_time && (
                         <>
                           <div>
-                            <span className="font-medium">Iniciado em:</span> {new Date(sessionInfo.actual_start_time).toLocaleString('pt-BR')}
+                            <span className="font-medium">Iniciado em:</span> {new Date(session.actual_start_time).toLocaleString('pt-BR')}
                           </div>
                           <div>
-                            <span className="font-medium">Tempo restante:</span> {sessionInfo.remaining_time_minutes} minutos
+                            <span className="font-medium">Tempo restante:</span> {session.remaining_time_minutes} minutos
                           </div>
                         </>
                       )}
@@ -282,7 +280,91 @@ export default function TakeEvaluation() {
 
   // Active test screen
   if (evaluationState === 'active' && testData && session) {
-    const currentQuestion = testData.questions[currentQuestionIndex];
+    // ✅ NOVO: Verificação adicional para garantir que os dados estão carregados
+    if (!testData.questions || testData.questions.length === 0) {
+      return (
+        <div className="container mx-auto px-4 py-6">
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              <div className="space-y-4">
+                <div>
+                  <strong>Erro ao carregar questões</strong>
+                </div>
+                <div className="text-sm">
+                  Nenhuma questão encontrada na avaliação. Possíveis causas:
+                  <ul className="list-disc list-inside mt-2 space-y-1">
+                    <li>Dados da avaliação incompletos</li>
+                    <li>Problema na comunicação com o servidor</li>
+                    <li>Avaliação sem questões cadastradas</li>
+                  </ul>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.location.reload()}
+                  >
+                    Tentar Novamente
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate("/aluno/avaliacoes")}
+                  >
+                    Voltar às Avaliações
+                  </Button>
+                </div>
+              </div>
+            </AlertDescription>
+          </Alert>
+        </div>
+      );
+    }
+
+    const currentQuestion = testData.questions?.[currentQuestionIndex];
+
+    // ✅ NOVO: Verificação de segurança para currentQuestion
+    if (!currentQuestion) {
+      return (
+        <div className="container mx-auto px-4 py-6">
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              <div className="space-y-4">
+                <div>
+                  <strong>Erro ao carregar questão</strong>
+                </div>
+                <div className="text-sm">
+                  Questão não encontrada. Possíveis causas:
+                  <ul className="list-disc list-inside mt-2 space-y-1">
+                    <li>Índice da questão inválido: {currentQuestionIndex}</li>
+                    <li>Total de questões: {testData.questions?.length || 0}</li>
+                    <li>Dados da avaliação incompletos</li>
+                  </ul>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.location.reload()}
+                  >
+                    Tentar Novamente
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate("/aluno/avaliacoes")}
+                  >
+                    Voltar às Avaliações
+                  </Button>
+                </div>
+              </div>
+            </AlertDescription>
+          </Alert>
+        </div>
+      );
+    }
 
     return (
       <div className="min-h-screen bg-gray-50">
@@ -301,9 +383,9 @@ export default function TakeEvaluation() {
                 <EvaluationTimer
                   timeRemaining={timeRemaining}
                   isTimeUp={isTimeUp}
-                  isPaused={isPaused} // ✅ NOVO: passar estado de pausa
-                  timeLimitMinutes={sessionInfo?.time_limit_minutes} // ✅ NOVO: tempo limite da API
-                  remainingMinutes={sessionInfo?.remaining_time_minutes} // ✅ NOVO: tempo restante da API
+                  isPaused={isPaused}
+                  timeLimitMinutes={testData?.duration}
+                  remainingMinutes={session?.remaining_time_minutes}
                 />
 
                 <div className="text-right">
@@ -338,51 +420,28 @@ export default function TakeEvaluation() {
                     <div className="flex-1">
                       <span>
                         ⏸️ <strong>Cronômetro pausado</strong> -
-                        {!sessionInfo?.timer_started
-                          ? " Clique em 'Iniciar Cronômetro' para começar a contagem."
-                          : " O timer foi pausado porque você saiu desta aba. Volte para esta aba para continuar."
-                        }
+                        O timer foi pausado porque você saiu desta aba. Volte para esta aba para continuar.
                       </span>
 
                       {/* ✅ NOVO: Informações detalhadas do cronômetro */}
-                      {sessionInfo && (
+                      {session && (
                         <div className="mt-2 text-xs text-yellow-800">
                           <div className="grid grid-cols-2 gap-2">
                             <div>
-                              <span className="font-medium">Tempo limite:</span> {sessionInfo.time_limit_minutes} minutos
+                              <span className="font-medium">Tempo limite:</span> {session.time_limit_minutes} minutos
                             </div>
                             <div>
-                              <span className="font-medium">Tempo restante:</span> {sessionInfo.remaining_time_minutes} minutos
+                              <span className="font-medium">Tempo restante:</span> {session.remaining_time_minutes} minutos
                             </div>
-                            {sessionInfo.timer_started && (
+                            {session.actual_start_time && (
                               <div className="col-span-2">
-                                <span className="font-medium">Iniciado em:</span> {new Date(sessionInfo.actual_start_time).toLocaleString('pt-BR')}
+                                <span className="font-medium">Iniciado em:</span> {new Date(session.actual_start_time).toLocaleString('pt-BR')}
                               </div>
                             )}
                           </div>
                         </div>
                       )}
                     </div>
-                    {(!sessionInfo?.timer_started) && (
-                      <Button
-                        onClick={startTimerManually}
-                        disabled={isSubmitting}
-                        size="sm"
-                        className="ml-4"
-                      >
-                        {isSubmitting ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Iniciando...
-                          </>
-                        ) : (
-                          <>
-                            <Play className="h-4 w-4 mr-2" />
-                            Iniciar Cronômetro
-                          </>
-                        )}
-                      </Button>
-                    )}
                   </AlertDescription>
                 </Alert>
               </div>
@@ -447,14 +506,14 @@ export default function TakeEvaluation() {
                   {/* Conteúdo da questão */}
                   <div className="space-y-4">
                     {/* Primeiro enunciado */}
-                    {(currentQuestion.formattedText || currentQuestion.text) && (
+                    {(currentQuestion?.formattedText || currentQuestion?.text) && (
                       <div className="text-base leading-relaxed">
-                        <div dangerouslySetInnerHTML={{ __html: currentQuestion.formattedText || currentQuestion.text }} />
+                        <div dangerouslySetInnerHTML={{ __html: currentQuestion?.formattedText || currentQuestion?.text || '' }} />
                       </div>
                     )}
 
                     {/* Imagens */}
-                    {currentQuestion.images && Array.isArray(currentQuestion.images) && currentQuestion.images.length > 0 && (
+                    {currentQuestion?.images && Array.isArray(currentQuestion.images) && currentQuestion.images.length > 0 && (
                       <div className="flex flex-wrap gap-4 my-4">
                         {currentQuestion.images.map((image, index) => {
                           // Se image é um objeto com url
@@ -479,9 +538,9 @@ export default function TakeEvaluation() {
                     )}
 
                     {/* Segundo enunciado */}
-                    {(currentQuestion.secondStatement || currentQuestion.secondstatement) && (
+                    {(currentQuestion?.secondStatement || currentQuestion?.secondstatement) && (
                       <div className="text-base leading-relaxed">
-                        <div dangerouslySetInnerHTML={{ __html: currentQuestion.secondStatement || currentQuestion.secondstatement }} />
+                        <div dangerouslySetInnerHTML={{ __html: currentQuestion?.secondStatement || currentQuestion?.secondstatement || '' }} />
                       </div>
                     )}
                   </div>
@@ -489,8 +548,13 @@ export default function TakeEvaluation() {
                   {/* Opções de resposta */}
                   <QuestionOptions
                     question={currentQuestion}
-                    answer={answers[currentQuestion.id]?.answer}
-                    onAnswerChange={(newAnswer) => handleAnswerChange(currentQuestion.id, newAnswer)}
+                    answer={answers[currentQuestion?.id]?.answer}
+                    onAnswerChange={(newAnswer) => {
+                      const formattedAnswer = Array.isArray(newAnswer) ? newAnswer.join(',') : (newAnswer || '');
+                      if (currentQuestion?.id) {
+                        saveAnswer(currentQuestion.id, formattedAnswer);
+                      }
+                    }}
                     disabled={isTimeUp}
                   />
 
@@ -542,7 +606,7 @@ export default function TakeEvaluation() {
             <AlertDialogFooter>
               <AlertDialogCancel disabled={isSubmitting}>Cancelar</AlertDialogCancel>
               <AlertDialogAction
-                onClick={() => handleSubmitTest(false)}
+                onClick={() => submitTest(false)}
                 disabled={isSubmitting}
               >
                 {isSubmitting ? "Enviando..." : "Confirmar Envio"}
