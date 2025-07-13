@@ -261,12 +261,13 @@ export const CreateEvaluationStep2 = ({
         })
       };
 
-      console.log("📤 Criando avaliação com dados no formato do backend:", {
-        ...backendEvaluationData,
-        totalQuestions: allQuestions.length,
-        selectedClasses: data.selectedClasses?.map(c => c.name),
-        selectedSchools: data.selectedSchools?.map(s => s.name)
-      });
+      // ✅ REMOVIDO: Console.log para apresentação
+      // console.log("📤 Criando avaliação com dados no formato do backend:", {
+      //   ...backendEvaluationData,
+      //   totalQuestions: allQuestions.length,
+      //   selectedClasses: data.selectedClasses?.map(c => c.name),
+      //   selectedSchools: data.selectedSchools?.map(s => s.name)
+      // });
 
       // Criar avaliação no backend usando o endpoint correto
       const response = await api.post("/test", backendEvaluationData);

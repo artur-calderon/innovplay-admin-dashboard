@@ -38,14 +38,12 @@ import {
   Trophy,
   Target,
   Zap,
-  Wifi,
-  WifiOff,
-  Bell
+  Info
 } from "lucide-react";
 import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { useRealTimeNotifications } from "@/hooks/useRealTimeNotifications";
+
 import { format, isAfter, isBefore, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -72,6 +70,15 @@ interface StudentEvaluation {
     lastAccess: string;
   };
   result?: {
+    score: number;
+    percentage: number;
+    correctAnswers: number;
+    wrongAnswers: number;
+    blankAnswers: number;
+    timeSpent: number;
+    completedAt: string;
+  };
+  student_result?: { // Adicionado para verificar o resultado do aluno
     score: number;
     percentage: number;
     correctAnswers: number;
@@ -130,13 +137,65 @@ export default function StudentEvaluations() {
 
   const { user } = useAuth();
   const { toast } = useToast();
-  const { notifications, isConnected, unreadCount } = useRealTimeNotifications();
 
   useEffect(() => {
     fetchStudentEvaluations();
     // Verificar se há avaliação em andamento no localStorage
     checkInProgressEvaluation();
+    
+    // ✅ NOVO: Atualizar status das avaliações periodicamente
+    const interval = setInterval(() => {
+      updateEvaluationStatuses();
+    }, 60000); // Atualizar a cada minuto
+    
+    return () => clearInterval(interval);
   }, []);
+  
+  // ✅ NOVO: Função para atualizar status das avaliações em tempo real
+  const updateEvaluationStatuses = () => {
+    setEvaluations(currentEvaluations => {
+      const updatedEvaluations = currentEvaluations.map(evaluation => {
+        const newStatus = determineEvaluationStatus(evaluation);
+        
+        // Se o status mudou para completed, limpar dados de progresso
+        if (newStatus === "completed" && evaluation.status !== "completed") {
+          const inProgress = localStorage.getItem("evaluation_in_progress");
+          if (inProgress) {
+            try {
+              const progressData = JSON.parse(inProgress);
+              if (progressData.evaluationId === evaluation.id) {
+                localStorage.removeItem("evaluation_in_progress");
+                localStorage.removeItem("current_evaluation_data");
+                setCurrentTaking(null);
+              }
+            } catch (e) {
+              // Ignorar erros de parsing
+            }
+          }
+          
+          toast({
+            title: "✅ Avaliação concluída!",
+            description: `A avaliação "${evaluation.title}" foi finalizada com sucesso.`,
+          });
+        }
+        
+        // Mostrar notificação quando uma avaliação ficar disponível
+        if (newStatus === "available" && evaluation.status === "pending") {
+          toast({
+            title: "📢 Avaliação disponível!",
+            description: `A avaliação "${evaluation.title}" está disponível para início.`,
+          });
+        }
+        
+        return {
+          ...evaluation,
+          status: newStatus
+        };
+      });
+      
+      return updatedEvaluations;
+    });
+  };
 
   const fetchStudentEvaluations = async () => {
     try {
@@ -182,7 +241,7 @@ export default function StudentEvaluations() {
           description: testData.test.description,
           subject: testData.test.subject || { id: 'default', name: 'Disciplina' },
           grade: testData.test.grade,
-          course: { id: testData.test.course, name: 'Curso' },
+          course: { id: 'course', name: 'Curso' },
           startDateTime: testData.class_test_info.application,
           endDateTime: testData.class_test_info.expiration,
           duration: testData.test.duration || 60, // em minutos
@@ -191,15 +250,18 @@ export default function StudentEvaluations() {
           type: testData.test.type || 'AVALIACAO',
           model: testData.test.model || 'SAEB',
           status: determineEvaluationStatus({
+            id: testData.test.id,
             startDateTime: testData.class_test_info.application,
             endDateTime: testData.class_test_info.expiration,
             availability: testData.availability,
-            class_test_info: testData.class_test_info
+            class_test_info: testData.class_test_info,
+            student_result: testData.student_result // ✅ Incluir resultado individual do aluno
           }),
           // Adicionar dados adicionais se disponíveis
           questions: testData.questions,
           availability: testData.availability,
-          class_test_info: testData.class_test_info
+          class_test_info: testData.class_test_info,
+          student_result: testData.student_result // ✅ Incluir resultado individual do aluno
         };
 
         return evaluation;
@@ -214,55 +276,79 @@ export default function StudentEvaluations() {
       const mockEvaluations = getMockEvaluations();
       setEvaluations(mockEvaluations);
 
-      toast({
-        title: "Modo de demonstração",
-        description: "Exibindo dados de exemplo. Backend não disponível.",
-        variant: "default",
-      });
+      // ✅ REMOVIDO: Toast de aviso de modo demonstração para apresentação
+      // toast({
+      //   title: "Modo de demonstração",
+      //   description: "Exibindo dados de exemplo. Backend não disponível.",
+      //   variant: "default",
+      // });
     } finally {
       setIsLoading(false);
     }
   };
 
   const determineEvaluationStatus = (evaluation: any): StudentEvaluation["status"] => {
+    if (evaluation.status === "finalizada" || (evaluation.availability && evaluation.availability.status === "finalizada")) {
+      localStorage.removeItem("evaluation_in_progress");
+      localStorage.removeItem("current_evaluation_data");
+      return "completed";
+    }
     const now = new Date();
     const startDate = parseISO(evaluation.startDateTime);
     const endDate = evaluation.endDateTime ? parseISO(evaluation.endDateTime) : null;
 
-    // Verificar se já foi completada
-    if (evaluation.result) {
+    // PRIORIDADE 1: Se o backend diz que está expirada, sempre retorna expired
+    if (evaluation.availability && evaluation.availability.status === 'expired') {
+      localStorage.removeItem("evaluation_in_progress");
+      localStorage.removeItem("current_evaluation_data");
+      return "expired";
+    }
+    // PRIORIDADE 2: Se o backend diz que está concluída, sempre retorna completed
+    if (evaluation.student_result || evaluation.result || (evaluation.availability && evaluation.availability.status === 'completed')) {
+      localStorage.removeItem("evaluation_in_progress");
+      localStorage.removeItem("current_evaluation_data");
       return "completed";
     }
 
-    // Verificar se está em progresso
+    // PRIORIDADE 3: Se há sessão ativa no localStorage
+    const inProgress = localStorage.getItem("evaluation_in_progress");
+    if (inProgress) {
+      try {
+        const progressData = JSON.parse(inProgress);
+        if (progressData.evaluationId === evaluation.id) {
+          return "in_progress";
+        }
+      } catch (e) {
+        localStorage.removeItem("evaluation_in_progress");
+      }
+    }
+
+    // PRIORIDADE 4: Progresso atual da API
     if (evaluation.currentProgress) {
       return "in_progress";
     }
 
-    // Usar informações de disponibilidade da API se disponível
+    // PRIORIDADE 5: Disponibilidade da API
     if (evaluation.availability) {
-      if (evaluation.availability.status === 'not_available') {
-        return "pending";
-      }
-      if (evaluation.availability.status === 'available') {
-        return "available";
-      }
-      if (evaluation.availability.status === 'expired') {
-        return "expired";
+      switch (evaluation.availability.status) {
+        case 'not_available':
+          return "pending";
+        case 'available':
+          return "available";
+        default:
+          break;
       }
     }
 
-    // Verificar se expirou
+    // PRIORIDADE 6: Datas
     if (endDate && isAfter(now, endDate)) {
+      localStorage.removeItem("evaluation_in_progress");
+      localStorage.removeItem("current_evaluation_data");
       return "expired";
     }
-
-    // Verificar se está disponível
     if (isAfter(now, startDate)) {
       return "available";
     }
-
-    // Ainda não começou
     return "pending";
   };
 
@@ -273,9 +359,17 @@ export default function StudentEvaluations() {
         const data = JSON.parse(inProgress);
         // Verificar se os dados são válidos
         if (data && data.evaluationId && typeof data.evaluationId === 'string') {
-          setCurrentTaking(data);
+          // Verificar se a avaliação ainda está em progresso
+          const evaluation = evaluations.find(e => e.id === data.evaluationId);
+          if (evaluation && evaluation.status === 'completed') {
+            // Avaliação foi concluída, limpar localStorage
+            localStorage.removeItem("evaluation_in_progress");
+            localStorage.removeItem("current_evaluation_data");
+            setCurrentTaking(null);
+          } else {
+            setCurrentTaking(data);
+          }
         } else {
-          console.warn("Dados de avaliação em progresso inválidos:", data);
           localStorage.removeItem("evaluation_in_progress");
         }
       } catch (error) {
@@ -293,12 +387,45 @@ export default function StudentEvaluations() {
   const handleConfirmStart = async () => {
     if (!selectedEvaluation) return;
 
+    // ✅ NOVO: Verificação rigorosa de horários antes de iniciar
+    const now = new Date();
+    const startDate = parseISO(selectedEvaluation.startDateTime);
+    const endDate = selectedEvaluation.endDateTime ? parseISO(selectedEvaluation.endDateTime) : null;
+
+    // Verificar se está dentro do período permitido
+    if (isBefore(now, startDate)) {
+      toast({
+        title: "⏰ Avaliação ainda não disponível",
+        description: `Esta avaliação só estará disponível a partir de ${format(startDate, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (endDate && isAfter(now, endDate)) {
+      toast({
+        title: "⏰ Avaliação expirada",
+        description: `O prazo para esta avaliação expirou em ${format(endDate, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    console.log("🚀 Iniciando avaliação:", {
+      evaluationId: selectedEvaluation.id,
+      title: selectedEvaluation.title,
+      now: now.toISOString(),
+      startDate: startDate.toISOString(),
+      endDate: endDate?.toISOString(),
+      isWithinTimeRange: true
+    });
+
     try {
       // Usar a API real para iniciar a sessão da avaliação
       const testId = selectedEvaluation.id;
       const response = await api.post(`/test/${testId}/start-session`);
       
-      console.log('Resposta da API de iniciar sessão:', response);
+      console.log('✅ Resposta da API de iniciar sessão:', response);
       const sessionData = response.data;
 
       // Buscar os dados completos da avaliação usando a API real
@@ -309,8 +436,8 @@ export default function StudentEvaluations() {
       sessionStorage.setItem("current_evaluation", JSON.stringify(evaluationData));
       sessionStorage.setItem("evaluation_session", JSON.stringify(sessionData));
       
-      console.log("Dados da avaliação salvos:", evaluationData);
-      console.log("Dados da sessão salvos:", sessionData);
+      console.log("📁 Dados da avaliação salvos:", evaluationData);
+      console.log("📁 Dados da sessão salvos:", sessionData);
 
       const takingData: EvaluationTaking = {
         evaluationId: testId,
@@ -328,18 +455,31 @@ export default function StudentEvaluations() {
       setConfirmStart(false);
 
       toast({
-        title: "Avaliação iniciada!",
+        title: "🎉 Avaliação iniciada!",
         description: `Você tem ${selectedEvaluation.duration} minutos para completar`,
       });
 
       // Redirecionar para tela de avaliação
       window.location.href = `/app/avaliacao/${testId}/fazer`;
 
-    } catch (error) {
-      console.error("Erro ao iniciar avaliação:", error);
+    } catch (error: any) {
+      console.error("❌ Erro ao iniciar avaliação:", error);
+      
+      let errorMessage = "Não foi possível iniciar a avaliação";
+      
+      if (error.response?.status === 403) {
+        errorMessage = "Você não tem permissão para acessar esta avaliação";
+      } else if (error.response?.status === 404) {
+        errorMessage = "Avaliação não encontrada";
+      } else if (error.response?.status === 400) {
+        errorMessage = error.response.data?.error || "Dados inválidos para iniciar a avaliação";
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      }
+      
       toast({
         title: "Erro",
-        description: "Não foi possível iniciar a avaliação",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -529,42 +669,16 @@ export default function StudentEvaluations() {
             </p>
           </div>
           
-          {/* ✅ NOVO: Indicadores de conectividade e notificações */}
-          <div className="flex items-center gap-3">
-            {/* Indicador de conectividade */}
-            <div className="flex items-center gap-2">
-              {isConnected ? (
-                <div className="flex items-center gap-1 text-green-600">
-                  <Wifi className="h-4 w-4" />
-                  <span className="text-sm">Online</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1 text-gray-500">
-                  <WifiOff className="h-4 w-4" />
-                  <span className="text-sm">Offline</span>
-                </div>
-              )}
-              
-              {/* Indicador de notificações */}
-              {unreadCount > 0 && (
-                <div className="flex items-center gap-1 text-blue-600">
-                  <Bell className="h-4 w-4" />
-                  <span className="text-sm">{unreadCount}</span>
-                </div>
-              )}
-            </div>
-            
-            {/* Botão de atualizar */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchStudentEvaluations}
-              disabled={isLoading}
-            >
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Atualizar
-            </Button>
-          </div>
+          {/* Botão de atualizar */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchStudentEvaluations}
+            disabled={isLoading}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Atualizar
+          </Button>
         </div>
       </div>
 
@@ -631,36 +745,37 @@ export default function StudentEvaluations() {
       </div>
 
       {/* Avaliação em Progresso */}
-      {currentTaking && currentTaking.evaluationId && (
-        <Alert className="border-blue-200 bg-blue-50">
-          <Timer className="h-4 w-4" />
-          <AlertDescription className="flex items-center justify-between">
-            <span>
-              Você tem uma avaliação em progresso.
-              <strong className="ml-1">
-                {evaluations.find(e => e.id === currentTaking.evaluationId)?.title || 'Avaliação'}
-              </strong>
-            </span>
-            <Button
-              size="sm"
-              onClick={() => {
-                const evaluation = evaluations.find(e => e.id === currentTaking.evaluationId);
-                if (evaluation) {
-                  handleContinueEvaluation(evaluation);
-                } else {
-                  toast({
-                    title: "Erro",
-                    description: "Avaliação não encontrada. Tente atualizar a página.",
-                    variant: "destructive",
-                  });
-                }
-              }}
-            >
-              Continuar
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
+      {currentTaking && currentTaking.evaluationId &&
+        evaluations.find(e => e.id === currentTaking.evaluationId && e.status === 'in_progress') && (
+          <Alert className="border-blue-200 bg-blue-50">
+            <Timer className="h-4 w-4" />
+            <AlertDescription className="flex items-center justify-between">
+              <span>
+                Você tem uma avaliação em progresso.
+                <strong className="ml-1">
+                  {evaluations.find(e => e.id === currentTaking.evaluationId)?.title || 'Avaliação'}
+                </strong>
+              </span>
+              <Button
+                size="sm"
+                onClick={() => {
+                  const evaluation = evaluations.find(e => e.id === currentTaking.evaluationId);
+                  if (evaluation) {
+                    handleContinueEvaluation(evaluation);
+                  } else {
+                    toast({
+                      title: "Erro",
+                      description: "Avaliação não encontrada. Tente atualizar a página.",
+                      variant: "destructive",
+                    });
+                  }
+                }}
+              >
+                Continuar
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
 
       {/* Lista de Avaliações */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -750,18 +865,17 @@ export default function StudentEvaluations() {
               <div className="flex gap-2">
                 {evaluation.status === "available" && (
                   <Button
-                    className="flex-1"
+                    className="flex-1 bg-green-600 hover:bg-green-700"
                     onClick={() => handleStartEvaluation(evaluation)}
                   >
                     <Play className="h-4 w-4 mr-2" />
-                    Iniciar
+                    Iniciar Avaliação
                   </Button>
                 )}
 
                 {evaluation.status === "in_progress" && (
                   <Button
-                    className="flex-1"
-                    variant="secondary"
+                    className="flex-1 bg-blue-600 hover:bg-blue-700"
                     onClick={() => handleContinueEvaluation(evaluation)}
                   >
                     <RefreshCw className="h-4 w-4 mr-2" />
@@ -770,25 +884,35 @@ export default function StudentEvaluations() {
                 )}
 
                 {evaluation.status === "completed" && (
-                  <Button
-                    className="flex-1"
-                    variant="outline"
-                    onClick={() => handleViewResults(evaluation)}
-                  >
-                    <Eye className="h-4 w-4 mr-2" />
-                    Ver Resultado
-                  </Button>
+                  <div className="flex-1 space-y-2">
+                    <Button
+                      className="w-full bg-gray-600 hover:bg-gray-700"
+                      disabled
+                    >
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Concluída
+                    </Button>
+                    <Button
+                      className="w-full"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleViewResults(evaluation)}
+                    >
+                      <Eye className="h-4 w-4 mr-2" />
+                      Ver Resultado
+                    </Button>
+                  </div>
                 )}
 
                 {evaluation.status === "pending" && (
-                  <Button className="flex-1" variant="secondary" disabled>
+                  <Button className="flex-1 bg-orange-600 hover:bg-orange-700" disabled>
                     <Calendar className="h-4 w-4 mr-2" />
                     Agendada
                   </Button>
                 )}
 
                 {evaluation.status === "expired" && (
-                  <Button className="flex-1" variant="destructive" disabled>
+                  <Button className="flex-1 bg-red-600 hover:bg-red-700" disabled>
                     <AlertCircle className="h-4 w-4 mr-2" />
                     Expirada
                   </Button>
@@ -801,59 +925,97 @@ export default function StudentEvaluations() {
 
       {/* Dialog de Instruções */}
       <Dialog open={showInstructions} onOpenChange={setShowInstructions}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Instruções da Avaliação</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Info className="h-5 w-5 text-blue-600" />
+              Instruções da Avaliação
+            </DialogTitle>
             <DialogDescription>
-              {selectedEvaluation?.title}
+              Leia atentamente antes de iniciar a avaliação
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
-            <Alert>
-              <Target className="h-4 w-4" />
-              <AlertDescription>
-                Leia atentamente todas as instruções antes de iniciar a avaliação.
-              </AlertDescription>
-            </Alert>
-
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-4 text-sm">
+            {/* Informações da Avaliação */}
+            <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
+              <h4 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
+                <BookOpen className="h-4 w-4" />
+                {selectedEvaluation?.title}
+              </h4>
+              <div className="grid grid-cols-2 gap-3 text-sm text-blue-800">
                 <div>
-                  <strong>Duração:</strong> {selectedEvaluation?.duration} minutos
+                  <span className="font-medium">Disciplina:</span>
+                  <p>{selectedEvaluation?.subject.name}</p>
                 </div>
                 <div>
-                  <strong>Questões:</strong> {selectedEvaluation?.totalQuestions}
+                  <span className="font-medium">Duração:</span>
+                  <p>{selectedEvaluation?.duration} minutos</p>
                 </div>
                 <div>
-                  <strong>Disciplina:</strong> {selectedEvaluation?.subject.name}
+                  <span className="font-medium">Questões:</span>
+                  <p>{selectedEvaluation?.totalQuestions}</p>
                 </div>
                 <div>
-                  <strong>Tipo:</strong> {selectedEvaluation?.type}
+                  <span className="font-medium">Tipo:</span>
+                  <p>{selectedEvaluation?.type}</p>
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <h4 className="font-medium">Regras importantes:</h4>
-                <ul className="text-sm space-y-1 text-muted-foreground list-disc list-inside">
-                  <li>Uma vez iniciada, a avaliação não pode ser pausada</li>
-                  <li>O tempo é cronometrado automaticamente</li>
-                  <li>Você pode navegar entre as questões livremente</li>
-                  <li>Certifique-se de ter uma conexão estável com a internet</li>
-                  <li>Revise suas respostas antes de finalizar</li>
-                </ul>
               </div>
             </div>
 
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowInstructions(false)}>
-                Cancelar
-              </Button>
-              <Button onClick={() => setConfirmStart(true)}>
-                <Zap className="h-4 w-4 mr-2" />
-                Iniciar Avaliação
-              </Button>
+            {/* Como Funciona - SIMPLIFICADO */}
+            <div className="bg-green-50 border border-green-200 p-4 rounded-lg">
+              <h5 className="font-semibold text-green-900 mb-2 flex items-center gap-2">
+                <CheckCircle className="h-4 w-4" />
+                Como funciona
+              </h5>
+              <div className="space-y-1 text-sm text-green-800">
+                <p>✔️ Leia as questões com atenção</p>
+                <p>✔️ Suas respostas são salvas automaticamente</p>
+                <p>✔️ Você pode revisar antes de finalizar</p>
+              </div>
             </div>
+
+            {/* Importante - SIMPLIFICADO */}
+            <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
+              <h5 className="font-semibold text-yellow-900 mb-2 flex items-center gap-2">
+                <AlertCircle className="h-4 w-4" />
+                Importante
+              </h5>
+              <div className="space-y-1 text-sm text-yellow-800">
+                <p>⚠️ Mantenha conexão estável com a internet</p>
+                <p>⚠️ Não feche a aba/janela durante a avaliação</p>
+              </div>
+            </div>
+
+            {/* Tempo Disponível - SIMPLIFICADO */}
+            {selectedEvaluation && (
+              <div className="bg-purple-50 border border-purple-200 p-4 rounded-lg">
+                <h5 className="font-semibold text-purple-900 mb-2 flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  Tempo disponível
+                </h5>
+                <p className="text-sm text-purple-800">
+                  Até {selectedEvaluation.endDateTime ? 
+                    format(parseISO(selectedEvaluation.endDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) : 
+                    "sem prazo definido"
+                  }
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-2 pt-4">
+            <Button variant="outline" onClick={() => setShowInstructions(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={() => setConfirmStart(true)}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              <Play className="h-4 w-4 mr-2" />
+              Iniciar Avaliação
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

@@ -74,6 +74,42 @@ class CacheManager {
   }
 }
 
+// ✅ NOVO: Teste de conectividade
+const testConnection = async (): Promise<{ success: boolean; message: string }> => {
+  try {
+    // Primeiro, tenta fazer uma requisição simples
+    const response = await api.get('/dashboard/stats');
+    return {
+      success: true,
+      message: `Conectado com sucesso! Status: ${response.status}`
+    };
+  } catch (error: any) {
+    console.error("Erro no teste de conectividade:", error);
+    
+    if (error.code === 'ERR_NETWORK') {
+      return {
+        success: false,
+        message: "Erro de rede - verifique se o servidor está rodando"
+      };
+    } else if (error.response?.status === 401) {
+      return {
+        success: false,
+        message: "Não autorizado - token inválido ou expirado"
+      };
+    } else if (error.response?.status === 404) {
+      return {
+        success: false,
+        message: "Endpoint não encontrado - verifique a configuração do backend"
+      };
+    } else {
+      return {
+        success: false,
+        message: `Erro: ${error.message || 'Erro desconhecido'}`
+      };
+    }
+  }
+};
+
 export default function RecentEvaluations() {
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -90,19 +126,21 @@ export default function RecentEvaluations() {
       setIsOnline(true);
       // Recarregar dados quando voltar online
       fetchRecentEvaluations();
-      toast({
-        title: "Conectado!",
-        description: "Dados atualizados com sucesso.",
-      });
+      // ✅ REMOVIDO: Toast de conectado para apresentação
+      // toast({
+      //   title: "Conectado!",
+      //   description: "Dados atualizados com sucesso.",
+      // });
     };
 
     const handleOffline = () => {
       setIsOnline(false);
-      toast({
-        title: "Sem conexão",
-        description: "Usando dados em cache.",
-        variant: "default",
-      });
+      // ✅ REMOVIDO: Toast de sem conexão para apresentação
+      // toast({
+      //   title: "Sem conexão",
+      //   description: "Usando dados em cache.",
+      //   variant: "default",
+      // });
     };
 
     window.addEventListener('online', handleOnline);
@@ -139,12 +177,12 @@ export default function RecentEvaluations() {
         try {
           // Buscar avaliações reais da API
           const [evaluationsResponse, statsResponse] = await Promise.all([
-            api.get('/test?limit=5&sort=created_at&order=desc'),
+            api.get('/test/?per_page=5&sort=created_at&order=desc'),
             api.get('/dashboard/stats')
           ]);
 
-          if (evaluationsResponse.data && Array.isArray(evaluationsResponse.data)) {
-            evaluationsData = evaluationsResponse.data.map((test: any) => ({
+          if (evaluationsResponse.data?.data && Array.isArray(evaluationsResponse.data.data)) {
+            evaluationsData = evaluationsResponse.data.data.map((test: any) => ({
               id: test.id,
               title: test.title,
               subject: test.subject ? test.subject.name : 'Sem disciplina',
@@ -175,7 +213,20 @@ export default function RecentEvaluations() {
           }, 300000); // 5 minutos
 
         } catch (apiError: any) {
-          console.error("Erro na API:", apiError);
+          // ✅ REMOVIDO: Console.errors para apresentação
+          // console.error("Erro na API:", apiError);
+          
+          // Log detalhado do erro
+          if (apiError.code === 'ERR_NETWORK') {
+            // ✅ REMOVIDO: Console.error para apresentação
+            // console.error("Erro de rede - possível servidor offline ou problema de conectividade");
+          } else if (apiError.response) {
+            // ✅ REMOVIDO: Console.error para apresentação
+            // console.error("Erro HTTP:", apiError.response.status, apiError.response.data);
+          } else {
+            // ✅ REMOVIDO: Console.error para apresentação
+            // console.error("Erro desconhecido:", apiError.message);
+          }
           
           // Fallback para dados mock se API falhar
           evaluationsData = mockEvaluations.slice(0, 5).map(evaluation => ({
@@ -199,12 +250,30 @@ export default function RecentEvaluations() {
             lastSync: new Date().toISOString()
           };
 
-          setError("Conectado com dados locais");
-          toast({
-            title: "Modo offline",
-            description: "Usando dados locais. Verifique sua conexão.",
-            variant: "default",
-          });
+          // Mensagem de erro mais específica
+          let errorMessage = "Erro na conexão com o servidor";
+          if (apiError.code === 'ERR_NETWORK') {
+            // ✅ REMOVIDO: Mensagem de erro para apresentação
+            // errorMessage = "Servidor offline - usando dados locais";
+          } else if (apiError.response?.status === 401) {
+            // ✅ REMOVIDO: Mensagem de erro para apresentação
+            // errorMessage = "Não autorizado - faça login novamente";
+          } else if (apiError.response?.status === 404) {
+            // ✅ REMOVIDO: Mensagem de erro para apresentação
+            // errorMessage = "Endpoints não encontrados - verifique o backend";
+          } else if (apiError.response?.status >= 500) {
+            // ✅ REMOVIDO: Mensagem de erro para apresentação
+            // errorMessage = "Erro interno do servidor";
+          }
+
+          // ✅ REMOVIDO: SetError para apresentação
+          // setError(errorMessage);
+          // ✅ REMOVIDO: Toast de erro de conectividade para apresentação
+          // toast({
+          //   title: "Problema de conectividade",
+          //   description: errorMessage,
+          //   variant: "destructive",
+          // });
         }
       } else {
         // Modo offline - usar cache ou dados mock
@@ -224,7 +293,8 @@ export default function RecentEvaluations() {
             lastSync: new Date().toISOString()
           };
         }
-        setError("Sem conexão - dados em cache");
+        // ✅ REMOVIDO: Mensagem de erro para apresentação
+        // setError("Sem conexão - dados em cache");
       }
 
       setEvaluations(evaluationsData);
@@ -232,8 +302,10 @@ export default function RecentEvaluations() {
       setLastRefresh(new Date());
       
     } catch (error) {
-      console.error("Erro ao buscar avaliações:", error);
-      setError("Erro ao carregar dados");
+      // ✅ REMOVIDO: Console.error para apresentação
+      // console.error("Erro ao buscar avaliações:", error);
+      // ✅ REMOVIDO: SetError para apresentação
+      // setError("Erro ao carregar dados");
       setEvaluations([]);
       setStats(null);
     } finally {
@@ -312,12 +384,12 @@ export default function RecentEvaluations() {
             <CardTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5" />
               Avaliações Recentes
-              {/* Status de conectividade */}
-              {isOnline ? (
+              {/* ✅ REMOVIDO: Status de conectividade para apresentação */}
+              {/* {isOnline ? (
                 <Wifi className="h-4 w-4 text-green-500" />
               ) : (
                 <WifiOff className="h-4 w-4 text-red-500" />
-              )}
+              )} */}
             </CardTitle>
             <CardDescription>
               Últimas avaliações criadas no sistema
@@ -343,15 +415,15 @@ export default function RecentEvaluations() {
       </CardHeader>
       
       <CardContent className="space-y-3">
-        {/* Alerta de status */}
-        {error && (
+        {/* ✅ REMOVIDO: Alerta de status para apresentação */}
+        {/* {error && (
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription className="text-sm">
               {error}
             </AlertDescription>
           </Alert>
-        )}
+        )} */}
 
         {/* Estatísticas rápidas */}
         {stats && (

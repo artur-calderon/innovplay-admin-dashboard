@@ -4,234 +4,329 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { 
   BarChart3, 
   Download,
   TrendingUp,
-  TrendingDown,
   Users,
   FileText,
-  Calendar,
-  ClipboardCheck,
   Eye,
   CheckCircle2,
   Clock,
   AlertTriangle,
   Target,
   Award,
-  ChartLine
+  RefreshCw,
+  Search,
+  School,
+  MapPin,
+  GraduationCap
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import EvaluationResults from "@/components/evaluations/EvaluationResults";
-import EvaluationReport from "@/components/evaluations/EvaluationReport";
+import { useNavigate, useParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
-import { useEvaluations } from "@/stores/useEvaluationStore";
-import * as mockApi from "@/services/mockResultsData";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface ResultsStats {
-  completedEvaluations: number;
-  pendingResults: number;
   totalEvaluations: number;
-  averageScore: number;
-  lastWeekEvaluations: number;
-  correctedToday: number;
   totalStudents: number;
-  averageCompletionTime: number;
+  averageScore: number;
+  completedEvaluations: number;
   topPerformanceSubject: string;
-  improvementRate: number;
 }
 
 interface EvaluationSummary {
   id: string;
   title: string;
   subject: string;
-  completedStudents: number;
+  school: string;
+  municipality: string;
+  grade: string;
   totalStudents: number;
+  completedStudents: number;
   averageScore: number;
-  status: 'completed' | 'pending' | 'correcting';
-  lastUpdated: string;
-  difficulty: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+  averageProficiency: number;
+  lastEvaluationDate: string;
+  proficiencyLevel: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+  status: 'completed' | 'pending' | 'in_progress';
 }
 
+// Dados mockados das avaliações
+const mockEvaluationsData: EvaluationSummary[] = [
+  {
+    id: "avaliacao-1",
+    title: "Avaliação de Matemática - 3º Ano",
+    subject: "Matemática",
+    school: "Escola Teste",
+    municipality: "São Paulo",
+    grade: "3º Ano",
+    totalStudents: 45,
+    completedStudents: 42,
+    averageScore: 7.2,
+    averageProficiency: 365,
+    lastEvaluationDate: "2024-01-15T10:00:00Z",
+    proficiencyLevel: "Adequado",
+    status: "completed"
+  },
+  {
+    id: "avaliacao-2", 
+    title: "Avaliação de Português - 6º Ano",
+    subject: "Português",
+    school: "E.M. Professor João Silva",
+    municipality: "Rio de Janeiro",
+    grade: "6º Ano",
+    totalStudents: 38,
+    completedStudents: 35,
+    averageScore: 8.1,
+    averageProficiency: 425,
+    lastEvaluationDate: "2024-01-12T14:30:00Z",
+    proficiencyLevel: "Avançado",
+    status: "completed"
+  },
+  {
+    id: "avaliacao-3",
+    title: "Avaliação de História - 1º Ano EM",
+    subject: "História",
+    school: "Colégio Santa Maria",
+    municipality: "Belo Horizonte",
+    grade: "1º Ano EM",
+    totalStudents: 52,
+    completedStudents: 48,
+    averageScore: 6.8,
+    averageProficiency: 298,
+    lastEvaluationDate: "2024-01-18T09:15:00Z",
+    proficiencyLevel: "Básico",
+    status: "completed"
+  },
+  {
+    id: "avaliacao-4",
+    title: "Avaliação de Ciências - 5º Ano",
+    subject: "Ciências",
+    school: "Escola Teste",
+    municipality: "São Paulo",
+    grade: "5º Ano",
+    totalStudents: 40,
+    completedStudents: 38,
+    averageScore: 7.8,
+    averageProficiency: 385,
+    lastEvaluationDate: "2024-01-20T08:30:00Z",
+    proficiencyLevel: "Adequado",
+    status: "completed"
+  },
+  {
+    id: "avaliacao-5",
+    title: "Avaliação de Geografia - 8º Ano",
+    subject: "Geografia",
+    school: "E.M. Professor João Silva",
+    municipality: "Rio de Janeiro",
+    grade: "8º Ano",
+    totalStudents: 35,
+    completedStudents: 32,
+    averageScore: 6.5,
+    averageProficiency: 312,
+    lastEvaluationDate: "2024-01-22T13:45:00Z",
+    proficiencyLevel: "Adequado",
+    status: "completed"
+  }
+];
+
 export default function Results() {
+  const { id: evaluationId } = useParams<{ id: string }>();
   const [stats, setStats] = useState<ResultsStats>({
-    completedEvaluations: 0,
-    pendingResults: 0,
     totalEvaluations: 0,
-    averageScore: 0,
-    lastWeekEvaluations: 0,
-    correctedToday: 0,
     totalStudents: 0,
-    averageCompletionTime: 0,
+    averageScore: 0,
+    completedEvaluations: 0,
     topPerformanceSubject: '',
-    improvementRate: 0
   });
   const [evaluationsList, setEvaluationsList] = useState<EvaluationSummary[]>([]);
-  const [isLoadingStats, setIsLoadingStats] = useState(true);
-  const [isLoadingList, setIsLoadingList] = useState(true);
-  const [showResults, setShowResults] = useState(false);
-  const [showReport, setShowReport] = useState(false);
+  const [filteredEvaluations, setFilteredEvaluations] = useState<EvaluationSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [subjectFilter, setSubjectFilter] = useState<string>('all');
   const { toast } = useToast();
   const navigate = useNavigate();
-  const { evaluations, getEvaluations } = useEvaluations();
 
   useEffect(() => {
-    fetchResultsStats();
-    fetchEvaluationsList();
-  }, []);
+    fetchData();
+  }, [evaluationId]);
+
+  // Filtrar avaliações baseado nos filtros
+  useEffect(() => {
+    let filtered = evaluationsList;
+
+    // Filtro por busca
+    if (searchTerm) {
+      filtered = filtered.filter(evaluation => 
+        evaluation.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        evaluation.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        evaluation.school.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Filtro por status
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(evaluation => evaluation.status === statusFilter);
+    }
+
+    // Filtro por disciplina
+    if (subjectFilter !== 'all') {
+      filtered = filtered.filter(evaluation => evaluation.subject === subjectFilter);
+    }
+
+    setFilteredEvaluations(filtered);
+  }, [evaluationsList, searchTerm, statusFilter, subjectFilter]);
+
+  const fetchData = async () => {
+    try {
+      setIsLoading(true);
+      await Promise.all([fetchResultsStats(), fetchEvaluationsList()]);
+    } catch (error) {
+      console.error("Erro ao carregar dados:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const fetchResultsStats = async () => {
     try {
-      setIsLoadingStats(true);
+      // Simular carregamento de dados da API
+      await new Promise(resolve => setTimeout(resolve, 800));
       
-      // Simular dados mais ricos
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const totalStudents = mockEvaluationsData.reduce((sum, evaluation) => sum + evaluation.totalStudents, 0);
+      const totalCompletedStudents = mockEvaluationsData.reduce((sum, evaluation) => sum + evaluation.completedStudents, 0);
+      const averageScore = mockEvaluationsData.reduce((sum, evaluation) => sum + evaluation.averageScore, 0) / mockEvaluationsData.length;
+      const completedEvaluations = mockEvaluationsData.filter(e => e.status === 'completed').length;
       
-      const resultsData = await mockApi.getEvaluationResults();
-      const completedResults = resultsData.filter(r => r.status === 'completed');
-      const pendingResults = resultsData.filter(r => r.status === 'pending');
-      
-      // Dados do store
-      const storeEvaluations = getEvaluations();
-      
-      // Calcular métricas avançadas
-      const totalStudents = resultsData.reduce((sum, r) => sum + (r.totalStudents || 0), 0);
-      const averageCompletionTime = completedResults.length > 0
-        ? completedResults.reduce((sum, r) => sum + (r.completionTime || 45), 0) / completedResults.length
-        : 0;
-      
-      // Análise por disciplina
-      const subjectScores: Record<string, number[]> = {};
-      completedResults.forEach(result => {
-        if (!subjectScores[result.subject]) {
-          subjectScores[result.subject] = [];
+      // Encontrar a disciplina com melhor desempenho
+      const subjectScores = mockEvaluationsData.reduce((acc, evaluation) => {
+        if (!acc[evaluation.subject]) {
+          acc[evaluation.subject] = { total: 0, count: 0 };
         }
-        subjectScores[result.subject].push(result.score || 0);
-      });
+        acc[evaluation.subject].total += evaluation.averageScore;
+        acc[evaluation.subject].count += 1;
+        return acc;
+      }, {} as Record<string, { total: number; count: number }>);
       
-      const subjectAverages = Object.entries(subjectScores).map(([subject, scores]) => ({
-        subject,
-        average: scores.reduce((sum, score) => sum + score, 0) / scores.length
-      }));
-      
-      const topSubject = subjectAverages.length > 0
-        ? subjectAverages.sort((a, b) => b.average - a.average)[0].subject
-        : 'Matemática';
+      const topSubject = Object.entries(subjectScores).reduce((best, [subject, data]) => {
+        const average = data.total / data.count;
+        return average > best.average ? { subject, average } : best;
+      }, { subject: '', average: 0 });
 
       setStats({
-        completedEvaluations: completedResults.length,
-        pendingResults: pendingResults.length,
-        totalEvaluations: resultsData.length,
-        averageScore: completedResults.length > 0 
-          ? Math.round(completedResults.reduce((sum, r) => sum + (r.score || 0), 0) / completedResults.length) 
-          : 0,
-        lastWeekEvaluations: Math.floor(resultsData.length * 0.6),
-        correctedToday: Math.floor(pendingResults.length * 0.3),
-        totalStudents,
-        averageCompletionTime: Math.round(averageCompletionTime),
-        topPerformanceSubject: topSubject,
-        improvementRate: Math.round(Math.random() * 20 + 5) // Simulado
+        totalEvaluations: mockEvaluationsData.length,
+        totalStudents: totalCompletedStudents,
+        averageScore: averageScore,
+        completedEvaluations: completedEvaluations,
+        topPerformanceSubject: topSubject.subject,
       });
     } catch (error) {
-      console.error("Erro ao buscar estatísticas de resultados:", error);
-    } finally {
-      setIsLoadingStats(false);
+      console.error("Erro ao buscar estatísticas:", error);
     }
   };
 
   const fetchEvaluationsList = async () => {
     try {
-      setIsLoadingList(true);
+      // Simular carregamento de dados da API
+      await new Promise(resolve => setTimeout(resolve, 500));
       
-      const resultsData = await mockApi.getEvaluationResults();
-      const storeEvaluations = getEvaluations();
-      
-      // Combinar dados do store com resultados
-      const evaluationsWithResults: EvaluationSummary[] = storeEvaluations.map(evaluation => {
-        const result = resultsData.find(r => r.evaluationId === evaluation.id);
-        
-        return {
-          id: evaluation.id,
-          title: evaluation.title,
-          subject: evaluation.subject.name,
-          completedStudents: result?.completedStudents || 0,
-          totalStudents: evaluation.students?.length || 0,
-          averageScore: result?.score || 0,
-          status: result?.status === 'completed' ? 'completed' : 
-                  result?.status === 'pending' ? 'correcting' : 'pending',
-          lastUpdated: result?.submittedAt || evaluation.createdAt,
-          difficulty: ['Abaixo do Básico', 'Básico', 'Adequado', 'Avançado'][Math.floor(Math.random() * 4)] as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado'
-        };
-      });
-
-      setEvaluationsList(evaluationsWithResults);
-    } catch (error) {
-      console.error("Erro ao buscar lista de avaliações:", error);
-    } finally {
-      setIsLoadingList(false);
-    }
-  };
-
-  const getStatusBadge = (status: EvaluationSummary['status']) => {
-    const configs = {
-      completed: { label: "Concluída", variant: "default" as const, icon: CheckCircle2, color: "text-green-600" },
-      correcting: { label: "Corrigindo", variant: "secondary" as const, icon: Clock, color: "text-orange-600" },
-      pending: { label: "Pendente", variant: "outline" as const, icon: AlertTriangle, color: "text-gray-600" },
-    };
-    
-    const config = configs[status];
-    const Icon = config.icon;
-    
-    return (
-      <Badge variant={config.variant} className="flex items-center gap-1">
-        <Icon className={`h-3 w-3 ${config.color}`} />
-        {config.label}
-      </Badge>
-    );
-  };
-
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case 'Avançado': return 'text-green-100 bg-green-800 border-green-700';
-      case 'Adequado': return 'text-green-800 bg-green-100 border-green-300';
-      case 'Básico': return 'text-yellow-800 bg-yellow-100 border-yellow-300';
-      case 'Abaixo do Básico': return 'text-red-800 bg-red-100 border-red-300';
-      default: return 'text-gray-600 bg-gray-100 border-gray-300';
-    }
-  };
-
-  const handleViewResults = () => {
-    setShowResults(true);
-  };
-
-  const handleCorrectNow = () => {
-    toast({
-      title: "Redirecionando",
-      description: "Abrindo página de correção...",
-    });
-    navigate("/app/avaliacoes/correcao");
-  };
-
-  const handleGenerateReport = () => {
-    setShowReport(true);
-  };
-
-  const handleExportAll = async () => {
-    try {
-      const allResults = await mockApi.getEvaluationResults();
-      const allIds = allResults.map(result => result.id);
-      const response = await mockApi.exportResults(allIds);
-      
-      if (response.success) {
-        toast({
-          title: "Exportação concluída!",
-          description: "Todos os resultados foram exportados com sucesso.",
-        });
+      if (evaluationId) {
+        // Se há um ID específico, filtrar apenas essa avaliação
+        const specificEvaluation = mockEvaluationsData.filter(evaluation => evaluation.id === evaluationId);
+        setEvaluationsList(specificEvaluation);
+      } else {
+        setEvaluationsList(mockEvaluationsData);
       }
     } catch (error) {
+      console.error("Erro ao buscar avaliações:", error);
+    }
+  };
+
+  const getStatusConfig = (status: EvaluationSummary['status']) => {
+    const configs = {
+      completed: { 
+        label: "Concluída", 
+        color: "bg-green-100 text-green-800 border-green-300" 
+      },
+      in_progress: { 
+        label: "Em Andamento", 
+        color: "bg-blue-100 text-blue-800 border-blue-300" 
+      },
+      pending: { 
+        label: "Pendente", 
+        color: "bg-gray-100 text-gray-800 border-gray-300" 
+      },
+    };
+    return configs[status];
+  };
+
+  const getProficiencyColor = (proficiency: string) => {
+    switch (proficiency) {
+      case 'Avançado': return 'bg-green-100 text-green-800 border-green-300';
+      case 'Adequado': return 'bg-blue-100 text-blue-800 border-blue-300';
+      case 'Básico': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+      case 'Abaixo do Básico': return 'bg-red-100 text-red-800 border-red-300';
+      default: return 'bg-gray-100 text-gray-800 border-gray-300';
+    }
+  };
+
+  const handleViewResults = (evaluationId: string) => {
+    navigate(`/app/avaliacao/${evaluationId}/resultados`);
+  };
+
+  const handleExportResults = async (evaluationId?: string) => {
+    try {
+      const XLSX = await import('xlsx');
+      const { saveAs } = await import('file-saver');
+      
+      const dataToExport = evaluationId 
+        ? filteredEvaluations.filter(e => e.id === evaluationId)
+        : filteredEvaluations;
+      
+      if (dataToExport.length === 0) {
+        toast({
+          title: "Nenhum dado para exportar",
+          description: "Não há avaliações para gerar a planilha",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Criar dados da planilha
+      const worksheetData = [
+        ['Avaliação', 'Disciplina', 'Escola', 'Série', 'Município', 'Participantes', 'Média', 'Proficiência', 'Status'],
+        ...dataToExport.map(evaluation => [
+          evaluation.title,
+          evaluation.subject,
+          evaluation.school,
+          evaluation.grade,
+          evaluation.municipality,
+          `${evaluation.completedStudents}/${evaluation.totalStudents}`,
+          evaluation.averageScore.toFixed(1),
+          evaluation.averageProficiency,
+          evaluation.status === 'completed' ? 'Concluída' : evaluation.status === 'in_progress' ? 'Em Andamento' : 'Pendente'
+        ])
+      ];
+      
+      const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Avaliações');
+      
+      const fileName = `resultados-avaliacoes-${new Date().toISOString().split('T')[0]}.xlsx`;
+      const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      
+      saveAs(blob, fileName);
+      
+      toast({
+        title: "Exportação concluída!",
+        description: "Os resultados foram exportados com sucesso.",
+      });
+    } catch (error) {
+      console.error("Erro na exportação:", error);
       toast({
         title: "Erro na exportação",
         description: "Não foi possível exportar os resultados",
@@ -240,358 +335,291 @@ export default function Results() {
     }
   };
 
-  // If showing results, render the EvaluationResults component
-  if (showResults) {
-    return <EvaluationResults onBack={() => setShowResults(false)} />;
-  }
-
-  // If showing report, render the EvaluationReport component
-  if (showReport) {
-    return <EvaluationReport onBack={() => setShowReport(false)} />;
-  }
+  const uniqueSubjects = [...new Set(evaluationsList.map(e => e.subject))];
+  const isSpecificEvaluation = Boolean(evaluationId);
 
   return (
-    <div className="container mx-auto px-2 md:px-4 py-4 md:py-6 space-y-6">
+    <div className="container mx-auto px-4 py-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold">Dashboard de Resultados</h1>
+          <h1 className="text-2xl font-bold">
+            {isSpecificEvaluation ? 'Resultado da Avaliação' : 'Resultados das Avaliações'}
+          </h1>
           <p className="text-muted-foreground">
-            Acompanhe o desempenho dos alunos e gere relatórios detalhados
+            {isSpecificEvaluation 
+              ? `Análise detalhada dos resultados da avaliação`
+              : 'Acompanhe o desempenho das avaliações e gere relatórios'
+            }
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleExportAll}>
+          <Button variant="outline" onClick={() => fetchData()} disabled={isLoading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            Atualizar
+          </Button>
+          <Button onClick={() => handleExportResults()}>
             <Download className="h-4 w-4 mr-2" />
             Exportar Tudo
           </Button>
         </div>
       </div>
 
-      {/* Estatísticas Principais - Primeira Linha */}
+      {/* Estatísticas Principais */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Avaliações Concluídas
+        <Card className="border-l-4 border-l-blue-500">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <FileText className="h-4 w-4 text-blue-600" />
+              Total de Avaliações
             </CardTitle>
-            <CheckCircle2 className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              {isLoadingStats ? <Skeleton className="h-8 w-16" /> : stats.completedEvaluations}
-            </div>
-            <div className="flex items-center text-xs text-muted-foreground">
-              <TrendingUp className="h-3 w-3 mr-1 text-green-500" />
-              +{stats.improvementRate}% este mês
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Pendentes de Correção
-            </CardTitle>
-            <Clock className="h-4 w-4 text-orange-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-600">
-              {isLoadingStats ? <Skeleton className="h-8 w-16" /> : stats.pendingResults}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Aguardando correção manual
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Média de Desempenho
-            </CardTitle>
-            <Target className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-600">
-              {isLoadingStats ? <Skeleton className="h-8 w-16" /> : `${stats.averageScore}%`}
+              {isLoading ? <Skeleton className="h-8 w-16" /> : stats.totalEvaluations}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Média geral dos alunos
+            <p className="text-xs text-muted-foreground mt-1">
+              {stats.completedEvaluations} concluídas
             </p>
           </CardContent>
         </Card>
         
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Total de Alunos
+        <Card className="border-l-4 border-l-green-500">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <GraduationCap className="h-4 w-4 text-green-600" />
+              Alunos Participantes
             </CardTitle>
-            <Users className="h-4 w-4 text-purple-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-purple-600">
-              {isLoadingStats ? <Skeleton className="h-8 w-16" /> : stats.totalStudents}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Participaram das avaliações
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Métricas de Performance - Segunda Linha */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Tempo Médio
-            </CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {isLoadingStats ? <Skeleton className="h-8 w-16" /> : `${stats.averageCompletionTime}min`}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Por avaliação
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Melhor Disciplina
-            </CardTitle>
-            <Award className="h-4 w-4 text-yellow-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-lg font-bold text-yellow-600">
-              {isLoadingStats ? <Skeleton className="h-6 w-20" /> : stats.topPerformanceSubject}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Maior média de acertos
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Esta Semana
-            </CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {isLoadingStats ? <Skeleton className="h-8 w-16" /> : stats.lastWeekEvaluations}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Avaliações realizadas
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Correções Hoje
-            </CardTitle>
-            <ChartLine className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
-              {isLoadingStats ? <Skeleton className="h-8 w-16" /> : stats.correctedToday}
+              {isLoading ? <Skeleton className="h-8 w-16" /> : stats.totalStudents}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Finalizadas hoje
+            <p className="text-xs text-muted-foreground mt-1">
+              Realizaram avaliações
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card className="border-l-4 border-l-purple-500">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Target className="h-4 w-4 text-purple-600" />
+              Média Geral
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-purple-600">
+              {isLoading ? <Skeleton className="h-8 w-16" /> : `${stats.averageScore.toFixed(1)}`}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Desempenho médio
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card className="border-l-4 border-l-orange-500">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Award className="h-4 w-4 text-orange-600" />
+              Melhor Disciplina
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-sm font-bold text-orange-600">
+              {isLoading ? <Skeleton className="h-6 w-20" /> : stats.topPerformanceSubject}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Maior média de desempenho
             </p>
           </CardContent>
         </Card>
       </div>
+
+      {/* Filtros e Busca */}
+      {!isSpecificEvaluation && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Filtros</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1">
+                <div className="relative">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por nome da avaliação, disciplina ou escola..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full md:w-48">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os Status</SelectItem>
+                  <SelectItem value="completed">Concluída</SelectItem>
+                  <SelectItem value="in_progress">Em Andamento</SelectItem>
+                  <SelectItem value="pending">Pendente</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={subjectFilter} onValueChange={setSubjectFilter}>
+                <SelectTrigger className="w-full md:w-48">
+                  <SelectValue placeholder="Disciplina" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as Disciplinas</SelectItem>
+                  {uniqueSubjects.map(subject => (
+                    <SelectItem key={subject} value={subject}>{subject}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Lista de Avaliações */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Avaliações Recentes
+          <CardTitle className="flex items-center justify-between">
+            <span>
+              {isSpecificEvaluation ? 'Detalhes da Avaliação' : 'Avaliações'}
+            </span>
+            <Badge variant="outline">
+              {filteredEvaluations.length} {filteredEvaluations.length === 1 ? 'avaliação' : 'avaliações'}
+            </Badge>
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoadingList ? (
-            <div className="space-y-3">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="flex items-center space-x-4">
-                  <Skeleton className="h-4 w-[200px]" />
-                  <Skeleton className="h-4 w-[100px]" />
-                  <Skeleton className="h-4 w-[80px]" />
-                  <Skeleton className="h-4 w-[60px]" />
+          {isLoading ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="border rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-2 flex-1">
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-3 w-1/2" />
+                    </div>
+                    <div className="flex gap-2">
+                      <Skeleton className="h-8 w-20" />
+                      <Skeleton className="h-8 w-20" />
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
-          ) : (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Avaliação</TableHead>
-                    <TableHead>Disciplina</TableHead>
-                    <TableHead>Progresso</TableHead>
-                    <TableHead>Média</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Dificuldade</TableHead>
-                    <TableHead>Atualizado</TableHead>
-                    <TableHead>Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {evaluationsList.slice(0, 8).map((evaluation) => (
-                    <TableRow key={evaluation.id}>
-                      <TableCell className="font-medium">{evaluation.title}</TableCell>
-                      <TableCell>{evaluation.subject}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center space-x-2">
-                          <Progress 
-                            value={(evaluation.completedStudents / evaluation.totalStudents) * 100} 
-                            className="w-16"
-                          />
-                          <span className="text-xs text-muted-foreground">
-                            {evaluation.completedStudents}/{evaluation.totalStudents}
-                          </span>
+          ) : filteredEvaluations.length > 0 ? (
+            <div className="space-y-4">
+              {filteredEvaluations.map((evaluation) => {
+                const statusConfig = getStatusConfig(evaluation.status);
+                const participationRate = evaluation.totalStudents > 0 
+                  ? (evaluation.completedStudents / evaluation.totalStudents) * 100 
+                  : 0;
+
+                return (
+                  <div key={evaluation.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                      {/* Informações principais */}
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-semibold text-lg">{evaluation.title}</h3>
+                          <Badge className={statusConfig.color}>
+                            {statusConfig.label}
+                          </Badge>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className={`font-semibold ${evaluation.averageScore >= 70 ? 'text-green-600' : evaluation.averageScore >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
-                          {evaluation.averageScore}%
-                        </span>
-                      </TableCell>
-                      <TableCell>{getStatusBadge(evaluation.status)}</TableCell>
-                      <TableCell>
-                        <Badge className={getDifficultyColor(evaluation.difficulty)}>
-                          {evaluation.difficulty}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {formatDistanceToNow(new Date(evaluation.lastUpdated), { 
-                          addSuffix: true, 
-                          locale: ptBR 
-                        })}
-                      </TableCell>
-                      <TableCell>
-                        <Button variant="outline" size="sm" onClick={() => navigate(`/app/avaliacoes/${evaluation.id}`)}>
-                          <Eye className="h-3 w-3 mr-1" />
-                          Ver
+                        
+                        <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            <Badge variant="outline">{evaluation.subject}</Badge>
+                            <span>•</span>
+                            <span>{evaluation.grade}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <School className="h-4 w-4" />
+                            <span>{evaluation.school}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <MapPin className="h-4 w-4" />
+                            <span>{evaluation.municipality}</span>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-6">
+                          <div className="flex items-center gap-2">
+                            <Users className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-sm font-medium">
+                              {evaluation.completedStudents}/{evaluation.totalStudents} alunos
+                            </span>
+                            <Progress value={participationRate} className="w-20 h-2" />
+                          </div>
+                          
+                          <div className="flex items-center gap-2">
+                            <Target className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-sm font-medium">
+                              Média: {evaluation.averageScore.toFixed(1)}
+                            </span>
+                            {evaluation.averageScore >= 7 ? (
+                              <TrendingUp className="h-4 w-4 text-green-600" />
+                            ) : (
+                              <AlertTriangle className="h-4 w-4 text-orange-600" />
+                            )}
+                          </div>
+                          
+                          <Badge className={getProficiencyColor(evaluation.proficiencyLevel)}>
+                            {evaluation.proficiencyLevel}
+                          </Badge>
+                          
+                          <div className="text-xs text-muted-foreground">
+                            {formatDistanceToNow(new Date(evaluation.lastEvaluationDate), { 
+                              addSuffix: true, 
+                              locale: ptBR 
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Ações */}
+                      <div className="flex gap-2">
+                        <Button 
+                          variant="outline" 
+                          onClick={() => handleViewResults(evaluation.id)}
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          Ver Resultados
                         </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                        <Button 
+                          variant="outline" 
+                          onClick={() => handleExportResults(evaluation.id)}
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          Exportar
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <FileText className="h-8 w-8 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                Nenhuma avaliação encontrada
+              </h3>
+              <p className="text-gray-600">
+                {searchTerm || statusFilter !== 'all' || subjectFilter !== 'all'
+                  ? 'Tente ajustar os filtros para ver mais resultados.'
+                  : 'Ainda não há avaliações com resultados disponíveis.'
+                }
+              </p>
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Cards de Ações */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={handleViewResults}>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Eye className="h-5 w-5 text-green-600" />
-              Visualizar Resultados
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600 mb-2">
-              {stats.completedEvaluations}
-            </div>
-            <p className="text-sm text-muted-foreground mb-3">
-              Resultados prontos para visualização
-            </p>
-            <Button variant="outline" size="sm" className="w-full">
-              <Eye className="h-4 w-4 mr-2" />
-              Ver Resultados
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={handleCorrectNow}>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <ClipboardCheck className="h-5 w-5 text-orange-600" />
-              Correções Pendentes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-600 mb-2">
-              {stats.pendingResults}
-            </div>
-            <p className="text-sm text-muted-foreground mb-3">
-              Avaliações aguardando correção
-            </p>
-            <Button variant="outline" size="sm" className="w-full">
-              <ClipboardCheck className="h-4 w-4 mr-2" />
-              Corrigir Agora
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={handleGenerateReport}>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <BarChart3 className="h-5 w-5 text-blue-600" />
-              Relatórios
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600 mb-2">
-              {stats.completedEvaluations + stats.pendingResults}
-            </div>
-            <p className="text-sm text-muted-foreground mb-3">
-              Relatórios disponíveis
-            </p>
-            <Button variant="outline" size="sm" className="w-full">
-              <BarChart3 className="h-4 w-4 mr-2" />
-              Gerar Relatório
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Ações Rápidas */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Ações Rápidas</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3 md:grid-cols-4">
-            <Button variant="outline" onClick={handleViewResults} className="h-auto py-3">
-              <div className="text-center">
-                <Eye className="h-6 w-6 mx-auto mb-2" />
-                <div className="text-sm">Ver Resultados</div>
-              </div>
-            </Button>
-            <Button variant="outline" onClick={handleCorrectNow} className="h-auto py-3">
-              <div className="text-center">
-                <ClipboardCheck className="h-6 w-6 mx-auto mb-2" />
-                <div className="text-sm">Corrigir Avaliações</div>
-              </div>
-            </Button>
-            <Button variant="outline" onClick={handleGenerateReport} className="h-auto py-3">
-              <div className="text-center">
-                <BarChart3 className="h-6 w-6 mx-auto mb-2" />
-                <div className="text-sm">Gerar Relatórios</div>
-              </div>
-            </Button>
-            <Button variant="outline" onClick={handleExportAll} className="h-auto py-3">
-              <div className="text-center">
-                <Download className="h-6 w-6 mx-auto mb-2" />
-                <div className="text-sm">Exportar Dados</div>
-              </div>
-            </Button>
-          </div>
         </CardContent>
       </Card>
     </div>

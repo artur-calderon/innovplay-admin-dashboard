@@ -341,28 +341,220 @@ export function useAdvancedExport() {
     data: EvaluationResultsData[], 
     options: ExportOptions
   ): Promise<void> => {
-    // TODO: Implementar exportação PDF real com jsPDF
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        console.log('Exportando para PDF com opções:', options);
-        console.log('Dados:', data);
-        resolve();
-      }, 2000);
+    // Importar bibliotecas necessárias
+    const { jsPDF } = await import('jspdf');
+    const html2canvas = (await import('html2canvas')).default;
+    
+    // Criar elemento temporário para renderizar o relatório
+    const reportElement = document.createElement('div');
+    reportElement.style.cssText = `
+      position: absolute;
+      top: -10000px;
+      left: -10000px;
+      width: 800px;
+      background: white;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+    `;
+    
+    // Gerar HTML baseado no template escolhido
+    let reportHTML = '';
+    
+    if (options.template === 'summary') {
+      reportHTML = generateSummaryHTML(data, options);
+    } else if (options.template === 'detailed') {
+      reportHTML = generateDetailedHTML(data, options);
+    } else {
+      reportHTML = generateStandardHTML(data, options);
+    }
+    
+    reportElement.innerHTML = reportHTML;
+    document.body.appendChild(reportElement);
+    
+    // Gerar canvas da imagem
+    const canvas = await html2canvas(reportElement, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff'
     });
+    
+    // Remover elemento temporário
+    document.body.removeChild(reportElement);
+    
+    // Criar PDF
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    
+    const imgWidth = 210; // A4 width in mm
+    const pageHeight = 295; // A4 height in mm
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    let heightLeft = imgHeight;
+    
+    let position = 0;
+    
+    // Adicionar primeira página
+    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
+    
+    // Adicionar páginas adicionais se necessário
+    while (heightLeft >= 0) {
+      position = heightLeft - imgHeight;
+      pdf.addPage();
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+    }
+    
+    // Salvar PDF
+    const fileName = `relatorio-${options.template}-${new Date().toISOString().split('T')[0]}.pdf`;
+    pdf.save(fileName);
   };
 
   const exportToExcel = async (
     data: EvaluationResultsData[], 
     options: ExportOptions
   ): Promise<void> => {
-    // TODO: Implementar exportação Excel real com XLSX
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        console.log('Exportando para Excel com opções:', options);
-        console.log('Dados:', data);
-        resolve();
-      }, 2000);
-    });
+    // Importar bibliotecas necessárias
+    const XLSX = await import('xlsx');
+    const { saveAs } = await import('file-saver');
+    
+    // Criar workbook
+    const workbook = XLSX.utils.book_new();
+    
+    // Planilha de resumo (sempre incluída)
+    const summaryData = [
+      ['Relatório de Avaliações - ' + options.template.toUpperCase()],
+      [''],
+      ['Estatística', 'Valor'],
+      ['Total de Avaliações', data.length],
+      ['Avaliações Concluídas', data.filter(r => r.status === 'completed').length],
+      ['Total de Alunos', data.reduce((sum, r) => sum + r.totalStudents, 0)],
+      ['Alunos Participantes', data.reduce((sum, r) => sum + r.completedStudents, 0)],
+      ['Média Geral', (data.reduce((sum, r) => sum + r.averageRawScore, 0) / data.length).toFixed(1)],
+      ['Proficiência Média', (data.reduce((sum, r) => sum + r.averageProficiency, 0) / data.length).toFixed(0)],
+      [''],
+      ['Relatório gerado em:', new Date().toLocaleDateString('pt-BR')]
+    ];
+    
+    const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+    summarySheet['!cols'] = [{ wch: 25 }, { wch: 15 }];
+    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Resumo');
+    
+    // Incluir estatísticas avançadas se solicitado
+    if (options.includeStatistics) {
+      const statsData = [
+        ['Estatísticas Avançadas'],
+        [''],
+        ['Métrica', 'Valor'],
+        ['Desvio Padrão das Notas', calculateStandardDeviation(data.map(r => r.averageRawScore)).toFixed(2)],
+        ['Mediana das Notas', calculateMedian(data.map(r => r.averageRawScore)).toFixed(1)],
+        ['Taxa de Participação Média', ((data.reduce((sum, r) => sum + (r.completedStudents / r.totalStudents), 0) / data.length) * 100).toFixed(1) + '%'],
+        [''],
+        ['Distribuição por Nível de Proficiência:'],
+        ['Abaixo do Básico', data.reduce((sum, r) => sum + r.distributionByLevel.abaixo_do_basico, 0)],
+        ['Básico', data.reduce((sum, r) => sum + r.distributionByLevel.basico, 0)],
+        ['Adequado', data.reduce((sum, r) => sum + r.distributionByLevel.adequado, 0)],
+        ['Avançado', data.reduce((sum, r) => sum + r.distributionByLevel.avancado, 0)]
+      ];
+      
+      const statsSheet = XLSX.utils.aoa_to_sheet(statsData);
+      statsSheet['!cols'] = [{ wch: 25 }, { wch: 15 }];
+      XLSX.utils.book_append_sheet(workbook, statsSheet, 'Estatísticas');
+    }
+    
+    // Detalhes das avaliações
+    const detailsData = [
+      ['Detalhamento das Avaliações'],
+      [''],
+      ['Avaliação', 'Disciplina', 'Curso', 'Série', 'Escola', 'Data', 'Status', 'Participantes', 'Média', 'Proficiência'],
+      ...data.map(result => [
+        result.evaluationTitle,
+        result.subject,
+        result.course,
+        result.grade,
+        result.school,
+        new Date(result.appliedAt).toLocaleDateString('pt-BR'),
+        result.status === 'completed' ? 'Concluída' : 'Pendente',
+        `${result.completedStudents}/${result.totalStudents}`,
+        result.averageRawScore.toFixed(1),
+        result.averageProficiency
+      ])
+    ];
+    
+    const detailsSheet = XLSX.utils.aoa_to_sheet(detailsData);
+    detailsSheet['!cols'] = [
+      { wch: 30 }, { wch: 15 }, { wch: 15 }, { wch: 10 }, { wch: 20 }, 
+      { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 8 }, { wch: 10 }
+    ];
+    XLSX.utils.book_append_sheet(workbook, detailsSheet, 'Avaliações');
+    
+    // Incluir resultados individuais se solicitado
+    if (options.includeIndividualResults) {
+      const studentsData = [
+        ['Resultados Individuais dos Alunos'],
+        [''],
+        ['Aluno', 'Avaliação', 'Turma', 'Acertos', 'Proficiência', 'Nota', 'Classificação']
+      ];
+      
+      data.forEach(evaluation => {
+        if (evaluation.studentsData) {
+          evaluation.studentsData.forEach(student => {
+            studentsData.push([
+              student.studentName,
+              evaluation.evaluationTitle,
+              student.studentClass,
+              student.correctAnswers,
+              student.proficiencyScore,
+              student.rawScore.toFixed(1),
+              student.classification
+            ]);
+          });
+        }
+      });
+      
+      const studentsSheet = XLSX.utils.aoa_to_sheet(studentsData);
+      studentsSheet['!cols'] = [
+        { wch: 25 }, { wch: 30 }, { wch: 15 }, { wch: 8 }, { wch: 12 }, { wch: 8 }, { wch: 20 }
+      ];
+      XLSX.utils.book_append_sheet(workbook, studentsSheet, 'Alunos');
+    }
+    
+    // Comparação entre turmas se solicitado
+    if (options.includeClassComparison && data.some(r => r.classesPerformance && r.classesPerformance.length > 0)) {
+      const classesData = [
+        ['Comparação entre Turmas'],
+        [''],
+        ['Turma', 'Avaliação', 'Média da Turma', 'Proficiência Média', 'Alunos', 'Taxa de Participação']
+      ];
+      
+      data.forEach(evaluation => {
+        if (evaluation.classesPerformance) {
+          evaluation.classesPerformance.forEach(classPerf => {
+            classesData.push([
+              classPerf.className,
+              evaluation.evaluationTitle,
+              classPerf.averageScore.toFixed(1),
+              classPerf.averageProficiency,
+              classPerf.totalStudents,
+              ((classPerf.completedStudents / classPerf.totalStudents) * 100).toFixed(1) + '%'
+            ]);
+          });
+        }
+      });
+      
+      const classesSheet = XLSX.utils.aoa_to_sheet(classesData);
+      classesSheet['!cols'] = [
+        { wch: 20 }, { wch: 30 }, { wch: 12 }, { wch: 15 }, { wch: 8 }, { wch: 15 }
+      ];
+      XLSX.utils.book_append_sheet(workbook, classesSheet, 'Turmas');
+    }
+    
+    // Gerar arquivo Excel
+    const fileName = `relatorio-${options.template}-${new Date().toISOString().split('T')[0]}.xlsx`;
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    
+    saveAs(blob, fileName);
   };
 
   const handleExport = async (
@@ -386,4 +578,173 @@ export function useAdvancedExport() {
     exportToExcel,
     handleExport
   };
+}
+
+// Funções auxiliares para cálculos estatísticos
+function calculateStandardDeviation(values: number[]): number {
+  const mean = values.reduce((sum, val) => sum + val, 0) / values.length;
+  const variance = values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / values.length;
+  return Math.sqrt(variance);
+}
+
+function calculateMedian(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  
+  if (sorted.length % 2 === 0) {
+    return (sorted[middle - 1] + sorted[middle]) / 2;
+  } else {
+    return sorted[middle];
+  }
+}
+
+// Funções para gerar HTML dos relatórios
+function generateSummaryHTML(data: EvaluationResultsData[], options: ExportOptions): string {
+  const totalStudents = data.reduce((sum, r) => sum + r.totalStudents, 0);
+  const totalCompleted = data.reduce((sum, r) => sum + r.completedStudents, 0);
+  const averageScore = data.reduce((sum, r) => sum + r.averageRawScore, 0) / data.length;
+  
+  return `
+    <div style="text-align: center; margin-bottom: 30px;">
+      <h1 style="color: #1f2937; margin-bottom: 10px;">Resumo Executivo</h1>
+      <p style="color: #6b7280; margin: 0;">Gerado em ${new Date().toLocaleDateString('pt-BR')}</p>
+    </div>
+    
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 30px 0;">
+      <div style="text-align: center; padding: 20px; border: 1px solid #e5e7eb; border-radius: 8px;">
+        <div style="font-size: 32px; font-weight: bold; color: #2563eb;">${data.length}</div>
+        <div style="font-size: 14px; color: #6b7280;">Avaliações</div>
+      </div>
+      <div style="text-align: center; padding: 20px; border: 1px solid #e5e7eb; border-radius: 8px;">
+        <div style="font-size: 32px; font-weight: bold; color: #10b981;">${data.filter(r => r.status === 'completed').length}</div>
+        <div style="font-size: 14px; color: #6b7280;">Concluídas</div>
+      </div>
+      <div style="text-align: center; padding: 20px; border: 1px solid #e5e7eb; border-radius: 8px;">
+        <div style="font-size: 32px; font-weight: bold; color: #8b5cf6;">${totalCompleted}</div>
+        <div style="font-size: 14px; color: #6b7280;">Participantes</div>
+      </div>
+      <div style="text-align: center; padding: 20px; border: 1px solid #e5e7eb; border-radius: 8px;">
+        <div style="font-size: 32px; font-weight: bold; color: #f59e0b;">${averageScore.toFixed(1)}</div>
+        <div style="font-size: 14px; color: #6b7280;">Média Geral</div>
+      </div>
+    </div>
+    
+    <div style="margin-top: 40px;">
+      <h2 style="color: #374151; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">Principais Indicadores</h2>
+      <ul style="list-style: none; padding: 0;">
+        <li style="padding: 10px 0; border-bottom: 1px solid #f3f4f6;">
+          <strong>Taxa de Participação:</strong> ${((totalCompleted / totalStudents) * 100).toFixed(1)}%
+        </li>
+        <li style="padding: 10px 0; border-bottom: 1px solid #f3f4f6;">
+          <strong>Avaliações Pendentes:</strong> ${data.filter(r => r.status === 'pending').length}
+        </li>
+        <li style="padding: 10px 0;">
+          <strong>Proficiência Média:</strong> ${(data.reduce((sum, r) => sum + r.averageProficiency, 0) / data.length).toFixed(0)}
+        </li>
+      </ul>
+    </div>
+  `;
+}
+
+function generateStandardHTML(data: EvaluationResultsData[], options: ExportOptions): string {
+  return `
+    <div style="text-align: center; margin-bottom: 30px;">
+      <h1 style="color: #1f2937; margin-bottom: 10px;">Relatório de Avaliações</h1>
+      <p style="color: #6b7280; margin: 0;">Gerado em ${new Date().toLocaleDateString('pt-BR')}</p>
+    </div>
+    
+    ${generateSummaryHTML(data, options)}
+    
+    <div style="margin-top: 40px;">
+      <h2 style="color: #374151; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">Detalhamento das Avaliações</h2>
+      <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+        <thead>
+          <tr style="background-color: #f9fafb;">
+            <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left;">Avaliação</th>
+            <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left;">Disciplina</th>
+            <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: center;">Participação</th>
+            <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: center;">Média</th>
+            <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: center;">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.map(result => `
+            <tr>
+              <td style="border: 1px solid #e5e7eb; padding: 8px;">${result.evaluationTitle}</td>
+              <td style="border: 1px solid #e5e7eb; padding: 8px;">${result.subject}</td>
+              <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: center;">${result.completedStudents}/${result.totalStudents}</td>
+              <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: center;">${result.averageRawScore.toFixed(1)}</td>
+              <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: center;">
+                <span style="padding: 2px 8px; border-radius: 4px; font-size: 12px; ${result.status === 'completed' ? 'background-color: #d1fae5; color: #065f46;' : 'background-color: #fef3c7; color: #92400e;'}">
+                  ${result.status === 'completed' ? 'Concluída' : 'Pendente'}
+                </span>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function generateDetailedHTML(data: EvaluationResultsData[], options: ExportOptions): string {
+  const totalDistribution = data.reduce((acc, r) => ({
+    abaixo_do_basico: acc.abaixo_do_basico + r.distributionByLevel.abaixo_do_basico,
+    basico: acc.basico + r.distributionByLevel.basico,
+    adequado: acc.adequado + r.distributionByLevel.adequado,
+    avancado: acc.avancado + r.distributionByLevel.avancado
+  }), { abaixo_do_basico: 0, basico: 0, adequado: 0, avancado: 0 });
+  
+  return `
+    <div style="text-align: center; margin-bottom: 30px;">
+      <h1 style="color: #1f2937; margin-bottom: 10px;">Relatório Detalhado de Avaliações</h1>
+      <p style="color: #6b7280; margin: 0;">Análise completa gerada em ${new Date().toLocaleDateString('pt-BR')}</p>
+    </div>
+    
+    ${generateStandardHTML(data, options)}
+    
+    <div style="margin-top: 40px;">
+      <h2 style="color: #374151; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">Distribuição por Nível de Proficiência</h2>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 20px 0;">
+        <div style="text-align: center; padding: 15px; border: 1px solid #e5e7eb; border-radius: 8px; background-color: #fef2f2;">
+          <div style="font-size: 24px; font-weight: bold; color: #dc2626;">${totalDistribution.abaixo_do_basico}</div>
+          <div style="font-size: 12px; color: #dc2626;">Abaixo do Básico</div>
+        </div>
+        <div style="text-align: center; padding: 15px; border: 1px solid #e5e7eb; border-radius: 8px; background-color: #fffbeb;">
+          <div style="font-size: 24px; font-weight: bold; color: #d97706;">${totalDistribution.basico}</div>
+          <div style="font-size: 12px; color: #d97706;">Básico</div>
+        </div>
+        <div style="text-align: center; padding: 15px; border: 1px solid #e5e7eb; border-radius: 8px; background-color: #f0fdf4;">
+          <div style="font-size: 24px; font-weight: bold; color: #16a34a;">${totalDistribution.adequado}</div>
+          <div style="font-size: 12px; color: #16a34a;">Adequado</div>
+        </div>
+        <div style="text-align: center; padding: 15px; border: 1px solid #e5e7eb; border-radius: 8px; background-color: #f0fdf4;">
+          <div style="font-size: 24px; font-weight: bold; color: #15803d;">${totalDistribution.avancado}</div>
+          <div style="font-size: 12px; color: #15803d;">Avançado</div>
+        </div>
+      </div>
+    </div>
+    
+    ${options.includeStatistics ? `
+      <div style="margin-top: 40px;">
+        <h2 style="color: #374151; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">Estatísticas Avançadas</h2>
+        <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+          <tbody>
+            <tr>
+              <td style="border: 1px solid #e5e7eb; padding: 10px; font-weight: bold;">Desvio Padrão das Notas</td>
+              <td style="border: 1px solid #e5e7eb; padding: 10px;">${calculateStandardDeviation(data.map(r => r.averageRawScore)).toFixed(2)}</td>
+            </tr>
+            <tr>
+              <td style="border: 1px solid #e5e7eb; padding: 10px; font-weight: bold;">Mediana das Notas</td>
+              <td style="border: 1px solid #e5e7eb; padding: 10px;">${calculateMedian(data.map(r => r.averageRawScore)).toFixed(1)}</td>
+            </tr>
+            <tr>
+              <td style="border: 1px solid #e5e7eb; padding: 10px; font-weight: bold;">Taxa de Participação Média</td>
+              <td style="border: 1px solid #e5e7eb; padding: 10px;">${((data.reduce((sum, r) => sum + (r.completedStudents / r.totalStudents), 0) / data.length) * 100).toFixed(1)}%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    ` : ''}
+  `;
 } 

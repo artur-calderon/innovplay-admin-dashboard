@@ -1,14 +1,24 @@
 import React from "react";
 import { Badge } from "@/components/ui/badge";
-import { Clock, AlertTriangle } from "lucide-react";
+import { Clock, AlertTriangle, Pause } from "lucide-react";
 
 interface EvaluationTimerProps {
   timeRemaining: number; // em segundos
   isTimeUp: boolean;
+  isPaused?: boolean; // ✅ NOVO: estado de pausa
   showWarning?: boolean;
+  timeLimitMinutes?: number; // ✅ NOVO: tempo limite em minutos
+  remainingMinutes?: number; // ✅ NOVO: tempo restante em minutos
 }
 
-export function EvaluationTimer({ timeRemaining, isTimeUp, showWarning }: EvaluationTimerProps) {
+export function EvaluationTimer({
+  timeRemaining,
+  isTimeUp,
+  isPaused = false,
+  showWarning,
+  timeLimitMinutes,
+  remainingMinutes
+}: EvaluationTimerProps) {
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -23,27 +33,59 @@ export function EvaluationTimer({ timeRemaining, isTimeUp, showWarning }: Evalua
 
   const getTimerColor = () => {
     if (isTimeUp) return "destructive";
+    if (isPaused) return "secondary"; // ✅ NOVO: cor especial para pausado
     if (timeRemaining <= 300) return "destructive"; // 5 minutos
     if (timeRemaining <= 900) return "secondary"; // 15 minutos
     return "default";
   };
 
   const getTimerIcon = () => {
+    if (isPaused) return <Pause className="h-4 w-4" />; // ✅ NOVO: ícone de pausa
     if (isTimeUp || timeRemaining <= 300) {
       return <AlertTriangle className="h-4 w-4" />;
     }
     return <Clock className="h-4 w-4" />;
   };
 
+  const getTimerText = () => {
+    if (isTimeUp) return "TEMPO ESGOTADO";
+    if (isPaused) return `PAUSADO - ${formatTime(timeRemaining)}`; // ✅ NOVO: texto de pausado
+    return formatTime(timeRemaining);
+  };
+
+  // ✅ NOVO: Calcular porcentagem de tempo restante
+  const getTimePercentage = () => {
+    if (!timeLimitMinutes) return 0;
+    const totalSeconds = timeLimitMinutes * 60;
+    return Math.max(0, (timeRemaining / totalSeconds) * 100);
+  };
+
   return (
-    <Badge 
-      variant={getTimerColor()} 
-      className={`flex items-center gap-1 font-mono text-sm px-3 py-1 ${
-        showWarning || timeRemaining <= 300 ? 'animate-pulse' : ''
-      }`}
-    >
-      {getTimerIcon()}
-      {isTimeUp ? "TEMPO ESGOTADO" : formatTime(timeRemaining)}
-    </Badge>
+    <div className="flex flex-col items-end gap-1">
+      <Badge
+        variant={getTimerColor()}
+        className={`flex items-center gap-1 font-mono text-sm px-3 py-1 ${showWarning || timeRemaining <= 300 ? 'animate-pulse' : ''
+          } ${isPaused ? 'bg-yellow-100 text-yellow-800 border-yellow-300' : ''}`} // ✅ NOVO: estilo especial para pausado
+      >
+        {getTimerIcon()}
+        {getTimerText()}
+      </Badge>
+
+      {/* ✅ NOVO: Informações adicionais do cronômetro */}
+      {timeLimitMinutes && remainingMinutes !== undefined && (
+        <div className="text-xs text-muted-foreground text-right">
+          <div className="flex items-center gap-2">
+            <span>{remainingMinutes}/{timeLimitMinutes} min</span>
+            <div className="w-16 h-1 bg-gray-200 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-500 transition-all duration-300"
+                style={{ width: `${getTimePercentage()}%` }}
+              />
+            </div>
+            <span>{Math.round(getTimePercentage())}%</span>
+          </div>
+        </div>
+      )}
+    </div>
   );
 } 

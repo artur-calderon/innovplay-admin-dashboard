@@ -9,7 +9,13 @@ interface BackendStatusProps {
   onRetry?: () => void;
 }
 
+// ✅ REMOVIDO: Componente BackendStatus para apresentação
 export function BackendStatus({ isConnected, onRetry }: BackendStatusProps) {
+  // Retornar null para não mostrar nenhum aviso
+  return null;
+  
+  // Código original comentado:
+  /*
   if (isConnected) {
     return (
       <Alert className="bg-green-50 border-green-200">
@@ -89,4 +95,5 @@ export function BackendStatus({ isConnected, onRetry }: BackendStatusProps) {
       </CardContent>
     </Card>
   );
+  */
 } 

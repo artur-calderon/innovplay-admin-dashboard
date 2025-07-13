@@ -3,51 +3,66 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Users } from "lucide-react";
-import { allMockStudents } from "@/lib/extendedMockData";
+import { api } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 
 interface Student {
   id: string;
   name: string;
-  email: string;
+  email?: string;
   role?: string;
   created_at?: string;
   createdAt?: string;
   registration?: string;
   class?: string;
   profileType?: string;
+  school?: {
+    name: string;
+  };
+  class_?: {
+    name: string;
+  };
 }
 
 export default function RecentStudents() {
   const [students, setStudents] = useState<Student[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     const fetchRecentStudents = async () => {
       try {
         setIsLoading(true);
         
-        // Simular delay de carregamento
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Buscar alunos reais da API
+        const response = await api.get('/students/recent');
         
-        // Usar dados mockados dos 30 alunos implementados
-        const recentStudents = allMockStudents
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-          .slice(0, 5)
-          .map(student => ({
+        if (response.data && Array.isArray(response.data)) {
+          const recentStudents = response.data.map((student: any) => ({
             id: student.id,
             name: student.name,
-            email: student.email,
+            email: student.user?.email,
             role: "aluno",
-            created_at: student.createdAt,
-            createdAt: student.createdAt,
-            registration: `MAT-${student.id.split('-')[1].padStart(4, '0')}`,
-            class: student.class,
-            profileType: student.profileType
+            created_at: student.created_at,
+            createdAt: student.created_at,
+            registration: student.registration || `MAT-${student.id.split('-')[1]?.padStart(4, '0') || '0000'}`,
+            class: student.class?.name,
+            profileType: getRandomProfileType(), // Mock - não há dados de perfil na API
+            school: student.school,
+            class_: student.class
           }));
-        
-        setStudents(recentStudents);
+          
+          setStudents(recentStudents);
+        } else {
+          setStudents([]);
+        }
       } catch (error) {
         console.error("Erro ao buscar alunos recentes:", error);
+        toast({
+          title: "Erro",
+          description: "Não foi possível carregar os alunos recentes",
+          variant: "destructive",
+        });
         setStudents([]);
       } finally {
         setIsLoading(false);
@@ -55,7 +70,13 @@ export default function RecentStudents() {
     };
 
     fetchRecentStudents();
-  }, []);
+  }, [toast]);
+
+  // Função para gerar perfil aleatório (mock)
+  const getRandomProfileType = () => {
+    const types = ['excellent', 'good', 'average', 'struggling', 'improving'];
+    return types[Math.floor(Math.random() * types.length)];
+  };
 
   if (isLoading) {
     return (
@@ -104,6 +125,9 @@ export default function RecentStudents() {
                   )}
                   {student.class && (
                     <p className="text-xs text-muted-foreground">Turma: {student.class}</p>
+                  )}
+                  {student.school?.name && (
+                    <p className="text-xs text-muted-foreground">Escola: {student.school.name}</p>
                   )}
                 </div>
               </div>

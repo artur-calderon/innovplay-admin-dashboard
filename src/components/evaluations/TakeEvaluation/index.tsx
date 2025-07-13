@@ -30,7 +30,8 @@ import {
   Home,
   Play,
   Loader2,
-  CheckCircle2
+  CheckCircle2,
+  Pause
 } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -39,18 +40,32 @@ import { useEvaluation } from "@/hooks/useEvaluation";
 import { Question, TestData, TestResults } from "@/types/evaluation-types";
 
 export default function TakeEvaluation() {
-  const { evaluationId } = useParams<{ evaluationId: string }>();
+  const { id: evaluationId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
 
-  console.log('=== DEBUG: TakeEvaluation - Params ===');
-  console.log('evaluationId from params:', evaluationId);
+
+
+  // Se não há evaluationId, mostrar erro
+  if (!evaluationId) {
+    return (
+      <div className="container mx-auto px-4 py-6">
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            ID da avaliação não encontrado na URL. Verifique o link e tente novamente.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 
   const {
     evaluationState,
     testData,
     session,
+    sessionInfo, // ✅ NOVO: informações da sessão
     currentQuestionIndex,
     answers,
     isSubmitting,
@@ -58,18 +73,15 @@ export default function TakeEvaluation() {
     results,
     timeRemaining,
     isTimeUp,
+    isPaused, // ✅ NOVO: estado de pausa
     startTestSession,
+    startTimerManually, // ✅ NOVO: função para iniciar cronômetro manualmente
     handleAnswerChange,
     navigateToQuestion,
     handleSubmitTest
-  } = useEvaluation({ testId: evaluationId! });
+  } = useEvaluation({ testId: evaluationId });
 
-  // Debug logs
-  console.log('=== DEBUG: TakeEvaluation Component ===');
-  console.log('evaluationId:', evaluationId);
-  console.log('session:', session);
-  console.log('session?.session_id:', session?.session_id);
-  console.log('evaluationState:', evaluationState);
+
 
   // Loading state
   if (evaluationState === 'loading') {
@@ -83,11 +95,39 @@ export default function TakeEvaluation() {
   // Error state
   if (evaluationState === 'error') {
     return (
-      <div className="container mx-auto px-4 py-6">
+      <div className="container mx-auto px-4 py-6 max-w-2xl">
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
-            Erro ao carregar a avaliação. Tente novamente.
+            <div className="space-y-4">
+              <div>
+                <strong>Erro ao carregar a avaliação</strong>
+              </div>
+              <div className="text-sm">
+                Possíveis causas:
+                <ul className="list-disc list-inside mt-2 space-y-1">
+                  <li>Problemas de conectividade de rede</li>
+                  <li>ID da avaliação inválido: {evaluationId}</li>
+                  <li>Tente recarregar a página</li>
+                </ul>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.location.reload()}
+                >
+                  Tentar Novamente
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate("/aluno/avaliacoes")}
+                >
+                  Voltar às Avaliações
+                </Button>
+              </div>
+            </div>
           </AlertDescription>
         </Alert>
       </div>
@@ -110,7 +150,10 @@ export default function TakeEvaluation() {
             <div className="grid gap-4 md:grid-cols-3">
               <div className="text-center p-4 border rounded-lg">
                 <Clock className="h-8 w-8 mx-auto mb-2 text-blue-600" />
-                <div className="font-semibold">{testData.duration} minutos</div>
+                <div className="font-semibold">
+                  {/* ✅ MODIFICADO: Usar time_limit_minutes da API se disponível */}
+                  {sessionInfo?.time_limit_minutes || testData?.duration || 60} minutos
+                </div>
                 <div className="text-sm text-muted-foreground">Tempo disponível</div>
               </div>
               <div className="text-center p-4 border rounded-lg">
@@ -127,6 +170,34 @@ export default function TakeEvaluation() {
 
             <div className="text-center">
               <p className="mb-4">{testData.instructions}</p>
+
+              {/* ✅ NOVO: Informações adicionais sobre o cronômetro */}
+              {sessionInfo && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="text-sm text-blue-800">
+                    <div className="font-medium mb-1">Informações do Cronômetro:</div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="font-medium">Tempo limite:</span> {sessionInfo.time_limit_minutes} minutos
+                      </div>
+                      <div>
+                        <span className="font-medium">Status:</span> {sessionInfo.timer_started ? 'Iniciado' : 'Pausado'}
+                      </div>
+                      {sessionInfo.timer_started && (
+                        <>
+                          <div>
+                            <span className="font-medium">Iniciado em:</span> {new Date(sessionInfo.actual_start_time).toLocaleString('pt-BR')}
+                          </div>
+                          <div>
+                            <span className="font-medium">Tempo restante:</span> {sessionInfo.remaining_time_minutes} minutos
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="flex justify-center gap-4">
                 <Button variant="outline" onClick={() => navigate("/aluno/avaliacoes")}>
                   <Home className="h-4 w-4 mr-2" />
@@ -230,14 +301,17 @@ export default function TakeEvaluation() {
                 <EvaluationTimer
                   timeRemaining={timeRemaining}
                   isTimeUp={isTimeUp}
+                  isPaused={isPaused} // ✅ NOVO: passar estado de pausa
+                  timeLimitMinutes={sessionInfo?.time_limit_minutes} // ✅ NOVO: tempo limite da API
+                  remainingMinutes={sessionInfo?.remaining_time_minutes} // ✅ NOVO: tempo restante da API
                 />
 
                 <div className="text-right">
                   <div className="text-sm font-medium">
-                    {Math.round((Object.keys(answers).length / testData.totalQuestions) * 100)}% concluído
+                    {testData.questions.length > 0 ? Math.round((Object.keys(answers).length / testData.questions.length) * 100) : 0}% concluído
                   </div>
                   <Progress
-                    value={(Object.keys(answers).length / testData.totalQuestions) * 100}
+                    value={testData.questions.length > 0 ? (Object.keys(answers).length / testData.questions.length) * 100 : 0}
                     className="w-24 h-2"
                   />
                 </div>
@@ -255,6 +329,65 @@ export default function TakeEvaluation() {
 
         <div className="container mx-auto px-4 py-6">
           <div className="grid gap-6 lg:grid-cols-4">
+            {/* ✅ NOVO: Alerta quando pausado */}
+            {isPaused && (
+              <div className="lg:col-span-4 mb-4">
+                <Alert className="border-yellow-300 bg-yellow-50">
+                  <Pause className="h-4 w-4" />
+                  <AlertDescription className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <span>
+                        ⏸️ <strong>Cronômetro pausado</strong> -
+                        {!sessionInfo?.timer_started
+                          ? " Clique em 'Iniciar Cronômetro' para começar a contagem."
+                          : " O timer foi pausado porque você saiu desta aba. Volte para esta aba para continuar."
+                        }
+                      </span>
+
+                      {/* ✅ NOVO: Informações detalhadas do cronômetro */}
+                      {sessionInfo && (
+                        <div className="mt-2 text-xs text-yellow-800">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <span className="font-medium">Tempo limite:</span> {sessionInfo.time_limit_minutes} minutos
+                            </div>
+                            <div>
+                              <span className="font-medium">Tempo restante:</span> {sessionInfo.remaining_time_minutes} minutos
+                            </div>
+                            {sessionInfo.timer_started && (
+                              <div className="col-span-2">
+                                <span className="font-medium">Iniciado em:</span> {new Date(sessionInfo.actual_start_time).toLocaleString('pt-BR')}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    {(!sessionInfo?.timer_started) && (
+                      <Button
+                        onClick={startTimerManually}
+                        disabled={isSubmitting}
+                        size="sm"
+                        className="ml-4"
+                      >
+                        {isSubmitting ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Iniciando...
+                          </>
+                        ) : (
+                          <>
+                            <Play className="h-4 w-4 mr-2" />
+                            Iniciar Cronômetro
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              </div>
+            )}
+
             {/* Navegação das questões */}
             <div className="lg:col-span-1">
               <Card className="sticky top-24">
@@ -276,7 +409,7 @@ export default function TakeEvaluation() {
                             }`}
                           onClick={() => navigateToQuestion(index)}
                         >
-                          {question.number}
+                          {index + 1}
                           {hasAnswer && (
                             <CheckCircle className="h-3 w-3 absolute -top-1 -right-1 text-green-500" />
                           )}
@@ -304,16 +437,55 @@ export default function TakeEvaluation() {
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-3">
-                        <Badge variant="outline">Questão {currentQuestion.number}</Badge>
-                        <Badge variant="secondary">{currentQuestion.points} ponto{currentQuestion.points !== 1 ? 's' : ''}</Badge>
+                        <Badge variant="outline">Questão {currentQuestionIndex + 1}</Badge>
+                        <Badge variant="secondary">{currentQuestion.points || 1} ponto{(currentQuestion.points || 1) !== 1 ? 's' : ''}</Badge>
                       </div>
-                      <CardTitle className="text-base leading-relaxed">
-                        {currentQuestion.text}
-                      </CardTitle>
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-6">
+                  {/* Conteúdo da questão */}
+                  <div className="space-y-4">
+                    {/* Primeiro enunciado */}
+                    {(currentQuestion.formattedText || currentQuestion.text) && (
+                      <div className="text-base leading-relaxed">
+                        <div dangerouslySetInnerHTML={{ __html: currentQuestion.formattedText || currentQuestion.text }} />
+                      </div>
+                    )}
+
+                    {/* Imagens */}
+                    {currentQuestion.images && Array.isArray(currentQuestion.images) && currentQuestion.images.length > 0 && (
+                      <div className="flex flex-wrap gap-4 my-4">
+                        {currentQuestion.images.map((image, index) => {
+                          // Se image é um objeto com url
+                          const imageUrl = typeof image === 'string' ? image : image?.url || image?.src;
+                          if (!imageUrl) return null;
+
+                          return (
+                            <div key={index} className="max-w-md">
+                              <img
+                                src={imageUrl}
+                                alt={`Imagem ${index + 1} da questão`}
+                                className="w-full h-auto rounded-lg border shadow-sm"
+                                style={{ maxHeight: '400px', objectFit: 'contain' }}
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Segundo enunciado */}
+                    {(currentQuestion.secondStatement || currentQuestion.secondstatement) && (
+                      <div className="text-base leading-relaxed">
+                        <div dangerouslySetInnerHTML={{ __html: currentQuestion.secondStatement || currentQuestion.secondstatement }} />
+                      </div>
+                    )}
+                  </div>
+
                   {/* Opções de resposta */}
                   <QuestionOptions
                     question={currentQuestion}
@@ -352,16 +524,18 @@ export default function TakeEvaluation() {
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Confirmar envio da avaliação</AlertDialogTitle>
-              <AlertDialogDescription>
-                Você tem certeza que deseja enviar sua avaliação?
+              <AlertDialogDescription asChild>
+                <div>
+                  <p className="mb-4">Você tem certeza que deseja enviar sua avaliação?</p>
 
-                <div className="mt-4 space-y-2">
-                  <div>Questões respondidas: {Object.keys(answers).length} de {testData.totalQuestions}</div>
-                  <div>Tempo restante: {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}</div>
-                </div>
+                  <div className="space-y-2 mb-4">
+                    <div>Questões respondidas: {Object.keys(answers).length} de {testData.questions.length || 0}</div>
+                    <div>Tempo restante: {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}</div>
+                  </div>
 
-                <div className="mt-4 text-sm text-orange-600">
-                  ⚠️ Após enviar, você não poderá mais alterar suas respostas.
+                  <div className="text-sm text-orange-600">
+                    ⚠️ Após enviar, você não poderá mais alterar suas respostas.
+                  </div>
                 </div>
               </AlertDialogDescription>
             </AlertDialogHeader>
@@ -395,82 +569,187 @@ function QuestionOptions({
   onAnswerChange: (answer: string | string[] | null) => void;
   disabled: boolean;
 }) {
-  if (question.type === "multiple_choice") {
+  if (question.type === "multiple_choice" || question.type === "multipleChoice") {
+    // Usar options (que existe) ou alternatives (fallback)
+    const questionOptions = question.options || question.alternatives || [];
+
     return (
-      <RadioGroup
-        value={answer || ""}
-        onValueChange={onAnswerChange}
-        disabled={disabled}
-      >
-        {question.options?.map((option) => (
-          <div key={option.id} className="flex items-center space-x-2">
-            <RadioGroupItem value={option.id} id={option.id} />
-            <Label htmlFor={option.id} className="flex-1 cursor-pointer">
-              {option.text}
-            </Label>
-          </div>
-        ))}
-      </RadioGroup>
+      <div className="space-y-3">
+        <div className="text-sm font-medium text-gray-700 mb-3">
+          Selecione a alternativa correta:
+        </div>
+        <RadioGroup
+          value={answer || ""}
+          onValueChange={onAnswerChange}
+          disabled={disabled}
+        >
+          {questionOptions.map((option, index) => {
+            const optionId = option.id || `option-${index}`;
+            const optionText = option.text || option;
+            const isSelected = answer === optionId;
+
+            return (
+              <div
+                key={optionId}
+                className={`flex items-start space-x-3 p-4 rounded-lg border cursor-pointer transition-all hover:bg-gray-50 ${isSelected
+                  ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+                  : 'border-gray-200 hover:border-gray-300'
+                  } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                onClick={() => !disabled && onAnswerChange(optionId)}
+              >
+                <RadioGroupItem
+                  value={optionId}
+                  id={optionId}
+                  className="mt-0.5"
+                />
+                <Label
+                  htmlFor={optionId}
+                  className="flex-1 cursor-pointer text-sm leading-relaxed"
+                >
+                  <div className="flex items-start gap-2">
+                    <span className="font-medium text-gray-600 min-w-[20px]">
+                      {String.fromCharCode(65 + index)})
+                    </span>
+                    <div dangerouslySetInnerHTML={{ __html: optionText }} />
+                  </div>
+                </Label>
+              </div>
+            );
+          })}
+        </RadioGroup>
+      </div>
     );
   }
 
-  if (question.type === "true_false") {
+  if (question.type === "true_false" || question.type === "truefalse") {
     return (
-      <RadioGroup
-        value={answer || ""}
-        onValueChange={onAnswerChange}
-        disabled={disabled}
-      >
-        <div className="flex items-center space-x-2">
-          <RadioGroupItem value="true" id="true" />
-          <Label htmlFor="true" className="cursor-pointer">Verdadeiro</Label>
+      <div className="space-y-3">
+        <div className="text-sm font-medium text-gray-700 mb-3">
+          Selecione Verdadeiro ou Falso:
         </div>
-        <div className="flex items-center space-x-2">
-          <RadioGroupItem value="false" id="false" />
-          <Label htmlFor="false" className="cursor-pointer">Falso</Label>
-        </div>
-      </RadioGroup>
+        <RadioGroup
+          value={answer || ""}
+          onValueChange={onAnswerChange}
+          disabled={disabled}
+        >
+          {[
+            { id: "true", text: "Verdadeiro" },
+            { id: "false", text: "Falso" }
+          ].map((option) => {
+            const isSelected = answer === option.id;
+
+            return (
+              <div
+                key={option.id}
+                className={`flex items-center space-x-3 p-4 rounded-lg border cursor-pointer transition-all hover:bg-gray-50 ${isSelected
+                  ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+                  : 'border-gray-200 hover:border-gray-300'
+                  } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                onClick={() => !disabled && onAnswerChange(option.id)}
+              >
+                <RadioGroupItem value={option.id} id={option.id} />
+                <Label htmlFor={option.id} className="flex-1 cursor-pointer font-medium">
+                  {option.text}
+                </Label>
+              </div>
+            );
+          })}
+        </RadioGroup>
+      </div>
     );
   }
 
   if (question.type === "multiple_answer") {
     const selectedAnswers = answer ? answer.split(',') : [];
+    // Usar options (que existe) ou alternatives (fallback)
+    const questionOptions = question.options || question.alternatives || [];
 
     return (
-      <div className="space-y-2">
-        {question.options?.map((option) => (
-          <div key={option.id} className="flex items-center space-x-2">
-            <Checkbox
-              id={option.id}
-              checked={selectedAnswers.includes(option.id)}
-              onCheckedChange={(checked) => {
-                const newAnswers = checked
-                  ? [...selectedAnswers, option.id]
-                  : selectedAnswers.filter(id => id !== option.id);
-                onAnswerChange(newAnswers);
-              }}
-              disabled={disabled}
-            />
-            <Label htmlFor={option.id} className="flex-1 cursor-pointer">
-              {option.text}
-            </Label>
-          </div>
-        ))}
+      <div className="space-y-3">
+        <div className="text-sm font-medium text-gray-700 mb-3">
+          Selecione todas as alternativas corretas:
+        </div>
+        <div className="space-y-2">
+          {questionOptions.map((option, index) => {
+            const optionId = option.id || `option-${index}`;
+            const optionText = option.text || option;
+            const isSelected = selectedAnswers.includes(optionId);
+
+            return (
+              <div
+                key={optionId}
+                className={`flex items-start space-x-3 p-4 rounded-lg border cursor-pointer transition-all hover:bg-gray-50 ${isSelected
+                  ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+                  : 'border-gray-200 hover:border-gray-300'
+                  } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                onClick={() => {
+                  if (!disabled) {
+                    const newAnswers = isSelected
+                      ? selectedAnswers.filter(id => id !== optionId)
+                      : [...selectedAnswers, optionId];
+                    onAnswerChange(newAnswers);
+                  }
+                }}
+              >
+                <Checkbox
+                  id={optionId}
+                  checked={isSelected}
+                  onCheckedChange={(checked) => {
+                    if (!disabled) {
+                      const newAnswers = checked
+                        ? [...selectedAnswers, optionId]
+                        : selectedAnswers.filter(id => id !== optionId);
+                      onAnswerChange(newAnswers);
+                    }
+                  }}
+                  disabled={disabled}
+                  className="mt-0.5"
+                />
+                <Label
+                  htmlFor={optionId}
+                  className="flex-1 cursor-pointer text-sm leading-relaxed"
+                >
+                  <div className="flex items-start gap-2">
+                    <span className="font-medium text-gray-600 min-w-[20px]">
+                      {String.fromCharCode(65 + index)})
+                    </span>
+                    <div dangerouslySetInnerHTML={{ __html: optionText }} />
+                  </div>
+                </Label>
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
   }
 
-  if (question.type === "essay") {
+  if (question.type === "essay" || question.type === "open" || question.type === "dissertativa" || question.type === "text" || question.type === "short_answer") {
     return (
-      <Textarea
-        placeholder="Digite sua resposta aqui..."
-        value={answer || ""}
-        onChange={(e) => onAnswerChange(e.target.value)}
-        rows={6}
-        disabled={disabled}
-      />
+      <div className="space-y-3">
+        <div className="text-sm font-medium text-gray-700 mb-3">
+          Digite sua resposta:
+        </div>
+        <Textarea
+          placeholder="Digite sua resposta aqui..."
+          value={answer || ""}
+          onChange={(e) => onAnswerChange(e.target.value)}
+          rows={6}
+          disabled={disabled}
+          className="min-h-[120px] resize-none"
+        />
+        <div className="text-xs text-gray-500">
+          {answer ? `${answer.length} caracteres` : '0 caracteres'}
+        </div>
+      </div>
     );
   }
 
-  return null;
+  return (
+    <div className="p-4 border rounded-lg bg-gray-50">
+      <div className="text-sm text-gray-600">
+        Tipo de questão não suportado: {question.type}
+      </div>
+    </div>
+  );
 } 

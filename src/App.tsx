@@ -35,9 +35,10 @@ const Curso = React.lazy(() => import("./pages/Curso"));
 const Serie = React.lazy(() => import("./pages/Serie"));
 const Disciplina = React.lazy(() => import("./pages/Disciplina"));
 const StudentAgenda = React.lazy(() => import("./pages/StudentAgenda"));
-const DoEvaluation = React.lazy(() => import("./pages/DoEvaluation"));
+const TakeEvaluation = React.lazy(() => import("./components/evaluations/TakeEvaluation/index"));
 const EvaluationCorrection = React.lazy(() => import("./pages/EvaluationCorrection"));
 const Results = React.lazy(() => import("./pages/Results"));
+const EvaluationResults = React.lazy(() => import("./components/evaluations/EvaluationResults"));
 
 // Lazy loading para componentes de jogos
 const GamesManagement = React.lazy(() => import("./pages/GamesManagement"));
@@ -95,6 +96,7 @@ const App = () => {
             <Route path="/aluno" element={<Layout />}>
               <Route index element={<PrivateRoute><Index /></PrivateRoute>} />
               <Route path="/aluno/avaliacoes" element={<PrivateRoute><StudentEvaluations /></PrivateRoute>} />
+              <Route path="/aluno/avaliacao/:id/fazer" element={<PrivateRoute><TakeEvaluation /></PrivateRoute>} />
               <Route path="/aluno/agenda" element={<PrivateRoute><StudentAgenda /></PrivateRoute>} />
               <Route path="/aluno/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
               <Route path="/aluno/jogos" element={<PrivateRoute><StudentGames /></PrivateRoute>} />
@@ -114,9 +116,10 @@ const App = () => {
               <Route path="/app/avaliacoes" element={<PrivateRoute><Evaluations /></PrivateRoute>} />
               <Route path="/app/avaliacoes/correcao" element={<PrivateRoute><EvaluationCorrection /></PrivateRoute>} />
               <Route path="/app/resultados" element={<PrivateRoute><Results /></PrivateRoute>} />
+              <Route path="/app/avaliacao/:id/resultados" element={<PrivateRoute><EvaluationResults /></PrivateRoute>} />
               <Route path="/app/avaliacao/:id" element={<PrivateRoute><ViewEvaluation /></PrivateRoute>} />
               <Route path="/app/avaliacao/:id/editar" element={<PrivateRoute><EditEvaluation /></PrivateRoute>} />
-                              <Route path="/app/avaliacao/:id/fazer" element={<PrivateRoute><DoEvaluation /></PrivateRoute>} />
+                              <Route path="/app/avaliacao/:id/fazer" element={<PrivateRoute><TakeEvaluation /></PrivateRoute>} />
               <Route path="/app/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
               <Route path="/app/criar-avaliacao" element={<PrivateRoute><CreateEvaluation /></PrivateRoute>} />
               <Route path="/app/agenda" element={<PrivateRoute><EmBreve /></PrivateRoute>} />

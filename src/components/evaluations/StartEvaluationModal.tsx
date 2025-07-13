@@ -21,26 +21,47 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, Clock, Loader2, Play, Users } from "lucide-react";
+import { CalendarDays, Clock, Loader2, Play, Users, CheckCircle, AlertCircle, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { api } from "@/lib/api";
 
-// Interface removida - não precisamos mais gerenciar turmas aqui
-
-// Schema de validação simplificado (sem seleção de turmas)
+// Schema de validação
 const startEvaluationSchema = z.object({
   startDateTime: z.string().min(1, "Selecione a data e hora de início"),
   endDateTime: z.string().min(1, "Selecione a data e hora de término"),
 }).refine((data) => {
   if (data.startDateTime && data.endDateTime) {
-    return new Date(data.endDateTime) > new Date(data.startDateTime);
+    const startDate = new Date(data.startDateTime);
+    const endDate = new Date(data.endDateTime);
+    const now = new Date();
+    
+    // Início e fim não podem ser no passado
+    if (startDate < now || endDate < now) {
+      return false;
+    }
+    // Fim deve ser posterior ao início
+    if (endDate <= startDate) {
+      return false;
+    }
+    return true;
   }
   return true;
 }, {
-  message: "A data de término deve ser posterior à data de início",
+  message: "Verifique as datas: início e término devem ser no futuro e o término deve ser posterior ao início.",
   path: ["endDateTime"],
 });
 
 type StartEvaluationFormValues = z.infer<typeof startEvaluationSchema>;
+
+interface EvaluationClass {
+  id: string;
+  name: string;
+  school_name: string;
+  grade_name: string;
+  students_count: number;
+}
 
 interface StartEvaluationModalProps {
   isOpen: boolean;
@@ -55,6 +76,7 @@ interface StartEvaluationModalProps {
     duration?: number;
     schools?: Array<{ id: string; name: string }>;
     municipalities?: Array<{ id: string; name: string }>;
+    grade?: { id: string; name: string };
   } | null;
 }
 
@@ -65,6 +87,8 @@ export default function StartEvaluationModal({
   evaluation
 }: StartEvaluationModalProps) {
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingClasses, setIsLoadingClasses] = useState(false);
+  const [evaluationClasses, setEvaluationClasses] = useState<EvaluationClass[]>([]);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
@@ -80,18 +104,75 @@ export default function StartEvaluationModal({
   const startDateTime = form.watch("startDateTime");
   const endDateTime = form.watch("endDateTime");
 
-  // Não precisamos mais buscar turmas aqui, pois elas já foram selecionadas na criação
+  // Buscar turmas da avaliação quando abrir o modal
   useEffect(() => {
     if (isOpen && evaluation) {
-      // Limpar formulário quando abrir
+      // Limpar formulário e estado
       form.reset({
         startDateTime: "",
         endDateTime: "",
       });
+      setError(null);
+      setEvaluationClasses([]);
+      
+      // Buscar turmas que receberão esta avaliação
+      fetchEvaluationClasses();
     }
   }, [isOpen, evaluation]);
 
-  // Função removida - não precisamos mais buscar turmas aqui
+  const fetchEvaluationClasses = async () => {
+    if (!evaluation) return;
+    
+    try {
+      setIsLoadingClasses(true);
+      console.log("🔍 Buscando turmas para avaliação:", evaluation.id);
+      
+      // Buscar turmas já aplicadas para esta avaliação
+      const response = await api.get(`/test/${evaluation.id}/classes`);
+      console.log("📋 Resposta da API de turmas:", response.data);
+      
+      if (response.data && Array.isArray(response.data) && response.data.length > 0) {
+        // Mapear dados do backend para o formato esperado pelo componente
+        const classes = response.data.map((item: any) => ({
+          id: item.class.id,
+          name: item.class.name,
+          school_name: item.class.school?.name || "Escola não informada",
+          grade_name: item.class.grade?.name || "Série não informada",
+          students_count: item.students_count || 0,
+          // Dados adicionais para referência
+          class_test_id: item.class_test_id,
+          current_application: item.application,
+          current_expiration: item.expiration,
+          status: item.status || "configured"  // "applied" ou "configured"
+        }));
+        
+        setEvaluationClasses(classes);
+        console.log("✅ Turmas processadas:", classes);
+        
+        // Se chegou aqui e tem turmas, limpar qualquer erro anterior
+        setError(null);
+      } else {
+        console.log("⚠️ Nenhuma turma encontrada para esta avaliação");
+        setEvaluationClasses([]);
+        setError("Esta avaliação ainda não foi aplicada para nenhuma turma. Para aplicar, primeiro você precisa configurar as turmas no processo de criação da avaliação.");
+      }
+    } catch (error: any) {
+      console.error("❌ Erro ao buscar turmas:", error);
+      setEvaluationClasses([]);
+      
+      if (error.response?.status === 404) {
+        setError("Esta avaliação ainda não foi aplicada para nenhuma turma. Para aplicar, primeiro você precisa configurar as turmas no processo de criação da avaliação.");
+      } else if (error.response?.status === 403) {
+        setError("Você não tem permissão para visualizar as turmas desta avaliação.");
+      } else if (error.response?.status === 401) {
+        setError("Sua sessão expirou. Faça login novamente.");
+      } else {
+        setError("Erro ao carregar turmas. Verifique sua conexão e tente novamente.");
+      }
+    } finally {
+      setIsLoadingClasses(false);
+    }
+  };
 
   // Função para calcular a duração total do período
   const calculateTotalPeriod = () => {
@@ -116,17 +197,26 @@ export default function StartEvaluationModal({
     }
   };
 
-  // Funções removidas - não precisamos mais gerenciar seleção de turmas
-
   const handleSubmit = async (values: StartEvaluationFormValues) => {
+    if (evaluationClasses.length === 0) {
+      toast({
+        title: "Erro",
+        description: "Esta avaliação não possui turmas configuradas",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       setIsLoading(true);
-      // Usar array vazio para classIds, pois as turmas já foram selecionadas na criação
-      await onConfirm(values.startDateTime, values.endDateTime, []);
+      
+      // Aplicar para todas as turmas configuradas
+      const classIds = evaluationClasses.map(c => c.id);
+      await onConfirm(values.startDateTime, values.endDateTime, classIds);
       
       toast({
-        title: "Avaliação aplicada com sucesso!",
-        description: `A avaliação "${evaluation?.title}" foi aplicada para as turmas configuradas`,
+        title: "✅ Avaliação aplicada com sucesso!",
+        description: `A avaliação "${evaluation?.title}" foi aplicada para ${evaluationClasses.length} turma(s) e ficará disponível no horário configurado.`,
       });
       
       form.reset();
@@ -146,21 +236,26 @@ export default function StartEvaluationModal({
   const handleClose = () => {
     form.reset();
     setError(null);
+    setEvaluationClasses([]);
     onClose();
+  };
+
+  const getTotalStudents = () => {
+    return evaluationClasses.reduce((total, cls) => total + cls.students_count, 0);
   };
 
   if (!evaluation) return null;
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[700px] max-h-[90vh]">
+      <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Play className="h-5 w-5 text-green-600" />
             Aplicar Avaliação
           </DialogTitle>
           <DialogDescription>
-            Configure quando e para quais turmas a avaliação "{evaluation.title}" ficará disponível
+            Configure quando a avaliação "{evaluation.title}" ficará disponível para os alunos
           </DialogDescription>
         </DialogHeader>
 
@@ -168,30 +263,131 @@ export default function StartEvaluationModal({
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
             {/* Informações da Avaliação */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h4 className="text-sm font-semibold text-blue-800 mb-2">
+              <h4 className="text-sm font-semibold text-blue-800 mb-3 flex items-center gap-2">
+                <Info className="h-4 w-4" />
                 Informações da Avaliação
               </h4>
-              <div className="space-y-1 text-sm text-blue-700">
-                <p><strong>Disciplina(s):</strong> {
-                  evaluation.subjects && evaluation.subjects.length > 0 
-                    ? evaluation.subjects.map(s => s.name).join(", ")
-                    : evaluation.subject.name
-                }</p>
-                <p><strong>Questões:</strong> {evaluation.questions.length}</p>
-                <p><strong>Duração individual:</strong> {evaluation.duration || 60} minutos</p>
+              <div className="space-y-2 text-sm text-blue-700">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <span className="font-medium">Disciplina(s):</span>
+                    <p className="mt-1">{
+                      evaluation.subjects && evaluation.subjects.length > 0 
+                        ? evaluation.subjects.map(s => s.name).join(", ")
+                        : evaluation.subject.name
+                    }</p>
+                  </div>
+                  <div>
+                    <span className="font-medium">Série:</span>
+                    <p className="mt-1">{evaluation.grade?.name || "Não informada"}</p>
+                  </div>
+                  <div>
+                    <span className="font-medium">Questões:</span>
+                    <p className="mt-1">{evaluation.questions.length}</p>
+                  </div>
+                  <div>
+                    <span className="font-medium">Duração:</span>
+                    <p className="mt-1">{evaluation.duration || 60} minutos</p>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Informações das Turmas Selecionadas */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Users className="h-4 w-4 text-blue-600" />
-                <h3 className="font-medium text-blue-800">Turmas Selecionadas</h3>
-              </div>
-              <p className="text-sm text-blue-700">
-                As turmas foram selecionadas durante a criação da avaliação. 
-                A avaliação será aplicada para todas as turmas configuradas.
-              </p>
+            {/* Informações das Turmas */}
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <h4 className="text-sm font-semibold text-green-800 mb-3 flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Turmas para aplicação
+              </h4>
+              
+              {isLoadingClasses ? (
+                <div className="flex items-center gap-2 text-sm text-green-600">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Carregando turmas...
+                </div>
+              ) : error ? (
+                <Alert variant="destructive" className="bg-red-50 border-red-200">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              ) : evaluationClasses.length > 0 ? (
+                <div className="space-y-3">
+                  {/* Verificar se há turmas já aplicadas */}
+                  {evaluationClasses.some(cls => cls.status === "applied") && (
+                    <div className="bg-blue-50 border border-blue-200 rounded p-3">
+                      <p className="text-xs text-blue-800 mb-2">
+                        ⚠️ Esta avaliação já foi aplicada anteriormente. Você pode reaplicar com novos horários.
+                      </p>
+                      <div className="flex items-center gap-4 text-sm text-blue-700">
+                        <Badge variant="outline" className="bg-blue-100 text-blue-800">
+                          Reaplicação
+                        </Badge>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Verificar se há turmas apenas configuradas */}
+                  {evaluationClasses.some(cls => cls.status === "configured") && (
+                    <div className="bg-green-100 border border-green-300 rounded p-3">
+                      <p className="text-xs text-green-800 mb-2">
+                        ✅ Turmas configuradas durante a criação da avaliação. Primeira aplicação.
+                      </p>
+                      <div className="flex items-center gap-4 text-sm text-green-700">
+                        <Badge variant="outline" className="bg-green-200 text-green-800">
+                          Primeira aplicação
+                        </Badge>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="flex items-center gap-4 text-sm text-gray-700 mb-3">
+                    <Badge variant="outline" className="bg-gray-100 text-gray-800">
+                      {evaluationClasses.length} turma{evaluationClasses.length > 1 ? 's' : ''}
+                    </Badge>
+                    <Badge variant="outline" className="bg-gray-100 text-gray-800">
+                      {evaluationClasses.reduce((total, cls) => total + cls.students_count, 0)} alunos
+                    </Badge>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-32 overflow-y-auto">
+                    {evaluationClasses.map((cls) => (
+                      <div key={cls.id} className="bg-white border border-green-200 rounded p-2">
+                        <div className="text-sm font-medium text-green-800 flex items-center gap-2">
+                          {cls.name}
+                          {cls.status === "applied" && (
+                            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-600">
+                              Aplicada
+                            </Badge>
+                          )}
+                          {cls.status === "configured" && (
+                            <Badge variant="outline" className="text-xs bg-green-50 text-green-600">
+                              Nova
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-xs text-green-600">
+                          {cls.school_name} • {cls.grade_name}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {cls.students_count} aluno{cls.students_count !== 1 ? 's' : ''}
+                        </div>
+                        {cls.current_application && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            Aplicação anterior: {new Date(cls.current_application).toLocaleDateString('pt-BR')}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <Alert className="bg-yellow-50 border-yellow-200">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    Esta avaliação ainda não foi aplicada para nenhuma turma. Configure as turmas no processo de criação da avaliação primeiro.
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
 
             {/* Campos de Data */}
@@ -210,7 +406,7 @@ export default function StartEvaluationModal({
                         <Input type="datetime-local" {...field} />
                       </FormControl>
                       <FormDescription>
-                        Quando a avaliação ficará disponível
+                        Quando a avaliação ficará disponível para os alunos
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -230,7 +426,7 @@ export default function StartEvaluationModal({
                         <Input type="datetime-local" {...field} />
                       </FormControl>
                       <FormDescription>
-                        Quando a avaliação será encerrada
+                        Quando a avaliação será encerrada automaticamente
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -240,16 +436,19 @@ export default function StartEvaluationModal({
 
               {/* Resumo do Período */}
               {calculateTotalPeriod() && (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <span className="text-sm font-medium text-green-800">
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <CheckCircle className="h-4 w-4 text-purple-600" />
+                    <span className="text-sm font-medium text-purple-800">
                       Período de disponibilidade: {calculateTotalPeriod()}
                     </span>
                   </div>
-                  <p className="text-xs text-green-600 mt-1">
-                    A avaliação ficará disponível para os alunos durante este período e aparecerá na agenda deles
-                  </p>
+                  <div className="text-xs text-purple-600 space-y-1">
+                    <p>• A avaliação ficará disponível na agenda dos alunos</p>
+                    <p>• Status será "Agendada" até o horário de início</p>
+                    <p>• Alunos poderão clicar em "Iniciar Avaliação" apenas no período configurado</p>
+                    <p>• Após finalizar, o botão mudará para "Concluída"</p>
+                  </div>
                 </div>
               )}
             </div>
@@ -265,7 +464,7 @@ export default function StartEvaluationModal({
               </Button>
               <Button
                 type="submit"
-                disabled={isLoading || !calculateTotalPeriod()}
+                disabled={isLoading || !calculateTotalPeriod() || evaluationClasses.length === 0}
                 className="bg-green-600 hover:bg-green-700"
               >
                 {isLoading ? (
@@ -273,10 +472,20 @@ export default function StartEvaluationModal({
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Aplicando...
                   </>
+                ) : evaluationClasses.length === 0 ? (
+                  <>
+                    <Play className="mr-2 h-4 w-4" />
+                    Configurar turmas primeiro
+                  </>
+                ) : evaluationClasses.some(cls => cls.status === "applied") ? (
+                  <>
+                    <Play className="mr-2 h-4 w-4" />
+                    Reaplicar para {evaluationClasses.length} turma{evaluationClasses.length > 1 ? 's' : ''}
+                  </>
                 ) : (
                   <>
                     <Play className="mr-2 h-4 w-4" />
-                    Aplicar Avaliação
+                    Aplicar para {evaluationClasses.length} turma{evaluationClasses.length > 1 ? 's' : ''}
                   </>
                 )}
               </Button>
