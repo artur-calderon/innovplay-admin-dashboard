@@ -140,7 +140,7 @@ const EditQuickLinks = () => {
       { icon: "Award", iconComponent: Award, label: "Certificados", href: `/app/certificados` },
       { icon: "Trophy", iconComponent: Trophy, label: "Competições", href: `/app/competicoes` },
       { icon: "Award", iconComponent: Award, label: "Olimpíadas", href: `/app/olimpiadas` },
-      { icon: "School", iconComponent: School, label: "Escolas", href: "/app/escolas" },
+  
       { icon: "UserIcon", iconComponent: UserIcon, label: "Editar Perfil", href: `/app/perfil` },
       { icon: "Bell", iconComponent: Bell, label: "Avisos", href: `/app/avisos` },
       { icon: "Settings", iconComponent: Settings, label: "Configurações", href: "/app/configuracoes" },
@@ -437,4 +437,4 @@ const EditQuickLinks = () => {
   );
 };
 
-export default EditQuickLinks; 
+export default EditQuickLinks;

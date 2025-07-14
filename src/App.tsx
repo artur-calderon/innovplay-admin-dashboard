@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./context/authContext";
 import Layout from "./components/layout/Layout";
+import FullscreenLayout from "./components/layout/FullscreenLayout";
 import { PrivateRoute } from "./components/PrivateRoute";
 
 // Lazy loading para reduzir o tamanho dos chunks
@@ -17,9 +18,7 @@ const Login = React.lazy(() => import("./pages/Login"));
 const EmBreve = React.lazy(() => import("./pages/EmBreve"));
 const StudentEvaluations = React.lazy(() => import("./components/evaluations/StudentEvaluations"));
 const Users = React.lazy(() => import("./pages/Users"));
-const Schools = React.lazy(() => import("./pages/Schools"));
 const Profile = React.lazy(() => import("./pages/Profile"));
-const SchoolDetails = React.lazy(() => import("./components/schools/SchoolDetails"));
 const ClassDetails = React.lazy(() => import("./components/schools/ClassDetails"));
 const CreateEvaluation = React.lazy(() => import("./pages/CreateEvaluation"));
 const EditEvaluation = React.lazy(() => import("./pages/EditEvaluation"));
@@ -96,7 +95,6 @@ const App = () => {
             <Route path="/aluno" element={<Layout />}>
               <Route index element={<PrivateRoute><Index /></PrivateRoute>} />
               <Route path="/aluno/avaliacoes" element={<PrivateRoute><StudentEvaluations /></PrivateRoute>} />
-              <Route path="/aluno/avaliacao/:id/fazer" element={<PrivateRoute><TakeEvaluation /></PrivateRoute>} />
               <Route path="/aluno/agenda" element={<PrivateRoute><StudentAgenda /></PrivateRoute>} />
               <Route path="/aluno/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
               <Route path="/aluno/jogos" element={<PrivateRoute><StudentGames /></PrivateRoute>} />
@@ -105,9 +103,14 @@ const App = () => {
               <Route path="/aluno/certificados" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
               <Route path="/aluno/competicoes" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
               <Route path="/aluno/olimpiadas" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-              <Route path="/aluno/escolas" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+
               <Route path="/aluno/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
               <Route path="/aluno/avisos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+            </Route>
+
+            {/* Rota de avaliação em tela cheia para alunos */}
+            <Route path="/aluno/avaliacao/:id/fazer" element={<FullscreenLayout />}>
+              <Route index element={<PrivateRoute><TakeEvaluation /></PrivateRoute>} />
             </Route>
 
             {/* Rotas do app (admin/professor/etc) */}
@@ -119,7 +122,6 @@ const App = () => {
               <Route path="/app/avaliacao/:id/resultados" element={<PrivateRoute><EvaluationResults /></PrivateRoute>} />
               <Route path="/app/avaliacao/:id" element={<PrivateRoute><ViewEvaluation /></PrivateRoute>} />
               <Route path="/app/avaliacao/:id/editar" element={<PrivateRoute><EditEvaluation /></PrivateRoute>} />
-                              <Route path="/app/avaliacao/:id/fazer" element={<PrivateRoute><TakeEvaluation /></PrivateRoute>} />
               <Route path="/app/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
               <Route path="/app/criar-avaliacao" element={<PrivateRoute><CreateEvaluation /></PrivateRoute>} />
               <Route path="/app/agenda" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
@@ -132,12 +134,8 @@ const App = () => {
               <Route path="/app/certificados" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
               <Route path="/app/competicoes" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
               <Route path="/app/olimpiadas" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-              <Route path="/app/escolas" element={<PrivateRoute><Schools /></PrivateRoute>} />
               <Route path="/app/city" element={<PrivateRoute><Cities /></PrivateRoute>} />
-              <Route path="/app/escola/:id" element={<PrivateRoute><SchoolDetails /></PrivateRoute>} />
               <Route path="/app/turma/:id" element={<PrivateRoute><ClassDetails /></PrivateRoute>} />
-              <Route path="/app/escola/:id/adicionar-aluno" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-              <Route path="/app/escola/:id/criar-turma" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
               <Route path="/app/usuarios" element={<PrivateRoute><Users /></PrivateRoute>} />
               <Route path="/app/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
               <Route path="/app/avisos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
@@ -156,6 +154,11 @@ const App = () => {
               <Route path="/app/cadastros/curso" element={<PrivateRoute><Curso /></PrivateRoute>} />
               <Route path="/app/cadastros/serie" element={<PrivateRoute><Serie /></PrivateRoute>} />
               <Route path="/app/cadastros/disciplina" element={<PrivateRoute><Disciplina /></PrivateRoute>} />
+            </Route>
+
+            {/* Rota de avaliação em tela cheia para admin/professor */}
+            <Route path="/app/avaliacao/:id/fazer" element={<FullscreenLayout />}>
+              <Route index element={<PrivateRoute><TakeEvaluation /></PrivateRoute>} />
             </Route>
 
             {/* Rota 404 para outras rotas não encontradas */}

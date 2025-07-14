@@ -202,6 +202,23 @@ export default function StudentEvaluations() {
             }
           }
 
+          // ✅ CORRIGIDO: Limpar dados de avaliação finalizada após 24h (específico por aluno)
+          const completedEvaluation = localStorage.getItem(`evaluation_completed_${evaluation.id}_${user?.id}`);
+          if (completedEvaluation) {
+            try {
+              const completedData = JSON.parse(completedEvaluation);
+              const completedAt = new Date(completedData.completedAt);
+              const now = new Date();
+              const hoursSinceCompletion = (now.getTime() - completedAt.getTime()) / (1000 * 60 * 60);
+
+              if (hoursSinceCompletion >= 24) {
+                localStorage.removeItem(`evaluation_completed_${evaluation.id}_${user?.id}`);
+              }
+            } catch (e) {
+              localStorage.removeItem(`evaluation_completed_${evaluation.id}_${user?.id}`);
+            }
+          }
+
           toast({
             title: "✅ Avaliação concluída!",
             description: `A avaliação "${evaluation.title}" foi finalizada com sucesso.`,
@@ -389,26 +406,73 @@ export default function StudentEvaluations() {
   };
 
   const determineEvaluationStatus = (evaluation: any): StudentEvaluation["status"] => {
-    console.log('🔍 Determinando status para avaliação:', {
-      id: evaluation.id,
-      title: evaluation.title,
-      status: evaluation.status,
-      backendStatus: evaluation.backendStatus,
-      availabilityStatus: evaluation.availability?.status,
-      student_result: !!evaluation.student_result,
-      result: !!evaluation.result
-    });
+    // ✅ CORRIGIDO: PRIORIDADE 0: Verificar se a avaliação foi finalizada localmente (específico por aluno)
+    const completedEvaluation = localStorage.getItem(`evaluation_completed_${evaluation.id}_${user?.id}`);
+    if (completedEvaluation) {
+      try {
+        const completedData = JSON.parse(completedEvaluation);
+        // Verificar se os dados são válidos e recentes (últimas 24h)
+        const completedAt = new Date(completedData.completedAt);
+        const now = new Date();
+        const hoursSinceCompletion = (now.getTime() - completedAt.getTime()) / (1000 * 60 * 60);
 
-    // ✅ CORRIGIDO: Verificar tanto "finalizada" quanto "concluida" (com "i")
-    if (evaluation.status === "finalizada" || evaluation.status === "concluida" ||
-      (evaluation.availability && evaluation.availability.status === "finalizada")) {
-      localStorage.removeItem("evaluation_in_progress");
-      localStorage.removeItem("current_evaluation_data");
-      return "completed";
+        if (hoursSinceCompletion < 24) {
+          console.log(`Avaliação ${evaluation.id} finalizada localmente pelo aluno ${user?.id} em ${completedAt.toLocaleString()}`);
+          return "completed";
+        } else {
+          // Remover dados antigos
+          localStorage.removeItem(`evaluation_completed_${evaluation.id}_${user?.id}`);
+        }
+      } catch (e) {
+        // Dados inválidos, remover
+        localStorage.removeItem(`evaluation_completed_${evaluation.id}_${user?.id}`);
+      }
     }
 
-    // ✅ NOVO: Verificar se o status do teste está concluído (prioridade máxima)
-    if (evaluation.backendStatus === "concluida" || evaluation.backendStatus === "finalizada") {
+    // ✅ CORRIGIDO: PRIORIDADE 0.5: Verificar se há sessão expirada por tempo (específico por aluno)
+    const inProgress = localStorage.getItem("evaluation_in_progress");
+    if (inProgress) {
+      try {
+        const progressData = JSON.parse(inProgress);
+        if (progressData.evaluationId === evaluation.id) {
+          // Verificar se a sessão foi encerrada por tempo
+          const sessionData = sessionStorage.getItem("evaluation_session");
+          if (sessionData) {
+            try {
+              const session = JSON.parse(sessionData);
+              if (session.status === 'finalizada' || session.status === 'expirada') {
+                console.log(`Sessão ${evaluation.id} encerrada por tempo para o aluno ${user?.id}, marcando como completed`);
+
+                // Marcar como finalizada (específico por aluno)
+                const completedEvaluation = {
+                  evaluationId: evaluation.id,
+                  studentId: user?.id,
+                  completedAt: new Date().toISOString(),
+                  results: { reason: 'time_expired' }
+                };
+                localStorage.setItem(`evaluation_completed_${evaluation.id}_${user?.id}`, JSON.stringify(completedEvaluation));
+
+                // Limpar dados de progresso
+                localStorage.removeItem("evaluation_in_progress");
+                localStorage.removeItem("current_evaluation_data");
+                sessionStorage.removeItem("evaluation_session");
+
+                return "completed";
+              }
+            } catch (e) {
+              // Ignorar erros de parsing da sessão
+            }
+          }
+
+          // Se chegou aqui, a sessão ainda está ativa
+          return "in_progress";
+        }
+      } catch (e) {
+        localStorage.removeItem("evaluation_in_progress");
+      }
+    }
+
+    if (evaluation.status === "finalizada" || (evaluation.availability && evaluation.availability.status === "finalizada")) {
       localStorage.removeItem("evaluation_in_progress");
       localStorage.removeItem("current_evaluation_data");
       return "completed";
@@ -430,32 +494,12 @@ export default function StudentEvaluations() {
       return "completed";
     }
 
-    // PRIORIDADE 3: Se há sessão ativa no localStorage (apenas se não estiver concluída)
-    const inProgress = localStorage.getItem("evaluation_in_progress");
-    if (inProgress) {
-      try {
-        const progressData = JSON.parse(inProgress);
-        if (progressData.evaluationId === evaluation.id) {
-          // ✅ NOVO: Verificar se não está concluída antes de retornar in_progress
-          if (evaluation.backendStatus === "concluida" || evaluation.backendStatus === "finalizada") {
-            // Se está concluída, limpar localStorage e retornar completed
-            localStorage.removeItem("evaluation_in_progress");
-            localStorage.removeItem("current_evaluation_data");
-            return "completed";
-          }
-          return "in_progress";
-        }
-      } catch (e) {
-        localStorage.removeItem("evaluation_in_progress");
-      }
-    }
-
-    // PRIORIDADE 4: Progresso atual da API
+    // PRIORIDADE 3: Progresso atual da API
     if (evaluation.currentProgress) {
       return "in_progress";
     }
 
-    // PRIORIDADE 5: Disponibilidade da API
+    // PRIORIDADE 4: Disponibilidade da API
     if (evaluation.availability) {
       switch (evaluation.availability.status) {
         case 'not_available':
@@ -481,7 +525,7 @@ export default function StudentEvaluations() {
       }
     }
 
-    // PRIORIDADE 6: Datas
+    // PRIORIDADE 5: Datas
     if (endDate && isAfter(now, endDate)) {
       localStorage.removeItem("evaluation_in_progress");
       localStorage.removeItem("current_evaluation_data");
@@ -503,8 +547,26 @@ export default function StudentEvaluations() {
         const data = JSON.parse(inProgress);
         // Verificar se os dados são válidos
         if (data && data.evaluationId && typeof data.evaluationId === 'string') {
-          // ✅ CORRIGIDO: Não depender de evaluations que ainda não foram carregadas
-          setCurrentTaking(data);
+          // ✅ NOVO: Verificar se a avaliação foi finalizada
+          const completedEvaluation = localStorage.getItem(`evaluation_completed_${data.evaluationId}_${user?.id}`);
+          if (completedEvaluation) {
+            // Avaliação foi finalizada, limpar dados de progresso
+            localStorage.removeItem("evaluation_in_progress");
+            localStorage.removeItem("current_evaluation_data");
+            setCurrentTaking(null);
+            return;
+          }
+
+          // Verificar se a avaliação ainda está em progresso
+          const evaluation = evaluations.find(e => e.id === data.evaluationId);
+          if (evaluation && evaluation.status === 'completed') {
+            // Avaliação foi concluída, limpar localStorage
+            localStorage.removeItem("evaluation_in_progress");
+            localStorage.removeItem("current_evaluation_data");
+            setCurrentTaking(null);
+          } else {
+            setCurrentTaking(data);
+          }
         } else {
           localStorage.removeItem("evaluation_in_progress");
         }
@@ -516,21 +578,12 @@ export default function StudentEvaluations() {
   };
 
   const handleStartEvaluation = (evaluation: StudentEvaluation) => {
-    // ✅ NOVO: Verificar se a avaliação não foi finalizada
-    if (evaluation.status === "completed") {
+    // ✅ NOVO: Verificar se a avaliação já foi finalizada
+    const completedEvaluation = localStorage.getItem(`evaluation_completed_${evaluation.id}_${user?.id}`);
+    if (completedEvaluation) {
       toast({
         title: "❌ Avaliação já finalizada",
-        description: "Esta avaliação já foi concluída e não pode ser realizada novamente.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // ✅ NOVO: Verificar se a avaliação não expirou
-    if (evaluation.status === "expired") {
-      toast({
-        title: "❌ Avaliação expirada",
-        description: "O prazo para esta avaliação expirou.",
+        description: "Esta avaliação já foi concluída e não pode ser iniciada novamente.",
         variant: "destructive",
       });
       return;
@@ -542,6 +595,19 @@ export default function StudentEvaluations() {
 
   const handleConfirmStart = async () => {
     if (!selectedEvaluation) return;
+
+    // ✅ NOVO: Verificar se a avaliação já foi finalizada
+    const completedEvaluation = localStorage.getItem(`evaluation_completed_${selectedEvaluation.id}_${user?.id}`);
+    if (completedEvaluation) {
+      toast({
+        title: "❌ Avaliação já finalizada",
+        description: "Esta avaliação já foi concluída e não pode ser iniciada novamente.",
+        variant: "destructive",
+      });
+      setShowInstructions(false);
+      setConfirmStart(false);
+      return;
+    }
 
     // ✅ NOVO: Verificação rigorosa de horários antes de iniciar
     const now = new Date();
@@ -642,52 +708,60 @@ export default function StudentEvaluations() {
   };
 
   const handleContinueEvaluation = async (evaluation: StudentEvaluation) => {
-    // Verificação de segurança
-    if (!evaluation || !evaluation.id) {
-      console.error("Avaliação inválida:", evaluation);
-      toast({
-        title: "Erro",
-        description: "Dados da avaliação inválidos. Tente atualizar a página.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // ✅ NOVO: Verificar se a avaliação não foi finalizada
-    if (evaluation.status === "completed") {
+    // ✅ NOVO: Verificar se a avaliação já foi finalizada
+    const completedEvaluation = localStorage.getItem(`evaluation_completed_${evaluation.id}_${user?.id}`);
+    if (completedEvaluation) {
       toast({
         title: "❌ Avaliação já finalizada",
         description: "Esta avaliação já foi concluída e não pode ser continuada.",
         variant: "destructive",
       });
+
+      // Limpar dados de progresso se a avaliação foi finalizada
+      localStorage.removeItem("evaluation_in_progress");
+      localStorage.removeItem("current_evaluation_data");
+      sessionStorage.removeItem("evaluation_session");
+      setCurrentTaking(null);
+
+      // Atualizar status da avaliação
+      updateEvaluationStatuses();
       return;
     }
 
-    // ✅ NOVO: Verificar se a avaliação não expirou
-    if (evaluation.status === "expired") {
-      toast({
-        title: "❌ Avaliação expirada",
-        description: "O prazo para esta avaliação expirou.",
-        variant: "destructive",
-      });
-      return;
-    }
+    console.log("🔄 Continuando avaliação:", evaluation.id);
 
     try {
-      // Buscar os dados completos da avaliação usando a API real
+      // Buscar dados da avaliação usando a API real
       const evaluationResponse = await api.get(`/test/${evaluation.id}/details`);
       const evaluationData = evaluationResponse.data;
 
-      // Salvar os dados completos da avaliação no sessionStorage
+      // Salvar os dados da avaliação no sessionStorage
       sessionStorage.setItem("current_evaluation", JSON.stringify(evaluationData));
-      console.log("Dados da avaliação salvos para continuar:", evaluationData);
-    } catch (apiError) {
-      console.error("Erro ao buscar dados da avaliação:", apiError);
-      // Fallback: salvar apenas os dados básicos
-      sessionStorage.setItem("current_evaluation", JSON.stringify(evaluation));
-    }
 
-    window.location.href = `/app/avaliacao/${evaluation.id}/fazer`;
+      console.log("📁 Dados da avaliação carregados:", evaluationData);
+
+      // Redirecionar para tela de avaliação
+      window.location.href = `/app/avaliacao/${evaluation.id}/fazer`;
+
+    } catch (error: any) {
+      console.error("❌ Erro ao continuar avaliação:", error);
+
+      let errorMessage = "Não foi possível continuar a avaliação";
+
+      if (error.response?.status === 403) {
+        errorMessage = "Você não tem permissão para acessar esta avaliação";
+      } else if (error.response?.status === 404) {
+        errorMessage = "Avaliação não encontrada";
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      }
+
+      toast({
+        title: "Erro",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    }
   };
 
   const handleViewResults = (evaluation: StudentEvaluation) => {
