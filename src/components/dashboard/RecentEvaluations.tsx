@@ -1,12 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FileText, Wifi, WifiOff, Clock, Users, BookOpen, AlertCircle, RefreshCw } from "lucide-react";
+import { FileText, Clock, Users, BookOpen, RefreshCw } from "lucide-react";
 import { mockEvaluations } from "@/lib/mockData";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 
 interface Evaluation {
@@ -74,39 +73,20 @@ class CacheManager {
   }
 }
 
-// ✅ NOVO: Teste de conectividade
-const testConnection = async (): Promise<{ success: boolean; message: string }> => {
-  try {
-    // Primeiro, tenta fazer uma requisição simples
-    const response = await api.get('/dashboard/stats');
-    return {
-      success: true,
-      message: `Conectado com sucesso! Status: ${response.status}`
-    };
-  } catch (error: any) {
-    console.error("Erro no teste de conectividade:", error);
-    
-    if (error.code === 'ERR_NETWORK') {
-      return {
-        success: false,
-        message: "Erro de rede - verifique se o servidor está rodando"
-      };
-    } else if (error.response?.status === 401) {
-      return {
-        success: false,
-        message: "Não autorizado - token inválido ou expirado"
-      };
-    } else if (error.response?.status === 404) {
-      return {
-        success: false,
-        message: "Endpoint não encontrado - verifique a configuração do backend"
-      };
-    } else {
-      return {
-        success: false,
-        message: `Erro: ${error.message || 'Erro desconhecido'}`
-      };
-    }
+// ✅ NOVO: Mapear status do teste
+const mapTestStatus = (status: string) => {
+  switch (status) {
+    case 'active':
+    case 'published':
+      return 'active';
+    case 'correction':
+    case 'reviewing':
+      return 'correction';
+    case 'completed':
+    case 'finished':
+      return 'completed';
+    default:
+      return 'active';
   }
 };
 
@@ -120,40 +100,8 @@ export default function RecentEvaluations() {
   const { toast } = useToast();
   const cache = CacheManager.getInstance();
 
-  // ✅ NOVO: Monitorar conectividade
-  useEffect(() => {
-    const handleOnline = () => {
-      setIsOnline(true);
-      // Recarregar dados quando voltar online
-      fetchRecentEvaluations();
-      // ✅ REMOVIDO: Toast de conectado para apresentação
-      // toast({
-      //   title: "Conectado!",
-      //   description: "Dados atualizados com sucesso.",
-      // });
-    };
-
-    const handleOffline = () => {
-      setIsOnline(false);
-      // ✅ REMOVIDO: Toast de sem conexão para apresentação
-      // toast({
-      //   title: "Sem conexão",
-      //   description: "Usando dados em cache.",
-      //   variant: "default",
-      // });
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-
   // ✅ NOVO: Buscar avaliações com fallback inteligente
-  const fetchRecentEvaluations = async (useCache = true) => {
+  const fetchRecentEvaluations = useCallback(async (useCache = true) => {
     try {
       setIsLoading(true);
       setError(null);
@@ -174,13 +122,11 @@ export default function RecentEvaluations() {
       let dashboardStats: DashboardStats | null = null;
 
       if (isOnline) {
+        // Buscar avaliações reais da API com tratamento individual
         try {
-          // Buscar avaliações reais da API
-          const [evaluationsResponse, statsResponse] = await Promise.all([
-            api.get('/test/?per_page=5&sort=created_at&order=desc'),
-            api.get('/dashboard/stats')
-          ]);
-
+          const evaluationsResponse = await api.get('/test/?per_page=5&sort=created_at&order=desc');
+          console.log('✅ Avaliações recentes carregadas:', evaluationsResponse.data);
+          
           if (evaluationsResponse.data?.data && Array.isArray(evaluationsResponse.data.data)) {
             evaluationsData = evaluationsResponse.data.data.map((test: any) => ({
               id: test.id,
@@ -193,42 +139,23 @@ export default function RecentEvaluations() {
               total_students: test.total_students || 0,
               completion_rate: test.completion_rate || 0
             }));
+          } else if (evaluationsResponse.data?.tests && Array.isArray(evaluationsResponse.data.tests)) {
+            // Tratar nova estrutura da API com propriedade 'tests'
+            evaluationsData = evaluationsResponse.data.tests.map((test: any) => ({
+              id: test.id,
+              title: test.title,
+              subject: test.subject ? test.subject.name : 'Sem disciplina',
+              createdAt: test.created_at,
+              status: mapTestStatus(test.status),
+              questions_count: test.questions?.length || 0,
+              active_applications: test.active_applications || 0,
+              total_students: test.total_students || 0,
+              completion_rate: test.completion_rate || 0
+            }));
           }
-
-          if (statsResponse.data) {
-            dashboardStats = {
-              totalEvaluations: statsResponse.data.total_evaluations || 0,
-              activeEvaluations: statsResponse.data.active_evaluations || 0,
-              completedEvaluations: statsResponse.data.completed_evaluations || 0,
-              totalStudents: statsResponse.data.total_students || 0,
-              averageCompletion: statsResponse.data.average_completion || 0,
-              lastSync: new Date().toISOString()
-            };
-          }
-
-          // Salvar no cache
-          cache.set(cacheKey, {
-            evaluations: evaluationsData,
-            stats: dashboardStats
-          }, 300000); // 5 minutos
-
-        } catch (apiError: any) {
-          // ✅ REMOVIDO: Console.errors para apresentação
-          // console.error("Erro na API:", apiError);
-          
-          // Log detalhado do erro
-          if (apiError.code === 'ERR_NETWORK') {
-            // ✅ REMOVIDO: Console.error para apresentação
-            // console.error("Erro de rede - possível servidor offline ou problema de conectividade");
-          } else if (apiError.response) {
-            // ✅ REMOVIDO: Console.error para apresentação
-            // console.error("Erro HTTP:", apiError.response.status, apiError.response.data);
-          } else {
-            // ✅ REMOVIDO: Console.error para apresentação
-            // console.error("Erro desconhecido:", apiError.message);
-          }
-          
-          // Fallback para dados mock se API falhar
+        } catch (error) {
+          console.warn('⚠️ Erro ao buscar avaliações recentes:', error);
+          // Usar dados mock como fallback
           evaluationsData = mockEvaluations.slice(0, 5).map(evaluation => ({
             id: evaluation.id,
             title: evaluation.title,
@@ -240,7 +167,26 @@ export default function RecentEvaluations() {
             total_students: Math.floor(Math.random() * 100) + 10,
             completion_rate: Math.floor(Math.random() * 100) + 1
           }));
+        }
 
+        // Buscar estatísticas do dashboard
+        try {
+          const statsResponse = await api.get('/dashboard/stats');
+          console.log('✅ Estatísticas do dashboard carregadas:', statsResponse.data);
+          
+          if (statsResponse.data) {
+            dashboardStats = {
+              totalEvaluations: statsResponse.data.total_evaluations || 0,
+              activeEvaluations: statsResponse.data.active_evaluations || 0,
+              completedEvaluations: statsResponse.data.completed_evaluations || 0,
+              totalStudents: statsResponse.data.total_students || 0,
+              averageCompletion: statsResponse.data.average_completion || 0,
+              lastSync: new Date().toISOString()
+            };
+          }
+        } catch (error) {
+          console.warn('⚠️ Erro ao buscar estatísticas do dashboard:', error);
+          // Usar estatísticas padrão como fallback
           dashboardStats = {
             totalEvaluations: 12,
             activeEvaluations: 4,
@@ -249,32 +195,15 @@ export default function RecentEvaluations() {
             averageCompletion: 78,
             lastSync: new Date().toISOString()
           };
-
-          // Mensagem de erro mais específica
-          let errorMessage = "Erro na conexão com o servidor";
-          if (apiError.code === 'ERR_NETWORK') {
-            // ✅ REMOVIDO: Mensagem de erro para apresentação
-            // errorMessage = "Servidor offline - usando dados locais";
-          } else if (apiError.response?.status === 401) {
-            // ✅ REMOVIDO: Mensagem de erro para apresentação
-            // errorMessage = "Não autorizado - faça login novamente";
-          } else if (apiError.response?.status === 404) {
-            // ✅ REMOVIDO: Mensagem de erro para apresentação
-            // errorMessage = "Endpoints não encontrados - verifique o backend";
-          } else if (apiError.response?.status >= 500) {
-            // ✅ REMOVIDO: Mensagem de erro para apresentação
-            // errorMessage = "Erro interno do servidor";
-          }
-
-          // ✅ REMOVIDO: SetError para apresentação
-          // setError(errorMessage);
-          // ✅ REMOVIDO: Toast de erro de conectividade para apresentação
-          // toast({
-          //   title: "Problema de conectividade",
-          //   description: errorMessage,
-          //   variant: "destructive",
-          // });
         }
+
+        // Salvar no cache
+        cache.set(cacheKey, {
+          evaluations: evaluationsData,
+          stats: dashboardStats
+        }, 300000); // 5 minutos
+
+        // Tratamento de erro já implementado individualmente para cada requisição
       } else {
         // Modo offline - usar cache ou dados mock
         const cachedData = cache.get(cacheKey);
@@ -311,34 +240,49 @@ export default function RecentEvaluations() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [isOnline, cache]);
 
-  // ✅ NOVO: Mapear status do teste
-  const mapTestStatus = (status: string) => {
-    switch (status) {
-      case 'active':
-      case 'published':
-        return 'active';
-      case 'correction':
-      case 'reviewing':
-        return 'correction';
-      case 'completed':
-      case 'finished':
-        return 'completed';
-      default:
-        return 'active';
-    }
-  };
+  // ✅ NOVO: Monitorar conectividade
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      // Recarregar dados quando voltar online
+      fetchRecentEvaluations();
+      // ✅ REMOVIDO: Toast de conectado para apresentação
+      // toast({
+      //   title: "Conectado!",
+      //   description: "Dados atualizados com sucesso.",
+      // });
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+      // ✅ REMOVIDO: Toast de sem conexão para apresentação
+      // toast({
+      //   title: "Sem conexão",
+      //   description: "Usando dados em cache.",
+      //   variant: "default",
+      // });
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [fetchRecentEvaluations]);
 
   // ✅ NOVO: Refresh manual
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     cache.clear();
     fetchRecentEvaluations(false);
-  };
+  }, [cache, fetchRecentEvaluations]);
 
   useEffect(() => {
     fetchRecentEvaluations();
-  }, []);
+  }, [fetchRecentEvaluations]);
 
   // ✅ NOVO: Auto-refresh a cada 30 segundos se online
   useEffect(() => {
@@ -349,7 +293,7 @@ export default function RecentEvaluations() {
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [isOnline]);
+  }, [isOnline, fetchRecentEvaluations]);
 
   if (isLoading) {
     return (
