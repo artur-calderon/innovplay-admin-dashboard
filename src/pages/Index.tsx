@@ -48,18 +48,29 @@ const Index = () => {
         try {
           setIsLoading(true);
 
-          // Buscar dados reais da API
-          const [
-            comprehensiveStatsResponse,
-            usersResponse
-          ] = await Promise.all([
-            api.get('/dashboard/comprehensive-stats'),
-            api.get('/users/list')
-          ]);
+          // Buscar dados reais da API com tratamento individual de erros
+          let comprehensiveStats = null;
+          let users = [];
 
-          // Extrair dados das respostas
-          const comprehensiveStats = comprehensiveStatsResponse.data;
-          const users = usersResponse.data?.users || [];
+          // Tentar buscar estatísticas abrangentes
+          try {
+            const comprehensiveStatsResponse = await api.get('/dashboard/comprehensive-stats');
+            comprehensiveStats = comprehensiveStatsResponse.data;
+            console.log('✅ Estatísticas abrangentes carregadas:', comprehensiveStats);
+          } catch (error) {
+            console.warn('⚠️ Erro ao buscar estatísticas abrangentes:', error);
+            comprehensiveStats = null;
+          }
+
+          // Tentar buscar lista de usuários
+          try {
+            const usersResponse = await api.get('/users/list');
+            users = usersResponse.data?.users || [];
+            console.log('✅ Lista de usuários carregada:', users.length, 'usuários');
+          } catch (error) {
+            console.warn('⚠️ Erro ao buscar lista de usuários:', error);
+            users = [];
+          }
 
           // Calcular estatísticas
           setStats({
@@ -77,15 +88,9 @@ const Index = () => {
           });
 
         } catch (error) {
-          console.error("Erro ao buscar estatísticas do dashboard:", error);
-          // ✅ REMOVIDO: Toast de erro para apresentação
-          // toast({
-          //   title: "Erro",
-          //   description: "Não foi possível carregar as estatísticas do dashboard",
-          //   variant: "destructive",
-          // });
+          console.error("Erro geral ao buscar estatísticas do dashboard:", error);
           
-          // Valores padrão em caso de erro
+          // Valores padrão em caso de erro geral
           setStats({
             students: 0,
             schools: 0,

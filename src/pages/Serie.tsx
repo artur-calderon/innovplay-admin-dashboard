@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { PlusCircle, Search, Edit, Trash2, GraduationCap, Loader2, AlertCircle } from "lucide-react";
+import { PlusCircle, Search, Edit, Trash2, GraduationCap, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,7 +25,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Select,
   SelectContent,
@@ -99,6 +98,11 @@ export default function Serie() {
       setEducationStages(response.data || []);
     } catch (error) {
       console.error("Erro ao buscar etapas de ensino:", error);
+      toast({
+        title: "Aviso",
+        description: "Erro ao carregar etapas de ensino.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -154,23 +158,24 @@ export default function Serie() {
           description: "Série atualizada com sucesso!",
         });
       } else {
-        // Criar nova série - Endpoint ainda não implementado no backend
+        // Criar nova série
+        await api.post('/grades/', formData);
         toast({
-          title: "Funcionalidade não implementada",
-          description: "O endpoint POST para criar séries ainda não foi implementado no backend. Entre em contato com o desenvolvedor.",
-          variant: "destructive",
+          title: "Sucesso",
+          description: "Série criada com sucesso!",
         });
-        setIsModalOpen(false);
-        return;
       }
       
       setIsModalOpen(false);
       fetchSeries(); // Recarregar a lista
-    } catch (error: any) {
+    } catch (error) {
       console.error("Erro ao salvar série:", error);
+      const errorMessage = error instanceof Error && 'response' in error 
+        ? (error as any).response?.data?.error || "Erro ao salvar série"
+        : "Erro ao salvar série";
       toast({
         title: "Erro",
-        description: error.response?.data?.error || "Erro ao salvar série",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -191,11 +196,14 @@ export default function Serie() {
       setIsDeleteDialogOpen(false);
       setDeletingItem(null);
       fetchSeries(); // Recarregar a lista
-    } catch (error: any) {
+    } catch (error) {
       console.error("Erro ao excluir série:", error);
+      const errorMessage = error instanceof Error && 'response' in error 
+        ? (error as any).response?.data?.error || "Erro ao excluir série"
+        : "Erro ao excluir série";
       toast({
         title: "Erro",
-        description: error.response?.data?.error || "Erro ao excluir série",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -265,12 +273,7 @@ export default function Serie() {
         </Button>
       </div>
 
-      <Alert>
-        <AlertCircle className="h-4 w-4" />
-        <AlertDescription>
-          <strong>Aviso:</strong> O endpoint POST para criar novas séries ainda não foi implementado no backend. Apenas edição e exclusão estão disponíveis.
-        </AlertDescription>
-      </Alert>
+
 
       <div className="flex items-center space-x-2">
         <div className="relative flex-1 max-w-sm">
@@ -402,14 +405,7 @@ export default function Serie() {
                 </SelectContent>
               </Select>
             </div>
-            {!editingItem && (
-              <Alert>
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  O endpoint POST para criar séries ainda não foi implementado no backend.
-                </AlertDescription>
-              </Alert>
-            )}
+
             <div className="flex justify-end space-x-2 pt-4">
               <Button 
                 type="button" 
@@ -465,4 +461,4 @@ export default function Serie() {
       </AlertDialog>
     </div>
   );
-} 
+}

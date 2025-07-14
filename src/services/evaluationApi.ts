@@ -57,7 +57,35 @@ export class EvaluationApiService {
             const response = await api.get(`/student-answers/test/${testId}/session`);
             console.log('Resposta da API getTestSessionInfo:', response.data);
             return response.data;
-        } catch (error) {
+        } catch (error: any) {
+            // ✅ CORRIGIDO: Tratar erro 404 como caso normal (sem sessão ativa)
+            if (error.response?.status === 404) {
+                console.log('Nenhuma sessão ativa encontrada para este teste');
+                
+                // Retornar resposta estruturada indicando que não há sessão
+                const noSessionResponse: TestSessionInfo = {
+                    session_id: '',
+                    test_id: testId,
+                    student_id: '',
+                    status: 'nao_iniciada',
+                    started_at: '',
+                    actual_start_time: '',
+                    time_limit_minutes: 0,
+                    remaining_time_minutes: 0,
+                    duration_minutes: 0,
+                    is_expired: false,
+                    timer_started: false,
+                    total_questions: 0,
+                    correct_answers: 0,
+                    score: 0,
+                    grade: '',
+                    session_exists: false
+                };
+                
+                return noSessionResponse;
+            }
+            
+            // Para outros erros, continuar lançando exceção
             console.error('Erro ao buscar informações da sessão:', error);
             console.error('Detalhes do erro:', error.response?.data);
             throw error;
@@ -147,8 +175,10 @@ export class EvaluationApiService {
 
     // Finalizar teste
     static async submitTest(data: SubmitTestRequest): Promise<SubmitTestResponse> {
+        console.log('Enviando dados para finalizar teste:', data);
         try {
             const response = await api.post('/student-answers/submit', data);
+            console.log('Resposta da API submitTest:', response.data);
             return response.data;
         } catch (error) {
             console.error('Erro ao finalizar teste:', error);
