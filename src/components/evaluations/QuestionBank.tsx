@@ -50,6 +50,8 @@ interface ApiQuestion {
   alternatives?: ApiQuestionOption[];
   skill?: string | string[];
   created_by?: string;
+  secondStatement?: string;
+  second_statement?: string;
 }
 
 interface Subject {
@@ -161,6 +163,7 @@ export function QuestionBank({
       }
 
       const convertedQuestions: Question[] = questionsData.map((apiQuestion) => {
+        console.log('QUESTAO API:', apiQuestion); // DEBUG: Veja no console o objeto real da questão
         const getQuestionType = (type: string | undefined): "multipleChoice" | "open" | "trueFalse" => {
           switch (type) {
             case "multipleChoice":
@@ -231,7 +234,8 @@ export function QuestionBank({
           skills: Array.isArray(apiQuestion.skill) ? apiQuestion.skill : (apiQuestion.skill ? [apiQuestion.skill] : []),
           solution: apiQuestion.formatted_solution || apiQuestion.solution || "",
           formattedText: apiQuestion.formatted_text || apiQuestion.formattedText,
-          formattedSolution: apiQuestion.formatted_solution || apiQuestion.formattedSolution
+          formattedSolution: apiQuestion.formatted_solution || apiQuestion.formattedSolution,
+          secondStatement: apiQuestion.secondStatement || apiQuestion.second_statement || "",
         };
         return question;
       });
