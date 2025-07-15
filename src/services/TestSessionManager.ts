@@ -133,8 +133,9 @@ export class TestSessionManager {
             this.timer.start(sessionStartTime);
             this.timer.updateRemainingTime(sessionInfo.remaining_time_minutes * 60);
         } else {
-            // Sessão não iniciada, aguardar início manual
-            this.timer.updateRemainingTime(sessionInfo.time_limit_minutes * 60);
+            // ✅ CORRIGIDO: Usar duration do testData em vez de time_limit_minutes da sessão
+            const duration = this.state.testData?.duration || 60; // fallback para 60 minutos
+            this.timer.updateRemainingTime(duration * 60);
         }
 
         this.state.isActive = true;
@@ -223,7 +224,7 @@ export class TestSessionManager {
                 answers: answersArray
             };
 
-            const results = await EvaluationApiService.submitTest(this.config.testId, submitData);
+            const results = await EvaluationApiService.submitTest(submitData);
             // Converter SubmitTestResponse para TestResults
             this.state.results = {
                 total_questions: results.results.total_questions,
