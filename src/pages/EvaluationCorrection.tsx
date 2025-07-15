@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
+import QuestionPreview from "@/components/evaluations/questions/QuestionPreview";
 
 interface SubmittedEvaluation {
   id: string;
@@ -104,11 +105,11 @@ export default function EvaluationCorrection() {
       // Buscar avaliações enviadas da API real
       const response = await api.get(`/test-sessions/submitted?${params.toString()}`);
       
-      if (response.data && Array.isArray(response.data)) {
-        // Transformar dados da API para o formato esperado
-        const transformedEvaluations = response.data.map(transformSessionToEvaluation);
-        setEvaluations(transformedEvaluations);
-      } else {
+              if (response.data && Array.isArray(response.data)) {
+          // Transformar dados da API para o formato esperado
+          const transformedEvaluations = await Promise.all(response.data.map(transformSessionToEvaluation));
+          setEvaluations(transformedEvaluations);
+        } else {
         setEvaluations([]);
         toast({
           title: "Nenhuma avaliação encontrada",
@@ -130,7 +131,10 @@ export default function EvaluationCorrection() {
   };
 
   // Transformar dados da API para o formato esperado
-  const transformSessionToEvaluation = (session: any): SubmittedEvaluation => {
+  const transformSessionToEvaluation = async (session: any): Promise<SubmittedEvaluation> => {
+    // Transformar respostas de forma assíncrona
+    const questions = session.answers ? await Promise.all(session.answers.map(transformAnswerToQuestion)) : [];
+    
     return {
       id: session.id,
       sessionId: session.id,
@@ -158,7 +162,7 @@ export default function EvaluationCorrection() {
       correctedBy: session.corrected_by,
       correctedAt: session.corrected_at,
       feedback: session.feedback,
-      questions: session.answers ? session.answers.map(transformAnswerToQuestion) : []
+      questions: questions
     };
   };
 
@@ -181,21 +185,162 @@ export default function EvaluationCorrection() {
     }
   };
 
+  // Buscar questão completa do banco quando necessário
+  const fetchQuestionDetails = async (questionId: string) => {
+    try {
+      console.log('🔍 Buscando detalhes da questão:', questionId);
+      const response = await api.get(`/questions/${questionId}`);
+      const questionData = response.data;
+      
+      console.log('📋 Questão encontrada:', {
+        id: questionData.id,
+        alternativesCount: questionData.alternatives?.length,
+        alternatives: questionData.alternatives?.map((alt: any) => ({
+          id: alt.id,
+          text: alt.text,
+          isCorrect: alt.isCorrect
+        })),
+        // Log completo para debug
+        fullResponse: questionData
+      });
+      
+      // Encontrar a alternativa correta
+      let correctAnswerId = null;
+      if (questionData.alternatives && Array.isArray(questionData.alternatives)) {
+        const correctAlternative = questionData.alternatives.find((alt: any) => 
+          alt.isCorrect === true || alt.is_correct === true || alt.correct === true
+        );
+        if (correctAlternative) {
+          correctAnswerId = correctAlternative.id;
+          console.log('✅ Alternativa correta encontrada:', correctAlternative.text);
+        } else {
+          console.log('❌ Nenhuma alternativa marcada como correta na API');
+        }
+      } else {
+        console.log('❌ Nenhuma alternativa encontrada na questão');
+        console.log('🔍 Campos disponíveis na questão:', Object.keys(questionData));
+      }
+      
+      return {
+        correctAnswer: correctAnswerId,
+        options: questionData.alternatives || questionData.options || []
+      };
+    } catch (error) {
+      console.error('❌ Erro ao buscar questão:', error);
+      return {
+        correctAnswer: null,
+        options: []
+      };
+    }
+  };
+
   // Transformar respostas em questões (todas valem 1 ponto)
-  const transformAnswerToQuestion = (answer: any, index: number): QuestionWithAnswer => {
-    return {
+  const transformAnswerToQuestion = async (answer: any, index: number): Promise<QuestionWithAnswer> => {
+    // Se correctAnswer for null, tentar encontrar a alternativa correta baseada no campo isCorrect
+    let correctAnswer = answer.correct_answer;
+    
+    console.log('🔄 Transformando questão:', answer.question_id, '| correctAnswer:', answer.correct_answer);
+    
+    // Normalizar opções se necessário
+    let normalizedOptions = answer.options || [];
+    if (Array.isArray(normalizedOptions)) {
+      normalizedOptions = normalizedOptions.map((opt: any) => {
+        // Verificar diferentes possíveis nomes do campo isCorrect
+        const isCorrect = opt.isCorrect === true || 
+                         opt.is_correct === true || 
+                         opt.correct === true ||
+                         opt.isCorrect === 'true' ||
+                         opt.is_correct === 'true' ||
+                         opt.correct === 'true';
+        
+        // Log reduzido para evitar spam
+        
+        return {
+          id: opt.id || `option-${normalizedOptions.indexOf(opt)}`,
+          text: opt.text || opt.answer || '',
+          isCorrect: isCorrect
+        };
+      });
+    }
+    
+          // Se ainda não temos correctAnswer, buscar da questão completa
+      if (!correctAnswer) {
+        console.log('🔄 Buscando detalhes da questão do banco...');
+        const questionDetails = await fetchQuestionDetails(answer.question_id);
+        if (questionDetails && questionDetails.correctAnswer) {
+          correctAnswer = questionDetails.correctAnswer;
+          if (questionDetails.options && questionDetails.options.length > 0) {
+            normalizedOptions = questionDetails.options.map((opt: any) => ({
+              id: opt.id || `option-${questionDetails.options.indexOf(opt)}`,
+              text: opt.text || opt.answer || '',
+              isCorrect: opt.isCorrect === true || opt.is_correct === true || opt.correct === true
+            }));
+          }
+          console.log('✅ Detalhes da questão obtidos:', { correctAnswer, optionsCount: normalizedOptions.length });
+        } else {
+          console.log('❌ Não foi possível obter detalhes da questão ou alternativa correta');
+          
+          // 🔧 SOLUÇÃO TEMPORÁRIA: Usar dados das opções originais se disponíveis
+          if (answer.options && answer.options.length > 0) {
+            console.log('🔄 Usando opções originais como fallback...');
+            normalizedOptions = answer.options.map((opt: any, index: number) => ({
+              id: opt.id || `option-${index}`,
+              text: opt.text || opt.answer || '',
+              isCorrect: false // Será calculado baseado no correctAnswer
+            }));
+            
+            // Se temos correctAnswer como texto, tentar encontrar a alternativa correspondente
+            if (answer.correct_answer && typeof answer.correct_answer === 'string') {
+              const correctOption = normalizedOptions.find((opt: any) => 
+                opt.text && opt.text.trim() === answer.correct_answer.trim()
+              );
+              if (correctOption) {
+                correctOption.isCorrect = true;
+                correctAnswer = correctOption.id;
+                console.log('✅ Alternativa correta encontrada por texto:', correctOption.text);
+              }
+            }
+          }
+        }
+      } else if (normalizedOptions.length > 0) {
+        // Se temos correctAnswer mas não temos isCorrect nas opções, buscar da questão
+        const hasCorrectOption = normalizedOptions.some((opt: any) => opt.isCorrect === true);
+        if (!hasCorrectOption) {
+          console.log('🔄 Buscando detalhes da questão para marcar alternativas corretas...');
+          const questionDetails = await fetchQuestionDetails(answer.question_id);
+          if (questionDetails && questionDetails.options && questionDetails.options.length > 0) {
+            normalizedOptions = questionDetails.options.map((opt: any) => ({
+              id: opt.id || `option-${questionDetails.options.indexOf(opt)}`,
+              text: opt.text || opt.answer || '',
+              isCorrect: opt.isCorrect === true || opt.is_correct === true || opt.correct === true
+            }));
+          }
+        }
+      }
+
+    const result = {
       id: answer.question_id,
       number: index + 1,
       type: answer.question_type || 'multiple_choice',
       text: answer.question_text,
-      options: answer.options || [],
+      options: normalizedOptions,
       points: 1, // Todas as questões valem 1 ponto
-      correctAnswer: answer.correct_answer,
+      correctAnswer: correctAnswer,
       studentAnswer: answer.student_answer,
       isCorrect: answer.is_correct,
       manualPoints: answer.manual_points,
       feedback: answer.feedback
     };
+    
+    console.log('📝 Questão transformada:', {
+      id: result.id,
+      correctAnswer: result.correctAnswer,
+      studentAnswer: result.studentAnswer,
+      hasOptions: !!result.options,
+      optionsCount: result.options?.length
+    });
+    
+    return result;
   };
 
   const handleSelectEvaluation = (evaluation: SubmittedEvaluation) => {
@@ -238,12 +383,79 @@ export default function EvaluationCorrection() {
     let totalScore = 0;
     
     selectedEvaluation.questions.forEach(question => {
+      // Correção automática para objetivas
       if (question.type === "essay") {
         // Para questões dissertativas, usar pontuação manual (0 ou 1)
         totalScore += question.manualPoints || 0;
-      } else if (question.isCorrect) {
-        // Para questões objetivas, 1 ponto se correta
-        totalScore += 1;
+      } else {
+        // Para questões de múltipla escolha
+        let isCorrect = false;
+        
+        // Log reduzido para evitar spam
+        
+        // Se já temos isCorrect calculado, usar ele
+        if (question.isCorrect !== undefined && question.isCorrect !== null) {
+          isCorrect = question.isCorrect;
+          console.log('✅ Usando isCorrect pré-calculado:', isCorrect);
+        } else if (question.correctAnswer && question.options && question.options.length > 0) {
+          // Tentar encontrar a alternativa correta
+          const correctOption = question.options.find(opt => opt.id === question.correctAnswer);
+          let selectedOption = question.options.find(opt => String(opt.id) === String(question.studentAnswer))
+            || question.options.find(opt => String(opt.id).toLowerCase() === String(question.studentAnswer).toLowerCase())
+            || question.options.find(opt => String(question.studentAnswer).includes(opt.id));
+          
+          // Fallback para índice numérico (option-0, option-1, etc.)
+          if (!selectedOption && typeof question.studentAnswer === 'string' && question.studentAnswer.startsWith('option-')) {
+            const idx = parseInt(question.studentAnswer.replace('option-', ''), 10);
+            if (!isNaN(idx) && question.options && question.options.length > idx) {
+              selectedOption = question.options[idx];
+            }
+          }
+          
+          // Comparar as alternativas
+          isCorrect = selectedOption && correctOption && selectedOption.id === correctOption.id;
+          console.log('✅ Comparando alternativas:', { 
+            selectedOption: selectedOption?.text, 
+            correctOption: correctOption?.text, 
+            isCorrect 
+          });
+        } else if (question.options && question.options.length > 0) {
+          // Último fallback: procurar alternativa marcada como correta
+          const correctOption = question.options.find(opt => opt.isCorrect === true);
+          let selectedOption = question.options.find(opt => String(opt.id) === String(question.studentAnswer))
+            || question.options.find(opt => String(opt.id).toLowerCase() === String(question.studentAnswer).toLowerCase());
+          
+          // Fallback para índice numérico
+          if (!selectedOption && typeof question.studentAnswer === 'string' && question.studentAnswer.startsWith('option-')) {
+            const idx = parseInt(question.studentAnswer.replace('option-', ''), 10);
+            if (!isNaN(idx) && question.options && question.options.length > idx) {
+              selectedOption = question.options[idx];
+            }
+          }
+          
+          isCorrect = selectedOption && correctOption && selectedOption.id === correctOption.id;
+          console.log('🔄 Fallback - alternativa correta:', { 
+            correctOption: correctOption?.text, 
+            selectedOption: selectedOption?.text, 
+            isCorrect 
+          });
+        } else {
+          console.log('❌ Nenhuma estratégia funcionou - sem opções disponíveis');
+        }
+        
+        // Atualizar o isCorrect na questão para evitar recálculos
+        if (question.isCorrect === undefined || question.isCorrect === null) {
+          question.isCorrect = isCorrect;
+        }
+        
+        if (isCorrect) {
+          console.log('✔️ Questão correta:', question.id);
+          totalScore += 1;
+        } else if (question.correctAnswer) {
+          console.log('❌ Questão errada:', question.id, '| correctAnswer:', question.correctAnswer, '| studentAnswer:', question.studentAnswer);
+        } else {
+          console.log('⚠️ Questão sem correção automática:', question.id, '| studentAnswer:', question.studentAnswer);
+        }
       }
     });
 
@@ -522,113 +734,164 @@ export default function EvaluationCorrection() {
 
           {/* Questões para Correção */}
           <div className="lg:col-span-3 space-y-4">
-            {selectedEvaluation.questions.map((question, index) => (
-              <Card key={question.id}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base">
-                      Questão {question.number} (1 ponto)
-                    </CardTitle>
-                    {question.type !== "essay" && (
-                      <Badge variant={question.isCorrect ? "default" : "destructive"}>
-                        {question.isCorrect ? "Correta" : "Incorreta"}
-                      </Badge>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* Enunciado da Questão */}
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <p className="text-sm font-medium mb-2">Enunciado:</p>
-                    <p>{question.text}</p>
-                  </div>
+            {selectedEvaluation.questions.map((question, index) => {
+              // Encontrar alternativa correta e alternativa selecionada usando lógica robusta
+              let correctOption = null;
+              let selectedOption = null;
+              let isCorrect = false;
 
-                  {/* Opções (para múltipla escolha) */}
-                  {question.options && question.options.length > 0 && (
+              if (question.type !== "essay" && question.options && question.options.length > 0) {
+                // Tentar encontrar a alternativa correta
+                if (question.correctAnswer) {
+                  correctOption = question.options.find(opt => opt.id === question.correctAnswer);
+                } else {
+                  // Fallback: procurar alternativa marcada como correta
+                  correctOption = question.options.find(opt => opt.isCorrect === true);
+                }
+
+                // Encontrar alternativa selecionada
+                selectedOption = question.options.find(opt => String(opt.id) === String(question.studentAnswer))
+                  || question.options.find(opt => String(opt.id).toLowerCase() === String(question.studentAnswer).toLowerCase())
+                  || question.options.find(opt => String(question.studentAnswer).includes(opt.id));
+                
+                // Fallback para índice numérico (option-0, option-1, etc.)
+                if (!selectedOption && typeof question.studentAnswer === 'string' && question.studentAnswer.startsWith('option-')) {
+                  const idx = parseInt(question.studentAnswer.replace('option-', ''), 10);
+                  if (!isNaN(idx) && question.options && question.options.length > idx) {
+                    selectedOption = question.options[idx];
+                  }
+                }
+
+                // Determinar se está correto
+                if (question.isCorrect !== undefined) {
+                  isCorrect = question.isCorrect;
+                } else {
+                  isCorrect = selectedOption && correctOption && selectedOption.id === correctOption.id;
+                }
+              }
+
+              return (
+                <Card key={question.id}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base">
+                        Questão {question.number} (1 ponto)
+                      </CardTitle>
+                      {question.type !== "essay" && (
+                        <Badge variant={isCorrect ? "default" : "destructive"}>
+                          {isCorrect ? "Correta" : "Incorreta"}
+                        </Badge>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Enunciado, imagem e segundo enunciado usando QuestionPreview */}
+                    <div className="p-3 bg-gray-50 rounded-lg">
+                      <QuestionPreview question={{
+                        ...question,
+                        // Garante compatibilidade de campos para o componente
+                        options: question.options || [],
+                        secondStatement: question.secondStatement || question["second_statement"] || "",
+                        // Adicione outros campos se necessário
+                      }} />
+                    </div>
+
+                    {/* Opções (para múltipla escolha) */}
+                    {question.options && question.options.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">Opções:</p>
+                        <div className="grid grid-cols-1 gap-2">
+                          {question.options.map((option, optIndex) => {
+                            const letter = String.fromCharCode(65 + optIndex);
+                            const isOptionCorrect = correctOption && option.id === correctOption.id;
+                            const isOptionSelected = selectedOption && option.id === selectedOption.id;
+                            // Se for selecionada e correta, verde forte
+                            // Se for selecionada e incorreta, vermelho
+                            // Se for só correta, verde claro
+                            // Senão, padrão
+                            let optionClass = '';
+                            if (isOptionSelected && isOptionCorrect) {
+                              optionClass = 'border-green-500 bg-green-50';
+                            } else if (isOptionSelected && !isOptionCorrect) {
+                              optionClass = 'border-red-500 bg-red-50';
+                            } else if (isOptionCorrect) {
+                              optionClass = 'border-green-300 bg-green-25';
+                            } else {
+                              optionClass = 'border-gray-200';
+                            }
+                            return (
+                              <div
+                                key={option.id}
+                                className={`p-2 rounded border text-sm ${optionClass}`}
+                              >
+                                <span className="font-medium">{letter})</span> {option.text}
+                                {isOptionCorrect && <CheckCircle className="inline h-4 w-4 ml-2 text-green-600" />}
+                                {isOptionSelected && !isOptionCorrect && <XCircle className="inline h-4 w-4 ml-2 text-red-600" />}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Resposta do Aluno */}
                     <div className="space-y-2">
-                      <p className="text-sm font-medium">Opções:</p>
-                      <div className="grid grid-cols-1 gap-2">
-                        {question.options.map((option, optIndex) => {
-                          const letter = String.fromCharCode(65 + optIndex);
-                          const isCorrect = option.id === question.correctAnswer;
-                          const isSelected = option.id === question.studentAnswer;
-                          
-                          return (
-                            <div
-                              key={option.id}
-                              className={`p-2 rounded border text-sm ${
-                                isSelected && isCorrect ? 'border-green-500 bg-green-50' :
-                                isSelected && !isCorrect ? 'border-red-500 bg-red-50' :
-                                isCorrect ? 'border-green-300 bg-green-25' :
-                                'border-gray-200'
-                              }`}
-                            >
-                              <span className="font-medium">{letter})</span> {option.text}
-                              {isCorrect && <CheckCircle className="inline h-4 w-4 ml-2 text-green-600" />}
-                              {isSelected && !isCorrect && <XCircle className="inline h-4 w-4 ml-2 text-red-600" />}
-                            </div>
-                          );
-                        })}
+                      <p className="text-sm font-medium">Resposta do Aluno:</p>
+                      <div className={`p-3 rounded-lg border ${
+                        question.type === "essay" ? "border-blue-200 bg-blue-50" :
+                        isCorrect ? "border-green-200 bg-green-50" :
+                        "border-red-200 bg-red-50"
+                      }`}>
+                        <p>{selectedOption
+                          ? `${String.fromCharCode(65 + question.options.indexOf(selectedOption))}) ${selectedOption.text}`
+                          : (question.studentAnswer || "Não respondida")}
+                        </p>
                       </div>
                     </div>
-                  )}
 
-                  {/* Resposta do Aluno */}
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium">Resposta do Aluno:</p>
-                    <div className={`p-3 rounded-lg border ${
-                      question.type === "essay" ? "border-blue-200 bg-blue-50" :
-                      question.isCorrect ? "border-green-200 bg-green-50" : 
-                      "border-red-200 bg-red-50"
-                    }`}>
-                      <p>{question.studentAnswer || "Não respondida"}</p>
-                    </div>
-                  </div>
-
-                  {/* Correção Manual (apenas para questões dissertativas) */}
-                  {question.type === "essay" && (
-                    <div className="space-y-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                      <h4 className="font-medium text-yellow-800">Correção Manual Necessária</h4>
-                      
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label>Avaliação da Resposta</Label>
-                          <div className="flex gap-2">
-                            <Button
-                              variant={question.manualPoints === 1 ? "default" : "outline"}
-                              size="sm"
-                              onClick={() => handleQuestionScoreChange(question.id, true)}
-                            >
-                              <CheckCircle className="h-4 w-4 mr-2" />
-                              Correta (1 ponto)
-                            </Button>
-                            <Button
-                              variant={question.manualPoints === 0 ? "destructive" : "outline"}
-                              size="sm"
-                              onClick={() => handleQuestionScoreChange(question.id, false)}
-                            >
-                              <XCircle className="h-4 w-4 mr-2" />
-                              Incorreta (0 pontos)
-                            </Button>
+                    {/* Correção Manual (apenas para questões dissertativas) */}
+                    {question.type === "essay" && (
+                      <div className="space-y-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <h4 className="font-medium text-yellow-800">Correção Manual Necessária</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label>Avaliação da Resposta</Label>
+                            <div className="flex gap-2">
+                              <Button
+                                variant={question.manualPoints === 1 ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => handleQuestionScoreChange(question.id, true)}
+                              >
+                                <CheckCircle className="h-4 w-4 mr-2" />
+                                Correta (1 ponto)
+                              </Button>
+                              <Button
+                                variant={question.manualPoints === 0 ? "destructive" : "outline"}
+                                size="sm"
+                                onClick={() => handleQuestionScoreChange(question.id, false)}
+                              >
+                                <XCircle className="h-4 w-4 mr-2" />
+                                Incorreta (0 pontos)
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor={`feedback-${question.id}`}>Feedback da Questão</Label>
+                            <Textarea
+                              id={`feedback-${question.id}`}
+                              placeholder="Feedback específico para esta questão..."
+                              value={question.feedback || ""}
+                              onChange={(e) => handleQuestionFeedback(question.id, e.target.value)}
+                              rows={3}
+                            />
                           </div>
                         </div>
-                        
-                        <div className="space-y-2">
-                          <Label htmlFor={`feedback-${question.id}`}>Feedback da Questão</Label>
-                          <Textarea
-                            id={`feedback-${question.id}`}
-                            placeholder="Feedback específico para esta questão..."
-                            value={question.feedback || ""}
-                            onChange={(e) => handleQuestionFeedback(question.id, e.target.value)}
-                            rows={3}
-                          />
-                        </div>
                       </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         </div>
 

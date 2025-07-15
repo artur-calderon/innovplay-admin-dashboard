@@ -588,13 +588,25 @@ function QuestionOptions({
         </div>
         <RadioGroup
           value={answer || ""}
-          onValueChange={onAnswerChange}
+          onValueChange={(val) => {
+            // Corrigir: enviar a letra (A, B, C, D...)
+            const index = questionOptions.findIndex((option, idx) => {
+              const optionId = option.id || `option-${idx}`;
+              return optionId === val;
+            });
+            if (index !== -1) {
+              onAnswerChange(String.fromCharCode(65 + index));
+            } else {
+              onAnswerChange("");
+            }
+          }}
           disabled={disabled}
         >
           {questionOptions.map((option, index) => {
             const optionId = option.id || `option-${index}`;
             const optionText = option.text || option;
-            const isSelected = answer === optionId;
+            // Corrigir: marcar como selecionado se answer for a letra
+            const isSelected = answer === String.fromCharCode(65 + index);
 
             return (
               <div
@@ -603,12 +615,13 @@ function QuestionOptions({
                   ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
                   : 'border-gray-200 hover:border-gray-300'
                   } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                onClick={() => !disabled && onAnswerChange(optionId)}
+                onClick={() => !disabled && onAnswerChange(String.fromCharCode(65 + index))}
               >
                 <RadioGroupItem
                   value={optionId}
                   id={optionId}
                   className="mt-0.5"
+                  checked={isSelected}
                 />
                 <Label
                   htmlFor={optionId}

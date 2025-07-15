@@ -122,7 +122,7 @@ const SubjectsList = ({ evaluation }: { evaluation: Evaluation }) => {
 
   // Se há múltiplas disciplinas
   return (
-    <div className="flex flex-wrap gap-1 max-w-[200px]">
+    <div className="flex flex-wrap gap-1 max-w-[150px] sm:max-w-[200px]">
       {/* Mostrar as duas primeiras disciplinas */}
       {subjects.slice(0, 2).map((subject, index) => (
         <Badge
@@ -647,8 +647,8 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
                         aria-label="Selecionar todos"
                       />
                     </TableHead>
-                    <TableHead className="min-w-[250px]">Título</TableHead>
-                    <TableHead className="hidden sm:table-cell">Disciplina(s)</TableHead>
+                    <TableHead className="min-w-[200px]">Título</TableHead>
+                    <TableHead className="table-cell min-w-[120px]">Disciplina(s)</TableHead>
                     <TableHead className="hidden md:table-cell">Tipo/Modelo</TableHead>
                     <TableHead className="hidden md:table-cell">Questões</TableHead>
                     <TableHead className="hidden lg:table-cell">Série</TableHead>
@@ -662,7 +662,7 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
                       <TableRow key={i}>
                         <TableCell><Skeleton className="h-4 w-4" /></TableCell>
                         <TableCell><Skeleton className="h-4 w-48" /></TableCell>
-                        <TableCell className="hidden sm:table-cell"><Skeleton className="h-4 w-24" /></TableCell>
+                        <TableCell className="table-cell"><Skeleton className="h-4 w-24" /></TableCell>
                         <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
                         <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-12" /></TableCell>
                         <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-16" /></TableCell>
@@ -698,7 +698,7 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="hidden sm:table-cell">
+                        <TableCell className="table-cell">
                           <SubjectsList evaluation={evaluation} />
                         </TableCell>
                         <TableCell className="hidden md:table-cell">

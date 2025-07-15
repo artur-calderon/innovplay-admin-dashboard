@@ -508,6 +508,15 @@ const QuestionForm = ({
       return;
     }
 
+    // Corrigir: salvar solution como letra da alternativa correta
+    let solution = data.solution ? htmlToText(data.solution) : "";
+    if (data.questionType === 'multipleChoice' && data.options) {
+      const correctIndex = data.options.findIndex(opt => opt.isCorrect);
+      if (correctIndex !== -1) {
+        solution = String.fromCharCode(65 + correctIndex); // "A", "B", ...
+      }
+    }
+
     const payload = {
       title: data.title,
       text: htmlToText(data.text),
@@ -519,7 +528,7 @@ const QuestionForm = ({
       gradeId: data.grade, // Campo alternativo para compatibilidade
       difficulty: data.difficulty,
       value: data.value ? parseFloat(data.value) : 0,
-      solution: data.solution ? htmlToText(data.solution) : "",
+      solution, // <-- corrigido
       formattedSolution: data.solution || "",
       options: data.questionType === 'multipleChoice' ? data.options.map(opt => ({ text: opt.text, isCorrect: opt.isCorrect })) : [],
       skills: data.skills || [],

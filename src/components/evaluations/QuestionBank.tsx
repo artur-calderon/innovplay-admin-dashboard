@@ -163,7 +163,6 @@ export function QuestionBank({
       }
 
       const convertedQuestions: Question[] = questionsData.map((apiQuestion) => {
-        console.log('QUESTAO API:', apiQuestion); // DEBUG: Veja no console o objeto real da questão
         const getQuestionType = (type: string | undefined): "multipleChoice" | "open" | "trueFalse" => {
           switch (type) {
             case "multipleChoice":
@@ -514,7 +513,7 @@ export function QuestionBank({
                   size="sm"
                   className="bg-green-600 hover:bg-green-700"
                 >
-                  Adicionar {selectedQuestions.length} questão{selectedQuestions.length > 1 ? 'ões' : 'ão'}
+                  Adicionar {selectedQuestions.length} questões
                 </Button>
               )}
             </div>

@@ -257,6 +257,7 @@ export const CreateEvaluationStep2 = ({
         evaluation_mode: "virtual",
         municipalities: data.municipalities || [],
         schools: data.selectedSchools?.map(s => s.id) || data.schools || [],
+        subjects: data.subjects.map(subject => subject.id), // Corrigido: enviar array de IDs
         subjects_info: data.subjects.map(subject => ({
           subject: subject.id,
           weight: Math.round(100 / data.subjects.length) // Peso igual para todas as disciplinas
