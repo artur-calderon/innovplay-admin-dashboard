@@ -151,25 +151,8 @@ export default function StudentEvaluations() {
     return () => clearInterval(interval);
   }, []); // Remover dependência de evaluations para evitar loop infinito
 
-  // ✅ NOVO: useEffect para limpar avaliações concluídas após carregamento
-  useEffect(() => {
-    if (evaluations.length > 0) {
-      const inProgress = localStorage.getItem("evaluation_in_progress");
-      if (inProgress) {
-        try {
-          const progressData = JSON.parse(inProgress);
-          const evaluation = evaluations.find(e => e.id === progressData.evaluationId);
-          if (evaluation && evaluation.status === "completed") {
-            localStorage.removeItem("evaluation_in_progress");
-            localStorage.removeItem("current_evaluation_data");
-            setCurrentTaking(null);
-          }
-        } catch (e) {
-          localStorage.removeItem("evaluation_in_progress");
-        }
-      }
-    }
-  }, [evaluations]);
+  // ✅ REMOVIDO: Não gerenciar status de conclusão no localStorage
+  // O backend controla o status da avaliação através do campo status
 
   // ✅ NOVO: Função para atualizar status das avaliações em tempo real
   const updateEvaluationStatuses = async () => {
@@ -199,23 +182,6 @@ export default function StudentEvaluations() {
               }
             } catch (e) {
               // Ignorar erros de parsing
-            }
-          }
-
-          // ✅ CORRIGIDO: Limpar dados de avaliação finalizada após 24h (específico por aluno)
-          const completedEvaluation = localStorage.getItem(`evaluation_completed_${evaluation.id}_${user?.id}`);
-          if (completedEvaluation) {
-            try {
-              const completedData = JSON.parse(completedEvaluation);
-              const completedAt = new Date(completedData.completedAt);
-              const now = new Date();
-              const hoursSinceCompletion = (now.getTime() - completedAt.getTime()) / (1000 * 60 * 60);
-
-              if (hoursSinceCompletion >= 24) {
-                localStorage.removeItem(`evaluation_completed_${evaluation.id}_${user?.id}`);
-              }
-            } catch (e) {
-              localStorage.removeItem(`evaluation_completed_${evaluation.id}_${user?.id}`);
             }
           }
 
@@ -406,30 +372,10 @@ export default function StudentEvaluations() {
   };
 
   const determineEvaluationStatus = (evaluation: any): StudentEvaluation["status"] => {
-    // ✅ CORRIGIDO: PRIORIDADE 0: Verificar se a avaliação foi finalizada localmente (específico por aluno)
-    const completedEvaluation = localStorage.getItem(`evaluation_completed_${evaluation.id}_${user?.id}`);
-    if (completedEvaluation) {
-      try {
-        const completedData = JSON.parse(completedEvaluation);
-        // Verificar se os dados são válidos e recentes (últimas 24h)
-        const completedAt = new Date(completedData.completedAt);
-        const now = new Date();
-        const hoursSinceCompletion = (now.getTime() - completedAt.getTime()) / (1000 * 60 * 60);
+    // ✅ REMOVIDO: Não gerenciar status de conclusão no localStorage
+    // O backend controla o status da avaliação através do campo status
 
-        if (hoursSinceCompletion < 24) {
-          console.log(`Avaliação ${evaluation.id} finalizada localmente pelo aluno ${user?.id} em ${completedAt.toLocaleString()}`);
-          return "completed";
-        } else {
-          // Remover dados antigos
-          localStorage.removeItem(`evaluation_completed_${evaluation.id}_${user?.id}`);
-        }
-      } catch (e) {
-        // Dados inválidos, remover
-        localStorage.removeItem(`evaluation_completed_${evaluation.id}_${user?.id}`);
-      }
-    }
-
-    // ✅ CORRIGIDO: PRIORIDADE 0.5: Verificar se há sessão expirada por tempo (específico por aluno)
+    // ✅ CORRIGIDO: Verificar se há sessão em progresso
     const inProgress = localStorage.getItem("evaluation_in_progress");
     if (inProgress) {
       try {
@@ -441,22 +387,14 @@ export default function StudentEvaluations() {
             try {
               const session = JSON.parse(sessionData);
               if (session.status === 'finalizada' || session.status === 'expirada') {
-                console.log(`Sessão ${evaluation.id} encerrada por tempo para o aluno ${user?.id}, marcando como completed`);
-
-                // Marcar como finalizada (específico por aluno)
-                const completedEvaluation = {
-                  evaluationId: evaluation.id,
-                  studentId: user?.id,
-                  completedAt: new Date().toISOString(),
-                  results: { reason: 'time_expired' }
-                };
-                localStorage.setItem(`evaluation_completed_${evaluation.id}_${user?.id}`, JSON.stringify(completedEvaluation));
+                console.log(`Sessão ${evaluation.id} encerrada por tempo para o aluno ${user?.id}`);
 
                 // Limpar dados de progresso
                 localStorage.removeItem("evaluation_in_progress");
                 localStorage.removeItem("current_evaluation_data");
                 sessionStorage.removeItem("evaluation_session");
 
+                // O status será determinado pelo backend na próxima atualização
                 return "completed";
               }
             } catch (e) {
@@ -547,16 +485,6 @@ export default function StudentEvaluations() {
         const data = JSON.parse(inProgress);
         // Verificar se os dados são válidos
         if (data && data.evaluationId && typeof data.evaluationId === 'string') {
-          // ✅ NOVO: Verificar se a avaliação foi finalizada
-          const completedEvaluation = localStorage.getItem(`evaluation_completed_${data.evaluationId}_${user?.id}`);
-          if (completedEvaluation) {
-            // Avaliação foi finalizada, limpar dados de progresso
-            localStorage.removeItem("evaluation_in_progress");
-            localStorage.removeItem("current_evaluation_data");
-            setCurrentTaking(null);
-            return;
-          }
-
           // Verificar se a avaliação ainda está em progresso
           const evaluation = evaluations.find(e => e.id === data.evaluationId);
           if (evaluation && evaluation.status === 'completed') {
@@ -578,16 +506,8 @@ export default function StudentEvaluations() {
   };
 
   const handleStartEvaluation = (evaluation: StudentEvaluation) => {
-    // ✅ NOVO: Verificar se a avaliação já foi finalizada
-    const completedEvaluation = localStorage.getItem(`evaluation_completed_${evaluation.id}_${user?.id}`);
-    if (completedEvaluation) {
-      toast({
-        title: "❌ Avaliação já finalizada",
-        description: "Esta avaliação já foi concluída e não pode ser iniciada novamente.",
-        variant: "destructive",
-      });
-      return;
-    }
+    // ✅ REMOVIDO: Não verificar localStorage para status de conclusão
+    // O backend controla o status da avaliação através do campo status
 
     setSelectedEvaluation(evaluation);
     setShowInstructions(true);
@@ -596,18 +516,8 @@ export default function StudentEvaluations() {
   const handleConfirmStart = async () => {
     if (!selectedEvaluation) return;
 
-    // ✅ NOVO: Verificar se a avaliação já foi finalizada
-    const completedEvaluation = localStorage.getItem(`evaluation_completed_${selectedEvaluation.id}_${user?.id}`);
-    if (completedEvaluation) {
-      toast({
-        title: "❌ Avaliação já finalizada",
-        description: "Esta avaliação já foi concluída e não pode ser iniciada novamente.",
-        variant: "destructive",
-      });
-      setShowInstructions(false);
-      setConfirmStart(false);
-      return;
-    }
+    // ✅ REMOVIDO: Não verificar localStorage para status de conclusão
+    // O backend controla o status da avaliação através do campo status
 
     // ✅ NOVO: Verificação rigorosa de horários antes de iniciar
     const now = new Date();
@@ -708,25 +618,8 @@ export default function StudentEvaluations() {
   };
 
   const handleContinueEvaluation = async (evaluation: StudentEvaluation) => {
-    // ✅ NOVO: Verificar se a avaliação já foi finalizada
-    const completedEvaluation = localStorage.getItem(`evaluation_completed_${evaluation.id}_${user?.id}`);
-    if (completedEvaluation) {
-      toast({
-        title: "❌ Avaliação já finalizada",
-        description: "Esta avaliação já foi concluída e não pode ser continuada.",
-        variant: "destructive",
-      });
-
-      // Limpar dados de progresso se a avaliação foi finalizada
-      localStorage.removeItem("evaluation_in_progress");
-      localStorage.removeItem("current_evaluation_data");
-      sessionStorage.removeItem("evaluation_session");
-      setCurrentTaking(null);
-
-      // Atualizar status da avaliação
-      updateEvaluationStatuses();
-      return;
-    }
+    // ✅ REMOVIDO: Não verificar localStorage para status de conclusão
+    // O backend controla o status da avaliação através do campo status
 
     console.log("🔄 Continuando avaliação:", evaluation.id);
 

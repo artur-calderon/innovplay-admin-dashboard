@@ -279,16 +279,10 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             sessionStorage.removeItem("current_evaluation");
             sessionStorage.removeItem("evaluation_session");
 
-            // ✅ NOVO: Marcar avaliação como finalizada (específico por aluno)
-            const completedEvaluation = {
-                evaluationId: testId,
-                studentId: user?.id,
-                completedAt: new Date().toISOString(),
-                results: results.results
-            };
-            localStorage.setItem(`evaluation_completed_${testId}_${user?.id}`, JSON.stringify(completedEvaluation));
+            // ✅ REMOVIDO: Não gerenciar status de conclusão no localStorage
+            // O backend controla o status da avaliação através do campo status
 
-            console.log('✅ Dados do localStorage limpos e avaliação marcada como finalizada');
+            console.log('✅ Dados do localStorage limpos');
 
             // Limpar timers
             if (timerRef.current) clearInterval(timerRef.current);
