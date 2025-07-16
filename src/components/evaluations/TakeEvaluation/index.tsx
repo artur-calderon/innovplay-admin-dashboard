@@ -39,6 +39,14 @@ import { EvaluationTimer } from "../EvaluationTimer";
 import { useEvaluation } from "@/hooks/useEvaluation";
 import { Question, TestData, TestResults } from "@/types/evaluation-types";
 
+// Função para determinar a cor baseada na performance
+const getPerformanceColor = (percentage: number) => {
+  if (percentage >= 80) return "text-green-600";
+  if (percentage >= 60) return "text-blue-600";
+  if (percentage >= 40) return "text-yellow-600";
+  return "text-red-600";
+};
+
 export default function TakeEvaluation() {
   const { id: evaluationId } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -49,7 +57,6 @@ export default function TakeEvaluation() {
     evaluationState,
     testData,
     session,
-    sessionInfo,
     currentQuestionIndex,
     answers,
     isSubmitting,
@@ -59,8 +66,8 @@ export default function TakeEvaluation() {
     isTimeUp,
     isPaused,
     startTestSession,
-    handleAnswerChange,
-    handleSubmitTest,
+    saveAnswer,
+    submitTest: handleSubmitTest,
     navigateToQuestion
   } = useEvaluation({ testId: evaluationId });
 
@@ -180,33 +187,6 @@ export default function TakeEvaluation() {
             <div className="text-center">
               <p className="mb-4">{testData.instructions}</p>
 
-              {/* ✅ NOVO: Informações sobre o cronômetro */}
-              {sessionInfo && (
-                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <div className="text-sm text-blue-800">
-                    <div className="font-medium mb-1">Informações da Sessão:</div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <span className="font-medium">Tempo limite:</span> {sessionInfo.time_limit_minutes} minutos
-                      </div>
-                      <div>
-                        <span className="font-medium">Status:</span> {sessionInfo.timer_started ? 'Ativo' : 'Pausado'}
-                      </div>
-                      {sessionInfo.actual_start_time && (
-                        <>
-                          <div>
-                            <span className="font-medium">Iniciado em:</span> {new Date(sessionInfo.actual_start_time).toLocaleString('pt-BR')}
-                          </div>
-                          <div>
-                            <span className="font-medium">Tempo restante:</span> {sessionInfo.remaining_time_minutes} minutos
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
               <div className="flex justify-center gap-4">
                 <Button variant="outline" onClick={() => navigate("/aluno/avaliacoes")}>
                   <Home className="h-4 w-4 mr-2" />
@@ -243,26 +223,55 @@ export default function TakeEvaluation() {
 
     return (
       <div className="flex items-center justify-center min-h-screen w-screen bg-gray-50 p-4">
-        <div className="max-w-2xl w-full">
+        <div className="max-w-4xl w-full">
           <Card>
             <CardHeader>
               <CardTitle className="text-center">Resultados da Avaliação</CardTitle>
+              <div className="text-center space-y-2">
+                <h2 className="text-xl font-semibold">{testData?.title}</h2>
+                <Badge variant="outline">{testData?.subject.name}</Badge>
+              </div>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="text-center p-4 border rounded-lg">
-                  <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-green-600" />
-                  <div className="font-semibold text-2xl">{results.correct_answers || 0}/{results.total_questions || 0}</div>
-                  <div className="text-sm text-muted-foreground">Acertos</div>
+              {/* Score principal */}
+              <div className="text-center space-y-2 p-4 bg-gray-50 rounded-lg">
+                <div className={`text-4xl font-bold ${getPerformanceColor(results.score_percentage || 0)}`}>
+                  {results.score_percentage || 0}%
                 </div>
-                <div className="text-center p-4 border rounded-lg">
-                  <Badge variant="outline" className="text-lg">
-                    {results.score_percentage || 0}%
-                  </Badge>
-                  <div className="text-sm text-muted-foreground mt-2">Nota Final</div>
+                <p className="text-muted-foreground">
+                  Nota: {results.correct_answers || 0}/{results.total_questions || 0}
+                </p>
+              </div>
+
+              {/* Detalhes */}
+              <div className="grid grid-cols-4 gap-4 text-center">
+                <div className="space-y-1">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {results.total_questions || 0}
+                  </div>
+                  <p className="text-sm text-muted-foreground">Total</p>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-2xl font-bold text-green-600">
+                    {results.correct_answers || 0}
+                  </div>
+                  <p className="text-sm text-muted-foreground">Acertos</p>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-2xl font-bold text-red-600">
+                    {(results.total_questions || 0) - (results.correct_answers || 0)}
+                  </div>
+                  <p className="text-sm text-muted-foreground">Erros</p>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-2xl font-bold text-gray-600">
+                    {(results.total_questions || 0) - (results.answers_saved || 0)}
+                  </div>
+                  <p className="text-sm text-muted-foreground">Em branco</p>
                 </div>
               </div>
 
+              {/* Conceito se disponível */}
               {results.grade && (
                 <div className="text-center p-4 border rounded-lg">
                   <div className="font-semibold text-xl">{results.grade}</div>
@@ -270,21 +279,38 @@ export default function TakeEvaluation() {
                 </div>
               )}
 
-              <div className="text-center space-y-4">
-                <p className="text-muted-foreground">
-                  {results.answers_saved || 0} de {results.total_questions || 0} questões respondidas
-                </p>
-
-                <div className="flex justify-center gap-4">
-                  <Button variant="outline" onClick={() => navigate("/aluno/avaliacoes")}>
-                    <Home className="h-4 w-4 mr-2" />
-                    Voltar
-                  </Button>
-                  <Button onClick={() => window.print()}>
-                    <Save className="h-4 w-4 mr-2" />
-                    Imprimir Resultado
-                  </Button>
+              {/* Informações adicionais */}
+              <div className="grid grid-cols-2 gap-4 text-sm text-center">
+                <div>
+                  <strong>Questões respondidas:</strong> {results.answers_saved || 0} de {results.total_questions || 0}
                 </div>
+                <div>
+                  <strong>Duração da avaliação:</strong> {testData?.duration || 60} minutos
+                </div>
+              </div>
+
+              {/* Feedback baseado na performance */}
+              <Alert>
+                <CheckCircle2 className="h-4 w-4" />
+                <AlertDescription>
+                  {results.score_percentage >= 80
+                    ? "Excelente! Você demonstrou ótimo domínio do conteúdo."
+                    : results.score_percentage >= 60
+                      ? "Bom trabalho! Continue estudando para melhorar ainda mais."
+                      : "Continue se esforçando! Revise o conteúdo e tire suas dúvidas com o professor."
+                  }
+                </AlertDescription>
+              </Alert>
+
+              <div className="flex justify-center gap-4">
+                <Button variant="outline" onClick={() => navigate("/aluno/avaliacoes")}>
+                  <Home className="h-4 w-4 mr-2" />
+                  Voltar às Avaliações
+                </Button>
+                <Button onClick={() => window.print()}>
+                  <Save className="h-4 w-4 mr-2" />
+                  Imprimir Resultado
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -575,9 +601,8 @@ export default function TakeEvaluation() {
                     question={currentQuestion}
                     answer={answers[currentQuestion?.id]?.answer}
                     onAnswerChange={(newAnswer) => {
-                      const formattedAnswer = Array.isArray(newAnswer) ? newAnswer.join(',') : (newAnswer || '');
                       if (currentQuestion?.id) {
-                        handleAnswerChange(currentQuestion.id, formattedAnswer);
+                        saveAnswer(currentQuestion.id, newAnswer);
                       }
                     }}
                     disabled={isTimeUp}
