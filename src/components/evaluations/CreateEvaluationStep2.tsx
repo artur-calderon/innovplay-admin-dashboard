@@ -149,9 +149,51 @@ export const CreateEvaluationStep2 = ({
     }
   };
 
-  const handleViewQuestion = (question: Question) => {
-    setPreviewQuestion(question);
-    setShowQuestionPreview(true);
+  const handleViewQuestion = async (question: Question) => {
+    try {
+      // Se a questão já tem dados completos, usar diretamente
+      if (question.options && question.options.length > 0 && question.formattedText) {
+        setPreviewQuestion(question);
+        setShowQuestionPreview(true);
+        return;
+      }
+
+      // Se não tem dados completos, buscar da API
+      if (question.id && question.id !== 'preview') {
+        const response = await api.get<Question>(`/questions/${question.id}`);
+        const fullQuestion = response.data;
+        
+        // Normalizar a questão com dados completos
+        const skillsValue = fullQuestion.skills as string[] | string | undefined;
+        const normalizedQuestion: Question = {
+          ...fullQuestion,
+          skills: Array.isArray(skillsValue) 
+            ? skillsValue 
+            : typeof skillsValue === 'string' && skillsValue.trim().length > 0
+              ? skillsValue.split(',').map(s => s.trim())
+              : [],
+          options: fullQuestion.options || [],
+          secondStatement: fullQuestion.secondStatement || '',
+          solution: fullQuestion.solution || fullQuestion.formattedSolution || '',
+          formattedText: fullQuestion.formattedText || fullQuestion.text,
+          formattedSolution: fullQuestion.formattedSolution || fullQuestion.solution,
+        };
+
+        setPreviewQuestion(normalizedQuestion);
+        setShowQuestionPreview(true);
+      } else {
+        // Para questões novas (preview), usar os dados disponíveis
+        setPreviewQuestion(question);
+        setShowQuestionPreview(true);
+      }
+    } catch (error) {
+      console.error("Erro ao carregar detalhes da questão:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar os detalhes da questão.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleSubmit = async () => {
@@ -200,8 +242,6 @@ export const CreateEvaluationStep2 = ({
         return;
       }
 
-
-
       // Estruturar dados da avaliação no formato que o backend espera
       const backendEvaluationData = {
         title: data.title.trim(),
@@ -221,6 +261,7 @@ export const CreateEvaluationStep2 = ({
         evaluation_mode: "virtual",
         municipalities: data.municipalities || [],
         schools: data.selectedSchools?.map(s => s.id) || data.schools || [],
+        subjects: data.subjects.map(subject => subject.id), // Corrigido: enviar array de IDs
         subjects_info: data.subjects.map(subject => ({
           subject: subject.id,
           weight: Math.round(100 / data.subjects.length) // Peso igual para todas as disciplinas
@@ -403,7 +444,7 @@ export const CreateEvaluationStep2 = ({
                       {subjectQuestions.length > 0 ? (
                         <div className="space-y-3">
                           {subjectQuestions.map((question, index) => (
-                            <Card key={question.id || index} className="bg-muted/30">
+                            <Card key={question.id || index} className="bg-muted/30 hover:bg-muted/50 transition-colors">
                               <CardContent className="p-4">
                                 <div className="flex items-start justify-between gap-4">
                                   <div className="flex-1 min-w-0">
@@ -420,13 +461,28 @@ export const CreateEvaluationStep2 = ({
                                       <Badge variant="outline">
                                         {question.value} pt{question.value !== 1 ? 's' : ''}
                                       </Badge>
+                                      {question.subject && (
+                                        <Badge variant="outline" className="text-xs">
+                                          {question.subject.name}
+                                        </Badge>
+                                      )}
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-1">
-                                    <Button variant="ghost" size="icon" onClick={() => handleViewQuestion(question)}>
+                                    <Button 
+                                      variant="ghost" 
+                                      size="icon" 
+                                      onClick={() => handleViewQuestion(question)}
+                                      className="hover:bg-blue-50 hover:text-blue-600"
+                                    >
                                       <Eye className="h-4 w-4" />
                                     </Button>
-                                    <Button variant="ghost" size="icon" onClick={() => handleRemoveQuestion(subject.id, index)} className="text-destructive hover:text-destructive">
+                                    <Button 
+                                      variant="ghost" 
+                                      size="icon" 
+                                      onClick={() => handleRemoveQuestion(subject.id, index)} 
+                                      className="text-destructive hover:text-destructive hover:bg-red-50"
+                                    >
                                       <Trash2 className="h-4 w-4" />
                                     </Button>
                                   </div>

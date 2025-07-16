@@ -39,86 +39,39 @@ import { EvaluationTimer } from "../EvaluationTimer";
 import { useEvaluation } from "@/hooks/useEvaluation";
 import { Question, TestData, TestResults } from "@/types/evaluation-types";
 
-// ✅ NOVO: Error Boundary para capturar erros
-class TakeEvaluationErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean; error?: Error }
-> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Erro capturado no TakeEvaluation:', error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="flex items-center justify-center h-screen w-screen bg-gray-50">
-          <div className="max-w-md w-full mx-4">
-            <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>
-                <div className="space-y-4">
-                  <div>
-                    <strong>Erro inesperado na avaliação</strong>
-                  </div>
-                  <div className="text-sm">
-                    Ocorreu um erro inesperado. Tente recarregar a página.
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => window.location.reload()}
-                    >
-                      Recarregar Página
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => window.location.href = "/aluno/avaliacoes"}
-                    >
-                      Voltar às Avaliações
-                    </Button>
-                  </div>
-                </div>
-              </AlertDescription>
-            </Alert>
-          </div>
-        </div>
-      );
-    }
-
-    return this.props.children;
-  }
-}
-
-function TakeEvaluationContent() {
+export default function TakeEvaluation() {
   const { id: evaluationId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
 
-  // ✅ NOVO: Verificação de segurança para evaluationId
+  const {
+    evaluationState,
+    testData,
+    session,
+    sessionInfo,
+    currentQuestionIndex,
+    answers,
+    isSubmitting,
+    isSaving,
+    results,
+    timeRemaining,
+    isTimeUp,
+    isPaused,
+    startTestSession,
+    handleAnswerChange,
+    handleSubmitTest,
+    navigateToQuestion
+  } = useEvaluation({ testId: evaluationId });
+
+  // ✅ NOVO: Log para debug
   useEffect(() => {
-    if (!evaluationId) {
-      console.error('ID da avaliação não encontrado');
-      toast({
-        title: "Erro",
-        description: "ID da avaliação não encontrado na URL",
-        variant: "destructive",
-      });
-      navigate("/aluno/avaliacoes");
-      return;
-    }
-  }, [evaluationId, navigate, toast]);
+    console.log('TakeEvaluation - Estado atual:', {
+      evaluationState,
+      testData: testData ? 'carregado' : 'não carregado',
+      session: session ? 'existe' : 'não existe'
+    });
+  }, [evaluationState, testData, session]);
 
   // Se não há evaluationId, mostrar erro
   if (!evaluationId) {
@@ -135,33 +88,6 @@ function TakeEvaluationContent() {
       </div>
     );
   }
-
-  const {
-    evaluationState,
-    testData,
-    session,
-    currentQuestionIndex,
-    answers,
-    isSubmitting,
-    isSaving,
-    results,
-    timeRemaining,
-    isTimeUp,
-    isPaused,
-    startTestSession,
-    saveAnswer,
-    submitTest,
-    navigateToQuestion
-  } = useEvaluation({ testId: evaluationId });
-
-  // ✅ NOVO: Log para debug
-  useEffect(() => {
-    console.log('TakeEvaluation - Estado atual:', {
-      evaluationState,
-      testData: testData ? 'carregado' : 'não carregado',
-      session: session ? 'existe' : 'não existe'
-    });
-  }, [evaluationState, testData, session]);
 
   // Loading state
   if (evaluationState === 'loading') {
@@ -255,24 +181,24 @@ function TakeEvaluationContent() {
               <p className="mb-4">{testData.instructions}</p>
 
               {/* ✅ NOVO: Informações sobre o cronômetro */}
-              {session && (
+              {sessionInfo && (
                 <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <div className="text-sm text-blue-800">
                     <div className="font-medium mb-1">Informações da Sessão:</div>
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div>
-                        <span className="font-medium">Tempo limite:</span> {session.time_limit_minutes} minutos
+                        <span className="font-medium">Tempo limite:</span> {sessionInfo.time_limit_minutes} minutos
                       </div>
                       <div>
-                        <span className="font-medium">Status:</span> {session.status === 'em_andamento' ? 'Ativo' : 'Pausado'}
+                        <span className="font-medium">Status:</span> {sessionInfo.timer_started ? 'Ativo' : 'Pausado'}
                       </div>
-                      {session.actual_start_time && (
+                      {sessionInfo.actual_start_time && (
                         <>
                           <div>
-                            <span className="font-medium">Iniciado em:</span> {new Date(session.actual_start_time).toLocaleString('pt-BR')}
+                            <span className="font-medium">Iniciado em:</span> {new Date(sessionInfo.actual_start_time).toLocaleString('pt-BR')}
                           </div>
                           <div>
-                            <span className="font-medium">Tempo restante:</span> {session.remaining_time_minutes} minutos
+                            <span className="font-medium">Tempo restante:</span> {sessionInfo.remaining_time_minutes} minutos
                           </div>
                         </>
                       )}
@@ -509,10 +435,10 @@ function TakeEvaluationContent() {
         </div>
 
         <div className="flex-1 overflow-hidden">
-          <div className="h-full p-4 grid gap-6 lg:grid-cols-5 xl:grid-cols-6 overflow-y-auto">
+          <div className="h-full p-4 grid gap-6 lg:grid-cols-4 overflow-y-auto">
             {/* ✅ NOVO: Alerta quando pausado */}
             {isPaused && (
-              <div className="lg:col-span-5 xl:col-span-6 mb-4">
+              <div className="lg:col-span-4 mb-4">
                 <Alert className="border-yellow-300 bg-yellow-50">
                   <Pause className="h-4 w-4" />
                   <AlertDescription className="flex items-center justify-between">
@@ -547,7 +473,7 @@ function TakeEvaluationContent() {
             )}
 
             {/* Navegação das questões */}
-            <div className="lg:col-span-1 xl:col-span-1">
+            <div className="lg:col-span-1">
               <Card className="sticky top-24">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base">Navegação</CardTitle>
@@ -589,7 +515,7 @@ function TakeEvaluationContent() {
             </div>
 
             {/* Área principal */}
-            <div className="lg:col-span-4 xl:col-span-5">
+            <div className="lg:col-span-3">
               <Card>
                 <CardHeader>
                   <div className="flex items-start justify-between">
@@ -651,7 +577,7 @@ function TakeEvaluationContent() {
                     onAnswerChange={(newAnswer) => {
                       const formattedAnswer = Array.isArray(newAnswer) ? newAnswer.join(',') : (newAnswer || '');
                       if (currentQuestion?.id) {
-                        saveAnswer(currentQuestion.id, formattedAnswer);
+                        handleAnswerChange(currentQuestion.id, formattedAnswer);
                       }
                     }}
                     disabled={isTimeUp}
@@ -705,7 +631,7 @@ function TakeEvaluationContent() {
             <AlertDialogFooter>
               <AlertDialogCancel disabled={isSubmitting}>Cancelar</AlertDialogCancel>
               <AlertDialogAction
-                onClick={() => submitTest(false)}
+                onClick={() => handleSubmitTest(false)}
                 disabled={isSubmitting}
               >
                 {isSubmitting ? "Enviando..." : "Confirmar Envio"}
@@ -733,9 +659,8 @@ function QuestionOptions({
   disabled: boolean;
 }) {
   if (question.type === "multiple_choice" || question.type === "multipleChoice") {
-    // ✅ CORRIGIDO: Usar options (que existe) ou alternatives (fallback)
+    // Usar options (que existe) ou alternatives (fallback)
     const questionOptions = question.options || question.alternatives || [];
-    console.log('Opções da questão:', questionOptions);
 
     return (
       <div className="space-y-3">
@@ -744,14 +669,25 @@ function QuestionOptions({
         </div>
         <RadioGroup
           value={answer || ""}
-          onValueChange={onAnswerChange}
+          onValueChange={(val) => {
+            // Corrigir: enviar a letra (A, B, C, D...)
+            const index = questionOptions.findIndex((option, idx) => {
+              const optionId = option.id || `option-${idx}`;
+              return optionId === val;
+            });
+            if (index !== -1) {
+              onAnswerChange(String.fromCharCode(65 + index));
+            } else {
+              onAnswerChange("");
+            }
+          }}
           disabled={disabled}
         >
           {questionOptions.map((option, index) => {
             const optionId = option.id || `option-${index}`;
             const optionText = option.text || option;
-            const isSelected = answer === optionId;
-            console.log(`Opção ${index}:`, { optionId, optionText, isSelected, isCorrect: option.isCorrect });
+            // Corrigir: marcar como selecionado se answer for a letra
+            const isSelected = answer === String.fromCharCode(65 + index);
 
             return (
               <div
@@ -760,12 +696,13 @@ function QuestionOptions({
                   ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
                   : 'border-gray-200 hover:border-gray-300'
                   } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                onClick={() => !disabled && onAnswerChange(optionId)}
+                onClick={() => !disabled && onAnswerChange(String.fromCharCode(65 + index))}
               >
                 <RadioGroupItem
                   value={optionId}
                   id={optionId}
                   className="mt-0.5"
+                  checked={isSelected}
                 />
                 <Label
                   htmlFor={optionId}
@@ -916,13 +853,5 @@ function QuestionOptions({
         Tipo de questão não suportado: {question.type}
       </div>
     </div>
-  );
-}
-
-export default function TakeEvaluation() {
-  return (
-    <TakeEvaluationErrorBoundary>
-      <TakeEvaluationContent />
-    </TakeEvaluationErrorBoundary>
   );
 }

@@ -62,7 +62,8 @@ const ReadOnlyEditor = ({ content }: { content: string | null | undefined }) => 
     // Verificar se o editor foi criado e se tem imagens para verificar
     useEffect(() => {
         if (editor && content && content.includes('data:image')) {
-            queueMicrotask(() => {
+            // ✅ FIX: Usar setTimeout em vez de queueMicrotask para evitar flushSync warning
+            const timeoutId = setTimeout(() => {
                 setEditorReady(true);
                 
                 // Aplicar estilos adicionais às imagens quando o editor carregar
@@ -91,7 +92,7 @@ const ReadOnlyEditor = ({ content }: { content: string | null | undefined }) => 
                         }
                     }
                 });
-            });
+            }, 0);
             
             // Verificar renderização de imagens após um tempo
             const checkImages = setTimeout(() => {
@@ -101,17 +102,19 @@ const ReadOnlyEditor = ({ content }: { content: string | null | undefined }) => 
                 
                 // Se não renderizou imagens quando deveria, usar fallback HTML
                 if (!hasImages && content.includes('data:image')) {
-                    queueMicrotask(() => {
-                        setUseHtmlFallback(true);
-                    });
+                    setUseHtmlFallback(true);
                 }
             }, 1000);
 
-            return () => clearTimeout(checkImages);
+            return () => {
+                clearTimeout(timeoutId);
+                clearTimeout(checkImages);
+            };
         } else if (editor) {
-            queueMicrotask(() => {
+            // ✅ FIX: Usar setTimeout em vez de queueMicrotask
+            setTimeout(() => {
                 setEditorReady(true);
-            });
+            }, 0);
         }
     }, [editor, content]);
 
