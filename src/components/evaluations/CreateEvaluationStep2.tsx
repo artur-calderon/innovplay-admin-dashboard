@@ -164,12 +164,15 @@ export const CreateEvaluationStep2 = ({
         const fullQuestion = response.data;
         
         // Normalizar a questão com dados completos
+        const skillsValue = fullQuestion.skills as string[] | string | undefined;
         const normalizedQuestion: Question = {
           ...fullQuestion,
-          skills: Array.isArray(fullQuestion.skills) ? fullQuestion.skills : 
-                 (typeof fullQuestion.skills === 'string' && fullQuestion.skills.length > 0) ? 
-                 fullQuestion.skills.split(',').map(s => s.trim()) : [],
-          options: fullQuestion.options || fullQuestion.alternatives || [],
+          skills: Array.isArray(skillsValue) 
+            ? skillsValue 
+            : typeof skillsValue === 'string' && skillsValue.trim().length > 0
+              ? skillsValue.split(',').map(s => s.trim())
+              : [],
+          options: fullQuestion.options || [],
           secondStatement: fullQuestion.secondStatement || '',
           solution: fullQuestion.solution || fullQuestion.formattedSolution || '',
           formattedText: fullQuestion.formattedText || fullQuestion.text,
@@ -250,6 +253,7 @@ export const CreateEvaluationStep2 = ({
         subject: data.subjects[0]?.id || data.subject, // Disciplina principal
         grade: data.grade,
         grade_id: data.grade,
+        duration: parseInt(data.duration || "60"), // ✅ ADICIONADO: Campo duration em minutos
         intructions: "Leia atentamente cada questão antes de responder",
         max_score: allQuestions.reduce((total, q) => total + (q.value || 0), 0),
         time_limit: data.endDateTime || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
@@ -298,6 +302,15 @@ export const CreateEvaluationStep2 = ({
           };
         })
       };
+
+      // ✅ DEBUG: Log para verificar se duration está sendo enviado
+      console.log("📤 Criando avaliação com dados no formato do backend:", {
+        ...backendEvaluationData,
+        duration: backendEvaluationData.duration,
+        totalQuestions: allQuestions.length,
+        selectedClasses: data.selectedClasses?.map(c => c.name),
+        selectedSchools: data.selectedSchools?.map(s => s.name)
+      });
 
       // Criar avaliação no backend usando o endpoint correto
       const response = await api.post("/test", backendEvaluationData);
