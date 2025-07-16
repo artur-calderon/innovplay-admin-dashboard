@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Eye, Pencil, Trash2, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown, Copy } from "lucide-react";
+import { Plus, Eye, Pencil, Trash2, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown, Copy, AlertTriangle } from "lucide-react";
 import { Question } from "@/components/evaluations/types";
 import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
@@ -706,6 +706,7 @@ const QuestionsPage = () => {
     if (!deleteQuestionId) return;
 
     try {
+      console.log(`🗑️ Tentando excluir questão: ${deleteQuestionId}`);
       await api.delete(`/questions/${deleteQuestionId}`);
       toast({
         title: "Sucesso!",
@@ -715,11 +716,35 @@ const QuestionsPage = () => {
       // Limpar cache e refetch
       setQuestionsCache({});
       fetchQuestions();
-    } catch (error) {
-      console.error("Failed to delete question", error);
+    } catch (error: any) {
+      console.error("❌ Erro detalhado ao excluir questão:", {
+        error,
+        questionId: deleteQuestionId,
+        message: error.message,
+        response: error.response,
+        status: error.response?.status,
+        data: error.response?.data
+      });
+      
+      let errorMessage = "Não foi possível excluir a questão.";
+      
+      if (error.response?.status === 404) {
+        errorMessage = "Questão não encontrada ou já foi excluída.";
+      } else if (error.response?.status === 403) {
+        errorMessage = "Você não tem permissão para excluir esta questão.";
+      } else if (error.response?.status === 409) {
+        errorMessage = "Esta questão está sendo usada em avaliações e não pode ser excluída.";
+      } else if (error.response?.status === 500) {
+        errorMessage = "Erro interno do servidor. A questão pode ter dados corrompidos.";
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      }
+      
       toast({
-        title: "Erro",
-        description: "Não foi possível excluir a questão.",
+        title: "Erro ao excluir questão",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -727,6 +752,7 @@ const QuestionsPage = () => {
 
   const handleBulkDelete = async () => {
     try {
+      console.log(`🗑️ Tentando excluir ${selectedIds.length} questões:`, selectedIds);
       await api.delete("/questions", { data: { ids: selectedIds } });
       toast({
         title: "Sucesso!",
@@ -736,16 +762,91 @@ const QuestionsPage = () => {
       // Limpar cache e refetch
       setQuestionsCache({});
       fetchQuestions();
-    } catch (error) {
-      console.error("Failed to delete questions", error);
+    } catch (error: any) {
+      console.error("❌ Erro detalhado ao excluir questões em massa:", {
+        error,
+        selectedIds,
+        message: error.message,
+        response: error.response,
+        status: error.response?.status,
+        data: error.response?.data
+      });
+      
+      let errorMessage = "Não foi possível excluir as questões selecionadas.";
+      
+      if (error.response?.status === 404) {
+        errorMessage = "Uma ou mais questões não foram encontradas.";
+      } else if (error.response?.status === 403) {
+        errorMessage = "Você não tem permissão para excluir uma ou mais questões.";
+      } else if (error.response?.status === 409) {
+        errorMessage = "Algumas questões estão sendo usadas em avaliações e não podem ser excluídas.";
+      } else if (error.response?.status === 500) {
+        errorMessage = "Erro interno do servidor. Algumas questões podem ter dados corrompidos.";
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      }
+      
       toast({
-        title: "Erro",
-        description: "Não foi possível excluir as questões selecionadas.",
+        title: "Erro ao excluir questões",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
       setDeleteQuestionId(null);
     }
+  };
+
+  // ✅ NOVA: Função para identificar questões com dados corrompidos
+  const identifyProblematicQuestions = () => {
+    const problematic = questions.filter(q => {
+      // Verificar problemas conhecidos de dados corrompidos
+      const hasMultipleCorrectOptions = q.options && q.options.filter(opt => opt.isCorrect).length > 1;
+      const hasTooManyOptions = q.options && q.options.length > 10;
+      const hasStrangeIds = q.options && q.options.some(opt => 
+        opt.id && (opt.id.includes('option-') && parseInt(opt.id.replace('option-', ''), 10) > 100)
+      );
+      const hasInvalidText = q.options && q.options.some(opt => 
+        opt.text && (opt.text.length === 1 && /[^\w\s]/.test(opt.text))
+      );
+      
+      return hasMultipleCorrectOptions || hasTooManyOptions || hasStrangeIds || hasInvalidText;
+    });
+
+    if (problematic.length > 0) {
+      console.warn(`🚨 Encontradas ${problematic.length} questões com possíveis problemas:`, 
+        problematic.map(q => ({
+          id: q.id,
+          title: q.title,
+          optionsCount: q.options?.length || 0,
+          correctOptionsCount: q.options?.filter(opt => opt.isCorrect).length || 0,
+          issues: {
+            multipleCorrect: q.options && q.options.filter(opt => opt.isCorrect).length > 1,
+            tooManyOptions: q.options && q.options.length > 10,
+            strangeIds: q.options && q.options.some(opt => 
+              opt.id && opt.id.includes('option-') && parseInt(opt.id.replace('option-', ''), 10) > 100
+            ),
+            invalidText: q.options && q.options.some(opt => 
+              opt.text && opt.text.length === 1 && /[^\w\s]/.test(opt.text)
+            )
+          }
+        }))
+      );
+      
+      toast({
+        title: `${problematic.length} questões problemáticas detectadas`,
+        description: "Verifique o console para detalhes. Essas questões podem ter problemas na exclusão.",
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Nenhum problema detectado",
+        description: "Todas as questões parecem ter dados consistentes.",
+      });
+    }
+
+    return problematic;
   };
 
   const handleDuplicate = async (question: Question) => {
@@ -1170,6 +1271,18 @@ const QuestionsPage = () => {
               <span className="sm:hidden">({selectedIds.length})</span>
             </Button>
           )}
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={identifyProblematicQuestions}
+            className="flex-1 sm:flex-none"
+            title="Identificar questões com dados corrompidos"
+          >
+            <AlertTriangle className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Diagnóstico</span>
+            <span className="sm:hidden">Diagnóstico</span>
+          </Button>
 
           <Button
             size="sm"

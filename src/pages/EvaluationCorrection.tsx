@@ -22,7 +22,8 @@ import {
   Filter,
   Search,
   Download,
-  MessageSquare
+  MessageSquare,
+  RefreshCw
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
@@ -46,6 +47,7 @@ interface SubmittedEvaluation {
   manualScore?: number; // pontuação após correção manual
   finalScore?: number;
   percentage?: number;
+  correctAnswers?: number; // ✅ NOVO: Quantidade de acertos
   correctedBy?: string;
   correctedAt?: string;
   feedback?: string;
@@ -105,11 +107,11 @@ export default function EvaluationCorrection() {
       // Buscar avaliações enviadas da API real
       const response = await api.get(`/test-sessions/submitted?${params.toString()}`);
       
-              if (response.data && Array.isArray(response.data)) {
-          // Transformar dados da API para o formato esperado
+      if (response.data && Array.isArray(response.data)) {
+        // Transformar dados da API para o formato esperado
           const transformedEvaluations = await Promise.all(response.data.map(transformSessionToEvaluation));
-          setEvaluations(transformedEvaluations);
-        } else {
+        setEvaluations(transformedEvaluations);
+      } else {
         setEvaluations([]);
         toast({
           title: "Nenhuma avaliação encontrada",
@@ -135,6 +137,11 @@ export default function EvaluationCorrection() {
     // Transformar respostas de forma assíncrona
     const questions = session.answers ? await Promise.all(session.answers.map(transformAnswerToQuestion)) : [];
     
+    // ✅ NOVO: Usar dados calculados pelo backend (agora funcionais)
+    const finalScore = session.final_score || 0;
+    const percentage = session.percentage || 0;
+    const correctAnswers = session.correct_answers || 0;
+    
     return {
       id: session.id,
       sessionId: session.id,
@@ -157,8 +164,9 @@ export default function EvaluationCorrection() {
       answeredQuestions: (session.total_questions || 0) - (session.blank_answers || 0),
       autoScore: session.auto_score,
       manualScore: session.manual_score,
-      finalScore: session.final_score,
-      percentage: session.percentage,
+      finalScore: finalScore,
+      percentage: percentage,
+      correctAnswers: correctAnswers, // ✅ NOVO: Quantidade de acertos
       correctedBy: session.corrected_by,
       correctedAt: session.corrected_at,
       feedback: session.feedback,
@@ -188,163 +196,123 @@ export default function EvaluationCorrection() {
   // Buscar questão completa do banco quando necessário
   const fetchQuestionDetails = async (questionId: string) => {
     try {
-      console.log('🔍 Buscando detalhes da questão:', questionId);
       const response = await api.get(`/questions/${questionId}`);
       const questionData = response.data;
       
-      console.log('📋 Questão encontrada:', {
-        id: questionData.id,
-        alternativesCount: questionData.alternatives?.length,
-        alternatives: questionData.alternatives?.map((alt: any) => ({
-          id: alt.id,
-          text: alt.text,
-          isCorrect: alt.isCorrect
-        })),
-        // Log completo para debug
-        fullResponse: questionData
-      });
+      // Normalizar alternativas de diferentes formatos possíveis
+      let alternatives = questionData.alternatives || questionData.options || [];
       
-      // Encontrar a alternativa correta
+      // Se não tem alternativas, tentar extrair do correct_answer
+      if (!alternatives || alternatives.length === 0) {
+    return {
+          correctAnswer: questionData.correct_answer || null,
+          options: [],
+          needsReconstruction: true
+        };
+      }
+      
+      // Normalizar cada alternativa
+      const normalizedOptions = alternatives.map((alt: any, index: number) => ({
+        id: alt.id || `option-${index}`,
+        text: alt.text || alt.answer || '',
+        isCorrect: alt.isCorrect === true || alt.is_correct === true || alt.correct === true
+      }));
+      
+      // Encontrar alternativa correta
       let correctAnswerId = null;
-      if (questionData.alternatives && Array.isArray(questionData.alternatives)) {
-        const correctAlternative = questionData.alternatives.find((alt: any) => 
-          alt.isCorrect === true || alt.is_correct === true || alt.correct === true
-        );
-        if (correctAlternative) {
-          correctAnswerId = correctAlternative.id;
-          console.log('✅ Alternativa correta encontrada:', correctAlternative.text);
-        } else {
-          console.log('❌ Nenhuma alternativa marcada como correta na API');
-        }
+      const correctAlternative = normalizedOptions.find(alt => alt.isCorrect === true);
+      
+      if (correctAlternative) {
+        correctAnswerId = correctAlternative.id;
       } else {
-        console.log('❌ Nenhuma alternativa encontrada na questão');
-        console.log('🔍 Campos disponíveis na questão:', Object.keys(questionData));
+        // Fallback: usar correct_answer se disponível
+        if (questionData.correct_answer) {
+          correctAnswerId = questionData.correct_answer;
+        }
       }
       
       return {
         correctAnswer: correctAnswerId,
-        options: questionData.alternatives || questionData.options || []
+        options: normalizedOptions,
+        needsReconstruction: false
       };
     } catch (error) {
-      console.error('❌ Erro ao buscar questão:', error);
       return {
         correctAnswer: null,
-        options: []
+        options: [],
+        needsReconstruction: false
       };
     }
   };
 
+  // ✅ REMOVIDO: Função isAnswerCorrect não é mais necessária
+  // O backend agora calcula automaticamente se a resposta está correta
+
   // Transformar respostas em questões (todas valem 1 ponto)
   const transformAnswerToQuestion = async (answer: any, index: number): Promise<QuestionWithAnswer> => {
-    // Se correctAnswer for null, tentar encontrar a alternativa correta baseada no campo isCorrect
-    let correctAnswer = answer.correct_answer;
+    // ✅ NOVO: Usar dados já calculados pelo backend (agora funcionais)
+    const correctAnswer = answer.correct_answer;
+    const isCorrect = answer.is_correct === true;
     
-    console.log('🔄 Transformando questão:', answer.question_id, '| correctAnswer:', answer.correct_answer);
-    
-    // Normalizar opções se necessário
+    // ✅ NOVO: Usar alternativas já fornecidas pelo backend
     let normalizedOptions = answer.options || [];
     if (Array.isArray(normalizedOptions)) {
-      normalizedOptions = normalizedOptions.map((opt: any) => {
-        // Verificar diferentes possíveis nomes do campo isCorrect
-        const isCorrect = opt.isCorrect === true || 
-                         opt.is_correct === true || 
-                         opt.correct === true ||
-                         opt.isCorrect === 'true' ||
-                         opt.is_correct === 'true' ||
-                         opt.correct === 'true';
-        
-        // Log reduzido para evitar spam
-        
-        return {
-          id: opt.id || `option-${normalizedOptions.indexOf(opt)}`,
-          text: opt.text || opt.answer || '',
-          isCorrect: isCorrect
-        };
-      });
+      normalizedOptions = normalizedOptions.map((opt: any, idx: number) => ({
+        id: opt.id || `option-${idx}`,
+        text: opt.text || opt.answer || '',
+        isCorrect: opt.isCorrect === true || opt.is_correct === true || opt.correct === true
+      }));
     }
-    
-          // Se ainda não temos correctAnswer, buscar da questão completa
-      if (!correctAnswer) {
-        console.log('🔄 Buscando detalhes da questão do banco...');
-        const questionDetails = await fetchQuestionDetails(answer.question_id);
-        if (questionDetails && questionDetails.correctAnswer) {
-          correctAnswer = questionDetails.correctAnswer;
-          if (questionDetails.options && questionDetails.options.length > 0) {
-            normalizedOptions = questionDetails.options.map((opt: any) => ({
-              id: opt.id || `option-${questionDetails.options.indexOf(opt)}`,
-              text: opt.text || opt.answer || '',
-              isCorrect: opt.isCorrect === true || opt.is_correct === true || opt.correct === true
-            }));
-          }
-          console.log('✅ Detalhes da questão obtidos:', { correctAnswer, optionsCount: normalizedOptions.length });
-        } else {
-          console.log('❌ Não foi possível obter detalhes da questão ou alternativa correta');
-          
-          // 🔧 SOLUÇÃO TEMPORÁRIA: Usar dados das opções originais se disponíveis
-          if (answer.options && answer.options.length > 0) {
-            console.log('🔄 Usando opções originais como fallback...');
-            normalizedOptions = answer.options.map((opt: any, index: number) => ({
-              id: opt.id || `option-${index}`,
-              text: opt.text || opt.answer || '',
-              isCorrect: false // Será calculado baseado no correctAnswer
-            }));
-            
-            // Se temos correctAnswer como texto, tentar encontrar a alternativa correspondente
-            if (answer.correct_answer && typeof answer.correct_answer === 'string') {
-              const correctOption = normalizedOptions.find((opt: any) => 
-                opt.text && opt.text.trim() === answer.correct_answer.trim()
-              );
-              if (correctOption) {
-                correctOption.isCorrect = true;
-                correctAnswer = correctOption.id;
-                console.log('✅ Alternativa correta encontrada por texto:', correctOption.text);
-              }
-            }
-          }
-        }
-      } else if (normalizedOptions.length > 0) {
-        // Se temos correctAnswer mas não temos isCorrect nas opções, buscar da questão
-        const hasCorrectOption = normalizedOptions.some((opt: any) => opt.isCorrect === true);
-        if (!hasCorrectOption) {
-          console.log('🔄 Buscando detalhes da questão para marcar alternativas corretas...');
-          const questionDetails = await fetchQuestionDetails(answer.question_id);
-          if (questionDetails && questionDetails.options && questionDetails.options.length > 0) {
-            normalizedOptions = questionDetails.options.map((opt: any) => ({
-              id: opt.id || `option-${questionDetails.options.indexOf(opt)}`,
-              text: opt.text || opt.answer || '',
-              isCorrect: opt.isCorrect === true || opt.is_correct === true || opt.correct === true
-            }));
-          }
-        }
-      }
 
-    const result = {
+    // ✅ NOVO: Fallback apenas se dados estiverem incompletos
+    let finalOptions = normalizedOptions;
+    if (!correctAnswer || normalizedOptions.length === 0) {
+      const questionDetails = await fetchQuestionDetails(answer.question_id);
+      
+      if (questionDetails.options && questionDetails.options.length > 0) {
+        finalOptions = questionDetails.options;
+      }
+    }
+
+    const questionResult: QuestionWithAnswer = {
       id: answer.question_id,
       number: index + 1,
       type: answer.question_type || 'multiple_choice',
       text: answer.question_text,
-      options: normalizedOptions,
-      points: 1, // Todas as questões valem 1 ponto
+      options: finalOptions,
+      points: 1,
       correctAnswer: correctAnswer,
       studentAnswer: answer.student_answer,
-      isCorrect: answer.is_correct,
+      isCorrect: isCorrect, // ✅ NOVO: Usar valor calculado pelo backend
       manualPoints: answer.manual_points,
       feedback: answer.feedback
     };
     
-    console.log('📝 Questão transformada:', {
-      id: result.id,
-      correctAnswer: result.correctAnswer,
-      studentAnswer: result.studentAnswer,
-      hasOptions: !!result.options,
-      optionsCount: result.options?.length
-    });
-    
-    return result;
+    return questionResult;
   };
 
   const handleSelectEvaluation = (evaluation: SubmittedEvaluation) => {
     setSelectedEvaluation(evaluation);
+  };
+
+  // Função para atualizar uma avaliação na lista
+  const updateEvaluationInList = (updatedEvaluation: SubmittedEvaluation) => {
+    setEvaluations(prev => 
+      prev.map(e => e.id === updatedEvaluation.id ? updatedEvaluation : e)
+    );
+  };
+
+  // ✅ NOVO: Função simplificada - recarregar dados do backend
+  const recalculateAllQuestions = () => {
+    if (!selectedEvaluation) return;
+    
+    toast({
+      title: "Recarregando dados",
+      description: "Recarregando dados do backend...",
+    });
+    
+    // Recarregar dados do backend
+    fetchSubmittedEvaluations();
   };
 
   const handleQuestionScoreChange = (questionId: string, isCorrect: boolean) => {
@@ -377,98 +345,30 @@ export default function EvaluationCorrection() {
     setSelectedEvaluation(updatedEvaluation);
   };
 
+  // ✅ CORRIGIDO: Função para calcular nota final corretamente
   const calculateFinalScore = () => {
     if (!selectedEvaluation) return 0;
 
-    let totalScore = 0;
-    
-    selectedEvaluation.questions.forEach(question => {
-      // Correção automática para objetivas
-      if (question.type === "essay") {
-        // Para questões dissertativas, usar pontuação manual (0 ou 1)
-        totalScore += question.manualPoints || 0;
+    // Calcular baseado nas questões corretas (cada questão vale 1 ponto)
+    const correctCount = selectedEvaluation.questions.filter(q => {
+      if (q.type === "essay") {
+        return q.manualPoints === 1;
       } else {
-        // Para questões de múltipla escolha
-        let isCorrect = false;
-        
-        // Log reduzido para evitar spam
-        
-        // Se já temos isCorrect calculado, usar ele
-        if (question.isCorrect !== undefined && question.isCorrect !== null) {
-          isCorrect = question.isCorrect;
-          console.log('✅ Usando isCorrect pré-calculado:', isCorrect);
-        } else if (question.correctAnswer && question.options && question.options.length > 0) {
-          // Tentar encontrar a alternativa correta
-          const correctOption = question.options.find(opt => opt.id === question.correctAnswer);
-          let selectedOption = question.options.find(opt => String(opt.id) === String(question.studentAnswer))
-            || question.options.find(opt => String(opt.id).toLowerCase() === String(question.studentAnswer).toLowerCase())
-            || question.options.find(opt => String(question.studentAnswer).includes(opt.id));
-          
-          // Fallback para índice numérico (option-0, option-1, etc.)
-          if (!selectedOption && typeof question.studentAnswer === 'string' && question.studentAnswer.startsWith('option-')) {
-            const idx = parseInt(question.studentAnswer.replace('option-', ''), 10);
-            if (!isNaN(idx) && question.options && question.options.length > idx) {
-              selectedOption = question.options[idx];
-            }
-          }
-          
-          // Comparar as alternativas
-          isCorrect = selectedOption && correctOption && selectedOption.id === correctOption.id;
-          console.log('✅ Comparando alternativas:', { 
-            selectedOption: selectedOption?.text, 
-            correctOption: correctOption?.text, 
-            isCorrect 
-          });
-        } else if (question.options && question.options.length > 0) {
-          // Último fallback: procurar alternativa marcada como correta
-          const correctOption = question.options.find(opt => opt.isCorrect === true);
-          let selectedOption = question.options.find(opt => String(opt.id) === String(question.studentAnswer))
-            || question.options.find(opt => String(opt.id).toLowerCase() === String(question.studentAnswer).toLowerCase());
-          
-          // Fallback para índice numérico
-          if (!selectedOption && typeof question.studentAnswer === 'string' && question.studentAnswer.startsWith('option-')) {
-            const idx = parseInt(question.studentAnswer.replace('option-', ''), 10);
-            if (!isNaN(idx) && question.options && question.options.length > idx) {
-              selectedOption = question.options[idx];
-            }
-          }
-          
-          isCorrect = selectedOption && correctOption && selectedOption.id === correctOption.id;
-          console.log('🔄 Fallback - alternativa correta:', { 
-            correctOption: correctOption?.text, 
-            selectedOption: selectedOption?.text, 
-            isCorrect 
-          });
-        } else {
-          console.log('❌ Nenhuma estratégia funcionou - sem opções disponíveis');
-        }
-        
-        // Atualizar o isCorrect na questão para evitar recálculos
-        if (question.isCorrect === undefined || question.isCorrect === null) {
-          question.isCorrect = isCorrect;
-        }
-        
-        if (isCorrect) {
-          console.log('✔️ Questão correta:', question.id);
-          totalScore += 1;
-        } else if (question.correctAnswer) {
-          console.log('❌ Questão errada:', question.id, '| correctAnswer:', question.correctAnswer, '| studentAnswer:', question.studentAnswer);
-        } else {
-          console.log('⚠️ Questão sem correção automática:', question.id, '| studentAnswer:', question.studentAnswer);
-        }
+        return q.isCorrect === true;
       }
-    });
+    }).length;
 
-    return totalScore;
+    return correctCount;
   };
 
+  // ✅ CORRIGIDO: Função para calcular porcentagem corretamente
   const calculatePercentage = () => {
-    if (!selectedEvaluation) return 0;
+    if (!selectedEvaluation || selectedEvaluation.questions.length === 0) return 0;
 
-    const totalPossiblePoints = selectedEvaluation.questions.length; // Cada questão vale 1 ponto
     const finalScore = calculateFinalScore();
+    const percentage = Math.round((finalScore / selectedEvaluation.questions.length) * 100);
     
-    return totalPossiblePoints > 0 ? Math.round((finalScore / totalPossiblePoints) * 100) : 0;
+    return percentage;
   };
 
   const handleSaveCorrection = async () => {
@@ -501,12 +401,14 @@ export default function EvaluationCorrection() {
       });
 
       // Atualizar lista local
-      const updatedEvaluations = evaluations.map(e => 
-        e.id === selectedEvaluation.id 
-          ? { ...e, finalScore, percentage, status: "corrected" as const, correctedAt: new Date().toISOString() }
-          : e
-      );
-      setEvaluations(updatedEvaluations);
+      const updatedEvaluation = {
+        ...selectedEvaluation,
+        finalScore,
+        percentage,
+        status: "corrected" as const,
+        correctedAt: new Date().toISOString()
+      };
+      updateEvaluationInList(updatedEvaluation);
 
     } catch (error) {
       console.error("Erro ao salvar correção:", error);
@@ -550,12 +452,14 @@ export default function EvaluationCorrection() {
       });
 
       // Atualizar lista local
-      const updatedEvaluations = evaluations.map(e => 
-        e.id === selectedEvaluation.id 
-          ? { ...e, finalScore, percentage, status: "reviewed" as const, correctedAt: new Date().toISOString() }
-          : e
-      );
-      setEvaluations(updatedEvaluations);
+      const updatedEvaluation = {
+        ...selectedEvaluation,
+        finalScore,
+        percentage,
+        status: "reviewed" as const,
+        correctedAt: new Date().toISOString()
+      };
+      updateEvaluationInList(updatedEvaluation);
 
       // Voltar para lista
       setSelectedEvaluation(null);
@@ -615,6 +519,26 @@ export default function EvaluationCorrection() {
     return new Date(dateString).toLocaleString('pt-BR');
   };
 
+  // ✅ CORRIGIDO: Função para calcular pontuação de exibição corretamente
+  const calculateDisplayScore = (evaluation: SubmittedEvaluation) => {
+    // Calcular baseado nas questões corretas (cada questão vale 1 ponto)
+    const correctCount = evaluation.questions.filter(q => {
+      if (q.type === "essay") {
+        return q.manualPoints === 1;
+      } else {
+        return q.isCorrect === true;
+      }
+    }).length;
+
+    const totalQuestions = evaluation.questions.length;
+    const percentage = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
+
+    return {
+      score: correctCount,
+      percentage: percentage
+    };
+  };
+
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-6">
@@ -638,7 +562,13 @@ export default function EvaluationCorrection() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button variant="outline" size="sm" onClick={() => setSelectedEvaluation(null)}>
+            <Button variant="outline" size="sm" onClick={() => {
+              // Atualizar a avaliação na lista antes de voltar
+              if (selectedEvaluation) {
+                updateEvaluationInList(selectedEvaluation);
+              }
+              setSelectedEvaluation(null);
+            }}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Voltar
             </Button>
@@ -648,7 +578,11 @@ export default function EvaluationCorrection() {
             </div>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={recalculateAllQuestions}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Atualizar
+            </Button>
             <Button variant="outline" onClick={handleSaveCorrection} disabled={isSaving}>
               <Save className="h-4 w-4 mr-2" />
               Salvar
@@ -703,7 +637,12 @@ export default function EvaluationCorrection() {
 
               {/* Resultado Atual */}
               <div className="space-y-2">
-                <h4 className="font-medium">Pontuação</h4>
+                <h4 className="font-medium flex items-center gap-2">
+                  Pontuação
+                  <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                    ✅ Backend
+                  </Badge>
+                </h4>
                 <div className="space-y-1">
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">Nota Final:</span>
@@ -713,20 +652,53 @@ export default function EvaluationCorrection() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">Percentual:</span>
-                    <span className="text-sm font-medium">{calculatePercentage()}%</span>
+                    <span className={`text-sm font-medium ${calculatePercentage() >= 70 ? 'text-green-600' : calculatePercentage() >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+                      {calculatePercentage()}%
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Corretas:</span>
+                    <span className="text-sm font-medium text-green-600">
+                      {selectedEvaluation.correctAnswers || selectedEvaluation.questions.filter(q => q.type === "essay" ? q.manualPoints === 1 : q.isCorrect).length}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Incorretas:</span>
+                    <span className="text-sm font-medium text-red-600">
+                      {(selectedEvaluation.totalQuestions || selectedEvaluation.questions.length) - (selectedEvaluation.correctAnswers || selectedEvaluation.questions.filter(q => q.type === "essay" ? q.manualPoints === 1 : q.isCorrect).length)}
+                    </span>
                   </div>
                 </div>
               </div>
 
-              {/* Feedback Geral */}
+              {/* ✅ NOVO: Feedback Geral Melhorado */}
               <div className="space-y-2">
-                <Label htmlFor="general-feedback">Feedback Geral</Label>
+                <Label htmlFor="general-feedback" className="flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" />
+                  Feedback Geral
+                </Label>
+                {/* Sugestões de feedback baseadas na performance */}
+                {!selectedEvaluation.feedback && (
+                  <div className="text-xs text-muted-foreground bg-blue-50 p-2 rounded border-l-4 border-blue-400">
+                    <p className="font-medium">💡 Sugestões de feedback:</p>
+                    {calculatePercentage() >= 70 && (
+                      <p>• Parabéns pelo excelente desempenho! Continue assim!</p>
+                    )}
+                    {calculatePercentage() >= 50 && calculatePercentage() < 70 && (
+                      <p>• Bom trabalho! Com um pouco mais de estudo você pode melhorar ainda mais.</p>
+                    )}
+                    {calculatePercentage() < 50 && (
+                      <p>• Recomendo revisar os conteúdos e solicitar ajuda se necessário.</p>
+                    )}
+                  </div>
+                )}
                 <Textarea
                   id="general-feedback"
-                  placeholder="Adicione um feedback geral sobre o desempenho do aluno..."
+                  placeholder="Escreva um feedback personalizado para o aluno sobre seu desempenho nesta avaliação..."
                   value={selectedEvaluation.feedback || ""}
                   onChange={(e) => setSelectedEvaluation(prev => prev ? { ...prev, feedback: e.target.value } : null)}
-                  rows={3}
+                  rows={4}
+                  className="resize-none"
                 />
               </div>
             </CardContent>
@@ -735,58 +707,116 @@ export default function EvaluationCorrection() {
           {/* Questões para Correção */}
           <div className="lg:col-span-3 space-y-4">
             {selectedEvaluation.questions.map((question, index) => {
-              // Encontrar alternativa correta e alternativa selecionada usando lógica robusta
+              // NOVO: Matching robusto para alternativas
               let correctOption = null;
               let selectedOption = null;
-              let isCorrect = false;
+              let isCorrect = question.isCorrect === true;
 
               if (question.type !== "essay" && question.options && question.options.length > 0) {
-                // Tentar encontrar a alternativa correta
+                // Encontrar alternativa correta (id, letra, índice, texto)
                 if (question.correctAnswer) {
-                  correctOption = question.options.find(opt => opt.id === question.correctAnswer);
+                  // 1. Por id
+                  correctOption = question.options.find(opt => String(opt.id) === String(question.correctAnswer));
+                  // 2. Por letra
+                  if (!correctOption && question.correctAnswer.length === 1) {
+                    const idx = question.correctAnswer.toUpperCase().charCodeAt(0) - 65;
+                    if (idx >= 0 && idx < question.options.length) {
+                      correctOption = question.options[idx];
+                    }
+                  }
+                  // 3. Por índice numérico
+                  if (!correctOption && !isNaN(Number(question.correctAnswer))) {
+                    const idx = Number(question.correctAnswer);
+                    if (idx >= 0 && idx < question.options.length) {
+                      correctOption = question.options[idx];
+                    }
+                  }
+                  // 4. Por texto
+                  if (!correctOption) {
+                    correctOption = question.options.find(opt => opt.text === question.correctAnswer);
+                  }
+                  // 5. Por flag isCorrect
+                  if (!correctOption) {
+                    correctOption = question.options.find(opt => opt.isCorrect === true);
+                  }
                 } else {
-                  // Fallback: procurar alternativa marcada como correta
+                  // Fallback: por flag isCorrect
                   correctOption = question.options.find(opt => opt.isCorrect === true);
                 }
 
-                // Encontrar alternativa selecionada
-                selectedOption = question.options.find(opt => String(opt.id) === String(question.studentAnswer))
-                  || question.options.find(opt => String(opt.id).toLowerCase() === String(question.studentAnswer).toLowerCase())
-                  || question.options.find(opt => String(question.studentAnswer).includes(opt.id));
-                
-                // Fallback para índice numérico (option-0, option-1, etc.)
-                if (!selectedOption && typeof question.studentAnswer === 'string' && question.studentAnswer.startsWith('option-')) {
-                  const idx = parseInt(question.studentAnswer.replace('option-', ''), 10);
-                  if (!isNaN(idx) && question.options && question.options.length > idx) {
-                    selectedOption = question.options[idx];
+                // ✅ NOVO: Validar se há múltiplas alternativas corretas
+                const correctOptions = question.options.filter(opt => opt.isCorrect === true);
+                if (correctOptions.length > 1) {
+                  console.warn(`⚠️ Question ${question.id} has ${correctOptions.length} correct options:`, 
+                    correctOptions.map((opt, idx) => `${String.fromCharCode(65 + question.options.indexOf(opt))}(${opt.id})`).join(', ')
+                  );
+                  // Usar a primeira alternativa correta encontrada
+                  if (!correctOption && correctOptions.length > 0) {
+                    correctOption = correctOptions[0];
                   }
                 }
 
-                // Determinar se está correto
-                if (question.isCorrect !== undefined) {
-                  isCorrect = question.isCorrect;
-                } else {
-                  isCorrect = selectedOption && correctOption && selectedOption.id === correctOption.id;
+                // Encontrar alternativa selecionada pelo aluno (id, letra, índice, texto)
+                if (question.studentAnswer) {
+                  // 1. Por id
+                  selectedOption = question.options.find(opt => String(opt.id) === String(question.studentAnswer));
+                  // 2. Por letra
+                  if (!selectedOption && question.studentAnswer.length === 1) {
+                    const idx = question.studentAnswer.toUpperCase().charCodeAt(0) - 65;
+                    if (idx >= 0 && idx < question.options.length) {
+                      selectedOption = question.options[idx];
+                    }
+                  }
+                  // 3. Por índice numérico
+                  if (!selectedOption && !isNaN(Number(question.studentAnswer))) {
+                    const idx = Number(question.studentAnswer);
+                    if (idx >= 0 && idx < question.options.length) {
+                      selectedOption = question.options[idx];
+                    }
+                  }
+                  // 4. Por texto
+                  if (!selectedOption) {
+                    selectedOption = question.options.find(opt => opt.text === question.studentAnswer);
+                  }
+                }
+
+                // ✅ NOVO: Fallback para determinar se está correto quando backend retorna dados inconsistentes
+                if (selectedOption && correctOption && selectedOption.id === correctOption.id) {
+                  // Se as opções são iguais, mas o backend diz que está errado, usar lógica local
+                  if (!isCorrect) {
+                    isCorrect = true;
+                    console.log(`🔧 Frontend override: Question ${question.id} marked as correct (backend was wrong)`);
+                  }
                 }
               }
 
               return (
-                <Card key={question.id}>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-base">
-                        Questão {question.number} (1 ponto)
-                      </CardTitle>
-                      {question.type !== "essay" && (
-                        <Badge variant={isCorrect ? "default" : "destructive"}>
+                <Card key={question.id} className={`border-l-4 ${isCorrect ? 'border-l-green-500' : question.type === "essay" ? 'border-l-yellow-500' : 'border-l-red-500'}`}>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                      <CardTitle className="text-base flex items-center gap-2">
+                      Questão {question.number} (1 ponto)
+                        {question.type !== "essay" && (
+                          isCorrect ? 
+                            <CheckCircle className="h-5 w-5 text-green-600" /> : 
+                            <XCircle className="h-5 w-5 text-red-600" />
+                        )}
+                    </CardTitle>
+                    {question.type !== "essay" && (
+                        <Badge variant={isCorrect ? "default" : "destructive"} className={isCorrect ? "bg-green-600" : "bg-red-600"}>
                           {isCorrect ? "Correta" : "Incorreta"}
                         </Badge>
                       )}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
+                      {question.type === "essay" && (
+                        <Badge variant="secondary">
+                          Dissertativa - {question.manualPoints === 1 ? "Correta" : question.manualPoints === 0 ? "Incorreta" : "Aguardando Correção"}
+                      </Badge>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
                     {/* Enunciado, imagem e segundo enunciado usando QuestionPreview */}
-                    <div className="p-3 bg-gray-50 rounded-lg">
+                  <div className="p-3 bg-gray-50 rounded-lg">
                       <QuestionPreview question={{
                         ...question,
                         // Garante compatibilidade de campos para o componente
@@ -794,15 +824,15 @@ export default function EvaluationCorrection() {
                         secondStatement: question.secondStatement || question["second_statement"] || "",
                         // Adicione outros campos se necessário
                       }} />
-                    </div>
+                  </div>
 
-                    {/* Opções (para múltipla escolha) */}
-                    {question.options && question.options.length > 0 && (
-                      <div className="space-y-2">
-                        <p className="text-sm font-medium">Opções:</p>
-                        <div className="grid grid-cols-1 gap-2">
-                          {question.options.map((option, optIndex) => {
-                            const letter = String.fromCharCode(65 + optIndex);
+                  {/* Opções (para múltipla escolha) */}
+                  {question.options && question.options.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Opções:</p>
+                      <div className="grid grid-cols-1 gap-2">
+                        {question.options.map((option, optIndex) => {
+                          const letter = String.fromCharCode(65 + optIndex);
                             const isOptionCorrect = correctOption && option.id === correctOption.id;
                             const isOptionSelected = selectedOption && option.id === selectedOption.id;
                             // Se for selecionada e correta, verde forte
@@ -819,77 +849,147 @@ export default function EvaluationCorrection() {
                             } else {
                               optionClass = 'border-gray-200';
                             }
-                            return (
-                              <div
-                                key={option.id}
+                          return (
+                            <div
+                              key={option.id}
                                 className={`p-2 rounded border text-sm ${optionClass}`}
-                              >
-                                <span className="font-medium">{letter})</span> {option.text}
+                            >
+                              <span className="font-medium">{letter})</span> {option.text}
                                 {isOptionCorrect && <CheckCircle className="inline h-4 w-4 ml-2 text-green-600" />}
                                 {isOptionSelected && !isOptionCorrect && <XCircle className="inline h-4 w-4 ml-2 text-red-600" />}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Resposta do Aluno */}
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium">Resposta do Aluno:</p>
-                      <div className={`p-3 rounded-lg border ${
-                        question.type === "essay" ? "border-blue-200 bg-blue-50" :
-                        isCorrect ? "border-green-200 bg-green-50" :
-                        "border-red-200 bg-red-50"
-                      }`}>
-                        <p>{selectedOption
-                          ? `${String.fromCharCode(65 + question.options.indexOf(selectedOption))}) ${selectedOption.text}`
-                          : (question.studentAnswer || "Não respondida")}
-                        </p>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
+                  )}
 
-                    {/* Correção Manual (apenas para questões dissertativas) */}
-                    {question.type === "essay" && (
-                      <div className="space-y-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                        <h4 className="font-medium text-yellow-800">Correção Manual Necessária</h4>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label>Avaliação da Resposta</Label>
-                            <div className="flex gap-2">
-                              <Button
-                                variant={question.manualPoints === 1 ? "default" : "outline"}
-                                size="sm"
-                                onClick={() => handleQuestionScoreChange(question.id, true)}
-                              >
-                                <CheckCircle className="h-4 w-4 mr-2" />
-                                Correta (1 ponto)
-                              </Button>
-                              <Button
-                                variant={question.manualPoints === 0 ? "destructive" : "outline"}
-                                size="sm"
-                                onClick={() => handleQuestionScoreChange(question.id, false)}
-                              >
-                                <XCircle className="h-4 w-4 mr-2" />
-                                Incorreta (0 pontos)
-                              </Button>
-                            </div>
+                  {/* Resposta do Aluno */}
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Resposta do Aluno:</p>
+                    <div className={`p-3 rounded-lg border ${
+                      question.type === "essay" ? "border-blue-200 bg-blue-50" :
+                        isCorrect ? "border-green-200 bg-green-50" :
+                      "border-red-200 bg-red-50"
+                    }`}>
+                        {selectedOption ? (
+                          <div className="flex items-start gap-2">
+                            <span className="font-semibold">
+                              {String.fromCharCode(65 + question.options.indexOf(selectedOption))})
+                            </span>
+                            <span>{selectedOption.text}</span>
                           </div>
-                          <div className="space-y-2">
-                            <Label htmlFor={`feedback-${question.id}`}>Feedback da Questão</Label>
-                            <Textarea
-                              id={`feedback-${question.id}`}
-                              placeholder="Feedback específico para esta questão..."
-                              value={question.feedback || ""}
-                              onChange={(e) => handleQuestionFeedback(question.id, e.target.value)}
-                              rows={3}
-                            />
+                        ) : (
+                          <p className="text-gray-500 italic">
+                            {question.studentAnswer ? `Resposta: ${question.studentAnswer}` : "Não respondida"}
+                          </p>
+                        )}
+                    </div>
+                  </div>
+
+                    {/* ✅ NOVO: Mostrar gabarito para questões incorretas */}
+                    {question.type !== "essay" && !isCorrect && correctOption && (
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">Resposta Correta:</p>
+                        <div className="p-3 rounded-lg border border-green-200 bg-green-50">
+                          <div className="flex items-start gap-2">
+                            <span className="font-semibold text-green-700">
+                              {String.fromCharCode(65 + question.options.indexOf(correctOption))})
+                            </span>
+                            <span className="text-green-700">{correctOption.text}</span>
                           </div>
                         </div>
                       </div>
                     )}
-                  </CardContent>
-                </Card>
+
+                    {/* ✅ NOVO: Informações de Debug (apenas em desenvolvimento) */}
+                    {process.env.NODE_ENV === 'development' && (
+                      <details className="text-xs bg-gray-50 p-2 rounded border">
+                        <summary className="cursor-pointer font-medium text-gray-600 hover:text-gray-800">
+                          🔧 Debug Info (Dev)
+                        </summary>
+                        <div className="mt-2 space-y-1 text-gray-600">
+                          <p><strong>Question ID:</strong> {question.id}</p>
+                          <p><strong>Backend isCorrect:</strong> {String(question.isCorrect)}</p>
+                          <p><strong>Correct Answer:</strong> {question.correctAnswer || 'null'}</p>
+                          <p><strong>Student Answer:</strong> {question.studentAnswer || 'null'}</p>
+                          <p><strong>Correct Option Found:</strong> {correctOption ? 'Yes' : 'No'}</p>
+                          <p><strong>Selected Option Found:</strong> {selectedOption ? 'Yes' : 'No'}</p>
+                          {correctOption && (
+                            <p><strong>Correct Option:</strong> {String.fromCharCode(65 + question.options.indexOf(correctOption))} - {correctOption.text}</p>
+                          )}
+                          {selectedOption && (
+                            <p><strong>Selected Option:</strong> {String.fromCharCode(65 + question.options.indexOf(selectedOption))} - {selectedOption.text}</p>
+                          )}
+                          {selectedOption && correctOption && (
+                            <p><strong>Options Match:</strong> {selectedOption.id === correctOption.id ? 'Yes' : 'No'}</p>
+                          )}
+                          <p><strong>Total Options:</strong> {question.options.length}</p>
+                          <p><strong>Options with isCorrect=true:</strong> {question.options.filter(opt => opt.isCorrect).map((opt, idx) => `${String.fromCharCode(65 + question.options.indexOf(opt))}(${opt.id})`).join(', ') || 'None'}</p>
+                          <p><strong>Selected Option Index:</strong> {selectedOption ? question.options.indexOf(selectedOption) : 'N/A'}</p>
+                          <p><strong>Correct Option Index:</strong> {correctOption ? question.options.indexOf(correctOption) : 'N/A'}</p>
+                          {question.options.filter(opt => opt.isCorrect).length > 1 && (
+                            <p className="text-orange-600 font-medium">⚠️ ATENÇÃO: {question.options.filter(opt => opt.isCorrect).length} alternativas marcadas como corretas!</p>
+                          )}
+                          {question.options.length > 5 && (
+                            <p className="text-red-600 font-medium">🚨 DADOS CORROMPIDOS: {question.options.length} alternativas (normal: 4-5)!</p>
+                          )}
+                          <details className="text-xs bg-red-50 p-2 rounded border border-red-200">
+                            <summary className="cursor-pointer font-medium text-red-700">🔍 Todas as alternativas</summary>
+                            <div className="mt-2 space-y-1">
+                              {question.options.map((opt, idx) => (
+                                <div key={opt.id} className={`p-1 rounded ${opt.isCorrect ? 'bg-green-100' : 'bg-gray-50'}`}>
+                                  <strong>{String.fromCharCode(65 + idx)}:</strong> {opt.text.substring(0, 50)}... 
+                                  <span className="text-gray-500">({opt.id}) {opt.isCorrect ? '✓' : '✗'}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        </div>
+                      </details>
+                    )}
+
+                  {/* Correção Manual (apenas para questões dissertativas) */}
+                  {question.type === "essay" && (
+                    <div className="space-y-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <h4 className="font-medium text-yellow-800">Correção Manual Necessária</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Avaliação da Resposta</Label>
+                          <div className="flex gap-2">
+                            <Button
+                              variant={question.manualPoints === 1 ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => handleQuestionScoreChange(question.id, true)}
+                            >
+                              <CheckCircle className="h-4 w-4 mr-2" />
+                              Correta (1 ponto)
+                            </Button>
+                            <Button
+                              variant={question.manualPoints === 0 ? "destructive" : "outline"}
+                              size="sm"
+                              onClick={() => handleQuestionScoreChange(question.id, false)}
+                            >
+                              <XCircle className="h-4 w-4 mr-2" />
+                              Incorreta (0 pontos)
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor={`feedback-${question.id}`}>Feedback da Questão</Label>
+                          <Textarea
+                            id={`feedback-${question.id}`}
+                            placeholder="Feedback específico para esta questão..."
+                            value={question.feedback || ""}
+                            onChange={(e) => handleQuestionFeedback(question.id, e.target.value)}
+                            rows={3}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
               );
             })}
           </div>
@@ -1076,14 +1176,17 @@ export default function EvaluationCorrection() {
                 <span>Duração: {formatDuration(evaluation.duration)}</span>
               </div>
               
-              {evaluation.finalScore !== undefined && (
                 <div className="text-sm">
                   <span className="font-medium">Nota: </span>
-                  <span className={`font-bold ${evaluation.percentage! >= 70 ? 'text-green-600' : evaluation.percentage! >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
-                    {evaluation.finalScore}/{evaluation.questions.length} ({evaluation.percentage}%)
+                {(() => {
+                  const displayScore = calculateDisplayScore(evaluation);
+                  return (
+                    <span className={`font-bold ${displayScore.percentage >= 70 ? 'text-green-600' : displayScore.percentage >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+                      {displayScore.score}/{evaluation.questions.length} ({displayScore.percentage}%)
                   </span>
+                  );
+                })()}
                 </div>
-              )}
               
               <Button 
                 className="w-full"
