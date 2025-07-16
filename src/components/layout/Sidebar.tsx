@@ -24,7 +24,8 @@ import {
   HelpCircle,
   X,
   ClipboardCheck,
-  BarChart3
+  BarChart3,
+  Calculator
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -172,6 +173,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
             { icon: LandPlot, label: "Municípios", href: "/app/city", role: ["admin"] },
             { icon: HelpCircle, label: "Questão", href: "/app/cadastros/questao", role: ["admin", "professor"] },
 
+
             { icon: User, label: "Usuário", href: "/app/usuarios", role: ["admin"] },
           ]
         },
@@ -181,6 +183,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           href: "/app/cartao-resposta",
           role: ["admin", "professor"]
         },
+        { icon: Calculator, label: "Calculadora SAEB", href: "/app/calculadora-saeb", role: ["admin", "professor"] },
       ]
     },
     {

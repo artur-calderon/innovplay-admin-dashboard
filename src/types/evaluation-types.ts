@@ -73,6 +73,7 @@ export interface StartSessionResponse {
     message: string;
     session_id: string;
     started_at: string;
+    actual_start_time?: string;
     time_limit_minutes: number;
     remaining_time_minutes: number;
 }
