@@ -47,6 +47,35 @@ import { useToast } from "@/hooks/use-toast";
 import { format, isAfter, isBefore, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
+interface DetailedAnswer {
+  question_id: string;
+  question_number: number;
+  question_text: string;
+  question_type: string;
+  question_value: number;
+  student_answer: string | null;
+  answered_at: string | null;
+  is_correct: boolean | null;
+  score: number | null;
+  feedback: string | null;
+  corrected_by: string | null;
+  corrected_at: string | null;
+  manual_score?: number;
+  status?: string;
+}
+
+interface DetailedResults {
+  test_id: string;
+  student_id: string;
+  total_questions: number;
+  answered_questions: number;
+  correct_answers: number;
+  score_percentage: number;
+  total_score: number;
+  max_possible_score: number;
+  answers: DetailedAnswer[] | null;
+}
+
 interface StudentEvaluation {
   id: string;
   title: string;
@@ -87,6 +116,7 @@ interface StudentEvaluation {
     timeSpent: number;
     completedAt: string;
   };
+  detailedResults?: DetailedResults; // Resultados detalhados com respostas
 }
 
 interface EvaluationTaking {
@@ -137,7 +167,7 @@ export default function StudentEvaluations() {
 
   const { user } = useAuth();
   const { toast } = useToast();
-
+  console.log('🔍 Avaliações:', evaluations);
   useEffect(() => {
     fetchStudentEvaluations();
     // Verificar se há avaliação em andamento no localStorage
@@ -156,21 +186,29 @@ export default function StudentEvaluations() {
 
   // ✅ NOVO: Função para atualizar status das avaliações em tempo real
   const updateEvaluationStatuses = async () => {
-    // Verificar avaliações em progresso
-    const inProgressEvaluations = evaluations.filter(e => e.status === 'in_progress');
+    // ✅ CORRIGIDO: Só verificar avaliações que realmente precisam ser atualizadas
+    const evaluationsToCheck = evaluations.filter(e =>
+      e.status === 'in_progress' ||
+      e.status === 'pending' ||
+      e.status === 'available'
+    );
+
+    console.log('🔄 Verificando status de avaliações:', evaluationsToCheck.length);
 
     // Verificar status da sessão para cada avaliação em progresso
-    for (const evaluation of inProgressEvaluations) {
-      await checkSessionStatusAndUpdate(evaluation.id);
+    for (const evaluation of evaluationsToCheck) {
+      if (evaluation.status === 'in_progress') {
+        await checkSessionStatusAndUpdate(evaluation.id);
+      }
     }
 
-    // ✅ CORRIGIDO: Usar callback para evitar loop infinito
+    // ✅ CORRIGIDO: Só atualizar avaliações que precisam ser verificadas
     setEvaluations(currentEvaluations => {
       const updatedEvaluations = currentEvaluations.map(evaluation => {
         const newStatus = determineEvaluationStatus(evaluation);
 
         // Se o status mudou para completed, limpar dados de progresso
-        if (newStatus === "completed" && evaluation.status !== "completed") {
+        if (newStatus === "completed" && evaluation.status !== "completed" && evaluation.status !== "expired") {
           const inProgress = localStorage.getItem("evaluation_in_progress");
           if (inProgress) {
             try {
@@ -196,6 +234,16 @@ export default function StudentEvaluations() {
           toast({
             title: "📢 Avaliação disponível!",
             description: `A avaliação "${evaluation.title}" está disponível para início.`,
+          });
+        }
+
+        // ✅ NOVO: Log para debug
+        if (newStatus !== evaluation.status) {
+          console.log('🔄 Status mudou:', {
+            id: evaluation.id,
+            title: evaluation.title,
+            oldStatus: evaluation.status,
+            newStatus: newStatus
           });
         }
 
@@ -295,6 +343,14 @@ export default function StudentEvaluations() {
 
       // Transformar e adicionar as avaliações encontradas
       const evaluationsWithStatus = testsData.map((testData: any) => {
+        // ✅ DEBUG: Log para verificar os dados da API
+        console.log('📊 Dados da avaliação da API:', {
+          id: testData.test.id,
+          title: testData.test.title,
+          duration: testData.test.duration,
+          totalQuestions: testData.total_questions
+        });
+
         // Mapear os dados da API para o formato esperado pelo componente
         const evaluation = {
           id: testData.test.id,
@@ -356,15 +412,13 @@ export default function StudentEvaluations() {
         status: error.response?.status
       });
 
-      // Usar dados mock para desenvolvimento
-      const mockEvaluations = getMockEvaluations();
-      console.log('📋 Usando dados mock:', mockEvaluations);
-      setEvaluations(mockEvaluations);
+      // Definir array vazio em caso de erro
+      setEvaluations([]);
 
       toast({
-        title: "Modo de demonstração",
-        description: "Exibindo dados de exemplo. Backend não disponível.",
-        variant: "default",
+        title: "Erro ao carregar avaliações",
+        description: "Não foi possível carregar suas avaliações. Tente novamente.",
+        variant: "destructive",
       });
     } finally {
       setIsLoading(false);
@@ -372,8 +426,38 @@ export default function StudentEvaluations() {
   };
 
   const determineEvaluationStatus = (evaluation: any): StudentEvaluation["status"] => {
-    // ✅ REMOVIDO: Não gerenciar status de conclusão no localStorage
-    // O backend controla o status da avaliação através do campo status
+    // ✅ NOVO: Se a avaliação já tem status completed ou expired, não alterar
+    if (evaluation.status === 'completed' || evaluation.status === 'expired') {
+      return evaluation.status;
+    }
+
+    // ✅ PRIORIDADE MÁXIMA: Status do backend
+    if (evaluation.backendStatus) {
+      switch (evaluation.backendStatus) {
+        case 'concluida':
+        case 'completed':
+        case 'finalizada':
+          localStorage.removeItem("evaluation_in_progress");
+          localStorage.removeItem("current_evaluation_data");
+          return "completed";
+        case 'expirada':
+        case 'expired':
+          localStorage.removeItem("evaluation_in_progress");
+          localStorage.removeItem("current_evaluation_data");
+          return "expired";
+        case 'em_andamento':
+        case 'in_progress':
+          return "in_progress";
+        case 'disponivel':
+        case 'available':
+          return "available";
+        case 'agendada':
+        case 'pending':
+          return "pending";
+        default:
+          break;
+      }
+    }
 
     // ✅ CORRIGIDO: Verificar se há sessão em progresso
     const inProgress = localStorage.getItem("evaluation_in_progress");
@@ -419,25 +503,25 @@ export default function StudentEvaluations() {
     const startDate = parseISO(evaluation.startDateTime);
     const endDate = evaluation.endDateTime ? parseISO(evaluation.endDateTime) : null;
 
-    // PRIORIDADE 1: Se o backend diz que está expirada, sempre retorna expired
+    // PRIORIDADE 3: Se o backend diz que está expirada, sempre retorna expired
     if (evaluation.availability && evaluation.availability.status === 'expired') {
       localStorage.removeItem("evaluation_in_progress");
       localStorage.removeItem("current_evaluation_data");
       return "expired";
     }
-    // PRIORIDADE 2: Se o backend diz que está concluída, sempre retorna completed
+    // PRIORIDADE 4: Se o backend diz que está concluída, sempre retorna completed
     if (evaluation.student_result || evaluation.result || (evaluation.availability && evaluation.availability.status === 'completed')) {
       localStorage.removeItem("evaluation_in_progress");
       localStorage.removeItem("current_evaluation_data");
       return "completed";
     }
 
-    // PRIORIDADE 3: Progresso atual da API
+    // PRIORIDADE 5: Progresso atual da API
     if (evaluation.currentProgress) {
       return "in_progress";
     }
 
-    // PRIORIDADE 4: Disponibilidade da API
+    // PRIORIDADE 6: Disponibilidade da API
     if (evaluation.availability) {
       switch (evaluation.availability.status) {
         case 'not_available':
@@ -463,7 +547,7 @@ export default function StudentEvaluations() {
       }
     }
 
-    // PRIORIDADE 5: Datas
+    // PRIORIDADE 7: Datas
     if (endDate && isAfter(now, endDate)) {
       localStorage.removeItem("evaluation_in_progress");
       localStorage.removeItem("current_evaluation_data");
@@ -657,9 +741,34 @@ export default function StudentEvaluations() {
     }
   };
 
-  const handleViewResults = (evaluation: StudentEvaluation) => {
+  const handleViewResults = async (evaluation: StudentEvaluation) => {
     setSelectedEvaluation(evaluation);
     setShowResults(true);
+
+    // Buscar resultados detalhados do aluno
+    try {
+      const response = await api.get(`/evaluation-results/${evaluation.id}/student/${user?.id}/results?include_answers=true`);
+      console.log('Resultados detalhados:', response.data);
+
+      // Atualizar tanto o selectedEvaluation quanto o estado evaluations
+      const updatedEvaluation = { ...evaluation, detailedResults: response.data };
+      setSelectedEvaluation(updatedEvaluation);
+
+      setEvaluations(currentEvaluations =>
+        currentEvaluations.map(evaluationItem =>
+          evaluationItem.id === evaluation.id
+            ? updatedEvaluation
+            : evaluationItem
+        )
+      );
+    } catch (error) {
+      console.error('Erro ao buscar resultados detalhados:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar os resultados detalhados",
+        variant: "destructive",
+      });
+    }
   };
 
   const getStatusBadge = (status: StudentEvaluation["status"]) => {
@@ -703,86 +812,7 @@ export default function StudentEvaluations() {
     return "text-red-600";
   };
 
-  const getMockEvaluations = (): StudentEvaluation[] => [
-    {
-      id: "eval-1",
-      title: "Avaliação de Matemática - 1º Bimestre",
-      description: "Avaliação sobre números decimais e frações",
-      subject: { id: "math", name: "Matemática" },
-      grade: { id: "5ano", name: "5º Ano" },
-      course: { id: "ef", name: "Ensino Fundamental" },
-      startDateTime: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 horas atrás
-      duration: 90,
-      totalQuestions: 15,
-      maxScore: 10,
-      type: "AVALIACAO",
-      model: "SAEB",
-      status: "available",
-    },
-    {
-      id: "eval-2",
-      title: "Simulado de Português",
-      description: "Simulado preparatório para prova externa",
-      subject: { id: "port", name: "Português" },
-      grade: { id: "5ano", name: "5º Ano" },
-      course: { id: "ef", name: "Ensino Fundamental" },
-      startDateTime: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), // 1 dia atrás
-      duration: 120,
-      totalQuestions: 20,
-      maxScore: 10,
-      type: "SIMULADO",
-      model: "SAEB",
-      status: "completed",
-      result: {
-        score: 8.5,
-        percentage: 85,
-        correctAnswers: 17,
-        wrongAnswers: 2,
-        blankAnswers: 1,
-        timeSpent: 4500, // 1h15min
-        completedAt: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
-      }
-    },
-    {
-      id: "eval-3",
-      title: "Prova de Ciências - Água e Solo",
-      description: "Avaliação sobre ciclo da água e tipos de solo",
-      subject: { id: "cienc", name: "Ciências" },
-      grade: { id: "5ano", name: "5º Ano" },
-      course: { id: "ef", name: "Ensino Fundamental" },
-      startDateTime: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(), // em 2 dias
-      duration: 60,
-      totalQuestions: 12,
-      maxScore: 10,
-      type: "AVALIACAO",
-      model: "PROVA",
-      status: "pending",
-    },
-    {
-      id: "eval-4",
-      title: "Avaliação de História - Brasil Colonial",
-      description: "Avaliação sobre o período colonial brasileiro",
-      subject: { id: "hist", name: "História" },
-      grade: { id: "5ano", name: "5º Ano" },
-      course: { id: "ef", name: "Ensino Fundamental" },
-      startDateTime: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 dias atrás
-      duration: 75,
-      totalQuestions: 18,
-      maxScore: 10,
-      type: "AVALIACAO",
-      model: "SAEB",
-      status: "completed",
-      result: {
-        score: 7.2,
-        percentage: 72,
-        correctAnswers: 13,
-        wrongAnswers: 4,
-        blankAnswers: 1,
-        timeSpent: 3600, // 1h
-        completedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-      }
-    }
-  ];
+
 
   if (isLoading) {
     return (
@@ -951,7 +981,7 @@ export default function StudentEvaluations() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Clock className="h-4 w-4 text-muted-foreground" />
-                  <span>{evaluation.duration} minutos</span>
+                  <span>{evaluation.duration || 60} minutos</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <FileText className="h-4 w-4 text-muted-foreground" />
@@ -1169,7 +1199,7 @@ export default function StudentEvaluations() {
 
       {/* Dialog de Resultados */}
       <Dialog open={showResults} onOpenChange={setShowResults}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Resultado da Avaliação</DialogTitle>
             <DialogDescription>
@@ -1177,9 +1207,166 @@ export default function StudentEvaluations() {
             </DialogDescription>
           </DialogHeader>
 
-          {selectedEvaluation?.result && (
-            <div className="space-y-4">
+          {selectedEvaluation?.detailedResults ? (
+            <div className="space-y-6">
+              {/* Debug info */}
+              {(() => {
+                console.log('🔍 Renderizando detailedResults:', selectedEvaluation.detailedResults);
+                return null;
+              })()}
+
               {/* Score principal */}
+              <div className="text-center space-y-2 p-4 bg-gray-50 rounded-lg">
+                <div className={`text-4xl font-bold ${getPerformanceColor(selectedEvaluation.detailedResults.score_percentage)}`}>
+                  {selectedEvaluation.detailedResults.score_percentage}%
+                </div>
+                <p className="text-muted-foreground">
+                  Nota: {selectedEvaluation.detailedResults.total_score}/{selectedEvaluation.detailedResults.max_possible_score}
+                </p>
+              </div>
+
+              {/* Detalhes */}
+              <div className="grid grid-cols-4 gap-4 text-center">
+                <div className="space-y-1">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {selectedEvaluation.detailedResults.total_questions}
+                  </div>
+                  <p className="text-sm text-muted-foreground">Total</p>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-2xl font-bold text-green-600">
+                    {selectedEvaluation.detailedResults.correct_answers}
+                  </div>
+                  <p className="text-sm text-muted-foreground">Acertos</p>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-2xl font-bold text-red-600">
+                    {selectedEvaluation.detailedResults.total_questions - selectedEvaluation.detailedResults.correct_answers}
+                  </div>
+                  <p className="text-sm text-muted-foreground">Erros</p>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-2xl font-bold text-gray-600">
+                    {selectedEvaluation.detailedResults.total_questions - selectedEvaluation.detailedResults.answered_questions}
+                  </div>
+                  <p className="text-sm text-muted-foreground">Em branco</p>
+                </div>
+              </div>
+
+              {/* Respostas detalhadas */}
+              {selectedEvaluation.detailedResults.answers && selectedEvaluation.detailedResults.answers.length > 0 ? (
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Respostas Detalhadas ({selectedEvaluation.detailedResults.answers.length} questões)</h3>
+                  <div className="space-y-4">
+                    {selectedEvaluation.detailedResults.answers.map((answer, index) => (
+                      <Card key={answer.question_id} className="p-4">
+                        <div className="space-y-3">
+                          {/* Cabeçalho da questão */}
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline">Questão {answer.question_number}</Badge>
+                              <Badge variant="secondary">{answer.question_value} ponto{(answer.question_value !== 1) ? 's' : ''}</Badge>
+                              <Badge variant={answer.question_type === 'essay' ? 'default' : 'outline'}>
+                                {answer.question_type === 'essay' ? 'Dissertativa' : 'Múltipla Escolha'}
+                              </Badge>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {answer.is_correct === true && (
+                                <Badge className="bg-green-100 text-green-800 border-green-300">
+                                  ✓ Correta
+                                </Badge>
+                              )}
+                              {answer.is_correct === false && (
+                                <Badge className="bg-red-100 text-red-800 border-red-300">
+                                  ✗ Incorreta
+                                </Badge>
+                              )}
+                              {answer.is_correct === null && answer.student_answer && (
+                                <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300">
+                                  ⏳ Aguardando correção
+                                </Badge>
+                              )}
+                              {answer.score !== null && (
+                                <Badge variant="outline">
+                                  {answer.score}/{answer.question_value}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Enunciado da questão */}
+                          <div className="text-sm text-gray-700">
+                            <div dangerouslySetInnerHTML={{ __html: answer.question_text }} />
+                          </div>
+
+                          {/* Resposta do aluno */}
+                          <div className="space-y-2">
+                            <div className="text-sm font-medium text-gray-700">Sua resposta:</div>
+                            {answer.student_answer ? (
+                              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                {answer.question_type === 'essay' ? (
+                                  <div className="whitespace-pre-wrap">{answer.student_answer}</div>
+                                ) : (
+                                  <div className="font-medium">Alternativa: {answer.student_answer}</div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-500 italic">
+                                Questão não respondida
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Feedback do professor (se houver) */}
+                          {answer.feedback && (
+                            <div className="space-y-2">
+                              <div className="text-sm font-medium text-gray-700">Feedback do professor:</div>
+                              <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
+                                {answer.feedback}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Informações adicionais */}
+                          <div className="grid grid-cols-2 gap-4 text-xs text-gray-500">
+                            {answer.answered_at && (
+                              <div>
+                                <span className="font-medium">Respondida em:</span> {format(parseISO(answer.answered_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                              </div>
+                            )}
+                            {answer.corrected_at && (
+                              <div>
+                                <span className="font-medium">Corrigida em:</span> {format(parseISO(answer.corrected_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-4">
+                  <p className="text-muted-foreground">Nenhuma resposta detalhada disponível</p>
+                </div>
+              )}
+
+              {/* Feedback geral */}
+              <Alert>
+                <Trophy className="h-4 w-4" />
+                <AlertDescription>
+                  {selectedEvaluation.detailedResults.score_percentage >= 80
+                    ? "Excelente! Você demonstrou ótimo domínio do conteúdo."
+                    : selectedEvaluation.detailedResults.score_percentage >= 60
+                      ? "Bom trabalho! Continue estudando para melhorar ainda mais."
+                      : "Continue se esforçando! Revise o conteúdo e tire suas dúvidas com o professor."
+                  }
+                </AlertDescription>
+              </Alert>
+            </div>
+          ) : selectedEvaluation?.result ? (
+            <div className="space-y-4">
+              {/* Fallback para resultados básicos */}
               <div className="text-center space-y-2">
                 <div className={`text-4xl font-bold ${getPerformanceColor(selectedEvaluation.result.percentage)}`}>
                   {selectedEvaluation.result.percentage}%
@@ -1189,7 +1376,6 @@ export default function StudentEvaluations() {
                 </p>
               </div>
 
-              {/* Detalhes */}
               <div className="grid grid-cols-3 gap-4 text-center">
                 <div className="space-y-1">
                   <div className="text-2xl font-bold text-green-600">
@@ -1211,7 +1397,6 @@ export default function StudentEvaluations() {
                 </div>
               </div>
 
-              {/* Informações adicionais */}
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <strong>Tempo gasto:</strong> {Math.floor(selectedEvaluation.result.timeSpent / 60)}min
@@ -1221,7 +1406,6 @@ export default function StudentEvaluations() {
                 </div>
               </div>
 
-              {/* Feedback */}
               <Alert>
                 <Trophy className="h-4 w-4" />
                 <AlertDescription>
@@ -1233,6 +1417,10 @@ export default function StudentEvaluations() {
                   }
                 </AlertDescription>
               </Alert>
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-muted-foreground">Carregando resultados...</p>
             </div>
           )}
         </DialogContent>

@@ -368,8 +368,9 @@ const QuestionFormReadOnly = ({
 
     const handleFormSubmit = async (data: QuestionFormValues) => {
         try {
-            // Monta as opções sem id (apenas para múltipla escolha)
-            const options = data.questionType === 'multipleChoice' ? (data.options || []).map(opt => ({
+            // Monta as opções com id baseado na letra (apenas para múltipla escolha)
+            const options = data.questionType === 'multipleChoice' ? (data.options || []).map((opt, index) => ({
+                id: String.fromCharCode(65 + index), // A, B, C, D, etc.
                 text: opt.text,
                 isCorrect: opt.isCorrect,
             })) : [];

@@ -194,11 +194,35 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
     // ✅ NOVO: Salvar resposta
     const saveAnswer = useCallback(async (questionId: string, answer: string | string[] | null): Promise<void> => {
-        if (!session) return;
+        if (!session || !testData) return;
 
         try {
-            // Converter array para string se necessário
-            const answerValue = Array.isArray(answer) ? answer.join(',') : (answer || '');
+            // Encontrar a questão para determinar o tipo
+            const question = testData.questions.find(q => q.id === questionId);
+            if (!question) return;
+
+            let answerValue: string;
+
+            // Verificar se é questão dissertativa (sem options ou options vazio)
+            const isEssayQuestion = question.type === "essay" ||
+                question.type === "open" ||
+                question.type === "dissertativa" ||
+                !question.options ||
+                question.options.length === 0;
+
+            if (isEssayQuestion) {
+                // Para questões dissertativas, formatar como JSON
+                const essayAnswer = Array.isArray(answer) ? answer.join(',') : (answer || '');
+                const formattedAnswer = [{
+                    text: essayAnswer,
+                    student_answer: true,
+                    score: null
+                }];
+                answerValue = JSON.stringify(formattedAnswer);
+            } else {
+                // Para questões de múltipla escolha, manter formato atual
+                answerValue = Array.isArray(answer) ? answer.join(',') : (answer || '');
+            }
 
             // Atualizar estado local
             setAnswers(prev => ({
@@ -226,7 +250,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 variant: "destructive",
             });
         }
-    }, [session, toast]);
+    }, [session, testData, toast]);
 
     // ✅ NOVO: Salvar automaticamente
     const startAutoSave = useCallback((sessionId: string) => {

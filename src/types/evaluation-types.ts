@@ -51,6 +51,8 @@ export interface TestData {
 export interface StudentAnswer {
     question_id: string;
     answer: string;
+    // Para questões dissertativas, o answer será um JSON string com o formato:
+    // [{"text": "Resposta do aluno", "student_answer": true, "score": null}]
 }
 
 export interface TestResults {
