@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -45,7 +45,33 @@ export default function TakeEvaluation() {
   const { toast } = useToast();
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
 
+  const {
+    evaluationState,
+    testData,
+    session,
+    sessionInfo,
+    currentQuestionIndex,
+    answers,
+    isSubmitting,
+    isSaving,
+    results,
+    timeRemaining,
+    isTimeUp,
+    isPaused,
+    startTestSession,
+    handleAnswerChange,
+    handleSubmitTest,
+    navigateToQuestion
+  } = useEvaluation({ testId: evaluationId });
 
+  // ✅ NOVO: Log para debug
+  useEffect(() => {
+    console.log('TakeEvaluation - Estado atual:', {
+      evaluationState,
+      testData: testData ? 'carregado' : 'não carregado',
+      session: session ? 'existe' : 'não existe'
+    });
+  }, [evaluationState, testData, session]);
 
   // Se não há evaluationId, mostrar erro
   if (!evaluationId) {
@@ -62,28 +88,6 @@ export default function TakeEvaluation() {
       </div>
     );
   }
-
-  const {
-    evaluationState,
-    testData,
-    session,
-    sessionInfo, // ✅ NOVO: informações da sessão
-    currentQuestionIndex,
-    answers,
-    isSubmitting,
-    isSaving,
-    results,
-    timeRemaining,
-    isTimeUp,
-    isPaused, // ✅ NOVO: estado de pausa
-    startTestSession,
-    startTimerManually, // ✅ NOVO: função para iniciar cronômetro manualmente
-    handleAnswerChange,
-    navigateToQuestion,
-    handleSubmitTest
-  } = useEvaluation({ testId: evaluationId });
-
-
 
   // Loading state
   if (evaluationState === 'loading') {
@@ -103,38 +107,38 @@ export default function TakeEvaluation() {
         <div className="max-w-md w-full mx-4">
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>
-            <div className="space-y-4">
-              <div>
-                <strong>Erro ao carregar a avaliação</strong>
+            <AlertDescription>
+              <div className="space-y-4">
+                <div>
+                  <strong>Erro ao carregar a avaliação</strong>
+                </div>
+                <div className="text-sm">
+                  Possíveis causas:
+                  <ul className="list-disc list-inside mt-2 space-y-1">
+                    <li>Problemas de conectividade de rede</li>
+                    <li>ID da avaliação inválido: {evaluationId}</li>
+                    <li>Tente recarregar a página</li>
+                  </ul>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.location.reload()}
+                  >
+                    Tentar Novamente
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate("/aluno/avaliacoes")}
+                  >
+                    Voltar às Avaliações
+                  </Button>
+                </div>
               </div>
-              <div className="text-sm">
-                Possíveis causas:
-                <ul className="list-disc list-inside mt-2 space-y-1">
-                  <li>Problemas de conectividade de rede</li>
-                  <li>ID da avaliação inválido: {evaluationId}</li>
-                  <li>Tente recarregar a página</li>
-                </ul>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => window.location.reload()}
-                >
-                  Tentar Novamente
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigate("/aluno/avaliacoes")}
-                >
-                  Voltar às Avaliações
-                </Button>
-              </div>
-            </div>
-          </AlertDescription>
-        </Alert>
+            </AlertDescription>
+          </Alert>
         </div>
       </div>
     );
@@ -157,8 +161,7 @@ export default function TakeEvaluation() {
               <div className="text-center p-4 border rounded-lg">
                 <Clock className="h-8 w-8 mx-auto mb-2 text-blue-600" />
                 <div className="font-semibold">
-                  {/* ✅ MODIFICADO: Usar time_limit_minutes da API se disponível */}
-                  {sessionInfo?.time_limit_minutes || testData?.duration || 60} minutos
+                  {testData?.duration || 60} minutos
                 </div>
                 <div className="text-sm text-muted-foreground">Tempo disponível</div>
               </div>
@@ -177,19 +180,19 @@ export default function TakeEvaluation() {
             <div className="text-center">
               <p className="mb-4">{testData.instructions}</p>
 
-              {/* ✅ NOVO: Informações adicionais sobre o cronômetro */}
+              {/* ✅ NOVO: Informações sobre o cronômetro */}
               {sessionInfo && (
                 <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <div className="text-sm text-blue-800">
-                    <div className="font-medium mb-1">Informações do Cronômetro:</div>
+                    <div className="font-medium mb-1">Informações da Sessão:</div>
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div>
                         <span className="font-medium">Tempo limite:</span> {sessionInfo.time_limit_minutes} minutos
                       </div>
                       <div>
-                        <span className="font-medium">Status:</span> {sessionInfo.timer_started ? 'Iniciado' : 'Pausado'}
+                        <span className="font-medium">Status:</span> {sessionInfo.timer_started ? 'Ativo' : 'Pausado'}
                       </div>
-                      {sessionInfo.timer_started && (
+                      {sessionInfo.actual_start_time && (
                         <>
                           <div>
                             <span className="font-medium">Iniciado em:</span> {new Date(sessionInfo.actual_start_time).toLocaleString('pt-BR')}
@@ -236,53 +239,55 @@ export default function TakeEvaluation() {
 
   // Results screen
   if (evaluationState === 'completed' && results) {
+    console.log('📊 Resultados recebidos:', results);
+
     return (
       <div className="flex items-center justify-center min-h-screen w-screen bg-gray-50 p-4">
         <div className="max-w-2xl w-full">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-center">Resultados da Avaliação</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="text-center p-4 border rounded-lg">
-                <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-green-600" />
-                <div className="font-semibold text-2xl">{results.correct_answers}/{results.total_questions}</div>
-                <div className="text-sm text-muted-foreground">Acertos</div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-center">Resultados da Avaliação</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="text-center p-4 border rounded-lg">
+                  <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-green-600" />
+                  <div className="font-semibold text-2xl">{results.correct_answers || 0}/{results.total_questions || 0}</div>
+                  <div className="text-sm text-muted-foreground">Acertos</div>
+                </div>
+                <div className="text-center p-4 border rounded-lg">
+                  <Badge variant="outline" className="text-lg">
+                    {results.score_percentage || 0}%
+                  </Badge>
+                  <div className="text-sm text-muted-foreground mt-2">Nota Final</div>
+                </div>
               </div>
-              <div className="text-center p-4 border rounded-lg">
-                <Badge variant="outline" className="text-lg">
-                  {results.score_percentage}%
-                </Badge>
-                <div className="text-sm text-muted-foreground mt-2">Nota Final</div>
-              </div>
-            </div>
 
-            {results.grade && (
-              <div className="text-center p-4 border rounded-lg">
-                <div className="font-semibold text-xl">{results.grade}</div>
-                <div className="text-sm text-muted-foreground">Conceito</div>
-              </div>
-            )}
+              {results.grade && (
+                <div className="text-center p-4 border rounded-lg">
+                  <div className="font-semibold text-xl">{results.grade}</div>
+                  <div className="text-sm text-muted-foreground">Conceito</div>
+                </div>
+              )}
 
-            <div className="text-center space-y-4">
-              <p className="text-muted-foreground">
-                {results.answers_saved} de {results.total_questions} questões respondidas
-              </p>
+              <div className="text-center space-y-4">
+                <p className="text-muted-foreground">
+                  {results.answers_saved || 0} de {results.total_questions || 0} questões respondidas
+                </p>
 
-              <div className="flex justify-center gap-4">
-                <Button variant="outline" onClick={() => navigate("/aluno/avaliacoes")}>
-                  <Home className="h-4 w-4 mr-2" />
-                  Voltar
-                </Button>
-                <Button onClick={() => window.print()}>
-                  <Save className="h-4 w-4 mr-2" />
-                  Imprimir Resultado
-                </Button>
+                <div className="flex justify-center gap-4">
+                  <Button variant="outline" onClick={() => navigate("/aluno/avaliacoes")}>
+                    <Home className="h-4 w-4 mr-2" />
+                    Voltar
+                  </Button>
+                  <Button onClick={() => window.print()}>
+                    <Save className="h-4 w-4 mr-2" />
+                    Imprimir Resultado
+                  </Button>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
         </div>
       </div>
     );
@@ -290,7 +295,101 @@ export default function TakeEvaluation() {
 
   // Active test screen
   if (evaluationState === 'active' && testData && session) {
-    const currentQuestion = testData.questions[currentQuestionIndex];
+    // ✅ NOVO: Verificação adicional para garantir que os dados estão carregados
+    if (!testData.questions || testData.questions.length === 0) {
+      return (
+        <div className="container mx-auto px-4 py-6">
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              <div className="space-y-4">
+                <div>
+                  <strong>❌ Avaliação sem questões</strong>
+                </div>
+                <div className="text-sm">
+                  <p>Esta avaliação não possui questões cadastradas. Possíveis causas:</p>
+                  <ul className="list-disc list-inside mt-2 space-y-1">
+                    <li>A avaliação foi criada mas não teve questões adicionadas</li>
+                    <li>Problema na configuração da avaliação</li>
+                    <li>Questões foram removidas ou não estão disponíveis</li>
+                  </ul>
+                </div>
+                <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    <strong>O que fazer:</strong>
+                  </p>
+                  <ul className="list-disc list-inside mt-1 text-sm text-blue-700">
+                    <li>Entre em contato com seu professor</li>
+                    <li>Verifique se a avaliação está corretamente configurada</li>
+                    <li>Aguarde até que as questões sejam adicionadas</li>
+                  </ul>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.location.reload()}
+                  >
+                    Tentar Novamente
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate("/aluno/avaliacoes")}
+                  >
+                    Voltar às Avaliações
+                  </Button>
+                </div>
+              </div>
+            </AlertDescription>
+          </Alert>
+        </div>
+      );
+    }
+
+    const currentQuestion = testData.questions?.[currentQuestionIndex];
+
+    // ✅ NOVO: Verificação de segurança para currentQuestion
+    if (!currentQuestion) {
+      return (
+        <div className="container mx-auto px-4 py-6">
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              <div className="space-y-4">
+                <div>
+                  <strong>Erro ao carregar questão</strong>
+                </div>
+                <div className="text-sm">
+                  Questão não encontrada. Possíveis causas:
+                  <ul className="list-disc list-inside mt-2 space-y-1">
+                    <li>Índice da questão inválido: {currentQuestionIndex}</li>
+                    <li>Total de questões: {testData.questions?.length || 0}</li>
+                    <li>Dados da avaliação incompletos</li>
+                  </ul>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.location.reload()}
+                  >
+                    Tentar Novamente
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate("/aluno/avaliacoes")}
+                  >
+                    Voltar às Avaliações
+                  </Button>
+                </div>
+              </div>
+            </AlertDescription>
+          </Alert>
+        </div>
+      );
+    }
 
     return (
       <div className="h-screen w-screen bg-gray-50 flex flex-col overflow-hidden">
@@ -309,9 +408,9 @@ export default function TakeEvaluation() {
                 <EvaluationTimer
                   timeRemaining={timeRemaining}
                   isTimeUp={isTimeUp}
-                  isPaused={isPaused} // ✅ NOVO: passar estado de pausa
-                  timeLimitMinutes={sessionInfo?.time_limit_minutes} // ✅ NOVO: tempo limite da API
-                  remainingMinutes={sessionInfo?.remaining_time_minutes} // ✅ NOVO: tempo restante da API
+                  isPaused={isPaused}
+                  timeLimitMinutes={testData?.duration}
+                  remainingMinutes={session?.remaining_time_minutes}
                 />
 
                 <div className="text-right">
@@ -346,51 +445,28 @@ export default function TakeEvaluation() {
                     <div className="flex-1">
                       <span>
                         ⏸️ <strong>Cronômetro pausado</strong> -
-                        {!sessionInfo?.timer_started
-                          ? " Clique em 'Iniciar Cronômetro' para começar a contagem."
-                          : " O timer foi pausado porque você saiu desta aba. Volte para esta aba para continuar."
-                        }
+                        O timer foi pausado porque você saiu desta aba. Volte para esta aba para continuar.
                       </span>
 
                       {/* ✅ NOVO: Informações detalhadas do cronômetro */}
-                      {sessionInfo && (
+                      {session && (
                         <div className="mt-2 text-xs text-yellow-800">
                           <div className="grid grid-cols-2 gap-2">
                             <div>
-                              <span className="font-medium">Tempo limite:</span> {sessionInfo.time_limit_minutes} minutos
+                              <span className="font-medium">Tempo limite:</span> {session.time_limit_minutes} minutos
                             </div>
                             <div>
-                              <span className="font-medium">Tempo restante:</span> {sessionInfo.remaining_time_minutes} minutos
+                              <span className="font-medium">Tempo restante:</span> {session.remaining_time_minutes} minutos
                             </div>
-                            {sessionInfo.timer_started && (
+                            {session.actual_start_time && (
                               <div className="col-span-2">
-                                <span className="font-medium">Iniciado em:</span> {new Date(sessionInfo.actual_start_time).toLocaleString('pt-BR')}
+                                <span className="font-medium">Iniciado em:</span> {new Date(session.actual_start_time).toLocaleString('pt-BR')}
                               </div>
                             )}
                           </div>
                         </div>
                       )}
                     </div>
-                    {(!sessionInfo?.timer_started) && (
-                      <Button
-                        onClick={startTimerManually}
-                        disabled={isSubmitting}
-                        size="sm"
-                        className="ml-4"
-                      >
-                        {isSubmitting ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Iniciando...
-                          </>
-                        ) : (
-                          <>
-                            <Play className="h-4 w-4 mr-2" />
-                            Iniciar Cronômetro
-                          </>
-                        )}
-                      </Button>
-                    )}
                   </AlertDescription>
                 </Alert>
               </div>
@@ -455,14 +531,14 @@ export default function TakeEvaluation() {
                   {/* Conteúdo da questão */}
                   <div className="space-y-4">
                     {/* Primeiro enunciado */}
-                    {(currentQuestion.formattedText || currentQuestion.text) && (
+                    {(currentQuestion?.formattedText || currentQuestion?.text) && (
                       <div className="text-base leading-relaxed">
-                        <div dangerouslySetInnerHTML={{ __html: currentQuestion.formattedText || currentQuestion.text }} />
+                        <div dangerouslySetInnerHTML={{ __html: currentQuestion?.formattedText || currentQuestion?.text || '' }} />
                       </div>
                     )}
 
                     {/* Imagens */}
-                    {currentQuestion.images && Array.isArray(currentQuestion.images) && currentQuestion.images.length > 0 && (
+                    {currentQuestion?.images && Array.isArray(currentQuestion.images) && currentQuestion.images.length > 0 && (
                       <div className="flex flex-wrap gap-4 my-4">
                         {currentQuestion.images.map((image, index) => {
                           // Se image é um objeto com url
@@ -487,9 +563,9 @@ export default function TakeEvaluation() {
                     )}
 
                     {/* Segundo enunciado */}
-                    {(currentQuestion.secondStatement || currentQuestion.secondstatement) && (
+                    {(currentQuestion?.secondStatement || currentQuestion?.secondstatement) && (
                       <div className="text-base leading-relaxed">
-                        <div dangerouslySetInnerHTML={{ __html: currentQuestion.secondStatement || currentQuestion.secondstatement }} />
+                        <div dangerouslySetInnerHTML={{ __html: currentQuestion?.secondStatement || currentQuestion?.secondstatement || '' }} />
                       </div>
                     )}
                   </div>
@@ -497,8 +573,13 @@ export default function TakeEvaluation() {
                   {/* Opções de resposta */}
                   <QuestionOptions
                     question={currentQuestion}
-                    answer={answers[currentQuestion.id]?.answer}
-                    onAnswerChange={(newAnswer) => handleAnswerChange(currentQuestion.id, newAnswer)}
+                    answer={answers[currentQuestion?.id]?.answer}
+                    onAnswerChange={(newAnswer) => {
+                      const formattedAnswer = Array.isArray(newAnswer) ? newAnswer.join(',') : (newAnswer || '');
+                      if (currentQuestion?.id) {
+                        handleAnswerChange(currentQuestion.id, formattedAnswer);
+                      }
+                    }}
                     disabled={isTimeUp}
                   />
 
