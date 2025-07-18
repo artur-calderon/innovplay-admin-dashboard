@@ -802,27 +802,6 @@ export default function StudentEvaluations() {
                 </div>
               </div>
 
-              {/* Resultado se concluída */}
-              {evaluation.student_status.has_completed && (
-                <div className="space-y-2 p-3 bg-gray-50 rounded-lg">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium">Resultado</span>
-                    <Badge
-                      variant="secondary"
-                      className={`${getPerformanceColor(evaluation.student_status.score || 0)} bg-transparent border`}
-                    >
-                      {evaluation.student_status.score || 0}%
-                    </Badge>
-                  </div>
-                  {evaluation.student_status.grade && (
-                    <div className="text-center">
-                      <p className="text-sm text-muted-foreground">
-                        Nota: {evaluation.student_status.grade}/10
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* Ações */}
               <div className="flex gap-2">
