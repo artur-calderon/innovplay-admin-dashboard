@@ -43,7 +43,8 @@ export interface TestData {
     title: string;
     subject: { id: string; name: string };
     duration: number;
-    totalQuestions: number;
+    totalQuestions?: number; // ✅ CORRIGIDO: Tornar opcional
+    total_questions?: number; // ✅ NOVO: Campo alternativo do backend
     instructions: string;
     questions: Question[];
 }

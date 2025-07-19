@@ -33,7 +33,6 @@ import {
   Users,
   FileText,
   Timer,
-  Eye,
   RefreshCw,
   Trophy,
   Target,
@@ -154,7 +153,7 @@ export default function StudentEvaluations() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedEvaluation, setSelectedEvaluation] = useState<StudentEvaluation | null>(null);
   const [showInstructions, setShowInstructions] = useState(false);
-  const [showResults, setShowResults] = useState(false);
+
   const [currentTaking, setCurrentTaking] = useState<EvaluationTaking | null>(null);
   const [confirmStart, setConfirmStart] = useState(false);
   const [canStartReason, setCanStartReason] = useState<string>("");
@@ -165,42 +164,9 @@ export default function StudentEvaluations() {
   useEffect(() => {
     fetchStudentEvaluations();
     checkInProgressEvaluation();
-
-    // Atualizar status das avaliações periodicamente
-    const interval = setInterval(() => {
-      updateEvaluationStatuses();
-    }, 60000); // Atualizar a cada minuto
-
-    return () => clearInterval(interval);
   }, []);
 
-  // ✅ CORRIGIDO: Função para atualizar status das avaliações em tempo real
-  const updateEvaluationStatuses = async () => {
-    try {
-      // Buscar status atualizado de todas as avaliações
-      const response = await api.get('/test/my-class/tests');
-      const updatedTests = response.data.tests || [];
 
-      setEvaluations(currentEvaluations => {
-        return currentEvaluations.map(evaluation => {
-          // ✅ CORRIGIDO: Verificar se updatedTest existe e usar test_id
-          const updatedTest = updatedTests.find((test: any) =>
-            test.test_id === evaluation.id
-          );
-          if (updatedTest && updatedTest.availability && updatedTest.student_status) {
-            return {
-              ...evaluation,
-              availability: updatedTest.availability,
-              student_status: updatedTest.student_status
-            };
-          }
-          return evaluation;
-        });
-      });
-    } catch (error) {
-      console.error('Erro ao atualizar status das avaliações:', error);
-    }
-  };
 
   const fetchStudentEvaluations = async () => {
     console.log('🚀 Iniciando busca de avaliações...');
@@ -474,40 +440,13 @@ export default function StudentEvaluations() {
     }
   };
 
-  const handleViewResults = async (evaluation: StudentEvaluation) => {
-    setSelectedEvaluation(evaluation);
-    setShowResults(true);
 
-    // Buscar resultados detalhados do aluno
-    try {
-      const response = await api.get(`/evaluation-results/${evaluation.id}/student/${user?.id}/results?include_answers=true`);
-      console.log('Resultados detalhados:', response.data);
-
-      // Atualizar tanto o selectedEvaluation quanto o estado evaluations
-      const updatedEvaluation = { ...evaluation, detailedResults: response.data };
-      setSelectedEvaluation(updatedEvaluation);
-
-      setEvaluations(currentEvaluations =>
-        currentEvaluations.map(evaluationItem =>
-          evaluationItem.id === evaluation.id
-            ? updatedEvaluation
-            : evaluationItem
-        )
-      );
-    } catch (error) {
-      console.error('Erro ao buscar resultados detalhados:', error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível carregar os resultados detalhados",
-        variant: "destructive",
-      });
-    }
-  };
 
   // ✅ NOVO: Função para obter badge baseado no student_status
   const getStatusBadge = (evaluation: StudentEvaluation) => {
-    const { student_status } = evaluation;
+    const { student_status, availability } = evaluation;
 
+    // ✅ CORRIGIDO: Verificar se está concluída primeiro
     if (student_status.has_completed) {
       return (
         <Badge variant="secondary" className="flex items-center gap-1">
@@ -517,6 +456,17 @@ export default function StudentEvaluations() {
       );
     }
 
+    // ✅ CORRIGIDO: Verificar se está expirada (tanto no student_status quanto no availability)
+    if (student_status.status === 'expirada' || availability.status === 'expired') {
+      return (
+        <Badge variant="destructive" className="flex items-center gap-1">
+          <AlertCircle className="h-3 w-3" />
+          Expirada
+        </Badge>
+      );
+    }
+
+    // ✅ CORRIGIDO: Verificar outros status do student_status
     switch (student_status.status) {
       case 'em_andamento':
         return (
@@ -532,13 +482,6 @@ export default function StudentEvaluations() {
             Finalizada
           </Badge>
         );
-      case 'expirada':
-        return (
-          <Badge variant="destructive" className="flex items-center gap-1">
-            <AlertCircle className="h-3 w-3" />
-            Expirada
-          </Badge>
-        );
       case 'corrigida':
         return (
           <Badge variant="default" className="flex items-center gap-1">
@@ -549,17 +492,27 @@ export default function StudentEvaluations() {
       case 'revisada':
         return (
           <Badge variant="default" className="flex items-center gap-1">
-            <Eye className="h-3 w-3" />
+            <CheckCircle className="h-3 w-3" />
             Revisada
           </Badge>
         );
       default:
-        return (
-          <Badge variant="outline" className="flex items-center gap-1">
-            <Calendar className="h-3 w-3" />
-            Disponível
-          </Badge>
-        );
+        // ✅ CORRIGIDO: Verificar se está disponível baseado no availability
+        if (availability.is_available && student_status.can_start) {
+          return (
+            <Badge variant="outline" className="flex items-center gap-1">
+              <Calendar className="h-3 w-3" />
+              Disponível
+            </Badge>
+          );
+        } else {
+          return (
+            <Badge variant="secondary" className="flex items-center gap-1">
+              <AlertCircle className="h-3 w-3" />
+              Indisponível
+            </Badge>
+          );
+        }
     }
   };
 
@@ -797,7 +750,10 @@ export default function StudentEvaluations() {
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <span>
-                    {format(parseISO(evaluation.startDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                    Disponível até: {evaluation.endDateTime ?
+                      format(parseISO(evaluation.endDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) :
+                      "Sem prazo definido"
+                    }
                   </span>
                 </div>
               </div>
@@ -805,10 +761,12 @@ export default function StudentEvaluations() {
 
               {/* Ações */}
               <div className="flex gap-2">
-                {/* ✅ NOVO: Botão "Iniciar" só mostrar se can_start === true */}
+                {/* ✅ CORRIGIDO: Botão "Iniciar" só mostrar se disponível, pode iniciar e NÃO está em andamento */}
                 {evaluation.availability.is_available &&
                   !evaluation.student_status.has_completed &&
-                  evaluation.student_status.can_start && (
+                  evaluation.student_status.can_start &&
+                  evaluation.student_status.status !== "expirada" &&
+                  evaluation.student_status.status !== "em_andamento" && (
                     <Button
                       className="flex-1 bg-green-600 hover:bg-green-700"
                       onClick={() => handleStartEvaluation(evaluation)}
@@ -818,7 +776,7 @@ export default function StudentEvaluations() {
                     </Button>
                   )}
 
-                {/* ✅ NOVO: Botão "Continuar" se status === "em_andamento" */}
+                {/* ✅ CORRIGIDO: Botão "Continuar" se status === "em_andamento" */}
                 {evaluation.student_status.status === "em_andamento" && (
                   <Button
                     className="flex-1 bg-blue-600 hover:bg-blue-700"
@@ -829,40 +787,33 @@ export default function StudentEvaluations() {
                   </Button>
                 )}
 
-                {/* ✅ NOVO: Botão "Concluída" se has_completed === true */}
+                {/* ✅ CORRIGIDO: Botão "Concluída" se has_completed === true (removido botão ver resultado) */}
                 {evaluation.student_status.has_completed && (
-                  <div className="flex-1 space-y-2">
-                    <Button
-                      className="w-full bg-gray-600 hover:bg-gray-700"
-                      disabled
-                    >
-                      <CheckCircle className="h-4 w-4 mr-2" />
-                      Concluída
-                    </Button>
-                    <Button
-                      className="w-full"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleViewResults(evaluation)}
-                    >
-                      <Eye className="h-4 w-4 mr-2" />
-                      Ver Resultado
-                    </Button>
-                  </div>
-                )}
-
-                {/* ✅ NOVO: Botão "Expirada" se status === "expirada" */}
-                {evaluation.student_status.status === "expirada" && (
-                  <Button className="flex-1 bg-red-600 hover:bg-red-700" disabled>
-                    <AlertCircle className="h-4 w-4 mr-2" />
-                    Expirada
+                  <Button
+                    className="flex-1 bg-gray-600 hover:bg-gray-700"
+                    disabled
+                  >
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Concluída
                   </Button>
                 )}
 
-                {/* ✅ NOVO: Botão "Indisponível" se não pode iniciar */}
+                {/* ✅ CORRIGIDO: Botão "Expirada" se status === "expirada" ou availability.status === "expired" */}
+                {(evaluation.student_status.status === "expirada" ||
+                  evaluation.availability.status === "expired") && (
+                    <Button className="flex-1 bg-red-600 hover:bg-red-700" disabled>
+                      <AlertCircle className="h-4 w-4 mr-2" />
+                      Expirada
+                    </Button>
+                  )}
+
+                {/* ✅ CORRIGIDO: Botão "Indisponível" se não pode iniciar, não está expirada e não está em andamento */}
                 {evaluation.availability.is_available &&
                   !evaluation.student_status.has_completed &&
-                  !evaluation.student_status.can_start && (
+                  !evaluation.student_status.can_start &&
+                  evaluation.student_status.status !== "expirada" &&
+                  evaluation.student_status.status !== "em_andamento" &&
+                  evaluation.availability.status !== "expired" && (
                     <Button className="flex-1 bg-gray-600 hover:bg-gray-700" disabled>
                       <AlertCircle className="h-4 w-4 mr-2" />
                       Indisponível
@@ -971,200 +922,7 @@ export default function StudentEvaluations() {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog de Resultados */}
-      <Dialog open={showResults} onOpenChange={setShowResults}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Resultado da Avaliação</DialogTitle>
-            <DialogDescription>
-              {selectedEvaluation?.title}
-            </DialogDescription>
-          </DialogHeader>
 
-          {selectedEvaluation?.detailedResults ? (
-            <div className="space-y-6">
-              {/* Score principal */}
-              <div className="text-center space-y-2 p-4 bg-gray-50 rounded-lg">
-                <div className={`text-4xl font-bold ${getPerformanceColor(selectedEvaluation.detailedResults.score_percentage)}`}>
-                  {selectedEvaluation.detailedResults.score_percentage}%
-                </div>
-                <p className="text-muted-foreground">
-                  Nota: {selectedEvaluation.detailedResults.total_score}/{selectedEvaluation.detailedResults.max_possible_score}
-                </p>
-              </div>
-
-              {/* Detalhes */}
-              <div className="grid grid-cols-4 gap-4 text-center">
-                <div className="space-y-1">
-                  <div className="text-2xl font-bold text-blue-600">
-                    {selectedEvaluation.detailedResults.total_questions}
-                  </div>
-                  <p className="text-sm text-muted-foreground">Total</p>
-                </div>
-                <div className="space-y-1">
-                  <div className="text-2xl font-bold text-green-600">
-                    {selectedEvaluation.detailedResults.correct_answers}
-                  </div>
-                  <p className="text-sm text-muted-foreground">Acertos</p>
-                </div>
-                <div className="space-y-1">
-                  <div className="text-2xl font-bold text-red-600">
-                    {selectedEvaluation.detailedResults.total_questions - selectedEvaluation.detailedResults.correct_answers}
-                  </div>
-                  <p className="text-sm text-muted-foreground">Erros</p>
-                </div>
-                <div className="space-y-1">
-                  <div className="text-2xl font-bold text-gray-600">
-                    {selectedEvaluation.detailedResults.total_questions - selectedEvaluation.detailedResults.answered_questions}
-                  </div>
-                  <p className="text-sm text-muted-foreground">Em branco</p>
-                </div>
-              </div>
-
-              {/* Respostas detalhadas */}
-              {selectedEvaluation.detailedResults.answers && selectedEvaluation.detailedResults.answers.length > 0 ? (
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold">Respostas Detalhadas ({selectedEvaluation.detailedResults.answers.length} questões)</h3>
-                  <div className="space-y-4">
-                    {selectedEvaluation.detailedResults.answers.map((answer, index) => (
-                      <Card key={answer.question_id} className="p-4">
-                        <div className="space-y-3">
-                          {/* Cabeçalho da questão */}
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline">Questão {answer.question_number}</Badge>
-                              <Badge variant="secondary">{answer.question_value} ponto{(answer.question_value !== 1) ? 's' : ''}</Badge>
-                              <Badge variant={answer.question_type === 'essay' ? 'default' : 'outline'}>
-                                {answer.question_type === 'essay' ? 'Dissertativa' : 'Múltipla Escolha'}
-                              </Badge>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {answer.is_correct === true && (
-                                <Badge className="bg-green-100 text-green-800 border-green-300">
-                                  ✓ Correta
-                                </Badge>
-                              )}
-                              {answer.is_correct === false && (
-                                <Badge className="bg-red-100 text-red-800 border-red-300">
-                                  ✗ Incorreta
-                                </Badge>
-                              )}
-                              {answer.is_correct === null && answer.student_answer && (
-                                <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300">
-                                  ⏳ Aguardando correção
-                                </Badge>
-                              )}
-                              {answer.score !== null && (
-                                <Badge variant="outline">
-                                  {answer.score}/{answer.question_value}
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Enunciado da questão */}
-                          <div className="text-sm text-gray-700">
-                            <div dangerouslySetInnerHTML={{ __html: answer.question_text }} />
-                          </div>
-
-                          {/* Resposta do aluno */}
-                          <div className="space-y-2">
-                            <div className="text-sm font-medium text-gray-700">Sua resposta:</div>
-                            {answer.student_answer ? (
-                              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                                {answer.question_type === 'essay' ? (
-                                  <div className="whitespace-pre-wrap">{answer.student_answer}</div>
-                                ) : (
-                                  <div className="font-medium">Alternativa: {answer.student_answer}</div>
-                                )}
-                              </div>
-                            ) : (
-                              <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-500 italic">
-                                Questão não respondida
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Feedback do professor (se houver) */}
-                          {answer.feedback && (
-                            <div className="space-y-2">
-                              <div className="text-sm font-medium text-gray-700">Feedback do professor:</div>
-                              <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
-                                {answer.feedback}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Informações adicionais */}
-                          <div className="grid grid-cols-2 gap-4 text-xs text-gray-500">
-                            {answer.answered_at && (
-                              <div>
-                                <span className="font-medium">Respondida em:</span> {format(parseISO(answer.answered_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                              </div>
-                            )}
-                            {answer.corrected_at && (
-                              <div>
-                                <span className="font-medium">Corrigida em:</span> {format(parseISO(answer.corrected_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-4">
-                  <p className="text-muted-foreground">Nenhuma resposta detalhada disponível</p>
-                </div>
-              )}
-
-              {/* Feedback geral */}
-              <Alert>
-                <Trophy className="h-4 w-4" />
-                <AlertDescription>
-                  {selectedEvaluation.detailedResults.score_percentage >= 80
-                    ? "Excelente! Você demonstrou ótimo domínio do conteúdo."
-                    : selectedEvaluation.detailedResults.score_percentage >= 60
-                      ? "Bom trabalho! Continue estudando para melhorar ainda mais."
-                      : "Continue se esforçando! Revise o conteúdo e tire suas dúvidas com o professor."
-                  }
-                </AlertDescription>
-              </Alert>
-            </div>
-          ) : selectedEvaluation?.student_status?.score ? (
-            <div className="space-y-4">
-              {/* Fallback para resultados básicos */}
-              <div className="text-center space-y-2">
-                <div className={`text-4xl font-bold ${getPerformanceColor(selectedEvaluation.student_status.score)}`}>
-                  {selectedEvaluation.student_status.score}%
-                </div>
-                {selectedEvaluation.student_status.grade && (
-                  <p className="text-muted-foreground">
-                    Nota: {selectedEvaluation.student_status.grade}/10
-                  </p>
-                )}
-              </div>
-
-              <Alert>
-                <Trophy className="h-4 w-4" />
-                <AlertDescription>
-                  {selectedEvaluation.student_status.score >= 80
-                    ? "Excelente! Você demonstrou ótimo domínio do conteúdo."
-                    : selectedEvaluation.student_status.score >= 60
-                      ? "Bom trabalho! Continue estudando para melhorar ainda mais."
-                      : "Continue se esforçando! Revise o conteúdo e tire suas dúvidas com o professor."
-                  }
-                </AlertDescription>
-              </Alert>
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <p className="text-muted-foreground">Carregando resultados...</p>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
 
       {/* AlertDialog de Confirmação */}
       <AlertDialog open={confirmStart} onOpenChange={setConfirmStart}>
