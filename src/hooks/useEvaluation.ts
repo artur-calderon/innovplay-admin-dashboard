@@ -211,14 +211,8 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 question.options.length === 0;
 
             if (isEssayQuestion) {
-                // Para questões dissertativas, formatar como JSON
-                const essayAnswer = Array.isArray(answer) ? answer.join(',') : (answer || '');
-                const formattedAnswer = [{
-                    text: essayAnswer,
-                    student_answer: true,
-                    score: null
-                }];
-                answerValue = JSON.stringify(formattedAnswer);
+                // Para questões dissertativas, salvar apenas o texto
+                answerValue = Array.isArray(answer) ? answer.join(',') : (answer || '');
             } else {
                 // Para questões de múltipla escolha, manter formato atual
                 answerValue = Array.isArray(answer) ? answer.join(',') : (answer || '');
@@ -285,7 +279,8 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 answers: answersArray
             });
 
-            setResults(results.results);
+            // ✅ NOVO: Salvar resultados imediatos
+            setResults(results);
             setEvaluationState('completed');
 
             // ✅ NOVO: Limpar dados do localStorage
@@ -314,10 +309,8 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             if (syncTimerRef.current) clearInterval(syncTimerRef.current);
 
             toast({
-                title: "🎉 Avaliação concluída!",
-                description: automatic
-                    ? "Sua avaliação foi enviada automaticamente"
-                    : `Sua nota: ${results.results.score_percentage}%`,
+                title: "✅ Avaliação enviada!",
+                description: "Sua avaliação foi enviada com sucesso. Aguarde a correção.",
             });
 
         } catch (error) {
@@ -444,6 +437,9 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
                 if (!hasActiveSession) {
                     setEvaluationState('instructions');
+                } else {
+                    // ✅ NOVO: Carregar respostas salvas se há sessão ativa
+                    await loadSavedAnswers();
                 }
 
             } catch (error) {
@@ -454,6 +450,61 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
         initializeEvaluation();
     }, [testId, checkActiveSession, toast]);
+
+    // ✅ NOVO: Carregar respostas salvas
+    const loadSavedAnswers = useCallback(async () => {
+        if (!session?.session_id || !testData) return;
+
+        try {
+            console.log('🔄 Carregando respostas salvas...');
+            
+            // Buscar respostas salvas do backend
+            const response = await api.get(`/student-answers/sessions/${session.session_id}/answers`);
+            const savedAnswers = response.data.answers || [];
+            
+            console.log('📋 Respostas salvas encontradas:', savedAnswers);
+
+            // Processar respostas salvas
+            const processedAnswers: Record<string, StudentAnswer> = {};
+            
+            savedAnswers.forEach((savedAnswer: any) => {
+                const question = testData.questions.find(q => q.id === savedAnswer.question_id);
+                if (!question) return;
+
+                let answerValue = savedAnswer.answer;
+
+                // ✅ CORRIGIDO: Processar respostas de questões dissertativas
+                if (question.type === "essay" || 
+                    question.type === "open" || 
+                    question.type === "dissertativa" ||
+                    !question.options ||
+                    question.options.length === 0) {
+                    
+                    // Se a resposta está em formato JSON, extrair o texto
+                    try {
+                        const parsed = JSON.parse(answerValue);
+                        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].text) {
+                            answerValue = parsed[0].text;
+                        }
+                    } catch (e) {
+                        // Se não é JSON válido, usar o valor como está
+                        console.log('Resposta não é JSON válido, usando como texto:', answerValue);
+                    }
+                }
+
+                processedAnswers[savedAnswer.question_id] = {
+                    question_id: savedAnswer.question_id,
+                    answer: answerValue
+                };
+            });
+
+            console.log('✅ Respostas processadas:', processedAnswers);
+            setAnswers(processedAnswers);
+
+        } catch (error) {
+            console.error('❌ Erro ao carregar respostas salvas:', error);
+        }
+    }, [session?.session_id, testData]);
 
     // ✅ NOVO: Navegar entre questões
     const navigateToQuestion = useCallback((index: number) => {

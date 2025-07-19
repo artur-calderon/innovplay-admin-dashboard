@@ -313,14 +313,6 @@ export default function StudentDetailedResults({ onBack }: StudentDetailedResult
                                 <div className="text-sm text-red-700">Erros</div>
                             </div>
                         </div>
-
-                        <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg">
-                            <Minus className="h-8 w-8 text-gray-600" />
-                            <div>
-                                <div className="text-2xl font-bold text-gray-600">{blankAnswers}</div>
-                                <div className="text-sm text-gray-700">Em Branco</div>
-                            </div>
-                        </div>
                     </div>
                 </CardContent>
             </Card>

@@ -20,7 +20,10 @@ import {
   Search,
   School,
   MapPin,
-  GraduationCap
+  GraduationCap,
+  BarChart,
+  AreaChart,
+  Network
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -80,7 +83,7 @@ interface ResultsStats {
 
 export default function Results() {
   const { id: evaluationId } = useParams<{ id: string }>();
-  const { user } = useAuth();
+  const { user, autoLogin } = useAuth();
   const [stats, setStats] = useState<ResultsStats>({
     totalEvaluations: 0,
     totalStudents: 0,
@@ -94,12 +97,33 @@ export default function Results() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [subjectFilter, setSubjectFilter] = useState<string>('all');
+  const [chartType, setChartType] = useState<'bars' | 'area' | 'network'>('bars');
   const { toast } = useToast();
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchData();
-  }, [evaluationId]);
+    const initializeData = async () => {
+      // Verificar se há token, se não houver, fazer login automático
+      const token = localStorage.getItem('token');
+      if (!token) {
+        try {
+          await autoLogin();
+        } catch (error) {
+          console.error("Erro no login automático:", error);
+          toast({
+            title: "Erro de Autenticação",
+            description: "Não foi possível fazer login automático. Verifique suas credenciais.",
+            variant: "destructive",
+          });
+          // Não carregar dados se login falhar
+          return;
+        }
+      }
+      await fetchData();
+    };
+    
+    initializeData();
+  }, [evaluationId, autoLogin]);
 
   // Filtrar avaliações baseado nos filtros
   useEffect(() => {
@@ -134,86 +158,77 @@ export default function Results() {
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
       toast({
-        title: "Erro",
-        description: "Não foi possível carregar os dados dos resultados",
+        title: "Erro de Conexão",
+        description: "Não foi possível conectar com o servidor. Verifique se o backend está rodando.",
         variant: "destructive",
       });
+      // Não mostrar dados mock, deixar a página vazia
+      setStats({
+        totalEvaluations: 0,
+        totalStudents: 0,
+        averageScore: 0,
+        completedEvaluations: 0,
+        topPerformanceSubject: '',
+      });
+      setEvaluationsList([]);
     } finally {
       setIsLoading(false);
     }
   };
 
   const fetchResultsStats = async () => {
-    try {
-      const evaluations = await EvaluationResultsApiService.getEvaluationsList();
+    const evaluations = await EvaluationResultsApiService.getEvaluationsList();
 
-      if (evaluations.length === 0) {
-        setStats({
-          totalEvaluations: 0,
-          totalStudents: 0,
-          averageScore: 0,
-          completedEvaluations: 0,
-          topPerformanceSubject: '',
-        });
-        return;
-      }
-
-      const totalStudents = evaluations.reduce((sum: number, evaluation: EvaluationResult) =>
-        sum + evaluation.alunos_participantes, 0);
-      const averageScore = evaluations.reduce((sum: number, evaluation: EvaluationResult) =>
-        sum + evaluation.media_nota, 0) / evaluations.length;
-      const completedEvaluations = evaluations.filter((e: EvaluationResult) => e.status === 'concluida').length;
-
-      // Encontrar a disciplina com melhor desempenho
-      const subjectScores = evaluations.reduce((acc: Record<string, { total: number; count: number }>, evaluation: EvaluationResult) => {
-        if (!acc[evaluation.disciplina]) {
-          acc[evaluation.disciplina] = { total: 0, count: 0 };
-        }
-        acc[evaluation.disciplina].total += evaluation.media_nota;
-        acc[evaluation.disciplina].count += 1;
-        return acc;
-      }, {});
-
-      const topSubject = Object.entries(subjectScores).reduce((best: { subject: string; average: number }, [subject, data]) => {
-        const average = data.total / data.count;
-        return average > best.average ? { subject, average } : best;
-      }, { subject: '', average: 0 });
-
+    if (evaluations.length === 0) {
       setStats({
-        totalEvaluations: evaluations.length,
-        totalStudents: totalStudents,
-        averageScore: averageScore,
-        completedEvaluations: completedEvaluations,
-        topPerformanceSubject: topSubject.subject,
+        totalEvaluations: 0,
+        totalStudents: 0,
+        averageScore: 0,
+        completedEvaluations: 0,
+        topPerformanceSubject: '',
       });
-    } catch (error) {
-      console.error("Erro ao buscar estatísticas:", error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível carregar as estatísticas",
-        variant: "destructive",
-      });
+      return;
     }
+
+    const totalStudents = evaluations.reduce((sum: number, evaluation: EvaluationResult) =>
+      sum + evaluation.alunos_participantes, 0);
+    const averageScore = evaluations.reduce((sum: number, evaluation: EvaluationResult) =>
+      sum + evaluation.media_nota, 0) / evaluations.length;
+    const completedEvaluations = evaluations.filter((e: EvaluationResult) => e.status === 'concluida').length;
+
+    // Encontrar a disciplina com melhor desempenho
+    const subjectScores = evaluations.reduce((acc: Record<string, { total: number; count: number }>, evaluation: EvaluationResult) => {
+      if (!acc[evaluation.disciplina]) {
+        acc[evaluation.disciplina] = { total: 0, count: 0 };
+      }
+      acc[evaluation.disciplina].total += evaluation.media_nota;
+      acc[evaluation.disciplina].count += 1;
+      return acc;
+    }, {});
+
+    const topSubject = Object.entries(subjectScores).reduce((best: { subject: string; average: number }, [subject, data]) => {
+      const average = data.total / data.count;
+      return average > best.average ? { subject, average } : best;
+    }, { subject: '', average: 0 });
+
+    setStats({
+      totalEvaluations: evaluations.length,
+      totalStudents: totalStudents,
+      averageScore: averageScore,
+      completedEvaluations: completedEvaluations,
+      topPerformanceSubject: topSubject.subject,
+    });
   };
 
   const fetchEvaluationsList = async () => {
-    try {
-      const evaluations = await EvaluationResultsApiService.getEvaluationsList();
+    const evaluations = await EvaluationResultsApiService.getEvaluationsList();
 
-      if (evaluationId) {
-        // Se há um ID específico, filtrar apenas essa avaliação
-        const specificEvaluation = evaluations.filter((evaluation: EvaluationResult) => evaluation.id === evaluationId);
-        setEvaluationsList(specificEvaluation);
-      } else {
-        setEvaluationsList(evaluations);
-      }
-    } catch (error) {
-      console.error("Erro ao buscar avaliações:", error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível carregar a lista de avaliações",
-        variant: "destructive",
-      });
+    if (evaluationId) {
+      // Se há um ID específico, filtrar apenas essa avaliação
+      const specificEvaluation = evaluations.filter((evaluation: EvaluationResult) => evaluation.id === evaluationId);
+      setEvaluationsList(specificEvaluation);
+    } else {
+      setEvaluationsList(evaluations);
     }
   };
 
@@ -249,6 +264,278 @@ export default function Results() {
     navigate(`/app/avaliacao/${evaluationId}/resultados-detalhados`);
   };
 
+  // Função utilitária para tratar valores vazios
+  const formatFieldValue = (value: string | null | undefined, fallback: string = 'Não informado') => {
+    if (!value || value.trim() === '') return fallback;
+    return value;
+  };
+
+  // Função para renderizar diferentes tipos de gráficos
+  const renderProficiencyChart = (levels: Array<{name: string, value: number, color: string, textColor: string}>) => {
+    const total = levels.reduce((sum, level) => sum + level.value, 0);
+    
+    if (total === 0) return <div className="text-center text-muted-foreground">Nenhum dado disponível</div>;
+
+    switch (chartType) {
+      case 'bars':
+        return (
+          <div className="space-y-3">
+            {levels.map(level => (
+              <div key={level.name} className="space-y-1">
+                <div className="flex justify-between text-sm">
+                  <span className="font-medium">{level.name}</span>
+                  <span className={`font-bold ${level.textColor}`}>
+                    {level.value} ({((level.value / total) * 100).toFixed(1)}%)
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-3">
+                  <div 
+                    className={`${level.color} h-3 rounded-full transition-all duration-300`}
+                    style={{ width: `${(level.value / total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+
+      case 'area':
+        return (
+          <div className="space-y-4">
+            <div className="relative h-40 bg-gradient-to-b from-gray-50 to-white rounded-lg border p-4">
+              <svg className="w-full h-full" viewBox="0 0 100 40">
+                <defs>
+                  <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.8"/>
+                    <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.1"/>
+                  </linearGradient>
+                </defs>
+                {/* Linhas de grade */}
+                {[0, 10, 20, 30, 40].map(y => (
+                  <line
+                    key={y}
+                    x1="0"
+                    y1={y}
+                    x2="100"
+                    y2={y}
+                    stroke="#e5e7eb"
+                    strokeWidth="0.5"
+                    opacity="0.5"
+                  />
+                ))}
+                {/* Área do gráfico */}
+                <path
+                  d={(() => {
+                    const points = levels.map((level, index) => {
+                      const x = (index / (levels.length - 1)) * 100;
+                      let percentage = 0;
+                      
+                      if (total > 0) {
+                        percentage = level.value / total;
+                        
+                        // Verificar se é um caso extremo (apenas um valor não-zero)
+                        const nonZeroValues = levels.filter(l => l.value > 0).length;
+                        const maxValue = Math.max(...levels.map(l => l.value));
+                        
+                        if (nonZeroValues === 1 && level.value === maxValue) {
+                          // Caso extremo: criar uma forma mais suave e elegante
+                          if (index === 0) {
+                            return `M 0 12`; // Começar um pouco acima da base
+                          } else if (index === 1) {
+                            return `Q 12.5 12 25 12`; // Curva suave para o pico
+                          } else if (index === 2) {
+                            return `Q 37.5 20 50 20`; // Curva suave para descer
+                          } else {
+                            return `Q 75 30 100 40`; // Curva suave para a base
+                          }
+                        } else {
+                          // Caso normal: usar porcentagem real com curvas suaves
+                          const y = Math.max(12, Math.min(40, 40 - (percentage * 28)));
+                          if (index === 0) {
+                            return `M 0 ${y}`;
+                          } else {
+                            const prevY = index > 0 ? Math.max(12, Math.min(40, 40 - ((levels[index - 1].value / total) * 28))) : y;
+                            const midX = (index - 0.5) / (levels.length - 1) * 100;
+                            const midY = (prevY + y) / 2;
+                            return `Q ${midX} ${midY} ${x} ${y}`;
+                          }
+                        }
+                      }
+                      
+                      const y = Math.max(12, Math.min(40, 40 - (percentage * 28)));
+                      return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
+                    }).join(' ');
+                    
+                    return `${points} L 100 40 L 0 40 Z`;
+                  })()}
+                  fill="url(#areaGradient)"
+                  stroke="#3b82f6"
+                  strokeWidth="2"
+                />
+                {/* Pontos de dados */}
+                {levels.map((level, index) => {
+                  const x = (index / (levels.length - 1)) * 100;
+                  let percentage = 0;
+                  let y = 40;
+                  
+                  if (total > 0) {
+                    percentage = level.value / total;
+                    
+                    // Verificar se é um caso extremo
+                    const nonZeroValues = levels.filter(l => l.value > 0).length;
+                    const maxValue = Math.max(...levels.map(l => l.value));
+                    
+                    if (nonZeroValues === 1 && level.value === maxValue) {
+                      if (index === 0) {
+                        y = 12; // Base
+                      } else if (index === 1) {
+                        y = 12; // Pico
+                      } else if (index === 2) {
+                        y = 20; // Meio
+                      } else {
+                        y = 40; // Base
+                      }
+                    } else {
+                      y = Math.max(12, Math.min(40, 40 - (percentage * 28)));
+                    }
+                  }
+                  
+                  return (
+                    <g key={level.name}>
+                      <circle
+                        cx={x}
+                        cy={y}
+                        r="2"
+                        fill="white"
+                        stroke="#3b82f6"
+                        strokeWidth="2"
+                      />
+                      <text
+                        x={x}
+                        y={y - 3}
+                        textAnchor="middle"
+                        fontSize="2"
+                        fill="#374151"
+                        fontWeight="bold"
+                      >
+                        {level.value}
+                      </text>
+                    </g>
+                  );
+                })}
+              </svg>
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              {levels.map(level => (
+                <div key={level.name} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-3 h-3 rounded ${level.color}`}></div>
+                    <span className="font-medium">{level.name}</span>
+                  </div>
+                  <span className={`font-bold ${level.textColor}`}>
+                    {total > 0 ? ((level.value / total) * 100).toFixed(1) : '0.0'}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+
+      case 'network':
+        return (
+          <div className="space-y-4">
+            <div className="relative h-40 flex items-center justify-center bg-gradient-to-br from-gray-50 to-white rounded-lg border p-4">
+              <svg className="w-full h-full" viewBox="0 0 100 40">
+                {/* Círculo central */}
+                <circle
+                  cx="50"
+                  cy="20"
+                  r="2"
+                  fill="#6b7280"
+                  opacity="0.3"
+                />
+                
+                {levels.map((level, index) => {
+                  const angle = (index / levels.length) * 2 * Math.PI - Math.PI / 2; // Começar do topo
+                  const radius = 15;
+                  const centerX = 50;
+                  const centerY = 20;
+                  const x = centerX + Math.cos(angle) * radius;
+                  const y = centerY + Math.sin(angle) * radius;
+                  const size = Math.max(4, (level.value / total) * 10);
+                  
+                  return (
+                    <g key={level.name}>
+                      {/* Linha conectando ao centro */}
+                      <line
+                        x1={centerX}
+                        y1={centerY}
+                        x2={x}
+                        y2={y}
+                        stroke="#e5e7eb"
+                        strokeWidth="1"
+                        opacity="0.6"
+                      />
+                      {/* Nó principal */}
+                      <circle
+                        cx={x}
+                        cy={y}
+                        r={size}
+                        fill={level.color.replace('bg-', '').includes('red') ? '#ef4444' : 
+                              level.color.replace('bg-', '').includes('yellow') ? '#eab308' :
+                              level.color.replace('bg-', '').includes('blue') ? '#3b82f6' : '#22c55e'}
+                        opacity="0.9"
+                        stroke="white"
+                        strokeWidth="1"
+                      />
+                      {/* Valor no centro do nó */}
+                      <text
+                        x={x}
+                        y={y + 1}
+                        textAnchor="middle"
+                        fontSize="2.5"
+                        fill="white"
+                        fontWeight="bold"
+                      >
+                        {level.value}
+                      </text>
+                      {/* Label do nível */}
+                      <text
+                        x={x}
+                        y={y + size + 4}
+                        textAnchor="middle"
+                        fontSize="2"
+                        fill="#374151"
+                        fontWeight="500"
+                      >
+                        {level.name.split(' ')[0]}
+                      </text>
+                    </g>
+                  );
+                })}
+              </svg>
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              {levels.map(level => (
+                <div key={level.name} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-3 h-3 rounded ${level.color}`}></div>
+                    <span className="font-medium">{level.name}</span>
+                  </div>
+                  <span className={`font-bold ${level.textColor}`}>
+                    {((level.value / total) * 100).toFixed(1)}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
   const handleExportResults = async (evaluationId?: string) => {
     try {
       const XLSX = await import('xlsx');
@@ -271,11 +558,11 @@ export default function Results() {
       const worksheetData = [
         ['Avaliação', 'Disciplina', 'Escola', 'Série', 'Município', 'Participantes', 'Média', 'Proficiência', 'Status'],
         ...dataToExport.map(evaluation => [
-          evaluation.titulo,
-          evaluation.disciplina,
-          evaluation.escola,
-          evaluation.serie,
-          evaluation.municipio,
+          formatFieldValue(evaluation.titulo, 'Título não informado'),
+          formatFieldValue(evaluation.disciplina, 'N/A'),
+          formatFieldValue(evaluation.escola, 'N/A'),
+          formatFieldValue(evaluation.serie, 'N/A'),
+          formatFieldValue(evaluation.municipio, 'N/A'),
           `${evaluation.alunos_participantes}/${evaluation.total_alunos}`,
           evaluation.media_nota.toFixed(1),
           evaluation.media_proficiencia.toFixed(1),
@@ -408,6 +695,128 @@ export default function Results() {
         </Card>
       </div>
 
+      {/* Gráficos de Proficiência */}
+      {!isLoading && filteredEvaluations.length > 0 && (
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* Gráfico de Distribuição Geral */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5" />
+                  Distribuição Geral de Proficiência
+                </CardTitle>
+                {/* Controles de alternância de gráfico */}
+                <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
+                  <button
+                    onClick={() => setChartType('bars')}
+                    className={`px-3 py-1 text-xs rounded-md transition-all flex items-center gap-1 ${
+                      chartType === 'bars' 
+                        ? 'bg-white text-blue-600 shadow-sm' 
+                        : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                    title="Gráfico de Barras"
+                  >
+                    <BarChart className="h-3 w-3" />
+                    Barras
+                  </button>
+                  <button
+                    onClick={() => setChartType('area')}
+                    className={`px-3 py-1 text-xs rounded-md transition-all flex items-center gap-1 ${
+                      chartType === 'area' 
+                        ? 'bg-white text-blue-600 shadow-sm' 
+                        : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                    title="Gráfico de Área"
+                  >
+                    <AreaChart className="h-3 w-3" />
+                    Área
+                  </button>
+                  <button
+                    onClick={() => setChartType('network')}
+                    className={`px-3 py-1 text-xs rounded-md transition-all flex items-center gap-1 ${
+                      chartType === 'network' 
+                        ? 'bg-white text-blue-600 shadow-sm' 
+                        : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                    title="Gráfico de Rede"
+                  >
+                    <Network className="h-3 w-3" />
+                    Rede
+                  </button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {(() => {
+                  const total = filteredEvaluations.reduce((sum, evaluation) => 
+                    sum + evaluation.distribuicao_classificacao.abaixo_do_basico + 
+                    evaluation.distribuicao_classificacao.basico + 
+                    evaluation.distribuicao_classificacao.adequado + 
+                    evaluation.distribuicao_classificacao.avancado, 0);
+                  
+                  if (total === 0) return <div className="text-center text-muted-foreground">Nenhum dado disponível</div>;
+                  
+                  const abaixo = filteredEvaluations.reduce((sum, evaluation) => 
+                    sum + evaluation.distribuicao_classificacao.abaixo_do_basico, 0);
+                  const basico = filteredEvaluations.reduce((sum, evaluation) => 
+                    sum + evaluation.distribuicao_classificacao.basico, 0);
+                  const adequado = filteredEvaluations.reduce((sum, evaluation) => 
+                    sum + evaluation.distribuicao_classificacao.adequado, 0);
+                  const avancado = filteredEvaluations.reduce((sum, evaluation) => 
+                    sum + evaluation.distribuicao_classificacao.avancado, 0);
+                  
+                  const levels = [
+                    { name: 'Abaixo do Básico', value: abaixo, color: 'bg-red-500', textColor: 'text-red-600' },
+                    { name: 'Básico', value: basico, color: 'bg-yellow-500', textColor: 'text-yellow-600' },
+                    { name: 'Adequado', value: adequado, color: 'bg-blue-500', textColor: 'text-blue-600' },
+                    { name: 'Avançado', value: avancado, color: 'bg-green-500', textColor: 'text-green-600' }
+                  ];
+                  
+                  return renderProficiencyChart(levels);
+                })()}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Gráfico de Médias por Disciplina */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <TrendingUp className="h-5 w-5" />
+                Média por Disciplina
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {uniqueSubjects.slice(0, 5).map(subject => {
+                  const subjectEvaluations = filteredEvaluations.filter(evaluation => evaluation.disciplina === subject);
+                  const averageScore = subjectEvaluations.length > 0 
+                    ? subjectEvaluations.reduce((sum, evaluation) => sum + evaluation.media_nota, 0) / subjectEvaluations.length
+                    : 0;
+                  
+                  return (
+                    <div key={subject} className="space-y-1">
+                      <div className="flex justify-between text-sm">
+                        <span className="font-medium">{subject}</span>
+                        <span className="text-muted-foreground">{averageScore.toFixed(1)}</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="bg-blue-600 h-2 rounded-full transition-all"
+                          style={{ width: `${Math.min(100, (averageScore / 10) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Filtros e Busca */}
       {!isSpecificEvaluation && (
         <Card>
@@ -498,7 +907,7 @@ export default function Results() {
                       {/* Informações principais */}
                       <div className="flex-1 space-y-2">
                         <div className="flex items-center gap-2">
-                          <h3 className="font-semibold text-lg">{evaluation.titulo}</h3>
+                          <h3 className="font-semibold text-lg">{formatFieldValue(evaluation.titulo, 'Título não informado')}</h3>
                           <Badge className={statusConfig.color}>
                             {statusConfig.label}
                           </Badge>
@@ -506,17 +915,17 @@ export default function Results() {
 
                         <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
                           <div className="flex items-center gap-1">
-                            <Badge variant="outline">{evaluation.disciplina}</Badge>
+                            <Badge variant="outline">{formatFieldValue(evaluation.disciplina, 'Disciplina não informada')}</Badge>
                             <span>•</span>
-                            <span>{evaluation.serie}</span>
+                            <span>{formatFieldValue(evaluation.serie, 'Série não informada')}</span>
                           </div>
                           <div className="flex items-center gap-1">
                             <School className="h-4 w-4" />
-                            <span>{evaluation.escola}</span>
+                            <span>{formatFieldValue(evaluation.escola, 'Escola não informada')}</span>
                           </div>
                           <div className="flex items-center gap-1">
                             <MapPin className="h-4 w-4" />
-                            <span>{evaluation.municipio}</span>
+                            <span>{formatFieldValue(evaluation.municipio, 'Município não informado')}</span>
                           </div>
                         </div>
 
@@ -549,22 +958,67 @@ export default function Results() {
                           </div>
                         </div>
 
-                        {/* Distribuição de classificação */}
-                        <div className="flex items-center gap-4 text-xs">
-                          <span className="text-muted-foreground">Distribuição:</span>
-                          <div className="flex gap-2">
-                            <Badge variant="outline" className="text-red-600 border-red-300">
-                              Abaixo: {evaluation.distribuicao_classificacao.abaixo_do_basico}
-                            </Badge>
-                            <Badge variant="outline" className="text-yellow-600 border-yellow-300">
-                              Básico: {evaluation.distribuicao_classificacao.basico}
-                            </Badge>
-                            <Badge variant="outline" className="text-blue-600 border-blue-300">
-                              Adequado: {evaluation.distribuicao_classificacao.adequado}
-                            </Badge>
-                            <Badge variant="outline" className="text-green-600 border-green-300">
-                              Avançado: {evaluation.distribuicao_classificacao.avancado}
-                            </Badge>
+                        {/* Distribuição de classificação com gráfico visual */}
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-muted-foreground">Distribuição de Proficiência:</span>
+                          </div>
+                          <div className="flex items-end gap-1 h-16">
+                            {/* Gráfico de barras */}
+                            <div className="flex-1 flex flex-col items-center">
+                              <div 
+                                className="w-full bg-red-500 rounded-t-sm transition-all hover:bg-red-600"
+                                style={{ 
+                                  height: `${Math.max(10, (evaluation.distribuicao_classificacao.abaixo_do_basico / Math.max(1, evaluation.alunos_participantes)) * 100)}%` 
+                                }}
+                                title={`Abaixo do Básico: ${evaluation.distribuicao_classificacao.abaixo_do_basico} alunos`}
+                              />
+                              <span className="text-xs text-red-600 font-medium mt-1">
+                                {evaluation.distribuicao_classificacao.abaixo_do_basico}
+                              </span>
+                            </div>
+                            <div className="flex-1 flex flex-col items-center">
+                              <div 
+                                className="w-full bg-yellow-500 rounded-t-sm transition-all hover:bg-yellow-600"
+                                style={{ 
+                                  height: `${Math.max(10, (evaluation.distribuicao_classificacao.basico / Math.max(1, evaluation.alunos_participantes)) * 100)}%` 
+                                }}
+                                title={`Básico: ${evaluation.distribuicao_classificacao.basico} alunos`}
+                              />
+                              <span className="text-xs text-yellow-600 font-medium mt-1">
+                                {evaluation.distribuicao_classificacao.basico}
+                              </span>
+                            </div>
+                            <div className="flex-1 flex flex-col items-center">
+                              <div 
+                                className="w-full bg-blue-500 rounded-t-sm transition-all hover:bg-blue-600"
+                                style={{ 
+                                  height: `${Math.max(10, (evaluation.distribuicao_classificacao.adequado / Math.max(1, evaluation.alunos_participantes)) * 100)}%` 
+                                }}
+                                title={`Adequado: ${evaluation.distribuicao_classificacao.adequado} alunos`}
+                              />
+                              <span className="text-xs text-blue-600 font-medium mt-1">
+                                {evaluation.distribuicao_classificacao.adequado}
+                              </span>
+                            </div>
+                            <div className="flex-1 flex flex-col items-center">
+                              <div 
+                                className="w-full bg-green-500 rounded-t-sm transition-all hover:bg-green-600"
+                                style={{ 
+                                  height: `${Math.max(10, (evaluation.distribuicao_classificacao.avancado / Math.max(1, evaluation.alunos_participantes)) * 100)}%` 
+                                }}
+                                title={`Avançado: ${evaluation.distribuicao_classificacao.avancado} alunos`}
+                              />
+                              <span className="text-xs text-green-600 font-medium mt-1">
+                                {evaluation.distribuicao_classificacao.avancado}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex justify-between text-xs text-muted-foreground">
+                            <span>Abaixo</span>
+                            <span>Básico</span>
+                            <span>Adequado</span>
+                            <span>Avançado</span>
                           </div>
                         </div>
                       </div>

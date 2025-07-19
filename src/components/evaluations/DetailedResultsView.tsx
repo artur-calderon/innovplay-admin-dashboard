@@ -156,6 +156,12 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
         }
     };
 
+    // Função utilitária para tratar valores vazios
+    const formatFieldValue = (value: string | null | undefined, fallback: string = 'Não informado') => {
+        if (!value || value.trim() === '') return fallback;
+        return value;
+    };
+
     const handleViewStudentDetails = (studentId: string) => {
         navigate(`/app/avaliacao/${evaluationId}/aluno/${studentId}/resultados`);
     };
@@ -176,7 +182,7 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
 
             // Criar dados da planilha
             const worksheetData = [
-                ['Nome', 'Turma', 'Nota', 'Proficiência', 'Classificação', 'Questões Respondidas', 'Acertos', 'Erros', 'Em Branco', 'Tempo (min)', 'Status'],
+                ['Nome', 'Turma', 'Nota', 'Proficiência', 'Classificação', 'Questões Respondidas', 'Acertos', 'Erros', 'Tempo (min)', 'Status'],
                 ...filteredStudents.map(student => [
                     student.nome,
                     student.turma,
@@ -186,7 +192,6 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                     student.questoes_respondidas,
                     student.acertos,
                     student.erros,
-                    student.em_branco,
                     Math.floor(student.tempo_gasto / 60),
                     student.status === 'concluida' ? 'Concluída' : 'Pendente'
                 ])
@@ -321,19 +326,19 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                         <div className="space-y-2">
                             <div className="text-sm font-medium text-muted-foreground">Disciplina</div>
-                            <div className="font-semibold">{evaluationInfo.disciplina}</div>
+                            <div className="font-semibold">{formatFieldValue(evaluationInfo.disciplina, 'Disciplina não informada')}</div>
                         </div>
                         <div className="space-y-2">
                             <div className="text-sm font-medium text-muted-foreground">Série</div>
-                            <div className="font-semibold">{evaluationInfo.serie}</div>
+                            <div className="font-semibold">{formatFieldValue(evaluationInfo.serie, 'Série não informada')}</div>
                         </div>
                         <div className="space-y-2">
                             <div className="text-sm font-medium text-muted-foreground">Escola</div>
-                            <div className="font-semibold">{evaluationInfo.escola}</div>
+                            <div className="font-semibold">{formatFieldValue(evaluationInfo.escola, 'Escola não informada')}</div>
                         </div>
                         <div className="space-y-2">
                             <div className="text-sm font-medium text-muted-foreground">Município</div>
-                            <div className="font-semibold">{evaluationInfo.municipio}</div>
+                            <div className="font-semibold">{formatFieldValue(evaluationInfo.municipio, 'Município não informado')}</div>
                         </div>
                     </div>
 
@@ -498,11 +503,6 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                                                     <div className="flex items-center gap-2">
                                                         <XCircle className="h-4 w-4 text-red-600" />
                                                         <span className="text-sm text-red-600">{student.erros} erros</span>
-                                                    </div>
-
-                                                    <div className="flex items-center gap-2">
-                                                        <Minus className="h-4 w-4 text-gray-600" />
-                                                        <span className="text-sm text-gray-600">{student.em_branco} em branco</span>
                                                     </div>
 
                                                     <div className="flex items-center gap-2">

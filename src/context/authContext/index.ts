@@ -29,6 +29,7 @@ interface AuthContext{
     user:User,
     loading: boolean,
     login: (registration:string, password:string) => void,
+    autoLogin: () => Promise<void>,
     logout: () => Promise<void>,
     setUser: (user:User) => void,
     persistUser: () => Promise<boolean>
@@ -53,6 +54,33 @@ export const useAuth = create<AuthContext>((set) => ({
     },
     setUser: (user) => {
         set({ user })
+    },
+    autoLogin: async () => {
+        set({ loading: true })
+        try {
+            const response = await api.post("/login/", { 
+                registration: "moises@innovplay.com", 
+                password: "12345678" 
+            })
+
+            toast.success("Login automático realizado com sucesso!");
+
+            localStorage.setItem('token', response.data.token)
+
+            axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`
+
+            set({user: response.data.user})
+
+            return response;
+        } catch (error: unknown) {
+            console.error("Erro no login automático:", error);
+            const axiosError = error as AxiosError<ApiError>;
+            const errorMessage = axiosError.response?.data?.erro || axiosError.response?.data?.error || "Erro ao autenticar!";
+            toast.error(errorMessage);
+            throw error;
+        } finally {
+            set({ loading: false })
+        }
     },
     login: async (registration: string, password: string) => {
         set({ loading: true })

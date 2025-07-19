@@ -1118,12 +1118,6 @@ export function DetailedEvaluationReport({ evaluationId, onBack }: DetailedEvalu
                                     </div>
                                     <div className="text-xs text-muted-foreground">Erros</div>
                                   </div>
-                                  <div className="text-center">
-                                    <div className="text-lg font-bold text-gray-600">
-                                      {analysis.blankRate.toFixed(1)}%
-                                    </div>
-                                    <div className="text-xs text-muted-foreground">Em branco</div>
-                                  </div>
                                 </div>
 
                                 {analysis.commonErrors.length > 0 && (
