@@ -4,8 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
-import { 
-  BarChart3, 
+import {
+  BarChart3,
   Download,
   TrendingUp,
   Users,
@@ -28,6 +28,47 @@ import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
+import { useAuth } from "@/context/authContext";
+
+// Interfaces para os dados da API
+interface EvaluationResult {
+  id: string;
+  titulo: string;
+  disciplina: string;
+  curso: string;
+  serie: string;
+  escola: string;
+  municipio: string;
+  data_aplicacao: string;
+  status: 'concluida' | 'em_andamento' | 'pendente';
+  total_alunos: number;
+  alunos_participantes: number;
+  alunos_ausentes: number;
+  media_nota: number;
+  media_proficiencia: number;
+  distribuicao_classificacao: {
+    abaixo_do_basico: number;
+    basico: number;
+    adequado: number;
+    avancado: number;
+  };
+}
+
+interface StudentResult {
+  id: string;
+  nome: string;
+  turma: string;
+  nota: number;
+  proficiencia: number;
+  classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+  questoes_respondidas: number;
+  acertos: number;
+  erros: number;
+  em_branco: number;
+  tempo_gasto: number;
+  status: 'concluida' | 'pendente';
+}
 
 interface ResultsStats {
   totalEvaluations: number;
@@ -37,103 +78,9 @@ interface ResultsStats {
   topPerformanceSubject: string;
 }
 
-interface EvaluationSummary {
-  id: string;
-  title: string;
-  subject: string;
-  school: string;
-  municipality: string;
-  grade: string;
-  totalStudents: number;
-  completedStudents: number;
-  averageScore: number;
-  averageProficiency: number;
-  lastEvaluationDate: string;
-  proficiencyLevel: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
-  status: 'completed' | 'pending' | 'in_progress';
-}
-
-// Dados mockados das avaliações
-const mockEvaluationsData: EvaluationSummary[] = [
-  {
-    id: "avaliacao-1",
-    title: "Avaliação de Matemática - 3º Ano",
-    subject: "Matemática",
-    school: "Escola Teste",
-    municipality: "São Paulo",
-    grade: "3º Ano",
-    totalStudents: 45,
-    completedStudents: 42,
-    averageScore: 7.2,
-    averageProficiency: 365,
-    lastEvaluationDate: "2024-01-15T10:00:00Z",
-    proficiencyLevel: "Adequado",
-    status: "completed"
-  },
-  {
-    id: "avaliacao-2", 
-    title: "Avaliação de Português - 6º Ano",
-    subject: "Português",
-    school: "E.M. Professor João Silva",
-    municipality: "Rio de Janeiro",
-    grade: "6º Ano",
-    totalStudents: 38,
-    completedStudents: 35,
-    averageScore: 8.1,
-    averageProficiency: 425,
-    lastEvaluationDate: "2024-01-12T14:30:00Z",
-    proficiencyLevel: "Avançado",
-    status: "completed"
-  },
-  {
-    id: "avaliacao-3",
-    title: "Avaliação de História - 1º Ano EM",
-    subject: "História",
-    school: "Colégio Santa Maria",
-    municipality: "Belo Horizonte",
-    grade: "1º Ano EM",
-    totalStudents: 52,
-    completedStudents: 48,
-    averageScore: 6.8,
-    averageProficiency: 298,
-    lastEvaluationDate: "2024-01-18T09:15:00Z",
-    proficiencyLevel: "Básico",
-    status: "completed"
-  },
-  {
-    id: "avaliacao-4",
-    title: "Avaliação de Ciências - 5º Ano",
-    subject: "Ciências",
-    school: "Escola Teste",
-    municipality: "São Paulo",
-    grade: "5º Ano",
-    totalStudents: 40,
-    completedStudents: 38,
-    averageScore: 7.8,
-    averageProficiency: 385,
-    lastEvaluationDate: "2024-01-20T08:30:00Z",
-    proficiencyLevel: "Adequado",
-    status: "completed"
-  },
-  {
-    id: "avaliacao-5",
-    title: "Avaliação de Geografia - 8º Ano",
-    subject: "Geografia",
-    school: "E.M. Professor João Silva",
-    municipality: "Rio de Janeiro",
-    grade: "8º Ano",
-    totalStudents: 35,
-    completedStudents: 32,
-    averageScore: 6.5,
-    averageProficiency: 312,
-    lastEvaluationDate: "2024-01-22T13:45:00Z",
-    proficiencyLevel: "Adequado",
-    status: "completed"
-  }
-];
-
 export default function Results() {
   const { id: evaluationId } = useParams<{ id: string }>();
+  const { user } = useAuth();
   const [stats, setStats] = useState<ResultsStats>({
     totalEvaluations: 0,
     totalStudents: 0,
@@ -141,8 +88,8 @@ export default function Results() {
     completedEvaluations: 0,
     topPerformanceSubject: '',
   });
-  const [evaluationsList, setEvaluationsList] = useState<EvaluationSummary[]>([]);
-  const [filteredEvaluations, setFilteredEvaluations] = useState<EvaluationSummary[]>([]);
+  const [evaluationsList, setEvaluationsList] = useState<EvaluationResult[]>([]);
+  const [filteredEvaluations, setFilteredEvaluations] = useState<EvaluationResult[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -160,10 +107,10 @@ export default function Results() {
 
     // Filtro por busca
     if (searchTerm) {
-      filtered = filtered.filter(evaluation => 
-        evaluation.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        evaluation.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        evaluation.school.toLowerCase().includes(searchTerm.toLowerCase())
+      filtered = filtered.filter(evaluation =>
+        evaluation.titulo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        evaluation.disciplina.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        evaluation.escola.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -174,7 +121,7 @@ export default function Results() {
 
     // Filtro por disciplina
     if (subjectFilter !== 'all') {
-      filtered = filtered.filter(evaluation => evaluation.subject === subjectFilter);
+      filtered = filtered.filter(evaluation => evaluation.disciplina === subjectFilter);
     }
 
     setFilteredEvaluations(filtered);
@@ -186,6 +133,11 @@ export default function Results() {
       await Promise.all([fetchResultsStats(), fetchEvaluationsList()]);
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar os dados dos resultados",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -193,71 +145,91 @@ export default function Results() {
 
   const fetchResultsStats = async () => {
     try {
-      // Simular carregamento de dados da API
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      const totalStudents = mockEvaluationsData.reduce((sum, evaluation) => sum + evaluation.totalStudents, 0);
-      const totalCompletedStudents = mockEvaluationsData.reduce((sum, evaluation) => sum + evaluation.completedStudents, 0);
-      const averageScore = mockEvaluationsData.reduce((sum, evaluation) => sum + evaluation.averageScore, 0) / mockEvaluationsData.length;
-      const completedEvaluations = mockEvaluationsData.filter(e => e.status === 'completed').length;
-      
+      const evaluations = await EvaluationResultsApiService.getEvaluationsList();
+
+      if (evaluations.length === 0) {
+        setStats({
+          totalEvaluations: 0,
+          totalStudents: 0,
+          averageScore: 0,
+          completedEvaluations: 0,
+          topPerformanceSubject: '',
+        });
+        return;
+      }
+
+      const totalStudents = evaluations.reduce((sum: number, evaluation: EvaluationResult) =>
+        sum + evaluation.alunos_participantes, 0);
+      const averageScore = evaluations.reduce((sum: number, evaluation: EvaluationResult) =>
+        sum + evaluation.media_nota, 0) / evaluations.length;
+      const completedEvaluations = evaluations.filter((e: EvaluationResult) => e.status === 'concluida').length;
+
       // Encontrar a disciplina com melhor desempenho
-      const subjectScores = mockEvaluationsData.reduce((acc, evaluation) => {
-        if (!acc[evaluation.subject]) {
-          acc[evaluation.subject] = { total: 0, count: 0 };
+      const subjectScores = evaluations.reduce((acc: Record<string, { total: number; count: number }>, evaluation: EvaluationResult) => {
+        if (!acc[evaluation.disciplina]) {
+          acc[evaluation.disciplina] = { total: 0, count: 0 };
         }
-        acc[evaluation.subject].total += evaluation.averageScore;
-        acc[evaluation.subject].count += 1;
+        acc[evaluation.disciplina].total += evaluation.media_nota;
+        acc[evaluation.disciplina].count += 1;
         return acc;
-      }, {} as Record<string, { total: number; count: number }>);
-      
-      const topSubject = Object.entries(subjectScores).reduce((best, [subject, data]) => {
+      }, {});
+
+      const topSubject = Object.entries(subjectScores).reduce((best: { subject: string; average: number }, [subject, data]) => {
         const average = data.total / data.count;
         return average > best.average ? { subject, average } : best;
       }, { subject: '', average: 0 });
 
       setStats({
-        totalEvaluations: mockEvaluationsData.length,
-        totalStudents: totalCompletedStudents,
+        totalEvaluations: evaluations.length,
+        totalStudents: totalStudents,
         averageScore: averageScore,
         completedEvaluations: completedEvaluations,
         topPerformanceSubject: topSubject.subject,
       });
     } catch (error) {
       console.error("Erro ao buscar estatísticas:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar as estatísticas",
+        variant: "destructive",
+      });
     }
   };
 
   const fetchEvaluationsList = async () => {
     try {
-      // Simular carregamento de dados da API
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
+      const evaluations = await EvaluationResultsApiService.getEvaluationsList();
+
       if (evaluationId) {
         // Se há um ID específico, filtrar apenas essa avaliação
-        const specificEvaluation = mockEvaluationsData.filter(evaluation => evaluation.id === evaluationId);
+        const specificEvaluation = evaluations.filter((evaluation: EvaluationResult) => evaluation.id === evaluationId);
         setEvaluationsList(specificEvaluation);
       } else {
-        setEvaluationsList(mockEvaluationsData);
+        setEvaluationsList(evaluations);
       }
     } catch (error) {
       console.error("Erro ao buscar avaliações:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar a lista de avaliações",
+        variant: "destructive",
+      });
     }
   };
 
-  const getStatusConfig = (status: EvaluationSummary['status']) => {
+  const getStatusConfig = (status: EvaluationResult['status']) => {
     const configs = {
-      completed: { 
-        label: "Concluída", 
-        color: "bg-green-100 text-green-800 border-green-300" 
+      concluida: {
+        label: "Concluída",
+        color: "bg-green-100 text-green-800 border-green-300"
       },
-      in_progress: { 
-        label: "Em Andamento", 
-        color: "bg-blue-100 text-blue-800 border-blue-300" 
+      em_andamento: {
+        label: "Em Andamento",
+        color: "bg-blue-100 text-blue-800 border-blue-300"
       },
-      pending: { 
-        label: "Pendente", 
-        color: "bg-gray-100 text-gray-800 border-gray-300" 
+      pendente: {
+        label: "Pendente",
+        color: "bg-gray-100 text-gray-800 border-gray-300"
       },
     };
     return configs[status];
@@ -274,18 +246,18 @@ export default function Results() {
   };
 
   const handleViewResults = (evaluationId: string) => {
-    navigate(`/app/avaliacao/${evaluationId}/resultados`);
+    navigate(`/app/avaliacao/${evaluationId}/resultados-detalhados`);
   };
 
   const handleExportResults = async (evaluationId?: string) => {
     try {
       const XLSX = await import('xlsx');
       const { saveAs } = await import('file-saver');
-      
-      const dataToExport = evaluationId 
+
+      const dataToExport = evaluationId
         ? filteredEvaluations.filter(e => e.id === evaluationId)
         : filteredEvaluations;
-      
+
       if (dataToExport.length === 0) {
         toast({
           title: "Nenhum dado para exportar",
@@ -294,33 +266,33 @@ export default function Results() {
         });
         return;
       }
-      
+
       // Criar dados da planilha
       const worksheetData = [
         ['Avaliação', 'Disciplina', 'Escola', 'Série', 'Município', 'Participantes', 'Média', 'Proficiência', 'Status'],
         ...dataToExport.map(evaluation => [
-          evaluation.title,
-          evaluation.subject,
-          evaluation.school,
-          evaluation.grade,
-          evaluation.municipality,
-          `${evaluation.completedStudents}/${evaluation.totalStudents}`,
-          evaluation.averageScore.toFixed(1),
-          evaluation.averageProficiency,
-          evaluation.status === 'completed' ? 'Concluída' : evaluation.status === 'in_progress' ? 'Em Andamento' : 'Pendente'
+          evaluation.titulo,
+          evaluation.disciplina,
+          evaluation.escola,
+          evaluation.serie,
+          evaluation.municipio,
+          `${evaluation.alunos_participantes}/${evaluation.total_alunos}`,
+          evaluation.media_nota.toFixed(1),
+          evaluation.media_proficiencia.toFixed(1),
+          evaluation.status === 'concluida' ? 'Concluída' : evaluation.status === 'em_andamento' ? 'Em Andamento' : 'Pendente'
         ])
       ];
-      
+
       const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Avaliações');
-      
+
       const fileName = `resultados-avaliacoes-${new Date().toISOString().split('T')[0]}.xlsx`;
       const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
       const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      
+
       saveAs(blob, fileName);
-      
+
       toast({
         title: "Exportação concluída!",
         description: "Os resultados foram exportados com sucesso.",
@@ -335,7 +307,7 @@ export default function Results() {
     }
   };
 
-  const uniqueSubjects = [...new Set(evaluationsList.map(e => e.subject))];
+  const uniqueSubjects = [...new Set(evaluationsList.map(e => e.disciplina))];
   const isSpecificEvaluation = Boolean(evaluationId);
 
   return (
@@ -347,7 +319,7 @@ export default function Results() {
             {isSpecificEvaluation ? 'Resultado da Avaliação' : 'Resultados das Avaliações'}
           </h1>
           <p className="text-muted-foreground">
-            {isSpecificEvaluation 
+            {isSpecificEvaluation
               ? `Análise detalhada dos resultados da avaliação`
               : 'Acompanhe o desempenho das avaliações e gere relatórios'
             }
@@ -383,7 +355,7 @@ export default function Results() {
             </p>
           </CardContent>
         </Card>
-        
+
         <Card className="border-l-4 border-l-green-500">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -400,7 +372,7 @@ export default function Results() {
             </p>
           </CardContent>
         </Card>
-        
+
         <Card className="border-l-4 border-l-purple-500">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -417,7 +389,7 @@ export default function Results() {
             </p>
           </CardContent>
         </Card>
-        
+
         <Card className="border-l-4 border-l-orange-500">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -461,9 +433,9 @@ export default function Results() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos os Status</SelectItem>
-                  <SelectItem value="completed">Concluída</SelectItem>
-                  <SelectItem value="in_progress">Em Andamento</SelectItem>
-                  <SelectItem value="pending">Pendente</SelectItem>
+                  <SelectItem value="concluida">Concluída</SelectItem>
+                  <SelectItem value="em_andamento">Em Andamento</SelectItem>
+                  <SelectItem value="pendente">Pendente</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={subjectFilter} onValueChange={setSubjectFilter}>
@@ -516,8 +488,8 @@ export default function Results() {
             <div className="space-y-4">
               {filteredEvaluations.map((evaluation) => {
                 const statusConfig = getStatusConfig(evaluation.status);
-                const participationRate = evaluation.totalStudents > 0 
-                  ? (evaluation.completedStudents / evaluation.totalStudents) * 100 
+                const participationRate = evaluation.total_alunos > 0
+                  ? (evaluation.alunos_participantes / evaluation.total_alunos) * 100
                   : 0;
 
                 return (
@@ -526,73 +498,88 @@ export default function Results() {
                       {/* Informações principais */}
                       <div className="flex-1 space-y-2">
                         <div className="flex items-center gap-2">
-                          <h3 className="font-semibold text-lg">{evaluation.title}</h3>
+                          <h3 className="font-semibold text-lg">{evaluation.titulo}</h3>
                           <Badge className={statusConfig.color}>
                             {statusConfig.label}
                           </Badge>
                         </div>
-                        
+
                         <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
                           <div className="flex items-center gap-1">
-                            <Badge variant="outline">{evaluation.subject}</Badge>
+                            <Badge variant="outline">{evaluation.disciplina}</Badge>
                             <span>•</span>
-                            <span>{evaluation.grade}</span>
+                            <span>{evaluation.serie}</span>
                           </div>
                           <div className="flex items-center gap-1">
                             <School className="h-4 w-4" />
-                            <span>{evaluation.school}</span>
+                            <span>{evaluation.escola}</span>
                           </div>
                           <div className="flex items-center gap-1">
                             <MapPin className="h-4 w-4" />
-                            <span>{evaluation.municipality}</span>
+                            <span>{evaluation.municipio}</span>
                           </div>
                         </div>
-                        
+
                         <div className="flex items-center gap-6">
                           <div className="flex items-center gap-2">
                             <Users className="h-4 w-4 text-muted-foreground" />
                             <span className="text-sm font-medium">
-                              {evaluation.completedStudents}/{evaluation.totalStudents} alunos
+                              {evaluation.alunos_participantes}/{evaluation.total_alunos} alunos
                             </span>
                             <Progress value={participationRate} className="w-20 h-2" />
                           </div>
-                          
+
                           <div className="flex items-center gap-2">
                             <Target className="h-4 w-4 text-muted-foreground" />
                             <span className="text-sm font-medium">
-                              Média: {evaluation.averageScore.toFixed(1)}
+                              Média: {evaluation.media_nota.toFixed(1)}
                             </span>
-                            {evaluation.averageScore >= 7 ? (
+                            {evaluation.media_nota >= 7 ? (
                               <TrendingUp className="h-4 w-4 text-green-600" />
                             ) : (
                               <AlertTriangle className="h-4 w-4 text-orange-600" />
                             )}
                           </div>
-                          
-                          <Badge className={getProficiencyColor(evaluation.proficiencyLevel)}>
-                            {evaluation.proficiencyLevel}
-                          </Badge>
-                          
+
                           <div className="text-xs text-muted-foreground">
-                            {formatDistanceToNow(new Date(evaluation.lastEvaluationDate), { 
-                              addSuffix: true, 
-                              locale: ptBR 
+                            {formatDistanceToNow(new Date(evaluation.data_aplicacao), {
+                              addSuffix: true,
+                              locale: ptBR
                             })}
+                          </div>
+                        </div>
+
+                        {/* Distribuição de classificação */}
+                        <div className="flex items-center gap-4 text-xs">
+                          <span className="text-muted-foreground">Distribuição:</span>
+                          <div className="flex gap-2">
+                            <Badge variant="outline" className="text-red-600 border-red-300">
+                              Abaixo: {evaluation.distribuicao_classificacao.abaixo_do_basico}
+                            </Badge>
+                            <Badge variant="outline" className="text-yellow-600 border-yellow-300">
+                              Básico: {evaluation.distribuicao_classificacao.basico}
+                            </Badge>
+                            <Badge variant="outline" className="text-blue-600 border-blue-300">
+                              Adequado: {evaluation.distribuicao_classificacao.adequado}
+                            </Badge>
+                            <Badge variant="outline" className="text-green-600 border-green-300">
+                              Avançado: {evaluation.distribuicao_classificacao.avancado}
+                            </Badge>
                           </div>
                         </div>
                       </div>
 
                       {/* Ações */}
                       <div className="flex gap-2">
-                        <Button 
-                          variant="outline" 
+                        <Button
+                          variant="outline"
                           onClick={() => handleViewResults(evaluation.id)}
                         >
                           <Eye className="h-4 w-4 mr-2" />
                           Ver Resultados
                         </Button>
-                        <Button 
-                          variant="outline" 
+                        <Button
+                          variant="outline"
                           onClick={() => handleExportResults(evaluation.id)}
                         >
                           <Download className="h-4 w-4 mr-2" />
