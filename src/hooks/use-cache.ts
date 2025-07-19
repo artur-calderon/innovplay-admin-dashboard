@@ -106,12 +106,12 @@ export function useCache<T>(
     } catch (err: any) {
       setError(err);
       if (onError) onError(err);
-      
+
       // Se há cache, mesmo expirado, usar em caso de erro
       if (cachedItem) {
         setData(cachedItem.data);
       }
-      
+
       throw err;
     } finally {
       setIsLoading(false);
@@ -138,13 +138,13 @@ export function useCache<T>(
   const mutate = useCallback((newData: T, params?: any) => {
     const cacheKey = customCacheKey || generateCacheKey(url, params);
     const ttl = getTTL(url);
-    
+
     cache.set(cacheKey, {
       data: newData,
       timestamp: Date.now(),
       ttl
     });
-    
+
     setData(newData);
   }, [url, customCacheKey]);
 
@@ -177,7 +177,7 @@ export function useEvaluations(params: {
   grade_id?: string;
 } = {}) {
   const cacheKey = `evaluations-${JSON.stringify(params)}`;
-  
+
   const result = useCache<{
     data: any[];
     pagination: {
@@ -198,8 +198,8 @@ export function useEvaluations(params: {
   // Garantir que sempre retornamos um objeto válido
   return {
     ...result,
-    data: result.data || { 
-      data: [], 
+    data: result.data || {
+      data: [],
       pagination: {
         page: 1,
         per_page: 10,
@@ -213,6 +213,8 @@ export function useEvaluations(params: {
     }
   };
 }
+
+
 
 // Hook específico para estatísticas
 export function useEvaluationStats() {

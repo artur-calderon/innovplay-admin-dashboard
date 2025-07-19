@@ -272,6 +272,7 @@ export default function TakeEvaluation() {
                                     </div>
                                     <p className="text-sm text-muted-foreground">Acertos</p>
                                 </div>
+
                                 <div className="space-y-1">
                                     <div className="text-2xl font-bold text-red-600">
                                         {(results.total_questions || 0) - (results.correct_answers || 0)}
