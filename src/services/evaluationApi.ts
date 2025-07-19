@@ -90,6 +90,20 @@ export class EvaluationApiService {
         try {
             const response = await api.get(`/test/${testId}/details`);
             console.log('Resposta da API getTestData:', response.data);
+
+            // ✅ NOVO: Log detalhado da resposta
+            console.log('📊 Estrutura da resposta:', {
+                id: response.data.id,
+                title: response.data.title,
+                subject: response.data.subject,
+                duration: response.data.duration,
+                totalQuestions: response.data.totalQuestions,
+                total_questions: response.data.total_questions, // Verificar se existe este campo
+                questions: response.data.questions,
+                questionsLength: response.data.questions?.length || 0,
+                instructions: response.data.instructions
+            });
+
             return response.data;
         } catch (error) {
             console.error('Erro ao buscar dados do teste:', error);

@@ -419,7 +419,25 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 }
 
                 console.log('✅ Questões encontradas:', data.questions.length);
-                setTestData(data);
+
+                // ✅ CORRIGIDO: Garantir que totalQuestions seja definido
+                const processedData = {
+                    ...data,
+                    totalQuestions: data.totalQuestions || data.total_questions || data.questions.length
+                };
+
+                console.log('📊 Dados completos da avaliação:', {
+                    id: processedData.id,
+                    title: processedData.title,
+                    subject: processedData.subject?.name,
+                    duration: processedData.duration,
+                    totalQuestions: processedData.totalQuestions,
+                    total_questions: data.total_questions,
+                    questionsLength: processedData.questions?.length || 0,
+                    instructions: processedData.instructions
+                });
+
+                setTestData(processedData);
 
                 // Verificar se há sessão ativa
                 const hasActiveSession = await checkActiveSession();
