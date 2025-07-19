@@ -79,6 +79,105 @@ interface BackendSubmissionResult {
   }>;
 }
 
+// ===== NOVAS INTERFACES PARA API DE RESULTADOS =====
+
+interface EvaluationResult {
+  id: string;
+  titulo: string;
+  disciplina: string;
+  curso: string;
+  serie: string;
+  escola: string;
+  municipio: string;
+  data_aplicacao: string;
+  status: 'concluida' | 'em_andamento' | 'pendente';
+  total_alunos: number;
+  alunos_participantes: number;
+  alunos_ausentes: number;
+  media_nota: number;
+  media_proficiencia: number;
+  distribuicao_classificacao: {
+    abaixo_do_basico: number;
+    basico: number;
+    adequado: number;
+    avancado: number;
+  };
+}
+
+interface StudentResult {
+  id: string;
+  nome: string;
+  turma: string;
+  nota: number;
+  proficiencia: number;
+  classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+  questoes_respondidas: number;
+  acertos: number;
+  erros: number;
+  em_branco: number;
+  tempo_gasto: number;
+  status: 'concluida' | 'pendente';
+}
+
+interface StudentDetailedResult {
+  test_id: string;
+  student_id: string;
+  total_questions: number;
+  answered_questions: number;
+  correct_answers: number;
+  score_percentage: number;
+  total_score: number;
+  max_possible_score: number;
+  answers: Array<{
+    question_id: string;
+    question_text: string;
+    question_type: 'multipleChoice' | 'open' | 'trueFalse';
+    correct_answer: string;
+    student_answer: string;
+    options: string[];
+    is_correct: boolean;
+    score: number;
+  }>;
+}
+
+interface DetailedReport {
+  avaliacao: {
+    id: string;
+    titulo: string;
+    disciplina: string;
+    total_questoes: number;
+  };
+  questoes: Array<{
+    id: string;
+    numero: number;
+    texto: string;
+    habilidade: string;
+    codigo_habilidade: string;
+    tipo: 'multipleChoice' | 'open' | 'trueFalse';
+    dificuldade: 'Fácil' | 'Médio' | 'Difícil';
+    porcentagem_acertos: number;
+    porcentagem_erros: number;
+  }>;
+  alunos: Array<{
+    id: string;
+    nome: string;
+    turma: string;
+    respostas: Array<{
+      questao_id: string;
+      questao_numero: number;
+      resposta_correta: boolean;
+      resposta_em_branco: boolean;
+      tempo_gasto: number;
+    }>;
+    total_acertos: number;
+    total_erros: number;
+    total_em_branco: number;
+    nota_final: number;
+    proficiencia: number;
+    classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+  }>;
+}
+
 // ===== DADOS MOCK (FALLBACK) =====
 
 let mockEvaluationData: EvaluationResultsData[] = [];
@@ -95,7 +194,51 @@ const initializeMockData = () => {
 // ===== SERVIÇO PRINCIPAL =====
 
 export class EvaluationResultsApiService {
-  
+
+  // ✅ NOVO: Buscar lista de avaliações com estatísticas
+  static async getEvaluationsList(): Promise<EvaluationResult[]> {
+    try {
+      const response = await api.get('/evaluation-results/avaliacoes');
+      return response.data.data || [];
+    } catch (error) {
+      console.error('Erro ao buscar lista de avaliações:', error);
+      throw error;
+    }
+  }
+
+  // ✅ NOVO: Buscar alunos de uma avaliação específica
+  static async getStudentsByEvaluation(evaluationId: string): Promise<StudentResult[]> {
+    try {
+      const response = await api.get(`/evaluation-results/alunos?avaliacao_id=${evaluationId}`);
+      return response.data.data || [];
+    } catch (error) {
+      console.error('Erro ao buscar alunos da avaliação:', error);
+      throw error;
+    }
+  }
+
+  // ✅ NOVO: Buscar resultados detalhados de um aluno específico
+  static async getStudentDetailedResults(testId: string, studentId: string): Promise<StudentDetailedResult> {
+    try {
+      const response = await api.get(`/evaluation-results/${testId}/student/${studentId}/results`);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao buscar resultados detalhados do aluno:', error);
+      throw error;
+    }
+  }
+
+  // ✅ NOVO: Buscar relatório detalhado de uma avaliação
+  static async getDetailedReport(evaluationId: string): Promise<DetailedReport> {
+    try {
+      const response = await api.get(`/evaluation-results/relatorio-detalhado/${evaluationId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao buscar relatório detalhado:', error);
+      throw error;
+    }
+  }
+
   // ✅ NOVO: Buscar resultados das sessões de teste (API REAL)
   static async getEvaluations(filters: ResultsFilters = {}, page = 1, perPage = 10): Promise<{
     results: EvaluationResultsData[];
@@ -106,13 +249,13 @@ export class EvaluationResultsApiService {
   }> {
     try {
       // console.log('🔄 Buscando resultados de avaliações do backend...');
-      
+
       // Construir parâmetros para a API real
       const params: any = {
         page,
         per_page: perPage
       };
-      
+
       if (filters.course) params.course = filters.course;
       if (filters.subject) params.subject = filters.subject;
       if (filters.class) params.class_id = filters.class;
@@ -130,11 +273,11 @@ export class EvaluationResultsApiService {
       }
 
       // console.log('✅ Resultados recebidos do backend:', response.data);
-      
+
       // Transformar dados da API para o formato esperado
       const sessions: BackendEvaluationResult[] = response.data.sessions;
       const results = await this.transformSessionsToResults(sessions);
-      
+
       return {
         results,
         total: response.data.total || results.length,
@@ -142,11 +285,11 @@ export class EvaluationResultsApiService {
         totalPages: response.data.total_pages || Math.ceil(results.length / perPage),
         isBackendConnected: true
       };
-      
+
     } catch (error) {
       // console.error('❌ Erro ao conectar com backend para resultados:', error);
       // console.log('📋 Usando dados mock devido ao erro de conexão');
-      
+
       return this.getMockResults(filters, page, perPage);
     }
   }
@@ -166,7 +309,7 @@ export class EvaluationResultsApiService {
 
     for (const [testId, testSessions] of Object.entries(groupedByTest)) {
       const firstSession = testSessions[0];
-      
+
       // Calcular estatísticas agregadas
       const completedSessions = testSessions.filter(s => s.status === 'completed');
       const totalStudents = testSessions.length;
@@ -186,9 +329,9 @@ export class EvaluationResultsApiService {
       const studentsData: StudentProficiency[] = completedSessions.map(session => {
         // Calcular proficiência usando a função oficial
         const proficiencyResult = calculateProficiency(
-          session.score, 
-          session.total_questions, 
-          firstSession.grade_name, 
+          session.score,
+          session.total_questions,
+          firstSession.grade_name,
           firstSession.subject_name,
           firstSession.course_name
         );
@@ -233,8 +376,8 @@ export class EvaluationResultsApiService {
         municipalityId: "sp-capital",
         appliedAt: firstSession.started_at,
         correctedAt: completedSessions.length > 0 ? completedSessions[0].submitted_at : undefined,
-        status: completedStudents === totalStudents ? 'completed' : 
-                completedStudents > 0 ? 'in_progress' : 'pending',
+        status: completedStudents === totalStudents ? 'completed' :
+          completedStudents > 0 ? 'in_progress' : 'pending',
         totalStudents,
         completedStudents,
         pendingStudents: totalStudents - completedStudents,
@@ -256,7 +399,7 @@ export class EvaluationResultsApiService {
   static async getStudents(evaluationId: string, filters: ResultsFilters = {}): Promise<StudentProficiency[]> {
     try {
       // console.log('🔄 Buscando alunos do teste:', evaluationId);
-      
+
       const params: any = { test_id: evaluationId };
       if (filters.class) params.class_id = filters.class;
       if (filters.proficiencyRange) {
@@ -276,7 +419,7 @@ export class EvaluationResultsApiService {
       }
 
       const students: BackendStudentResult[] = response.data.students;
-      
+
       return students.map(student => ({
         studentId: student.id,
         studentName: student.name,
@@ -307,7 +450,7 @@ export class EvaluationResultsApiService {
   }> {
     try {
       // console.log('🔄 Recalculando avaliação:', evaluationId);
-      
+
       const response = await api.post(`/test/${evaluationId}/recalculate`);
 
       return {
@@ -318,7 +461,7 @@ export class EvaluationResultsApiService {
 
     } catch (error) {
       // console.error('❌ Erro ao recalcular avaliação:', error);
-      
+
       // Simulação de sucesso para demonstração
       await new Promise(resolve => setTimeout(resolve, 1000));
       return {
@@ -336,7 +479,7 @@ export class EvaluationResultsApiService {
   static async getSubmissionsForCorrection(evaluationId: string): Promise<BackendSubmissionResult[]> {
     try {
       // console.log('🔄 Buscando submissões para correção:', evaluationId);
-      
+
       const response = await api.get(`/test/${evaluationId}/submissions`);
 
       if (!response.data || !Array.isArray(response.data.submissions)) {
@@ -359,7 +502,7 @@ export class EvaluationResultsApiService {
   }> {
     try {
       // console.log('🔄 Corrigindo submissão:', sessionId);
-      
+
       const response = await api.post(`/test-session/${sessionId}/correct`, corrections);
 
       return {
@@ -369,7 +512,7 @@ export class EvaluationResultsApiService {
 
     } catch (error) {
       // console.error('❌ Erro ao corrigir submissão:', error);
-      
+
       // Simulação de sucesso
       return {
         success: true,
@@ -388,7 +531,7 @@ export class EvaluationResultsApiService {
     isBackendConnected: boolean;
   } {
     const allData = initializeMockData();
-    
+
     const filteredData = filterMockData(allData, {
       course: filters.course,
       subject: filters.subject,
@@ -399,13 +542,13 @@ export class EvaluationResultsApiService {
       scoreRange: filters.scoreRange,
       dateRange: filters.dateRange
     });
-    
+
     const total = filteredData.length;
     const totalPages = Math.ceil(total / perPage);
     const startIndex = (page - 1) * perPage;
     const endIndex = startIndex + perPage;
     const paginatedResults = filteredData.slice(startIndex, endIndex);
-    
+
     return {
       results: paginatedResults,
       total,
@@ -423,7 +566,7 @@ export class EvaluationResultsApiService {
 
   private static mapProficiencyLevel(level: string): 'abaixo_do_basico' | 'basico' | 'adequado' | 'avancado' {
     const normalized = level.toLowerCase().replace(/\s+/g, '_');
-    
+
     if (normalized.includes('abaixo') || normalized.includes('below')) {
       return 'abaixo_do_basico';
     }
@@ -436,7 +579,7 @@ export class EvaluationResultsApiService {
     if (normalized.includes('avancado') || normalized.includes('advanced')) {
       return 'avancado';
     }
-    
+
     return 'basico';
   }
 
@@ -469,13 +612,13 @@ export class EvaluationResultsApiService {
 
       const allData = initializeMockData();
       const mockOptions = getMockFilterOptions(allData);
-      
+
       // console.log('📋 Usando opções de filtros dos dados mock:', mockOptions);
       return mockOptions;
-      
+
     } catch (error) {
       // console.error('Erro ao buscar opções de filtros:', error);
-      
+
       const allData = initializeMockData();
       return getMockFilterOptions(allData);
     }
