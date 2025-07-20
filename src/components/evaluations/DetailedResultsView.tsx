@@ -24,6 +24,46 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
 
+// Importar a interface DetailedReport do serviço
+interface DetailedReport {
+    avaliacao: {
+        id: string;
+        titulo: string;
+        disciplina: string;
+        total_questoes: number;
+    };
+    questoes: Array<{
+        id: string;
+        numero: number;
+        texto: string;
+        habilidade: string;
+        codigo_habilidade: string;
+        tipo: 'multipleChoice' | 'open' | 'trueFalse';
+        dificuldade: 'Fácil' | 'Médio' | 'Difícil';
+        porcentagem_acertos: number;
+        porcentagem_erros: number;
+    }>;
+    alunos: Array<{
+        id: string;
+        nome: string;
+        turma: string;
+        respostas: Array<{
+            questao_id: string;
+            questao_numero: number;
+            resposta_correta: boolean;
+            resposta_em_branco: boolean;
+            tempo_gasto: number;
+        }>;
+        total_acertos: number;
+        total_erros: number;
+        total_em_branco: number;
+        nota_final: number;
+        proficiencia: number;
+        classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+        status: 'concluida' | 'nao_respondida';
+    }>;
+}
+
 interface DetailedResultsViewProps {
     onBack: () => void;
 }
@@ -113,19 +153,69 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
         try {
             setIsLoading(true);
 
-            // Buscar informações da avaliação e alunos em paralelo
-            const [evaluations, studentsData] = await Promise.all([
-                EvaluationResultsApiService.getEvaluationsList(),
-                EvaluationResultsApiService.getStudentsByEvaluation(evaluationId!)
-            ]);
+            console.log("🔍 Buscando avaliação específica:", evaluationId);
 
-            // Encontrar a avaliação específica
-            const evaluation = evaluations.find(e => e.id === evaluationId);
-            if (evaluation) {
-                setEvaluationInfo(evaluation);
+            // Buscar relatório detalhado da avaliação
+            const detailedReport: DetailedReport | null = await EvaluationResultsApiService.getDetailedReport(evaluationId!);
+
+            console.log("📊 Relatório detalhado:", detailedReport);
+
+            if (detailedReport) {
+                // Transformar dados do relatório para o formato esperado
+                const evaluationInfo: EvaluationInfo = {
+                    id: detailedReport.avaliacao.id,
+                    titulo: detailedReport.avaliacao.titulo,
+                    disciplina: detailedReport.avaliacao.disciplina,
+                    curso: '', // Não disponível no relatório
+                    serie: '', // Não disponível no relatório
+                    escola: '', // Não disponível no relatório
+                    municipio: '', // Não disponível no relatório
+                    data_aplicacao: new Date().toISOString(), // Não disponível no relatório
+                    status: 'concluida',
+                    total_alunos: detailedReport.alunos.length,
+                    alunos_participantes: detailedReport.alunos.filter(a => a.status === 'concluida').length,
+                    alunos_ausentes: detailedReport.alunos.filter(a => a.status === 'nao_respondida').length,
+                    media_nota: detailedReport.alunos.filter(a => a.status === 'concluida').length > 0
+                        ? detailedReport.alunos.filter(a => a.status === 'concluida').reduce((sum, aluno) => sum + aluno.nota_final, 0) / detailedReport.alunos.filter(a => a.status === 'concluida').length
+                        : 0,
+                    media_proficiencia: detailedReport.alunos.filter(a => a.status === 'concluida').length > 0
+                        ? detailedReport.alunos.filter(a => a.status === 'concluida').reduce((sum, aluno) => sum + aluno.proficiencia, 0) / detailedReport.alunos.filter(a => a.status === 'concluida').length
+                        : 0,
+                    distribuicao_classificacao: {
+                        abaixo_do_basico: detailedReport.alunos.filter(a => a.classificacao === 'Abaixo do Básico').length,
+                        basico: detailedReport.alunos.filter(a => a.classificacao === 'Básico').length,
+                        adequado: detailedReport.alunos.filter(a => a.classificacao === 'Adequado').length,
+                        avancado: detailedReport.alunos.filter(a => a.classificacao === 'Avançado').length,
+                    }
+                };
+
+                setEvaluationInfo(evaluationInfo);
+
+                // Transformar alunos do relatório para o formato esperado
+                const studentsData: StudentResult[] = detailedReport.alunos.map(aluno => ({
+                    id: aluno.id,
+                    nome: aluno.nome,
+                    turma: aluno.turma,
+                    nota: aluno.nota_final,
+                    proficiencia: aluno.proficiencia,
+                    classificacao: aluno.classificacao,
+                    questoes_respondidas: aluno.total_acertos + aluno.total_erros,
+                    acertos: aluno.total_acertos,
+                    erros: aluno.total_erros,
+                    em_branco: aluno.total_em_branco,
+                    tempo_gasto: aluno.respostas.reduce((sum, resp) => sum + resp.tempo_gasto, 0),
+                    status: aluno.status === 'concluida' ? 'concluida' : 'pendente'
+                }));
+
+                setStudents(studentsData);
+            } else {
+                console.error("Avaliação não encontrada:", evaluationId);
+                toast({
+                    title: "Avaliação não encontrada",
+                    description: "Não foi possível encontrar os dados da avaliação",
+                    variant: "destructive",
+                });
             }
-
-            setStudents(studentsData);
         } catch (error) {
             console.error("Erro ao buscar resultados detalhados:", error);
             toast({
@@ -156,6 +246,12 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
         }
     };
 
+    // Função utilitária para tratar valores vazios
+    const formatFieldValue = (value: string | null | undefined, fallback: string = 'Não informado') => {
+        if (!value || value.trim() === '') return fallback;
+        return value;
+    };
+
     const handleViewStudentDetails = (studentId: string) => {
         navigate(`/app/avaliacao/${evaluationId}/aluno/${studentId}/resultados`);
     };
@@ -176,7 +272,7 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
 
             // Criar dados da planilha
             const worksheetData = [
-                ['Nome', 'Turma', 'Nota', 'Proficiência', 'Classificação', 'Questões Respondidas', 'Acertos', 'Erros', 'Em Branco', 'Tempo (min)', 'Status'],
+                ['Nome', 'Turma', 'Nota', 'Proficiência', 'Classificação', 'Questões Respondidas', 'Acertos', 'Erros', 'Tempo (min)', 'Status'],
                 ...filteredStudents.map(student => [
                     student.nome,
                     student.turma,
@@ -186,7 +282,6 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                     student.questoes_respondidas,
                     student.acertos,
                     student.erros,
-                    student.em_branco,
                     Math.floor(student.tempo_gasto / 60),
                     student.status === 'concluida' ? 'Concluída' : 'Pendente'
                 ])
@@ -321,19 +416,19 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                         <div className="space-y-2">
                             <div className="text-sm font-medium text-muted-foreground">Disciplina</div>
-                            <div className="font-semibold">{evaluationInfo.disciplina}</div>
+                            <div className="font-semibold">{formatFieldValue(evaluationInfo.disciplina, 'Disciplina não informada')}</div>
                         </div>
                         <div className="space-y-2">
                             <div className="text-sm font-medium text-muted-foreground">Série</div>
-                            <div className="font-semibold">{evaluationInfo.serie}</div>
+                            <div className="font-semibold">{formatFieldValue(evaluationInfo.serie, 'Série não informada')}</div>
                         </div>
                         <div className="space-y-2">
                             <div className="text-sm font-medium text-muted-foreground">Escola</div>
-                            <div className="font-semibold">{evaluationInfo.escola}</div>
+                            <div className="font-semibold">{formatFieldValue(evaluationInfo.escola, 'Escola não informada')}</div>
                         </div>
                         <div className="space-y-2">
                             <div className="text-sm font-medium text-muted-foreground">Município</div>
-                            <div className="font-semibold">{evaluationInfo.municipio}</div>
+                            <div className="font-semibold">{formatFieldValue(evaluationInfo.municipio, 'Município não informado')}</div>
                         </div>
                     </div>
 
@@ -498,11 +593,6 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                                                     <div className="flex items-center gap-2">
                                                         <XCircle className="h-4 w-4 text-red-600" />
                                                         <span className="text-sm text-red-600">{student.erros} erros</span>
-                                                    </div>
-
-                                                    <div className="flex items-center gap-2">
-                                                        <Minus className="h-4 w-4 text-gray-600" />
-                                                        <span className="text-sm text-gray-600">{student.em_branco} em branco</span>
                                                     </div>
 
                                                     <div className="flex items-center gap-2">

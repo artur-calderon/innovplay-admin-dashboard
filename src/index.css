@@ -855,3 +855,64 @@
 .question-loaded {
   animation: fadeInUp 0.5s ease-out forwards;
 }
+
+/* ✅ NOVO: Grid responsivo para navegação de questões */
+.grid-cols-15 {
+  grid-template-columns: repeat(15, minmax(0, 1fr));
+}
+
+.grid-cols-20 {
+  grid-template-columns: repeat(20, minmax(0, 1fr));
+}
+
+.grid-cols-25 {
+  grid-template-columns: repeat(25, minmax(0, 1fr));
+}
+
+/* ✅ NOVO: Melhorias para a tela de avaliação */
+.evaluation-question-card {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.evaluation-question-header {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  border-bottom: 1px solid #93c5fd;
+}
+
+.evaluation-navigation-button {
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateZ(0);
+  min-width: 2rem;
+  min-height: 2rem;
+}
+
+.evaluation-navigation-button:hover {
+  transform: translateY(-1px) translateZ(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.evaluation-navigation-button:active {
+  transform: translateY(0) translateZ(0);
+}
+
+/* ✅ NOVO: Animações suaves para transições */
+.question-transition {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.question-fade-in {
+  animation: questionFadeIn 0.4s ease-out;
+}
+
+@keyframes questionFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

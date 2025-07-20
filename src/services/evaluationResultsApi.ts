@@ -1,6 +1,5 @@
 import { api } from "@/lib/api";
 import { EvaluationResultsData, ResultsFilters, StudentProficiency, calculateProficiency } from "@/types/evaluation-results";
-import { generateMockResultsData, filterMockData, getMockFilterOptions } from "@/services/mockResultsData";
 
 // ===== INTERFACES PARA BACKEND REAL =====
 
@@ -79,7 +78,7 @@ interface BackendSubmissionResult {
   }>;
 }
 
-// ===== NOVAS INTERFACES PARA API DE RESULTADOS =====
+// ===== INTERFACES PARA API DE RESULTADOS =====
 
 interface EvaluationResult {
   id: string;
@@ -122,21 +121,31 @@ interface StudentResult {
 interface StudentDetailedResult {
   test_id: string;
   student_id: string;
+  student_db_id: string;
   total_questions: number;
   answered_questions: number;
   correct_answers: number;
   score_percentage: number;
   total_score: number;
   max_possible_score: number;
+  grade: number;
+  proficiencia: number;
+  classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+  calculated_at: string;
+  status?: 'concluida' | 'nao_respondida';
   answers: Array<{
     question_id: string;
+    question_number: number;
     question_text: string;
     question_type: 'multipleChoice' | 'open' | 'trueFalse';
-    correct_answer: string;
+    question_value: number;
     student_answer: string;
-    options: string[];
+    answered_at: string;
     is_correct: boolean;
     score: number;
+    feedback: string | null;
+    corrected_by: string | null;
+    corrected_at: string | null;
   }>;
 }
 
@@ -175,71 +184,168 @@ interface DetailedReport {
     nota_final: number;
     proficiencia: number;
     classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+    status: 'concluida' | 'nao_respondida';
   }>;
 }
-
-// ===== DADOS MOCK (FALLBACK) =====
-
-let mockEvaluationData: EvaluationResultsData[] = [];
-
-const initializeMockData = () => {
-  if (mockEvaluationData.length === 0) {
-    mockEvaluationData = generateMockResultsData();
-    // ✅ REMOVIDO: Console.log para apresentação
-    // console.log('📊 Dados mock inicializados:', mockEvaluationData.length, 'avaliações');
-  }
-  return mockEvaluationData;
-};
 
 // ===== SERVIÇO PRINCIPAL =====
 
 export class EvaluationResultsApiService {
 
-  // ✅ NOVO: Buscar lista de avaliações com estatísticas
-  static async getEvaluationsList(): Promise<EvaluationResult[]> {
+  // Buscar lista de avaliações com estatísticas e paginação
+  static async getEvaluationsList(
+    page: number = 1,
+    perPage: number = 10,
+    filters: {
+      status?: string;
+      curso?: string;
+      disciplina?: string;
+      escola?: string;
+    } = {}
+  ): Promise<{
+    data: EvaluationResult[];
+    total: number;
+    page: number;
+    per_page: number;
+    total_pages: number;
+  }> {
     try {
-      const response = await api.get('/evaluation-results/avaliacoes');
-      return response.data.data || [];
+      const params: any = {
+        page,
+        per_page: perPage
+      };
+
+      // Adicionar filtros se fornecidos
+      if (filters.status) params.status = filters.status;
+      if (filters.curso) params.curso = filters.curso;
+      if (filters.disciplina) params.disciplina = filters.disciplina;
+      if (filters.escola) params.escola = filters.escola;
+
+      const response = await api.get('/evaluation-results/avaliacoes', { params });
+      console.log('Resposta da API com paginação:', response.data);
+
+      return {
+        data: response.data.data || [],
+        total: response.data.total || 0,
+        page: response.data.page || page,
+        per_page: response.data.per_page || perPage,
+        total_pages: response.data.total_pages || 0
+      };
     } catch (error) {
       console.error('Erro ao buscar lista de avaliações:', error);
-      throw error;
+      return {
+        data: [],
+        total: 0,
+        page,
+        per_page: perPage,
+        total_pages: 0
+      };
     }
   }
 
-  // ✅ NOVO: Buscar alunos de uma avaliação específica
+  // Buscar uma avaliação específica por ID
+  static async getEvaluationById(evaluationId: string): Promise<EvaluationResult | null> {
+    try {
+      const response = await api.get(`/evaluation-results/relatorio-detalhado/${evaluationId}`);
+      const detailedReport = response.data;
+
+      // Transformar DetailedReport em EvaluationResult
+      if (detailedReport && detailedReport.avaliacao) {
+        const evaluation: EvaluationResult = {
+          id: detailedReport.avaliacao.id,
+          titulo: detailedReport.avaliacao.titulo,
+          disciplina: detailedReport.avaliacao.disciplina,
+          curso: '', // Não disponível no DetailedReport
+          serie: '', // Não disponível no DetailedReport
+          escola: '', // Não disponível no DetailedReport
+          municipio: '', // Não disponível no DetailedReport
+          data_aplicacao: new Date().toISOString(), // Não disponível no DetailedReport
+          status: 'concluida', // Assumir que se tem relatório detalhado, está concluída
+          total_alunos: detailedReport.alunos.length,
+          alunos_participantes: detailedReport.alunos.length,
+          alunos_ausentes: 0, // Não disponível no DetailedReport
+          media_nota: detailedReport.alunos.length > 0
+            ? detailedReport.alunos.reduce((sum, aluno) => sum + aluno.nota_final, 0) / detailedReport.alunos.length
+            : 0,
+          media_proficiencia: detailedReport.alunos.length > 0
+            ? detailedReport.alunos.reduce((sum, aluno) => sum + aluno.proficiencia, 0) / detailedReport.alunos.length
+            : 0,
+          distribuicao_classificacao: {
+            abaixo_do_basico: detailedReport.alunos.filter(a => a.classificacao === 'Abaixo do Básico').length,
+            basico: detailedReport.alunos.filter(a => a.classificacao === 'Básico').length,
+            adequado: detailedReport.alunos.filter(a => a.classificacao === 'Adequado').length,
+            avancado: detailedReport.alunos.filter(a => a.classificacao === 'Avançado').length,
+          }
+        };
+
+        return evaluation;
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Erro ao buscar avaliação específica:', error);
+      return null;
+    }
+  }
+
+  // Buscar alunos de uma avaliação específica
   static async getStudentsByEvaluation(evaluationId: string): Promise<StudentResult[]> {
     try {
       const response = await api.get(`/evaluation-results/alunos?avaliacao_id=${evaluationId}`);
       return response.data.data || [];
     } catch (error) {
       console.error('Erro ao buscar alunos da avaliação:', error);
-      throw error;
+      return [];
     }
   }
 
-  // ✅ NOVO: Buscar resultados detalhados de um aluno específico
-  static async getStudentDetailedResults(testId: string, studentId: string): Promise<StudentDetailedResult> {
+  // Buscar resultados detalhados de um aluno específico
+  static async getStudentDetailedResults(testId: string, studentId: string, includeAnswers: boolean = false): Promise<StudentDetailedResult | null> {
     try {
-      const response = await api.get(`/evaluation-results/${testId}/student/${studentId}/results`);
+      const params = includeAnswers ? { include_answers: 'true' } : {};
+      const response = await api.get(`/evaluation-results/${testId}/student/${studentId}/results`, { params });
       return response.data;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao buscar resultados detalhados do aluno:', error);
-      throw error;
+
+      // Se o erro contém dados da resposta (aluno não respondeu), retornar os dados
+      if (error.response?.data && error.response.data.test_id) {
+        console.log('Aluno não respondeu a avaliação, retornando dados vazios:', error.response.data);
+        return {
+          test_id: error.response.data.test_id,
+          student_id: error.response.data.student_id,
+          student_db_id: error.response.data.student_db_id,
+          total_questions: error.response.data.total_questions,
+          answered_questions: error.response.data.answered_questions,
+          correct_answers: error.response.data.correct_answers,
+          score_percentage: error.response.data.score_percentage,
+          total_score: error.response.data.total_score,
+          max_possible_score: error.response.data.max_possible_score,
+          grade: error.response.data.grade || 0,
+          proficiencia: error.response.data.proficiencia || 0,
+          classificacao: error.response.data.classificacao || 'Abaixo do Básico',
+          calculated_at: error.response.data.calculated_at || new Date().toISOString(),
+          status: error.response.data.status,
+          answers: []
+        };
+      }
+
+      return null;
     }
   }
 
-  // ✅ NOVO: Buscar relatório detalhado de uma avaliação
-  static async getDetailedReport(evaluationId: string): Promise<DetailedReport> {
+  // Buscar relatório detalhado de uma avaliação
+  static async getDetailedReport(evaluationId: string): Promise<DetailedReport | null> {
     try {
       const response = await api.get(`/evaluation-results/relatorio-detalhado/${evaluationId}`);
       return response.data;
     } catch (error) {
       console.error('Erro ao buscar relatório detalhado:', error);
-      throw error;
+      return null;
     }
   }
 
-  // ✅ NOVO: Buscar resultados das sessões de teste (API REAL)
+  // Buscar resultados das sessões de teste
   static async getEvaluations(filters: ResultsFilters = {}, page = 1, perPage = 10): Promise<{
     results: EvaluationResultsData[];
     total: number;
@@ -248,9 +354,7 @@ export class EvaluationResultsApiService {
     isBackendConnected: boolean;
   }> {
     try {
-      // console.log('🔄 Buscando resultados de avaliações do backend...');
-
-      // Construir parâmetros para a API real
+      // Construir parâmetros para a API
       const params: any = {
         page,
         per_page: perPage
@@ -268,11 +372,8 @@ export class EvaluationResultsApiService {
       const response = await api.get('/test-sessions/results', { params });
 
       if (!response.data || !Array.isArray(response.data.sessions)) {
-        // console.warn('Resposta da API não possui estrutura esperada, usando dados mock');
-        return this.getMockResults(filters, page, perPage);
+        throw new Error('Resposta da API não possui estrutura esperada');
       }
-
-      // console.log('✅ Resultados recebidos do backend:', response.data);
 
       // Transformar dados da API para o formato esperado
       const sessions: BackendEvaluationResult[] = response.data.sessions;
@@ -285,16 +386,19 @@ export class EvaluationResultsApiService {
         totalPages: response.data.total_pages || Math.ceil(results.length / perPage),
         isBackendConnected: true
       };
-
     } catch (error) {
-      // console.error('❌ Erro ao conectar com backend para resultados:', error);
-      // console.log('📋 Usando dados mock devido ao erro de conexão');
-
-      return this.getMockResults(filters, page, perPage);
+      console.error('Erro ao buscar avaliações:', error);
+      return {
+        results: [],
+        total: 0,
+        page,
+        totalPages: 0,
+        isBackendConnected: false
+      };
     }
   }
 
-  // ✅ NOVO: Transformar sessões em resultados agrupados
+  // Transformar sessões em resultados agrupados
   private static async transformSessionsToResults(sessions: BackendEvaluationResult[]): Promise<EvaluationResultsData[]> {
     // Agrupar sessões por teste
     const groupedByTest = sessions.reduce((acc, session) => {
@@ -395,11 +499,9 @@ export class EvaluationResultsApiService {
     return results;
   }
 
-  // ✅ NOVO: Buscar alunos de uma avaliação específica (API REAL)
+  // Buscar alunos de uma avaliação específica
   static async getStudents(evaluationId: string, filters: ResultsFilters = {}): Promise<StudentProficiency[]> {
     try {
-      // console.log('🔄 Buscando alunos do teste:', evaluationId);
-
       const params: any = { test_id: evaluationId };
       if (filters.class) params.class_id = filters.class;
       if (filters.proficiencyRange) {
@@ -414,8 +516,7 @@ export class EvaluationResultsApiService {
       const response = await api.get('/test-sessions/students', { params });
 
       if (!response.data || !Array.isArray(response.data.students)) {
-        // console.warn('Resposta da API não possui estrutura esperada para alunos, usando dados mock');
-        return this.getMockStudents(evaluationId);
+        return [];
       }
 
       const students: BackendStudentResult[] = response.data.students;
@@ -435,22 +536,19 @@ export class EvaluationResultsApiService {
         timeSpent: Math.floor(student.time_spent / 60),
         status: student.status === 'completed' ? 'completed' : 'pending'
       }));
-
     } catch (error) {
-      // console.error('❌ Erro ao buscar alunos:', error);
-      return this.getMockStudents(evaluationId);
+      console.error('Erro ao buscar alunos:', error);
+      return [];
     }
   }
 
-  // ✅ NOVO: Recalcular resultados de uma avaliação (API REAL)
+  // Recalcular resultados de uma avaliação
   static async recalculateEvaluation(evaluationId: string): Promise<{
     success: boolean;
     message: string;
     dados_atualizados: any;
   }> {
     try {
-      // console.log('🔄 Recalculando avaliação:', evaluationId);
-
       const response = await api.post(`/test/${evaluationId}/recalculate`);
 
       return {
@@ -460,49 +558,38 @@ export class EvaluationResultsApiService {
       };
 
     } catch (error) {
-      // console.error('❌ Erro ao recalcular avaliação:', error);
-
-      // Simulação de sucesso para demonstração
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      console.error('Erro ao recalcular avaliação:', error);
       return {
-        success: true,
-        message: 'Avaliação recalculada com sucesso! (Simulação)',
-        dados_atualizados: {
-          timestamp: new Date().toISOString(),
-          evaluationId
-        }
+        success: false,
+        message: 'Erro ao recalcular avaliação. Tente novamente.',
+        dados_atualizados: null
       };
     }
   }
 
-  // ✅ NOVO: Buscar submissões de uma avaliação para correção (API REAL)
+  // Buscar submissões de uma avaliação para correção
   static async getSubmissionsForCorrection(evaluationId: string): Promise<BackendSubmissionResult[]> {
     try {
-      // console.log('🔄 Buscando submissões para correção:', evaluationId);
-
       const response = await api.get(`/test/${evaluationId}/submissions`);
 
       if (!response.data || !Array.isArray(response.data.submissions)) {
-        // console.warn('Nenhuma submissão encontrada');
         return [];
       }
 
       return response.data.submissions;
 
     } catch (error) {
-      // console.error('❌ Erro ao buscar submissões:', error);
+      console.error('Erro ao buscar submissões:', error);
       return [];
     }
   }
 
-  // ✅ NOVO: Corrigir submissão de um aluno (API REAL)
+  // Corrigir submissão de um aluno
   static async correctSubmission(sessionId: string, corrections: any): Promise<{
     success: boolean;
     message: string;
   }> {
     try {
-      // console.log('🔄 Corrigindo submissão:', sessionId);
-
       const response = await api.post(`/test-session/${sessionId}/correct`, corrections);
 
       return {
@@ -511,59 +598,15 @@ export class EvaluationResultsApiService {
       };
 
     } catch (error) {
-      // console.error('❌ Erro ao corrigir submissão:', error);
-
-      // Simulação de sucesso
+      console.error('Erro ao corrigir submissão:', error);
       return {
-        success: true,
-        message: 'Submissão corrigida com sucesso! (Simulação)'
+        success: false,
+        message: 'Erro ao corrigir submissão. Tente novamente.'
       };
     }
   }
 
-  // ===== MÉTODOS AUXILIARES =====
-
-  private static getMockResults(filters: ResultsFilters = {}, page = 1, perPage = 10): {
-    results: EvaluationResultsData[];
-    total: number;
-    page: number;
-    totalPages: number;
-    isBackendConnected: boolean;
-  } {
-    const allData = initializeMockData();
-
-    const filteredData = filterMockData(allData, {
-      course: filters.course,
-      subject: filters.subject,
-      class: filters.class,
-      school: filters.school,
-      status: filters.status,
-      proficiencyRange: filters.proficiencyRange,
-      scoreRange: filters.scoreRange,
-      dateRange: filters.dateRange
-    });
-
-    const total = filteredData.length;
-    const totalPages = Math.ceil(total / perPage);
-    const startIndex = (page - 1) * perPage;
-    const endIndex = startIndex + perPage;
-    const paginatedResults = filteredData.slice(startIndex, endIndex);
-
-    return {
-      results: paginatedResults,
-      total,
-      page,
-      totalPages,
-      isBackendConnected: false
-    };
-  }
-
-  private static getMockStudents(evaluationId: string): StudentProficiency[] {
-    const allData = initializeMockData();
-    const evaluation = allData.find(e => e.id === evaluationId);
-    return evaluation?.studentsData || [];
-  }
-
+  // Mapear nível de proficiência
   private static mapProficiencyLevel(level: string): 'abaixo_do_basico' | 'basico' | 'adequado' | 'avancado' {
     const normalized = level.toLowerCase().replace(/\s+/g, '_');
 
@@ -583,8 +626,7 @@ export class EvaluationResultsApiService {
     return 'basico';
   }
 
-  // ===== MÉTODOS EXISTENTES (mantidos para compatibilidade) =====
-
+  // Buscar opções de filtros
   static async getFilterOptions(): Promise<{
     courses: string[];
     subjects: string[];
@@ -599,31 +641,25 @@ export class EvaluationResultsApiService {
         api.get('/schools').catch(() => ({ data: [] }))
       ]);
 
-      const backendOptions = {
+      return {
         courses: Array.isArray(coursesRes.data) ? coursesRes.data.map((c: any) => c.name || c.nome) : [],
         subjects: Array.isArray(subjectsRes.data) ? subjectsRes.data.map((s: any) => s.name || s.nome) : [],
         classes: Array.isArray(classesRes.data) ? classesRes.data.map((c: any) => c.name || c.nome) : [],
         schools: Array.isArray(schoolsRes.data) ? schoolsRes.data.map((s: any) => s.name || s.nome) : []
       };
 
-      if (backendOptions.courses.length > 0 || backendOptions.subjects.length > 0) {
-        return backendOptions;
-      }
-
-      const allData = initializeMockData();
-      const mockOptions = getMockFilterOptions(allData);
-
-      // console.log('📋 Usando opções de filtros dos dados mock:', mockOptions);
-      return mockOptions;
-
     } catch (error) {
-      // console.error('Erro ao buscar opções de filtros:', error);
-
-      const allData = initializeMockData();
-      return getMockFilterOptions(allData);
+      console.error('Erro ao buscar opções de filtros:', error);
+      return {
+        courses: [],
+        subjects: [],
+        classes: [],
+        schools: []
+      };
     }
   }
 
+  // Simular cálculo de proficiência (mantido para compatibilidade)
   static simulateProficiencyCalculation(score: number, grade: string = '6º Ano', subject: string = 'Matemática') {
     return calculateProficiency(score, 20, grade, subject);
   }

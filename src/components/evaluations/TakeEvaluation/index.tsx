@@ -23,6 +23,8 @@ import {
     Clock,
     ChevronLeft,
     ChevronRight,
+    ChevronUp,
+    ChevronDown,
     Send,
     AlertTriangle,
     CheckCircle,
@@ -31,7 +33,9 @@ import {
     Play,
     Loader2,
     CheckCircle2,
-    Pause
+    Pause,
+    Info,
+    Printer
 } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -52,6 +56,7 @@ export default function TakeEvaluation() {
     const navigate = useNavigate();
     const { toast } = useToast();
     const [showSubmitDialog, setShowSubmitDialog] = useState(false);
+    const [isNavigationMinimized, setIsNavigationMinimized] = useState(false);
 
     const {
         evaluationState,
@@ -91,7 +96,17 @@ export default function TakeEvaluation() {
                 instructions: testData.instructions
             });
         }
-    }, [evaluationState, testData, session]);
+
+        // ✅ REMOVIDO: Redirecionamento automático - agora mostra resultados imediatos
+        // if (evaluationState === 'completed') {
+        //     console.log('✅ Avaliação concluída, redirecionando para página de avaliações...');
+        //     
+        //     setTimeout(() => {
+        //         console.log('🚀 Executando redirecionamento para /aluno/avaliacoes');
+        //         navigate('/aluno/avaliacoes');
+        //     }, 3000);
+        // }
+    }, [evaluationState, testData, session, navigate]);
 
     // Se não há evaluationId, mostrar erro
     if (!evaluationId) {
@@ -232,100 +247,81 @@ export default function TakeEvaluation() {
         );
     }
 
-    // Results screen
+    // Results screen - Mostrar resultados imediatos
     if (evaluationState === 'completed' && results) {
-        console.log('📊 Resultados recebidos:', results);
-
+        console.log('📊 Avaliação enviada com sucesso, mostrando resultados...');
+        
         return (
             <div className="flex items-center justify-center min-h-screen w-screen bg-gray-50 p-4">
-                <div className="max-w-4xl w-full">
+                <div className="max-w-lg w-full">
                     <Card>
                         <CardHeader>
-                            <CardTitle className="text-center">Resultados da Avaliação</CardTitle>
+                            <CardTitle className="text-center">✅ Avaliação Concluída!</CardTitle>
                             <div className="text-center space-y-2">
                                 <h2 className="text-xl font-semibold">{testData?.title}</h2>
                                 <Badge variant="outline">{testData?.subject.name}</Badge>
                             </div>
                         </CardHeader>
                         <CardContent className="space-y-6">
-                            {/* Score principal */}
-                            <div className="text-center space-y-2 p-4 bg-gray-50 rounded-lg">
-                                <div className={`text-4xl font-bold ${getPerformanceColor(results.score_percentage || 0)}`}>
-                                    {results.score_percentage || 0}%
-                                </div>
-                                <p className="text-muted-foreground">
-                                    Nota: {results.correct_answers || 0}/{results.total_questions || 0}
-                                </p>
-                            </div>
-
-                            {/* Detalhes */}
-                            <div className="grid grid-cols-4 gap-4 text-center">
-                                <div className="space-y-1">
+                            {/* ✅ NOVO: Resultados imediatos */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-blue-50 rounded-lg p-4 text-center">
                                     <div className="text-2xl font-bold text-blue-600">
-                                        {results.total_questions || 0}
+                                        {results.correct_answers || 0}/{results.total_questions || 0}
                                     </div>
-                                    <p className="text-sm text-muted-foreground">Total</p>
+                                    <div className="text-sm text-blue-700">Acertos</div>
                                 </div>
-                                <div className="space-y-1">
+                                <div className="bg-green-50 rounded-lg p-4 text-center">
                                     <div className="text-2xl font-bold text-green-600">
-                                        {results.correct_answers || 0}
+                                        {results.score_percentage || 0}%
                                     </div>
-                                    <p className="text-sm text-muted-foreground">Acertos</p>
-                                </div>
-
-                                <div className="space-y-1">
-                                    <div className="text-2xl font-bold text-red-600">
-                                        {(results.total_questions || 0) - (results.correct_answers || 0)}
-                                    </div>
-                                    <p className="text-sm text-muted-foreground">Erros</p>
-                                </div>
-                                <div className="space-y-1">
-                                    <div className="text-2xl font-bold text-gray-600">
-                                        {(results.total_questions || 0) - (results.answers_saved || 0)}
-                                    </div>
-                                    <p className="text-sm text-muted-foreground">Em branco</p>
+                                    <div className="text-sm text-green-700">Desempenho</div>
                                 </div>
                             </div>
-
-                            {/* Conceito se disponível */}
+                            
                             {results.grade && (
-                                <div className="text-center p-4 border rounded-lg">
-                                    <div className="font-semibold text-xl">{results.grade}</div>
-                                    <div className="text-sm text-muted-foreground">Conceito</div>
+                                <div className="bg-yellow-50 rounded-lg p-4 text-center">
+                                    <div className="text-2xl font-bold text-yellow-600">
+                                        {results.grade.toFixed(1)}/10
+                                    </div>
+                                    <div className="text-sm text-yellow-700">Nota Final</div>
                                 </div>
                             )}
 
-                            {/* Informações adicionais */}
-                            <div className="grid grid-cols-2 gap-4 text-sm text-center">
-                                <div>
-                                    <strong>Questões respondidas:</strong> {results.answers_saved || 0} de {results.total_questions || 0}
-                                </div>
-                                <div>
-                                    <strong>Duração da avaliação:</strong> {testData?.duration || 60} minutos
+                            {/* Informações detalhadas */}
+                            <div className="text-center space-y-2 text-sm text-muted-foreground">
+                                <p>
+                                    <strong>Tempo gasto:</strong> {results.duration_minutes || 0} minutos
+                                </p>
+                                <p>
+                                    <strong>Status:</strong> {results.status === 'finalizada' ? 'Concluída' : results.status}
+                                </p>
+                            </div>
+
+                            {/* Mensagem de sucesso */}
+                            <div className="text-center space-y-4 p-4 bg-green-50 rounded-lg border border-green-200">
+                                <CheckCircle2 className="h-8 w-8 text-green-600 mx-auto" />
+                                <div className="space-y-2">
+                                    <h3 className="text-lg font-semibold text-green-800">
+                                        {results.message || 'Avaliação Enviada com Sucesso!'}
+                                    </h3>
+                                    <p className="text-green-700">
+                                        Seus resultados foram calculados automaticamente.
+                                    </p>
                                 </div>
                             </div>
 
-                            {/* Feedback baseado na performance */}
-                            <Alert>
-                                <CheckCircle2 className="h-4 w-4" />
-                                <AlertDescription>
-                                    {results.score_percentage >= 80
-                                        ? "Excelente! Você demonstrou ótimo domínio do conteúdo."
-                                        : results.score_percentage >= 60
-                                            ? "Bom trabalho! Continue estudando para melhorar ainda mais."
-                                            : "Continue se esforçando! Revise o conteúdo e tire suas dúvidas com o professor."
-                                    }
-                                </AlertDescription>
-                            </Alert>
-
-                            <div className="flex justify-center gap-4">
-                                <Button variant="outline" onClick={() => navigate("/aluno/avaliacoes")}>
+                            <div className="flex justify-center gap-3">
+                                <Button onClick={() => navigate("/aluno/avaliacoes")}>
                                     <Home className="h-4 w-4 mr-2" />
-                                    Voltar às Avaliações
+                                    Voltar para Avaliações
                                 </Button>
-                                <Button onClick={() => window.print()}>
-                                    <Save className="h-4 w-4 mr-2" />
-                                    Imprimir Resultado
+                                <Button 
+                                    variant="outline"
+                                    onClick={() => window.print()}
+                                >
+                                    <Printer className="h-4 w-4 mr-2" />
+                                    Imprimir
                                 </Button>
                             </div>
                         </CardContent>
@@ -455,6 +451,8 @@ export default function TakeEvaluation() {
                                     remainingMinutes={session?.remaining_time_minutes}
                                 />
 
+
+
                                 <div className="text-right">
                                     <div className="text-sm font-medium">
                                         {testData.questions.length > 0 ? Math.round((Object.keys(answers).length / testData.questions.length) * 100) : 0}% concluído
@@ -477,174 +475,227 @@ export default function TakeEvaluation() {
                 </div>
 
                 <div className="flex-1 overflow-hidden">
-                    <div className="h-full p-4 grid gap-6 lg:grid-cols-4 overflow-y-auto">
-                        {/* ✅ NOVO: Alerta quando pausado */}
+                    <div className="h-full flex flex-col">
+                        {/* ✅ NOVO: Alerta quando pausado - MAIS COMPACTO */}
                         {isPaused && (
-                            <div className="lg:col-span-4 mb-4">
-                                <Alert className="border-yellow-300 bg-yellow-50">
+                            <div className="px-6 py-3 bg-yellow-50 border-b border-yellow-200">
+                                <Alert className="border-yellow-300 bg-yellow-50 py-2">
                                     <Pause className="h-4 w-4" />
-                                    <AlertDescription className="flex items-center justify-between">
-                                        <div className="flex-1">
-                                            <span>
-                                                ⏸️ <strong>Cronômetro pausado</strong> -
-                                                O timer foi pausado porque você saiu desta aba. Volte para esta aba para continuar.
-                                            </span>
-
-                                            {/* ✅ NOVO: Informações detalhadas do cronômetro */}
-                                            {session && (
-                                                <div className="mt-2 text-xs text-yellow-800">
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                        <div>
-                                                            <span className="font-medium">Tempo limite:</span> {session.time_limit_minutes} minutos
-                                                        </div>
-                                                        <div>
-                                                            <span className="font-medium">Tempo restante:</span> {session.remaining_time_minutes} minutos
-                                                        </div>
-                                                        {session.actual_start_time && (
-                                                            <div className="col-span-2">
-                                                                <span className="font-medium">Iniciado em:</span> {new Date(session.actual_start_time).toLocaleString('pt-BR')}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
+                                    <AlertDescription className="text-sm">
+                                        ⏸️ <strong>Cronômetro pausado</strong> - Volte para esta aba para continuar
                                     </AlertDescription>
                                 </Alert>
                             </div>
                         )}
 
-                        {/* Navegação das questões */}
-                        <div className="lg:col-span-1">
-                            <Card className="sticky top-24">
-                                <CardHeader className="pb-3">
-                                    <CardTitle className="text-base">Navegação</CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="grid grid-cols-5 gap-2">
-                                        {testData.questions.map((question, index) => {
-                                            const hasAnswer = answers[question.id]?.answer && answers[question.id]?.answer !== "";
-
-                                            return (
-                                                <Button
-                                                    key={question.id}
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className={`h-10 relative ${index === currentQuestionIndex ? 'ring-2 ring-blue-500' : ''
-                                                        } ${hasAnswer ? 'bg-green-100 border-green-300' : 'bg-white'
-                                                        }`}
-                                                    onClick={() => navigateToQuestion(index)}
-                                                >
-                                                    {index + 1}
-                                                    {hasAnswer && (
-                                                        <CheckCircle className="h-3 w-3 absolute -top-1 -right-1 text-green-500" />
-                                                    )}
-                                                </Button>
-                                            );
-                                        })}
+                        {/* ✅ NOVO: Navegação ULTRA-COMPACTA em UMA LINHA */}
+                        <div className={`px-4 py-3 bg-white border-b border-gray-200 shadow-sm transition-all duration-300 ${isNavigationMinimized ? 'h-12 overflow-hidden' : ''}`}>
+                            <div className="flex items-center justify-between mb-3">
+                                                            <div className="flex items-center gap-3">
+                                <h3 className="text-sm font-medium text-gray-700">Navegação</h3>
+                                <div className="text-xs text-gray-500">
+                                    {Object.keys(answers).length}/{testData.questions.length}
+                                </div>
+                                {isNavigationMinimized && (
+                                    <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
+                                        Minimizada
                                     </div>
-
+                                )}
+                            </div>
+                                <div className="flex items-center gap-2">
                                     <Button
-                                        className="w-full"
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => setIsNavigationMinimized(!isNavigationMinimized)}
+                                        className="px-2 py-1 h-8"
+                                        title={isNavigationMinimized ? "Expandir navegação" : "Minimizar navegação"}
+                                    >
+                                        {isNavigationMinimized ? (
+                                            <ChevronDown className="h-3 w-3" />
+                                        ) : (
+                                            <ChevronUp className="h-3 w-3" />
+                                        )}
+                                    </Button>
+                                    <Button
+                                        size="sm"
                                         onClick={() => setShowSubmitDialog(true)}
                                         disabled={isTimeUp || isSubmitting}
+                                        className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 h-8"
                                     >
-                                        <Send className="h-4 w-4 mr-2" />
-                                        Enviar Avaliação
+                                        <Send className="h-3 w-3 mr-1" />
+                                        Enviar
                                     </Button>
-                                </CardContent>
-                            </Card>
+                                </div>
+                            </div>
+                            
+                            {/* ✅ NOVO: UMA LINHA com ícones mais juntinhos */}
+                            <div className={`flex flex-wrap gap-0.5 transition-all duration-300 ${isNavigationMinimized ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                                {testData.questions.map((question, index) => {
+                                    const hasAnswer = answers[question.id]?.answer && answers[question.id]?.answer !== "";
+                                    const isCurrent = index === currentQuestionIndex;
+
+                                    return (
+                                        <button
+                                            key={question.id}
+                                            className={`
+                                                evaluation-navigation-button relative w-8 h-8 rounded text-sm font-medium flex-shrink-0
+                                                ${isCurrent 
+                                                    ? 'bg-blue-600 text-white ring-2 ring-blue-300 shadow-md' 
+                                                    : hasAnswer 
+                                                        ? 'bg-green-100 text-green-700 border border-green-300 hover:bg-green-200' 
+                                                        : 'bg-gray-100 text-gray-600 border border-gray-300 hover:bg-gray-200'
+                                                }
+                                                ${isTimeUp ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
+                                            `}
+                                            onClick={() => !isTimeUp && navigateToQuestion(index)}
+                                            disabled={isTimeUp}
+                                        >
+                                            {index + 1}
+                                            {hasAnswer && !isCurrent && (
+                                                <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full"></div>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         </div>
 
-                        {/* Área principal */}
-                        <div className="lg:col-span-3">
-                            <Card>
-                                <CardHeader>
-                                    <div className="flex items-start justify-between">
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-3 mb-3">
-                                                <Badge variant="outline">Questão {currentQuestionIndex + 1}</Badge>
-                                                <Badge variant="secondary">{currentQuestion.points || 1} ponto{(currentQuestion.points || 1) !== 1 ? 's' : ''}</Badge>
+                        {/* ✅ NOVO: Área principal - MAIS VISÍVEL e PROFISSIONAL */}
+                        <div className="flex-1 overflow-y-auto bg-gray-50">
+                            <div className="max-w-5xl mx-auto p-6">
+                                <Card className="evaluation-question-card question-fade-in">
+                                    <CardHeader className="evaluation-question-header">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-4">
+                                                <div className="flex items-center gap-2">
+                                                    <Badge variant="outline" className="bg-white border-blue-300 text-blue-700">
+                                                        Questão {currentQuestionIndex + 1}
+                                                    </Badge>
+                                                    <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                                                        {currentQuestion.points || 1} ponto{(currentQuestion.points || 1) !== 1 ? 's' : ''}
+                                                    </Badge>
+                                                </div>
+                                                <div className="text-sm text-blue-600">
+                                                    {testData.questions.length} questões • {testData.duration} minutos
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-xs text-gray-500 mb-1">Progresso</div>
+                                                <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                                    <div 
+                                                        className="h-full bg-blue-600 transition-all duration-300"
+                                                        style={{ 
+                                                            width: `${testData.questions.length > 0 ? (Object.keys(answers).length / testData.questions.length) * 100 : 0}%` 
+                                                        }}
+                                                    ></div>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                </CardHeader>
-                                <CardContent className="space-y-6">
-                                    {/* Conteúdo da questão */}
-                                    <div className="space-y-4">
-                                        {/* Primeiro enunciado */}
-                                        {(currentQuestion?.formattedText || currentQuestion?.text) && (
-                                            <div className="text-base leading-relaxed">
-                                                <div dangerouslySetInnerHTML={{ __html: currentQuestion?.formattedText || currentQuestion?.text || '' }} />
+                                    </CardHeader>
+                                    <CardContent className="p-8 space-y-8">
+                                        {/* Conteúdo da questão - MAIS LEGÍVEL */}
+                                        <div className="space-y-6">
+
+                                            
+                                            {/* Primeiro enunciado */}
+                                            {(currentQuestion?.formattedText || currentQuestion?.text) && (
+                                                <div className="text-lg leading-relaxed text-gray-800">
+                                                    <div dangerouslySetInnerHTML={{ __html: currentQuestion?.formattedText || currentQuestion?.text || '' }} />
+                                                </div>
+                                            )}
+
+                                            {/* Imagens - MELHOR DISPLAY */}
+                                            {currentQuestion?.images && Array.isArray(currentQuestion.images) && currentQuestion.images.length > 0 && (
+                                                <div className="flex flex-wrap gap-6 my-6">
+                                                    {currentQuestion.images.map((image, index) => {
+                                                        const imageUrl = typeof image === 'string' ? image : image?.url || image?.src;
+                                                        if (!imageUrl) return null;
+
+                                                        return (
+                                                            <div key={index} className="max-w-lg">
+                                                                <img
+                                                                    src={imageUrl}
+                                                                    alt={`Imagem ${index + 1} da questão`}
+                                                                    className="w-full h-auto rounded-lg border shadow-md"
+                                                                    style={{ maxHeight: '500px', objectFit: 'contain' }}
+                                                                    onError={(e) => {
+                                                                        e.currentTarget.style.display = 'none';
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+
+                                            {/* Segundo enunciado */}
+                                            {currentQuestion?.secondStatement && 
+                                             currentQuestion.secondStatement.trim().length > 0 && (
+                                                <div className="text-lg leading-relaxed text-gray-800">
+                                                    <div dangerouslySetInnerHTML={{ __html: currentQuestion.secondStatement.trim() }} />
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Opções de resposta - MAIS DESTACADAS */}
+                                        <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
+                                            <QuestionOptions
+                                                question={currentQuestion}
+                                                answer={answers[currentQuestion?.id]?.answer}
+                                                onAnswerChange={(newAnswer) => {
+                                                    if (currentQuestion?.id) {
+                                                        saveAnswer(currentQuestion.id, newAnswer);
+                                                        
+                                                        // ✅ NOVO: Avanço automático após seleção
+                                                        // Apenas para questões de múltipla escolha e verdadeiro/falso
+                                                        if ((currentQuestion.type === "multiple_choice" || 
+                                                             currentQuestion.type === "multipleChoice" ||
+                                                             currentQuestion.type === "true_false" || 
+                                                             currentQuestion.type === "truefalse") &&
+                                                            newAnswer && 
+                                                            currentQuestionIndex < testData.questions.length - 1) {
+                                                            
+                                                            // Delay de 1 segundo para o usuário ver a seleção
+                                                            setTimeout(() => {
+                                                                navigateToQuestion(currentQuestionIndex + 1);
+                                                            }, 1000);
+                                                        }
+                                                    }
+                                                }}
+                                                disabled={isTimeUp}
+                                            />
+                                        </div>
+
+                                        {/* ✅ NOVO: Navegação mais elegante */}
+                                        <div className="flex items-center justify-between pt-6 border-t border-gray-200">
+                                            <Button
+                                                variant="outline"
+                                                size="lg"
+                                                onClick={() => navigateToQuestion(currentQuestionIndex - 1)}
+                                                disabled={currentQuestionIndex === 0 || isTimeUp}
+                                                className="px-6"
+                                            >
+                                                <ChevronLeft className="h-5 w-5 mr-2" />
+                                                Questão Anterior
+                                            </Button>
+
+                                            <div className="text-sm text-gray-500">
+                                                {currentQuestionIndex + 1} de {testData.questions.length}
                                             </div>
-                                        )}
 
-                                        {/* Imagens */}
-                                        {currentQuestion?.images && Array.isArray(currentQuestion.images) && currentQuestion.images.length > 0 && (
-                                            <div className="flex flex-wrap gap-4 my-4">
-                                                {currentQuestion.images.map((image, index) => {
-                                                    // Se image é um objeto com url
-                                                    const imageUrl = typeof image === 'string' ? image : image?.url || image?.src;
-                                                    if (!imageUrl) return null;
-
-                                                    return (
-                                                        <div key={index} className="max-w-md">
-                                                            <img
-                                                                src={imageUrl}
-                                                                alt={`Imagem ${index + 1} da questão`}
-                                                                className="w-full h-auto rounded-lg border shadow-sm"
-                                                                style={{ maxHeight: '400px', objectFit: 'contain' }}
-                                                                onError={(e) => {
-                                                                    e.currentTarget.style.display = 'none';
-                                                                }}
-                                                            />
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
-
-                                        {/* Segundo enunciado */}
-                                        {(currentQuestion?.secondStatement || currentQuestion?.secondstatement) && (
-                                            <div className="text-base leading-relaxed">
-                                                <div dangerouslySetInnerHTML={{ __html: currentQuestion?.secondStatement || currentQuestion?.secondstatement || '' }} />
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Opções de resposta */}
-                                    <QuestionOptions
-                                        question={currentQuestion}
-                                        answer={answers[currentQuestion?.id]?.answer}
-                                        onAnswerChange={(newAnswer) => {
-                                            if (currentQuestion?.id) {
-                                                saveAnswer(currentQuestion.id, newAnswer);
-                                            }
-                                        }}
-                                        disabled={isTimeUp}
-                                    />
-
-                                    {/* Navegação */}
-                                    <div className="flex justify-between pt-4">
-                                        <Button
-                                            variant="outline"
-                                            onClick={() => navigateToQuestion(currentQuestionIndex - 1)}
-                                            disabled={currentQuestionIndex === 0 || isTimeUp}
-                                        >
-                                            <ChevronLeft className="h-4 w-4 mr-1" />
-                                            Anterior
-                                        </Button>
-
-                                        <Button
-                                            onClick={() => navigateToQuestion(currentQuestionIndex + 1)}
-                                            disabled={currentQuestionIndex === testData.questions.length - 1 || isTimeUp}
-                                        >
-                                            Próxima
-                                            <ChevronRight className="h-4 w-4 ml-1" />
-                                        </Button>
-                                    </div>
-                                </CardContent>
-                            </Card>
+                                            <Button
+                                                size="lg"
+                                                onClick={() => navigateToQuestion(currentQuestionIndex + 1)}
+                                                disabled={currentQuestionIndex === testData.questions.length - 1 || isTimeUp}
+                                                className="px-6 bg-blue-600 hover:bg-blue-700"
+                                            >
+                                                Próxima Questão
+                                                <ChevronRight className="h-5 w-5 ml-2" />
+                                            </Button>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            </div>
                         </div>
                     </div>
                 </div>

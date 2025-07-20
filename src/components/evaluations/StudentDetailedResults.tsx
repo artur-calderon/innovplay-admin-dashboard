@@ -13,7 +13,9 @@ import {
     Clock,
     Target,
     BarChart3,
-    FileText
+    FileText,
+    AlertTriangle,
+    Award
 } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -26,23 +28,53 @@ interface StudentDetailedResultsProps {
 interface StudentDetailedResult {
     test_id: string;
     student_id: string;
+    student_db_id: string;
     total_questions: number;
     answered_questions: number;
     correct_answers: number;
     score_percentage: number;
     total_score: number;
     max_possible_score: number;
+    grade: number;
+    proficiencia: number;
+    classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+    calculated_at: string;
+    status?: 'concluida' | 'nao_respondida';
     answers: Array<{
         question_id: string;
+        question_number: number;
         question_text: string;
         question_type: 'multipleChoice' | 'open' | 'trueFalse';
-        correct_answer: string;
+        question_value: number;
         student_answer: string;
-        options: string[];
+        answered_at: string;
         is_correct: boolean;
         score: number;
+        feedback: string | null;
+        corrected_by: string | null;
+        corrected_at: string | null;
     }>;
 }
+
+const getClassificationColor = (classification: string) => {
+    switch (classification) {
+        case 'Avançado': return 'border-l-green-500';
+        case 'Adequado': return 'border-l-blue-500';
+        case 'Básico': return 'border-l-yellow-500';
+        case 'Abaixo do Básico': return 'border-l-red-500';
+        default: return 'border-l-gray-500';
+    }
+};
+
+const getClassificationTextColor = (classification: string) => {
+    switch (classification) {
+        case 'Avançado': return 'text-green-600';
+        case 'Adequado': return 'text-blue-600';
+        case 'Básico': return 'text-yellow-600';
+        case 'Abaixo do Básico': return 'text-red-600';
+        default: return 'text-gray-600';
+    }
+};
 
 export default function StudentDetailedResults({ onBack }: StudentDetailedResultsProps) {
     const { id: evaluationId, studentId } = useParams<{ id: string; studentId: string }>();
@@ -60,7 +92,7 @@ export default function StudentDetailedResults({ onBack }: StudentDetailedResult
     const fetchStudentResults = async () => {
         try {
             setIsLoading(true);
-            const results = await EvaluationResultsApiService.getStudentDetailedResults(evaluationId!, studentId!);
+            const results = await EvaluationResultsApiService.getStudentDetailedResults(evaluationId!, studentId!, true);
             setStudentResults(results);
         } catch (error) {
             console.error("Erro ao buscar resultados do aluno:", error);
@@ -90,12 +122,11 @@ export default function StudentDetailedResults({ onBack }: StudentDetailedResult
 
             // Criar dados da planilha
             const worksheetData = [
-                ['Questão', 'Pergunta', 'Tipo', 'Resposta Correta', 'Resposta do Aluno', 'Acertou', 'Pontuação'],
+                ['Questão', 'Pergunta', 'Tipo', 'Resposta do Aluno', 'Acertou', 'Pontuação'],
                 ...studentResults.answers.map((answer, index) => [
-                    index + 1,
+                    answer.question_number,
                     answer.question_text,
                     answer.question_type,
-                    answer.correct_answer,
                     answer.student_answer,
                     answer.is_correct ? 'Sim' : 'Não',
                     answer.score
@@ -194,6 +225,74 @@ export default function StudentDetailedResults({ onBack }: StudentDetailedResult
         );
     }
 
+    // Verificar se o aluno não respondeu a avaliação
+    if (studentResults.status === 'nao_respondida' || studentResults.answered_questions === 0) {
+        return (
+            <div className="container mx-auto px-4 py-6 space-y-6">
+                {/* Header */}
+                <div className="flex items-center gap-4">
+                    <Button variant="outline" onClick={onBack}>
+                        <ArrowLeft className="h-4 w-4 mr-2" />
+                        Voltar
+                    </Button>
+                    <div>
+                        <h1 className="text-2xl font-bold">Resultados do Aluno</h1>
+                        <p className="text-muted-foreground">
+                            Status da participação na avaliação
+                        </p>
+                    </div>
+                </div>
+
+                {/* Card de Status */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <AlertTriangle className="h-5 w-5 text-orange-600" />
+                            Avaliação Não Respondida
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-center py-8">
+                            <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <AlertTriangle className="h-8 w-8 text-orange-600" />
+                            </div>
+                            <h3 className="text-lg font-medium text-gray-900 mb-2">
+                                Aluno não participou da avaliação
+                            </h3>
+                            <p className="text-gray-600 mb-4">
+                                Este aluno não possui respostas registradas para esta avaliação.
+                            </p>
+
+                            {/* Informações da avaliação */}
+                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5 mt-6">
+                                <div className="text-center p-4 bg-gray-50 rounded-lg">
+                                    <div className="text-2xl font-bold text-gray-600">{studentResults.total_questions}</div>
+                                    <div className="text-sm text-gray-600">Total de Questões</div>
+                                </div>
+                                <div className="text-center p-4 bg-gray-50 rounded-lg">
+                                    <div className="text-2xl font-bold text-gray-600">{studentResults.answered_questions}</div>
+                                    <div className="text-sm text-gray-600">Questões Respondidas</div>
+                                </div>
+                                <div className="text-center p-4 bg-gray-50 rounded-lg">
+                                    <div className="text-2xl font-bold text-gray-600">{studentResults.correct_answers}</div>
+                                    <div className="text-sm text-gray-600">Acertos</div>
+                                </div>
+                                <div className="text-center p-4 bg-gray-50 rounded-lg">
+                                    <div className="text-2xl font-bold text-gray-600">{studentResults.grade.toFixed(1)}</div>
+                                    <div className="text-sm text-gray-600">Nota Final</div>
+                                </div>
+                                <div className="text-center p-4 bg-gray-50 rounded-lg">
+                                    <div className="text-2xl font-bold text-gray-600">{studentResults.proficiencia.toFixed(1)}</div>
+                                    <div className="text-sm text-gray-600">Proficiência</div>
+                                </div>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
+
     const wrongAnswers = studentResults.answers.filter(a => !a.is_correct);
     const correctAnswers = studentResults.answers.filter(a => a.is_correct);
     const blankAnswers = studentResults.total_questions - studentResults.answered_questions;
@@ -215,7 +314,7 @@ export default function StudentDetailedResults({ onBack }: StudentDetailedResult
             </div>
 
             {/* Estatísticas Gerais */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
                 <Card className="border-l-4 border-l-blue-500">
                     <CardHeader className="pb-3">
                         <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -254,15 +353,15 @@ export default function StudentDetailedResults({ onBack }: StudentDetailedResult
                     <CardHeader className="pb-3">
                         <CardTitle className="text-sm font-medium flex items-center gap-2">
                             <Target className="h-4 w-4 text-purple-600" />
-                            Pontuação
+                            Nota Final
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold text-purple-600">
-                            {studentResults.total_score.toFixed(1)}
+                            {studentResults.grade.toFixed(1)}
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
-                            Máximo: {studentResults.max_possible_score.toFixed(1)}
+                            Pontuação: {studentResults.total_score.toFixed(1)}/{studentResults.max_possible_score.toFixed(1)}
                         </p>
                     </CardContent>
                 </Card>
@@ -271,15 +370,32 @@ export default function StudentDetailedResults({ onBack }: StudentDetailedResult
                     <CardHeader className="pb-3">
                         <CardTitle className="text-sm font-medium flex items-center gap-2">
                             <BarChart3 className="h-4 w-4 text-orange-600" />
-                            Percentual
+                            Proficiência
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold text-orange-600">
-                            {studentResults.score_percentage.toFixed(1)}%
+                            {studentResults.proficiencia.toFixed(1)}
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
-                            Desempenho geral
+                            {studentResults.classificacao}
+                        </p>
+                    </CardContent>
+                </Card>
+
+                <Card className={`border-l-4 ${getClassificationColor(studentResults.classificacao)}`}>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-sm font-medium flex items-center gap-2">
+                            <Award className="h-4 w-4" />
+                            Classificação
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className={`text-2xl font-bold ${getClassificationTextColor(studentResults.classificacao)}`}>
+                            {studentResults.classificacao}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                            Nível de desempenho
                         </p>
                     </CardContent>
                 </Card>
@@ -311,14 +427,6 @@ export default function StudentDetailedResults({ onBack }: StudentDetailedResult
                             <div>
                                 <div className="text-2xl font-bold text-red-600">{wrongAnswers.length}</div>
                                 <div className="text-sm text-red-700">Erros</div>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg">
-                            <Minus className="h-8 w-8 text-gray-600" />
-                            <div>
-                                <div className="text-2xl font-bold text-gray-600">{blankAnswers}</div>
-                                <div className="text-sm text-gray-700">Em Branco</div>
                             </div>
                         </div>
                     </div>
@@ -354,56 +462,24 @@ export default function StudentDetailedResults({ onBack }: StudentDetailedResult
                                         <h4 className="font-medium text-gray-900 mb-2">{answer.question_text}</h4>
                                     </div>
 
-                                    {/* Opções (se for múltipla escolha) */}
-                                    {answer.question_type === 'multipleChoice' && answer.options && (
-                                        <div className="space-y-2">
-                                            <div className="text-sm font-medium text-gray-700">Opções:</div>
-                                            <div className="grid gap-2">
-                                                {answer.options.map((option, optionIndex) => (
-                                                    <div key={optionIndex} className="flex items-center gap-2">
-                                                        <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${option === answer.correct_answer
-                                                                ? 'border-green-500 bg-green-100'
-                                                                : option === answer.student_answer && !answer.is_correct
-                                                                    ? 'border-red-500 bg-red-100'
-                                                                    : 'border-gray-300'
-                                                            }`}>
-                                                            {option === answer.correct_answer && (
-                                                                <CheckCircle2 className="h-3 w-3 text-green-600" />
-                                                            )}
-                                                            {option === answer.student_answer && !answer.is_correct && (
-                                                                <XCircle className="h-3 w-3 text-red-600" />
-                                                            )}
-                                                        </div>
-                                                        <span className={`text-sm ${option === answer.correct_answer
-                                                                ? 'text-green-700 font-medium'
-                                                                : option === answer.student_answer && !answer.is_correct
-                                                                    ? 'text-red-700 font-medium'
-                                                                    : 'text-gray-600'
-                                                            }`}>
-                                                            {option}
-                                                        </span>
-                                                    </div>
-                                                ))}
-                                            </div>
+                                    {/* Resposta do Aluno */}
+                                    <div>
+                                        <div className="text-sm font-medium text-gray-700 mb-1">Resposta do Aluno:</div>
+                                        <div className={`text-sm p-2 rounded ${answer.is_correct
+                                            ? 'text-green-700 bg-green-50'
+                                            : 'text-red-700 bg-red-50'
+                                            }`}>
+                                            {answer.student_answer || 'Em branco'}
                                         </div>
-                                    )}
+                                    </div>
 
-                                    {/* Respostas */}
-                                    <div className="grid gap-2 md:grid-cols-2">
+                                    {/* Informações adicionais */}
+                                    <div className="grid gap-2 md:grid-cols-2 text-xs text-muted-foreground">
                                         <div>
-                                            <div className="text-sm font-medium text-gray-700 mb-1">Resposta Correta:</div>
-                                            <div className="text-sm text-green-700 bg-green-50 p-2 rounded">
-                                                {answer.correct_answer}
-                                            </div>
+                                            <span className="font-medium">Valor da questão:</span> {answer.question_value} pontos
                                         </div>
                                         <div>
-                                            <div className="text-sm font-medium text-gray-700 mb-1">Resposta do Aluno:</div>
-                                            <div className={`text-sm p-2 rounded ${answer.is_correct
-                                                    ? 'text-green-700 bg-green-50'
-                                                    : 'text-red-700 bg-red-50'
-                                                }`}>
-                                                {answer.student_answer || 'Em branco'}
-                                            </div>
+                                            <span className="font-medium">Respondida em:</span> {new Date(answer.answered_at).toLocaleString('pt-BR')}
                                         </div>
                                     </div>
                                 </div>
