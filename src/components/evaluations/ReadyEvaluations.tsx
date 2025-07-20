@@ -32,6 +32,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useEvaluations, useCache } from "@/hooks/use-cache";
+import { useAuth } from "@/context/authContext";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ErrorBoundary from "./ErrorBoundary";
 
 interface Evaluation {
@@ -54,6 +56,7 @@ interface Evaluation {
   status?: string;
   grade?: { id: string; name: string };
   created_by?: string;
+  createdBy?: { id: string; name: string }; // Campo do backend para informações do criador
   duration?: number; // Duração em minutos
   startDateTime?: string; // Data de início quando ativada
   endDateTime?: string; // Data de fim quando ativada
@@ -71,6 +74,7 @@ interface Grade {
 
 interface ReadyEvaluationsProps {
   onUseEvaluation?: (evaluation: Evaluation) => void;
+  showMyEvaluations?: boolean; // true = mostrar apenas minhas avaliações, false = mostrar todas
 }
 
 // Componente separado para listar disciplinas
@@ -172,229 +176,56 @@ const SubjectsList = ({ evaluation }: { evaluation: Evaluation }) => {
   );
 };
 
-export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [evaluationToDelete, setEvaluationToDelete] = useState<string | null>(null);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [filters, setFilters] = useState({
-    subject: 'all',
-    type: 'all',
-    model: 'all',
-    grade: 'all'
-  });
-  const [startModalOpen, setStartModalOpen] = useState(false);
-  const [selectedEvaluationToStart, setSelectedEvaluationToStart] = useState<Evaluation | null>(null);
-  const itemsPerPage = 10;
-  const navigate = useNavigate();
-  const { toast } = useToast();
-
-  // ✅ Verificação inicial de segurança
-  if (!navigate || !toast) {
-    return <div>Carregando...</div>;
-  }
-
-  // ✅ NOVO: Usar hook de cache otimizado para avaliações com paginação
-  const {
-    data: evaluationsData,
-    isLoading,
-    error: evaluationsError,
-    refetch: refetchEvaluations,
-    invalidateCache
-  } = useEvaluations({
-    page: currentPage,
-    per_page: itemsPerPage,
-    ...(filters.subject !== 'all' && { subject_id: filters.subject }),
-    ...(filters.type !== 'all' && { type: filters.type }),
-    ...(filters.model !== 'all' && { model: filters.model }),
-    ...(filters.grade !== 'all' && { grade_id: filters.grade })
-  });
-
-  // ✅ NOVO: Hooks para dados de filtros (cache longo)
-  const {
-    data: subjects = [],
-    isLoading: isLoadingSubjects
-  } = useCache<Subject[]>('/subjects', {
-    staleTime: 30 * 60 * 1000 // 30 minutos
-  });
-
-  const {
-    data: grades = [],
-    isLoading: isLoadingGrades  
-  } = useCache<Grade[]>('/grades/', {
-    staleTime: 30 * 60 * 1000 // 30 minutos
-  });
-
-  // Preparar dados das avaliações com verificações de segurança
-  const evaluations = Array.isArray(evaluationsData?.data) ? evaluationsData.data : [];
-  const pagination = evaluationsData?.pagination;
-
-
-
-  // ✅ NOVO: Filtro de busca local (aplicado após dados já paginados)
-  const filteredEvaluations = (evaluations || [])
-    .filter(evaluation => evaluation && typeof evaluation === 'object' && evaluation.id)
-    .filter(
-      (evaluation) =>
-        evaluation?.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        evaluation?.subject?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        evaluation?.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        evaluation?.id?.includes(searchTerm)
-    );
-
-  // ✅ NOVO: Usar paginação do backend
-  const currentItems = Array.isArray(searchTerm ? filteredEvaluations : evaluations) 
-    ? (searchTerm ? filteredEvaluations : evaluations) 
-    : [];
-  const totalPages = pagination?.pages || 1;
-  const hasNextPage = pagination?.has_next || false;
-  const hasPrevPage = pagination?.has_prev || false;
-
-  const handlePageChange = (pageNumber: number) => {
-    setCurrentPage(pageNumber);
-  };
-
-  // ✅ NOVO: Resetar para primeira página quando filtros mudarem
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filters]);
-
+// Componente para renderizar a tabela de avaliações
+const EvaluationsTable = ({
+  evaluations,
+  pagination,
+  isLoading,
+  searchTerm,
+  filters,
+  selectedIds,
+  currentPage,
+  itemsPerPage,
+  subjects,
+  grades,
+  onPageChange,
+  onFilterChange,
+  onSearchChange,
+  onSelectAll,
+  onSelectOne,
+  onView,
+  onEdit,
+  onDelete,
+  onStartEvaluation,
+  onRefresh,
+  onClearFilters,
+  hasActiveFilters
+}: {
+  evaluations: Evaluation[];
+  pagination: any;
+  isLoading: boolean;
+  searchTerm: string;
+  filters: any;
+  selectedIds: string[];
+  currentPage: number;
+  itemsPerPage: number;
+  subjects: Subject[];
+  grades: Grade[];
+  onPageChange: (page: number) => void;
+  onFilterChange: (key: string, value: string) => void;
+  onSearchChange: (value: string) => void;
+  onSelectAll: (checked: boolean) => void;
+  onSelectOne: (id: string, checked: boolean) => void;
+  onView: (id: string) => void;
+  onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
+  onStartEvaluation: (evaluation: Evaluation) => void;
+  onRefresh: () => void;
+  onClearFilters: () => void;
+  hasActiveFilters: boolean;
+}) => {
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('pt-BR');
-  };
-
-  const handleView = (evaluationId: string) => {
-    navigate(`/app/avaliacao/${evaluationId}`);
-  };
-
-  const handleEdit = (evaluationId: string) => {
-    navigate(`/app/avaliacao/${evaluationId}/editar`);
-  };
-
-  const handleDelete = async () => {
-    if (!evaluationToDelete) {
-      console.error("Nenhuma avaliação selecionada para exclusão");
-      return;
-    }
-
-    console.log("🗑️ Iniciando exclusão da avaliação:", evaluationToDelete);
-
-    try {
-      console.log("📡 Fazendo chamada DELETE para:", `/test/${evaluationToDelete}`);
-      const response = await api.delete(`/test/${evaluationToDelete}`);
-      console.log("✅ Resposta da API:", response);
-      
-      toast({
-        title: "Sucesso",
-        description: "Avaliação excluída com sucesso",
-      });
-      
-      // ✅ NOVO: Invalidar cache e recarregar dados
-      console.log("🔄 Invalidando cache e recarregando dados...");
-      invalidateCache();
-      refetchEvaluations();
-    } catch (error: any) {
-      console.error("❌ Erro detalhado ao excluir avaliação:", {
-        error,
-        message: error.message,
-        response: error.response,
-        status: error.response?.status,
-        data: error.response?.data
-      });
-      
-      let errorMessage = "Não foi possível excluir a avaliação";
-      
-      if (error.response?.status === 404) {
-        errorMessage = "Avaliação não encontrada";
-      } else if (error.response?.status === 403) {
-        errorMessage = "Sem permissão para excluir esta avaliação";
-      } else if (error.response?.status === 401) {
-        errorMessage = "Sessão expirada. Faça login novamente.";
-      } else if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      }
-      
-      toast({
-        title: "Erro",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    } finally {
-      setDeleteDialogOpen(false);
-      setEvaluationToDelete(null);
-    }
-  };
-
-  const handleBulkDelete = async () => {
-    console.log("🗑️ Iniciando exclusão em massa de avaliações:", selectedIds);
-    
-    try {
-      console.log("📡 Fazendo chamada DELETE em massa para /test com IDs:", selectedIds);
-      const response = await api.delete("/test", { data: { ids: selectedIds } });
-      console.log("✅ Resposta da API:", response);
-      
-      toast({
-        title: "Sucesso",
-        description: `${selectedIds.length} avaliações foram excluídas.`,
-      });
-      
-      // ✅ NOVO: Invalidar cache e recarregar dados
-      console.log("🔄 Invalidando cache e recarregando dados...");
-      invalidateCache();
-      refetchEvaluations();
-      setSelectedIds([]);
-    } catch (error: any) {
-      console.error("❌ Erro detalhado ao excluir avaliações em massa:", {
-        error,
-        message: error.message,
-        response: error.response,
-        status: error.response?.status,
-        data: error.response?.data,
-        selectedIds
-      });
-      
-      let errorMessage = "Não foi possível excluir as avaliações selecionadas";
-      
-      if (error.response?.status === 404) {
-        errorMessage = "Uma ou mais avaliações não foram encontradas";
-      } else if (error.response?.status === 403) {
-        errorMessage = "Sem permissão para excluir estas avaliações";
-      } else if (error.response?.status === 401) {
-        errorMessage = "Sessão expirada. Faça login novamente.";
-      } else if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      }
-      
-      toast({
-        title: "Erro",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    } finally {
-      setDeleteDialogOpen(false);
-    }
-  };
-
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedIds((currentItems || []).map((item) => item.id));
-    } else {
-      setSelectedIds([]);
-    }
-  };
-
-  const handleSelectOne = (id: string, checked: boolean) => {
-    if (checked) {
-      setSelectedIds((prev) => [...prev, id]);
-    } else {
-      setSelectedIds((prev) => prev.filter((selectedId) => selectedId !== id));
-    }
-  };
-
-  const handleFilterChange = (key: string, value: string) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
-    setCurrentPage(1);
   };
 
   const getTypeColor = (type: string) => {
@@ -412,6 +243,575 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
       case 'AVALIE': return 'bg-cyan-100 text-cyan-800';
       default: return 'bg-gray-100 text-gray-800';
     }
+  };
+
+  // Filtro de busca local (aplicado após dados já paginados)
+  const filteredEvaluations = (evaluations || [])
+    .filter(evaluation => evaluation && typeof evaluation === 'object' && evaluation.id)
+    .filter(
+      (evaluation) =>
+        evaluation?.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        evaluation?.subject?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        evaluation?.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        evaluation?.id?.includes(searchTerm)
+    );
+
+  // Usar paginação do backend
+  const currentItems = Array.isArray(searchTerm ? filteredEvaluations : evaluations)
+    ? (searchTerm ? filteredEvaluations : evaluations)
+    : [];
+  const totalPages = pagination?.pages || 1;
+  const hasNextPage = pagination?.has_next || false;
+  const hasPrevPage = pagination?.has_prev || false;
+
+  return (
+    <div className="space-y-6">
+      {/* Header com busca e filtros */}
+      <div className="flex flex-col lg:flex-row gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+          <Input
+            placeholder="Buscar avaliações..."
+            value={searchTerm}
+            onChange={(e) => onSearchChange(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Select value={filters.subject} onValueChange={(value) => onFilterChange('subject', value)}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Disciplina" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas</SelectItem>
+              {(subjects || []).map((subject) => (
+                <SelectItem key={subject.id} value={subject.id}>
+                  {subject.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={filters.type} onValueChange={(value) => onFilterChange('type', value)}>
+            <SelectTrigger className="w-32">
+              <SelectValue placeholder="Tipo" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="AVALIACAO">Avaliação</SelectItem>
+              <SelectItem value="SIMULADO">Simulado</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={filters.model} onValueChange={(value) => onFilterChange('model', value)}>
+            <SelectTrigger className="w-32">
+              <SelectValue placeholder="Modelo" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="SAEB">SAEB</SelectItem>
+              <SelectItem value="PROVA">Prova</SelectItem>
+              <SelectItem value="AVALIE">Avalie</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={filters.grade} onValueChange={(value) => onFilterChange('grade', value)}>
+            <SelectTrigger className="w-32">
+              <SelectValue placeholder="Série" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas</SelectItem>
+              {(grades || []).map((grade) => (
+                <SelectItem key={grade.id} value={grade.id}>
+                  {grade.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onRefresh}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+          </Button>
+
+          {hasActiveFilters && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onClearFilters}
+            >
+              Limpar Filtros
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Ações em lote */}
+      {selectedIds.length > 0 && (
+        <div className="flex items-center justify-between bg-blue-50 p-3 rounded-lg">
+          <span className="text-sm text-blue-800">
+            {selectedIds.length} avaliação(ões) selecionada(s)
+          </span>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => onDelete('bulk')}
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Excluir ({selectedIds.length})
+          </Button>
+        </div>
+      )}
+
+      {/* Tabela de avaliações */}
+      <Card>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableCaption className="caption-top text-left p-6 pb-0">
+                <div className="flex items-center justify-between">
+                  <span>Lista de avaliações disponíveis</span>
+                  {!isLoading && (
+                    <span className="text-sm text-muted-foreground">
+                      {searchTerm ? filteredEvaluations.length : pagination?.total || 0} avaliação(ões) encontrada(s)
+                    </span>
+                  )}
+                </div>
+              </TableCaption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[50px]">
+                    <Checkbox
+                      checked={
+                        (currentItems || []).length > 0 &&
+                        selectedIds.length === (currentItems || []).length
+                      }
+                      onCheckedChange={onSelectAll}
+                      aria-label="Selecionar todos"
+                    />
+                  </TableHead>
+                  <TableHead className="min-w-[200px]">Título</TableHead>
+                  <TableHead className="table-cell min-w-[120px]">Disciplina(s)</TableHead>
+                  <TableHead className="hidden md:table-cell">Tipo/Modelo</TableHead>
+                  <TableHead className="hidden md:table-cell">Questões</TableHead>
+                  <TableHead className="hidden lg:table-cell">Série</TableHead>
+                  <TableHead className="hidden lg:table-cell">Criador</TableHead>
+                  <TableHead className="hidden lg:table-cell">Data</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell><Skeleton className="h-4 w-4" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-48" /></TableCell>
+                      <TableCell className="table-cell"><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
+                      <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-12" /></TableCell>
+                      <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-16" /></TableCell>
+                      <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
+                      <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Skeleton className="h-8 w-8" />
+                          <Skeleton className="h-8 w-8" />
+                          <Skeleton className="h-8 w-8" />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (currentItems || []).length > 0 ? (
+                  (currentItems || [])
+                    .filter(evaluation => evaluation && evaluation.id)
+                    .map((evaluation) => (
+                      <TableRow key={evaluation.id} data-state={selectedIds.includes(evaluation.id) && "selected"}>
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedIds.includes(evaluation.id)}
+                            onCheckedChange={(checked) => onSelectOne(evaluation.id, !!checked)}
+                            aria-label={`Selecionar ${evaluation.title}`}
+                          />
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          <div>
+                            <div className="line-clamp-1">{evaluation.title}</div>
+                            {evaluation.description && (
+                              <div className="text-xs text-muted-foreground line-clamp-1 mt-1">
+                                {evaluation.description}
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="table-cell">
+                          <SubjectsList evaluation={evaluation} />
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          <div className="flex flex-col gap-1">
+                            {evaluation.type && (
+                              <Badge className={`text-xs ${getTypeColor(evaluation.type)} w-fit`}>
+                                {evaluation.type}
+                              </Badge>
+                            )}
+                            {evaluation.model && (
+                              <Badge className={`text-xs ${getModelColor(evaluation.model)} w-fit`}>
+                                {evaluation.model}
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          <Badge variant="outline" className="text-xs">
+                            {(evaluation?.questions || []).length}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="hidden lg:table-cell">
+                          {evaluation.grade && (
+                            <Badge variant="outline" className="text-xs">
+                              {evaluation.grade.name}
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="hidden lg:table-cell">
+                          <span className="text-xs text-muted-foreground">
+                            {evaluation.createdBy?.name || 'N/A'}
+                          </span>
+                        </TableCell>
+                        <TableCell className="hidden lg:table-cell">
+                          <span className="text-xs text-muted-foreground">
+                            {formatDate(evaluation.createdAt)}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => onStartEvaluation(evaluation)}
+                              title="Aplicar Avaliação"
+                              className="text-green-600 hover:text-green-700"
+                            >
+                              <Play className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => onView(evaluation.id)}
+                              title="Visualizar"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => onEdit(evaluation.id)}
+                              title="Editar"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => onDelete(evaluation.id)}
+                              title="Excluir"
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={9} className="text-center py-8">
+                      <div className="flex flex-col items-center gap-2">
+                        <p className="text-muted-foreground">
+                          {searchTerm || hasActiveFilters
+                            ? "Nenhuma avaliação encontrada com os filtros aplicados"
+                            : "Nenhuma avaliação encontrada"}
+                        </p>
+                        {(searchTerm || hasActiveFilters) && (
+                          <Button variant="outline" size="sm" onClick={() => {
+                            onSearchChange("");
+                            onClearFilters();
+                          }}>
+                            Limpar filtros
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Paginação */}
+      {!isLoading && !searchTerm && pagination && totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-gray-500">
+            Mostrando {((currentPage - 1) * itemsPerPage) + 1} a {Math.min(currentPage * itemsPerPage, pagination.total)} de {pagination.total} avaliações
+          </div>
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onPageChange(currentPage - 1)}
+              disabled={!hasPrevPage}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              const page = i + 1;
+              return (
+                <Button
+                  key={page}
+                  variant={currentPage === page ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => onPageChange(page)}
+                >
+                  {page}
+                </Button>
+              );
+            })}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onPageChange(currentPage + 1)}
+              disabled={!hasNextPage}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }: ReadyEvaluationsProps) {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [evaluationToDelete, setEvaluationToDelete] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [filters, setFilters] = useState({
+    subject: 'all',
+    type: 'all',
+    model: 'all',
+    grade: 'all'
+  });
+  const [startModalOpen, setStartModalOpen] = useState(false);
+  const [selectedEvaluationToStart, setSelectedEvaluationToStart] = useState<Evaluation | null>(null);
+  const itemsPerPage = 10;
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const { user } = useAuth();
+
+  // ✅ Verificação inicial de segurança
+  if (!navigate || !toast) {
+    return <div>Carregando...</div>;
+  }
+
+  // ✅ Hook para todas as avaliações (mesma rota para todos)
+  const {
+    data: evaluationsData,
+    isLoading,
+    error: evaluationsError,
+    refetch,
+    invalidateCache
+  } = useEvaluations({
+    page: currentPage,
+    per_page: itemsPerPage,
+    ...(filters.subject !== 'all' && { subject_id: filters.subject }),
+    ...(filters.type !== 'all' && { type: filters.type }),
+    ...(filters.model !== 'all' && { model: filters.model }),
+    ...(filters.grade !== 'all' && { grade_id: filters.grade })
+  });
+
+  // ✅ Preparar dados das avaliações com verificações de segurança
+  const allEvaluations = Array.isArray(evaluationsData?.data) ? evaluationsData.data : [];
+  const pagination = evaluationsData?.pagination;
+
+  // ✅ Filtrar avaliações baseado na prop showMyEvaluations
+  const evaluations = showMyEvaluations
+    ? allEvaluations.filter(evaluation => evaluation.createdBy?.id === user.id)
+    : allEvaluations;
+
+  // ✅ NOVO: Hooks para dados de filtros (cache longo)
+  const {
+    data: subjects = [],
+    isLoading: isLoadingSubjects
+  } = useCache<Subject[]>('/subjects', {
+    staleTime: 30 * 60 * 1000 // 30 minutos
+  });
+
+  const {
+    data: grades = [],
+    isLoading: isLoadingGrades
+  } = useCache<Grade[]>('/grades/', {
+    staleTime: 30 * 60 * 1000 // 30 minutos
+  });
+
+  const handlePageChange = (pageNumber: number) => {
+    setCurrentPage(pageNumber);
+  };
+
+  // ✅ NOVO: Resetar para primeira página quando filtros mudarem
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters]);
+
+  const handleView = (evaluationId: string) => {
+    navigate(`/app/avaliacao/${evaluationId}`);
+  };
+
+  const handleEdit = (evaluationId: string) => {
+    navigate(`/app/avaliacao/${evaluationId}/editar`);
+  };
+
+  const handleDelete = async (evaluationId: string) => {
+    if (evaluationId === 'bulk') {
+      // Exclusão em massa
+      await handleBulkDelete();
+      return;
+    }
+
+    setEvaluationToDelete(evaluationId);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!evaluationToDelete) {
+      console.error("Nenhuma avaliação selecionada para exclusão");
+      return;
+    }
+
+    console.log("🗑️ Iniciando exclusão da avaliação:", evaluationToDelete);
+
+    try {
+      console.log("📡 Fazendo chamada DELETE para:", `/test/${evaluationToDelete}`);
+      const response = await api.delete(`/test/${evaluationToDelete}`);
+      console.log("✅ Resposta da API:", response);
+
+      toast({
+        title: "Sucesso",
+        description: "Avaliação excluída com sucesso",
+      });
+
+      // ✅ NOVO: Invalidar cache e recarregar dados
+      console.log("🔄 Invalidando cache e recarregando dados...");
+      invalidateCache();
+      refetch();
+    } catch (error: any) {
+      console.error("❌ Erro detalhado ao excluir avaliação:", {
+        error,
+        message: error.message,
+        response: error.response,
+        status: error.response?.status,
+        data: error.response?.data
+      });
+
+      let errorMessage = "Não foi possível excluir a avaliação";
+
+      if (error.response?.status === 404) {
+        errorMessage = "Avaliação não encontrada";
+      } else if (error.response?.status === 403) {
+        errorMessage = "Sem permissão para excluir esta avaliação";
+      } else if (error.response?.status === 401) {
+        errorMessage = "Sessão expirada. Faça login novamente.";
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      }
+
+      toast({
+        title: "Erro",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setDeleteDialogOpen(false);
+      setEvaluationToDelete(null);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    console.log("🗑️ Iniciando exclusão em massa de avaliações:", selectedIds);
+
+    try {
+      console.log("📡 Fazendo chamada DELETE em massa para /test com IDs:", selectedIds);
+      const response = await api.delete("/test", { data: { ids: selectedIds } });
+      console.log("✅ Resposta da API:", response);
+
+      toast({
+        title: "Sucesso",
+        description: `${selectedIds.length} avaliações foram excluídas.`,
+      });
+
+      // ✅ NOVO: Invalidar cache e recarregar dados
+      console.log("🔄 Invalidando cache e recarregando dados...");
+      invalidateCache();
+      refetch();
+      setSelectedIds([]);
+    } catch (error: any) {
+      console.error("❌ Erro detalhado ao excluir avaliações em massa:", {
+        error,
+        message: error.message,
+        response: error.response,
+        status: error.response?.status,
+        data: error.response?.data,
+        selectedIds
+      });
+
+      let errorMessage = "Não foi possível excluir as avaliações selecionadas";
+
+      if (error.response?.status === 404) {
+        errorMessage = "Uma ou mais avaliações não foram encontradas";
+      } else if (error.response?.status === 403) {
+        errorMessage = "Sem permissão para excluir estas avaliações";
+      } else if (error.response?.status === 401) {
+        errorMessage = "Sessão expirada. Faça login novamente.";
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      }
+
+      toast({
+        title: "Erro",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setDeleteDialogOpen(false);
+    }
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds((evaluations || []).map((item) => item.id));
+    } else {
+      setSelectedIds([]);
+    }
+  };
+
+  const handleSelectOne = (id: string, checked: boolean) => {
+    if (checked) {
+      setSelectedIds((prev) => [...prev, id]);
+    } else {
+      setSelectedIds((prev) => prev.filter((selectedId) => selectedId !== id));
+    }
+  };
+
+  const handleFilterChange = (key: string, value: string) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+    setCurrentPage(1);
   };
 
   const clearFilters = () => {
@@ -459,7 +859,7 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
 
       // ✅ NOVO: Invalidar cache e recarregar dados
       invalidateCache();
-      refetchEvaluations();
+      refetch();
 
       toast({
         title: "🎉 Avaliação aplicada com sucesso!",
@@ -467,9 +867,9 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
       });
     } catch (error: any) {
       console.error("❌ Erro ao aplicar avaliação:", error);
-      
+
       let errorMessage = "Erro ao aplicar avaliação. Tente novamente.";
-      
+
       if (error.response?.status === 404) {
         errorMessage = "Avaliação não encontrada";
       } else if (error.response?.status === 403) {
@@ -479,7 +879,7 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
       } else if (error.response?.data?.error) {
         errorMessage = error.response.data.error;
       }
-      
+
       toast({
         title: "Erro ao aplicar avaliação",
         description: errorMessage,
@@ -502,7 +902,7 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
           <p className="text-muted-foreground mb-4">
             Erro ao carregar avaliações. Tente novamente.
           </p>
-          <Button onClick={() => refetchEvaluations()}>
+          <Button onClick={() => refetch()}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Tentar novamente
           </Button>
@@ -511,370 +911,69 @@ export function ReadyEvaluations({ onUseEvaluation }: ReadyEvaluationsProps) {
     );
   }
 
+  // Renderizar a tabela de avaliações
   return (
     <ErrorBoundary>
       <TooltipProvider>
         <div className="space-y-6">
-        {/* Header com busca e filtros */}
-        <div className="flex flex-col lg:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
-            <Input
-              placeholder="Buscar avaliações..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9"
-            />
-          </div>
+          <EvaluationsTable
+            evaluations={evaluations}
+            pagination={pagination}
+            isLoading={isLoading}
+            searchTerm={searchTerm}
+            filters={filters}
+            selectedIds={selectedIds}
+            currentPage={currentPage}
+            itemsPerPage={itemsPerPage}
+            subjects={subjects}
+            grades={grades}
+            onPageChange={handlePageChange}
+            onFilterChange={handleFilterChange}
+            onSearchChange={setSearchTerm}
+            onSelectAll={handleSelectAll}
+            onSelectOne={handleSelectOne}
+            onView={handleView}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            onStartEvaluation={handleStartEvaluation}
+            onRefresh={refetch}
+            onClearFilters={clearFilters}
+            hasActiveFilters={hasActiveFilters}
+          />
 
-          <div className="flex flex-wrap gap-2">
-            <Select value={filters.subject} onValueChange={(value) => handleFilterChange('subject', value)}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Disciplina" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas</SelectItem>
-                {(subjects || []).map((subject) => (
-                  <SelectItem key={subject.id} value={subject.id}>
-                    {subject.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {/* Dialog de confirmação de exclusão */}
+          <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {evaluationToDelete
+                    ? "Tem certeza que deseja excluir esta avaliação? Esta ação não pode ser desfeita."
+                    : `Tem certeza que deseja excluir ${selectedIds.length} avaliações? Esta ação não pode ser desfeita.`
+                  }
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction onClick={handleConfirmDelete}>
+                  Confirmar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
-            <Select value={filters.type} onValueChange={(value) => handleFilterChange('type', value)}>
-              <SelectTrigger className="w-32">
-                <SelectValue placeholder="Tipo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="AVALIACAO">Avaliação</SelectItem>
-                <SelectItem value="SIMULADO">Simulado</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={filters.model} onValueChange={(value) => handleFilterChange('model', value)}>
-              <SelectTrigger className="w-32">
-                <SelectValue placeholder="Modelo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="SAEB">SAEB</SelectItem>
-                <SelectItem value="PROVA">Prova</SelectItem>
-                <SelectItem value="AVALIE">Avalie</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={filters.grade} onValueChange={(value) => handleFilterChange('grade', value)}>
-              <SelectTrigger className="w-32">
-                <SelectValue placeholder="Série" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas</SelectItem>
-                {(grades || []).map((grade) => (
-                  <SelectItem key={grade.id} value={grade.id}>
-                    {grade.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => refetchEvaluations()}
-              disabled={isLoading}
-            >
-              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-            </Button>
-
-            {hasActiveFilters && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={clearFilters}
-              >
-                Limpar Filtros
-              </Button>
-            )}
-          </div>
+          {/* Modal de Iniciar Avaliação */}
+          <StartEvaluationModal
+            isOpen={startModalOpen}
+            onClose={() => {
+              setStartModalOpen(false);
+              setSelectedEvaluationToStart(null);
+            }}
+            onConfirm={handleConfirmStartEvaluation}
+            evaluation={selectedEvaluationToStart}
+          />
         </div>
-
-        {/* Ações em lote */}
-        {selectedIds.length > 0 && (
-          <div className="flex items-center justify-between bg-blue-50 p-3 rounded-lg">
-            <span className="text-sm text-blue-800">
-              {selectedIds.length} avaliação(ões) selecionada(s)
-            </span>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => {
-                setEvaluationToDelete(null);
-                setDeleteDialogOpen(true);
-              }}
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Excluir ({selectedIds.length})
-            </Button>
-          </div>
-        )}
-
-        {/* Tabela de avaliações */}
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableCaption className="caption-top text-left p-6 pb-0">
-                  <div className="flex items-center justify-between">
-                    <span>Lista de avaliações disponíveis</span>
-                    {!isLoading && (
-                      <span className="text-sm text-muted-foreground">
-                        {searchTerm ? filteredEvaluations.length : pagination?.total || 0} avaliação(ões) encontrada(s)
-                      </span>
-                    )}
-                  </div>
-                </TableCaption>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[50px]">
-                      <Checkbox
-                        checked={
-                          (currentItems || []).length > 0 &&
-                          selectedIds.length === (currentItems || []).length
-                        }
-                        onCheckedChange={handleSelectAll}
-                        aria-label="Selecionar todos"
-                      />
-                    </TableHead>
-                    <TableHead className="min-w-[200px]">Título</TableHead>
-                    <TableHead className="table-cell min-w-[120px]">Disciplina(s)</TableHead>
-                    <TableHead className="hidden md:table-cell">Tipo/Modelo</TableHead>
-                    <TableHead className="hidden md:table-cell">Questões</TableHead>
-                    <TableHead className="hidden lg:table-cell">Série</TableHead>
-                    <TableHead className="hidden lg:table-cell">Data</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {isLoading ? (
-                    Array.from({ length: 5 }).map((_, i) => (
-                      <TableRow key={i}>
-                        <TableCell><Skeleton className="h-4 w-4" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-48" /></TableCell>
-                        <TableCell className="table-cell"><Skeleton className="h-4 w-24" /></TableCell>
-                        <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
-                        <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-12" /></TableCell>
-                        <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-16" /></TableCell>
-                        <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Skeleton className="h-8 w-8" />
-                            <Skeleton className="h-8 w-8" />
-                            <Skeleton className="h-8 w-8" />
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (currentItems || []).length > 0 ? (
-                    (currentItems || [])
-                      .filter(evaluation => evaluation && evaluation.id)
-                      .map((evaluation) => (
-                      <TableRow key={evaluation.id} data-state={selectedIds.includes(evaluation.id) && "selected"}>
-                        <TableCell>
-                          <Checkbox
-                            checked={selectedIds.includes(evaluation.id)}
-                            onCheckedChange={(checked) => handleSelectOne(evaluation.id, !!checked)}
-                            aria-label={`Selecionar ${evaluation.title}`}
-                          />
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          <div>
-                            <div className="line-clamp-1">{evaluation.title}</div>
-                            {evaluation.description && (
-                              <div className="text-xs text-muted-foreground line-clamp-1 mt-1">
-                                {evaluation.description}
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="table-cell">
-                          <SubjectsList evaluation={evaluation} />
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell">
-                          <div className="flex flex-col gap-1">
-                            {evaluation.type && (
-                              <Badge className={`text-xs ${getTypeColor(evaluation.type)} w-fit`}>
-                                {evaluation.type}
-                              </Badge>
-                            )}
-                            {evaluation.model && (
-                              <Badge className={`text-xs ${getModelColor(evaluation.model)} w-fit`}>
-                                {evaluation.model}
-                              </Badge>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell">
-                          <Badge variant="outline" className="text-xs">
-                            {(evaluation?.questions || []).length}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="hidden lg:table-cell">
-                          {evaluation.grade && (
-                            <Badge variant="outline" className="text-xs">
-                              {evaluation.grade.name}
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="hidden lg:table-cell">
-                          <span className="text-xs text-muted-foreground">
-                            {formatDate(evaluation.createdAt)}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleStartEvaluation(evaluation)}
-                              title="Aplicar Avaliação"
-                              className="text-green-600 hover:text-green-700"
-                            >
-                              <Play className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleView(evaluation.id)}
-                              title="Visualizar"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleEdit(evaluation.id)}
-                              title="Editar"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                setEvaluationToDelete(evaluation.id);
-                                setDeleteDialogOpen(true);
-                              }}
-                              title="Excluir"
-                              className="text-red-500 hover:text-red-700"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8">
-                        <div className="flex flex-col items-center gap-2">
-                          <p className="text-muted-foreground">
-                            {searchTerm || hasActiveFilters
-                              ? "Nenhuma avaliação encontrada com os filtros aplicados"
-                              : "Nenhuma avaliação encontrada"}
-                          </p>
-                          {(searchTerm || hasActiveFilters) && (
-                            <Button variant="outline" size="sm" onClick={() => {
-                              setSearchTerm("");
-                              clearFilters();
-                            }}>
-                              Limpar filtros
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Paginação */}
-        {!isLoading && !searchTerm && pagination && totalPages > 1 && (
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-gray-500">
-              Mostrando {((currentPage - 1) * itemsPerPage) + 1} a {Math.min(currentPage * itemsPerPage, pagination.total)} de {pagination.total} avaliações
-            </div>
-            <div className="flex items-center space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handlePageChange(currentPage - 1)}
-                disabled={!hasPrevPage}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                const page = i + 1;
-                return (
-                  <Button
-                    key={page}
-                    variant={currentPage === page ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => handlePageChange(page)}
-                  >
-                    {page}
-                  </Button>
-                );
-              })}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handlePageChange(currentPage + 1)}
-                disabled={!hasNextPage}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Dialog de confirmação de exclusão */}
-        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
-              <AlertDialogDescription>
-                {evaluationToDelete
-                  ? "Tem certeza que deseja excluir esta avaliação? Esta ação não pode ser desfeita."
-                  : `Tem certeza que deseja excluir ${selectedIds.length} avaliações? Esta ação não pode ser desfeita.`
-                }
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              <AlertDialogAction onClick={evaluationToDelete ? handleDelete : handleBulkDelete}>
-                Confirmar
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        {/* Modal de Iniciar Avaliação */}
-        <StartEvaluationModal
-          isOpen={startModalOpen}
-          onClose={() => {
-            setStartModalOpen(false);
-            setSelectedEvaluationToStart(null);
-          }}
-          onConfirm={handleConfirmStartEvaluation}
-          evaluation={selectedEvaluationToStart}
-        />
-      </div>
-    </TooltipProvider>
+      </TooltipProvider>
     </ErrorBoundary>
   );
 }
