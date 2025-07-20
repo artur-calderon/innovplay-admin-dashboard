@@ -44,7 +44,7 @@ interface EvaluationResult {
   escola: string;
   municipio: string;
   data_aplicacao: string;
-  status: 'concluida' | 'em_andamento' | 'pendente';
+  status: 'concluida' | 'em_andamento' | 'pendente' | string; // Permitir outros status
   total_alunos: number;
   alunos_participantes: number;
   alunos_ausentes: number;
@@ -94,10 +94,17 @@ export default function Results() {
   const [evaluationsList, setEvaluationsList] = useState<EvaluationResult[]>([]);
   const [filteredEvaluations, setFilteredEvaluations] = useState<EvaluationResult[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingPage, setIsLoadingPage] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [subjectFilter, setSubjectFilter] = useState<string>('all');
   const [chartType, setChartType] = useState<'bars' | 'area' | 'network'>('bars');
+
+  // Estados de paginação
+  const [currentPage, setCurrentPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalEvaluations, setTotalEvaluations] = useState(0);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -121,15 +128,22 @@ export default function Results() {
       }
       await fetchData();
     };
-    
+
     initializeData();
   }, [evaluationId, autoLogin]);
 
-  // Filtrar avaliações baseado nos filtros
+  // Recarregar dados quando página ou filtros mudarem
+  useEffect(() => {
+    if (!evaluationId) {
+      fetchEvaluationsList();
+    }
+  }, [currentPage, perPage, statusFilter, subjectFilter]);
+
+  // Filtrar avaliações baseado apenas na busca local
   useEffect(() => {
     let filtered = evaluationsList;
 
-    // Filtro por busca
+    // Filtro por busca (local)
     if (searchTerm) {
       filtered = filtered.filter(evaluation =>
         evaluation.titulo.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -138,18 +152,8 @@ export default function Results() {
       );
     }
 
-    // Filtro por status
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(evaluation => evaluation.status === statusFilter);
-    }
-
-    // Filtro por disciplina
-    if (subjectFilter !== 'all') {
-      filtered = filtered.filter(evaluation => evaluation.disciplina === subjectFilter);
-    }
-
     setFilteredEvaluations(filtered);
-  }, [evaluationsList, searchTerm, statusFilter, subjectFilter]);
+  }, [evaluationsList, searchTerm]);
 
   const fetchData = async () => {
     try {
@@ -162,7 +166,7 @@ export default function Results() {
         description: "Não foi possível conectar com o servidor. Verifique se o backend está rodando.",
         variant: "destructive",
       });
-      // Não mostrar dados mock, deixar a página vazia
+      // Definir estatísticas vazias
       setStats({
         totalEvaluations: 0,
         totalStudents: 0,
@@ -177,7 +181,9 @@ export default function Results() {
   };
 
   const fetchResultsStats = async () => {
-    const evaluations = await EvaluationResultsApiService.getEvaluationsList();
+    // Buscar todas as avaliações para estatísticas (sem paginação)
+    const response = await EvaluationResultsApiService.getEvaluationsList(1, 1000);
+    const evaluations = response.data;
 
     if (evaluations.length === 0) {
       setStats({
@@ -212,7 +218,7 @@ export default function Results() {
     }, { subject: '', average: 0 });
 
     setStats({
-      totalEvaluations: evaluations.length,
+      totalEvaluations: response.total,
       totalStudents: totalStudents,
       averageScore: averageScore,
       completedEvaluations: completedEvaluations,
@@ -221,14 +227,38 @@ export default function Results() {
   };
 
   const fetchEvaluationsList = async () => {
-    const evaluations = await EvaluationResultsApiService.getEvaluationsList();
+    setIsLoadingPage(true);
 
-    if (evaluationId) {
-      // Se há um ID específico, filtrar apenas essa avaliação
-      const specificEvaluation = evaluations.filter((evaluation: EvaluationResult) => evaluation.id === evaluationId);
-      setEvaluationsList(specificEvaluation);
-    } else {
-      setEvaluationsList(evaluations);
+    try {
+      const response = await EvaluationResultsApiService.getEvaluationsList(
+        currentPage,
+        perPage,
+        {
+          status: statusFilter !== 'all' ? statusFilter : undefined,
+          disciplina: subjectFilter !== 'all' ? subjectFilter : undefined,
+        }
+      );
+
+      // Atualizar estados de paginação
+      setTotalPages(response.total_pages);
+      setTotalEvaluations(response.total);
+
+      if (evaluationId) {
+        // Se há um ID específico, filtrar apenas essa avaliação
+        const specificEvaluation = response.data.filter((evaluation: EvaluationResult) => evaluation.id === evaluationId);
+        setEvaluationsList(specificEvaluation);
+      } else {
+        setEvaluationsList(response.data);
+      }
+    } catch (error) {
+      console.error("Erro ao carregar avaliações:", error);
+      toast({
+        title: "Erro ao carregar avaliações",
+        description: "Não foi possível carregar as avaliações. Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingPage(false);
     }
   };
 
@@ -247,7 +277,11 @@ export default function Results() {
         color: "bg-gray-100 text-gray-800 border-gray-300"
       },
     };
-    return configs[status];
+
+    return configs[status] || {
+      label: "Desconhecido",
+      color: "bg-gray-100 text-gray-800 border-gray-300"
+    };
   };
 
   const getProficiencyColor = (proficiency: string) => {
@@ -264,6 +298,25 @@ export default function Results() {
     navigate(`/app/avaliacao/${evaluationId}/resultados-detalhados`);
   };
 
+  // Funções de paginação
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handlePerPageChange = (newPerPage: number) => {
+    setPerPage(newPerPage);
+    setCurrentPage(1); // Voltar para a primeira página
+  };
+
+  const handleFilterChange = (filterType: 'status' | 'subject', value: string) => {
+    if (filterType === 'status') {
+      setStatusFilter(value);
+    } else if (filterType === 'subject') {
+      setSubjectFilter(value);
+    }
+    setCurrentPage(1); // Voltar para a primeira página ao aplicar filtros
+  };
+
   // Função utilitária para tratar valores vazios
   const formatFieldValue = (value: string | null | undefined, fallback: string = 'Não informado') => {
     if (!value || value.trim() === '') return fallback;
@@ -271,17 +324,17 @@ export default function Results() {
   };
 
   // Função para renderizar diferentes tipos de gráficos
-  const renderProficiencyChart = (levels: Array<{name: string, value: number, color: string, textColor: string}>) => {
+  const renderProficiencyChart = (levels: Array<{ name: string, value: number, color: string, textColor: string }>) => {
     const total = levels.reduce((sum, level) => sum + level.value, 0);
-    
+
     if (total === 0) return <div className="text-center text-muted-foreground">Nenhum dado disponível</div>;
 
     switch (chartType) {
       case 'bars':
         return (
           <div className="space-y-3">
-            {levels.map(level => (
-              <div key={level.name} className="space-y-1">
+            {levels.map((level, index) => (
+              <div key={`${level.name}-${index}`} className="space-y-1">
                 <div className="flex justify-between text-sm">
                   <span className="font-medium">{level.name}</span>
                   <span className={`font-bold ${level.textColor}`}>
@@ -289,7 +342,7 @@ export default function Results() {
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-3">
-                  <div 
+                  <div
                     className={`${level.color} h-3 rounded-full transition-all duration-300`}
                     style={{ width: `${(level.value / total) * 100}%` }}
                   />
@@ -306,8 +359,8 @@ export default function Results() {
               <svg className="w-full h-full" viewBox="0 0 100 40">
                 <defs>
                   <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.8"/>
-                    <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.1"/>
+                    <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.8" />
+                    <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.1" />
                   </linearGradient>
                 </defs>
                 {/* Linhas de grade */}
@@ -329,14 +382,14 @@ export default function Results() {
                     const points = levels.map((level, index) => {
                       const x = (index / (levels.length - 1)) * 100;
                       let percentage = 0;
-                      
+
                       if (total > 0) {
                         percentage = level.value / total;
-                        
+
                         // Verificar se é um caso extremo (apenas um valor não-zero)
                         const nonZeroValues = levels.filter(l => l.value > 0).length;
                         const maxValue = Math.max(...levels.map(l => l.value));
-                        
+
                         if (nonZeroValues === 1 && level.value === maxValue) {
                           // Caso extremo: criar uma forma mais suave e elegante
                           if (index === 0) {
@@ -361,11 +414,11 @@ export default function Results() {
                           }
                         }
                       }
-                      
+
                       const y = Math.max(12, Math.min(40, 40 - (percentage * 28)));
                       return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
                     }).join(' ');
-                    
+
                     return `${points} L 100 40 L 0 40 Z`;
                   })()}
                   fill="url(#areaGradient)"
@@ -377,14 +430,14 @@ export default function Results() {
                   const x = (index / (levels.length - 1)) * 100;
                   let percentage = 0;
                   let y = 40;
-                  
+
                   if (total > 0) {
                     percentage = level.value / total;
-                    
+
                     // Verificar se é um caso extremo
                     const nonZeroValues = levels.filter(l => l.value > 0).length;
                     const maxValue = Math.max(...levels.map(l => l.value));
-                    
+
                     if (nonZeroValues === 1 && level.value === maxValue) {
                       if (index === 0) {
                         y = 12; // Base
@@ -399,9 +452,9 @@ export default function Results() {
                       y = Math.max(12, Math.min(40, 40 - (percentage * 28)));
                     }
                   }
-                  
+
                   return (
-                    <g key={level.name}>
+                    <g key={`${level.name}-${index}`}>
                       <circle
                         cx={x}
                         cy={y}
@@ -426,8 +479,8 @@ export default function Results() {
               </svg>
             </div>
             <div className="grid grid-cols-2 gap-3 text-sm">
-              {levels.map(level => (
-                <div key={level.name} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+              {levels.map((level, index) => (
+                <div key={`${level.name}-${index}`} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
                   <div className="flex items-center gap-2">
                     <div className={`w-3 h-3 rounded ${level.color}`}></div>
                     <span className="font-medium">{level.name}</span>
@@ -454,7 +507,7 @@ export default function Results() {
                   fill="#6b7280"
                   opacity="0.3"
                 />
-                
+
                 {levels.map((level, index) => {
                   const angle = (index / levels.length) * 2 * Math.PI - Math.PI / 2; // Começar do topo
                   const radius = 15;
@@ -463,9 +516,9 @@ export default function Results() {
                   const x = centerX + Math.cos(angle) * radius;
                   const y = centerY + Math.sin(angle) * radius;
                   const size = Math.max(4, (level.value / total) * 10);
-                  
+
                   return (
-                    <g key={level.name}>
+                    <g key={`${level.name}-${index}`}>
                       {/* Linha conectando ao centro */}
                       <line
                         x1={centerX}
@@ -481,9 +534,9 @@ export default function Results() {
                         cx={x}
                         cy={y}
                         r={size}
-                        fill={level.color.replace('bg-', '').includes('red') ? '#ef4444' : 
-                              level.color.replace('bg-', '').includes('yellow') ? '#eab308' :
-                              level.color.replace('bg-', '').includes('blue') ? '#3b82f6' : '#22c55e'}
+                        fill={level.color.replace('bg-', '').includes('red') ? '#ef4444' :
+                          level.color.replace('bg-', '').includes('yellow') ? '#eab308' :
+                            level.color.replace('bg-', '').includes('blue') ? '#3b82f6' : '#22c55e'}
                         opacity="0.9"
                         stroke="white"
                         strokeWidth="1"
@@ -516,8 +569,8 @@ export default function Results() {
               </svg>
             </div>
             <div className="grid grid-cols-2 gap-3 text-sm">
-              {levels.map(level => (
-                <div key={level.name} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+              {levels.map((level, index) => (
+                <div key={`${level.name}-${index}`} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
                   <div className="flex items-center gap-2">
                     <div className={`w-3 h-3 rounded ${level.color}`}></div>
                     <span className="font-medium">{level.name}</span>
@@ -696,125 +749,148 @@ export default function Results() {
       </div>
 
       {/* Gráficos de Proficiência */}
-      {!isLoading && filteredEvaluations.length > 0 && (
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* Gráfico de Distribuição Geral */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
+      {!isLoading && (
+        <>
+          {filteredEvaluations.length > 0 ? (
+            <div className="grid gap-6 md:grid-cols-2">
+              {/* Gráfico de Distribuição Geral */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <BarChart3 className="h-5 w-5" />
+                      Distribuição Geral de Proficiência
+                    </CardTitle>
+                    {/* Controles de alternância de gráfico */}
+                    <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
+                      <button
+                        onClick={() => setChartType('bars')}
+                        className={`px-3 py-1 text-xs rounded-md transition-all flex items-center gap-1 ${chartType === 'bars'
+                          ? 'bg-white text-blue-600 shadow-sm'
+                          : 'text-gray-600 hover:text-gray-800'
+                          }`}
+                        title="Gráfico de Barras"
+                      >
+                        <BarChart className="h-3 w-3" />
+                        Barras
+                      </button>
+                      <button
+                        onClick={() => setChartType('area')}
+                        className={`px-3 py-1 text-xs rounded-md transition-all flex items-center gap-1 ${chartType === 'area'
+                          ? 'bg-white text-blue-600 shadow-sm'
+                          : 'text-gray-600 hover:text-gray-800'
+                          }`}
+                        title="Gráfico de Área"
+                      >
+                        <AreaChart className="h-3 w-3" />
+                        Área
+                      </button>
+                      <button
+                        onClick={() => setChartType('network')}
+                        className={`px-3 py-1 text-xs rounded-md transition-all flex items-center gap-1 ${chartType === 'network'
+                          ? 'bg-white text-blue-600 shadow-sm'
+                          : 'text-gray-600 hover:text-gray-800'
+                          }`}
+                        title="Gráfico de Rede"
+                      >
+                        <Network className="h-3 w-3" />
+                        Rede
+                      </button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {(() => {
+                      const total = filteredEvaluations.reduce((sum, evaluation) =>
+                        sum + evaluation.distribuicao_classificacao.abaixo_do_basico +
+                        evaluation.distribuicao_classificacao.basico +
+                        evaluation.distribuicao_classificacao.adequado +
+                        evaluation.distribuicao_classificacao.avancado, 0);
+
+                      if (total === 0) return <div className="text-center text-muted-foreground">Nenhum dado disponível</div>;
+
+                      const abaixo = filteredEvaluations.reduce((sum, evaluation) =>
+                        sum + evaluation.distribuicao_classificacao.abaixo_do_basico, 0);
+                      const basico = filteredEvaluations.reduce((sum, evaluation) =>
+                        sum + evaluation.distribuicao_classificacao.basico, 0);
+                      const adequado = filteredEvaluations.reduce((sum, evaluation) =>
+                        sum + evaluation.distribuicao_classificacao.adequado, 0);
+                      const avancado = filteredEvaluations.reduce((sum, evaluation) =>
+                        sum + evaluation.distribuicao_classificacao.avancado, 0);
+
+                      const levels = [
+                        { name: 'Abaixo do Básico', value: abaixo, color: 'bg-red-500', textColor: 'text-red-600' },
+                        { name: 'Básico', value: basico, color: 'bg-yellow-500', textColor: 'text-yellow-600' },
+                        { name: 'Adequado', value: adequado, color: 'bg-blue-500', textColor: 'text-blue-600' },
+                        { name: 'Avançado', value: avancado, color: 'bg-green-500', textColor: 'text-green-600' }
+                      ];
+
+                      return renderProficiencyChart(levels);
+                    })()}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Gráfico de Médias por Disciplina */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5" />
+                    Média por Disciplina
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {uniqueSubjects.slice(0, 5).map(subject => {
+                      const subjectEvaluations = filteredEvaluations.filter(evaluation => evaluation.disciplina === subject);
+                      const averageScore = subjectEvaluations.length > 0
+                        ? subjectEvaluations.reduce((sum, evaluation) => sum + evaluation.media_nota, 0) / subjectEvaluations.length
+                        : 0;
+
+                      return (
+                        <div key={subject} className="space-y-1">
+                          <div className="flex justify-between text-sm">
+                            <span className="font-medium">{subject}</span>
+                            <span className="text-muted-foreground">{averageScore.toFixed(1)}</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className="bg-blue-600 h-2 rounded-full transition-all"
+                              style={{ width: `${Math.min(100, (averageScore / 10) * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          ) : (
+            <Card>
+              <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <BarChart3 className="h-5 w-5" />
-                  Distribuição Geral de Proficiência
+                  Gráficos de Proficiência
                 </CardTitle>
-                {/* Controles de alternância de gráfico */}
-                <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
-                  <button
-                    onClick={() => setChartType('bars')}
-                    className={`px-3 py-1 text-xs rounded-md transition-all flex items-center gap-1 ${
-                      chartType === 'bars' 
-                        ? 'bg-white text-blue-600 shadow-sm' 
-                        : 'text-gray-600 hover:text-gray-800'
-                    }`}
-                    title="Gráfico de Barras"
-                  >
-                    <BarChart className="h-3 w-3" />
-                    Barras
-                  </button>
-                  <button
-                    onClick={() => setChartType('area')}
-                    className={`px-3 py-1 text-xs rounded-md transition-all flex items-center gap-1 ${
-                      chartType === 'area' 
-                        ? 'bg-white text-blue-600 shadow-sm' 
-                        : 'text-gray-600 hover:text-gray-800'
-                    }`}
-                    title="Gráfico de Área"
-                  >
-                    <AreaChart className="h-3 w-3" />
-                    Área
-                  </button>
-                  <button
-                    onClick={() => setChartType('network')}
-                    className={`px-3 py-1 text-xs rounded-md transition-all flex items-center gap-1 ${
-                      chartType === 'network' 
-                        ? 'bg-white text-blue-600 shadow-sm' 
-                        : 'text-gray-600 hover:text-gray-800'
-                    }`}
-                    title="Gráfico de Rede"
-                  >
-                    <Network className="h-3 w-3" />
-                    Rede
-                  </button>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center py-8">
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <BarChart3 className="h-8 w-8 text-gray-400" />
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                    Nenhum dado disponível para gráficos
+                  </h3>
+                  <p className="text-gray-600">
+                    Não há dados suficientes para gerar os gráficos de proficiência.
+                  </p>
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {(() => {
-                  const total = filteredEvaluations.reduce((sum, evaluation) => 
-                    sum + evaluation.distribuicao_classificacao.abaixo_do_basico + 
-                    evaluation.distribuicao_classificacao.basico + 
-                    evaluation.distribuicao_classificacao.adequado + 
-                    evaluation.distribuicao_classificacao.avancado, 0);
-                  
-                  if (total === 0) return <div className="text-center text-muted-foreground">Nenhum dado disponível</div>;
-                  
-                  const abaixo = filteredEvaluations.reduce((sum, evaluation) => 
-                    sum + evaluation.distribuicao_classificacao.abaixo_do_basico, 0);
-                  const basico = filteredEvaluations.reduce((sum, evaluation) => 
-                    sum + evaluation.distribuicao_classificacao.basico, 0);
-                  const adequado = filteredEvaluations.reduce((sum, evaluation) => 
-                    sum + evaluation.distribuicao_classificacao.adequado, 0);
-                  const avancado = filteredEvaluations.reduce((sum, evaluation) => 
-                    sum + evaluation.distribuicao_classificacao.avancado, 0);
-                  
-                  const levels = [
-                    { name: 'Abaixo do Básico', value: abaixo, color: 'bg-red-500', textColor: 'text-red-600' },
-                    { name: 'Básico', value: basico, color: 'bg-yellow-500', textColor: 'text-yellow-600' },
-                    { name: 'Adequado', value: adequado, color: 'bg-blue-500', textColor: 'text-blue-600' },
-                    { name: 'Avançado', value: avancado, color: 'bg-green-500', textColor: 'text-green-600' }
-                  ];
-                  
-                  return renderProficiencyChart(levels);
-                })()}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Gráfico de Médias por Disciplina */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <TrendingUp className="h-5 w-5" />
-                Média por Disciplina
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {uniqueSubjects.slice(0, 5).map(subject => {
-                  const subjectEvaluations = filteredEvaluations.filter(evaluation => evaluation.disciplina === subject);
-                  const averageScore = subjectEvaluations.length > 0 
-                    ? subjectEvaluations.reduce((sum, evaluation) => sum + evaluation.media_nota, 0) / subjectEvaluations.length
-                    : 0;
-                  
-                  return (
-                    <div key={subject} className="space-y-1">
-                      <div className="flex justify-between text-sm">
-                        <span className="font-medium">{subject}</span>
-                        <span className="text-muted-foreground">{averageScore.toFixed(1)}</span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div 
-                          className="bg-blue-600 h-2 rounded-full transition-all"
-                          style={{ width: `${Math.min(100, (averageScore / 10) * 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+              </CardContent>
+            </Card>
+          )}
+        </>
       )}
 
       {/* Filtros e Busca */}
@@ -836,7 +912,7 @@ export default function Results() {
                   />
                 </div>
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select value={statusFilter} onValueChange={(value) => handleFilterChange('status', value)}>
                 <SelectTrigger className="w-full md:w-48">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
@@ -847,7 +923,7 @@ export default function Results() {
                   <SelectItem value="pendente">Pendente</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={subjectFilter} onValueChange={setSubjectFilter}>
+              <Select value={subjectFilter} onValueChange={(value) => handleFilterChange('subject', value)}>
                 <SelectTrigger className="w-full md:w-48">
                   <SelectValue placeholder="Disciplina" />
                 </SelectTrigger>
@@ -871,7 +947,12 @@ export default function Results() {
               {isSpecificEvaluation ? 'Detalhes da Avaliação' : 'Avaliações'}
             </span>
             <Badge variant="outline">
-              {filteredEvaluations.length} {filteredEvaluations.length === 1 ? 'avaliação' : 'avaliações'}
+              {totalEvaluations} {totalEvaluations === 1 ? 'avaliação' : 'avaliações'} total
+              {searchTerm && (
+                <span className="ml-2">
+                  ({filteredEvaluations.length} filtradas)
+                </span>
+              )}
             </Badge>
           </CardTitle>
         </CardHeader>
@@ -893,16 +974,33 @@ export default function Results() {
                 </div>
               ))}
             </div>
+          ) : isLoadingPage ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="border rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-2 flex-1">
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-3 w-1/2" />
+                    </div>
+                    <div className="flex gap-2">
+                      <Skeleton className="h-8 w-20" />
+                      <Skeleton className="h-8 w-20" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : filteredEvaluations.length > 0 ? (
             <div className="space-y-4">
-              {filteredEvaluations.map((evaluation) => {
+              {filteredEvaluations.map((evaluation, index) => {
                 const statusConfig = getStatusConfig(evaluation.status);
                 const participationRate = evaluation.total_alunos > 0
                   ? (evaluation.alunos_participantes / evaluation.total_alunos) * 100
                   : 0;
 
                 return (
-                  <div key={evaluation.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                  <div key={`${evaluation.id}-${index}`} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                       {/* Informações principais */}
                       <div className="flex-1 space-y-2">
@@ -965,11 +1063,11 @@ export default function Results() {
                           </div>
                           <div className="flex items-end gap-1 h-16">
                             {/* Gráfico de barras */}
-                            <div className="flex-1 flex flex-col items-center">
-                              <div 
+                            <div key="abaixo-basico" className="flex-1 flex flex-col items-center">
+                              <div
                                 className="w-full bg-red-500 rounded-t-sm transition-all hover:bg-red-600"
-                                style={{ 
-                                  height: `${Math.max(10, (evaluation.distribuicao_classificacao.abaixo_do_basico / Math.max(1, evaluation.alunos_participantes)) * 100)}%` 
+                                style={{
+                                  height: `${Math.max(10, (evaluation.distribuicao_classificacao.abaixo_do_basico / Math.max(1, evaluation.alunos_participantes)) * 100)}%`
                                 }}
                                 title={`Abaixo do Básico: ${evaluation.distribuicao_classificacao.abaixo_do_basico} alunos`}
                               />
@@ -977,11 +1075,11 @@ export default function Results() {
                                 {evaluation.distribuicao_classificacao.abaixo_do_basico}
                               </span>
                             </div>
-                            <div className="flex-1 flex flex-col items-center">
-                              <div 
+                            <div key="basico" className="flex-1 flex flex-col items-center">
+                              <div
                                 className="w-full bg-yellow-500 rounded-t-sm transition-all hover:bg-yellow-600"
-                                style={{ 
-                                  height: `${Math.max(10, (evaluation.distribuicao_classificacao.basico / Math.max(1, evaluation.alunos_participantes)) * 100)}%` 
+                                style={{
+                                  height: `${Math.max(10, (evaluation.distribuicao_classificacao.basico / Math.max(1, evaluation.alunos_participantes)) * 100)}%`
                                 }}
                                 title={`Básico: ${evaluation.distribuicao_classificacao.basico} alunos`}
                               />
@@ -989,11 +1087,11 @@ export default function Results() {
                                 {evaluation.distribuicao_classificacao.basico}
                               </span>
                             </div>
-                            <div className="flex-1 flex flex-col items-center">
-                              <div 
+                            <div key="adequado" className="flex-1 flex flex-col items-center">
+                              <div
                                 className="w-full bg-blue-500 rounded-t-sm transition-all hover:bg-blue-600"
-                                style={{ 
-                                  height: `${Math.max(10, (evaluation.distribuicao_classificacao.adequado / Math.max(1, evaluation.alunos_participantes)) * 100)}%` 
+                                style={{
+                                  height: `${Math.max(10, (evaluation.distribuicao_classificacao.adequado / Math.max(1, evaluation.alunos_participantes)) * 100)}%`
                                 }}
                                 title={`Adequado: ${evaluation.distribuicao_classificacao.adequado} alunos`}
                               />
@@ -1001,11 +1099,11 @@ export default function Results() {
                                 {evaluation.distribuicao_classificacao.adequado}
                               </span>
                             </div>
-                            <div className="flex-1 flex flex-col items-center">
-                              <div 
+                            <div key="avancado" className="flex-1 flex flex-col items-center">
+                              <div
                                 className="w-full bg-green-500 rounded-t-sm transition-all hover:bg-green-600"
-                                style={{ 
-                                  height: `${Math.max(10, (evaluation.distribuicao_classificacao.avancado / Math.max(1, evaluation.alunos_participantes)) * 100)}%` 
+                                style={{
+                                  height: `${Math.max(10, (evaluation.distribuicao_classificacao.avancado / Math.max(1, evaluation.alunos_participantes)) * 100)}%`
                                 }}
                                 title={`Avançado: ${evaluation.distribuicao_classificacao.avancado} alunos`}
                               />
@@ -1056,9 +1154,154 @@ export default function Results() {
               <p className="text-gray-600">
                 {searchTerm || statusFilter !== 'all' || subjectFilter !== 'all'
                   ? 'Tente ajustar os filtros para ver mais resultados.'
-                  : 'Ainda não há avaliações com resultados disponíveis.'
+                  : 'Ainda não há avaliações com resultados disponíveis. Verifique se o backend está rodando e se há dados cadastrados.'
                 }
               </p>
+              {!searchTerm && statusFilter === 'all' && subjectFilter === 'all' && (
+                <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <p className="text-sm text-blue-700">
+                    💡 Dica: Certifique-se de que o backend está rodando em <code className="bg-blue-100 px-1 rounded">http://localhost:5000</code> e que há avaliações cadastradas no sistema.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Paginação */}
+          {!isLoading && !isSpecificEvaluation && totalPages > 1 && (
+            <div className="mt-6 border-t pt-6">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                {/* Informações da página */}
+                <div className="text-sm text-muted-foreground">
+                  {isLoadingPage ? (
+                    <div className="flex items-center gap-2">
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      Carregando...
+                    </div>
+                  ) : (
+                    `Mostrando ${((currentPage - 1) * perPage) + 1} a ${Math.min(currentPage * perPage, totalEvaluations)} de ${totalEvaluations} avaliações`
+                  )}
+                </div>
+
+                {/* Controles de paginação */}
+                <div className="flex items-center gap-2">
+                  {/* Seletor de itens por página */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Itens por página:</span>
+                    <Select value={perPage.toString()} onValueChange={(value) => handlePerPageChange(Number(value))} disabled={isLoadingPage}>
+                      <SelectTrigger className="w-20">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="5">5</SelectItem>
+                        <SelectItem value="10">10</SelectItem>
+                        <SelectItem value="20">20</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Navegação de páginas */}
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      disabled={currentPage === 1 || isLoadingPage}
+                    >
+                      Anterior
+                    </Button>
+
+                    {/* Páginas numeradas */}
+                    <div className="flex items-center gap-1">
+                      {(() => {
+                        const pages = [];
+                        const maxVisiblePages = 5;
+                        let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+                        let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+
+                        // Ajustar se não há páginas suficientes
+                        if (endPage - startPage + 1 < maxVisiblePages) {
+                          startPage = Math.max(1, endPage - maxVisiblePages + 1);
+                        }
+
+                        // Primeira página
+                        if (startPage > 1) {
+                          pages.push(
+                            <Button
+                              key="1"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handlePageChange(1)}
+                              disabled={isLoadingPage}
+                              className="w-8 h-8"
+                            >
+                              1
+                            </Button>
+                          );
+                          if (startPage > 2) {
+                            pages.push(
+                              <span key="ellipsis1" className="px-2 text-muted-foreground">
+                                ...
+                              </span>
+                            );
+                          }
+                        }
+
+                        // Páginas do meio
+                        for (let i = startPage; i <= endPage; i++) {
+                          pages.push(
+                            <Button
+                              key={i}
+                              variant={currentPage === i ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => handlePageChange(i)}
+                              disabled={isLoadingPage}
+                              className="w-8 h-8"
+                            >
+                              {i}
+                            </Button>
+                          );
+                        }
+
+                        // Última página
+                        if (endPage < totalPages) {
+                          if (endPage < totalPages - 1) {
+                            pages.push(
+                              <span key="ellipsis2" className="px-2 text-muted-foreground">
+                                ...
+                              </span>
+                            );
+                          }
+                          pages.push(
+                            <Button
+                              key={totalPages}
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handlePageChange(totalPages)}
+                              disabled={isLoadingPage}
+                              className="w-8 h-8"
+                            >
+                              {totalPages}
+                            </Button>
+                          );
+                        }
+
+                        return pages;
+                      })()}
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={currentPage === totalPages || isLoadingPage}
+                    >
+                      Próxima
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </CardContent>

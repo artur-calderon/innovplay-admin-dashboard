@@ -42,6 +42,7 @@ import {
 import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { EvaluationApiService } from "@/services/evaluationApi";
 
 import { format, isAfter, isBefore, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -78,7 +79,7 @@ interface DetailedResults {
 // ✅ NOVO: Interfaces atualizadas para os novos campos
 interface Availability {
   is_available: boolean;
-  status: "available" | "not_available" | "not_yet_available" | "expired" | "completed";
+  status: "available" | "not_available" | "not_yet_available" | "expired" | "completed" | "not_started";
 }
 
 interface StudentStatus {
@@ -304,27 +305,71 @@ export default function StudentEvaluations() {
   const handleStartEvaluation = async (evaluation: StudentEvaluation) => {
     setSelectedEvaluation(evaluation);
 
+    // ✅ DEBUG: Log dos dados da avaliação antes de verificar
+    console.log("🔍 Dados da avaliação para verificação:", {
+      id: evaluation.id,
+      title: evaluation.title,
+      availability: evaluation.availability,
+      student_status: evaluation.student_status,
+      startDateTime: evaluation.startDateTime,
+      endDateTime: evaluation.endDateTime,
+      currentTime: new Date().toISOString()
+    });
+
+    // ✅ DEBUG: Verificação de data para debug
+    if (evaluation.endDateTime) {
+      const endDate = new Date(evaluation.endDateTime);
+      const currentDate = new Date();
+      const isExpired = currentDate > endDate;
+
+      console.log("🔍 Verificação de data:", {
+        endDate: endDate.toISOString(),
+        currentDate: currentDate.toISOString(),
+        isExpired,
+        timeDifference: endDate.getTime() - currentDate.getTime()
+      });
+    }
+
     // ✅ NOVO: Verificar se pode iniciar usando o endpoint can-start
     try {
+      // ✅ CORRIGIDO: Usar o endpoint correto para verificar se pode iniciar
       const response = await api.get(`/student-answers/student/${evaluation.id}/can-start`);
       const canStartData = response.data;
+
+      console.log("🔍 Resposta do can-start:", canStartData);
 
       if (canStartData.can_start) {
         setShowInstructions(true);
       } else {
         // ✅ NOVO: Mostrar mensagem de erro usando o reason
         setCanStartReason(canStartData.reason || "Não foi possível iniciar a avaliação");
+        console.log("❌ Não pode iniciar:", canStartData.reason);
         toast({
           title: "Não é possível iniciar",
           description: canStartData.reason || "Não foi possível iniciar a avaliação",
           variant: "destructive",
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao verificar se pode iniciar:", error);
+      console.error("Detalhes do erro:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        url: error.config?.url
+      });
+
+      let errorMessage = "Erro ao verificar disponibilidade da avaliação";
+
+      if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+
       toast({
         title: "Erro",
-        description: "Erro ao verificar disponibilidade da avaliação",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -335,20 +380,39 @@ export default function StudentEvaluations() {
 
     console.log("🚀 Iniciando avaliação:", {
       evaluationId: selectedEvaluation.id,
-      title: selectedEvaluation.title
+      title: selectedEvaluation.title,
+      availability: selectedEvaluation.availability,
+      student_status: selectedEvaluation.student_status,
+      startDateTime: selectedEvaluation.startDateTime,
+      endDateTime: selectedEvaluation.endDateTime
     });
 
     try {
       // Usar a API real para iniciar a sessão da avaliação
       const testId = selectedEvaluation.id;
-      const response = await api.post(`/test/${testId}/start-session`);
+      console.log("📡 Fazendo POST para /test/${testId}/start-session");
 
-      console.log('✅ Resposta da API de iniciar sessão:', response);
-      const sessionData = response.data;
+      // ✅ DEBUG: Log dos dados que serão enviados
+      console.log("📤 Dados para start-session:", {
+        testId,
+        evaluationData: {
+          availability: selectedEvaluation.availability,
+          student_status: selectedEvaluation.student_status,
+          startDateTime: selectedEvaluation.startDateTime,
+          endDateTime: selectedEvaluation.endDateTime
+        }
+      });
 
-      // Buscar os dados completos da avaliação usando a API real
-      const evaluationResponse = await api.get(`/test/${testId}/details`);
-      const evaluationData = evaluationResponse.data;
+      // ✅ CORRIGIDO: Usar o serviço EvaluationApiService para iniciar a sessão
+      console.log("📤 Iniciando sessão usando EvaluationApiService");
+
+      const sessionData = await EvaluationApiService.startSession(testId, selectedEvaluation.duration);
+
+      console.log('✅ Resposta da API de iniciar sessão:', sessionData);
+
+      // Buscar os dados completos da avaliação usando o serviço
+      console.log("📤 Buscando dados da avaliação usando EvaluationApiService");
+      const evaluationData = await EvaluationApiService.getTestData(testId);
 
       // Salvar os dados completos da avaliação no sessionStorage
       sessionStorage.setItem("current_evaluation", JSON.stringify(evaluationData));
@@ -382,18 +446,35 @@ export default function StudentEvaluations() {
 
     } catch (error: any) {
       console.error("❌ Erro ao iniciar avaliação:", error);
+      console.error("Detalhes completos do erro:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        url: error.config?.url,
+        method: error.config?.method,
+        stack: error.stack
+      });
 
       let errorMessage = "Não foi possível iniciar a avaliação";
 
+      // ✅ MELHORADO: Tratamento específico para diferentes tipos de erro
       if (error.response?.status === 403) {
         errorMessage = "Você não tem permissão para acessar esta avaliação";
       } else if (error.response?.status === 404) {
         errorMessage = "Avaliação não encontrada";
       } else if (error.response?.status === 400) {
         errorMessage = error.response.data?.error || "Dados inválidos para iniciar a avaliação";
+      } else if (error.response?.status === 422) {
+        errorMessage = error.response.data?.error || "Avaliação expirada ou indisponível";
       } else if (error.response?.data?.error) {
         errorMessage = error.response.data.error;
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
       }
+
+      console.log("🚨 Mensagem de erro final:", errorMessage);
 
       toast({
         title: "Erro",
@@ -407,9 +488,9 @@ export default function StudentEvaluations() {
     console.log("🔄 Continuando avaliação:", evaluation.id);
 
     try {
-      // Buscar dados da avaliação usando a API real
-      const evaluationResponse = await api.get(`/test/${evaluation.id}/details`);
-      const evaluationData = evaluationResponse.data;
+      // Buscar dados da avaliação usando o serviço
+      console.log("📤 Buscando dados da avaliação para continuar");
+      const evaluationData = await EvaluationApiService.getTestData(evaluation.id);
 
       // Salvar os dados da avaliação no sessionStorage
       sessionStorage.setItem("current_evaluation", JSON.stringify(evaluationData));
@@ -462,6 +543,16 @@ export default function StudentEvaluations() {
         <Badge variant="destructive" className="flex items-center gap-1">
           <AlertCircle className="h-3 w-3" />
           Expirada
+        </Badge>
+      );
+    }
+
+    // ✅ NOVO: Verificar se está agendada (not_started)
+    if (availability.status === 'not_started' as any) {
+      return (
+        <Badge variant="outline" className="flex items-center gap-1 bg-blue-50 text-blue-700 border-blue-300">
+          <Calendar className="h-3 w-3" />
+          Agendada
         </Badge>
       );
     }
@@ -609,17 +700,31 @@ export default function StudentEvaluations() {
       </div>
 
       {/* Estatísticas Rápidas */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Disponíveis</p>
                 <p className="text-2xl font-bold text-blue-600">
-                  {evaluations.filter(e => e.availability.is_available && !e.student_status.has_completed && e.student_status.can_start).length}
+                  {evaluations.filter(e => e.availability.is_available && !e.student_status.has_completed && e.student_status.can_start && e.availability.status !== 'not_started' as any).length}
                 </p>
               </div>
               <Play className="h-8 w-8 text-blue-600" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Agendadas</p>
+                <p className="text-2xl font-bold text-indigo-600">
+                  {evaluations.filter(e => e.availability.status === 'not_started' as any).length}
+                </p>
+              </div>
+              <Calendar className="h-8 w-8 text-indigo-600" />
             </div>
           </CardContent>
         </Card>
@@ -761,12 +866,24 @@ export default function StudentEvaluations() {
 
               {/* Ações */}
               <div className="flex gap-2">
+                {/* ✅ NOVO: Botão "Agendada" se status === "not_started" */}
+                {evaluation.availability.status === 'not_started' as any && (
+                  <Button
+                    className="flex-1 bg-blue-600 hover:bg-blue-700"
+                    disabled
+                  >
+                    <Calendar className="h-4 w-4 mr-2" />
+                    Agendada
+                  </Button>
+                )}
+
                 {/* ✅ CORRIGIDO: Botão "Iniciar" só mostrar se disponível, pode iniciar e NÃO está em andamento */}
                 {evaluation.availability.is_available &&
                   !evaluation.student_status.has_completed &&
                   evaluation.student_status.can_start &&
                   evaluation.student_status.status !== "expirada" &&
-                  evaluation.student_status.status !== "em_andamento" && (
+                  evaluation.student_status.status !== "em_andamento" &&
+                  evaluation.availability.status !== 'not_started' as any && (
                     <Button
                       className="flex-1 bg-green-600 hover:bg-green-700"
                       onClick={() => handleStartEvaluation(evaluation)}
@@ -813,7 +930,8 @@ export default function StudentEvaluations() {
                   !evaluation.student_status.can_start &&
                   evaluation.student_status.status !== "expirada" &&
                   evaluation.student_status.status !== "em_andamento" &&
-                  evaluation.availability.status !== "expired" && (
+                  evaluation.availability.status !== "expired" &&
+                  evaluation.availability.status !== 'not_started' as any && (
                     <Button className="flex-1 bg-gray-600 hover:bg-gray-700" disabled>
                       <AlertCircle className="h-4 w-4 mr-2" />
                       Indisponível

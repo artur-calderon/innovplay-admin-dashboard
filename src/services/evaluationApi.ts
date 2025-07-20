@@ -46,6 +46,7 @@ export class EvaluationApiService {
         console.log('Buscando informações da sessão do teste:', testId);
 
         try {
+            // ✅ CORRIGIDO: Usar o endpoint correto para buscar informações da sessão
             const response = await api.get(`/test/${testId}/session-info`);
             console.log('Resposta da API getTestSessionInfo:', response.data);
             return response.data;
@@ -88,6 +89,7 @@ export class EvaluationApiService {
     static async getTestData(testId: string): Promise<TestData> {
         console.log('Chamando API para buscar dados do teste:', testId);
         try {
+            // ✅ CORRIGIDO: Usar o endpoint correto para buscar dados do teste
             const response = await api.get(`/test/${testId}/details`);
             console.log('Resposta da API getTestData:', response.data);
 
@@ -113,11 +115,14 @@ export class EvaluationApiService {
     }
 
     // ✅ NOVO: Iniciar sessão de teste (nova rota)
-    static async startSession(testId: string): Promise<StartSessionResponse> {
-        console.log('Iniciando sessão para teste:', testId);
+    static async startSession(testId: string, timeLimitMinutes: number = 60): Promise<StartSessionResponse> {
+        console.log('Iniciando sessão para teste:', testId, 'com tempo limite:', timeLimitMinutes);
 
         try {
-            const response = await api.post(`/test/${testId}/start-session`);
+            // ✅ CORRIGIDO: Usar o endpoint correto para iniciar sessão
+            const response = await api.post(`/test/${testId}/start-session`, {
+                time_limit_minutes: timeLimitMinutes
+            });
             console.log('Resposta da API startSession:', response.data);
             return response.data;
         } catch (error) {
