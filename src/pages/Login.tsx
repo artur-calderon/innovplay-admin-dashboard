@@ -18,16 +18,28 @@ export default function Login() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const {login, user} = useAuth();
+  const { login, user } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!matricula || !senha) {
       toast({
         title: "Campos obrigatórios",
         description: "Por favor, preencha todos os campos.",
         variant: "destructive",
+        duration: 4000,
+      });
+      return;
+    }
+
+    // Validação básica da matrícula (deve ter pelo menos 3 caracteres)
+    if (matricula.trim().length < 3) {
+      toast({
+        title: "Matrícula inválida",
+        description: "A matrícula deve ter pelo menos 3 caracteres.",
+        variant: "destructive",
+        duration: 4000,
       });
       return;
     }
@@ -35,8 +47,56 @@ export default function Login() {
     setIsLoading(true);
     try {
       await login(matricula, senha);
-    } catch (error) {
+      // Se chegou aqui, o login foi bem-sucedido
+      // O contexto já trata o redirecionamento e o toast de sucesso
+    } catch (error: any) {
       console.error("Erro ao fazer login:", error);
+
+      // Tratamento específico de erros de login
+      let errorTitle = "Erro no login";
+      let errorDescription = "Ocorreu um erro ao tentar fazer login.";
+
+      if (error.response) {
+        // Erro da API
+        const status = error.response.status;
+        const data = error.response.data;
+
+        if (status === 401) {
+          errorTitle = "Credenciais inválidas";
+          errorDescription = "Matrícula ou senha incorretos. Verifique suas credenciais e tente novamente.";
+        } else if (status === 404) {
+          errorTitle = "Usuário não encontrado";
+          errorDescription = "Não foi possível encontrar um usuário com essa matrícula.";
+        } else if (status === 422) {
+          errorTitle = "Dados inválidos";
+          errorDescription = data?.message || "Os dados fornecidos são inválidos.";
+        } else if (status >= 500) {
+          errorTitle = "Erro do servidor";
+          errorDescription = "O servidor está enfrentando problemas. Tente novamente mais tarde.";
+        } else {
+          // Outros erros da API
+          errorDescription = data?.erro || data?.error || data?.message || "Erro desconhecido.";
+        }
+      } else if (error.code === 'ERR_NETWORK') {
+        errorTitle = "Erro de conexão";
+        errorDescription = "Não foi possível conectar ao servidor. Verifique sua conexão com a internet.";
+      } else if (error.code === 'ECONNABORTED') {
+        errorTitle = "Timeout";
+        errorDescription = "A requisição demorou muito para responder. Tente novamente.";
+      } else {
+        // Erro genérico
+        errorDescription = error.message || "Ocorreu um erro inesperado.";
+      }
+
+      toast({
+        title: errorTitle,
+        description: errorDescription,
+        variant: "destructive",
+        duration: 5000, // 5 segundos para erros
+      });
+
+      // Limpar apenas a senha em caso de erro, mantendo a matrícula
+      setSenha("");
     } finally {
       setIsLoading(false);
     }
@@ -50,12 +110,12 @@ export default function Login() {
           {/* Ilustração centralizada */}
           <div className="mb-8 w-32 h-32 md:w-full md:h-full flex items-center justify-center flex-col">
             <img src={LOGO} alt="Logo" className="w-[300rem]" />
-            
+
             <p className="text-lg md:text-xl text-white/80">APRENDIZAGEM E RESULTADO</p>
           </div>
         </div>
       </div>
-      
+
       {/* Lado direito (branco) */}
       <div className="bg-white w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12">
         <div className="w-full max-w-md">
@@ -63,7 +123,7 @@ export default function Login() {
           <p className="text-gray-600 mb-8">
             A educação constrói seres humanos, jogos (diversão) alegra a vida, juntos transformam o mundo.
           </p>
-          
+
           <form onSubmit={handleLogin} className="space-y-6">
             <div className="relative">
               <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
@@ -78,7 +138,7 @@ export default function Login() {
                 disabled={isLoading}
               />
             </div>
-            
+
             <div className="relative">
               <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                 <Lock className="h-5 w-5 text-gray-400" />
@@ -104,7 +164,7 @@ export default function Login() {
                 )}
               </button>
             </div>
-            
+
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <Checkbox
@@ -120,11 +180,11 @@ export default function Login() {
                   Lembrar
                 </label>
               </div>
-              <a href="#" className="text-sm text-[#8257e5] hover:underline">
+              <a href="/forgot-password" className="text-sm text-[#8257e5] hover:underline">
                 Esqueceu sua senha?
               </a>
             </div>
-            
+
             <Button
               type="submit"
               className="w-full py-6 bg-[#8257e5] hover:bg-[#6d48c2]"
@@ -140,7 +200,7 @@ export default function Login() {
               )}
             </Button>
           </form>
-          
+
           <div className="mt-12 text-center text-sm text-gray-500">
             © 2025 Innov Play ❤️
           </div>
