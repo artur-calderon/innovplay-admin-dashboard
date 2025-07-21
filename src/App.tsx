@@ -15,6 +15,9 @@ const Index = React.lazy(() => import("./pages/Index"));
 const Evaluations = React.lazy(() => import("./pages/Evaluations"));
 const NotFound = React.lazy(() => import("./pages/NotFound"));
 const Login = React.lazy(() => import("./pages/Login"));
+const ForgotPassword = React.lazy(() => import("./pages/ForgotPassword"));
+const ResetPassword = React.lazy(() => import("./pages/ResetPassword"));
+const ChangePassword = React.lazy(() => import("./pages/ChangePassword"));
 const EmBreve = React.lazy(() => import("./pages/EmBreve"));
 const StudentEvaluations = React.lazy(() => import("./components/evaluations/StudentEvaluations"));
 const Users = React.lazy(() => import("./pages/Users"));
@@ -95,6 +98,11 @@ const App = () => {
                 user.id ? <Navigate to={getBaseRoute()} /> : <Login />
               }
             />
+
+            {/* Rotas de autenticação */}
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/change-password" element={<PrivateRoute><ChangePassword /></PrivateRoute>} />
 
             {/* Rotas do aluno */}
             <Route path="/aluno" element={<Layout />}>
