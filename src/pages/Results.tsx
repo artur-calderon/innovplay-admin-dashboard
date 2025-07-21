@@ -160,6 +160,15 @@ interface Class {
   };
 }
 
+// ✅ NOVO: Interface para avaliações da escola
+interface SchoolEvaluation {
+  id: string;
+  titulo: string;
+  disciplina: string;
+  status: string;
+  data_aplicacao: string;
+}
+
 export default function Results() {
   const { id: evaluationId } = useParams<{ id: string }>();
   const { user, autoLogin } = useAuth();
@@ -176,6 +185,8 @@ export default function Results() {
   const [selectedSchool, setSelectedSchool] = useState<string>('all');
   const [selectedGrade, setSelectedGrade] = useState<string>('all');
   const [selectedClass, setSelectedClass] = useState<string>('all');
+  // ✅ NOVO: Estado para avaliação selecionada
+  const [selectedEvaluation, setSelectedEvaluation] = useState<string>('all');
 
   // Estados dos dados dos filtros
   const [states, setStates] = useState<State[]>([]);
@@ -183,6 +194,8 @@ export default function Results() {
   const [schools, setSchools] = useState<School[]>([]);
   const [grades, setGrades] = useState<Grade[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
+  // ✅ NOVO: Estado para avaliações da escola
+  const [schoolEvaluations, setSchoolEvaluations] = useState<SchoolEvaluation[]>([]);
 
   // Estados de paginação
   const [currentPage, setCurrentPage] = useState(1);
@@ -248,6 +261,9 @@ export default function Results() {
           setSelectedClass('all');
           setSchools([]);
           setClasses([]);
+          // ✅ NOVO: Resetar avaliação também
+          setSelectedEvaluation('all');
+          setSchoolEvaluations([]);
         } catch (error) {
           console.error("Erro ao carregar municípios:", error);
         } finally {
@@ -260,6 +276,9 @@ export default function Results() {
         setSelectedClass('all');
         setSchools([]);
         setClasses([]);
+        // ✅ NOVO: Resetar avaliação também
+        setSelectedEvaluation('all');
+        setSchoolEvaluations([]);
       }
     };
 
@@ -278,6 +297,9 @@ export default function Results() {
           setSelectedSchool('all');
           setSelectedClass('all');
           setClasses([]);
+          // ✅ NOVO: Resetar avaliação também
+          setSelectedEvaluation('all');
+          setSchoolEvaluations([]);
         } catch (error) {
           console.error("Erro ao carregar escolas:", error);
         } finally {
@@ -288,6 +310,9 @@ export default function Results() {
         setSelectedSchool('all');
         setSelectedClass('all');
         setClasses([]);
+        // ✅ NOVO: Resetar avaliação também
+        setSelectedEvaluation('all');
+        setSchoolEvaluations([]);
       }
     };
 
@@ -317,12 +342,42 @@ export default function Results() {
     loadClasses();
   }, [selectedSchool]);
 
+  // ✅ NOVO: Carregar avaliações quando escola for selecionada
+  useEffect(() => {
+    const loadEvaluations = async () => {
+      if (selectedSchool !== 'all') {
+        try {
+          setIsLoadingFilters(true);
+
+          const evaluationsData = await EvaluationResultsApiService.getEvaluationsBySchool(selectedSchool);
+
+          // ✅ CORREÇÃO: Garantir que seja sempre um array
+          const finalData = Array.isArray(evaluationsData) ? evaluationsData : [];
+
+          setSchoolEvaluations(finalData);
+          setSelectedEvaluation('all');
+
+        } catch (error) {
+          console.error("❌ ERRO ao carregar avaliações:", error);
+          setSchoolEvaluations([]);
+        } finally {
+          setIsLoadingFilters(false);
+        }
+      } else {
+        setSchoolEvaluations([]);
+        setSelectedEvaluation('all');
+      }
+    };
+
+    loadEvaluations();
+  }, [selectedSchool]);
+
   // Carregar dados quando filtros mudarem
   useEffect(() => {
     if (!isLoading) {
       loadData();
     }
-  }, [selectedState, selectedMunicipality, selectedSchool, selectedGrade, selectedClass, currentPage, perPage]);
+  }, [selectedState, selectedMunicipality, selectedSchool, selectedGrade, selectedClass, selectedEvaluation, currentPage, perPage]);
 
   const loadData = async () => {
     // Verificar se pelo menos 2 filtros estão selecionados
@@ -331,7 +386,8 @@ export default function Results() {
       selectedMunicipality !== 'all',
       selectedSchool !== 'all',
       selectedGrade !== 'all',
-      selectedClass !== 'all'
+      selectedClass !== 'all',
+      selectedEvaluation !== 'all'
     ].filter(Boolean);
 
     if (selectedFilters.length < 2) {
@@ -347,6 +403,8 @@ export default function Results() {
         escola: selectedSchool !== 'all' ? selectedSchool : undefined,
         serie: selectedGrade !== 'all' ? selectedGrade : undefined,
         turma: selectedClass !== 'all' ? selectedClass : undefined,
+        // ✅ NOVO: Adicionar filtro de avaliação
+        avaliacao: selectedEvaluation !== 'all' ? selectedEvaluation : undefined,
       };
 
       const response = await EvaluationResultsApiService.getEvaluationsList(currentPage, perPage, filters);
@@ -533,7 +591,8 @@ export default function Results() {
     selectedMunicipality !== 'all',
     selectedSchool !== 'all',
     selectedGrade !== 'all',
-    selectedClass !== 'all'
+    selectedClass !== 'all',
+    selectedEvaluation !== 'all'
   ].filter(Boolean).length;
 
   return (
@@ -569,7 +628,7 @@ export default function Results() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
             {/* Estado */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Estado</label>
@@ -632,6 +691,37 @@ export default function Results() {
                       {school.name}
                     </SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* ✅ NOVO: Avaliações */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Avaliações</label>
+              <Select
+                value={selectedEvaluation}
+                onValueChange={setSelectedEvaluation}
+                disabled={isLoadingFilters || selectedSchool === 'all'}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a avaliação" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {(() => {
+                    if (!Array.isArray(schoolEvaluations)) {
+                      console.error('❌ ERRO: schoolEvaluations não é array no render');
+                      return null;
+                    }
+
+                    return schoolEvaluations.map(evaluation => {
+                      return (
+                        <SelectItem key={evaluation.id} value={evaluation.id}>
+                          {evaluation.titulo}
+                        </SelectItem>
+                      );
+                    });
+                  })()}
                 </SelectContent>
               </Select>
             </div>
@@ -706,7 +796,7 @@ export default function Results() {
               Selecione no mínimo dois filtros para continuar
             </h3>
             <p className="text-gray-600 text-center max-w-md">
-              Para visualizar os resultados das avaliações, você precisa selecionar pelo menos dois filtros (Estado, Município, Escola, Série ou Turma).
+              Para visualizar os resultados das avaliações, você precisa selecionar pelo menos dois filtros (Estado, Município, Escola, Avaliações, Série ou Turma).
             </p>
           </CardContent>
         </Card>

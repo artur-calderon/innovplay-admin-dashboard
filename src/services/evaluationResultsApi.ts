@@ -192,6 +192,41 @@ interface DetailedReport {
 
 export class EvaluationResultsApiService {
 
+  // ✅ NOVO: Buscar avaliações por escola
+  static async getEvaluationsBySchool(schoolId: string): Promise<Array<{
+    id: string;
+    titulo: string;
+    disciplina: string;
+    status: string;
+    data_aplicacao: string;
+  }> | null> {
+    try {
+      const response = await api.get(`/test?school_id=${schoolId}`);
+
+      // ✅ CORREÇÃO: Extrair o array data da resposta
+      const evaluationsData = response.data.data || response.data;
+
+      if (!Array.isArray(evaluationsData)) {
+        console.error('❌ ERRO: evaluationsData não é um array:', evaluationsData);
+        return [];
+      }
+
+      // ✅ CORREÇÃO: Mapear os campos corretos do backend
+      const mappedEvaluations = evaluationsData.map((evaluation: any) => ({
+        id: evaluation.id,
+        titulo: evaluation.title || evaluation.titulo || 'Sem título',
+        disciplina: evaluation.subject?.name || evaluation.disciplina || 'Sem disciplina',
+        status: evaluation.status || 'desconhecido',
+        data_aplicacao: evaluation.createdAt || evaluation.data_aplicacao || new Date().toISOString()
+      }));
+
+      return mappedEvaluations;
+    } catch (error) {
+      console.error('❌ ERRO ao buscar avaliações da escola:', error);
+      return [];
+    }
+  }
+
   // ✅ NOVO: Buscar lista de avaliações com nova estrutura
   static async getEvaluationsList(
     page: number = 1,
@@ -202,6 +237,7 @@ export class EvaluationResultsApiService {
       escola?: string;
       serie?: string;
       turma?: string;
+      avaliacao?: string;
     } = {}
   ): Promise<{
     municipio_geral: {
@@ -247,13 +283,11 @@ export class EvaluationResultsApiService {
     };
   } | null> {
     try {
-      // Construir parâmetros baseado nos filtros selecionados
       const params = new URLSearchParams({
         page: page.toString(),
         per_page: perPage.toString(),
       });
 
-      // Adicionar filtros apenas se estiverem definidos
       if (filters.estado && filters.estado !== 'all') {
         params.append('estado', filters.estado);
       }
@@ -268,6 +302,10 @@ export class EvaluationResultsApiService {
       }
       if (filters.turma && filters.turma !== 'all') {
         params.append('turma', filters.turma);
+      }
+      // ✅ NOVO: Adicionar filtro de avaliação
+      if (filters.avaliacao && filters.avaliacao !== 'all') {
+        params.append('avaliacao', filters.avaliacao);
       }
 
       const response = await api.get(`/evaluation-results/avaliacoes?${params}`);
