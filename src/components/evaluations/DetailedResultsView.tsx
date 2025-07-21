@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { DonutChartComponent } from "@/components/ui/charts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -379,26 +380,23 @@ const StudentsResultsTable = ({
 
     const turmaPercentages = generateTurmaPercentages();
 
-    return (
+        return (
         <div className="overflow-x-auto">
             <table className="min-w-max border border-gray-300 text-center text-sm shadow-md rounded-lg">
                 <thead>
-                    {/* Linha 1: Cabeçalho das questões */}
+                    {/* Cabeçalho principal */}
                     <tr className="bg-gray-100">
                         <th className="p-2 min-w-[150px] text-left border-r border-gray-300">Aluno</th>
                         {visibleFields?.questoes && Array.from({ length: totalQuestions }, (_, i) => {
-                            // ✅ PRIORIDADE: Usar números reais das questões quando disponíveis
-                            let questionNumber = i + 1; // Sempre começar de 1
+                            let questionNumber = i + 1;
                             
                             if (questoes && questoes.length > 0) {
-                                // Usar o número real da questão do relatório detalhado
-                                const questao = questoes[i]; // Usar índice direto
+                                const questao = questoes[i];
                                 if (questao) {
                                     questionNumber = questao.numero;
                                 }
                             } else if (questionsWithSkills && questionsWithSkills.length > 0) {
-                                // Usar o número da questão das skills
-                                const questao = questionsWithSkills[i]; // Usar índice direto
+                                const questao = questionsWithSkills[i];
                                 if (questao) {
                                     questionNumber = questao.number;
                                 }
@@ -416,35 +414,30 @@ const StudentsResultsTable = ({
                         {visibleFields?.nivel && <th className="p-2 bg-gray-50">Nível</th>}
                     </tr>
                     
-                    {/* Linha 2: Códigos de habilidade */}
+                    {/* Linha de habilidades (se habilitada) */}
                     {visibleFields?.habilidade && (
                         <tr className="bg-gray-50">
                             <td className="p-1 text-left border-r border-gray-300 text-xs font-mono text-gray-600">
                                 Habilidade
                             </td>
-                            {visibleFields?.habilidade && Array.from({ length: totalQuestions }, (_, i) => {
+                            {visibleFields?.questoes && Array.from({ length: totalQuestions }, (_, i) => {
                                 let questionNumber = startQuestionNumber + i;
                                 let questao = null;
                                 
-                                // ✅ PRIORIDADE: Usar códigos reais das questões quando disponíveis
                                 if (questionsWithSkills && questionsWithSkills.length > 0) {
-                                    // Usar o número da questão das skills
-                                    questao = questionsWithSkills[i]; // Usar índice direto
+                                    questao = questionsWithSkills[i];
                                     if (questao) {
                                         questionNumber = questao.number;
                                     }
                                 } else if (questoes && questoes.length > 0) {
-                                    // Fallback para dados do relatório detalhado
                                     questao = questoes.find(q => q.numero === questionNumber);
                                     if (questao) {
                                         questionNumber = questao.numero;
                                     }
                                 }
                                 
-                                // ✅ NOVO: Gerar código de habilidade baseado na disciplina da questão
                                 const habilidadeCode = generateHabilidadeCode(questionNumber, questao);
                                 
-                                // ✅ NOVO: Adicionar indicador visual da disciplina se disponível
                                 let disciplinaIndicator = '';
                                 if (questao && questao.subject && questao.subject.name) {
                                     const disciplina = questao.subject.name.toLowerCase();
@@ -488,7 +481,6 @@ const StudentsResultsTable = ({
                                     </td>
                                 );
                             })}
-                            {visibleFields?.percentualTurma && <td className="p-1 bg-gray-100 text-xs font-mono text-gray-600"></td>}
                             {visibleFields?.total && <td className="p-1 bg-gray-100 text-xs font-mono text-gray-600"></td>}
                             {visibleFields?.nota && <td className="p-1 bg-gray-100 text-xs font-mono text-gray-600"></td>}
                             {visibleFields?.proficiencia && <td className="p-1 bg-gray-100 text-xs font-mono text-gray-600"></td>}
@@ -496,8 +488,8 @@ const StudentsResultsTable = ({
                         </tr>
                     )}
                     
-                    {/* Linha 3: Porcentagem de acerto da turma */}
-                    {visibleFields?.percentualTurma === true && (
+                    {/* Linha de porcentagem da turma (se habilitada) */}
+                    {visibleFields?.percentualTurma && (
                         <tr className="bg-blue-50">
                             <td className="p-1 text-left border-r border-gray-300 text-xs font-semibold text-blue-700">
                                 % Turma
@@ -520,16 +512,14 @@ const StudentsResultsTable = ({
                 </thead>
                 <tbody>
                     {students.map((student, studentIndex) => {
-                        // Simular respostas das questões baseadas no total de acertos do aluno
                         const correctAnswers = student.acertos;
                         const wrongAnswers = student.erros;
                         const blankAnswers = student.em_branco;
                         
-                        // Criar array de respostas simuladas
                         const answers = Array.from({ length: totalQuestions }, (_, questionIndex) => {
-                            if (questionIndex < correctAnswers) return true; // Acertou
-                            if (questionIndex < correctAnswers + wrongAnswers) return false; // Errou
-                            return null; // Em branco
+                            if (questionIndex < correctAnswers) return true;
+                            if (questionIndex < correctAnswers + wrongAnswers) return false;
+                            return null;
                         });
                         
                         return (
@@ -556,7 +546,6 @@ const StudentsResultsTable = ({
                                         </div>
                                     </td>
                                 ))}
-                                {visibleFields?.percentualTurma && <td className="p-2 border-t border-gray-200 bg-gray-50"></td>}
                                 {visibleFields?.total && <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50">{student.acertos}</td>}
                                 {visibleFields?.nota && <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50">{student.nota.toFixed(1)}</td>}
                                 {visibleFields?.proficiencia && <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50">{student.proficiencia.toFixed(0)}</td>}
@@ -730,12 +719,13 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
             };
             
             // ✅ VERIFICAR SE OS DADOS ESTÃO ESTÁVEIS APÓS A CONSOLIDAÇÃO
-            const hasStableData = consolidated.disciplina && 
+            // ✅ CORRIGIDO: Permitir que dados sejam considerados estáveis mesmo se apenas um dos campos estiver disponível
+            const hasStableData = (consolidated.disciplina && 
                 consolidated.disciplina.trim() !== '' && 
-                consolidated.disciplina !== 'N/A' &&
-                consolidated.serie && 
+                consolidated.disciplina !== 'N/A') ||
+                (consolidated.serie && 
                 consolidated.serie.trim() !== '' && 
-                consolidated.serie !== 'N/A';
+                consolidated.serie !== 'N/A');
             
             if (hasStableData && !isDataStable) {
                 setIsDataStable(true);
@@ -1297,7 +1287,7 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                             const disciplinasNomes: string[] = [];
                             
                             Object.keys(skillsBySubject).forEach(subjectId => {
-                                const subject = subjects.find((s: any) => s.id === subjectId);
+                                const subject = subjects.find((s: { id: string; name: string }) => s.id === subjectId);
                                 if (subject) {
                                     disciplinasNomes.push(subject.name);
                                 }
@@ -1861,13 +1851,7 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                                         evaluationInfo.disciplina.trim() !== '' && 
                                         evaluationInfo.disciplina !== 'N/A';
                                     
-                                    // Debug: Exibição da disciplina
-                                    
-                                    // ✅ Só mostrar dados se estiverem estáveis
-                                    if (!isDataStable) {
-                                        return <span className="text-gray-400">Carregando...</span>;
-                                    }
-                                    
+                                    // ✅ CORRIGIDO: Mostrar dados mesmo se não estiverem completamente estáveis
                                     if (hasStableDisciplinas) {
                                         return (
                                             <div className="flex flex-wrap gap-1">
@@ -1880,6 +1864,8 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                                         );
                                     } else if (hasStableDisciplina) {
                                         return formatFieldValue(evaluationInfo.disciplina, 'Disciplina não informada');
+                                    } else if (!isDataStable) {
+                                        return <span className="text-gray-400">Carregando...</span>;
                                     } else {
                                         return <span className="text-gray-400">Disciplina não informada</span>;
                                     }
@@ -1895,12 +1881,14 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                                         evaluationInfo.serie.trim() !== '' && 
                                         evaluationInfo.serie !== 'N/A';
                                     
-                                    if (!isDataStable || !hasStableSerie) {
+                                    if (hasStableSerie) {
+                                        const gradeName = getGradeName(evaluationInfo.serie, evaluationInfo.grade_id, evaluationInfo);
+                                        return gradeName;
+                                    } else if (!isDataStable) {
                                         return <span className="text-gray-400">Carregando...</span>;
+                                    } else {
+                                        return <span className="text-gray-400">Série não informada</span>;
                                     }
-                                    
-                                    const gradeName = getGradeName(evaluationInfo.serie, evaluationInfo.grade_id, evaluationInfo);
-                                    return gradeName;
                                 })()}
                             </div>
                         </div>
@@ -1942,13 +1930,13 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
 
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mt-6">
                         <div className="space-y-2">
-                            <div className="text-sm font-medium text-muted-foreground">Média Geral</div>
+                            <div className="text-sm font-medium text-muted-foreground">Nota Geral</div>
                             <div className="text-2xl font-bold text-purple-600">
                                 {evaluationInfo.media_nota.toFixed(1)}
                             </div>
                         </div>
                         <div className="space-y-2">
-                            <div className="text-sm font-medium text-muted-foreground">Média Proficiência</div>
+                            <div className="text-sm font-medium text-muted-foreground">Proficiência</div>
                             <div className="text-2xl font-bold text-orange-600">
                                 {(() => {
                                     const prof = evaluationInfo.media_proficiencia;
@@ -1965,35 +1953,47 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                                 }%
                             </div>
                         </div>
-                        <div className="space-y-2">
-                            <div className="text-sm font-medium text-muted-foreground">Alunos com Nota</div>
-                            <div className="text-2xl font-bold text-blue-600">
-                                {evaluationInfo.alunos_participantes}
-                            </div>
-                        </div>
                     </div>
 
-                    {/* Distribuição de classificação */}
-                    <div className="mt-6">
-                        <div className="text-sm font-medium text-muted-foreground mb-3">Distribuição por Classificação</div>
-                        <div className="flex gap-4 flex-wrap">
-                            <Badge variant="outline" className="text-red-600 border-red-300">
-                                Abaixo do Básico: {students.filter(s => s.classificacao === 'Abaixo do Básico' && s.nota > 0).length}
-                            </Badge>
-                            <Badge variant="outline" className="text-yellow-600 border-yellow-300">
-                                Básico: {students.filter(s => s.classificacao === 'Básico' && s.nota > 0).length}
-                            </Badge>
-                            <Badge variant="outline" className="text-blue-600 border-blue-300">
-                                Adequado: {students.filter(s => s.classificacao === 'Adequado' && s.nota > 0).length}
-                            </Badge>
-                            <Badge variant="outline" className="text-green-600 border-green-300">
-                                Avançado: {students.filter(s => s.classificacao === 'Avançado' && s.nota > 0).length}
-                            </Badge>
-                            <Badge variant="outline" className="text-gray-600 border-gray-300">
-                                Sem Nota: {students.filter(s => s.nota === 0).length}
-                            </Badge>
-                        </div>
-                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Gráfico de Distribuição por Classificação */}
+            <Card>
+                <CardContent className="pt-6">
+                    <DonutChartComponent
+                        data={[
+                            {
+                                name: "Abaixo do Básico",
+                                value: students.filter(s => s.classificacao === 'Abaixo do Básico' && s.nota > 0).length
+                            },
+                            {
+                                name: "Básico",
+                                value: students.filter(s => s.classificacao === 'Básico' && s.nota > 0).length
+                            },
+                            {
+                                name: "Adequado",
+                                value: students.filter(s => s.classificacao === 'Adequado' && s.nota > 0).length
+                            },
+                            {
+                                name: "Avançado",
+                                value: students.filter(s => s.classificacao === 'Avançado' && s.nota > 0).length
+                            },
+                            {
+                                name: "Sem Nota",
+                                value: students.filter(s => s.nota === 0).length
+                            }
+                        ]}
+                        title="Distribuição por Classificação"
+                        subtitle={`Total de ${students.length} alunos`}
+                        colors={[
+                            "#ef4444", // red-500 - Abaixo do Básico
+                            "#f97316", // orange-500 - Básico
+                            "#3b82f6", // blue-500 - Adequado
+                            "#22c55e", // green-500 - Avançado
+                            "#6b7280"  // gray-500 - Sem Nota
+                        ]}
+                    />
                 </CardContent>
             </Card>
 
@@ -2037,119 +2037,6 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                                 <SelectItem value="pendente">Pendente</SelectItem>
                             </SelectContent>
                         </Select>
-                    </div>
-                </CardContent>
-            </Card>
-
-            {/* Estatísticas por Turma */}
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-lg">Estatísticas por Turma</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {uniqueTurmas.map(turma => {
-                            const turmaStudents = students.filter(s => s.turma === turma);
-                            const turmaStudentsCompleted = turmaStudents.filter(s => s.status === 'concluida');
-                            
-                            // Usar dados reais dos alunos que temos
-                            const totalStudentsInTurma = turmaStudents.length;
-                            const completedStudentsInTurma = turmaStudentsCompleted.length;
-                            
-                            // Calcular médias apenas dos alunos que participaram
-                            const averageScore = turmaStudentsCompleted.length > 0 
-                                ? turmaStudentsCompleted.reduce((sum, s) => sum + s.nota, 0) / turmaStudentsCompleted.length 
-                                : 0;
-                            const averageProficiency = turmaStudentsCompleted.length > 0 
-                                ? turmaStudentsCompleted.reduce((sum, s) => sum + s.proficiencia, 0) / turmaStudentsCompleted.length 
-                                : 0;
-                            
-                            // Distribuição baseada em todos os alunos da turma
-                            // Alunos que não participaram são considerados "Abaixo do Básico"
-                            const alunosNaoParticiparam = totalStudentsInTurma - completedStudentsInTurma;
-                            const distribution = {
-                                abaixo_do_basico: turmaStudentsCompleted.filter(s => s.classificacao === 'Abaixo do Básico').length + alunosNaoParticiparam,
-                                basico: turmaStudentsCompleted.filter(s => s.classificacao === 'Básico').length,
-                                adequado: turmaStudentsCompleted.filter(s => s.classificacao === 'Adequado').length,
-                                avancado: turmaStudentsCompleted.filter(s => s.classificacao === 'Avançado').length,
-                            };
-
-                            const participationRate = totalStudentsInTurma > 0 
-                                ? (completedStudentsInTurma / totalStudentsInTurma) * 100 
-                                : 0;
-
-                            return (
-                                <div key={turma} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
-                                    <div className="flex items-center justify-between mb-3">
-                                        <h3 className="font-semibold text-lg">{turma}</h3>
-                                        <Badge variant="outline">{totalStudentsInTurma} alunos</Badge>
-                                    </div>
-                                    
-                                    <div className="space-y-3">
-                                        <div className="space-y-2">
-                                            <div className="flex items-center justify-between text-sm">
-                                                <span className="text-muted-foreground">Participação:</span>
-                                                <span className="font-medium">
-                                                    {completedStudentsInTurma}/{totalStudentsInTurma} alunos
-                                                </span>
-                                            </div>
-                                            <Progress value={participationRate} className="h-2" />
-                                        </div>
-                                        
-                                        <div className="flex items-center justify-between text-sm">
-                                            <span className="text-muted-foreground">Média Nota:</span>
-                                            <span className="font-medium">{averageScore.toFixed(1)}</span>
-                                        </div>
-                                        
-                                        <div className="flex items-center justify-between text-sm">
-                                            <span className="text-muted-foreground">Média Proficiência:</span>
-                                            <span className="font-medium">{averageProficiency.toFixed(1)}</span>
-                                        </div>
-                                        
-                                        {/* Distribuição de classificação */}
-                                        <div className="space-y-1">
-                                            <div className="text-xs text-muted-foreground">Distribuição:</div>
-                                            <div className="flex gap-1">
-                                                <div 
-                                                    className="flex-1 bg-red-500 rounded-sm h-2" 
-                                                    title={`Abaixo do Básico: ${distribution.abaixo_do_basico}`}
-                                                    style={{ 
-                                                        width: `${totalStudentsInTurma > 0 ? (distribution.abaixo_do_basico / totalStudentsInTurma) * 100 : 0}%` 
-                                                    }}
-                                                ></div>
-                                                <div 
-                                                    className="flex-1 bg-yellow-500 rounded-sm h-2" 
-                                                    title={`Básico: ${distribution.basico}`}
-                                                    style={{ 
-                                                        width: `${totalStudentsInTurma > 0 ? (distribution.basico / totalStudentsInTurma) * 100 : 0}%` 
-                                                    }}
-                                                ></div>
-                                                <div 
-                                                    className="flex-1 bg-blue-500 rounded-sm h-2" 
-                                                    title={`Adequado: ${distribution.adequado}`}
-                                                    style={{ 
-                                                        width: `${totalStudentsInTurma > 0 ? (distribution.adequado / totalStudentsInTurma) * 100 : 0}%` 
-                                                    }}
-                                                ></div>
-                                                <div 
-                                                    className="flex-1 bg-green-500 rounded-sm h-2" 
-                                                    title={`Avançado: ${distribution.avancado}`}
-                                                    style={{ 
-                                                        width: `${totalStudentsInTurma > 0 ? (distribution.avancado / totalStudentsInTurma) * 100 : 0}%` 
-                                                    }}
-                                                ></div>
-                                            </div>
-                                            <div className="flex justify-between text-xs text-muted-foreground">
-                                                <span>{distribution.abaixo_do_basico}</span>
-                                                <span>{distribution.basico}</span>
-                                                <span>{distribution.adequado}</span>
-                                                <span>{distribution.avancado}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            );
-                        })}
                     </div>
                 </CardContent>
             </Card>
@@ -2283,6 +2170,119 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                                 </Button>
                             </div>
                         </div>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Estatísticas por Turma */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-lg">Estatísticas por Turma</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {uniqueTurmas.map(turma => {
+                            const turmaStudents = students.filter(s => s.turma === turma);
+                            const turmaStudentsCompleted = turmaStudents.filter(s => s.status === 'concluida');
+                            
+                            // Usar dados reais dos alunos que temos
+                            const totalStudentsInTurma = turmaStudents.length;
+                            const completedStudentsInTurma = turmaStudentsCompleted.length;
+                            
+                            // Calcular médias apenas dos alunos que participaram
+                            const averageScore = turmaStudentsCompleted.length > 0 
+                                ? turmaStudentsCompleted.reduce((sum, s) => sum + s.nota, 0) / turmaStudentsCompleted.length 
+                                : 0;
+                            const averageProficiency = turmaStudentsCompleted.length > 0 
+                                ? turmaStudentsCompleted.reduce((sum, s) => sum + s.proficiencia, 0) / turmaStudentsCompleted.length 
+                                : 0;
+                            
+                            // Distribuição baseada em todos os alunos da turma
+                            // Alunos que não participaram são considerados "Abaixo do Básico"
+                            const alunosNaoParticiparam = totalStudentsInTurma - completedStudentsInTurma;
+                            const distribution = {
+                                abaixo_do_basico: turmaStudentsCompleted.filter(s => s.classificacao === 'Abaixo do Básico').length + alunosNaoParticiparam,
+                                basico: turmaStudentsCompleted.filter(s => s.classificacao === 'Básico').length,
+                                adequado: turmaStudentsCompleted.filter(s => s.classificacao === 'Adequado').length,
+                                avancado: turmaStudentsCompleted.filter(s => s.classificacao === 'Avançado').length,
+                            };
+
+                            const participationRate = totalStudentsInTurma > 0 
+                                ? (completedStudentsInTurma / totalStudentsInTurma) * 100 
+                                : 0;
+
+                            return (
+                                <div key={turma} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h3 className="font-semibold text-lg">{turma}</h3>
+                                        <Badge variant="outline">{totalStudentsInTurma} alunos</Badge>
+                                    </div>
+                                    
+                                    <div className="space-y-3">
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between text-sm">
+                                                <span className="text-muted-foreground">Participação:</span>
+                                                <span className="font-medium">
+                                                    {completedStudentsInTurma}/{totalStudentsInTurma} alunos
+                                                </span>
+                                            </div>
+                                            <Progress value={participationRate} className="h-2" />
+                                        </div>
+                                        
+                                        <div className="flex items-center justify-between text-sm">
+                                            <span className="text-muted-foreground">Média Nota:</span>
+                                            <span className="font-medium">{averageScore.toFixed(1)}</span>
+                                        </div>
+                                        
+                                        <div className="flex items-center justify-between text-sm">
+                                            <span className="text-muted-foreground">Proficiência:</span>
+                                            <span className="font-medium">{averageProficiency.toFixed(1)}</span>
+                                        </div>
+                                        
+                                        {/* Distribuição de classificação */}
+                                        <div className="space-y-1">
+                                            <div className="text-xs text-muted-foreground">Distribuição:</div>
+                                            <div className="flex gap-1">
+                                                <div 
+                                                    className="flex-1 bg-red-500 rounded-sm h-2" 
+                                                    title={`Abaixo do Básico: ${distribution.abaixo_do_basico}`}
+                                                    style={{ 
+                                                        width: `${totalStudentsInTurma > 0 ? (distribution.abaixo_do_basico / totalStudentsInTurma) * 100 : 0}%` 
+                                                    }}
+                                                ></div>
+                                                <div 
+                                                    className="flex-1 bg-yellow-500 rounded-sm h-2" 
+                                                    title={`Básico: ${distribution.basico}`}
+                                                    style={{ 
+                                                        width: `${totalStudentsInTurma > 0 ? (distribution.basico / totalStudentsInTurma) * 100 : 0}%` 
+                                                    }}
+                                                ></div>
+                                                <div 
+                                                    className="flex-1 bg-blue-500 rounded-sm h-2" 
+                                                    title={`Adequado: ${distribution.adequado}`}
+                                                    style={{ 
+                                                        width: `${totalStudentsInTurma > 0 ? (distribution.adequado / totalStudentsInTurma) * 100 : 0}%` 
+                                                    }}
+                                                ></div>
+                                                <div 
+                                                    className="flex-1 bg-green-500 rounded-sm h-2" 
+                                                    title={`Avançado: ${distribution.avancado}`}
+                                                    style={{ 
+                                                        width: `${totalStudentsInTurma > 0 ? (distribution.avancado / totalStudentsInTurma) * 100 : 0}%` 
+                                                    }}
+                                                ></div>
+                                            </div>
+                                            <div className="flex justify-between text-xs text-muted-foreground">
+                                                <span>{distribution.abaixo_do_basico}</span>
+                                                <span>{distribution.basico}</span>
+                                                <span>{distribution.adequado}</span>
+                                                <span>{distribution.avancado}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 </CardContent>
             </Card>

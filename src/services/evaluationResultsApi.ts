@@ -122,6 +122,7 @@ interface StudentDetailedResult {
   test_id: string;
   student_id: string;
   student_db_id: string;
+  student_name?: string; // ✅ Adicionado para exibir o nome do aluno
   total_questions: number;
   answered_questions: number;
   correct_answers: number;
@@ -887,9 +888,8 @@ export class EvaluationResultsApiService {
   }
 
   // Simular cálculo de proficiência (mantido para compatibilidade)
-  static simulateProficiencyCalculation(score: number, grade: string = '6º Ano', subject: string = 'Matemática') {
-    return calculateProficiency(score, 20, grade, subject);
-  }
+  // ✅ REMOVIDO: Função mockada de cálculo de proficiência
+  // Os cálculos reais devem vir da API
 
   // ✅ NOVO: Finalizar avaliação
   static async finalizeEvaluation(testId: string): Promise<{
