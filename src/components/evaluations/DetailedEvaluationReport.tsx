@@ -30,7 +30,8 @@ import {
   BookOpen,
   Clock,
   ChartLine,
-  PieChart
+  PieChart,
+  RefreshCw
 } from "lucide-react";
 
 import { 
@@ -674,38 +675,138 @@ export function DetailedEvaluationReport({ evaluationId, onBack }: DetailedEvalu
 
   if (isLoading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Relatório Detalhado</CardTitle>
-          <CardDescription>Carregando dados detalhados da avaliação...</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-32 w-full" />
-          </div>
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        {/* Header Skeleton */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                {onBack && (
+                  <Button variant="outline" size="sm" onClick={onBack}>
+                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    Voltar
+                  </Button>
+                )}
+                <div>
+                  <Skeleton className="h-6 w-64 mb-2" />
+                  <Skeleton className="h-4 w-48" />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Skeleton className="h-9 w-16" />
+                <Skeleton className="h-9 w-20" />
+              </div>
+            </div>
+          </CardHeader>
+        </Card>
+
+        {/* Insights Skeleton */}
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-48 mb-2" />
+            <Skeleton className="h-4 w-64" />
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {[...Array(6)].map((_, i) => (
+                <Card key={i} className="border-2">
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-3">
+                      <Skeleton className="h-10 w-10 rounded-full" />
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-4 w-32" />
+                        <Skeleton className="h-3 w-full" />
+                        <Skeleton className="h-3 w-3/4" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Análise de Dificuldade Skeleton */}
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-56 mb-2" />
+            <Skeleton className="h-4 w-72" />
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="border rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <Skeleton className="h-5 w-32" />
+                    <Skeleton className="h-5 w-16" />
+                  </div>
+                  <div className="space-y-2">
+                    <Skeleton className="h-3 w-full" />
+                    <Skeleton className="h-3 w-3/4" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
   if (!reportData) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Relatório Detalhado</CardTitle>
-          <CardDescription>Erro ao carregar dados</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">
-            Não foi possível carregar o relatório detalhado da avaliação.
-          </p>
-          <Button onClick={fetchDetailedReport} className="mt-4">
-            Tentar Novamente
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        {/* Header */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-4">
+              {onBack && (
+                <Button variant="outline" size="sm" onClick={onBack}>
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Voltar
+                </Button>
+              )}
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5" />
+                  Relatório Detalhado da Avaliação
+                </CardTitle>
+                <CardDescription>Erro ao carregar dados</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+        </Card>
+
+        {/* Error State */}
+        <Card>
+          <CardContent className="p-8">
+            <div className="text-center">
+              <div className="w-16 h-16 mx-auto mb-4 bg-red-100 rounded-full flex items-center justify-center">
+                <AlertTriangle className="w-8 h-8 text-red-600" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                Erro ao Carregar Relatório
+              </h3>
+              <p className="text-gray-600 mb-6">
+                Não foi possível carregar o relatório detalhado da avaliação. 
+                Verifique sua conexão e tente novamente.
+              </p>
+              <div className="flex gap-3 justify-center">
+                <Button onClick={fetchDetailedReport} className="text-sm">
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Tentar Novamente
+                </Button>
+                {onBack && (
+                  <Button variant="outline" onClick={onBack} className="text-sm">
+                    <ArrowLeft className="w-4 h-4 mr-2" />
+                    Voltar
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 

@@ -22,8 +22,7 @@ import {
   MapPin,
   GraduationCap,
   BarChart,
-  AreaChart,
-  Network
+  AreaChart
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -41,6 +40,9 @@ interface EvaluationResult {
   disciplina: string;
   curso: string;
   serie: string;
+  grade_id?: string; // ID da série (adicionado)
+  class_test_id?: string; // ID do teste de classe (adicionado)
+  turma?: string; // Nome da turma (adicionado)
   escola: string;
   municipio: string;
   data_aplicacao: string;
@@ -98,7 +100,17 @@ export default function Results() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [subjectFilter, setSubjectFilter] = useState<string>('all');
-  const [chartType, setChartType] = useState<'bars' | 'area' | 'network'>('bars');
+  const [chartType, setChartType] = useState<'bars' | 'area'>('bars');
+
+  // Novos estados para filtros adicionais
+  const [yearFilter, setYearFilter] = useState<string>('all');
+  const [schoolFilter, setSchoolFilter] = useState<string>('all');
+  const [evaluationFilter, setEvaluationFilter] = useState<string>('all');
+  const [gradeFilter, setGradeFilter] = useState<string>('all');
+  const [classFilter, setClassFilter] = useState<string>('all');
+  
+  // Estado para mapeamento de séries (ID -> Nome)
+  const [gradesMapping, setGradesMapping] = useState<Record<string, string>>({});
 
   // Estados de paginação
   const [currentPage, setCurrentPage] = useState(1);
@@ -134,12 +146,13 @@ export default function Results() {
 
   // Recarregar dados quando página ou filtros mudarem
   useEffect(() => {
-    if (!evaluationId) {
+    if (!evaluationId && !isLoading) {
+      // Só recarregar se não estiver carregando inicialmente
       fetchEvaluationsList();
     }
-  }, [currentPage, perPage, statusFilter, subjectFilter]);
+  }, [currentPage, perPage]); // Removido filtros que causam duplicação
 
-  // Filtrar avaliações baseado apenas na busca local
+  // Filtrar avaliações baseado na busca local e filtros
   useEffect(() => {
     let filtered = evaluationsList;
 
@@ -152,13 +165,41 @@ export default function Results() {
       );
     }
 
+    // Filtro por ano de realização
+    if (yearFilter !== 'all') {
+      filtered = filtered.filter(evaluation => {
+        const evaluationYear = new Date(evaluation.data_aplicacao).getFullYear().toString();
+        return evaluationYear === yearFilter;
+      });
+    }
+
+    // Filtro por escola
+    if (schoolFilter !== 'all') {
+      filtered = filtered.filter(evaluation => evaluation.escola === schoolFilter);
+    }
+
+    // Filtro por avaliação (título)
+    if (evaluationFilter !== 'all') {
+      filtered = filtered.filter(evaluation => evaluation.titulo === evaluationFilter);
+    }
+
+    // Filtro por série
+    if (gradeFilter !== 'all') {
+      filtered = filtered.filter(evaluation => getGradeName(evaluation.serie, evaluation.grade_id, evaluation) === gradeFilter);
+    }
+
+    // Filtro por turma
+    if (classFilter !== 'all') {
+      filtered = filtered.filter(evaluation => evaluation.turma === classFilter);
+    }
+
     setFilteredEvaluations(filtered);
-  }, [evaluationsList, searchTerm]);
+  }, [evaluationsList, searchTerm, yearFilter, schoolFilter, evaluationFilter, gradeFilter, classFilter]);
 
   const fetchData = async () => {
     try {
       setIsLoading(true);
-      await Promise.all([fetchResultsStats(), fetchEvaluationsList()]);
+      await Promise.all([fetchResultsStats(), fetchEvaluationsList(), fetchGradesMapping()]);
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
       toast({
@@ -178,6 +219,19 @@ export default function Results() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const fetchGradesMapping = async () => {
+    // Mapeamento vazio - agora a API retorna as séries corretamente
+    setGradesMapping({});
+  };
+
+  // Funções removidas para evitar erros 404
+
+  // Função para determinar série baseada no class_test_id (fallback)
+  const determineGradeFromEvaluation = (evaluation: EvaluationResult): string => {
+    // Fallback caso a API não retorne série (não deve mais acontecer)
+    return 'Série não identificada';
   };
 
   const fetchResultsStats = async () => {
@@ -217,38 +271,45 @@ export default function Results() {
       return average > best.average ? { subject, average } : best;
     }, { subject: '', average: 0 });
 
-    setStats({
+    const finalStats = {
       totalEvaluations: response.total,
       totalStudents: totalStudents,
       averageScore: averageScore,
       completedEvaluations: completedEvaluations,
       topPerformanceSubject: topSubject.subject,
-    });
+    };
+
+    setStats(finalStats);
   };
 
   const fetchEvaluationsList = async () => {
     setIsLoadingPage(true);
 
     try {
+      const filters = {
+        status: statusFilter !== 'all' ? statusFilter : undefined,
+        disciplina: subjectFilter !== 'all' ? subjectFilter : undefined,
+      };
+
       const response = await EvaluationResultsApiService.getEvaluationsList(
         currentPage,
         perPage,
-        {
-          status: statusFilter !== 'all' ? statusFilter : undefined,
-          disciplina: subjectFilter !== 'all' ? subjectFilter : undefined,
-        }
+        filters
       );
 
       // Atualizar estados de paginação
       setTotalPages(response.total_pages);
       setTotalEvaluations(response.total);
 
+      // Usar dados diretamente sem tentar buscar grade_id (endpoints não existem)
+      const enrichedData = response.data;
+
       if (evaluationId) {
         // Se há um ID específico, filtrar apenas essa avaliação
-        const specificEvaluation = response.data.filter((evaluation: EvaluationResult) => evaluation.id === evaluationId);
+        const specificEvaluation = enrichedData.filter((evaluation: EvaluationResult) => evaluation.id === evaluationId);
         setEvaluationsList(specificEvaluation);
       } else {
-        setEvaluationsList(response.data);
+        setEvaluationsList(enrichedData);
       }
     } catch (error) {
       console.error("Erro ao carregar avaliações:", error);
@@ -276,12 +337,39 @@ export default function Results() {
         label: "Pendente",
         color: "bg-gray-100 text-gray-800 border-gray-300"
       },
+      agendada: {
+        label: "Agendada",
+        color: "bg-yellow-100 text-yellow-800 border-yellow-300"
+      },
+      // Adicionar possíveis variações
+      'concluído': {
+        label: "Concluída",
+        color: "bg-green-100 text-green-800 border-green-300"
+      },
+      'em andamento': {
+        label: "Em Andamento",
+        color: "bg-blue-100 text-blue-800 border-blue-300"
+      },
+      'finalizada': {
+        label: "Concluída",
+        color: "bg-green-100 text-green-800 border-green-300"
+      },
+      'finalizado': {
+        label: "Concluída",
+        color: "bg-green-100 text-green-800 border-green-300"
+      },
+      'agendado': {
+        label: "Agendada",
+        color: "bg-yellow-100 text-yellow-800 border-yellow-300"
+      }
     };
 
-    return configs[status] || {
+    const config = configs[status] || {
       label: "Desconhecido",
       color: "bg-gray-100 text-gray-800 border-gray-300"
     };
+
+    return config;
   };
 
   const getProficiencyColor = (proficiency: string) => {
@@ -308,19 +396,68 @@ export default function Results() {
     setCurrentPage(1); // Voltar para a primeira página
   };
 
-  const handleFilterChange = (filterType: 'status' | 'subject', value: string) => {
+  const handleFilterChange = (filterType: 'status' | 'subject' | 'year' | 'school' | 'evaluation' | 'grade' | 'class', value: string) => {
     if (filterType === 'status') {
       setStatusFilter(value);
     } else if (filterType === 'subject') {
       setSubjectFilter(value);
+    } else if (filterType === 'year') {
+      setYearFilter(value);
+    } else if (filterType === 'school') {
+      setSchoolFilter(value);
+    } else if (filterType === 'evaluation') {
+      setEvaluationFilter(value);
+    } else if (filterType === 'grade') {
+      setGradeFilter(value);
+    } else if (filterType === 'class') {
+      setClassFilter(value);
     }
     setCurrentPage(1); // Voltar para a primeira página ao aplicar filtros
+  };
+
+  const handleClearAllFilters = () => {
+    setStatusFilter('all');
+    setSubjectFilter('all');
+    setYearFilter('all');
+    setSchoolFilter('all');
+    setEvaluationFilter('all');
+    setGradeFilter('all');
+    setClassFilter('all');
+    setSearchTerm('');
+    setCurrentPage(1);
   };
 
   // Função utilitária para tratar valores vazios
   const formatFieldValue = (value: string | null | undefined, fallback: string = 'Não informado') => {
     if (!value || value.trim() === '') return fallback;
     return value;
+  };
+
+  // Função para obter o nome da série baseado no ID
+  const getGradeName = (gradeId: string | null | undefined, gradeIdFromApi?: string | null | undefined, evaluation?: EvaluationResult): string => {
+    // ✅ PRIORIDADE 1: Usar o campo serie da API (agora deve vir correto)
+    if (gradeId && gradeId !== 'N/A') {
+      return gradeId;
+    }
+    
+    // ✅ PRIORIDADE 2: Usar o grade_id da API (UUID da grade)
+    if (gradeIdFromApi && gradeIdFromApi !== 'N/A') {
+      if (gradeIdFromApi.includes('-')) {
+        const mappedName = gradesMapping[gradeIdFromApi];
+        if (mappedName) {
+          return mappedName;
+        }
+        return `Série ${gradeIdFromApi.slice(0, 8)}...`;
+      }
+      return gradeIdFromApi;
+    }
+    
+    // ✅ PRIORIDADE 3: Fallback para mapeamento local (se API não retornar)
+    if (evaluation) {
+      return determineGradeFromEvaluation(evaluation);
+    }
+    
+    return 'Série não identificada';
   };
 
   // Função para renderizar diferentes tipos de gráficos
@@ -494,95 +631,7 @@ export default function Results() {
           </div>
         );
 
-      case 'network':
-        return (
-          <div className="space-y-4">
-            <div className="relative h-40 flex items-center justify-center bg-gradient-to-br from-gray-50 to-white rounded-lg border p-4">
-              <svg className="w-full h-full" viewBox="0 0 100 40">
-                {/* Círculo central */}
-                <circle
-                  cx="50"
-                  cy="20"
-                  r="2"
-                  fill="#6b7280"
-                  opacity="0.3"
-                />
 
-                {levels.map((level, index) => {
-                  const angle = (index / levels.length) * 2 * Math.PI - Math.PI / 2; // Começar do topo
-                  const radius = 15;
-                  const centerX = 50;
-                  const centerY = 20;
-                  const x = centerX + Math.cos(angle) * radius;
-                  const y = centerY + Math.sin(angle) * radius;
-                  const size = Math.max(4, (level.value / total) * 10);
-
-                  return (
-                    <g key={`${level.name}-${index}`}>
-                      {/* Linha conectando ao centro */}
-                      <line
-                        x1={centerX}
-                        y1={centerY}
-                        x2={x}
-                        y2={y}
-                        stroke="#e5e7eb"
-                        strokeWidth="1"
-                        opacity="0.6"
-                      />
-                      {/* Nó principal */}
-                      <circle
-                        cx={x}
-                        cy={y}
-                        r={size}
-                        fill={level.color.replace('bg-', '').includes('red') ? '#ef4444' :
-                          level.color.replace('bg-', '').includes('yellow') ? '#eab308' :
-                            level.color.replace('bg-', '').includes('blue') ? '#3b82f6' : '#22c55e'}
-                        opacity="0.9"
-                        stroke="white"
-                        strokeWidth="1"
-                      />
-                      {/* Valor no centro do nó */}
-                      <text
-                        x={x}
-                        y={y + 1}
-                        textAnchor="middle"
-                        fontSize="2.5"
-                        fill="white"
-                        fontWeight="bold"
-                      >
-                        {level.value}
-                      </text>
-                      {/* Label do nível */}
-                      <text
-                        x={x}
-                        y={y + size + 4}
-                        textAnchor="middle"
-                        fontSize="2"
-                        fill="#374151"
-                        fontWeight="500"
-                      >
-                        {level.name.split(' ')[0]}
-                      </text>
-                    </g>
-                  );
-                })}
-              </svg>
-            </div>
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              {levels.map((level, index) => (
-                <div key={`${level.name}-${index}`} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-3 h-3 rounded ${level.color}`}></div>
-                    <span className="font-medium">{level.name}</span>
-                  </div>
-                  <span className={`font-bold ${level.textColor}`}>
-                    {((level.value / total) * 100).toFixed(1)}%
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
 
       default:
         return null;
@@ -609,12 +658,13 @@ export default function Results() {
 
       // Criar dados da planilha
       const worksheetData = [
-        ['Avaliação', 'Disciplina', 'Escola', 'Série', 'Município', 'Participantes', 'Média', 'Proficiência', 'Status'],
+        ['Avaliação', 'Disciplina', 'Escola', 'Série', 'Turma', 'Município', 'Participantes', 'Média', 'Proficiência', 'Status'],
         ...dataToExport.map(evaluation => [
           formatFieldValue(evaluation.titulo, 'Título não informado'),
           formatFieldValue(evaluation.disciplina, 'N/A'),
           formatFieldValue(evaluation.escola, 'N/A'),
-          formatFieldValue(evaluation.serie, 'N/A'),
+          getGradeName(evaluation.serie, evaluation.grade_id, evaluation),
+          formatFieldValue(evaluation.turma, 'N/A'),
           formatFieldValue(evaluation.municipio, 'N/A'),
           `${evaluation.alunos_participantes}/${evaluation.total_alunos}`,
           evaluation.media_nota.toFixed(1),
@@ -648,6 +698,19 @@ export default function Results() {
   };
 
   const uniqueSubjects = [...new Set(evaluationsList.map(e => e.disciplina))];
+  
+  // Dados únicos para os novos filtros
+  const uniqueYears = [...new Set(evaluationsList.map(e => new Date(e.data_aplicacao).getFullYear().toString()))].sort((a, b) => b.localeCompare(a));
+  const uniqueSchools = [...new Set(evaluationsList.map(e => e.escola))].sort();
+  const uniqueEvaluations = [...new Set(evaluationsList.map(e => e.titulo))].sort();
+  const uniqueClasses = [...new Set(evaluationsList.map(e => e.turma))].sort();
+  // Memoizar o cálculo de séries únicas para evitar re-renders
+  const uniqueGrades = React.useMemo(() => {
+    return [...new Set(evaluationsList.map(e => getGradeName(e.serie, e.grade_id, e)))].sort();
+  }, [evaluationsList]);
+  
+
+  
   const isSpecificEvaluation = Boolean(evaluationId);
 
   return (
@@ -678,7 +741,7 @@ export default function Results() {
       </div>
 
       {/* Estatísticas Principais */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-3">
         <Card className="border-l-4 border-l-blue-500">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -729,30 +792,13 @@ export default function Results() {
             </p>
           </CardContent>
         </Card>
-
-        <Card className="border-l-4 border-l-orange-500">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Award className="h-4 w-4 text-orange-600" />
-              Melhor Disciplina
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-sm font-bold text-orange-600">
-              {isLoading ? <Skeleton className="h-6 w-20" /> : stats.topPerformanceSubject}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Maior média de desempenho
-            </p>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Gráficos de Proficiência */}
       {!isLoading && (
         <>
           {filteredEvaluations.length > 0 ? (
-            <div className="grid gap-6 md:grid-cols-2">
+            <div className="grid gap-6">
               {/* Gráfico de Distribuição Geral */}
               <Card>
                 <CardHeader>
@@ -785,17 +831,7 @@ export default function Results() {
                         <AreaChart className="h-3 w-3" />
                         Área
                       </button>
-                      <button
-                        onClick={() => setChartType('network')}
-                        className={`px-3 py-1 text-xs rounded-md transition-all flex items-center gap-1 ${chartType === 'network'
-                          ? 'bg-white text-blue-600 shadow-sm'
-                          : 'text-gray-600 hover:text-gray-800'
-                          }`}
-                        title="Gráfico de Rede"
-                      >
-                        <Network className="h-3 w-3" />
-                        Rede
-                      </button>
+
                     </div>
                   </div>
                 </CardHeader>
@@ -832,40 +868,7 @@ export default function Results() {
                 </CardContent>
               </Card>
 
-              {/* Gráfico de Médias por Disciplina */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5" />
-                    Média por Disciplina
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {uniqueSubjects.slice(0, 5).map(subject => {
-                      const subjectEvaluations = filteredEvaluations.filter(evaluation => evaluation.disciplina === subject);
-                      const averageScore = subjectEvaluations.length > 0
-                        ? subjectEvaluations.reduce((sum, evaluation) => sum + evaluation.media_nota, 0) / subjectEvaluations.length
-                        : 0;
 
-                      return (
-                        <div key={subject} className="space-y-1">
-                          <div className="flex justify-between text-sm">
-                            <span className="font-medium">{subject}</span>
-                            <span className="text-muted-foreground">{averageScore.toFixed(1)}</span>
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div
-                              className="bg-blue-600 h-2 rounded-full transition-all"
-                              style={{ width: `${Math.min(100, (averageScore / 10) * 100)}%` }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
             </div>
           ) : (
             <Card>
@@ -900,40 +903,172 @@ export default function Results() {
             <CardTitle className="text-lg">Filtros</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar por nome da avaliação, disciplina ou escola..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
+            <div className="space-y-4">
+              {/* Busca */}
+              <div className="relative">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar por nome da avaliação, disciplina ou escola..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
               </div>
-              <Select value={statusFilter} onValueChange={(value) => handleFilterChange('status', value)}>
-                <SelectTrigger className="w-full md:w-48">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os Status</SelectItem>
-                  <SelectItem value="concluida">Concluída</SelectItem>
-                  <SelectItem value="em_andamento">Em Andamento</SelectItem>
-                  <SelectItem value="pendente">Pendente</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={subjectFilter} onValueChange={(value) => handleFilterChange('subject', value)}>
-                <SelectTrigger className="w-full md:w-48">
-                  <SelectValue placeholder="Disciplina" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas as Disciplinas</SelectItem>
-                  {uniqueSubjects.map(subject => (
-                    <SelectItem key={subject} value={subject}>{subject}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              
+              {/* Filtros em grid responsivo */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+                {/* Status */}
+                <Select value={statusFilter} onValueChange={(value) => handleFilterChange('status', value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os Status</SelectItem>
+                    <SelectItem value="concluida">Concluída</SelectItem>
+                    <SelectItem value="em_andamento">Em Andamento</SelectItem>
+                    <SelectItem value="pendente">Pendente</SelectItem>
+                    <SelectItem value="agendada">Agendada</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {/* Disciplina */}
+                <Select value={subjectFilter} onValueChange={(value) => handleFilterChange('subject', value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Disciplina" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as Disciplinas</SelectItem>
+                    {uniqueSubjects.map(subject => (
+                      <SelectItem key={subject} value={subject}>{subject}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {/* Ano de Realização */}
+                <Select value={yearFilter} onValueChange={(value) => handleFilterChange('year', value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Ano" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os Anos</SelectItem>
+                    {uniqueYears.map(year => (
+                      <SelectItem key={year} value={year}>{year}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {/* Escola */}
+                <Select value={schoolFilter} onValueChange={(value) => handleFilterChange('school', value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Escola" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as Escolas</SelectItem>
+                    {uniqueSchools.map(school => (
+                      <SelectItem key={school} value={school}>{school}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {/* Avaliação */}
+                <Select value={evaluationFilter} onValueChange={(value) => handleFilterChange('evaluation', value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Avaliação" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as Avaliações</SelectItem>
+                    {uniqueEvaluations.map(evaluation => (
+                      <SelectItem key={evaluation} value={evaluation}>{evaluation}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {/* Série */}
+                <Select value={gradeFilter} onValueChange={(value) => handleFilterChange('grade', value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Série" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as Séries</SelectItem>
+                    {uniqueGrades.map(grade => (
+                      <SelectItem key={grade} value={grade}>{grade}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {/* Turma */}
+                <Select value={classFilter} onValueChange={(value) => handleFilterChange('class', value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Turma" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as Turmas</SelectItem>
+                    {uniqueClasses.map(class_name => (
+                      <SelectItem key={class_name} value={class_name}>{class_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Informação sobre filtros ativos e botão limpar */}
+              {(statusFilter !== 'all' || subjectFilter !== 'all' || yearFilter !== 'all' || 
+                schoolFilter !== 'all' || evaluationFilter !== 'all' || gradeFilter !== 'all' || 
+                classFilter !== 'all' || searchTerm) && (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <span>Filtros ativos:</span>
+                    {statusFilter !== 'all' && (
+                      <Badge variant="secondary" className="text-xs">
+                        Status: {statusFilter === 'concluida' ? 'Concluída' : statusFilter === 'em_andamento' ? 'Em Andamento' : 'Pendente'}
+                      </Badge>
+                    )}
+                    {subjectFilter !== 'all' && (
+                      <Badge variant="secondary" className="text-xs">
+                        Disciplina: {subjectFilter}
+                      </Badge>
+                    )}
+                    {yearFilter !== 'all' && (
+                      <Badge variant="secondary" className="text-xs">
+                        Ano: {yearFilter}
+                      </Badge>
+                    )}
+                    {schoolFilter !== 'all' && (
+                      <Badge variant="secondary" className="text-xs">
+                        Escola: {schoolFilter}
+                      </Badge>
+                    )}
+                    {evaluationFilter !== 'all' && (
+                      <Badge variant="secondary" className="text-xs">
+                        Avaliação: {evaluationFilter}
+                      </Badge>
+                    )}
+                    {gradeFilter !== 'all' && (
+                      <Badge variant="secondary" className="text-xs">
+                        Série: {gradeFilter}
+                      </Badge>
+                    )}
+                    {classFilter !== 'all' && (
+                      <Badge variant="secondary" className="text-xs">
+                        Turma: {classFilter}
+                      </Badge>
+                    )}
+                    {searchTerm && (
+                      <Badge variant="secondary" className="text-xs">
+                        Busca: "{searchTerm}"
+                      </Badge>
+                    )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleClearAllFilters}
+                    className="text-xs"
+                  >
+                    <RefreshCw className="h-3 w-3 mr-1" />
+                    Limpar Todos os Filtros
+                  </Button>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -948,7 +1083,9 @@ export default function Results() {
             </span>
             <Badge variant="outline">
               {totalEvaluations} {totalEvaluations === 1 ? 'avaliação' : 'avaliações'} total
-              {searchTerm && (
+              {(searchTerm || statusFilter !== 'all' || subjectFilter !== 'all' || yearFilter !== 'all' || 
+                schoolFilter !== 'all' || evaluationFilter !== 'all' || gradeFilter !== 'all' || 
+                classFilter !== 'all') && (
                 <span className="ml-2">
                   ({filteredEvaluations.length} filtradas)
                 </span>
@@ -1015,7 +1152,9 @@ export default function Results() {
                           <div className="flex items-center gap-1">
                             <Badge variant="outline">{formatFieldValue(evaluation.disciplina, 'Disciplina não informada')}</Badge>
                             <span>•</span>
-                            <span>{formatFieldValue(evaluation.serie, 'Série não informada')}</span>
+                            <span>{getGradeName(evaluation.serie, evaluation.grade_id, evaluation)}</span>
+                            <span>•</span>
+                            <span>{formatFieldValue(evaluation.turma, 'Turma não informada')}</span>
                           </div>
                           <div className="flex items-center gap-1">
                             <School className="h-4 w-4" />
@@ -1067,7 +1206,7 @@ export default function Results() {
                               <div
                                 className="w-full bg-red-500 rounded-t-sm transition-all hover:bg-red-600"
                                 style={{
-                                  height: `${Math.max(10, (evaluation.distribuicao_classificacao.abaixo_do_basico / Math.max(1, evaluation.alunos_participantes)) * 100)}%`
+                                  height: `${Math.max(10, (evaluation.distribuicao_classificacao.abaixo_do_basico / Math.max(1, evaluation.total_alunos)) * 100)}%`
                                 }}
                                 title={`Abaixo do Básico: ${evaluation.distribuicao_classificacao.abaixo_do_basico} alunos`}
                               />
@@ -1079,7 +1218,7 @@ export default function Results() {
                               <div
                                 className="w-full bg-yellow-500 rounded-t-sm transition-all hover:bg-yellow-600"
                                 style={{
-                                  height: `${Math.max(10, (evaluation.distribuicao_classificacao.basico / Math.max(1, evaluation.alunos_participantes)) * 100)}%`
+                                  height: `${Math.max(10, (evaluation.distribuicao_classificacao.basico / Math.max(1, evaluation.total_alunos)) * 100)}%`
                                 }}
                                 title={`Básico: ${evaluation.distribuicao_classificacao.basico} alunos`}
                               />
@@ -1091,7 +1230,7 @@ export default function Results() {
                               <div
                                 className="w-full bg-blue-500 rounded-t-sm transition-all hover:bg-blue-600"
                                 style={{
-                                  height: `${Math.max(10, (evaluation.distribuicao_classificacao.adequado / Math.max(1, evaluation.alunos_participantes)) * 100)}%`
+                                  height: `${Math.max(10, (evaluation.distribuicao_classificacao.adequado / Math.max(1, evaluation.total_alunos)) * 100)}%`
                                 }}
                                 title={`Adequado: ${evaluation.distribuicao_classificacao.adequado} alunos`}
                               />
@@ -1103,7 +1242,7 @@ export default function Results() {
                               <div
                                 className="w-full bg-green-500 rounded-t-sm transition-all hover:bg-green-600"
                                 style={{
-                                  height: `${Math.max(10, (evaluation.distribuicao_classificacao.avancado / Math.max(1, evaluation.alunos_participantes)) * 100)}%`
+                                  height: `${Math.max(10, (evaluation.distribuicao_classificacao.avancado / Math.max(1, evaluation.total_alunos)) * 100)}%`
                                 }}
                                 title={`Avançado: ${evaluation.distribuicao_classificacao.avancado} alunos`}
                               />
@@ -1152,7 +1291,9 @@ export default function Results() {
                 Nenhuma avaliação encontrada
               </h3>
               <p className="text-gray-600">
-                {searchTerm || statusFilter !== 'all' || subjectFilter !== 'all'
+                {searchTerm || statusFilter !== 'all' || subjectFilter !== 'all' || yearFilter !== 'all' || 
+                 schoolFilter !== 'all' || evaluationFilter !== 'all' || gradeFilter !== 'all' || 
+                 classFilter !== 'all'
                   ? 'Tente ajustar os filtros para ver mais resultados.'
                   : 'Ainda não há avaliações com resultados disponíveis. Verifique se o backend está rodando e se há dados cadastrados.'
                 }
