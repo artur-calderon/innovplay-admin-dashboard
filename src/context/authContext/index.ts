@@ -1,7 +1,7 @@
 import {create} from 'zustand'
 import { api } from '@/lib/api'
 import { toast } from 'react-toastify'
-import axios, { AxiosError } from 'axios'
+import { AxiosError } from 'axios'
 
 interface User{
     id:string,
@@ -67,7 +67,8 @@ export const useAuth = create<AuthContext>((set) => ({
 
             localStorage.setItem('token', response.data.token)
 
-            axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`
+            // ✅ CORRIGIDO: Usar a instância da API corretamente
+            api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`
 
             set({user: response.data.user})
 
@@ -75,8 +76,14 @@ export const useAuth = create<AuthContext>((set) => ({
         } catch (error: unknown) {
             console.error("Erro no login automático:", error);
             const axiosError = error as AxiosError<ApiError>;
-            const errorMessage = axiosError.response?.data?.erro || axiosError.response?.data?.error || "Erro ao autenticar!";
-            toast.error(errorMessage);
+            
+            // ✅ CORRIGIDO: Melhorar tratamento de erros de CORS
+            if (axiosError.code === 'ERR_NETWORK') {
+                toast.error("Erro de conexão com o servidor. Verifique se o backend está rodando em http://localhost:5000");
+            } else {
+                const errorMessage = axiosError.response?.data?.erro || axiosError.response?.data?.error || "Erro ao autenticar!";
+                toast.error(errorMessage);
+            }
             throw error;
         } finally {
             set({ loading: false })
@@ -91,7 +98,8 @@ export const useAuth = create<AuthContext>((set) => ({
 
             localStorage.setItem('token', response.data.token)
 
-            axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`
+            // ✅ CORRIGIDO: Usar a instância da API corretamente
+            api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`
 
             set({user: response.data.user})
 
@@ -99,8 +107,14 @@ export const useAuth = create<AuthContext>((set) => ({
         } catch (error: unknown) {
             console.error("Erro no login:", error);
             const axiosError = error as AxiosError<ApiError>;
-            const errorMessage = axiosError.response?.data?.erro || axiosError.response?.data?.error || "Erro ao autenticar!";
-            toast.error(errorMessage);
+            
+            // ✅ CORRIGIDO: Melhorar tratamento de erros de CORS
+            if (axiosError.code === 'ERR_NETWORK') {
+                toast.error("Erro de conexão com o servidor. Verifique se o backend está rodando em http://localhost:5000");
+            } else {
+                const errorMessage = axiosError.response?.data?.erro || axiosError.response?.data?.error || "Erro ao autenticar!";
+                toast.error(errorMessage);
+            }
             throw error;
         } finally {
             set({ loading: false })
@@ -111,7 +125,8 @@ export const useAuth = create<AuthContext>((set) => ({
             await api.post("/logout/")
             localStorage.removeItem('token')
             
-            delete axios.defaults.headers.common['Authorization']
+            // ✅ CORRIGIDO: Usar a instância da API corretamente
+            delete api.defaults.headers.common['Authorization']
             
             set({
                 user: {
@@ -143,6 +158,7 @@ export const useAuth = create<AuthContext>((set) => ({
                 return false;
             }
 
+            // ✅ CORRIGIDO: Usar a instância da API corretamente
             api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
             
             const response = await api.get('/persist-user/');
@@ -150,7 +166,6 @@ export const useAuth = create<AuthContext>((set) => ({
                 if (response.data.token) {
                     localStorage.setItem('token', response.data.token);
                     api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
-                    axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
                 }
                 
                 set((state) => ({ 
@@ -166,7 +181,6 @@ export const useAuth = create<AuthContext>((set) => ({
             console.error('Erro ao persistir usuário:', error);
             localStorage.removeItem('token');
             delete api.defaults.headers.common['Authorization'];
-            delete axios.defaults.headers.common['Authorization'];
             return false;
         }
     }

@@ -34,6 +34,7 @@ import {
 } from "@/types/evaluation-results";
 
 import { useParams } from "react-router-dom";
+import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
 
 interface StudentResult {
   id: string;
@@ -46,7 +47,7 @@ interface StudentResult {
   correctAnswers: number;
   totalQuestions: number;
   percentage: number;
-  status: 'completed' | 'pending';
+  status: 'completed' | 'pending' | 'concluida' | 'pendente';
   evaluationDate: string;
   timeSpent: number; // em minutos
 }
@@ -66,277 +67,9 @@ interface SchoolResult {
 }
 
 // Função para gerar dados consistentes de alunos
-const generateConsistentStudentData = (
-  evaluationId: string, 
-  totalStudents: number, 
-  completedStudents: number, 
-  targetAverage: number, 
-  targetProficiency: number,
-  distributionByLevel: Record<ProficiencyLevel, number>
-): StudentResult[] => {
-  const students: StudentResult[] = [];
-  const baseNames = [
-    "Ana Silva", "Bruno Santos", "Carla Oliveira", "Daniel Costa", "Elena Rodrigues",
-    "Felipe Almeida", "Gabriela Lima", "Henrique Pereira", "Isabela Martins", "João Ferreira",
-    "Karina Souza", "Lucas Barbosa", "Mariana Gomes", "Nicolas Ribeiro", "Olivia Cardoso",
-    "Pedro Nascimento", "Quésia Andrade", "Rafael Dias", "Sofia Mendes", "Thiago Rocha",
-    "Ursula Campos", "Victor Hugo", "Wesley Moura", "Ximena Teixeira", "Yara Freitas",
-    "Zeca Monteiro", "Adriana Pinto", "Bernardo Cruz", "Cecília Vieira", "Diego Lopes",
-    "Eduarda Castro", "Fábio Correia", "Giovanna Araújo", "Hugo Machado", "Ingrid Nunes",
-    "Júlio César", "Kamila Torres", "Leonardo Reis", "Melissa Carneiro", "Nathan Duarte",
-    "Otávio Ramos", "Patrícia Moreira", "Quirino Batista", "Renata Fonseca", "Samuel Cunha",
-    "Tatiana Melo", "Ulisses Porto", "Vanessa Azevedo", "Wagner Coelho", "Yasmin Caldeira"
-  ];
 
-  const classes = ["1º A", "1º B", "1º C", "2º A", "2º B", "2º C", "3º A", "3º B", "3º C"];
-  const grades = evaluationId === "avaliacao-3" ? ["1º EM A", "1º EM B", "1º EM C", "2º EM A", "2º EM B"] : classes;
-  
-  // Gerar alunos baseado na distribuição por nível
-  let studentIndex = 0;
-  const evaluationDate = evaluationId === "avaliacao-1" ? "2024-01-15T10:00:00Z" : 
-                       evaluationId === "avaliacao-2" ? "2024-01-12T14:30:00Z" : "2024-01-18T09:15:00Z";
 
-  // Definir faixas de notas para cada nível (com margem de segurança)
-  const scoreBounds = {
-    "abaixo_do_basico": { min: 2.0, max: 4.4 },
-    "basico": { min: 4.6, max: 6.4 },
-    "adequado": { min: 6.6, max: 8.4 },
-    "avancado": { min: 8.6, max: 10.0 }
-  };
 
-  // Função para calcular proficiência baseada na nota
-  const calculateProficiency = (rawScore: number): { score: number, level: ProficiencyLevel, classification: string } => {
-    const proficiencyScore = Math.round(rawScore * 35 + 50 + (Math.random() * 40 - 20));
-    
-    if (proficiencyScore <= 150) {
-      return { score: proficiencyScore, level: "abaixo_do_basico", classification: "Abaixo do Básico" };
-    } else if (proficiencyScore <= 200) {
-      return { score: proficiencyScore, level: "basico", classification: "Básico" };
-    } else if (proficiencyScore <= 300) {
-      return { score: proficiencyScore, level: "adequado", classification: "Adequado" };
-    } else {
-      return { score: proficiencyScore, level: "avancado", classification: "Avançado" };
-    }
-  };
-
-  // Primeiro, calcular a média necessária para cada nível para atingir a média geral
-  const totalStudentsInLevels = Object.values(distributionByLevel).reduce((sum, count) => sum + count, 0);
-  
-  // Calcular médias por nível que resultem na média geral desejada
-  const levelAverages: Record<ProficiencyLevel, number> = {} as Record<ProficiencyLevel, number>;
-  
-  // Começar com médias centrais de cada faixa
-  levelAverages["abaixo_do_basico"] = (scoreBounds["abaixo_do_basico"].min + scoreBounds["abaixo_do_basico"].max) / 2;
-  levelAverages["basico"] = (scoreBounds["basico"].min + scoreBounds["basico"].max) / 2;
-  levelAverages["adequado"] = (scoreBounds["adequado"].min + scoreBounds["adequado"].max) / 2;
-  levelAverages["avancado"] = (scoreBounds["avancado"].min + scoreBounds["avancado"].max) / 2;
-
-  // Ajustar as médias para atingir a média geral
-  let currentGlobalAverage = 0;
-  Object.entries(distributionByLevel).forEach(([level, count]) => {
-    currentGlobalAverage += levelAverages[level as ProficiencyLevel] * count;
-  });
-  currentGlobalAverage /= totalStudentsInLevels;
-
-  const globalAdjustment = targetAverage - currentGlobalAverage;
-  
-  // Aplicar ajuste proporcional mantendo dentro dos limites
-  Object.keys(levelAverages).forEach(level => {
-    const profLevel = level as ProficiencyLevel;
-    const bounds = scoreBounds[profLevel];
-    levelAverages[profLevel] = Math.max(bounds.min, Math.min(bounds.max, levelAverages[profLevel] + globalAdjustment));
-  });
-
-  // Gerar alunos para cada nível de proficiência
-  Object.entries(distributionByLevel).forEach(([level, count]) => {
-    const proficiencyLevel = level as ProficiencyLevel;
-    const bounds = scoreBounds[proficiencyLevel];
-    const targetLevelAverage = levelAverages[proficiencyLevel];
-    
-    const levelStudents: StudentResult[] = [];
-    
-    for (let i = 0; i < count; i++) {
-      if (studentIndex >= completedStudents) break;
-      
-      // Gerar nota inicial dentro da faixa
-      const rawScore = Number((bounds.min + Math.random() * (bounds.max - bounds.min)).toFixed(1));
-      const proficiencyData = calculateProficiency(rawScore);
-      
-      // Garantir que o nível calculado bate com o esperado
-      const correctAnswers = Math.round((rawScore / 10) * 20);
-      const percentage = (correctAnswers / 20) * 100;
-      const timeSpent = Math.round(30 + Math.random() * 40); // 30-70 minutos
-      
-      levelStudents.push({
-        id: `aluno-${100 + studentIndex}`,
-        name: baseNames[studentIndex % baseNames.length],
-        class: grades[studentIndex % grades.length],
-        rawScore: rawScore,
-        proficiencyScore: proficiencyData.score,
-        proficiencyLevel: proficiencyLevel, // Usar o nível esperado
-        classification: proficiencyData.classification,
-        correctAnswers: correctAnswers,
-        totalQuestions: 20,
-        percentage: Number(percentage.toFixed(1)),
-        status: "completed",
-        evaluationDate: evaluationDate,
-        timeSpent: timeSpent
-      });
-      
-      studentIndex++;
-    }
-    
-    // Ajustar notas do nível para atingir a média desejada, mantendo dentro dos limites
-    if (levelStudents.length > 0) {
-      const currentLevelAverage = levelStudents.reduce((sum, s) => sum + s.rawScore, 0) / levelStudents.length;
-      const levelAdjustment = targetLevelAverage - currentLevelAverage;
-      
-      levelStudents.forEach(student => {
-        const newScore = student.rawScore + levelAdjustment;
-        student.rawScore = Number(Math.max(bounds.min, Math.min(bounds.max, newScore)).toFixed(1));
-        student.correctAnswers = Math.round((student.rawScore / 10) * 20);
-        student.percentage = Number(((student.correctAnswers / 20) * 100).toFixed(1));
-      });
-    }
-    
-    students.push(...levelStudents);
-  });
-
-  // Ajuste final fino para garantir média exata (pequenos ajustes dentro dos limites)
-  const finalAverage = students.reduce((sum, s) => sum + s.rawScore, 0) / students.length;
-  const finalAdjustment = targetAverage - finalAverage;
-  
-  if (Math.abs(finalAdjustment) > 0.01) {
-    // Fazer pequenos ajustes distribuídos, respeitando os limites
-    students.forEach(student => {
-      const bounds = scoreBounds[student.proficiencyLevel];
-      const adjustment = finalAdjustment * (Math.random() * 0.5 + 0.75); // Ajuste variável
-      const newScore = student.rawScore + adjustment;
-      student.rawScore = Number(Math.max(bounds.min, Math.min(bounds.max, newScore)).toFixed(1));
-      student.correctAnswers = Math.round((student.rawScore / 10) * 20);
-      student.percentage = Number(((student.correctAnswers / 20) * 100).toFixed(1));
-    });
-  }
-
-  // Recalcular proficiência para bater com a média
-  const currentProficiencyAverage = students.reduce((sum, s) => sum + s.proficiencyScore, 0) / students.length;
-  const proficiencyAdjustment = targetProficiency - currentProficiencyAverage;
-  
-  students.forEach(student => {
-    student.proficiencyScore = Math.round(Math.max(50, Math.min(500, student.proficiencyScore + proficiencyAdjustment)));
-  });
-
-  return students.sort((a, b) => a.name.localeCompare(b.name));
-};
-
-// Dados mockados das avaliações com dados completos e consistentes
-const mockEvaluationResults: Record<string, SchoolResult> = {
-  "avaliacao-1": {
-    id: "avaliacao-1",
-    name: "Avaliação de Matemática - 3º Ano",
-    municipality: "São Paulo",
-    totalStudents: 45,
-    completedStudents: 42,
-    averageScore: 7.2,
-    averageProficiency: 365,
-    subjects: ["Matemática", "Português", "História"],
-    grades: ["3º Ano", "4º Ano", "5º Ano"],
-    distributionByLevel: {
-      abaixo_do_basico: 8,
-      basico: 12,
-      adequado: 15,
-      avancado: 7
-    },
-    students: generateConsistentStudentData(
-      "avaliacao-1", 45, 42, 7.2, 365,
-      { abaixo_do_basico: 8, basico: 12, adequado: 15, avancado: 7 }
-    )
-  },
-  "avaliacao-2": {
-    id: "avaliacao-2",
-    name: "Avaliação de Português - 6º Ano",
-    municipality: "Rio de Janeiro",
-    totalStudents: 38,
-    completedStudents: 35,
-    averageScore: 8.1,
-    averageProficiency: 425,
-    subjects: ["Matemática", "Português", "Ciências", "Geografia"],
-    grades: ["6º Ano", "7º Ano", "8º Ano"],
-    distributionByLevel: {
-      abaixo_do_basico: 3,
-      basico: 8,
-      adequado: 18,
-      avancado: 6
-    },
-    students: generateConsistentStudentData(
-      "avaliacao-2", 38, 35, 8.1, 425,
-      { abaixo_do_basico: 3, basico: 8, adequado: 18, avancado: 6 }
-    )
-  },
-  "avaliacao-3": {
-    id: "avaliacao-3",
-    name: "Avaliação de História - 1º Ano EM",
-    municipality: "Belo Horizonte",
-    totalStudents: 52,
-    completedStudents: 48,
-    averageScore: 6.8,
-    averageProficiency: 298,
-    subjects: ["Matemática", "Português"],
-    grades: ["1º Ano EM", "2º Ano EM"],
-    distributionByLevel: {
-      abaixo_do_basico: 12,
-      basico: 20,
-      adequado: 13,
-      avancado: 3
-    },
-    students: generateConsistentStudentData(
-      "avaliacao-3", 52, 48, 6.8, 298,
-      { abaixo_do_basico: 12, basico: 20, adequado: 13, avancado: 3 }
-    )
-  },
-  "avaliacao-4": {
-    id: "avaliacao-4",
-    name: "Avaliação de Ciências - 5º Ano",
-    municipality: "São Paulo",
-    totalStudents: 40,
-    completedStudents: 38,
-    averageScore: 7.8,
-    averageProficiency: 385,
-    subjects: ["Ciências", "Matemática"],
-    grades: ["5º Ano"],
-    distributionByLevel: {
-      abaixo_do_basico: 4,
-      basico: 10,
-      adequado: 18,
-      avancado: 6
-    },
-    students: generateConsistentStudentData(
-      "avaliacao-4", 40, 38, 7.8, 385,
-      { abaixo_do_basico: 4, basico: 10, adequado: 18, avancado: 6 }
-    )
-  },
-  "avaliacao-5": {
-    id: "avaliacao-5",
-    name: "Avaliação de Geografia - 8º Ano",
-    municipality: "Rio de Janeiro",
-    totalStudents: 35,
-    completedStudents: 32,
-    averageScore: 6.5,
-    averageProficiency: 312,
-    subjects: ["Geografia", "História"],
-    grades: ["8º Ano"],
-    distributionByLevel: {
-      abaixo_do_basico: 6,
-      basico: 14,
-      adequado: 9,
-      avancado: 3
-    },
-    students: generateConsistentStudentData(
-      "avaliacao-5", 35, 32, 6.5, 312,
-      { abaixo_do_basico: 6, basico: 14, adequado: 9, avancado: 3 }
-    )
-  }
-};
 
 interface EvaluationResultsProps {
   onBack?: () => void;
@@ -359,25 +92,88 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
     try {
       setIsLoading(true);
       
-      // Simular carregamento de dados da API
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      if (evaluationId && mockEvaluationResults[evaluationId]) {
-        setEvaluationResult(mockEvaluationResults[evaluationId]);
-      } else {
-        throw new Error("Avaliação não encontrada");
+      if (!evaluationId) {
+        throw new Error("ID da avaliação não fornecido");
       }
 
-    } catch (error) {
+      // ✅ CORRIGIDO: Usar a API correta do backend
+      const [evaluationResponse, studentsResponse] = await Promise.all([
+        EvaluationResultsApiService.getEvaluationById(evaluationId),
+        EvaluationResultsApiService.getStudentsByEvaluation(evaluationId)
+      ]);
+
+      if (!evaluationResponse) {
+        throw new Error("Avaliação não encontrada no servidor");
+      }
+
+      // ✅ CORRIGIDO: Transformar dados da API para o formato esperado
+      const schoolResult: SchoolResult = {
+        id: evaluationResponse.id,
+        name: evaluationResponse.escola,
+        municipality: evaluationResponse.municipio,
+        totalStudents: evaluationResponse.total_alunos,
+        completedStudents: evaluationResponse.alunos_participantes,
+        averageScore: evaluationResponse.media_nota,
+        averageProficiency: evaluationResponse.media_proficiencia,
+        subjects: [evaluationResponse.disciplina],
+        grades: [evaluationResponse.serie],
+        students: studentsResponse.map(student => ({
+          id: student.id,
+          name: student.nome,
+          class: student.turma,
+          rawScore: student.nota,
+          proficiencyScore: student.proficiencia,
+          proficiencyLevel: getProficiencyLevel(student.proficiencia, evaluationResponse.serie, evaluationResponse.disciplina),
+          classification: student.classificacao,
+          correctAnswers: student.acertos,
+          totalQuestions: student.questoes_respondidas,
+          percentage: (student.acertos / student.questoes_respondidas) * 100,
+          status: student.status as 'completed' | 'pending' | 'concluida' | 'pendente',
+          evaluationDate: evaluationResponse.data_aplicacao,
+          timeSpent: student.tempo_gasto
+        })),
+        distributionByLevel: evaluationResponse.distribuicao_classificacao
+      };
+
+      setEvaluationResult(schoolResult);
+
+    } catch (error: unknown) {
       console.error("Erro ao buscar resultados da avaliação:", error);
+      
+      // ✅ CORRIGIDO: Mensagens de erro mais específicas
+      let errorMessage = "Não foi possível carregar os resultados da avaliação";
+      
+      const errorObj = error as { message?: string; code?: string; response?: { status?: number } };
+      
+      if (errorObj.message?.includes('CORS') || errorObj.code === 'ERR_NETWORK') {
+        errorMessage = "Erro de conexão com o servidor. Verifique se o backend está rodando em http://localhost:5000";
+      } else if (errorObj.message?.includes('não encontrada')) {
+        errorMessage = "Avaliação não encontrada ou não possui resultados disponíveis";
+      } else if (errorObj.response?.status === 404) {
+        errorMessage = "Avaliação não encontrada no servidor";
+      } else if (errorObj.response?.status && errorObj.response.status >= 500) {
+        errorMessage = "Erro interno do servidor. Tente novamente mais tarde";
+      }
+      
       toast({
         title: "Erro",
-        description: "Não foi possível carregar os resultados da avaliação",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // ✅ NOVO: Função para determinar nível de proficiência baseado nas tabelas oficiais
+  const getProficiencyLevel = (proficiency: number, grade?: string, subject?: string): ProficiencyLevel => {
+    const tableInfo = getProficiencyTableInfo(grade, subject);
+    const table = tableInfo.table;
+    
+    if (proficiency <= table.abaixo_do_basico.max) return 'abaixo_do_basico';
+    if (proficiency <= table.basico.max) return 'basico';
+    if (proficiency <= table.adequado.max) return 'adequado';
+    return 'avancado';
   };
 
   const handleExportPDF = async () => {
@@ -464,7 +260,7 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
         margin: { left: 20, right: 20 }
       });
 
-      y = (pdf as any).lastAutoTable.finalY + 15;
+      y = ((pdf as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 15);
 
       // Tabela de alunos
       pdf.setFontSize(13);
@@ -480,7 +276,7 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
         student.classification,
         `${student.correctAnswers}/${student.totalQuestions}`,
         `${student.percentage}%`,
-        student.status === 'completed' ? 'Concluída' : 'Pendente'
+        (student.status === 'completed' || student.status === 'concluida') ? 'Concluída' : 'Pendente'
       ]);
 
       autoTable(pdf, {
@@ -589,7 +385,7 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
           student.classification,
           `${student.correctAnswers}/${student.totalQuestions}`,
           `${student.percentage}%`,
-          student.status === 'completed' ? 'Concluída' : 'Pendente'
+          (student.status === 'completed' || student.status === 'concluida') ? 'Concluída' : 'Pendente'
         ])
       ];
 
@@ -685,7 +481,7 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
       pdf.setFontSize(12);
       pdf.setTextColor(0, 0, 0);
       pdf.text(`Percentual de acerto: ${selectedStudent.percentage}%`, 20, y);
-      pdf.text(`Status: ${selectedStudent.status === 'completed' ? 'Concluída' : 'Pendente'}`, pageWidth - 20, y, { align: 'right' });
+      pdf.text(`Status: ${(selectedStudent.status === 'completed' || selectedStudent.status === 'concluida') ? 'Concluída' : 'Pendente'}`, pageWidth - 20, y, { align: 'right' });
       y += 8;
       pdf.setDrawColor(200, 200, 200);
       pdf.line(20, y, pageWidth - 20, y);
@@ -772,7 +568,7 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
       });
 
       // Adicionar resumo final
-      const finalY = (pdf as any).lastAutoTable.finalY + 15;
+      const finalY = ((pdf as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 15);
       
       // Caixa de resumo
       pdf.setFillColor(240, 248, 255);
@@ -1630,8 +1426,8 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
               
               <div className="p-3 bg-gray-50 rounded">
                 <h5 className="font-medium mb-2">Status</h5>
-                <Badge className={selectedStudent.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}>
-                  {selectedStudent.status === 'completed' ? 'Avaliação Concluída' : 'Pendente'}
+                                  <Badge className={(selectedStudent.status === 'completed' || selectedStudent.status === 'concluida') ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}>
+                  {(selectedStudent.status === 'completed' || selectedStudent.status === 'concluida') ? 'Avaliação Concluída' : 'Pendente'}
                 </Badge>
               </div>
             </div>
@@ -1783,12 +1579,12 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {evaluationResult.students.map((student) => {
+            {evaluationResult.students.map((student, index) => {
               const colors = proficiencyColors[student.proficiencyLevel];
               
               return (
                 <div 
-                  key={student.id} 
+                  key={`${student.id || 'student'}-${index}`} 
                   className="border rounded-lg p-4 hover:bg-gray-50 transition-colors cursor-pointer"
                   onClick={() => setSelectedStudent(student)}
                 >
@@ -1797,8 +1593,8 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
                       <div className="flex items-center gap-2">
                         <h3 className="font-semibold text-lg">{student.name}</h3>
                         <Badge variant="outline">{student.class}</Badge>
-                        <Badge className={student.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}>
-                          {student.status === 'completed' ? 'Concluída' : 'Pendente'}
+                        <Badge className={(student.status === 'completed' || student.status === 'concluida') ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}>
+                          {(student.status === 'completed' || student.status === 'concluida') ? 'Concluída' : 'Pendente'}
                         </Badge>
                       </div>
                       

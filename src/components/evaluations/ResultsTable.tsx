@@ -98,14 +98,14 @@ export function ResultsTable({ results, onViewDetails, onExportPDF, onExportExce
           </TableRow>
         </TableHeader>
         <TableBody>
-          {results.map((result) => {
+          {results.map((result, index) => {
             const proficiencyLevel = getProficiencyLevel(result.averageProficiency, result.grade, result.subject);
             const proficiencyColor = proficiencyColors[proficiencyLevel];
             const participationRate = (result.completedStudents / result.totalStudents) * 100;
             const distribution = getDistributionSummary(result.distributionByLevel);
 
             return (
-              <TableRow key={result.id} className="hover:bg-gray-50">
+              <TableRow key={`${result.id || 'result'}-${index}`} className="hover:bg-gray-50">
                 <TableCell>
                   <div className="space-y-1">
                     <div className="font-medium">{result.evaluationTitle}</div>

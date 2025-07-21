@@ -2,12 +2,19 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
+import fs from 'fs';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
-    port: 8080,
+    port: 8080, // ✅ Pode mudar para 3000, 5173, etc. se preferir
+    // ✅ CONFIGURAÇÃO OPCIONAL DE HTTPS PARA DESENVOLVIMENTO
+    // Descomente as linhas abaixo se quiser HTTPS local
+    // https: {
+    //   key: fs.readFileSync('./certs/localhost-key.pem'),
+    //   cert: fs.readFileSync('./certs/localhost.pem'),
+    // },
   },
   plugins: [
     react(),
