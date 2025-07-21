@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
     ArrowLeft,
     Download,
@@ -29,6 +30,7 @@ interface StudentDetailedResult {
     test_id: string;
     student_id: string;
     student_db_id: string;
+    student_name?: string; // ✅ Adicionado para exibir o nome do aluno
     total_questions: number;
     answered_questions: number;
     correct_answers: number;
@@ -56,70 +58,194 @@ interface StudentDetailedResult {
     }>;
 }
 
-// Componente da tabela de resultados
-const ResultsTable = ({ answers, correctAnswersCount, proficiencia, classificacao }: {
+// Componente da tabela de resultados com estrutura IDÊNTICA à tabela principal
+const ResultsTable = ({ answers, correctAnswersCount, proficiencia, classificacao, studentResults }: {
     answers: StudentDetailedResult['answers'];
     correctAnswersCount: number;
     proficiencia: number;
     classificacao: string;
+    studentResults: StudentDetailedResult;
 }) => {
+    // ✅ CORRIGIDO: Usar total_questions do studentResults, não do length das respostas
+    const totalQuestions = studentResults.total_questions || answers.length;
+    
+    // ✅ CORRIGIDO: Ordenar respostas por número da questão e remover duplicatas
+    const sortedAnswers = answers
+        .sort((a, b) => a.question_number - b.question_number)
+        .filter((answer, index, self) => 
+            index === 0 || answer.question_number !== self[index - 1].question_number
+        );
+    
+    console.log('📊 Respostas ordenadas:', sortedAnswers.map(a => ({
+        question_number: a.question_number,
+        is_correct: a.is_correct
+    })));
+    
+    // ✅ REMOVIDO: Função mockada de normalização de UUID
+
+    // ✅ REMOVIDO: Funções mockadas de geração de códigos de habilidade
+    // Os códigos reais devem vir da API
+
+    // ✅ REMOVIDO: Dados mockados de porcentagens da turma
+    // As porcentagens da turma devem vir da API real
+    const generateTurmaPercentages = () => {
+        return Array.from({ length: totalQuestions }, () => {
+            // ✅ TODO: Implementar quando a API retornar dados reais de porcentagem da turma
+            return 0; // Valor padrão até implementar dados reais
+        });
+    };
+
+    const turmaPercentages = generateTurmaPercentages();
+    
+    // ✅ DEBUG: Verificar dados da tabela
+    console.log('📊 Dados da tabela:', {
+        totalQuestions,
+        answersLength: answers.length,
+        sortedAnswersLength: sortedAnswers.length,
+        correctAnswersCount,
+        proficiencia: studentResults.proficiencia,
+        classificacao: studentResults.classificacao,
+        grade: studentResults.grade,
+        turmaPercentagesLength: turmaPercentages.length
+    });
+    
+    // ✅ DEBUG: Verificar estrutura das respostas
+    console.log('📊 Estrutura das respostas originais:', answers.map(a => ({
+        question_number: a.question_number,
+        is_correct: a.is_correct,
+        question_id: a.question_id
+    })));
+    
+    console.log('📊 Estrutura das respostas ordenadas:', sortedAnswers.map(a => ({
+        question_number: a.question_number,
+        is_correct: a.is_correct,
+        question_id: a.question_id
+    })));
+
     return (
         <div className="overflow-x-auto">
             <table className="min-w-max border border-gray-300 text-center text-sm shadow-md rounded-lg">
                 <thead>
+                    {/* Cabeçalho principal */}
                     <tr className="bg-gray-100">
-                        {answers.map((answer, index) => (
-                            <th key={`${answer.question_id || 'question'}-${index}`} className="p-2 min-w-[80px]">
-                                Q{answer.question_number || index + 1}
-                            </th>
-                        ))}
-                        <th className="p-2">Total Acertos</th>
-                        <th className="p-2">Proficiência</th>
-                        <th className="p-2">Nível</th>
+                        <th className="p-2 min-w-[150px] text-left border-r border-gray-300">Aluno</th>
+                        {Array.from({ length: totalQuestions }, (_, i) => {
+                            const questionNumber = i + 1;
+                            
+                            return (
+                                <th key={`header-q${i}`} className="p-2 min-w-[80px] border-r border-gray-300">
+                                    Q{questionNumber}
+                                </th>
+                            );
+                        })}
+                        <th className="p-2 bg-gray-50">Total</th>
+                        <th className="p-2 bg-gray-50">Nota</th>
+                        <th className="p-2 bg-gray-50">Proficiência</th>
+                        <th className="p-2 bg-gray-50">Nível</th>
+                    </tr>
+                    
+                    {/* Linha de habilidades */}
+                    <tr className="bg-gray-50">
+                        <td className="p-1 text-left border-r border-gray-300 text-xs font-mono text-gray-600">
+                            Habilidade
+                        </td>
+                        {Array.from({ length: totalQuestions }, (_, i) => {
+                            const questionNumber = i + 1;
+                            const answer = sortedAnswers[i];
+                            
+                            // ✅ TODO: Usar códigos reais de habilidade da API quando disponíveis
+                            let habilidadeCode = 'N/A';
+                            let disciplinaIndicator = '';
+                            
+                            if (answer && answer.question_id) {
+                                // ✅ TODO: Buscar código real da habilidade da API
+                                habilidadeCode = `Q${questionNumber}`;
+                                disciplinaIndicator = ' 📚';
+                            }
+                            
+                            return (
+                                <td key={`habilidade-q${i}`} className="p-1 border-r border-gray-300 text-xs font-mono text-gray-600">
+                                    <span>{habilidadeCode}{disciplinaIndicator}</span>
+                                </td>
+                            );
+                        })}
+                        <td className="p-1 bg-gray-100 text-xs font-mono text-gray-600"></td>
+                        <td className="p-1 bg-gray-100 text-xs font-mono text-gray-600"></td>
+                        <td className="p-1 bg-gray-100 text-xs font-mono text-gray-600"></td>
+                        <td className="p-1 bg-gray-100 text-xs font-mono text-gray-600"></td>
+                    </tr>
+                    
+                    {/* Linha de porcentagem da turma */}
+                    <tr className="bg-blue-50">
+                        <td className="p-1 text-left border-r border-gray-300 text-xs font-semibold text-blue-700">
+                            % Turma
+                        </td>
+                        {Array.from({ length: totalQuestions }, (_, i) => {
+                            const questionNumber = i + 1;
+                            const answer = sortedAnswers[i];
+                            const percentage = turmaPercentages[i];
+                            
+                            return (
+                                <td key={`turma-q${i}`} className="p-1 border-r border-gray-300">
+                                    <div className="text-xs font-bold text-gray-500">
+                                        {percentage > 0 ? `${percentage.toFixed(0)}%` : 'N/A'}
+                                    </div>
+                                </td>
+                            );
+                        })}
+                        <td className="p-1 bg-gray-100 text-xs font-semibold text-blue-700"></td>
+                        <td className="p-1 bg-gray-100 text-xs font-semibold text-blue-700"></td>
+                        <td className="p-1 bg-gray-100 text-xs font-semibold text-blue-700"></td>
+                        <td className="p-1 bg-gray-100 text-xs font-semibold text-blue-700"></td>
                     </tr>
                 </thead>
                 <tbody>
-                    <tr>
-                        {answers.map((answer, index) => {
-                            // Gerar código de habilidade baseado no número da questão
-                            const questionNum = answer.question_number || index + 1;
-                            const habilidadeCode = `LP5L${Math.floor(questionNum / 5) + 1}.${(questionNum % 5) + 1}`;
+                    {/* Linha de dados do aluno específico */}
+                    <tr className="border-t border-gray-300">
+                        <td className="p-2 border-t border-gray-200 text-left border-r border-gray-300">
+                            <div className="font-medium text-blue-600">
+                                {studentResults?.student_name || `Aluno ${studentResults?.student_id?.slice(-4) || 'N/A'}`}
+                            </div>
+                        </td>
+                        {Array.from({ length: totalQuestions }, (_, i) => {
+                            const questionNumber = i + 1;
+                            const answer = sortedAnswers[i];
                             
-                            // Calcular porcentagem de acerto baseada na dificuldade da questão
-                            const basePercentage = answer.is_correct ? 65 : 35; // Base mais realista
-                            const randomVariation = Math.floor(Math.random() * 30) - 15; // ±15%
-                            const acertoTurma = Math.max(10, Math.min(90, basePercentage + randomVariation));
+                            // ✅ DEBUG: Verificar cada questão
+                            console.log(`Questão ${questionNumber}:`, {
+                                found: !!answer,
+                                isCorrect: answer?.is_correct,
+                                questionNumber: answer?.question_number,
+                                index: i
+                            });
                             
                             return (
-                                <td key={`${answer.question_id || 'question'}-${index}`} className="p-2 border-t border-gray-200">
-                                    <div className="text-xs text-gray-600 font-mono">
-                                        {habilidadeCode}
-                                    </div>
-                                    <div className={`font-bold ${
-                                        acertoTurma >= 50 ? "text-green-600" : "text-red-500"
-                                    }`}>
-                                        {acertoTurma.toFixed(2)}%
-                                    </div>
-                                    <div className="text-xl mt-1">
-                                        {answer.is_correct ? (
-                                            <span className="text-blue-600">✓</span>
+                                <td key={`answer-q${i}`} className="p-2 border-t border-gray-200 border-r border-gray-300">
+                                    <div className="text-xl">
+                                        {answer ? (
+                                            answer.is_correct ? (
+                                                <span className="text-blue-600">✓</span>
+                                            ) : (
+                                                <span className="text-red-500">✗</span>
+                                            )
                                         ) : (
-                                            <span className="text-red-500">✗</span>
+                                            <span className="text-gray-400">-</span>
                                         )}
                                     </div>
                                 </td>
                             );
                         })}
-                        <td className="p-2 border-t font-semibold bg-gray-50">{correctAnswersCount}</td>
-                        <td className="p-2 border-t font-semibold bg-gray-50">{proficiencia.toFixed(2)}</td>
-                        <td className="p-2 border-t bg-gray-50">
-                            <span className={`px-3 py-1 rounded-full text-xs text-white ${
-                                classificacao === 'Abaixo do Básico' ? 'bg-red-500' :
-                                classificacao === 'Básico' ? 'bg-yellow-400' :
-                                classificacao === 'Adequado' ? 'bg-blue-500' :
+                        <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50">{studentResults.correct_answers}</td>
+                        <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50">{studentResults.grade.toFixed(1)}</td>
+                        <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50">{studentResults.proficiencia.toFixed(0)}</td>
+                        <td className="p-2 border-t border-gray-200 bg-gray-50">
+                            <span className={`px-2 py-1 rounded-full text-xs text-white ${
+                                studentResults?.classificacao === 'Abaixo do Básico' ? 'bg-red-500' :
+                                studentResults?.classificacao === 'Básico' ? 'bg-yellow-400' :
+                                studentResults?.classificacao === 'Adequado' ? 'bg-blue-500' :
                                 'bg-green-500'
                             }`}>
-                                {classificacao}
+                                {studentResults?.classificacao || 'Não informado'}
                             </span>
                         </td>
                     </tr>
@@ -128,26 +254,24 @@ const ResultsTable = ({ answers, correctAnswersCount, proficiencia, classificaca
             
             {/* Legenda */}
             <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                <div className="text-xs text-gray-600 space-y-1">
-                    <div className="flex items-center gap-2">
-                        <span className="font-semibold">Legenda:</span>
-                    </div>
-                    <div className="flex flex-wrap gap-4 text-xs">
+                <div className="text-xs text-gray-600 space-y-2">
+                    <div className="font-semibold text-gray-700">Legenda:</div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="flex items-center gap-1">
                             <span className="text-blue-600 text-lg">✓</span>
-                            <span>Acertou</span>
+                            <span>Aluno acertou</span>
                         </div>
                         <div className="flex items-center gap-1">
                             <span className="text-red-500 text-lg">✗</span>
-                            <span>Errou</span>
+                            <span>Aluno errou</span>
                         </div>
                         <div className="flex items-center gap-1">
-                            <span className="text-green-600 font-bold">50%+</span>
-                            <span>Acerto da turma (verde)</span>
+                            <span className="text-green-600 font-bold">60%+</span>
+                            <span>Turma teve bom desempenho</span>
                         </div>
                         <div className="flex items-center gap-1">
-                            <span className="text-red-500 font-bold">&lt;50%</span>
-                            <span>Acerto da turma (vermelho)</span>
+                            <span className="text-red-500 font-bold">&lt;60%</span>
+                            <span>Turma teve dificuldade</span>
                         </div>
                     </div>
                 </div>
@@ -185,6 +309,7 @@ export default function StudentDetailedResults({ onBack }: StudentDetailedResult
 
     useEffect(() => {
         if (evaluationId && studentId) {
+            console.log('🔄 useEffect executado:', { evaluationId, studentId });
             fetchStudentResults();
         }
     }, [evaluationId, studentId]);
@@ -197,6 +322,9 @@ export default function StudentDetailedResults({ onBack }: StudentDetailedResult
                 throw new Error("ID da avaliação ou aluno não fornecido");
             }
 
+            console.log('🔍 Iniciando busca de resultados:', { evaluationId, studentId });
+            console.log('📡 Chamando API...');
+
             // ✅ CORRIGIDO: Usar a API correta do backend
             const result = await EvaluationResultsApiService.getStudentResults(evaluationId, studentId);
             
@@ -204,20 +332,39 @@ export default function StudentDetailedResults({ onBack }: StudentDetailedResult
                 throw new Error("Resultados do aluno não encontrados no servidor");
             }
 
+            console.log('📊 Resultado bruto da API:', result);
+            console.log('📊 Dados do aluno recebidos:', result);
+            
+            // ✅ DEBUG: Verificar estrutura dos dados
+            const dataStructure = {
+                hasStudentName: !!result.student_name,
+                hasAnswers: !!result.answers && result.answers.length > 0,
+                answersLength: result.answers?.length || 0,
+                hasProficiencia: !!result.proficiencia,
+                hasClassificacao: !!result.classificacao,
+                hasGrade: !!result.grade,
+                totalQuestions: result.total_questions,
+                answeredQuestions: result.answered_questions
+            };
+            console.log('📊 Estrutura dos dados:', dataStructure);
+            
+            console.log('✅ Definindo dados no estado...');
             setStudentResults(result);
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("❌ Erro ao buscar resultados do aluno:", error);
             
             // ✅ CORRIGIDO: Mensagens de erro mais específicas
             let errorMessage = "Não foi possível carregar os resultados do aluno";
             
-            if (error.message?.includes('CORS') || error.code === 'ERR_NETWORK') {
+            const errorObj = error as { message?: string; code?: string; response?: { status?: number } };
+            
+            if (errorObj.message?.includes('CORS') || errorObj.code === 'ERR_NETWORK') {
                 errorMessage = "Erro de conexão com o servidor. Verifique se o backend está rodando em http://localhost:5000";
-            } else if (error.message?.includes('não encontrados')) {
+            } else if (errorObj.message?.includes('não encontrados')) {
                 errorMessage = "Resultados do aluno não encontrados ou não disponíveis";
-            } else if (error.response?.status === 404) {
+            } else if (errorObj.response?.status === 404) {
                 errorMessage = "Aluno ou avaliação não encontrados no servidor";
-            } else if (error.response?.status >= 500) {
+            } else if (errorObj.response?.status >= 500) {
                 errorMessage = "Erro interno do servidor. Tente novamente mais tarde";
             }
             
@@ -427,6 +574,18 @@ export default function StudentDetailedResults({ onBack }: StudentDetailedResult
     const hasDetailedAnswers = studentResults.answers && studentResults.answers.length > 0;
     const correctAnswersCount = hasDetailedAnswers ? correctAnswers.length : studentResults.correct_answers;
     const wrongAnswersCount = hasDetailedAnswers ? wrongAnswers.length : (studentResults.answered_questions - studentResults.correct_answers);
+    
+    // ✅ DEBUG: Verificar cálculos
+    console.log('📊 Cálculos das estatísticas:', {
+        totalQuestions: studentResults.total_questions,
+        answeredQuestions: studentResults.answered_questions,
+        correctAnswersFromAPI: studentResults.correct_answers,
+        correctAnswersFromDetails: correctAnswers.length,
+        wrongAnswersFromDetails: wrongAnswers.length,
+        blankAnswers,
+        hasDetailedAnswers,
+        finalCorrectAnswersCount: correctAnswersCount
+    });
 
     return (
         <div className="container mx-auto px-4 py-6 space-y-6">
@@ -561,13 +720,8 @@ export default function StudentDetailedResults({ onBack }: StudentDetailedResult
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg">
-                            <Minus className="h-8 w-8 text-gray-600" />
                             <div>
-                                <div className="text-2xl font-bold text-gray-600">{blankAnswers}</div>
-                                <div className="text-sm text-gray-700">Em Branco</div>
-                            </div>
-                        </div>
+                                                        </div>
                     </div>
                 </CardContent>
             </Card>
@@ -581,9 +735,10 @@ export default function StudentDetailedResults({ onBack }: StudentDetailedResult
                     {hasDetailedAnswers ? (
                         <ResultsTable
                             answers={studentResults.answers}
-                            correctAnswersCount={correctAnswersCount}
+                            correctAnswersCount={studentResults.correct_answers} // ✅ Usar dados da API diretamente
                             proficiencia={studentResults.proficiencia}
                             classificacao={studentResults.classificacao}
+                            studentResults={studentResults}
                         />
                     ) : (
                         <div className="text-center py-8">
@@ -609,7 +764,7 @@ export default function StudentDetailedResults({ onBack }: StudentDetailedResult
                                 </div>
                                 <div className="text-center p-4 bg-gray-50 rounded-lg">
                                     <div className="text-2xl font-bold text-gray-600">{blankAnswers}</div>
-                                    <div className="text-sm text-gray-700">Questões em Branco</div>
+                            
                                 </div>
                             </div>
                             
