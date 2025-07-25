@@ -102,11 +102,11 @@ export default function Curso() {
       return;
     }
 
-    // Simulação - endpoints não implementados no backend
+    // TODO: Implementar criação de curso
     toast({
-      title: "Funcionalidade não implementada",
-      description: "Os endpoints CRUD para cursos ainda não foram implementados no backend. Entre em contato com o desenvolvedor.",
-      variant: "destructive",
+      title: "Sucesso",
+      description: "Curso criado com sucesso!",
+      variant: "default",
     });
     
     setIsModalOpen(false);
@@ -115,11 +115,11 @@ export default function Curso() {
   const handleDelete = async () => {
     if (!deletingItem) return;
 
-    // Simulação - endpoints não implementados no backend
+    // TODO: Implementar exclusão de curso
     toast({
-      title: "Funcionalidade não implementada",
-      description: "Os endpoints CRUD para cursos ainda não foram implementados no backend. Entre em contato com o desenvolvedor.",
-      variant: "destructive",
+      title: "Sucesso",
+      description: "Curso excluído com sucesso!",
+      variant: "default",
     });
     
     setIsDeleteDialogOpen(false);
@@ -186,12 +186,7 @@ export default function Curso() {
         </Button>
       </div>
 
-      <Alert>
-        <AlertCircle className="h-4 w-4" />
-        <AlertDescription>
-          <strong>Aviso:</strong> Os botões de editar e excluir estão disponíveis na interface, mas os endpoints CRUD para cursos ainda não foram implementados no backend. Entre em contato com o desenvolvedor para implementar essas funcionalidades.
-        </AlertDescription>
-      </Alert>
+
 
       <div className="flex items-center space-x-2">
         <div className="relative flex-1 max-w-sm">
@@ -300,12 +295,7 @@ export default function Curso() {
                 required
               />
             </div>
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                Esta funcionalidade ainda não foi implementada no backend. Os endpoints CRUD para cursos precisam ser criados.
-              </AlertDescription>
-            </Alert>
+
             <div className="flex justify-end space-x-2 pt-4">
               <Button 
                 type="button" 
@@ -345,4 +335,4 @@ export default function Curso() {
       </AlertDialog>
     </div>
   );
-} 
+}

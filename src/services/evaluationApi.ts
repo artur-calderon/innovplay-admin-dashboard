@@ -34,30 +34,51 @@ export class EvaluationApiService {
     // Teste de conectividade
     static async testConnection(): Promise<boolean> {
         try {
-            // ✅ REMOVIDO: Console.logs para apresentação
-            // console.log('Testando conectividade com a API...');
-            // console.log('Base URL:', api.defaults.baseURL);
-
             const response = await api.get('/');
-            // console.log('API está respondendo');
             return true;
         } catch (error) {
-            // ✅ REMOVIDO: Console.errors para apresentação
-            // console.error('Erro de conectividade:', error);
-            // console.error('Verifique se a API está rodando em:', api.defaults.baseURL);
             return false;
         }
     }
 
-    // ✅ NOVO: Buscar informações da sessão do teste
+    // ✅ NOVO: Buscar informações da sessão do teste (nova rota)
     static async getTestSessionInfo(testId: string): Promise<TestSessionInfo> {
         console.log('Buscando informações da sessão do teste:', testId);
 
         try {
-            const response = await api.get(`/student-answers/test/${testId}/session`);
+            // ✅ CORRIGIDO: Usar o endpoint correto para buscar informações da sessão
+            const response = await api.get(`/test/${testId}/session-info`);
             console.log('Resposta da API getTestSessionInfo:', response.data);
             return response.data;
-        } catch (error) {
+        } catch (error: any) {
+            // ✅ CORRIGIDO: Tratar erro 404 como caso normal (sem sessão ativa)
+            if (error.response?.status === 404) {
+                console.log('Nenhuma sessão ativa encontrada para este teste');
+
+                // Retornar resposta estruturada indicando que não há sessão
+                const noSessionResponse: TestSessionInfo = {
+                    session_id: '',
+                    test_id: testId,
+                    student_id: '',
+                    status: 'nao_iniciada',
+                    started_at: '',
+                    actual_start_time: '',
+                    time_limit_minutes: 0,
+                    remaining_time_minutes: 0,
+                    duration_minutes: 0,
+                    is_expired: false,
+                    timer_started: false,
+                    total_questions: 0,
+                    correct_answers: 0,
+                    score: 0,
+                    grade: '',
+                    session_exists: false
+                };
+
+                return noSessionResponse;
+            }
+
+            // Para outros erros, continuar lançando exceção
             console.error('Erro ao buscar informações da sessão:', error);
             console.error('Detalhes do erro:', error.response?.data);
             throw error;
@@ -68,14 +89,23 @@ export class EvaluationApiService {
     static async getTestData(testId: string): Promise<TestData> {
         console.log('Chamando API para buscar dados do teste:', testId);
         try {
+            // ✅ CORRIGIDO: Usar o endpoint correto para buscar dados do teste
             const response = await api.get(`/test/${testId}/details`);
             console.log('Resposta da API getTestData:', response.data);
-            console.log('Questões recebidas:', response.data.questions);
-            if (response.data.questions && response.data.questions.length > 0) {
-                console.log('Primeira questão:', response.data.questions[0]);
-                console.log('Primeira questão - alternatives:', response.data.questions[0].alternatives);
-                console.log('Primeira questão - options:', response.data.questions[0].options);
-            }
+
+            // ✅ NOVO: Log detalhado da resposta
+            console.log('📊 Estrutura da resposta:', {
+                id: response.data.id,
+                title: response.data.title,
+                subject: response.data.subject,
+                duration: response.data.duration,
+                totalQuestions: response.data.totalQuestions,
+                total_questions: response.data.total_questions, // Verificar se existe este campo
+                questions: response.data.questions,
+                questionsLength: response.data.questions?.length || 0,
+                instructions: response.data.instructions
+            });
+
             return response.data;
         } catch (error) {
             console.error('Erro ao buscar dados do teste:', error);
@@ -84,13 +114,15 @@ export class EvaluationApiService {
         }
     }
 
-    // Iniciar sessão de teste (apenas criar a sessão, sem iniciar cronômetro)
-    static async startSession(data: { test_id: string; time_limit_minutes: number }): Promise<StartSessionResponse> {
-        console.log('Iniciando sessão com dados:', data);
-        console.log('URL da API:', api.defaults.baseURL);
+    // ✅ NOVO: Iniciar sessão de teste (nova rota)
+    static async startSession(testId: string, timeLimitMinutes: number = 60): Promise<StartSessionResponse> {
+        console.log('Iniciando sessão para teste:', testId, 'com tempo limite:', timeLimitMinutes);
 
         try {
-            const response = await api.post('/student-answers/sessions/start', data);
+            // ✅ CORRIGIDO: Usar o endpoint correto para iniciar sessão
+            const response = await api.post(`/test/${testId}/start-session`, {
+                time_limit_minutes: timeLimitMinutes
+            });
             console.log('Resposta da API startSession:', response.data);
             return response.data;
         } catch (error) {
@@ -101,37 +133,7 @@ export class EvaluationApiService {
         }
     }
 
-    // Iniciar cronômetro da sessão (novo endpoint)
-    static async startTimer(sessionId: string): Promise<{ message: string; actual_start_time: string; remaining_time_minutes: number; timer_started: boolean }> {
-        console.log('Iniciando cronômetro para sessão:', sessionId);
-
-        try {
-            const response = await api.post(`/student-answers/sessions/${sessionId}/start-timer`, {});
-            console.log('Resposta da API startTimer:', response.data);
-            return response.data;
-        } catch (error) {
-            console.error('Erro ao iniciar cronômetro:', error);
-            console.error('Detalhes do erro:', error.response?.data);
-            throw error;
-        }
-    }
-
-    // Verificar status da sessão
-    static async getSessionStatus(sessionId: string): Promise<SessionStatusResponse> {
-        console.log('Verificando status da sessão:', sessionId);
-
-        try {
-            const response = await api.get(`/student-answers/sessions/${sessionId}/status`);
-            console.log('Resposta da API getSessionStatus:', response.data);
-            return response.data;
-        } catch (error) {
-            console.error('Erro ao verificar status da sessão:', error);
-            console.error('Detalhes do erro:', error.response?.data);
-            throw error;
-        }
-    }
-
-    // Salvar respostas parciais
+    // ✅ MANTIDO: Salvar respostas parciais (para auto-save)
     static async savePartialAnswers(data: SavePartialRequest): Promise<void> {
         console.log('Salvando respostas parciais:', data);
 
@@ -145,46 +147,47 @@ export class EvaluationApiService {
         }
     }
 
-    // Finalizar teste
-    static async submitTest(data: SubmitTestRequest): Promise<SubmitTestResponse> {
+    // ✅ NOVO: Sincronizar timer com backend
+    static async syncTimer(sessionId: string, elapsedMinutes: number, remainingMinutes: number): Promise<void> {
+        console.log('Sincronizando timer:', { sessionId, elapsedMinutes, remainingMinutes });
+
         try {
-            const response = await api.post('/student-answers/submit', data);
-            return response.data;
+            await api.patch(`/student-answers/sessions/${sessionId}/timer`, {
+                elapsed_minutes: elapsedMinutes,
+                remaining_minutes: remainingMinutes
+            });
+            console.log('Timer sincronizado com sucesso');
         } catch (error) {
-            console.error('Erro ao finalizar teste:', error);
+            console.error('Erro ao sincronizar timer:', error);
             console.error('Detalhes do erro:', error.response?.data);
             throw error;
         }
     }
 
-    // Verificar se existe sessão ativa para um teste
-    static async checkActiveSession(testId: string): Promise<TestSession | null> {
+    // ✅ NOVO: Verificar status da sessão
+    static async getSessionStatus(sessionId: string): Promise<any> {
+        console.log('Verificando status da sessão:', sessionId);
+
         try {
-            const response = await api.get(`/student-answers/active-session/${testId}`);
+            const response = await api.get(`/student-answers/sessions/${sessionId}/status`);
+            console.log('Status da sessão:', response.data);
             return response.data;
         } catch (error) {
-            if (error.response?.status === 404) {
-                return null;
-            }
+            console.error('Erro ao verificar status da sessão:', error);
+            console.error('Detalhes do erro:', error.response?.data);
             throw error;
         }
     }
 
-    // Buscar sessões do usuário logado
-    static async getMySessions(): Promise<TestSession[]> {
-        const response = await api.get('/student-answers/my-sessions');
-        return response.data.sessions || [];
-    }
-
-    // Encerrar sessão e marcar avaliação como indisponível
-    static async endSession(sessionId: string): Promise<void> {
-        console.log('Encerrando sessão:', sessionId);
-
+    // Finalizar teste
+    static async submitTest(data: SubmitTestRequest): Promise<SubmitTestResponse> {
+        console.log('Enviando dados para finalizar teste:', data);
         try {
-            const response = await api.post(`/student-answers/sessions/${sessionId}/end`, {});
-            console.log('Sessão encerrada:', response.data);
+            const response = await api.post('/student-answers/submit', data);
+            console.log('Resposta da API submitTest:', response.data);
+            return response.data;
         } catch (error) {
-            console.error('Erro ao encerrar sessão:', error);
+            console.error('Erro ao verificar status da sessão:', error);
             console.error('Detalhes do erro:', error.response?.data);
             throw error;
         }

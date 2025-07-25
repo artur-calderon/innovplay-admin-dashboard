@@ -24,7 +24,10 @@ import {
   HelpCircle,
   X,
   ClipboardCheck,
-  BarChart3
+  BarChart3,
+  Calculator,
+  Menu,
+  ChevronLeft
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -33,6 +36,7 @@ import { useAuth } from "@/context/authContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useGamesCount } from "@/hooks/useGamesCount";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 type SidebarLink = {
   icon: React.ElementType;
@@ -72,6 +76,7 @@ interface SidebarProps {
 export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
   const currentPath = useLocation().pathname;
   const isMobile = useIsMobile();
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   const navigate = useNavigate();
   const { logout, user } = useAuth();
@@ -90,8 +95,10 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
     }
   };
 
-  // No mobile sempre expandida quando visível, no desktop sempre expandida
-  const isCollapsed = false;
+  // Função para alternar o colapso do menu
+  const handleToggleCollapse = () => {
+    setIsCollapsed(!isCollapsed);
+  };
 
   // Organize links by categories for better UX
   const sidebarCategories: SidebarCategory[] = [
@@ -162,15 +169,17 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
                 { icon: BookOpen, label: "Curso", href: "/app/cadastros/curso", role: ["admin"] },
                 { icon: BookOpen, label: "Série", href: "/app/cadastros/serie", role: ["admin"] },
                 { icon: BookOpen, label: "Disciplina", href: "/app/cadastros/disciplina", role: ["admin"] },
+                { icon: Users2, label: "Turma", href: "/app/cadastros/turma", role: ["admin"] },
               ]
             },
             { icon: List, label: "Avaliações", href: "/app/avaliacoes", role: ["admin", "professor"] },
-            { icon: ClipboardCheck, label: "Correção", href: "/app/avaliacoes/correcao", role: ["admin", "professor"], badge: "3" },
-            { icon: BarChart3, label: "Resultados", href: "/app/resultados", role: ["admin", "professor"] },
-            { icon: School, label: "Escola", href: "/app/escolas", role: ["admin"] },
+
+
+
             { icon: LandPlot, label: "Municípios", href: "/app/city", role: ["admin"] },
             { icon: HelpCircle, label: "Questão", href: "/app/cadastros/questao", role: ["admin", "professor"] },
-            { icon: Users2, label: "Turma", href: "/app/cadastros/turma", role: ["admin", "professor"] },
+
+
             { icon: User, label: "Usuário", href: "/app/usuarios", role: ["admin"] },
           ]
         },
@@ -180,6 +189,9 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           href: "/app/cartao-resposta",
           role: ["admin", "professor"]
         },
+        { icon: Calculator, label: "Calculadora SAEB", href: "/app/calculadora-saeb", role: ["admin", "professor"] },
+        { icon: ClipboardCheck, label: "Correção", href: "/app/avaliacoes/correcao", role: ["admin", "professor"], badge: "3" },
+        { icon: BarChart3, label: "Resultados", href: "/app/resultados", role: ["admin", "professor"] },
       ]
     },
     {
@@ -300,27 +312,29 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
       <div className="flex items-center justify-between w-full">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <link.icon size={18} className="flex-shrink-0" />
-          <span className="truncate text-sm font-medium">{link.label}</span>
+          {!isCollapsed && <span className="truncate text-sm font-medium">{link.label}</span>}
         </div>
-        <div className="flex items-center gap-2">
-          {link.badge && (
-            <Badge
-              variant="secondary"
-              className="bg-white/20 text-white text-xs px-1.5 py-0.5 h-5"
-            >
-              {link.badge}
-            </Badge>
-          )}
-          {hasSubmenu && (
-            <ChevronDown
-              size={14}
-              className={cn(
-                "transition-transform duration-200",
-                isSubmenuOpen && "rotate-180"
-              )}
-            />
-          )}
-        </div>
+        {!isCollapsed && (
+          <div className="flex items-center gap-2">
+            {link.badge && (
+              <Badge
+                variant="secondary"
+                className="bg-white/20 text-white text-xs px-1.5 py-0.5 h-5"
+              >
+                {link.badge}
+              </Badge>
+            )}
+            {hasSubmenu && (
+              <ChevronDown
+                size={14}
+                className={cn(
+                  "transition-transform duration-200",
+                  isSubmenuOpen && "rotate-180"
+                )}
+              />
+            )}
+          </div>
+        )}
       </div>
     );
 
@@ -329,31 +343,65 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
       "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200",
       "text-white/80 hover:text-white hover:bg-white/10",
       isActive && "bg-white/15 text-white font-medium shadow-lg",
-      level > 0 && "ml-4 text-sm",
-      level > 1 && "ml-8 text-xs"
+      isCollapsed && "justify-center px-2",
+      level > 0 && !isCollapsed && "ml-4 text-sm",
+      level > 1 && !isCollapsed && "ml-8 text-xs"
     );
 
     const menuItem = (
       <li className={cn(link.divider && "border-t border-white/10 pt-2 mt-2")}>
         {link.label === "Sair" ? (
-          <button onClick={handleLogout} className={itemClasses}>
-            {linkContent}
-          </button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button onClick={handleLogout} className={itemClasses}>
+                  {linkContent}
+                </button>
+              </TooltipTrigger>
+              {isCollapsed && (
+                <TooltipContent side="right">
+                  <p>{link.label}</p>
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
         ) : hasSubmenu ? (
-          <button onClick={handleToggleSubmenu} className={itemClasses}>
-            {linkContent}
-          </button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button onClick={handleToggleSubmenu} className={itemClasses}>
+                  {linkContent}
+                </button>
+              </TooltipTrigger>
+              {isCollapsed && (
+                <TooltipContent side="right">
+                  <p>{link.label}</p>
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
         ) : (
-          <Link
-            to={link.href || "#"}
-            className={itemClasses}
-            onClick={handleLinkClick}
-          >
-            {linkContent}
-          </Link>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Link
+                  to={link.href || "#"}
+                  className={itemClasses}
+                  onClick={handleLinkClick}
+                >
+                  {linkContent}
+                </Link>
+              </TooltipTrigger>
+              {isCollapsed && (
+                <TooltipContent side="right">
+                  <p>{link.label}</p>
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
         )}
 
-        {hasSubmenu && isSubmenuOpen && (
+        {hasSubmenu && isSubmenuOpen && !isCollapsed && (
           <ul className="space-y-1 ml-2 mt-1 border-l border-white/10 pl-3">
             {link.children?.map(child => (
               <RenderMenuItem
@@ -376,10 +424,12 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
 
   // Category separator component
   const CategorySeparator = ({ name }: { name: string }) => (
-    <div className="px-3 pt-6 pb-2 first:pt-2">
-      <h3 className="text-white/50 text-xs font-medium uppercase tracking-wider">
-        {name}
-      </h3>
+    <div className={cn("px-3 pt-6 pb-2 first:pt-2", isCollapsed && "px-2")}>
+      {!isCollapsed && (
+        <h3 className="text-white/50 text-xs font-medium uppercase tracking-wider">
+          {name}
+        </h3>
+      )}
     </div>
   );
 
@@ -387,7 +437,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
     <div
       className={cn(
         "sidebar-gradient min-h-screen h-full flex flex-col transition-all duration-300 z-50 relative",
-        isMobile ? "w-screen" : "w-64"
+        isMobile ? "w-screen" : isCollapsed ? "w-16" : "w-64"
       )}
     >
       {/* Mobile Header with Close Button */}
@@ -415,20 +465,29 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
       {/* Desktop Logo Section */}
       {!isMobile && (
         <div className="p-4 border-b border-white/10">
-          <div className="flex items-center justify-center">
+          <div className="flex items-center justify-between">
             <img
-              width="180px"
-              height="48px"
-              src="/LOGO-1-menor.png"
+              width={isCollapsed ? "32px" : "180px"}
+              height={isCollapsed ? "32px" : "48px"}
+              src={isCollapsed ? "/ico.png" : "/LOGO-1-menor.png"}
               alt="Logo"
               className="object-contain"
             />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-white/70 hover:text-white hover:bg-white/10"
+              onClick={handleToggleCollapse}
+            >
+              {isCollapsed ? <Menu className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+              <span className="sr-only">Alternar menu</span>
+            </Button>
           </div>
         </div>
       )}
 
       {/* User Info */}
-      <UserInfo />
+      {!isCollapsed && <UserInfo />}
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto custom-scrollbar">

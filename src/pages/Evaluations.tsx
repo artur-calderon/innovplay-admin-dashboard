@@ -129,7 +129,7 @@ export default function Evaluations() {
             </p>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
@@ -146,7 +146,7 @@ export default function Evaluations() {
             </p>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
@@ -163,7 +163,7 @@ export default function Evaluations() {
             </p>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
@@ -184,11 +184,17 @@ export default function Evaluations() {
 
       {/* Tabs Expandidas */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3 gap-2">
+        <TabsList className={`grid w-full gap-2 ${user.role !== 'professor' ? 'grid-cols-4' : 'grid-cols-3'}`}>
           <TabsTrigger value="ready" className="flex items-center gap-2">
             <FileText className="h-4 w-4" />
             Minhas Avaliações
           </TabsTrigger>
+          {user.role !== 'professor' && (
+            <TabsTrigger value="all" className="flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              Todas Avaliações
+            </TabsTrigger>
+          )}
           <TabsTrigger value="create" className="flex items-center gap-2">
             <Plus className="h-4 w-4" />
             Criar Nova
@@ -201,9 +207,17 @@ export default function Evaluations() {
 
         <TabsContent value="ready" className="space-y-4">
           <ErrorBoundary>
-            <ReadyEvaluations />
+            <ReadyEvaluations showMyEvaluations={true} />
           </ErrorBoundary>
         </TabsContent>
+
+        {user.role !== 'professor' && (
+          <TabsContent value="all" className="space-y-4">
+            <ErrorBoundary>
+              <ReadyEvaluations showMyEvaluations={false} />
+            </ErrorBoundary>
+          </TabsContent>
+        )}
 
         <TabsContent value="create" className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
@@ -302,7 +316,7 @@ export default function Evaluations() {
                     <li>• Anti-trapaça básico</li>
                   </ul>
                 </div>
-                
+
                 <div className="space-y-3 p-4 border border-green-200 rounded-lg bg-green-50/20">
                   <div className="flex items-center gap-2">
                     <ClipboardList className="h-5 w-5 text-green-600" />
@@ -358,7 +372,7 @@ export default function Evaluations() {
                       </SelectContent>
                     </Select>
                   </div>
-                  
+
                   <div>
                     <label className="text-sm font-medium">Escola:</label>
                     <Select>
@@ -373,7 +387,7 @@ export default function Evaluations() {
                     </Select>
                   </div>
                 </div>
-                
+
                 <Button className="w-full">
                   <ClipboardList className="mr-2 h-4 w-4" />
                   Abrir Cartão Resposta
@@ -411,7 +425,7 @@ export default function Evaluations() {
                       </div>
                     </div>
                   </div>
-                  
+
                   <div className="space-y-3">
                     <div className="flex items-start gap-3">
                       <div className="w-6 h-6 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-xs font-medium">

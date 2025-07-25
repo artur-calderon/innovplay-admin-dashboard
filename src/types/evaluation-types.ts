@@ -43,7 +43,8 @@ export interface TestData {
     title: string;
     subject: { id: string; name: string };
     duration: number;
-    totalQuestions: number;
+    totalQuestions?: number; // ✅ CORRIGIDO: Tornar opcional
+    total_questions?: number; // ✅ NOVO: Campo alternativo do backend
     instructions: string;
     questions: Question[];
 }
@@ -51,6 +52,8 @@ export interface TestData {
 export interface StudentAnswer {
     question_id: string;
     answer: string;
+    // Para questões dissertativas, o answer será um JSON string com o formato:
+    // [{"text": "Resposta do aluno", "student_answer": true, "score": null}]
 }
 
 export interface TestResults {
@@ -73,6 +76,7 @@ export interface StartSessionResponse {
     message: string;
     session_id: string;
     started_at: string;
+    actual_start_time?: string;
     time_limit_minutes: number;
     remaining_time_minutes: number;
 }

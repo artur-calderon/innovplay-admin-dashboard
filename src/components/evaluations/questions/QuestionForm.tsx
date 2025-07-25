@@ -354,19 +354,19 @@ const QuestionForm = ({
 
           const normalizeSkills = (skills: string[] | { id: string }[]): string[] => {
             if (!skills) return [];
-            
+
             if (Array.isArray(skills)) {
               if (skills.length === 0) return [];
-              
+
               // Se é array de strings
               if (typeof skills[0] === 'string') {
                 return skills as string[];
               }
-              
+
               // Se é array de objetos com id
               return (skills as { id: string }[]).map((skill) => skill.id);
             }
-            
+
             return [];
           };
 
@@ -429,12 +429,12 @@ const QuestionForm = ({
         try {
           const response = await api.get(`/grades/education-stage/${selectedEducationStageId}`);
           setGrades(response.data);
-          
+
           // Só reseta a série se não estivermos carregando uma questão existente
           // ou se o usuário mudou o curso manualmente
           const currentGradeValue = form.getValues("grade");
           const isEditingExistingQuestion = questionId && currentGradeValue;
-          
+
           if (!isEditingExistingQuestion) {
             form.setValue("grade", ""); // Reseta a série apenas quando necessário
           }
@@ -508,6 +508,15 @@ const QuestionForm = ({
       return;
     }
 
+    // Corrigir: salvar solution como letra da alternativa correta
+    let solution = data.solution ? htmlToText(data.solution) : "";
+    if (data.questionType === 'multipleChoice' && data.options) {
+      const correctIndex = data.options.findIndex(opt => opt.isCorrect);
+      if (correctIndex !== -1) {
+        solution = String.fromCharCode(65 + correctIndex); // "A", "B", ...
+      }
+    }
+
     const payload = {
       title: data.title,
       text: htmlToText(data.text),
@@ -519,9 +528,13 @@ const QuestionForm = ({
       gradeId: data.grade, // Campo alternativo para compatibilidade
       difficulty: data.difficulty,
       value: data.value ? parseFloat(data.value) : 0,
-      solution: data.solution ? htmlToText(data.solution) : "",
+      solution, // <-- corrigido
       formattedSolution: data.solution || "",
-      options: data.questionType === 'multipleChoice' ? data.options.map(opt => ({ text: opt.text, isCorrect: opt.isCorrect })) : [],
+      options: data.questionType === 'multipleChoice' ? data.options.map((opt, index) => ({
+        id: String.fromCharCode(65 + index), // A, B, C, D, etc.
+        text: opt.text,
+        isCorrect: opt.isCorrect
+      })) : [],
       skills: data.skills || [],
       secondStatement: data.secondStatement || '',
       lastModifiedBy: user.id,
@@ -580,15 +593,15 @@ const QuestionForm = ({
   // Encontrar a skill que corresponde ao select
   useEffect(() => {
     if (selectedEducationStageId && selectedSubjectId) {
-      const matchingSkill = skills.find(skill => 
-        skill.educationStageId === selectedEducationStageId && 
+      const matchingSkill = skills.find(skill =>
+        skill.educationStageId === selectedEducationStageId &&
         skill.subjectId === selectedSubjectId
       );
-      
+
       if (matchingSkill) {
         // Resetar a seleção anterior
         form.setValue('skills', []);
-        
+
         // Configurar nova skill
         form.setValue('skills', [matchingSkill.id]);
       }
@@ -631,11 +644,11 @@ const QuestionForm = ({
               value: Number(formData.value),
               solution: formData.solution || '',
               formattedSolution: formData.solution || '',
-              options: formData.questionType === 'multipleChoice' ? formData.options.map((o, i) => ({ 
-                ...o, 
-                id: `preview-${i}`, 
-                text: o.text || '', 
-                isCorrect: o.isCorrect || false 
+              options: formData.questionType === 'multipleChoice' ? formData.options.map((o, i) => ({
+                ...o,
+                id: `preview-${i}`,
+                text: o.text || '',
+                isCorrect: o.isCorrect || false
               })) : [],
               skills: formData.skills || [],
               created_by: user?.id || '',
@@ -648,14 +661,14 @@ const QuestionForm = ({
       ) : (
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-8">
-            
+
             {/* Seção: Informações Básicas */}
             <div className="bg-blue-50 rounded-xl p-6 border border-blue-200">
               <div className="flex items-center gap-2 mb-4">
                 <Book className="h-5 w-5 text-blue-600" />
                 <h3 className="text-lg font-semibold text-gray-800">Informações Básicas</h3>
               </div>
-              
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                 <div className="sm:col-span-2">
                   <FormField
@@ -665,8 +678,8 @@ const QuestionForm = ({
                       <FormItem>
                         <FormLabel className="text-sm font-semibold text-gray-700">Conteúdo da Questão *</FormLabel>
                         <FormControl>
-                          <Input 
-                            {...field} 
+                          <Input
+                            {...field}
                             placeholder="Ex: Propriedades dos números naturais"
                             className="h-11 text-base"
                           />
@@ -807,10 +820,10 @@ const QuestionForm = ({
                     <FormItem>
                       <FormLabel className="text-sm font-semibold text-gray-700">Valor da Questão *</FormLabel>
                       <FormControl>
-                        <Input 
-                          {...field} 
-                          type="number" 
-                          step="0.1" 
+                        <Input
+                          {...field}
+                          type="number"
+                          step="0.1"
                           placeholder="Ex: 2.5"
                           className="h-11"
                         />
@@ -870,17 +883,17 @@ const QuestionForm = ({
                 <ListIcon className="h-5 w-5 text-purple-600" />
                 <h3 className="text-lg font-semibold text-gray-800">Tipo de Questão</h3>
               </div>
-              
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <Button
                   type="button"
                   variant={questionType === 'multipleChoice' ? 'default' : 'outline'}
                   size="lg"
                   onClick={() => handleSetQuestionType('multipleChoice')}
-                  className={`w-full h-auto min-h-[4rem] p-4 ${questionType === 'multipleChoice' 
-                    ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg' 
+                  className={`w-full h-auto min-h-[4rem] p-4 ${questionType === 'multipleChoice'
+                    ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg'
                     : 'hover:bg-purple-50 hover:border-purple-300'
-                  }`}
+                    }`}
                 >
                   <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3">
                     <Check className="h-5 w-5 flex-shrink-0" />
@@ -890,16 +903,16 @@ const QuestionForm = ({
                     </div>
                   </div>
                 </Button>
-                
+
                 <Button
                   type="button"
                   variant={questionType === 'open' ? 'default' : 'outline'}
                   size="lg"
                   onClick={() => handleSetQuestionType('open')}
-                  className={`w-full h-auto min-h-[4rem] p-4 ${questionType === 'open' 
-                    ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg' 
+                  className={`w-full h-auto min-h-[4rem] p-4 ${questionType === 'open'
+                    ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg'
                     : 'hover:bg-purple-50 hover:border-purple-300'
-                  }`}
+                    }`}
                 >
                   <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3">
                     <Type className="h-5 w-5 flex-shrink-0" />
@@ -918,7 +931,7 @@ const QuestionForm = ({
                 <Type className="h-5 w-5 text-green-600" />
                 <h3 className="text-lg font-semibold text-gray-800">Enunciados</h3>
               </div>
-              
+
               <div className="space-y-6">
                 <FormField
                   control={form.control}
@@ -980,7 +993,7 @@ const QuestionForm = ({
                     </Button>
                   )}
                 </div>
-                
+
                 <div className="space-y-4">
                   {fields.map((field, index) => (
                     <div key={field.id} className="flex items-center gap-4 p-4 bg-white rounded-lg border border-gray-200 shadow-sm">
@@ -991,28 +1004,27 @@ const QuestionForm = ({
                             form.setValue(`options.${i}.isCorrect`, i === index);
                           });
                         }}
-                        className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${
-                          form.watch("options")[index].isCorrect 
-                            ? 'bg-green-500 border-green-500 text-white shadow-lg' 
+                        className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${form.watch("options")[index].isCorrect
+                            ? 'bg-green-500 border-green-500 text-white shadow-lg'
                             : 'bg-white border-gray-300 hover:border-gray-400'
-                        }`}
+                          }`}
                         aria-label={`Marcar alternativa ${String.fromCharCode(65 + index)} como correta`}
                       >
                         {form.watch("options")[index].isCorrect ? <Check className="w-4 h-4" /> : null}
                       </button>
-                      
+
                       <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center font-semibold text-gray-600">
                         {String.fromCharCode(65 + index)}
                       </div>
-                      
+
                       <FormField
                         control={form.control}
                         name={`options.${index}.text`}
                         render={({ field }) => (
                           <FormItem className="flex-1">
                             <FormControl>
-                              <Input 
-                                {...field} 
+                              <Input
+                                {...field}
                                 placeholder={`Digite a alternativa ${String.fromCharCode(65 + index)}`}
                                 className="h-11 text-base"
                               />
@@ -1021,7 +1033,7 @@ const QuestionForm = ({
                           </FormItem>
                         )}
                       />
-                      
+
                       {fields.length > 2 && (
                         <Button
                           type="button"
@@ -1037,7 +1049,7 @@ const QuestionForm = ({
                     </div>
                   ))}
                 </div>
-                
+
                 {form.formState.errors.options && (
                   <p className="text-red-600 text-sm mt-2">
                     {form.formState.errors.options.message}
@@ -1055,7 +1067,7 @@ const QuestionForm = ({
                   <span className="text-gray-500 font-normal ml-1">(opcional)</span>
                 </h3>
               </div>
-              
+
               <FormField
                 control={form.control}
                 name="solution"
@@ -1087,8 +1099,8 @@ const QuestionForm = ({
               >
                 Cancelar
               </Button>
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 disabled={isSubmitting}
                 size="lg"
                 className="w-full sm:w-auto px-6 sm:px-8 bg-blue-600 hover:bg-blue-700 order-1 sm:order-2"

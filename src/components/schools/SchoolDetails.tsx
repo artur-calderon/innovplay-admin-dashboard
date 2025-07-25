@@ -83,7 +83,7 @@ export default function SchoolDetails() {
             description: "Escola não encontrada",
             variant: "destructive",
           });
-          navigate("/app/escolas");
+          navigate("/app");
         }
       } catch (error) {
         console.error("Error fetching school:", error);
@@ -389,4 +389,4 @@ export default function SchoolDetails() {
       )}
     </div>
   );
-} 
+}

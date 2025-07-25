@@ -1,8 +1,12 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/authContext";
+import { useNavigate } from "react-router-dom";
+import { Lock } from "lucide-react";
 
 const Profile = () => {
   const user = useAuth((state) => state.user);
+  const navigate = useNavigate();
 
   const formatDate = (dateString: string) => {
     if (!dateString) return "Data não informada";
@@ -96,6 +100,17 @@ const Profile = () => {
           <span className="inline-flex items-center mt-2 px-2 py-1 text-xs font-medium rounded-md bg-gradient-to-r from-innov-blue to-innov-purple text-white">
             {user.role === "admin" ? "Administrador" : user.role === "professor" ? "Professor" : "Aluno"}
           </span>
+
+          <div className="mt-4">
+            <Button
+              onClick={() => navigate("/change-password")}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <Lock className="h-4 w-4" />
+              Alterar senha
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

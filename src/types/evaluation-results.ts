@@ -7,7 +7,7 @@ export interface StudentProficiency {
   studentName: string;
   studentClass: string;
   rawScore: number; // Nota bruta (0-10)
-  proficiencyScore: number; // Proficiência calculada (0-1000)
+  proficiencyScore: number; // Proficiência calculada (0-425 para Anos Finais/EM, 0-375 para Anos Iniciais)
   proficiencyLevel: ProficiencyLevel;
   classification: string; // Texto da classificação
   answeredQuestions: number;
@@ -84,7 +84,7 @@ export interface ResultsFilters {
   subject?: string;
   class?: string;
   school?: string;
-  proficiencyRange?: [number, number]; // Range de 0 a 1000
+  proficiencyRange?: [number, number]; // Range de 0 a 425 (Anos Finais/EM) ou 0 a 375 (Anos Iniciais)
   scoreRange?: [number, number]; // Range de 0 a 10
   proficiencyLevels?: ProficiencyLevel[];
   status?: ('completed' | 'pending' | 'in_progress')[];
@@ -196,10 +196,14 @@ const PROFICIENCY_TABLE_ANOS_FINAIS_MEDIA = {
 };
 
 // ✅ CONSTANTES DE PROFICIÊNCIA MÁXIMA OFICIAIS
+// ATUALIZAÇÃO: Para cálculo geral, sempre usar os valores mais altos
+// - Anos Iniciais: 375 (mesmo valor da matemática)
+// - Anos Finais/EM: 425 (mesmo valor da matemática)
+// Isso garante mais coerência entre disciplinas e padronização do cálculo
 const PROFICIENCY_MAX_VALUES = {
-  ANOS_INICIAIS_GERAL: 350,      // Todas as matérias exceto Matemática
+  ANOS_INICIAIS_GERAL: 350,      // Todas as matérias exceto Matemática (valor original)
   ANOS_INICIAIS_MATEMATICA: 375, // Matemática
-  ANOS_FINAIS_GERAL: 400,        // Todas as matérias exceto Matemática  
+  ANOS_FINAIS_GERAL: 400,        // Todas as matérias exceto Matemática (valor original)
   ANOS_FINAIS_MATEMATICA: 425    // Matemática
 };
 
@@ -227,6 +231,10 @@ const GRADE_TO_COURSE_MAPPING: Record<string, string> = {
 };
 
 // ✅ FUNÇÃO ATUALIZADA: Calcular proficiência usando as tabelas corretas
+// ATUALIZAÇÃO: Para cálculo geral (não-matemática), sempre usar os valores mais altos
+// - Anos Iniciais: 375 (mesmo valor da matemática)
+// - Anos Finais/EM: 425 (mesmo valor da matemática)
+// Isso garante mais coerência entre disciplinas e padronização do cálculo
 export function calculateProficiency(
   rawScore: number, 
   totalQuestions: number, 
@@ -261,7 +269,7 @@ export function calculateProficiency(
       maxProficiency = PROFICIENCY_MAX_VALUES.ANOS_INICIAIS_MATEMATICA; // P.M = 375
     } else {
       proficiencyTable = PROFICIENCY_TABLE_ANOS_INICIAIS_GERAL;
-      maxProficiency = PROFICIENCY_MAX_VALUES.ANOS_INICIAIS_GERAL; // P.M = 350
+      maxProficiency = PROFICIENCY_MAX_VALUES.ANOS_INICIAIS_MATEMATICA; // P.M = 375 (usando o valor mais alto)
     }
   } else {
     // Anos Finais ou Ensino Médio
@@ -270,7 +278,7 @@ export function calculateProficiency(
       maxProficiency = PROFICIENCY_MAX_VALUES.ANOS_FINAIS_MATEMATICA; // P.M = 425
     } else {
       proficiencyTable = PROFICIENCY_TABLE_ANOS_FINAIS_GERAL;
-      maxProficiency = PROFICIENCY_MAX_VALUES.ANOS_FINAIS_GERAL; // P.M = 400
+      maxProficiency = PROFICIENCY_MAX_VALUES.ANOS_FINAIS_MATEMATICA; // P.M = 425 (usando o valor mais alto)
     }
   }
   
@@ -333,8 +341,8 @@ export function getProficiencyTableInfo(grade?: string, subject?: string, course
         tableName: 'Anos Iniciais - Todas as Matérias (exceto Matemática)',
         educationalLevel: 'Anos Iniciais',
         subject: 'Geral',
-        maxProficiency: PROFICIENCY_MAX_VALUES.ANOS_INICIAIS_GERAL, // P.M = 350
-        pmDescription: 'P.M = 350 (Geral - Anos Iniciais)'
+        maxProficiency: PROFICIENCY_MAX_VALUES.ANOS_INICIAIS_MATEMATICA, // P.M = 375 (usando o valor mais alto)
+        pmDescription: 'P.M = 375 (Geral - Anos Iniciais) - Usando valor mais alto'
       };
     }
   } else {
@@ -354,8 +362,8 @@ export function getProficiencyTableInfo(grade?: string, subject?: string, course
         tableName: 'Anos Finais/Ensino Médio - Todas as Matérias (exceto Matemática)',
         educationalLevel: educationalLevel || 'Anos Finais',
         subject: 'Geral',
-        maxProficiency: PROFICIENCY_MAX_VALUES.ANOS_FINAIS_GERAL, // P.M = 400
-        pmDescription: 'P.M = 400 (Geral - Anos Finais/EM)'
+        maxProficiency: PROFICIENCY_MAX_VALUES.ANOS_FINAIS_MATEMATICA, // P.M = 425 (usando o valor mais alto)
+        pmDescription: 'P.M = 425 (Geral - Anos Finais/EM) - Usando valor mais alto'
       };
     }
   }
