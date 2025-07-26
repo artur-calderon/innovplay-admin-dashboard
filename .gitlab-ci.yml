@@ -111,7 +111,7 @@ image_build:
 
             echo "VITE_API_BASE_URL=$VITE_API_BASE_URL" > .env
 
-            echo "[INFO] Instalando dependência envsubst"
+            echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Instalando dependência envsubst"
             apk add --no-cache gettext
 
             envsubst '$API_CONTAINER' < nginx.conf.template > nginx.conf
@@ -127,30 +127,53 @@ image_build:
                 echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Imagem '$IMAGE_TAG' criada com id '$IMAGE_ID'."
             fi
 
-network_create:
-    stage: predeploy
-    extends:
+trigger-backend-local:
+  stage: predeploy
+  extends:
         - .set_runner_tag
         - .set_none_git_strategy
-    script:
+  rules:
+        - if: "$ENVIRONMENT == 'local'"
+  script:
         - |
-            set -e
+            CONTAINER_ID=$(docker container ls -a -f name=^${API_CONTAINER}$ -q)
 
-            NETWORK=$(docker network ls -f name="^${ENVIRONMENT}$" -q)
+            if [ -z "$CONTAINER_ID" ]; then
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Disparando pipeline do backend..."
 
-            if [ -z "$NETWORK" ]; then
-                docker network create "$ENVIRONMENT"
+                curl --request POST \
+                    --form "token=$API_TRIGGER_TOKEN" \
+                    --form "ref=main" \
+                    https://gitlab.com/api/v4/projects/innovplay%2Finnovaplay_backend/trigger/pipeline
+                
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Aguardando container da API '$API_CONTAINER'..."
 
-                NETWORK=$(docker network ls -f name="^${ENVIRONMENT}$" -q)
+                TIMEOUT=120
+                ELAPSED=0
 
-                if [ -z "$NETWORK" ]; then
-                    echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Falha ao criar a network '$ENVIRONMENT'."
-                    exit 1
-                else
-                    echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Network '$ENVIRONMENT' criada com sucesso."
-                fi
+                until docker container inspect -f '{{.State.Running}}' "$API_CONTAINER" 2>/dev/null | grep -q true; do
+                    sleep 5
+                    ELAPSED=$((ELAPSED + 5))
+
+                    echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Aguardando... ($ELAPSED/$TIMEOUT)"
+
+                    if [ $ELAPSED -ge $TIMEOUT ]; then
+                        echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Container '$API_CONTAINER' não iniciou dentro do tempo esperado."
+                        exit 1
+                    fi
+                done
+
+                echo "[OK] Container da API está em execução."
             else
-                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Network '$ENVIRONMENT' já existe."
+                IS_RUNNING=$(docker inspect -f "{{.State.Running}}" "$CONTAINER_ID")
+
+                if [ "$IS_RUNNING" = "true" ]; then
+                    echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Container '$API_CONTAINER' já está ativo."
+                else
+                    docker container start "$API_CONTAINER"
+
+                    echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Container '$API_CONTAINER' iniciado."
+                fi
             fi
 
 container_run:
@@ -180,7 +203,7 @@ container_run:
                 if [ "$IS_RUNNING" = "true" ]; then
                     echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Container '$CONTAINER_NAME' criado com id '$CONTAINER_ID'."
                 else
-                    echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Falha ao criar o container '$CONTAINER_NAME'."
+                    echo "$(date '+[%Y-%m-%d %H:%M:%S]') - O container '$CONTAINER_NAME' foi criado mas parou."
                     exit 1
                 fi
             fi
