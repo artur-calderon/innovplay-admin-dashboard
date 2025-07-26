@@ -132,6 +132,8 @@ trigger-api-pipeline:
   extends:
         - .set_runner_tag
         - .set_none_git_strategy
+  environment:
+        name: $ENVIRONMENT
   rules:
         - if: "$ENVIRONMENT == 'local'"
   script:
@@ -144,8 +146,8 @@ trigger-api-pipeline:
 
                 echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Disparando pipeline do backend..."
 
-                curl -X POST --fail -F token=$API_TRIGGER_TOKEN -F ref=main https://gitlab.com/api/v4/projects/71387347/trigger/pipeline
-                
+                curl -X POST --fail -F token=$API_TRIGGER_TOKEN -F ref=main $API_TRIGGER_URL
+
                 echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Aguardando container da API '$API_CONTAINER'..."
 
                 TIMEOUT=120
