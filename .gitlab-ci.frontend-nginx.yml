@@ -1,0 +1,92 @@
+variables:
+  APP: innovplay_frontend_nginx
+  ENVIRONMENT: dev
+  RUNNER: vps
+  IMAGE_TAG: "$APP:latest"
+  CONTAINER_NAME: "$APP"
+  HOST_PORT: 8081  # altere se necessário
+  CONTAINER_PORT: 8081
+
+workflow:
+  rules:
+    - if: "$CI_COMMIT_BRANCH == 'dev'"
+      changes:
+        - frontend/**
+        - nginx/**
+        - default.conf
+        - Dockerfile
+
+stages:
+  - clean
+  - build
+  - deploy
+
+.set_runner_tag:
+  tags:
+    - $RUNNER
+
+.set_none_git_strategy:
+  variables:
+    GIT_STRATEGY: none
+
+.clean_job:
+  script:
+    - |
+      CONTAINER_IDS=$(docker container ls -a -f ancestor="$IMAGE_TAG" -q)
+      if [ -n "$CONTAINER_IDS" ]; then
+        for ID in $CONTAINER_IDS; do
+          docker container stop "$ID" || true
+          docker container rm "$ID" || true
+        done
+      fi
+    - |
+      IMAGE_ID=$(docker image ls -f reference="$IMAGE_TAG" -q)
+      if [ -n "$IMAGE_ID" ]; then
+        docker image rm "$IMAGE_ID" || true
+      fi
+
+image_clean:
+  stage: clean
+  extends:
+    - .set_runner_tag
+    - .set_none_git_strategy
+    - .clean_job
+  before_script:
+    - command -v docker >/dev/null || { echo "Docker não disponível"; exit 1; }
+
+image_build:
+  stage: build
+  extends:
+    - .set_runner_tag
+  script:
+    - |
+      set -e
+      echo "VITE_API_BASE_URL=/api" > .env
+      docker build -t "$IMAGE_TAG" .
+
+container_run:
+  stage: deploy
+  extends:
+    - .set_runner_tag
+    - .set_none_git_strategy
+  script:
+    - |
+      set -e
+      docker container run -d \
+        --name "$CONTAINER_NAME" \
+        --network dev \
+        -p "$HOST_PORT:$CONTAINER_PORT" \
+        "$IMAGE_TAG"
+
+      CONTAINER_ID=$(docker container ls -a -f ancestor="$IMAGE_TAG" -q)
+
+      if [ -z "$CONTAINER_ID" ]; then
+        echo "Falha ao criar o container '$CONTAINER_NAME'."
+        exit 1
+      fi
+
+      IS_RUNNING=$(docker inspect -f "{{.State.Running}}" "$CONTAINER_ID")
+      if [ "$IS_RUNNING" != "true" ]; then
+        echo "Container '$CONTAINER_NAME' não está rodando corretamente."
+        exit 1
+      fi
