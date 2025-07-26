@@ -128,15 +128,15 @@ image_build:
             fi
 
 trigger-api-pipeline:
-  stage: predeploy
-  extends:
+    stage: predeploy
+    extends:
         - .set_runner_tag
         - .set_none_git_strategy
-  environment:
+    environment:
         name: $ENVIRONMENT
-  rules:
+    rules:
         - if: "$ENVIRONMENT == 'local'"
-  script:
+    script:
         - |
             CONTAINER_ID=$(docker container ls -a -f name=^${API_CONTAINER}$ -q)
 
