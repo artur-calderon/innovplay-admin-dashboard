@@ -30,6 +30,7 @@ stages:
     - validate_pipeline
     - prebuild
     - build
+    - predeploy
     - deploy
     - clean
 
