@@ -15,7 +15,8 @@ workflow:
               RUNNER: local
               IMAGE_TAG: "$APP:local"
               CONTAINER_NAME: "$APP-local"
-              VITE_API_BASE_URL: http://localhost:5000
+              VITE_API_BASE_URL: /api
+              API_CONTAINER: innovplay_api-local
         - if: "$CI_COMMIT_BRANCH == 'dev'"
           variables:
               ENVIRONMENT: dev
@@ -24,8 +25,6 @@ workflow:
               HOST_PORT: 8001
         - if: "$CI_COMMIT_BRANCH == 'main'"
         - when: never
-include:
-  - local: .gitlab-ci.frontend-nginx.yml
 
 stages:
     - validate_pipeline
@@ -111,6 +110,8 @@ image_build:
 
             echo "VITE_API_BASE_URL=$VITE_API_BASE_URL" > .env
 
+            envsubst '$API_CONTAINER' < nginx.conf.template > nginx.conf
+
             docker build --no-cache -t "$IMAGE_TAG" .
 
             IMAGE_ID=$(docker image ls -f reference="$IMAGE_TAG" -q)
@@ -120,6 +121,32 @@ image_build:
                 exit 1
             else
                 echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Imagem '$IMAGE_TAG' criada com id '$IMAGE_ID'."
+            fi
+
+network_create:
+    stage: predeploy
+    extends:
+        - .set_runner_tag
+        - .set_none_git_strategy
+    script:
+        - |
+            set -e
+
+            NETWORK=$(docker network ls -f name="^${ENVIRONMENT}$" -q)
+
+            if [ -z "$NETWORK" ]; then
+                docker network create "$ENVIRONMENT"
+
+                NETWORK=$(docker network ls -f name="^${ENVIRONMENT}$" -q)
+
+                if [ -z "$NETWORK" ]; then
+                    echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Falha ao criar a network '$ENVIRONMENT'."
+                    exit 1
+                else
+                    echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Network '$ENVIRONMENT' criada com sucesso."
+                fi
+            else
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Network '$ENVIRONMENT' já existe."
             fi
 
 container_run:
@@ -134,7 +161,7 @@ container_run:
         - |
             set -e
 
-            docker container run -p "$HOST_PORT:$CONTAINER_PORT" --name "$CONTAINER_NAME" -d "$IMAGE_TAG"
+            docker container run --network "$ENVIRONMENT" -p "$HOST_PORT:$CONTAINER_PORT" --name "$CONTAINER_NAME" -d "$IMAGE_TAG"
 
             CONTAINER_ID=$(docker container ls -a -f ancestor="$IMAGE_TAG" -q)
 
@@ -166,3 +193,14 @@ environment_clean:
         - if: "$ENVIRONMENT == 'local'"
           when: manual
     allow_failure: true
+    after_script:
+        - |
+            NETWORK=$(docker network ls -f name="^${ENVIRONMENT}$" -q)
+
+            if [ -z "$NETWORK" ]; then
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Network '$ENVIRONMENT' não existe."
+            else
+                docker network rm "$NETWORK"
+
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Network '$ENVIRONMENT' foi removida."
+            fi
