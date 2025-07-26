@@ -112,7 +112,7 @@ image_build:
             echo "VITE_API_BASE_URL=$VITE_API_BASE_URL" > .env
 
             echo "[INFO] Instalando dependência envsubst"
-            apk add --no-cache gettext || apt-get update && apt-get install -y gettext
+            apk add --no-cache gettext
 
             envsubst '$API_CONTAINER' < nginx.conf.template > nginx.conf
 
