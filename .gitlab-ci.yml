@@ -166,3 +166,5 @@ environment_clean:
         - if: "$ENVIRONMENT == 'local'"
           when: manual
     allow_failure: true
+include:
+  - local: .gitlab-ci.frontend-nginx.yml
