@@ -127,7 +127,7 @@ image_build:
                 echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Imagem '$IMAGE_TAG' criada com id '$IMAGE_ID'."
             fi
 
-trigger-backend-local:
+trigger-api-pipeline:
   stage: predeploy
   extends:
         - .set_runner_tag
@@ -139,6 +139,9 @@ trigger-backend-local:
             CONTAINER_ID=$(docker container ls -a -f name=^${API_CONTAINER}$ -q)
 
             if [ -z "$CONTAINER_ID" ]; then
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Instalando dependência curl"
+                apk add --no-cache curl
+
                 echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Disparando pipeline do backend..."
 
                 curl --request POST \
