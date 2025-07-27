@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Switch } from "@/components/ui/switch";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
     ArrowLeft,
     Download,
@@ -29,80 +31,28 @@ import {
     RefreshCw,
     AlertCircle,
     BookOpen,
-    CheckCircle
+    CheckCircle,
+    Activity,
+    Filter
 } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
-import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
-import { api } from "@/lib/api";
+import { useAggregatedResults } from "./results/hooks/useAggregatedResults";
+import { CompletionStatusLevel } from "./results/types/completion";
 
-// Importar a interface DetailedReport do serviço
-interface DetailedReport {
-    avaliacao: {
-        id: string;
-        titulo: string;
-        disciplina: string;
-        total_questoes: number;
-    };
-    questoes: Array<{
-        id: string;
-        numero: number;
-        texto: string;
-        habilidade: string;
-        codigo_habilidade: string;
-        tipo: 'multipleChoice' | 'open' | 'trueFalse';
-        dificuldade: 'Fácil' | 'Médio' | 'Difícil';
-        porcentagem_acertos: number;
-        porcentagem_erros: number;
-    }>;
-    alunos: Array<{
-        id: string;
-        nome: string;
-        turma: string;
-        respostas: Array<{
-            questao_id: string;
-            questao_numero: number;
-            resposta_correta: boolean;
-            resposta_em_branco: boolean;
-            tempo_gasto: number;
-        }>;
-        total_acertos: number;
-        total_erros: number;
-        total_em_branco: number;
-        nota_final: number;
-        proficiencia: number;
-        classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
-        status: 'concluida' | 'nao_respondida';
-    }>;
-}
-
+// ✅ INTERFACES SIMPLIFICADAS - Usando dados dos hooks refatorados
 interface DetailedResultsViewProps {
     onBack: () => void;
-}
-
-interface StudentResult {
-    id: string;
-    nome: string;
-    turma: string;
-    nota: number;
-    proficiencia: number;
-    classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
-    questoes_respondidas: number;
-    acertos: number;
-    erros: number;
-    em_branco: number;
-    tempo_gasto: number;
-    status: 'concluida' | 'pendente';
 }
 
 interface EvaluationInfo {
     id: string;
     titulo: string;
     disciplina: string;
-    disciplinas?: string[]; // ✅ Adicionado para múltiplas disciplinas
+    disciplinas?: string[];
     curso: string;
     serie: string;
-    grade_id?: string; // ✅ Adicionado para mapeamento de série
+    grade_id?: string;
     escola: string;
     municipio: string;
     data_aplicacao: string;
@@ -120,32 +70,208 @@ interface EvaluationInfo {
     };
 }
 
-interface Stats {
-    totalStudents: number;
-    completedStudents: number;
-    averageScore: number;
-    averageProficiency: number;
-    distribution: {
-        abaixo_do_basico: number;
-        basico: number;
-        adequado: number;
-        avancado: number;
+// ✅ COMPONENTE: RealTimeControlsCard - Controles de tempo real
+const RealTimeControlsCard: React.FC<{
+    isRealTimeMode: boolean;
+    onToggleRealTime: (enabled: boolean) => void;
+    lastUpdate: Date;
+    autoRefreshEnabled: boolean;
+    onToggleAutoRefresh: (enabled: boolean) => void;
+    completionStats: {
+        total: number;
+        completed: number;
+        partial: number;
+        completionRate: number;
     };
-}
+}> = ({ 
+    isRealTimeMode, 
+    onToggleRealTime, 
+    lastUpdate, 
+    autoRefreshEnabled, 
+    onToggleAutoRefresh,
+    completionStats
+}) => (
+    <Card className="border-2 border-blue-200 bg-blue-50">
+        <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+                <Activity className="h-5 w-5 text-blue-600" />
+                Controles de Visualização
+                <Badge variant="outline" className="ml-auto">
+                    {completionStats.completed}/{completionStats.total} completos
+                </Badge>
+            </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+            {/* Toggle Tempo Real */}
+            <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                    <div className="text-sm font-medium">Modo Tempo Real</div>
+                    <div className="text-xs text-gray-600">
+                        {isRealTimeMode 
+                            ? "Mostrando todos os alunos (incluindo progresso parcial)"
+                            : "Mostrando apenas alunos com avaliação completa"
+                        }
+                    </div>
+                </div>
+                <Switch
+                    checked={isRealTimeMode}
+                    onCheckedChange={onToggleRealTime}
+                />
+            </div>
 
-interface ApiError {
-    message?: string;
-    code?: string;
-    response?: {
-        status?: number;
+            {/* Toggle Auto-Refresh */}
+            {isRealTimeMode && (
+                <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                        <div className="text-sm font-medium">Atualização Automática</div>
+                        <div className="text-xs text-gray-600">
+                            Atualizar dados automaticamente a cada 30 segundos
+                        </div>
+                    </div>
+                    <Switch
+                        checked={autoRefreshEnabled}
+                        onCheckedChange={onToggleAutoRefresh}
+                    />
+                </div>
+            )}
+
+            {/* Status da Atualização */}
+            <div className="bg-white border border-blue-200 rounded-lg p-3">
+                <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-600">Última atualização:</span>
+                    <span className="font-medium">
+                        {lastUpdate.toLocaleTimeString('pt-BR')}
+                    </span>
+                </div>
+                {completionStats.partial > 0 && (
+                    <div className="mt-2 text-xs text-yellow-700">
+                        <AlertTriangle className="w-3 h-3 inline mr-1" />
+                        {completionStats.partial} aluno(s) com progresso parcial
+                    </div>
+                )}
+            </div>
+        </CardContent>
+    </Card>
+);
+
+// ✅ COMPONENTE: CompletionStatusCard - Status de completude melhorado
+const CompletionStatusCard: React.FC<{
+    stats: {
+        total: number;
+        completed: number;
+        partial: number;
+        completionRate: number;
     };
-}
+    isRealTimeMode: boolean;
+}> = ({ stats, isRealTimeMode }) => (
+    <Card>
+        <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+                <Target className="h-5 w-5 text-blue-600" />
+                Status de Completude da Avaliação
+                {isRealTimeMode && (
+                    <Badge className="bg-yellow-100 text-yellow-800 text-xs ml-auto">
+                        <Activity className="w-3 h-3 mr-1" />
+                        Tempo Real
+                    </Badge>
+                )}
+            </CardTitle>
+        </CardHeader>
+        <CardContent>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div className="space-y-2">
+                    <div className="text-sm font-medium text-muted-foreground">Total de Alunos</div>
+                    <div className="text-2xl font-bold text-gray-900">
+                        {stats.total}
+                    </div>
+                </div>
+                
+                <div className="space-y-2">
+                    <div className="text-sm font-medium text-muted-foreground">Concluídos</div>
+                    <div className="text-2xl font-bold text-green-600">
+                        {stats.completed}
+                    </div>
+                </div>
+                
+                <div className="space-y-2">
+                    <div className="text-sm font-medium text-muted-foreground">
+                        {isRealTimeMode ? "Em Andamento" : "Incompletos"}
+                    </div>
+                    <div className="text-2xl font-bold text-yellow-600">
+                        {stats.partial}
+                    </div>
+                </div>
+                
+                <div className="space-y-2">
+                    <div className="text-sm font-medium text-muted-foreground">Taxa de Conclusão</div>
+                    <div className="text-2xl font-bold text-blue-600">
+                        {stats.completionRate.toFixed(1)}%
+                    </div>
+                </div>
+            </div>
+            
+            {/* Progress Bar */}
+            <div className="mt-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Progresso da Avaliação</span>
+                    <span className="font-medium">
+                        {stats.completionRate.toFixed(1)}%
+                    </span>
+                </div>
+                <Progress 
+                    value={stats.completionRate} 
+                    className="h-2"
+                />
+            </div>
+            
+            {/* Alerta baseado no modo */}
+            {isRealTimeMode && stats.partial > 0 ? (
+                <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="flex items-center gap-2">
+                        <Activity className="h-4 w-4 text-yellow-600" />
+                        <span className="text-sm font-medium text-yellow-800">
+                            Monitoramento em Tempo Real Ativo
+                        </span>
+                    </div>
+                    <p className="text-xs text-yellow-700 mt-1">
+                        Acompanhando {stats.partial} aluno(s) com avaliação em andamento
+                    </p>
+                </div>
+            ) : !isRealTimeMode && stats.partial > 0 ? (
+                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center gap-2">
+                        <Filter className="h-4 w-4 text-blue-600" />
+                        <span className="text-sm font-medium text-blue-800">
+                            Filtros Aplicados - Apenas Dados Completos
+                        </span>
+                    </div>
+                    <p className="text-xs text-blue-700 mt-1">
+                        {stats.partial} aluno(s) com progresso parcial não estão sendo exibidos. 
+                        Ative o "Modo Tempo Real" para acompanhar o progresso.
+                    </p>
+                </div>
+            ) : (
+                <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        <span className="text-sm font-medium text-green-800">
+                            Todos os Alunos Completaram a Avaliação
+                        </span>
+                    </div>
+                    <p className="text-xs text-green-700 mt-1">
+                        Todos os dados estão validados e prontos para análise pedagógica
+                    </p>
+                </div>
+            )}
+        </CardContent>
+    </Card>
+);
 
-// Componente da tabela de resultados dos alunos
+// Componente da tabela de resultados dos alunos (mantido igual)
 const StudentsResultsTable = ({ 
     students, 
     totalQuestions, 
-    startQuestionNumber = 1, // ✅ CORRIGIDO: Valor padrão 1
+    startQuestionNumber = 1,
     onViewStudentDetails,
     questoes,
     questionsWithSkills,
@@ -162,414 +288,132 @@ const StudentsResultsTable = ({
         proficiencia: true,
         nivel: true
     },
-    subjectFilter
+    subjectFilter,
+    showAll = false
 }: {
-    students: StudentResult[];
+    students: any[];
     totalQuestions: number;
     startQuestionNumber?: number;
     onViewStudentDetails: (studentId: string) => void;
-    questoes?: Array<{
-        id: string;
-        numero: number;
-        texto: string;
-        habilidade: string;
-        codigo_habilidade: string;
-        tipo: 'multipleChoice' | 'open' | 'trueFalse';
-        dificuldade: 'Fácil' | 'Médio' | 'Difícil';
-        porcentagem_acertos: number;
-        porcentagem_erros: number;
-    }>;
-    questionsWithSkills?: Array<{
-        id: string;
-        number: number;
-        text: string;
-        formattedText: string;
-        alternatives?: Array<{
-            id: string;
-            text: string;
-            isCorrect: boolean;
-        }>;
-        skills: string[]; // ✅ Códigos reais como "LP5L1.2"
-        difficulty: 'Fácil' | 'Médio' | 'Difícil';
-        solution: string;
-        type: 'multipleChoice' | 'open' | 'trueFalse';
-        value: number;
-        subject: {
-            id: string;
-            name: string;
-        };
-        grade: {
-            id: string;
-            name: string;
-        };
-    }>;
-    skillsMapping?: Record<string, string>; // UUID -> Código real
-    skillsBySubject?: Record<string, Array<{
-        id: string | null;
-        code: string;
-        description: string;
-        source: 'database' | 'question';
-    }>>; // ✅ Skills organizadas por disciplina
-    detailedReport?: DetailedReport; // Para acessar a disciplina
-    visibleFields?: {
-        turma: boolean;
-        habilidade: boolean;
-        questoes: boolean;
-        percentualTurma: boolean;
-        total: boolean;
-        nota: boolean;
-        proficiencia: boolean;
-        nivel: boolean;
-    };
+    questoes?: any[];
+    questionsWithSkills?: any[];
+    skillsMapping?: Record<string, string>;
+    skillsBySubject?: any;
+    detailedReport?: any;
+    visibleFields?: any;
     subjectFilter?: string;
+    showAll?: boolean;
 }) => {
-    // ✅ FUNÇÃO AUXILIAR: Normalizar UUID para comparação
-    const normalizeUUID = (uuid: string) => {
-        // Remove chaves, espaços extras e converte para minúsculas
-        return uuid.replace(/[{}]/g, '').trim().toLowerCase();
+    // ✅ USAR DADOS DOS HOOKS REFATORADOS
+    const filteredStudents = showAll 
+        ? students // Mostrar todos os alunos (incluindo parciais)
+        : students.filter(student => student.isComplete); // Apenas completos
+
+    // ✅ FUNÇÃO PARA VERIFICAR SE ALUNO É PARCIAL
+    const isStudentPartial = (student: any) => {
+        return !student.isComplete || student.completionStatus !== CompletionStatusLevel.COMPLETE;
     };
 
-    // ✅ PRIORIDADE: Usar códigos reais das habilidades quando disponíveis
-    const generateHabilidadeCode = (questionNumber: number, questao: {
-        id?: string;
-        numero?: number;
-        codigo_habilidade?: string;
-        skills?: string[];
-        difficulty?: string;
-        type?: string;
-        subject?: {
-            id: string;
-            name: string;
-        };
-    } | null) => {
-        // ✅ Verificar se temos dados válidos
-        if (!questao) {
-            // Fallback simples se não temos dados da questão
-            const disciplina = detailedReport?.avaliacao?.disciplina?.toLowerCase() || '';
-            const isMathematics = disciplina.includes('matemática') || disciplina.includes('matematica');
-            const grade = Math.min(Math.floor(questionNumber / 10) + 1, 9);
-            const skillNumber = ((questionNumber - 1) % 10) + 1;
-            return isMathematics ? `${grade}N1.${skillNumber}` : `LP${grade}L1.${skillNumber}`;
-        }
-
-        // ✅ Normalizar UUID para comparação
-        const normalizedUUID = normalizeUUID(questao.codigo_habilidade);
-        
-        // ✅ Tentar mapeamento direto primeiro
-        if (skillsMapping && questao.codigo_habilidade) {
-            if (skillsMapping[questao.codigo_habilidade]) {
-                return skillsMapping[questao.codigo_habilidade];
-            }
-            
-            // Tentar com UUID normalizado
-            if (skillsMapping[normalizedUUID]) {
-                return skillsMapping[normalizedUUID];
-            }
-        }
-        
-        // ✅ NOVO: Determinar disciplina baseada na questão ou dados da avaliação
-        let disciplina = '';
-        
-        // ✅ Prioridade 1: Usar disciplina da questão se disponível
-        if (questao.subject && questao.subject.name) {
-            disciplina = questao.subject.name.toLowerCase();
-        } else if (questionsWithSkills && questionsWithSkills.length > 0) {
-            // ✅ Prioridade 2: Buscar disciplina nas questões com skills
-            const questionWithSkill = questionsWithSkills.find(q => q.number === questionNumber);
-            if (questionWithSkill && questionWithSkill.subject) {
-                disciplina = questionWithSkill.subject.name.toLowerCase();
-            }
+    // ✅ FUNÇÃO PARA OBTER BADGE DE STATUS DO ALUNO
+    const getStudentStatusBadge = (student: any) => {
+        if (student.isComplete && student.completionStatus === CompletionStatusLevel.COMPLETE) {
+            return (
+                <Badge className="bg-green-100 text-green-800 text-xs ml-2">
+                    <CheckCircle className="w-3 h-3 mr-1" />
+                    Completo
+                </Badge>
+            );
         } else {
-            // ✅ Prioridade 3: Usar disciplina da avaliação
-            disciplina = detailedReport?.avaliacao?.disciplina?.toLowerCase() || '';
-        }
-        
-        // ✅ Determinar série baseada no número da questão ou dados da avaliação
-        let grade = 1; // Padrão
-        if (detailedReport?.avaliacao?.disciplina) {
-            // Tentar extrair série do título ou dados da avaliação
-            const serieMatch = detailedReport.avaliacao.disciplina.match(/(\d+)/);
-            if (serieMatch) {
-                grade = parseInt(serieMatch[1]);
-            } else {
-                // Usar número da questão como aproximação
-                grade = Math.min(Math.floor(questionNumber / 10) + 1, 9); // Máximo 9º ano
-            }
-        }
-        
-        const skillNumber = ((questionNumber - 1) % 10) + 1;
-        
-        // ✅ Detectar disciplina baseada no nome
-        const isMathematics = disciplina.includes('matemática') || 
-                             disciplina.includes('matematica') ||
-                             disciplina.includes('math') ||
-                             disciplina.includes('mathematics');
-        const isPortuguese = disciplina.includes('português') || 
-                            disciplina.includes('portugues') || 
-                            disciplina.includes('língua') ||
-                            disciplina.includes('lingua') ||
-                            disciplina.includes('portuguese') ||
-                            disciplina.includes('portuguesa') ||
-                            disciplina.includes('lingua portuguesa') ||
-                            disciplina.includes('língua portuguesa') ||
-                            disciplina.includes('lp') ||
-                            disciplina.includes('l.p.') ||
-                            disciplina.includes('lingua p') ||
-                            disciplina.includes('língua p') ||
-                            disciplina.includes('portuguese language');
-        const isScience = disciplina.includes('ciências') || 
-                         disciplina.includes('ciencias') || 
-                         disciplina.includes('science') ||
-                         disciplina.includes('ciência') ||
-                         disciplina.includes('ciencia');
-        const isHistory = disciplina.includes('história') || 
-                         disciplina.includes('historia') || 
-                         disciplina.includes('history');
-        const isGeography = disciplina.includes('geografia') || 
-                           disciplina.includes('geography');
-        
-        // ✅ Gerar código baseado na disciplina detectada
-        if (isMathematics) {
-            // Para matemática, usar códigos como 9N1.1, 9N1.2, etc.
-            return `${grade}N1.${skillNumber}`;
-        } else if (isPortuguese) {
-            // Para língua portuguesa, usar códigos como LP9L1.1, LP9L1.2, etc.
-            return `LP${grade}L1.${skillNumber}`;
-        } else if (isScience) {
-            // Para ciências, usar códigos como CN9L1.1, CN9L1.2, etc.
-            return `CN${grade}L1.${skillNumber}`;
-        } else if (isHistory) {
-            // Para história, usar códigos como HI9L1.1, HI9L1.2, etc.
-            return `HI${grade}L1.${skillNumber}`;
-        } else if (isGeography) {
-            // Para geografia, usar códigos como GE9L1.1, GE9L1.2, etc.
-            return `GE${grade}L1.${skillNumber}`;
-        } else {
-            // Para outras disciplinas, usar códigos genéricos como LP9L1.1, LP9L1.2, etc.
-            return `LP${grade}L1.${skillNumber}`;
+            const progressPercentage = student.session?.progress || 0;
+            return (
+                <Badge className="bg-yellow-100 text-yellow-800 text-xs ml-2">
+                    <Clock className="w-3 h-3 mr-1" />
+                    Parcial ({progressPercentage.toFixed(1)}%)
+                </Badge>
+            );
         }
     };
 
-    // ✅ NOVO: Função para buscar descrição da skill
-    const getSkillDescription = (skillCode: string) => {
-        // Buscar em todas as disciplinas
-        for (const [subjectId, skills] of Object.entries(skillsBySubject || {})) {
-            const skill = skills.find(s => s.code === skillCode);
-            if (skill) {
-                return skill.description;
-            }
-        }
-        return null;
-    };
-
-    // ✅ USAR DADOS REAIS: Gerar porcentagens de acerto baseadas nos dados reais
-    const generateTurmaPercentages = () => {
-        if (questoes && questoes.length > 0) {
-            return Array.from({ length: totalQuestions }, (_, i) => {
-                const questao = questoes[i]; // Usar índice direto
-                return questao ? questao.porcentagem_acertos : 50; // Fallback para 50% se não encontrar
-            });
-        }
-        
-        // Fallback para dados simulados se não houver dados reais
-        return Array.from({ length: totalQuestions }, (_, i) => {
-            const basePercentage = 45 + Math.floor(Math.random() * 40); // Entre 45% e 85%
-            return Math.max(10, Math.min(90, basePercentage));
-        });
-    };
-
-    const turmaPercentages = generateTurmaPercentages();
-
-        return (
+    return (
         <div className="overflow-x-auto">
             <table className="min-w-max border border-gray-300 text-center text-sm shadow-md rounded-lg">
                 <thead>
-                    {/* Cabeçalho principal */}
                     <tr className="bg-gray-100">
                         <th className="p-2 min-w-[150px] text-left border-r border-gray-300">Aluno</th>
-                        {visibleFields?.questoes && Array.from({ length: totalQuestions }, (_, i) => {
-                            let questionNumber = i + 1;
-                            
-                            if (questoes && questoes.length > 0) {
-                                const questao = questoes[i];
-                                if (questao) {
-                                    questionNumber = questao.numero;
-                                }
-                            } else if (questionsWithSkills && questionsWithSkills.length > 0) {
-                                const questao = questionsWithSkills[i];
-                                if (questao) {
-                                    questionNumber = questao.number;
-                                }
-                            }
-                            
-                            return (
-                                <th key={`header-q${i}`} className="p-2 min-w-[80px] border-r border-gray-300">
-                                    Q{questionNumber}
-                                </th>
-                            );
-                        })}
+                        {visibleFields?.questoes && Array.from({ length: totalQuestions }, (_, i) => (
+                            <th key={`header-q${i}`} className="p-2 min-w-[80px] border-r border-gray-300">
+                                Q{i + 1}
+                            </th>
+                        ))}
                         {visibleFields?.total && <th className="p-2 bg-gray-50">Total</th>}
                         {visibleFields?.nota && <th className="p-2 bg-gray-50">Nota</th>}
                         {visibleFields?.proficiencia && <th className="p-2 bg-gray-50">Proficiência</th>}
                         {visibleFields?.nivel && <th className="p-2 bg-gray-50">Nível</th>}
                     </tr>
-                    
-                    {/* Linha de habilidades (se habilitada) */}
-                    {visibleFields?.habilidade && (
-                        <tr className="bg-gray-50">
-                            <td className="p-1 text-left border-r border-gray-300 text-xs font-mono text-gray-600">
-                                Habilidade
+                </thead>
+                <tbody>
+                    {filteredStudents.map((student, studentIndex) => (
+                        <tr key={`${student.id || 'student'}-${studentIndex}`} 
+                            className={`hover:bg-gray-50 cursor-pointer group ${
+                                isStudentPartial(student) ? 'bg-yellow-50' : ''
+                            }`}
+                            onClick={() => onViewStudentDetails(student.id)}
+                            title="Clique para ver resultados detalhados do aluno">
+                            <td className="p-2 border-t border-gray-200 text-left border-r border-gray-300">
+                                <div className="font-medium hover:text-blue-600 transition-colors flex items-center gap-2">
+                                    {student.name || student.nome}
+                                    {showAll && getStudentStatusBadge(student)}
+                                    <Eye className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </div>
                             </td>
-                            {visibleFields?.questoes && Array.from({ length: totalQuestions }, (_, i) => {
-                                let questionNumber = startQuestionNumber + i;
-                                let questao = null;
-                                
-                                if (questionsWithSkills && questionsWithSkills.length > 0) {
-                                    questao = questionsWithSkills[i];
-                                    if (questao) {
-                                        questionNumber = questao.number;
-                                    }
-                                } else if (questoes && questoes.length > 0) {
-                                    questao = questoes.find(q => q.numero === questionNumber);
-                                    if (questao) {
-                                        questionNumber = questao.numero;
-                                    }
-                                }
-                                
-                                const habilidadeCode = generateHabilidadeCode(questionNumber, questao);
-                                
-                                let disciplinaIndicator = '';
-                                if (questao && questao.subject && questao.subject.name) {
-                                    const disciplina = questao.subject.name.toLowerCase();
-                                    if (disciplina.includes('português') || disciplina.includes('portugues') || disciplina.includes('língua')) {
-                                        disciplinaIndicator = ' 🇧🇷';
-                                    } else if (disciplina.includes('matemática') || disciplina.includes('matematica')) {
-                                        disciplinaIndicator = ' 🔢';
-                                    } else if (disciplina.includes('ciência') || disciplina.includes('ciencia')) {
-                                        disciplinaIndicator = ' 🔬';
-                                    } else if (disciplina.includes('história') || disciplina.includes('historia')) {
-                                        disciplinaIndicator = ' 📚';
-                                    } else if (disciplina.includes('geografia')) {
-                                        disciplinaIndicator = ' 🌍';
-                                    }
-                                }
-                                
-                                const skillDescription = getSkillDescription(habilidadeCode);
-                                
-                                return (
-                                    <td key={`habilidade-q${i}`} className="p-1 border-r border-gray-300 text-xs font-mono text-gray-600">
-                                        {skillDescription ? (
-                                            <TooltipProvider>
-                                                <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                        <span className="cursor-help hover:text-blue-600 transition-colors group">
-                                                            {habilidadeCode}{disciplinaIndicator}
-                                                            <span className="ml-1 text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity">ℹ️</span>
-                                                        </span>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent side="top" className="max-w-xs bg-gray-900 text-white border-gray-700">
-                                                        <div className="space-y-2">
-                                                            <div className="font-bold text-sm text-blue-200">{habilidadeCode}</div>
-                                                            <div className="text-sm leading-relaxed">{skillDescription}</div>
-                                                        </div>
-                                                    </TooltipContent>
-                                                </Tooltip>
-                                            </TooltipProvider>
+                            {visibleFields?.questoes && Array.from({ length: totalQuestions }, (_, questionIndex) => (
+                                <td key={`${student.id}-q${questionIndex}`} className="p-2 border-t border-gray-200 border-r border-gray-300">
+                                    <div className="text-xl">
+                                        {questionIndex < (student.result?.correctAnswers || 0) ? (
+                                            <span className="text-blue-600">✓</span>
+                                        ) : questionIndex < (student.result?.correctAnswers || 0) + (student.result?.wrongAnswers || 0) ? (
+                                            <span className="text-red-500">✗</span>
                                         ) : (
-                                            <span>{habilidadeCode}{disciplinaIndicator}</span>
+                                            <span className="text-gray-400">-</span>
                                         )}
-                                    </td>
-                                );
-                            })}
-                            {visibleFields?.total && <td className="p-1 bg-gray-100 text-xs font-mono text-gray-600"></td>}
-                            {visibleFields?.nota && <td className="p-1 bg-gray-100 text-xs font-mono text-gray-600"></td>}
-                            {visibleFields?.proficiencia && <td className="p-1 bg-gray-100 text-xs font-mono text-gray-600"></td>}
-                            {visibleFields?.nivel && <td className="p-1 bg-gray-100 text-xs font-mono text-gray-600"></td>}
-                        </tr>
-                    )}
-                    
-                    {/* Linha de porcentagem da turma (se habilitada) */}
-                    {visibleFields?.percentualTurma && (
-                        <tr className="bg-blue-50">
-                            <td className="p-1 text-left border-r border-gray-300 text-xs font-semibold text-blue-700">
-                                % Turma
-                            </td>
-                            {visibleFields?.questoes && turmaPercentages.map((percentage, i) => (
-                                <td key={`turma-q${i}`} className="p-1 border-r border-gray-300">
-                                    <div className={`text-xs font-bold ${
-                                        percentage >= 60 ? "text-green-600" : "text-red-500"
-                                    }`}>
-                                        {percentage.toFixed(0)}%
                                     </div>
                                 </td>
                             ))}
-                            {visibleFields?.total && <td className="p-1 bg-gray-100 text-xs font-semibold text-blue-700"></td>}
-                            {visibleFields?.nota && <td className="p-1 bg-gray-100 text-xs font-semibold text-blue-700"></td>}
-                            {visibleFields?.proficiencia && <td className="p-1 bg-gray-100 text-xs font-semibold text-blue-700"></td>}
-                            {visibleFields?.nivel && <td className="p-1 bg-gray-100 text-xs font-semibold text-blue-700"></td>}
-                        </tr>
-                    )}
-                </thead>
-                <tbody>
-                    {students.map((student, studentIndex) => {
-                        const correctAnswers = student.acertos;
-                        const wrongAnswers = student.erros;
-                        const blankAnswers = student.em_branco;
-                        
-                        const answers = Array.from({ length: totalQuestions }, (_, questionIndex) => {
-                            if (questionIndex < correctAnswers) return true;
-                            if (questionIndex < correctAnswers + wrongAnswers) return false;
-                            return null;
-                        });
-                        
-                        return (
-                            <tr key={`${student.id || 'student'}-${studentIndex}`} 
-                                className="hover:bg-gray-50 cursor-pointer group"
-                                onClick={() => onViewStudentDetails(student.id)}
-                                title="Clique para ver resultados detalhados do aluno">
-                                <td className="p-2 border-t border-gray-200 text-left border-r border-gray-300">
-                                    <div className="font-medium hover:text-blue-600 transition-colors flex items-center gap-2">
-                                        {student.nome}
-                                        <Eye className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                    </div>
+                            {visibleFields?.total && <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50">{student.result?.correctAnswers || 0}</td>}
+                            {visibleFields?.nota && <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50">{(student.result?.grade || 0).toFixed(1)}</td>}
+                            {visibleFields?.proficiencia && <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50">{(student.result?.proficiency || 0).toFixed(0)}</td>}
+                            {visibleFields?.nivel && (
+                                <td className="p-2 border-t border-gray-200 bg-gray-50">
+                                    <span className={`px-2 py-1 rounded-full text-xs text-white ${
+                                        student.result?.classification === 'Abaixo do Básico' ? 'bg-red-500' :
+                                        student.result?.classification === 'Básico' ? 'bg-yellow-400' :
+                                        student.result?.classification === 'Adequado' ? 'bg-blue-500' :
+                                        'bg-green-500'
+                                    }`}>
+                                        {student.result?.classification || 'N/A'}
+                                    </span>
                                 </td>
-                                {visibleFields?.questoes && answers.map((answer, questionIndex) => (
-                                    <td key={`${student.id}-q${questionIndex}`} className="p-2 border-t border-gray-200 border-r border-gray-300">
-                                        <div className="text-xl">
-                                            {answer === true ? (
-                                                <span className="text-blue-600">✓</span>
-                                            ) : answer === false ? (
-                                                <span className="text-red-500">✗</span>
-                                            ) : (
-                                                <span className="text-gray-400">-</span>
-                                            )}
-                                        </div>
-                                    </td>
-                                ))}
-                                {visibleFields?.total && <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50">{student.acertos}</td>}
-                                {visibleFields?.nota && <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50">{student.nota.toFixed(1)}</td>}
-                                {visibleFields?.proficiencia && <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50">{student.proficiencia.toFixed(0)}</td>}
-                                {visibleFields?.nivel && (
-                                    <td className="p-2 border-t border-gray-200 bg-gray-50">
-                                        <span className={`px-2 py-1 rounded-full text-xs text-white ${
-                                            student.classificacao === 'Abaixo do Básico' ? 'bg-red-500' :
-                                            student.classificacao === 'Básico' ? 'bg-yellow-400' :
-                                            student.classificacao === 'Adequado' ? 'bg-blue-500' :
-                                            'bg-green-500'
-                                        }`}>
-                                            {student.classificacao}
-                                        </span>
-                                    </td>
-                                )}
-                            </tr>
-                        );
-                    })}
+                            )}
+                        </tr>
+                    ))}
                 </tbody>
             </table>
             
-            {/* Legenda */}
+            {/* ✅ RODAPÉ INFORMATIVO MELHORADO */}
             <div className="mt-4 p-3 bg-gray-50 rounded-lg">
                 <div className="text-xs text-gray-600 space-y-2">
+                    <div className="flex items-center justify-between">
+                        <div className="font-semibold text-gray-700">
+                            Exibindo {filteredStudents.length} de {students.length} alunos
+                        </div>
+                        {showAll && (
+                            <div className="text-yellow-700">
+                                <Clock className="w-3 h-3 inline mr-1" />
+                                Incluindo alunos com progresso parcial
+                            </div>
+                        )}
+                    </div>
+                    
                     <div className="font-semibold text-gray-700">Legenda:</div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="flex items-center gap-1">
@@ -580,14 +424,28 @@ const StudentsResultsTable = ({
                             <span className="text-red-500 text-lg">✗</span>
                             <span>Aluno errou</span>
                         </div>
-                            <div className="flex items-center gap-1">
-                            <span className="text-green-600 font-bold">60%+</span>
-                            <span>Turma teve bom desempenho</span>
-                        </div>
                         <div className="flex items-center gap-1">
-                            <span className="text-red-500 font-bold">&lt;60%</span>
-                            <span>Turma teve dificuldade</span>
+                            <span className="text-gray-400 text-lg">-</span>
+                            <span>Não respondeu</span>
                         </div>
+                        {showAll && (
+                            <>
+                                <div className="flex items-center gap-1">
+                                    <Badge className="bg-green-100 text-green-800 text-xs">
+                                        <CheckCircle className="w-3 h-3 mr-1" />
+                                        Completo
+                                    </Badge>
+                                    <span>Aluno finalizou</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <Badge className="bg-yellow-100 text-yellow-800 text-xs">
+                                        <Clock className="w-3 h-3 mr-1" />
+                                        Parcial
+                                    </Badge>
+                                    <span>Aluno em andamento</span>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>
@@ -595,79 +453,23 @@ const StudentsResultsTable = ({
     );
 };
 
+// ✅ COMPONENTE PRINCIPAL REFATORADO
 export default function DetailedResultsView({ onBack }: DetailedResultsViewProps) {
     const { id: evaluationId } = useParams<{ id: string }>();
-    const [evaluationInfo, setEvaluationInfo] = useState<EvaluationInfo | null>(null);
-    const [students, setStudents] = useState<StudentResult[]>([]);
-    const [detailedReport, setDetailedReport] = useState<DetailedReport | null>(null);
-    const [stats, setStats] = useState<Stats | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const [isDataLoading, setIsDataLoading] = useState(false);
-    const [loadingStep, setLoadingStep] = useState('');
-    const [loadingProgress, setLoadingProgress] = useState(0);
-    const [loadingSteps] = useState([
-        'Inicializando...',
-        'Verificando status da avaliação...',
-        'Carregando informações da avaliação...',
-        'Atualizando dados de status...',
-        'Buscando dados dos alunos...',
-        'Processando resultados detalhados...',
-        'Gerando estatísticas...',
-        'Finalizando carregamento...'
-    ]);
-    const [currentStepIndex, setCurrentStepIndex] = useState(0);
+    const navigate = useNavigate();
+    const { toast } = useToast();
+
+    // ✅ ESTADOS PARA CONTROLE DE VISUALIZAÇÃO
+    const [isRealTimeMode, setIsRealTimeMode] = useState(false);
+    const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
+    const [lastUpdate, setLastUpdate] = useState(new Date());
+
+    // ✅ ESTADOS PARA FILTROS E UI
     const [searchTerm, setSearchTerm] = useState('');
     const [classificationFilter, setClassificationFilter] = useState('all');
     const [statusFilter, setStatusFilter] = useState('all');
-    const [showOnlyWithScore, setShowOnlyWithScore] = useState(false);
-    const [viewMode, setViewMode] = useState<'table' | 'cards'>('table'); // Novo estado para modo de visualização
-    const [questionsWithSkills, setQuestionsWithSkills] = useState<Array<{
-        id: string;
-        number: number;
-        text: string;
-        formattedText: string;
-        alternatives?: Array<{
-            id: string;
-            text: string;
-            isCorrect: boolean;
-        }>;
-        skills: string[]; // ✅ Códigos reais como "LP5L1.2"
-        difficulty: 'Fácil' | 'Médio' | 'Difícil';
-        solution: string;
-        type: 'multipleChoice' | 'open' | 'trueFalse';
-        value: number;
-        subject: {
-            id: string;
-            name: string;
-        };
-        grade: {
-            id: string;
-            name: string;
-        };
-    }>>([]);
-    const [skillsMapping, setSkillsMapping] = useState<Record<string, string>>({}); // UUID -> Código real
-    const [skillsBySubject, setSkillsBySubject] = useState<Record<string, Array<{
-        id: string | null;
-        code: string;
-        description: string;
-        source: 'database' | 'question';
-    }>>>({}); // ✅ Skills organizadas por disciplina
-    const [gradesMapping, setGradesMapping] = useState<Record<string, string>>({}); // ✅ Adicionado para mapeamento de séries
-    
-    // ✅ ESTADO PARA CONTROLAR ESTABILIDADE DOS DADOS
-    const [isDataStable, setIsDataStable] = useState(false);
-    
-    // ✅ NOVOS ESTADOS PARA FILTROS E ORDENAÇÃO
-    const [visibleFields, setVisibleFields] = useState<{
-        turma: boolean;
-        habilidade: boolean;
-        questoes: boolean;
-        percentualTurma: boolean;
-        total: boolean;
-        nota: boolean;
-        proficiencia: boolean;
-        nivel: boolean;
-    }>({
+    const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
+    const [visibleFields, setVisibleFields] = useState({
         turma: true,
         habilidade: true,
         questoes: true,
@@ -677,1029 +479,144 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
         proficiencia: true,
         nivel: true
     });
-    
-    const [subjectFilter, setSubjectFilter] = useState<string>('all');
-    const [levelFilter, setLevelFilter] = useState<string>('all');
-    const [turmaFilter, setTurmaFilter] = useState<string>('all');
-    const [orderBy, setOrderBy] = useState<'nota' | 'proficiencia' | 'status' | 'turma' | 'nome'>('nome');
-    const [orderDirection, setOrderDirection] = useState<'asc' | 'desc'>('asc');
-    
-    const { toast } = useToast();
-    const navigate = useNavigate();
 
-    // ✅ FUNÇÃO PARA CONSOLIDAR ATUALIZAÇÕES DO EVALUATIONINFO
-    const consolidateEvaluationInfo = (updates: Partial<EvaluationInfo>) => {
-        setEvaluationInfo(prev => {
-            if (!prev) {
-                const newState = updates as EvaluationInfo;
-                return newState;
-            }
-            
-            // ✅ VERIFICAR SE HÁ MUDANÇAS REAIS ANTES DE ATUALIZAR
-            const hasChanges = Object.keys(updates).some(key => {
-                const updateValue = updates[key as keyof EvaluationInfo];
-                const currentValue = prev[key as keyof EvaluationInfo];
-                
-                // Para arrays, comparar conteúdo
-                if (Array.isArray(updateValue) && Array.isArray(currentValue)) {
-                    return JSON.stringify(updateValue) !== JSON.stringify(currentValue);
-                }
-                
-                // Para outros tipos, comparação direta
-                return updateValue !== currentValue;
-            });
-            
-            if (!hasChanges) {
-                return prev;
-            }
-            
-            const consolidated = {
-                ...prev,
-                ...updates
-            };
-            
-            // ✅ VERIFICAR SE OS DADOS ESTÃO ESTÁVEIS APÓS A CONSOLIDAÇÃO
-            // ✅ CORRIGIDO: Permitir que dados sejam considerados estáveis mesmo se apenas um dos campos estiver disponível
-            const hasStableData = (consolidated.disciplina && 
-                consolidated.disciplina.trim() !== '' && 
-                consolidated.disciplina !== 'N/A') ||
-                (consolidated.serie && 
-                consolidated.serie.trim() !== '' && 
-                consolidated.serie !== 'N/A');
-            
-            if (hasStableData && !isDataStable) {
-                setIsDataStable(true);
-            }
-            
-            return consolidated;
+    // ✅ HOOK REFATORADO - FONTE ÚNICA DE DADOS
+    const {
+        students: allStudents,
+        validResults,
+        partialResults,
+        stats,
+        completionStatus,
+        isLoading,
+        error,
+        refetch,
+        hasIncompleteStudents
+    } = useAggregatedResults(evaluationId || '', {
+        enablePartialView: isRealTimeMode,
+        autoRefresh: autoRefreshEnabled,
+        refreshInterval: 30000,
+        includePartialInStats: isRealTimeMode
+    });
+
+    // ✅ DADOS DERIVADOS DOS HOOKS
+    const studentsToShow = isRealTimeMode ? allStudents : allStudents.filter(s => s.isComplete);
+    const evaluationInfo: EvaluationInfo | null = stats ? {
+        id: evaluationId || '',
+        titulo: 'Avaliação Detalhada', // TODO: Buscar do backend
+        disciplina: 'Múltiplas Disciplinas', // TODO: Buscar do backend
+        curso: 'Ensino Fundamental', // TODO: Buscar do backend
+        serie: '9º Ano', // TODO: Buscar do backend
+        escola: 'Escola Municipal', // TODO: Buscar do backend
+        municipio: 'São Paulo', // TODO: Buscar do backend
+        data_aplicacao: new Date().toISOString(),
+        status: completionStatus.hasIncompleteStudents ? 'em_andamento' : 'concluida',
+        total_alunos: stats.total,
+        alunos_participantes: stats.completed + stats.partial,
+        alunos_ausentes: stats.total - (stats.completed + stats.partial),
+        media_nota: stats.validStats?.averageScore || 0,
+        media_proficiencia: stats.validStats?.averageProficiency || 0,
+        distribuicao_classificacao: {
+            abaixo_do_basico: 0, // TODO: Calcular dos dados reais
+            basico: 0,
+            adequado: 0,
+            avancado: 0
+        }
+    } : null;
+
+    // ✅ HANDLERS PARA CONTROLES
+    const handleToggleRealTime = (enabled: boolean) => {
+        setIsRealTimeMode(enabled);
+        setLastUpdate(new Date());
+        toast({
+            title: enabled ? "Modo Tempo Real Ativado" : "Modo Tempo Real Desativado",
+            description: enabled 
+                ? "Agora você pode acompanhar o progresso em tempo real."
+                : "Voltando a mostrar apenas dados completos e validados.",
         });
     };
 
-    // Função para atualizar o progresso do loading
-    const updateLoadingProgress = (step: number, message?: string) => {
-        setCurrentStepIndex(step);
-        setLoadingProgress((step / (loadingSteps.length - 1)) * 100);
-        if (message) {
-            setLoadingStep(message);
-        } else {
-            setLoadingStep(loadingSteps[step]);
-        }
-    };
-
-    useEffect(() => {
-        if (evaluationId) {
-            fetchDetailedResults();
-        }
-    }, [evaluationId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    // ✅ Função para obter nome da série (baseada na solução do Results.tsx)
-    const getGradeName = (gradeId: string | null | undefined, gradeIdFromApi?: string | null | undefined, evaluation?: EvaluationInfo): string => {
-        // ✅ PRIORIDADE 1: Usar o campo serie da API (agora deve vir correto)
-        if (gradeId && gradeId !== 'N/A') {
-            return gradeId;
-        }
-        
-        // ✅ PRIORIDADE 2: Usar o grade_id da API (UUID da grade)
-        if (gradeIdFromApi && gradeIdFromApi !== 'N/A') {
-            if (gradeIdFromApi.includes('-')) {
-                const mappedName = gradesMapping[gradeIdFromApi];
-                if (mappedName) {
-                    return mappedName;
-                }
-                return `Série ${gradeIdFromApi.slice(0, 8)}...`;
-            }
-            return gradeIdFromApi;
-        }
-        
-        // ✅ PRIORIDADE 3: Fallback para mapeamento local (se API não retornar)
-        if (evaluation) {
-            return determineGradeFromEvaluation(evaluation);
-        }
-        
-        return 'Série não identificada';
-    };
-
-    // ✅ Função para determinar série a partir da avaliação (fallback)
-    const determineGradeFromEvaluation = (evaluation: EvaluationInfo): string => {
-        // Fallback caso a API não retorne série (não deve mais acontecer)
-        return 'Série não identificada';
-    };
-
-    // ✅ Função para buscar mapeamento de séries
-    const fetchGradesMapping = async () => {
-        try {
-            // ✅ Tentar usar a API service primeiro
-            // ✅ Usar a rota correta do backend via API service
-            const response = await api.get('/evaluation-results/grades');
-            
-            if (response.data) {
-                const grades = response.data;
-                
-                const mapping: Record<string, string> = {};
-                if (Array.isArray(grades)) {
-                    grades.forEach((grade: { id: string; name: string }) => {
-                        mapping[grade.id] = grade.name;
-                    });
-                    setGradesMapping(mapping);
-                    return;
-                }
-            }
-        } catch (error) {
-            // Fallback silencioso
-        }
-
-        try {
-            // ✅ Fallback: tentar fetch direto
-            const response = await fetch('/evaluation-results/grades');
-            if (response.ok) {
-                const grades = await response.json();
-                const mapping: Record<string, string> = {};
-                if (Array.isArray(grades)) {
-                    grades.forEach((grade: { id: string; name: string }) => {
-                        mapping[grade.id] = grade.name;
-                    });
-                    setGradesMapping(mapping);
-                }
-            }
-        } catch (error) {
-            // Fallback silencioso
-        }
-    };
-
-    // ✅ CORRIGIDO: Calcular alunos filtrados
-    const filteredStudents = React.useMemo(() => {
-        return students.filter(student => {
-            const matchesSearch = searchTerm === '' || 
-                student.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                student.turma.toLowerCase().includes(searchTerm.toLowerCase());
-            
-            const matchesClassification = classificationFilter === 'all' || 
-                student.classificacao === classificationFilter;
-            
-            const matchesStatus = statusFilter === 'all' || 
-                student.status === statusFilter;
-            
-            const matchesScore = !showOnlyWithScore || student.nota > 0;
-            
-            // ✅ NOVOS FILTROS
-            const matchesLevel = levelFilter === 'all' || 
-                student.classificacao === levelFilter;
-            
-            const matchesTurma = turmaFilter === 'all' || 
-                student.turma === turmaFilter;
-            
-            return matchesSearch && matchesClassification && matchesStatus && matchesScore && matchesLevel && matchesTurma;
-        }).sort((a, b) => {
-            // ✅ ORDENAÇÃO
-            let comparison = 0;
-            
-            switch (orderBy) {
-                case 'nota':
-                    comparison = a.nota - b.nota;
-                    break;
-                case 'proficiencia':
-                    comparison = a.proficiencia - b.proficiencia;
-                    break;
-                case 'status':
-                    comparison = a.status.localeCompare(b.status);
-                    break;
-                case 'turma':
-                    comparison = a.turma.localeCompare(b.turma);
-                    break;
-                case 'nome':
-                default:
-                    comparison = a.nome.localeCompare(b.nome);
-                    break;
-            }
-            
-            return orderDirection === 'asc' ? comparison : -comparison;
+    const handleToggleAutoRefresh = (enabled: boolean) => {
+        setAutoRefreshEnabled(enabled);
+        toast({
+            title: enabled ? "Auto-atualização Ativada" : "Auto-atualização Desativada",
+            description: enabled 
+                ? "Os dados serão atualizados automaticamente a cada 30 segundos."
+                : "Atualização automática foi desabilitada.",
         });
-    }, [students, searchTerm, classificationFilter, statusFilter, showOnlyWithScore, levelFilter, turmaFilter, orderBy, orderDirection]);
-
-    // Componente de visualização em cards (mantido para compatibilidade)
-    const StudentsCardsView = ({ students }: { students: StudentResult[] }) => {
-        return (
-            <div className="space-y-4">
-                {students.map((student, index) => {
-                    const accuracyRate = student.questoes_respondidas > 0
-                        ? (student.acertos / student.questoes_respondidas) * 100
-                        : 0;
-
-                    return (
-                        <div key={`${student.id || 'student'}-${index}`} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
-                            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                                {/* Informações principais */}
-                                <div className="flex-1 space-y-2">
-                                    <div className="flex items-center gap-2">
-                                        <h3 className="font-semibold text-lg">{student.nome}</h3>
-                                        <Badge variant="outline">{student.turma}</Badge>
-                                        <Badge className={getStatusColor(student.status)}>
-                                            {student.status === 'concluida' ? 'Concluída' : 'Pendente'}
-                                        </Badge>
-                                    </div>
-
-                                    <div className="flex items-center gap-6">
-                                        <div className="flex items-center gap-2">
-                                            <Target className="h-4 w-4 text-muted-foreground" />
-                                            <span className="text-sm font-medium">
-                                                Nota: {student.nota.toFixed(1)}
-                                            </span>
-                                            {student.nota > 0 ? (
-                                                student.nota >= 7 ? (
-                                                    <TrendingUp className="h-4 w-4 text-green-600" />
-                                                ) : (
-                                                    <XCircle className="h-4 w-4 text-orange-600" />
-                                                )
-                                            ) : (
-                                                <Minus className="h-4 w-4 text-gray-400" />
-                                            )}
-                                        </div>
-
-                                        <div className="flex items-center gap-2">
-                                            <BarChart3 className="h-4 w-4 text-muted-foreground" />
-                                            <span className="text-sm font-medium">
-                                                Proficiência: {student.proficiencia > 0 ? student.proficiencia.toFixed(1) : 'N/A'}
-                                            </span>
-                                        </div>
-
-                                        <div className="flex items-center gap-2">
-                                            <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-                                            <span className="text-sm font-medium">
-                                                Acertos: {student.acertos}/{student.questoes_respondidas}
-                                            </span>
-                                        </div>
-
-                                        <div className="flex items-center gap-2">
-                                            <Clock className="h-4 w-4 text-muted-foreground" />
-                                            <span className="text-sm font-medium">
-                                                Tempo: {Math.floor(student.tempo_gasto / 60)}min
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    {/* Barra de progresso de acertos */}
-                                    {student.questoes_respondidas > 0 && (
-                                        <div className="space-y-1">
-                                            <div className="flex justify-between text-xs text-muted-foreground">
-                                                <span>Taxa de Acerto</span>
-                                                <span>{accuracyRate.toFixed(1)}%</span>
-                                            </div>
-                                            <Progress value={accuracyRate} className="h-2" />
-                                        </div>
-                                    )}
-
-                                    {/* Classificação */}
-                                    <div className="flex items-center gap-2">
-                                        <Badge className={getClassificationColor(student.classificacao)}>
-                                            {student.classificacao}
-                                        </Badge>
-                                        {student.status === 'pendente' && (
-                                            <Badge variant="outline" className="text-orange-600 border-orange-300">
-                                                Aguardando conclusão
-                                            </Badge>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Ações */}
-                                <div className="flex items-center gap-2">
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => handleViewStudentDetails(student.id)}
-                                        disabled={student.status === 'pendente'}
-                                    >
-                                        <Eye className="h-4 w-4 mr-2" />
-                                        Ver Detalhes
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-        );
     };
 
-    const fetchDetailedResults = async () => {
-        try {
-            setIsLoading(true);
-            setIsDataLoading(true);
-            setLoadingProgress(0);
-            setIsDataStable(false); // ✅ Resetar estabilidade no início
-            updateLoadingProgress(0, 'Inicializando carregamento...');
-            
-            if (!evaluationId) {
-                throw new Error("ID da avaliação não fornecido");
-            }
-
-            // ✅ Buscar mapeamento de séries e opções de filtros
-            await fetchGradesMapping();
-            
-            // ✅ Buscar opções de filtros da avaliação (inclui disciplinas e séries)
-            const filterOptions = await EvaluationResultsApiService.getFilterOptionsForEvaluation(evaluationId);
-            
-            // ✅ ATUALIZAR evaluationInfo com múltiplas disciplinas
-            if (filterOptions?.subjects && filterOptions.subjects.length > 0) {
-                // ✅ Extrair nomes das disciplinas (pode ser string ou objeto)
-                const disciplinasNomes = filterOptions.subjects.map((disciplina: string | { name?: string; nome?: string; id?: string }) => {
-                    if (typeof disciplina === 'string') {
-                        return disciplina;
-                    } else if (disciplina && typeof disciplina === 'object') {
-                        return disciplina.name || disciplina.nome || disciplina.id || 'Disciplina não identificada';
-                    }
-                    return 'Disciplina não identificada';
-                });
-                
-                consolidateEvaluationInfo({
-                    disciplinas: disciplinasNomes
-                });
-            }
-
-            // ✅ 1. Verificar e atualizar status da avaliação
-            updateLoadingProgress(1, 'Verificando status da avaliação...');
-            const statusCheck = await EvaluationResultsApiService.checkEvaluationStatus(evaluationId);
-
-            // ✅ 2. Buscar informações básicas da avaliação
-            updateLoadingProgress(2, 'Carregando informações da avaliação...');
-            const evaluationResponse = await EvaluationResultsApiService.getEvaluationById(evaluationId);
-            
-            if (evaluationResponse) {
-                consolidateEvaluationInfo(evaluationResponse);
-                
-                // ✅ 3. Tentar recalcular a avaliação primeiro
-                updateLoadingProgress(3, 'Recalculando dados da avaliação...');
-                try {
-                    const recalculationResult = await EvaluationResultsApiService.recalculateEvaluation(evaluationId);
-                    
-                    // ✅ 3.1. Tentar calcular scores especificamente
-                    if (recalculationResult.success) {
-                        try {
-                            const calculateScoresResult = await EvaluationResultsApiService.calculateTestScores(evaluationId);
-                            
-                            // ✅ 3.3. Aguardar um pouco para o backend processar os dados
-                            await new Promise(resolve => setTimeout(resolve, 2000)); // 2 segundos
-                        } catch (error) {
-                            // Erro no cálculo de scores - continuar
-                        }
-                    }
-                } catch (error) {
-                    // Erro na recalculação - continuar
-                }
-
-                // ✅ 4. Obter resumo de status atualizado
-                updateLoadingProgress(4, 'Atualizando dados de status...');
-                const statusSummary = await EvaluationResultsApiService.getEvaluationStatusSummary(evaluationId);
-                
-                if (statusSummary) {
-                    // ✅ Usar os campos corretos que o backend agora retorna
-                    const totalAlunos = statusSummary.total_alunos || 0;
-                    const alunosParticipantes = statusSummary.alunos_participantes || 0;
-                    const alunosAusentes = statusSummary.alunos_ausentes || 0;
-                    
-                    const hasValidData = totalAlunos > 0;
-                    
-                    if (hasValidData) {
-                        // ✅ Atualizar mapeamento de séries se disponível
-                        if (filterOptions?.grades) {
-                            const newGradesMapping: Record<string, string> = {};
-                            filterOptions.grades.forEach(grade => {
-                                newGradesMapping[grade.id] = grade.name;
-                            });
-                            setGradesMapping(newGradesMapping);
-                        }
-                        
-                        // Atualizar as informações com dados mais precisos
-                        consolidateEvaluationInfo({
-                            total_alunos: totalAlunos,
-                            alunos_participantes: alunosParticipantes,
-                            alunos_ausentes: alunosAusentes,
-                            media_nota: statusSummary.average_score !== undefined ? statusSummary.average_score : evaluationInfo?.media_nota,
-                            media_proficiencia: statusSummary.average_proficiency !== undefined ? statusSummary.average_proficiency : evaluationInfo?.media_proficiencia,
-                            status: statusSummary.overall_status as 'concluida' | 'em_andamento' | 'pendente' || evaluationInfo?.status,
-                            disciplinas: filterOptions?.subjects?.map((d: string | { name?: string }) => typeof d === 'string' ? d : d.name) || evaluationInfo?.disciplinas
-                        });
-
-                        // ✅ 5. Buscar dados da avaliação novamente após recalculação (múltiplas tentativas)
-                        updateLoadingProgress(5, 'Atualizando dados finais...');
-                        
-                        let updatedEvaluationResponse = null;
-                        let attempts = 0;
-                        const maxAttempts = 3;
-                        
-                        while (attempts < maxAttempts) {
-                            attempts++;
-                            
-                            updatedEvaluationResponse = await EvaluationResultsApiService.getEvaluationById(evaluationId);
-                            
-                            // ✅ Verificar se os dados foram atualizados
-                            if (updatedEvaluationResponse && 
-                                (updatedEvaluationResponse.media_nota > 0 || updatedEvaluationResponse.media_proficiencia > 0)) {
-                                break;
-                            }
-                            
-                            if (attempts < maxAttempts) {
-                                await new Promise(resolve => setTimeout(resolve, 1000)); // 1 segundo
-                            }
-                        }
-
-                        if (updatedEvaluationResponse) {
-                            // ✅ Atualizar com os dados recalculados
-                            consolidateEvaluationInfo({
-                                media_nota: updatedEvaluationResponse.media_nota !== undefined ? updatedEvaluationResponse.media_nota : evaluationInfo?.media_nota,
-                                media_proficiencia: updatedEvaluationResponse.media_proficiencia !== undefined ? updatedEvaluationResponse.media_proficiencia : evaluationInfo?.media_proficiencia
-                            });
-                        }
-
-                        // ✅ 5.1. Calcular médias manualmente se o backend não retornar
-                        try {
-                            const studentsData = await EvaluationResultsApiService.getStudentsByEvaluation(evaluationId);
-                            
-                            if (studentsData && studentsData.length > 0) {
-                                const studentsWithScores = studentsData.filter(s => s.nota > 0);
-                                
-                                if (studentsWithScores.length > 0) {
-                                    const averageScore = studentsWithScores.reduce((sum, s) => sum + s.nota, 0) / studentsWithScores.length;
-                                    const averageProficiency = studentsWithScores.reduce((sum, s) => sum + s.proficiencia, 0) / studentsWithScores.length;
-                                    
-                                    // ✅ Atualizar com as médias calculadas manualmente
-                                    consolidateEvaluationInfo({
-                                        media_nota: averageScore,
-                                        media_proficiencia: averageProficiency
-                                    });
-                                }
-                            }
-                        } catch (error) {
-                            // Erro ao calcular médias manualmente - continuar
-                        }
-                    }
-                } else {
-                    // ✅ Tentar recalcular a avaliação se o resumo não estiver disponível
-                    try {
-                        const recalculationResult = await EvaluationResultsApiService.recalculateEvaluation(evaluationId);
-                        
-                        if (recalculationResult.success) {
-                            // Tentar obter o resumo novamente após recálculo
-                            const updatedStatusSummary = await EvaluationResultsApiService.getEvaluationStatusSummary(evaluationId);
-                            if (updatedStatusSummary) {
-                                // ✅ Usar os campos corretos que o backend agora retorna
-                                const totalAlunos = updatedStatusSummary.total_alunos || 0;
-                                const alunosParticipantes = updatedStatusSummary.alunos_participantes || 0;
-                                const alunosAusentes = updatedStatusSummary.alunos_ausentes || 0;
-                                
-                                // ✅ Buscar opções de filtros novamente após recálculo
-                                const updatedFilterOptions = await EvaluationResultsApiService.getFilterOptionsForEvaluation(evaluationId);
-                                
-                                consolidateEvaluationInfo({
-                                    total_alunos: totalAlunos,
-                                    alunos_participantes: alunosParticipantes,
-                                    alunos_ausentes: alunosAusentes,
-                                    media_nota: updatedStatusSummary.average_score !== undefined ? updatedStatusSummary.average_score : evaluationInfo?.media_nota,
-                                    media_proficiencia: updatedStatusSummary.average_proficiency !== undefined ? updatedStatusSummary.average_proficiency : evaluationInfo?.media_proficiencia,
-                                    status: updatedStatusSummary.overall_status as 'concluida' | 'em_andamento' | 'pendente' || evaluationInfo?.status,
-                                    disciplinas: updatedFilterOptions?.subjects?.map((d: string | { name?: string }) => typeof d === 'string' ? d : d.name) || evaluationInfo?.disciplinas
-                                });
-                            }
-                        }
-                    } catch (error) {
-                        // Erro ao recalcular avaliação - continuar
-                    }
-                }
-            } else {
-                console.error(`❌ Avaliação não encontrada: ${evaluationId}`);
-                return;
-            }
-            
-            // ✅ 6. Buscar dados das questões com códigos reais
-            updateLoadingProgress(6, 'Buscando dados dos alunos...');
-            let questionsWithSkillsResponse = null;
-            try {
-                questionsWithSkillsResponse = await EvaluationResultsApiService.getEvaluationSkills(evaluationId);
-                
-                // ✅ Verificar se é array ou objeto
-                if (Array.isArray(questionsWithSkillsResponse) && questionsWithSkillsResponse.length > 0) {
-                    // ✅ Extrair informações da série a partir dos dados das questões
-                    const firstQuestion = questionsWithSkillsResponse[0];
-                    
-                    if (firstQuestion.grade) {
-                        // ✅ Atualizar evaluationInfo com a série correta
-                        consolidateEvaluationInfo({
-                            serie: firstQuestion.grade.name || firstQuestion.grade.id,
-                            grade_id: firstQuestion.grade.id
-                        });
-                    }
-                    
-                    // ✅ Verificar se há informações de disciplina nos dados das questões
-                    if (firstQuestion.subject) {
-                        // ✅ Atualizar evaluationInfo com a disciplina correta se necessário
-                        if (firstQuestion.subject.name && firstQuestion.subject.name !== evaluationInfo?.disciplina) {
-                            consolidateEvaluationInfo({
-                                disciplina: firstQuestion.subject.name
-                            });
-                        }
-                    }
-                }
-            } catch (error: unknown) {
-                // Continuar sem os dados das questões
-            }
-            
-            // ✅ ALTERNATIVA: Buscar série a partir dos dados da avaliação
-            if (evaluationResponse) {
-                // ✅ Verificar se há informações de série nos dados da avaliação
-                // Usar type assertion para acessar propriedades que podem existir dinamicamente
-                const evaluationWithGrade = evaluationResponse as EvaluationInfo & { grade?: string | { name: string; id: string }; grade_id?: string | { name: string; id: string } };
-                if (evaluationWithGrade.grade || evaluationWithGrade.grade_id) {
-                    const gradeInfo = evaluationWithGrade.grade || evaluationWithGrade.grade_id;
-                    
-                    consolidateEvaluationInfo({
-                        serie: typeof gradeInfo === 'string' ? gradeInfo : gradeInfo.name || gradeInfo.id,
-                        grade_id: typeof gradeInfo === 'string' ? undefined : gradeInfo.id
-                    });
-                }
-            }
-            
-            // ✅ NOVA ALTERNATIVA: Buscar série na resposta da API /questions
-            if (questionsWithSkillsResponse && typeof questionsWithSkillsResponse === 'object') {
-                // ✅ Verificar se há informações de série na resposta
-                // Usar type assertion para acessar propriedades que podem existir dinamicamente
-                const questionsWithGrade = questionsWithSkillsResponse as { grade?: string | { name: string; id: string }; grade_id?: string | { name: string; id: string } };
-                if (questionsWithGrade.grade || questionsWithGrade.grade_id) {
-                    const gradeInfo = questionsWithGrade.grade || questionsWithGrade.grade_id;
-                    
-                    consolidateEvaluationInfo({
-                        serie: typeof gradeInfo === 'string' ? gradeInfo : gradeInfo.name || gradeInfo.id,
-                        grade_id: typeof gradeInfo === 'string' ? undefined : gradeInfo.id
-                    });
-                }
-            }
-
-            // ✅ 7. Buscar relatório detalhado
-            updateLoadingProgress(7, 'Processando resultados detalhados...');
-            let detailedReportResponse = null;
-            try {
-                detailedReportResponse = await EvaluationResultsApiService.getDetailedReport(evaluationId);
-            } catch (error: unknown) {
-                // Continuar com dados básicos se relatório detalhado falhar
-            }
-
-            // ✅ NOVO: BUSCAR SKILLS POR AVALIAÇÃO (resolve o problema das disciplinas)
-            try {
-                const evaluationSkills = await EvaluationResultsApiService.getSkillsByEvaluation(evaluationId);
-                
-                if (evaluationSkills && evaluationSkills.length > 0) {
-                    // ✅ Criar mapeamento UUID -> Código real organizado por disciplina
-                    const newSkillsMapping: Record<string, string> = {};
-                    const skillsBySubject: Record<string, Array<{
-                        id: string | null;
-                        code: string;
-                        description: string;
-                        source: 'database' | 'question';
-                    }>> = {};
-                    
-                    evaluationSkills.forEach(skill => {
-                        // ✅ Mapear UUID para código real
-                        if (skill.id && skill.code) {
-                            newSkillsMapping[skill.id] = skill.code;
-                        }
-                        
-                        // ✅ Organizar skills por disciplina
-                        const subjectId = skill.subject_id;
-                        if (!skillsBySubject[subjectId]) {
-                            skillsBySubject[subjectId] = [];
-                        }
-                        skillsBySubject[subjectId].push({
-                            id: skill.id,
-                            code: skill.code,
-                            description: skill.description,
-                            source: skill.source
-                        });
-                    });
-                    
-                    console.log('🔍 Skills organizadas por disciplina:', skillsBySubject);
-                    setSkillsMapping(newSkillsMapping);
-                    setSkillsBySubject(skillsBySubject);
-                    
-                    // ✅ Atualizar informações da avaliação com disciplinas encontradas
-                    if (Object.keys(skillsBySubject).length > 0) {
-                        // ✅ Buscar nomes das disciplinas
-                        try {
-                            const subjects = await EvaluationResultsApiService.getSubjects();
-                            const disciplinasNomes: string[] = [];
-                            
-                            Object.keys(skillsBySubject).forEach(subjectId => {
-                                const subject = subjects.find((s: { id: string; name: string }) => s.id === subjectId);
-                                if (subject) {
-                                    disciplinasNomes.push(subject.name);
-                                }
-                            });
-                            
-                            if (disciplinasNomes.length > 0) {
-                                consolidateEvaluationInfo({
-                                    disciplinas: disciplinasNomes
-                                });
-                            }
-                        } catch (error) {
-                            console.warn('⚠️ Erro ao buscar nomes das disciplinas:', error);
-                        }
-                    }
-                } else {
-                    // ✅ Criar mapeamento vazio para evitar erros
-                    setSkillsMapping({});
-                }
-            } catch (error) {
-                console.warn('⚠️ Erro ao buscar skills da avaliação:', error);
-                // ✅ Criar mapeamento vazio para evitar erros
-                setSkillsMapping({});
-            }
-            
-            if (detailedReportResponse) {
-                setDetailedReport(detailedReportResponse);
-                
-                // ✅ CORRIGIDO: Transformar alunos do relatório detalhado para o formato esperado
-                const transformedStudents: StudentResult[] = detailedReportResponse.alunos.map(aluno => {
-                    // ✅ CORREÇÃO: Converter proficiência da escala 0-1000 para a escala correta
-                    let proficienciaCorrigida = aluno.proficiencia;
-                    
-                    // Se o valor está na escala 0-1000, converter para a escala correta
-                    if (aluno.proficiencia > 500) { // Valores acima de 500 indicam escala 0-1000
-                        // Determinar o valor máximo baseado na série/disciplina
-                        const isMathematics = detailedReportResponse.avaliacao.disciplina.toLowerCase().includes('matemática') || 
-                                             detailedReportResponse.avaliacao.disciplina.toLowerCase().includes('matematica');
-
-                        // Assumir Anos Finais/EM para o exemplo (pode ser ajustado conforme necessário)
-                        const maxProficiency = isMathematics ? 425 : 425; // Usando o valor mais alto conforme as mudanças
-                        
-                        // Converter: (valor_1000 / 1000) * max_proficiency
-                        proficienciaCorrigida = (aluno.proficiencia / 1000) * maxProficiency;
-                    }
-                    
-                    return {
-                        id: aluno.id,
-                        nome: aluno.nome,
-                        turma: aluno.turma,
-                        nota: aluno.nota_final,
-                        proficiencia: proficienciaCorrigida,
-                        classificacao: aluno.classificacao,
-                        questoes_respondidas: aluno.total_acertos + aluno.total_erros + aluno.total_em_branco,
-                        acertos: aluno.total_acertos,
-                        erros: aluno.total_erros,
-                        em_branco: aluno.total_em_branco,
-                        tempo_gasto: aluno.respostas.reduce((total, resp) => total + resp.tempo_gasto, 0),
-                        status: aluno.status === 'concluida' ? 'concluida' : 'pendente'
-                    };
-                });
-
-                updateLoadingProgress(6, 'Gerando estatísticas...');
-                setStudents(transformedStudents);
-                
-                // ✅ ATUALIZAR DADOS DAS QUESTÕES COM CÓDIGOS REAIS
-                if (questionsWithSkillsResponse && questionsWithSkillsResponse.length > 0) {
-                    setQuestionsWithSkills(questionsWithSkillsResponse);
-                }
-                
-                // ✅ CORRIGIDO: Calcular estatísticas usando os dados reais
-                const totalStudents = detailedReportResponse.alunos.length;
-                const completedStudents = detailedReportResponse.alunos.filter(a => a.status === 'concluida').length;
-                
-                // Calcular média ponderada baseada no número de alunos
-                const totalScore = detailedReportResponse.alunos.reduce((sum, aluno) => sum + aluno.nota_final, 0);
-                const averageScore = totalStudents > 0 ? totalScore / totalStudents : 0;
-                
-                // Calcular média de proficiência ponderada
-                const totalProficiency = detailedReportResponse.alunos.reduce((sum, aluno) => sum + aluno.proficiencia, 0);
-                const averageProficiency = totalStudents > 0 ? totalProficiency / totalStudents : 0;
-                
-                // Calcular distribuição de classificação
-                const distribution = {
-                    abaixo_do_basico: detailedReportResponse.alunos.filter(a => a.classificacao === 'Abaixo do Básico').length,
-                    basico: detailedReportResponse.alunos.filter(a => a.classificacao === 'Básico').length,
-                    adequado: detailedReportResponse.alunos.filter(a => a.classificacao === 'Adequado').length,
-                    avancado: detailedReportResponse.alunos.filter(a => a.classificacao === 'Avançado').length,
-                };
-
-                setStats({
-                    totalStudents,
-                    completedStudents,
-                    averageScore,
-                    averageProficiency,
-                    distribution
-                });
-            } else {
-                // Se não há relatório detalhado, buscar apenas os alunos
-                updateLoadingProgress(6, 'Carregando lista de alunos...');
-                const studentsResponse = await EvaluationResultsApiService.getStudentsByEvaluation(evaluationId);
-                setStudents(studentsResponse);
-                
-                // Calcular estatísticas básicas
-                const totalStudents = studentsResponse.length;
-                const completedStudents = studentsResponse.filter(s => s.status === 'concluida').length;
-                const totalScore = studentsResponse.reduce((sum, s) => sum + s.nota, 0);
-                const averageScore = totalStudents > 0 ? totalScore / totalStudents : 0;
-                const totalProficiency = studentsResponse.reduce((sum, s) => sum + s.proficiencia, 0);
-                const averageProficiency = totalStudents > 0 ? totalProficiency / totalStudents : 0;
-                
-                const distribution = {
-                    abaixo_do_basico: studentsResponse.filter(s => s.classificacao === 'Abaixo do Básico').length,
-                    basico: studentsResponse.filter(s => s.classificacao === 'Básico').length,
-                    adequado: studentsResponse.filter(s => s.classificacao === 'Adequado').length,
-                    avancado: studentsResponse.filter(s => s.classificacao === 'Avançado').length,
-                };
-                
-                setStats({
-                    totalStudents,
-                    completedStudents,
-                    averageScore,
-                    averageProficiency,
-                    distribution
-                });
-            }
-
-        } catch (error: unknown) {
-            console.error("❌ Erro ao buscar resultados detalhados:", error);
-            
-            // ✅ CORRIGIDO: Mensagens de erro mais específicas incluindo timeout
-            let errorMessage = "Não foi possível carregar os resultados detalhados da avaliação";
-            
-            const apiError = error as ApiError;
-            
-            if (apiError.message?.includes('CORS') || apiError.code === 'ERR_NETWORK') {
-                errorMessage = "Erro de conexão com o servidor. Verifique se o backend está rodando em http://localhost:5000";
-            } else if (apiError.code === 'ECONNABORTED' || apiError.message?.includes('timeout') || apiError.message?.includes('Timeout')) {
-                errorMessage = "A requisição demorou muito para responder. O servidor pode estar processando muitos dados. Tente novamente em alguns minutos.";
-            } else if (apiError.message?.includes('não encontrada')) {
-                errorMessage = "Avaliação não encontrada ou não possui resultados disponíveis";
-            } else if (apiError.response?.status === 404) {
-                errorMessage = "Avaliação não encontrada no servidor";
-            } else if (apiError.response?.status && apiError.response.status >= 500) {
-                errorMessage = "Erro interno do servidor. Tente novamente mais tarde";
-            }
-            
-            toast({
-                title: "Erro",
-                description: errorMessage,
-                variant: "destructive",
-            });
-        } finally {
-            updateLoadingProgress(7, 'Finalizando carregamento...');
-            
-            // ✅ VERIFICAÇÃO FINAL DE ESTABILIDADE
-            if (evaluationInfo && !isDataStable) {
-                const hasStableData = evaluationInfo.disciplina && 
-                    evaluationInfo.disciplina.trim() !== '' && 
-                    evaluationInfo.disciplina !== 'N/A' &&
-                    evaluationInfo.serie && 
-                    evaluationInfo.serie.trim() !== '' && 
-                    evaluationInfo.serie !== 'N/A';
-                
-                if (hasStableData) {
-                    setIsDataStable(true);
-                }
-            }
-            
-            // ✅ VERIFICAÇÃO FINAL DE DADOS MÍNIMOS
-            if (evaluationInfo && evaluationInfo.id && evaluationInfo.titulo && students && students.length > 0) {
-                // Carregamento concluído com sucesso
-            }
-            
-            // Pequeno delay para mostrar a etapa final
-            setTimeout(() => {
-                setIsLoading(false);
-                setIsDataLoading(false);
-                setLoadingStep('');
-                setLoadingProgress(0);
-            }, 500);
-        }
-    };
-
-    const getClassificationColor = (classification: string) => {
-        switch (classification) {
-            case 'Avançado': return 'bg-green-100 text-green-800 border-green-300';
-            case 'Adequado': return 'bg-blue-100 text-blue-800 border-blue-300';
-            case 'Básico': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-            case 'Abaixo do Básico': return 'bg-red-100 text-red-800 border-red-300';
-            default: return 'bg-gray-100 text-gray-800 border-gray-300';
-        }
-    };
-
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'concluida': return 'bg-green-100 text-green-800 border-green-300';
-            case 'pendente': return 'bg-gray-100 text-gray-800 border-gray-300';
-            default: return 'bg-gray-100 text-gray-800 border-gray-300';
-        }
-    };
-
-    // Função utilitária para tratar valores vazios
-    const formatFieldValue = (value: string | null | undefined, fallback: string = 'Não informado') => {
-        if (!value || value.trim() === '') return fallback;
-        return value;
+    const handleRefresh = async () => {
+        setLastUpdate(new Date());
+        await refetch();
+        toast({
+            title: "Dados Atualizados",
+            description: "As informações foram atualizadas com sucesso.",
+        });
     };
 
     const handleViewStudentDetails = (studentId: string) => {
         navigate(`/app/avaliacao/${evaluationId}/aluno/${studentId}/resultados`);
     };
 
-    const handleExportStudents = async () => {
-        try {
-            const XLSX = await import('xlsx');
-            const { saveAs } = await import('file-saver');
+    // ✅ EFEITO PARA AUTO-REFRESH
+    useEffect(() => {
+        if (!autoRefreshEnabled) return;
 
-            if (filteredStudents.length === 0) {
-                toast({
-                    title: "Nenhum dado para exportar",
-                    description: "Não há alunos para gerar a planilha",
-                    variant: "destructive",
-                });
-                return;
-            }
+        const interval = setInterval(() => {
+            handleRefresh();
+        }, 30000);
 
-            const worksheetData = [
-                ['Nome', 'Turma', 'Nota', 'Proficiência', 'Classificação', 'Questões Respondidas', 'Acertos', 'Erros', 'Tempo (min)', 'Status'],
-                ...filteredStudents.map(student => [
-                    student.nome,
-                    student.turma,
-                    student.nota.toFixed(1),
-                    student.proficiencia.toFixed(2),
-                    student.classificacao,
-                    student.questoes_respondidas,
-                    student.acertos,
-                    student.erros,
-                    Math.floor(student.tempo_gasto / 60),
-                    student.status === 'concluida' ? 'Concluída' : 'Pendente'
-                ])
-            ];
+        return () => clearInterval(interval);
+    }, [autoRefreshEnabled, refetch]);
 
-            const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
-            const workbook = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(workbook, worksheet, 'Resultados dos Alunos');
+    // ✅ FILTROS APLICADOS AOS DADOS DOS HOOKS
+    const filteredStudents = React.useMemo(() => {
+        return studentsToShow.filter(student => {
+            const matchesSearch = searchTerm === '' || 
+                (student.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (student.class || '').toLowerCase().includes(searchTerm.toLowerCase());
+            
+            const matchesClassification = classificationFilter === 'all' || 
+                student.result?.classification === classificationFilter;
+            
+            const matchesStatus = statusFilter === 'all' || 
+                (statusFilter === 'concluida' ? student.isComplete : !student.isComplete);
+            
+            return matchesSearch && matchesClassification && matchesStatus;
+        });
+    }, [studentsToShow, searchTerm, classificationFilter, statusFilter]);
 
-            const fileName = `resultados-alunos-${evaluationId}-${new Date().toISOString().split('T')[0]}.xlsx`;
-            const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-            const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-
-            saveAs(blob, fileName);
-
-            toast({
-                title: "Exportação concluída!",
-                description: "Os resultados dos alunos foram exportados com sucesso.",
-            });
-        } catch (error) {
-            console.error("Erro na exportação:", error);
-            toast({
-                title: "Erro na exportação",
-                description: "Não foi possível exportar os resultados",
-                variant: "destructive",
-            });
-        }
-    };
-
-    const uniqueClassifications = [...new Set(students.map(s => s.classificacao))];
-    const uniqueTurmas = [...new Set(students.map(s => s.turma))].sort();
-
-    // ✅ VERIFICAÇÃO: Só renderizar se os dados estiverem completos
-    const hasValidEvaluationData = evaluationInfo && 
-        evaluationInfo.media_nota !== undefined && 
-        evaluationInfo.media_proficiencia !== undefined && 
-        evaluationInfo.total_alunos !== undefined && 
-        evaluationInfo.alunos_participantes !== undefined && 
-        evaluationInfo.alunos_ausentes !== undefined;
-
-    // ✅ VERIFICAÇÃO: Só renderizar se os alunos estiverem carregados
-    const hasValidStudentsData = students && students.length > 0;
-
-    // ✅ VERIFICAÇÃO: Só renderizar se as estatísticas estiverem carregadas
-    const hasValidStatsData = stats && 
-        stats.totalStudents !== undefined && 
-        stats.averageScore !== undefined && 
-        stats.averageProficiency !== undefined;
-
-    // ✅ VERIFICAÇÃO: Dados mínimos necessários para renderizar
-    const hasMinimumData = evaluationInfo && evaluationInfo.id && evaluationInfo.titulo;
-
-    // ✅ VERIFICAÇÃO: Skills mapping carregado (pode ser vazio, mas deve estar definido)
-    const hasSkillsMappingLoaded = skillsMapping !== undefined;
-
-    // ✅ Loading state melhorado - mostrar loading se dados essenciais não estiverem prontos
-    // ✅ CORRIGIDO: Verificação mais flexível para permitir carregamento com dados parciais
-    const shouldShowLoading = isLoading || 
-        !evaluationInfo || 
-        !evaluationInfo.id || 
-        !evaluationInfo.titulo || 
-        !hasValidStudentsData;
-
-    // ✅ FALLBACK: Se ainda estiver carregando após muito tempo, mostrar dados parciais
-    const hasBeenLoadingTooLong = isLoading && loadingProgress > 50 && evaluationInfo && evaluationInfo.id;
-    
-    if (shouldShowLoading && !hasBeenLoadingTooLong) {
+    // Estados de loading
+    if (isLoading) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center p-4">
-                <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
-                    <div className="text-center">
-                        {/* Loading Animation */}
-                        <div className="relative mb-6">
-                            <div className="w-20 h-20 mx-auto relative">
-                                {/* Spinner principal */}
-                                <div className="absolute inset-0 rounded-full border-4 border-blue-100"></div>
-                                <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-600 animate-spin"></div>
-                                
-                                {/* Ícone central */}
-                                <div className="absolute inset-0 flex items-center justify-center">
-                                    <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                                        <BarChart3 className="w-4 h-4 text-white" />
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            {/* Pontos animados */}
-                            <div className="flex justify-center mt-4 space-x-1">
-                                <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"></div>
-                                <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                                <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                            </div>
-                        </div>
+            <div className="container mx-auto px-4 py-6 space-y-6">
+                <div className="flex items-center gap-4">
+                    <Button variant="outline" onClick={onBack}>
+                        <ArrowLeft className="h-4 w-4 mr-2" />
+                        Voltar
+                    </Button>
+                    <Skeleton className="h-8 w-64" />
+                </div>
 
-                        {/* Título */}
-                        <h2 className="text-xl font-bold text-gray-900 mb-3">
-                            Carregando Resultados Detalhados
-                        </h2>
-                        
-                        {/* Progress Bar */}
-                        <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
-                            <div 
-                                className="bg-gradient-to-r from-blue-500 to-indigo-600 h-2 rounded-full transition-all duration-500 ease-out"
-                                style={{ width: `${loadingProgress}%` }}
-                            ></div>
-                        </div>
-                        
-                        {/* Etapa atual */}
-                        <p className="text-sm font-medium text-blue-600 mb-2">
-                            {loadingStep}
-                        </p>
-                        
-                        {/* Progresso numérico */}
-                        <p className="text-xs text-gray-500 mb-4">
-                            Etapa {currentStepIndex + 1} de {loadingSteps.length} • {Math.round(loadingProgress)}% concluído
-                        </p>
-
-                        {/* Status dos dados */}
-                        <div className="bg-blue-50 rounded-lg p-3 mb-6">
-                            <div className="text-xs text-blue-800 space-y-1">
-                                <div className="flex items-center justify-between">
-                                    <span>Dados básicos da avaliação:</span>
-                                    <span className={`font-medium ${evaluationInfo && evaluationInfo.id && evaluationInfo.titulo ? 'text-green-600' : 'text-yellow-600'}`}>
-                                        {evaluationInfo && evaluationInfo.id && evaluationInfo.titulo ? '✓' : '⏳'}
-                                    </span>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <span>Lista de alunos:</span>
-                                    <span className={`font-medium ${hasValidStudentsData ? 'text-green-600' : 'text-yellow-600'}`}>
-                                        {hasValidStudentsData ? '✓' : '⏳'}
-                                    </span>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <span>Dados completos da avaliação:</span>
-                                    <span className={`font-medium ${hasValidEvaluationData ? 'text-green-600' : 'text-yellow-600'}`}>
-                                        {hasValidEvaluationData ? '✓' : '⏳'}
-                                    </span>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <span>Estatísticas:</span>
-                                    <span className={`font-medium ${hasValidStatsData ? 'text-green-600' : 'text-yellow-600'}`}>
-                                        {hasValidStatsData ? '✓' : '⏳'}
-                                    </span>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <span>Mapeamento de habilidades:</span>
-                                    <span className={`font-medium ${hasSkillsMappingLoaded ? 'text-green-600' : 'text-yellow-600'}`}>
-                                        {hasSkillsMappingLoaded ? '✓' : '⏳'}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        {/* Informação adicional */}
-                        <div className="bg-blue-50 rounded-lg p-3 mb-6">
-                            <p className="text-xs text-blue-800">
-                                💡 Esta operação pode demorar alguns segundos dependendo do tamanho dos dados da avaliação.
-                            </p>
-                        </div>
-
-                        {/* Botão para tentar novamente */}
-                        <Button 
-                            variant="outline" 
-                            onClick={fetchDetailedResults}
-                            className="text-sm border-blue-200 text-blue-700 hover:bg-blue-50"
-                        >
-                            <RefreshCw className="w-4 h-4 mr-2" />
-                            Tentar Novamente
-                        </Button>
-                    </div>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                    {[1, 2, 3, 4].map((i) => (
+                        <Card key={i}>
+                            <CardHeader className="pb-3">
+                                <Skeleton className="h-4 w-32" />
+                            </CardHeader>
+                            <CardContent>
+                                <Skeleton className="h-8 w-16 mb-2" />
+                                <Skeleton className="h-3 w-24" />
+                            </CardContent>
+                        </Card>
+                    ))}
                 </div>
             </div>
         );
     }
 
-    if (!evaluationInfo) {
+    // Estado de erro
+    if (error) {
         return (
             <div className="container mx-auto px-4 py-6">
                 <div className="flex items-center gap-4 mb-6">
@@ -1713,17 +630,13 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                         <AlertCircle className="w-8 h-8 text-red-600" />
                     </div>
                     <h3 className="text-lg font-medium text-gray-900 mb-2">
-                        Avaliação não encontrada
+                        Erro ao Carregar Dados
                     </h3>
                     <p className="text-gray-600 mb-4">
-                        A avaliação solicitada não foi encontrada ou não possui resultados disponíveis.
+                        {error}
                     </p>
-                    <Button 
-                        variant="outline" 
-                        onClick={fetchDetailedResults}
-                        className="text-sm"
-                    >
-                        <RefreshCw className="w-4 h-4 mr-2" />
+                    <Button onClick={handleRefresh}>
+                        <RefreshCw className="h-4 w-4 mr-2" />
                         Tentar Novamente
                     </Button>
                 </div>
@@ -1731,71 +644,17 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
         );
     }
 
-    // Skeleton loading para quando os dados estão sendo processados
-    if (isDataLoading) {
+    if (!evaluationInfo || !stats) {
         return (
-            <div className="container mx-auto px-4 py-6 space-y-6">
-                {/* Header Skeleton */}
-                <div className="flex items-center gap-4">
-                    <Button variant="outline" onClick={onBack}>
-                        <ArrowLeft className="h-4 w-4 mr-2" />
-                        Voltar
-                    </Button>
-                    <div className="flex-1">
-                        <Skeleton className="h-8 w-96 mb-2" />
-                        <Skeleton className="h-4 w-64" />
-                    </div>
-                    <Skeleton className="h-10 w-24" />
+            <div className="container mx-auto px-4 py-6">
+                <div className="text-center py-12">
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">
+                        Avaliação não encontrada
+                    </h3>
+                    <p className="text-gray-600 mb-4">
+                        A avaliação solicitada não foi encontrada ou não possui resultados disponíveis.
+                    </p>
                 </div>
-
-                {/* Cards de Estatísticas Skeleton */}
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                    {[...Array(4)].map((_, i) => (
-                        <Card key={i}>
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <Skeleton className="h-4 w-24" />
-                                <Skeleton className="h-4 w-4" />
-                            </CardHeader>
-                            <CardContent>
-                                <Skeleton className="h-8 w-12 mb-1" />
-                                <Skeleton className="h-3 w-20" />
-                            </CardContent>
-                        </Card>
-                    ))}
-                </div>
-
-                {/* Tabela Skeleton */}
-                <Card>
-                    <CardHeader>
-                        <div className="flex items-center justify-between">
-                            <Skeleton className="h-6 w-48" />
-                            <div className="flex gap-2">
-                                <Skeleton className="h-8 w-20" />
-                                <Skeleton className="h-8 w-20" />
-                            </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-3">
-                            {[...Array(5)].map((_, i) => (
-                                <div key={i} className="flex items-center justify-between p-4 border rounded-lg">
-                                    <div className="flex items-center gap-4 flex-1">
-                                        <Skeleton className="h-10 w-10 rounded-full" />
-                                        <div className="space-y-2 flex-1">
-                                            <Skeleton className="h-4 w-48" />
-                                            <Skeleton className="h-3 w-32" />
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <Skeleton className="h-8 w-16" />
-                                        <Skeleton className="h-8 w-16" />
-                                        <Skeleton className="h-8 w-20" />
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
             </div>
         );
     }
@@ -1811,12 +670,16 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                 <div className="flex-1">
                     <h1 className="text-2xl font-bold">{evaluationInfo.titulo}</h1>
                     <p className="text-muted-foreground">
-                        Resultados detalhados dos alunos
+                        {isRealTimeMode 
+                            ? "Resultados detalhados com monitoramento em tempo real"
+                            : "Resultados detalhados (apenas dados completos e validados)"
+                        }
                     </p>
                 </div>
+                
                 <Button 
                     variant="outline" 
-                    onClick={fetchDetailedResults}
+                    onClick={handleRefresh}
                     disabled={isLoading}
                 >
                     <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
@@ -1824,81 +687,64 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                 </Button>
             </div>
 
+            {/* ✅ CONTROLES DE VISUALIZAÇÃO */}
+            <RealTimeControlsCard
+                isRealTimeMode={isRealTimeMode}
+                onToggleRealTime={handleToggleRealTime}
+                lastUpdate={lastUpdate}
+                autoRefreshEnabled={autoRefreshEnabled}
+                onToggleAutoRefresh={handleToggleAutoRefresh}
+                completionStats={{
+                    total: stats.total,
+                    completed: stats.completed,
+                    partial: stats.partial,
+                    completionRate: stats.completionRate
+                }}
+            />
+
+            {/* ✅ STATUS DE COMPLETUDE MELHORADO */}
+            <CompletionStatusCard
+                stats={{
+                    total: stats.total,
+                    completed: stats.completed,
+                    partial: stats.partial,
+                    completionRate: stats.completionRate
+                }}
+                isRealTimeMode={isRealTimeMode}
+            />
+
             {/* Informações da Avaliação */}
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center justify-between">
                         <span>Informações da Avaliação</span>
-                        <Badge className={getStatusColor(evaluationInfo.status)}>
+                        <Badge className={
+                            evaluationInfo.status === 'concluida' ? 'bg-green-100 text-green-800' :
+                            evaluationInfo.status === 'em_andamento' ? 'bg-blue-100 text-blue-800' :
+                            'bg-gray-100 text-gray-800'
+                        }>
                             {evaluationInfo.status === 'concluida' ? 'Concluída' :
                                 evaluationInfo.status === 'em_andamento' ? 'Em Andamento' : 'Pendente'}
                         </Badge>
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
-                    
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                         <div className="space-y-2">
-                            <div className="text-sm font-medium text-muted-foreground">Disciplinas</div>
-                            <div className="font-semibold">
-                                {(() => {
-                                    // ✅ VERIFICAÇÃO DE ESTABILIDADE - só mostrar se dados estiverem estáveis
-                                    const hasStableDisciplinas = evaluationInfo.disciplinas && 
-                                        evaluationInfo.disciplinas.length > 0 && 
-                                        evaluationInfo.disciplinas.every(d => d && d.trim() !== '');
-                                    
-                                    const hasStableDisciplina = evaluationInfo.disciplina && 
-                                        evaluationInfo.disciplina.trim() !== '' && 
-                                        evaluationInfo.disciplina !== 'N/A';
-                                    
-                                    // ✅ CORRIGIDO: Mostrar dados mesmo se não estiverem completamente estáveis
-                                    if (hasStableDisciplinas) {
-                                        return (
-                                            <div className="flex flex-wrap gap-1">
-                                                {evaluationInfo.disciplinas.map((disciplina, index) => (
-                                                    <Badge key={index} variant="secondary" className="text-xs">
-                                                        {disciplina}
-                                                    </Badge>
-                                                ))}
-                                            </div>
-                                        );
-                                    } else if (hasStableDisciplina) {
-                                        return formatFieldValue(evaluationInfo.disciplina, 'Disciplina não informada');
-                                    } else if (!isDataStable) {
-                                        return <span className="text-gray-400">Carregando...</span>;
-                                    } else {
-                                        return <span className="text-gray-400">Disciplina não informada</span>;
-                                    }
-                                })()}
-                            </div>
+                            <div className="text-sm font-medium text-muted-foreground">Disciplina</div>
+                            <div className="font-semibold">{evaluationInfo.disciplina}</div>
                         </div>
                         <div className="space-y-2">
                             <div className="text-sm font-medium text-muted-foreground">Série</div>
-                            <div className="font-semibold">
-                                {(() => {
-                                    // ✅ VERIFICAÇÃO DE ESTABILIDADE - só mostrar se série estiver estável
-                                    const hasStableSerie = evaluationInfo.serie && 
-                                        evaluationInfo.serie.trim() !== '' && 
-                                        evaluationInfo.serie !== 'N/A';
-                                    
-                                    if (hasStableSerie) {
-                                        const gradeName = getGradeName(evaluationInfo.serie, evaluationInfo.grade_id, evaluationInfo);
-                                        return gradeName;
-                                    } else if (!isDataStable) {
-                                        return <span className="text-gray-400">Carregando...</span>;
-                                    } else {
-                                        return <span className="text-gray-400">Série não informada</span>;
-                                    }
-                                })()}
-                            </div>
+                            <div className="font-semibold">{evaluationInfo.serie}</div>
                         </div>
                         <div className="space-y-2">
                             <div className="text-sm font-medium text-muted-foreground">Escola</div>
-                            <div className="font-semibold">{formatFieldValue(evaluationInfo.escola, 'Escola não informada')}</div>
+                            <div className="font-semibold">{evaluationInfo.escola}</div>
                         </div>
                         <div className="space-y-2">
                             <div className="text-sm font-medium text-muted-foreground">Município</div>
-                            <div className="font-semibold">{formatFieldValue(evaluationInfo.municipio, 'Município não informado')}</div>
+                            <div className="font-semibold">{evaluationInfo.municipio}</div>
                         </div>
                     </div>
 
@@ -1912,24 +758,6 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                             <div className="text-2xl font-bold text-green-600">{evaluationInfo.alunos_participantes}</div>
                         </div>
                         <div className="space-y-2">
-                            <div className="text-sm font-medium text-muted-foreground">Faltosos</div>
-                            <div className="text-2xl font-bold text-red-600">
-                                {evaluationInfo.alunos_ausentes}
-                            </div>
-                        </div>
-                        <div className="space-y-2">
-                            <div className="text-sm font-medium text-muted-foreground">Taxa de Participação</div>
-                            <div className="text-2xl font-bold text-blue-600">
-                                {evaluationInfo.total_alunos > 0 
-                                    ? ((evaluationInfo.alunos_participantes / evaluationInfo.total_alunos) * 100).toFixed(1)
-                                    : '0.0'
-                                }%
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mt-6">
-                        <div className="space-y-2">
                             <div className="text-sm font-medium text-muted-foreground">Nota Geral</div>
                             <div className="text-2xl font-bold text-purple-600">
                                 {evaluationInfo.media_nota.toFixed(1)}
@@ -1938,62 +766,10 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                         <div className="space-y-2">
                             <div className="text-sm font-medium text-muted-foreground">Proficiência</div>
                             <div className="text-2xl font-bold text-orange-600">
-                                {(() => {
-                                    const prof = evaluationInfo.media_proficiencia;
-                                    return prof && prof > 0 ? prof.toFixed(1) : '0.0';
-                                })()}
-                            </div>
-                        </div>
-                        <div className="space-y-2">
-                            <div className="text-sm font-medium text-muted-foreground">Taxa de Conclusão</div>
-                            <div className="text-2xl font-bold text-green-600">
-                                {evaluationInfo.total_alunos > 0 
-                                    ? ((evaluationInfo.alunos_participantes / evaluationInfo.total_alunos) * 100).toFixed(1)
-                                    : '0.0'
-                                }%
+                                {evaluationInfo.media_proficiencia.toFixed(1)}
                             </div>
                         </div>
                     </div>
-
-                </CardContent>
-            </Card>
-
-            {/* Gráfico de Distribuição por Classificação */}
-            <Card>
-                <CardContent className="pt-6">
-                    <DonutChartComponent
-                        data={[
-                            {
-                                name: "Abaixo do Básico",
-                                value: students.filter(s => s.classificacao === 'Abaixo do Básico' && s.nota > 0).length
-                            },
-                            {
-                                name: "Básico",
-                                value: students.filter(s => s.classificacao === 'Básico' && s.nota > 0).length
-                            },
-                            {
-                                name: "Adequado",
-                                value: students.filter(s => s.classificacao === 'Adequado' && s.nota > 0).length
-                            },
-                            {
-                                name: "Avançado",
-                                value: students.filter(s => s.classificacao === 'Avançado' && s.nota > 0).length
-                            },
-                            {
-                                name: "Sem Nota",
-                                value: students.filter(s => s.nota === 0).length
-                            }
-                        ]}
-                        title="Distribuição por Classificação"
-                        subtitle={`Total de ${students.length} alunos`}
-                        colors={[
-                            "#ef4444", // red-500 - Abaixo do Básico
-                            "#f97316", // orange-500 - Básico
-                            "#3b82f6", // blue-500 - Adequado
-                            "#22c55e", // green-500 - Avançado
-                            "#6b7280"  // gray-500 - Sem Nota
-                        ]}
-                    />
                 </CardContent>
             </Card>
 
@@ -2008,7 +784,7 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                             <div className="relative">
                                 <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                                 <Input
-                                    placeholder="Buscar por nome do aluno ou turma..."
+                                    placeholder="Buscar por nome do aluno..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     className="pl-10"
@@ -2041,375 +817,42 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                 </CardContent>
             </Card>
 
-            {/* ✅ SEÇÃO COMPACTA: Controles Avançados */}
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-lg">Controles da Tabela</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="space-y-4">
-                        {/* Campos Visíveis - Layout Compacto */}
-                        <div>
-                            <h4 className="text-sm font-medium text-gray-700 mb-2">Colunas Visíveis</h4>
-                            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2">
-                                {[
-                                    { key: 'habilidade', label: 'Habilidade' },
-                                    { key: 'questoes', label: 'Questões' },
-                                    { key: 'percentualTurma', label: '% Turma' },
-                                    { key: 'total', label: 'Total' },
-                                    { key: 'nota', label: 'Nota' },
-                                    { key: 'proficiencia', label: 'Proficiência' },
-                                    { key: 'nivel', label: 'Nível' }
-                                ].map(({ key, label }) => (
-                                    <div key={key} className="flex items-center space-x-2">
-                                        <Checkbox
-                                            id={key}
-                                            checked={visibleFields[key as keyof typeof visibleFields]}
-                                            onCheckedChange={(checked) => 
-                                                setVisibleFields(prev => ({ ...prev, [key]: checked as boolean }))
-                                            }
-                                        />
-                                        <label htmlFor={key} className="text-xs">{label}</label>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Filtros e Ordenação - Layout Compacto */}
-                        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-                            <div>
-                                <label className="text-xs font-medium text-gray-700 block mb-1">Disciplina</label>
-                                <Select value={subjectFilter} onValueChange={setSubjectFilter}>
-                                    <SelectTrigger className="h-8 text-xs">
-                                        <SelectValue placeholder="Todas" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">Todas</SelectItem>
-                                        <SelectItem value="matematica">Matemática</SelectItem>
-                                        <SelectItem value="portugues">Português</SelectItem>
-                                        <SelectItem value="ciencias">Ciências</SelectItem>
-                                        <SelectItem value="historia">História</SelectItem>
-                                        <SelectItem value="geografia">Geografia</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div>
-                                <label className="text-xs font-medium text-gray-700 block mb-1">Nível</label>
-                                <Select value={levelFilter} onValueChange={setLevelFilter}>
-                                    <SelectTrigger className="h-8 text-xs">
-                                        <SelectValue placeholder="Todos" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">Todos</SelectItem>
-                                        <SelectItem value="Abaixo do Básico">Abaixo do Básico</SelectItem>
-                                        <SelectItem value="Básico">Básico</SelectItem>
-                                        <SelectItem value="Adequado">Adequado</SelectItem>
-                                        <SelectItem value="Avançado">Avançado</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div>
-                                <label className="text-xs font-medium text-gray-700 block mb-1">Turma</label>
-                                <Select value={turmaFilter} onValueChange={setTurmaFilter}>
-                                    <SelectTrigger className="h-8 text-xs">
-                                        <SelectValue placeholder="Todas" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">Todas as Turmas</SelectItem>
-                                        {uniqueTurmas.map(turma => (
-                                            <SelectItem key={turma} value={turma}>{turma}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div>
-                                <label className="text-xs font-medium text-gray-700 block mb-1">Ordenar</label>
-                                <Select value={orderBy} onValueChange={(value: 'nota' | 'proficiencia' | 'status' | 'turma' | 'nome') => setOrderBy(value)}>
-                                    <SelectTrigger className="h-8 text-xs">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="nome">Nome</SelectItem>
-                                        <SelectItem value="nota">Nota</SelectItem>
-                                        <SelectItem value="proficiencia">Proficiência</SelectItem>
-                                        <SelectItem value="status">Status</SelectItem>
-                                        <SelectItem value="turma">Turma</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div>
-                                <label className="text-xs font-medium text-gray-700 block mb-1">Direção</label>
-                                <Select value={orderDirection} onValueChange={(value: 'asc' | 'desc') => setOrderDirection(value)}>
-                                    <SelectTrigger className="h-8 text-xs">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="asc">A→Z</SelectItem>
-                                        <SelectItem value="desc">Z→A</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="flex items-end">
-                                <Button 
-                                    variant="outline" 
-                                    size="sm" 
-                                    onClick={() => {
-                                        setSearchTerm('');
-                                        setClassificationFilter('all');
-                                        setStatusFilter('all');
-                                        setShowOnlyWithScore(false);
-                                        setLevelFilter('all');
-                                        setTurmaFilter('all');
-                                        setSubjectFilter('all');
-                                        setOrderBy('nome');
-                                        setOrderDirection('asc');
-                                    }}
-                                    className="h-8 text-xs"
-                                >
-                                    Limpar Filtros
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
-
-            {/* Estatísticas por Turma */}
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-lg">Estatísticas por Turma</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {uniqueTurmas.map(turma => {
-                            const turmaStudents = students.filter(s => s.turma === turma);
-                            const turmaStudentsCompleted = turmaStudents.filter(s => s.status === 'concluida');
-                            
-                            // Usar dados reais dos alunos que temos
-                            const totalStudentsInTurma = turmaStudents.length;
-                            const completedStudentsInTurma = turmaStudentsCompleted.length;
-                            
-                            // Calcular médias apenas dos alunos que participaram
-                            const averageScore = turmaStudentsCompleted.length > 0 
-                                ? turmaStudentsCompleted.reduce((sum, s) => sum + s.nota, 0) / turmaStudentsCompleted.length 
-                                : 0;
-                            const averageProficiency = turmaStudentsCompleted.length > 0 
-                                ? turmaStudentsCompleted.reduce((sum, s) => sum + s.proficiencia, 0) / turmaStudentsCompleted.length 
-                                : 0;
-                            
-                            // Distribuição baseada em todos os alunos da turma
-                            // Alunos que não participaram são considerados "Abaixo do Básico"
-                            const alunosNaoParticiparam = totalStudentsInTurma - completedStudentsInTurma;
-                            const distribution = {
-                                abaixo_do_basico: turmaStudentsCompleted.filter(s => s.classificacao === 'Abaixo do Básico').length + alunosNaoParticiparam,
-                                basico: turmaStudentsCompleted.filter(s => s.classificacao === 'Básico').length,
-                                adequado: turmaStudentsCompleted.filter(s => s.classificacao === 'Adequado').length,
-                                avancado: turmaStudentsCompleted.filter(s => s.classificacao === 'Avançado').length,
-                            };
-
-                            const participationRate = totalStudentsInTurma > 0 
-                                ? (completedStudentsInTurma / totalStudentsInTurma) * 100 
-                                : 0;
-
-                            return (
-                                <div key={turma} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
-                                    <div className="flex items-center justify-between mb-3">
-                                        <h3 className="font-semibold text-lg">{turma}</h3>
-                                        <Badge variant="outline">{totalStudentsInTurma} alunos</Badge>
-                                    </div>
-                                    
-                                    <div className="space-y-3">
-                                        <div className="space-y-2">
-                                            <div className="flex items-center justify-between text-sm">
-                                                <span className="text-muted-foreground">Participação:</span>
-                                                <span className="font-medium">
-                                                    {completedStudentsInTurma}/{totalStudentsInTurma} alunos
-                                                </span>
-                                            </div>
-                                            <Progress value={participationRate} className="h-2" />
-                                        </div>
-                                        
-                                        <div className="flex items-center justify-between text-sm">
-                                            <span className="text-muted-foreground">Média Nota:</span>
-                                            <span className="font-medium">{averageScore.toFixed(1)}</span>
-                                        </div>
-                                        
-                                        <div className="flex items-center justify-between text-sm">
-                                            <span className="text-muted-foreground">Proficiência:</span>
-                                            <span className="font-medium">{averageProficiency.toFixed(1)}</span>
-                                        </div>
-                                        
-                                        {/* Distribuição de classificação */}
-                                        <div className="space-y-1">
-                                            <div className="text-xs text-muted-foreground">Distribuição:</div>
-                                            <div className="flex gap-1">
-                                                <div 
-                                                    className="flex-1 bg-red-500 rounded-sm h-2" 
-                                                    title={`Abaixo do Básico: ${distribution.abaixo_do_basico}`}
-                                                    style={{ 
-                                                        width: `${totalStudentsInTurma > 0 ? (distribution.abaixo_do_basico / totalStudentsInTurma) * 100 : 0}%` 
-                                                    }}
-                                                ></div>
-                                                <div 
-                                                    className="flex-1 bg-yellow-500 rounded-sm h-2" 
-                                                    title={`Básico: ${distribution.basico}`}
-                                                    style={{ 
-                                                        width: `${totalStudentsInTurma > 0 ? (distribution.basico / totalStudentsInTurma) * 100 : 0}%` 
-                                                    }}
-                                                ></div>
-                                                <div 
-                                                    className="flex-1 bg-blue-500 rounded-sm h-2" 
-                                                    title={`Adequado: ${distribution.adequado}`}
-                                                    style={{ 
-                                                        width: `${totalStudentsInTurma > 0 ? (distribution.adequado / totalStudentsInTurma) * 100 : 0}%` 
-                                                    }}
-                                                ></div>
-                                                <div 
-                                                    className="flex-1 bg-green-500 rounded-sm h-2" 
-                                                    title={`Avançado: ${distribution.avancado}`}
-                                                    style={{ 
-                                                        width: `${totalStudentsInTurma > 0 ? (distribution.avancado / totalStudentsInTurma) * 100 : 0}%` 
-                                                    }}
-                                                ></div>
-                                            </div>
-                                            <div className="flex justify-between text-xs text-muted-foreground">
-                                                <span>{distribution.abaixo_do_basico}</span>
-                                                <span>{distribution.basico}</span>
-                                                <span>{distribution.adequado}</span>
-                                                <span>{distribution.avancado}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </CardContent>
-            </Card>
-
             {/* Lista de Alunos */}
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center justify-between">
-                        <span>Resultados dos Alunos</span>
+                        <span>
+                            Resultados dos Alunos
+                            {isRealTimeMode && (
+                                <Badge className="ml-2 bg-yellow-100 text-yellow-800 text-xs">
+                                    <Activity className="w-3 h-3 mr-1" />
+                                    Tempo Real
+                                </Badge>
+                            )}
+                        </span>
                         <div className="flex items-center gap-2">
                             <Badge variant="outline">
                                 {filteredStudents.length} {filteredStudents.length === 1 ? 'aluno' : 'alunos'}
                             </Badge>
-                            <div className="flex items-center gap-1 border rounded-lg p-1">
-                                <Button
-                                    variant={viewMode === 'table' ? 'default' : 'ghost'}
-                                    size="sm"
-                                    onClick={() => setViewMode('table')}
-                                    className="h-8 px-3"
-                                >
-                                    <BarChart3 className="h-4 w-4 mr-1" />
-                                    Tabela
-                                </Button>
-                                <Button
-                                    variant={viewMode === 'cards' ? 'default' : 'ghost'}
-                                    size="sm"
-                                    onClick={() => setViewMode('cards')}
-                                    className="h-8 px-3"
-                                >
-                                    <Users className="h-4 w-4 mr-1" />
-                                    Cards
-                                </Button>
-                            </div>
-                            <Button onClick={handleExportStudents} variant="outline">
-                                <Download className="h-4 w-4 mr-2" />
-                                Exportar
-                            </Button>
                         </div>
                     </CardTitle>
-                    {/* Resumo da situação */}
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-2">
-                            <Minus className="h-4 w-4 text-red-600" />
-                            <span>{students.filter(s => s.status === 'pendente').length} faltosos</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Users className="h-4 w-4 text-blue-600" />
-                            <span>{((students.filter(s => s.status === 'concluida').length / students.length) * 100).toFixed(1)}% participação</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Target className="h-4 w-4 text-blue-600" />
-                            <span>{students.filter(s => s.nota > 0).length} com nota</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Minus className="h-4 w-4 text-gray-600" />
-                            <span>{students.filter(s => s.nota === 0).length} sem nota</span>
-                        </div>
-                    </div>
-                    
-                    {/* Filtros ativos */}
-                    {(searchTerm || classificationFilter !== 'all' || statusFilter !== 'all' || 
-                      levelFilter !== 'all' || turmaFilter !== 'all' || subjectFilter !== 'all') && (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
-                            <span>Filtros ativos:</span>
-                            {searchTerm && (
-                                <Badge variant="secondary" className="text-xs">
-                                    Busca: "{searchTerm}"
-                                </Badge>
-                            )}
-                            {classificationFilter !== 'all' && (
-                                <Badge variant="secondary" className="text-xs">
-                                    Classificação: {classificationFilter}
-                                </Badge>
-                            )}
-                            {statusFilter !== 'all' && (
-                                <Badge variant="secondary" className="text-xs">
-                                    Status: {statusFilter === 'concluida' ? 'Concluída' : 'Pendente'}
-                                </Badge>
-                            )}
-                            {levelFilter !== 'all' && (
-                                <Badge variant="secondary" className="text-xs">
-                                    Nível: {levelFilter}
-                                </Badge>
-                            )}
-                            {turmaFilter !== 'all' && (
-                                <Badge variant="secondary" className="text-xs">
-                                    Turma: {turmaFilter}
-                                </Badge>
-                            )}
-                            {subjectFilter !== 'all' && (
-                                <Badge variant="secondary" className="text-xs">
-                                    Disciplina: {subjectFilter}
-                                </Badge>
-                            )}
-                        </div>
-                    )}
-                    {/* Controles da tabela */}
-                    {viewMode === 'table' && (
-                        <div className="flex items-center gap-4 pt-2 border-t border-gray-200">
-                            <div className="text-xs text-gray-500">
-                                {detailedReport?.questoes.length 
-                                    ? `Total de ${detailedReport.questoes.length} questões na avaliação`
-                                    : 'Carregando questões...'
-                                }
-                            </div>
-                        </div>
-                    )}
                 </CardHeader>
                 <CardContent>
                     {filteredStudents.length > 0 ? (
-                        viewMode === 'table' ? (
-                            <StudentsResultsTable 
-                                students={filteredStudents} 
-                                totalQuestions={detailedReport?.questoes.length || 0} 
-                                startQuestionNumber={1} // ✅ SEMPRE começar da questão 1
-                                onViewStudentDetails={handleViewStudentDetails}
-                                questoes={detailedReport?.questoes}
-                                questionsWithSkills={questionsWithSkills}
-                                skillsMapping={skillsMapping}
-                                skillsBySubject={skillsBySubject}
-                                detailedReport={detailedReport}
-                                visibleFields={visibleFields}
-                                subjectFilter={subjectFilter}
-                            />
-                        ) : (
-                            <StudentsCardsView students={filteredStudents} />
-                        )
+                        <StudentsResultsTable 
+                            students={filteredStudents} 
+                            totalQuestions={20} // TODO: Buscar do backend
+                            startQuestionNumber={1}
+                            onViewStudentDetails={handleViewStudentDetails}
+                            questoes={[]} // TODO: Buscar do backend
+                            questionsWithSkills={[]} // TODO: Buscar do backend
+                            skillsMapping={{}} // TODO: Buscar do backend
+                            skillsBySubject={{}} // TODO: Buscar do backend
+                            detailedReport={null} // TODO: Buscar do backend
+                            visibleFields={visibleFields}
+                            subjectFilter="all"
+                            showAll={isRealTimeMode}
+                        />
                     ) : (
                         <div className="text-center py-12">
                             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -2427,9 +870,6 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                     )}
                 </CardContent>
             </Card>
-
-            {/* ✅ NOVO: Skills por Disciplina - Posicionado no final da página */}
-
         </div>
     );
 } 
