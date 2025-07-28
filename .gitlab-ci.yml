@@ -15,7 +15,8 @@ workflow:
               RUNNER: local
               IMAGE_TAG: "$APP:local"
               CONTAINER_NAME: "$APP-local"
-              VITE_API_BASE_URL: http://localhost:5000
+              VITE_API_BASE_URL: /api
+              API_CONTAINER: innovplay_api-local
         - if: "$CI_COMMIT_BRANCH == 'dev'"
           variables:
               ENVIRONMENT: dev
@@ -29,6 +30,7 @@ stages:
     - validate_pipeline
     - prebuild
     - build
+    - predeploy
     - deploy
     - clean
 
@@ -109,6 +111,11 @@ image_build:
 
             echo "VITE_API_BASE_URL=$VITE_API_BASE_URL" > .env
 
+            echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Instalando dependência envsubst"
+            apk add --no-cache gettext
+
+            envsubst '$API_CONTAINER' < nginx.conf.template > nginx.conf
+
             docker build --no-cache -t "$IMAGE_TAG" .
 
             IMAGE_ID=$(docker image ls -f reference="$IMAGE_TAG" -q)
@@ -118,6 +125,57 @@ image_build:
                 exit 1
             else
                 echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Imagem '$IMAGE_TAG' criada com id '$IMAGE_ID'."
+            fi
+
+trigger-api-pipeline:
+    stage: predeploy
+    extends:
+        - .set_runner_tag
+        - .set_none_git_strategy
+    environment:
+        name: $ENVIRONMENT
+    rules:
+        - if: "$ENVIRONMENT == 'local'"
+    script:
+        - |
+            CONTAINER_ID=$(docker container ls -a -f name=^${API_CONTAINER}$ -q)
+
+            if [ -z "$CONTAINER_ID" ]; then
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Instalando dependência curl"
+                apk add --no-cache curl
+
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Disparando pipeline do backend..."
+
+                curl -X POST --fail -F token=$API_TRIGGER_TOKEN -F ref=main $API_TRIGGER_URL
+
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Aguardando container da API '$API_CONTAINER'..."
+
+                TIMEOUT=120
+                ELAPSED=0
+
+                until docker container inspect -f '{{.State.Running}}' "$API_CONTAINER" 2>/dev/null | grep -q true; do
+                    sleep 5
+                    ELAPSED=$((ELAPSED + 5))
+
+                    echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Aguardando... ($ELAPSED/$TIMEOUT)"
+
+                    if [ $ELAPSED -ge $TIMEOUT ]; then
+                        echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Container '$API_CONTAINER' não iniciou dentro do tempo esperado."
+                        exit 1
+                    fi
+                done
+
+                echo "[OK] Container da API está em execução."
+            else
+                IS_RUNNING=$(docker inspect -f "{{.State.Running}}" "$CONTAINER_ID")
+
+                if [ "$IS_RUNNING" = "true" ]; then
+                    echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Container '$API_CONTAINER' já está ativo."
+                else
+                    docker container start "$API_CONTAINER"
+
+                    echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Container '$API_CONTAINER' iniciado."
+                fi
             fi
 
 container_run:
@@ -132,7 +190,7 @@ container_run:
         - |
             set -e
 
-            docker container run -p "$HOST_PORT:$CONTAINER_PORT" --name "$CONTAINER_NAME" -d "$IMAGE_TAG"
+            docker container run --network "$ENVIRONMENT" -p "$HOST_PORT:$CONTAINER_PORT" --name "$CONTAINER_NAME" -d "$IMAGE_TAG"
 
             CONTAINER_ID=$(docker container ls -a -f ancestor="$IMAGE_TAG" -q)
 
@@ -147,7 +205,7 @@ container_run:
                 if [ "$IS_RUNNING" = "true" ]; then
                     echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Container '$CONTAINER_NAME' criado com id '$CONTAINER_ID'."
                 else
-                    echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Falha ao criar o container '$CONTAINER_NAME'."
+                    echo "$(date '+[%Y-%m-%d %H:%M:%S]') - O container '$CONTAINER_NAME' foi criado mas parou."
                     exit 1
                 fi
             fi
@@ -164,3 +222,14 @@ environment_clean:
         - if: "$ENVIRONMENT == 'local'"
           when: manual
     allow_failure: true
+    after_script:
+        - |
+            NETWORK=$(docker network ls -f name="^${ENVIRONMENT}$" -q)
+
+            if [ -z "$NETWORK" ]; then
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Network '$ENVIRONMENT' não existe."
+            else
+                docker network rm "$NETWORK"
+
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Network '$ENVIRONMENT' foi removida."
+            fi
