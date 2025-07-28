@@ -102,13 +102,19 @@ export const useAnswersData = (
   const [isPartialView, setIsPartialView] = useState(enablePartialView);
 
   // ✅ NOVO: Separar dados por completude usando useMemo
-  const { validAnswers, partialAnswers, validAnswersWithDetails, partialAnswersWithDetails } = useMemo(() => {
+  const answersData = useMemo(() => {
     const valid: StudentAnswerEntity[] = [];
     const partial: StudentAnswerEntity[] = [];
     const validWithDetails: AnswerWithDetails[] = [];
     const partialWithDetails: AnswerWithDetails[] = [];
 
     allAnswers.forEach(answer => {
+      // ✅ VALIDAÇÃO DEFENSIVA: Verificar se answer é um objeto válido
+      if (!answer || typeof answer !== 'object') {
+        console.warn('useAnswersData: answer inválida encontrada:', answer);
+        return; // Pular este item
+      }
+
       const answerWithDetails = allAnswersWithDetails.find(a => a.id === answer.id);
       
       // ✅ Validar se a resposta está completa
@@ -133,6 +139,9 @@ export const useAnswersData = (
       partialAnswersWithDetails: partialWithDetails
     };
   }, [allAnswers, allAnswersWithDetails]);
+
+  // ✅ Extrair as variáveis do resultado do useMemo
+  const { validAnswers, partialAnswers, validAnswersWithDetails, partialAnswersWithDetails } = answersData;
 
   // ✅ NOVO: Calcular estatísticas separadas
   const validStats = useMemo(() => {
@@ -177,19 +186,19 @@ export const useAnswersData = (
   const completionStatus = useMemo(() => {
     const totalAnswers = allAnswers.length;
     const completedAnswers = validAnswers.length;
-    const partialAnswers = partialAnswers.length;
+    const partialAnswersCount = partialAnswers.length;
     const completionRate = totalAnswers > 0 ? (completedAnswers / totalAnswers) * 100 : 0;
-    const hasIncompleteAnswers = partialAnswers > 0;
+    const hasIncompleteAnswers = partialAnswersCount > 0;
 
     let message = `Total: ${totalAnswers} respostas`;
     if (completedAnswers > 0) message += `, ${completedAnswers} completas`;
-    if (partialAnswers > 0) message += `, ${partialAnswers} parciais`;
+    if (partialAnswersCount > 0) message += `, ${partialAnswersCount} parciais`;
     message += ` (${completionRate.toFixed(1)}% concluído)`;
 
     return {
       totalAnswers,
       completedAnswers,
-      partialAnswers,
+      partialAnswers: partialAnswersCount,
       completionRate,
       hasIncompleteAnswers,
       message
@@ -390,7 +399,7 @@ export const useAnswersData = (
     if (testId) {
       fetchAnswersData();
     }
-  }, [testId, studentId, fetchAnswersData]);
+  }, [testId, studentId]); // ✅ REMOVIDO: fetchAnswersData da dependência para evitar loop infinito
 
   return {
     // ✅ NOVO: Dados separados por completude

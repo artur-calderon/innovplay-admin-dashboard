@@ -97,6 +97,12 @@ export const useSessionsData = (
     const partialWithStudents: SessionWithStudent[] = [];
 
     allSessions.forEach(session => {
+      // ✅ VALIDAÇÃO DEFENSIVA: Verificar se session é um objeto válido
+      if (!session || typeof session !== 'object') {
+        console.warn('useSessionsData: session inválida encontrada:', session);
+        return; // Pular este item
+      }
+
       const sessionWithStudent = allSessionsWithStudents.find(s => s.id === session.id);
       
       // ✅ Validar se a sessão está completa
@@ -165,19 +171,19 @@ export const useSessionsData = (
   const completionStatus = useMemo(() => {
     const totalSessions = allSessions.length;
     const completedSessions = validSessions.length;
-    const partialSessions = partialSessions.length;
+    const partialSessionsCount = partialSessions.length;
     const completionRate = totalSessions > 0 ? (completedSessions / totalSessions) * 100 : 0;
-    const hasIncompleteSessions = partialSessions > 0;
+    const hasIncompleteSessions = partialSessionsCount > 0;
 
     let message = `Total: ${totalSessions} sessões`;
     if (completedSessions > 0) message += `, ${completedSessions} completas`;
-    if (partialSessions > 0) message += `, ${partialSessions} em andamento`;
+    if (partialSessionsCount > 0) message += `, ${partialSessionsCount} em andamento`;
     message += ` (${completionRate.toFixed(1)}% concluído)`;
 
     return {
       totalSessions,
       completedSessions,
-      partialSessions,
+      partialSessions: partialSessionsCount,
       completionRate,
       hasIncompleteSessions,
       message
@@ -335,7 +341,7 @@ export const useSessionsData = (
     if (testId) {
       fetchSessionsData();
     }
-  }, [testId, fetchSessionsData]);
+  }, [testId]); // ✅ REMOVIDO: fetchSessionsData da dependência para evitar loop infinito
 
   return {
     // ✅ NOVO: Dados separados por completude

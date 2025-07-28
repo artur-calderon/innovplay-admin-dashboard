@@ -24,8 +24,9 @@ import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { EvaluationFormData, Subject, ClassInfo } from "./types";
-import { mockClasses } from "@/lib/mockData";
+// Removido import de mockData - usando dados reais da API
 import { useAuth } from "@/context/authContext";
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
 
 // Schema de validação simplificado e mais robusto
 const step1Schema = z.object({
@@ -166,7 +167,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
         console.error("Erro ao carregar dados:", error);
         toast({
           title: "Erro",
-          description: "Erro ao carregar dados. Verifique sua conexão e autenticação.",
+          description: ERROR_MESSAGES.NETWORK_ERROR,
           variant: "destructive",
         });
       } finally {
@@ -242,17 +243,8 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
         form.setValue("selectedClasses", []);
         console.error("Erro ao buscar turmas da escola:", error);
 
-        // Fallback: usar dados mock se a API falhar
-        try {
-          const mockClasses = await import("@/lib/mockData").then(m => m.mockClasses);
-          const filteredMockClasses = mockClasses.filter((classItem: any) =>
-            String(classItem.grade_id).trim() === String(selectedGrade).trim() &&
-            classItem.school_id === selectedSchools[0].id
-          );
-          setClasses(filteredMockClasses);
-        } catch (mockError) {
-          console.error("Erro ao carregar dados mock:", mockError);
-        }
+        // Fallback: usar dados vazios se a API falhar
+        setClasses([]);
       }
     };
 

@@ -38,6 +38,7 @@ import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { EvaluationFormData, Question, Subject } from "./types";
 import { QuestionBank } from "./QuestionBank";
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
 
 interface QuestionSelectionStepProps {
   evaluationData: EvaluationFormData;
@@ -160,7 +161,7 @@ export default function QuestionSelectionStep({
       console.error("Erro ao buscar questões:", error);
       toast({
         title: "Erro",
-        description: "Erro ao carregar questões das disciplinas selecionadas",
+        description: ERROR_MESSAGES.NETWORK_ERROR,
         variant: "destructive",
       });
     } finally {

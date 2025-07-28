@@ -72,7 +72,7 @@ export const useTestData = (testId: string): UseTestDataReturn => {
     if (testId) {
       fetchTestData();
     }
-  }, [testId, fetchTestData]);
+  }, [testId]); // ✅ REMOVIDO: fetchTestData da dependência para evitar loop infinito
 
   return {
     testData,

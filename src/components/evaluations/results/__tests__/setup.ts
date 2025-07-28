@@ -38,7 +38,7 @@ jest.setTimeout(10000); // 10 segundos para testes que envolvem cache/async
 
 // Mock de componentes UI complexos para focar na lógica
 jest.mock('@/components/ui/charts', () => ({
-    DonutChartComponent: ({ data, title, subtitle }: any) => (
+    DonutChartComponent: ({ data, title, subtitle }: { data: unknown; title: string; subtitle: string }) => (
         <div data-testid="donut-chart">
             <h3>{title}</h3>
             <p>{subtitle}</p>

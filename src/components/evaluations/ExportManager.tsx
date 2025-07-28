@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { EvaluationResultsData } from "@/types/evaluation-results";
+import { ERROR_MESSAGES, SUCCESS_MESSAGES, EXPORT_CONFIG } from "./results/constants";
 
 interface ExportOptions {
   format: 'pdf' | 'excel';
@@ -77,7 +78,7 @@ export function ExportManager({ results, selectedResult, onExport }: ExportManag
         
         toast({
           title: "Exportação concluída!",
-          description: `Relatório em ${options.format.toUpperCase()} foi gerado com sucesso.`,
+          description: SUCCESS_MESSAGES.EXPORT_COMPLETED,
         });
       }, 1000);
 
@@ -87,7 +88,7 @@ export function ExportManager({ results, selectedResult, onExport }: ExportManag
       
       toast({
         title: "Erro na exportação",
-        description: "Não foi possível gerar o relatório. Tente novamente.",
+        description: ERROR_MESSAGES.SERVER_ERROR,
         variant: "destructive",
       });
     }

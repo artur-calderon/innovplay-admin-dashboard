@@ -104,14 +104,16 @@ export const useResultsData = (
     const partialWithDetails: ResultWithDetails[] = [];
 
     allResults.forEach(result => {
+      // ✅ VALIDAÇÃO DEFENSIVA: Verificar se result é um objeto válido
+      if (!result || typeof result !== 'object') {
+        console.warn('useResultsData: result inválido encontrado:', result);
+        return; // Pular este item
+      }
+
       const resultWithDetails = allResultsWithDetails.find(r => r.id === result.id);
       
       // ✅ Validar se o resultado está completo
-      const isComplete = isEvaluationComplete(
-        result.total_questions,
-        result.answered_questions || result.total_questions,
-        thresholds
-      );
+      const isComplete = isEvaluationComplete(result, thresholds);
 
       if (isComplete && result.grade > 0) {
         valid.push(result);
@@ -405,7 +407,7 @@ export const useResultsData = (
     if (testId) {
       fetchResultsData();
     }
-  }, [testId, fetchResultsData]);
+  }, [testId]); // ✅ REMOVIDO: fetchResultsData da dependência para evitar loop infinito
 
   return {
     // ✅ NOVO: Dados separados por completude

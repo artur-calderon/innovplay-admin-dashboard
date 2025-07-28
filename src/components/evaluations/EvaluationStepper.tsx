@@ -14,6 +14,7 @@ import { EvaluationFormData, Question } from "./types";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/authContext";
 import { useEvaluationDraft } from "@/hooks/use-evaluation-draft";
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
 
 const STEPS = [
   {
@@ -177,7 +178,7 @@ export default function EvaluationStepper({ mode = "virtual", editMode = false, 
     if (!evaluationData || !user?.id) {
       toast({
         title: "Erro",
-        description: "Dados incompletos para criação da avaliação",
+        description: ERROR_MESSAGES.DATA_NOT_FOUND,
         variant: "destructive",
       });
       return;
@@ -218,13 +219,13 @@ export default function EvaluationStepper({ mode = "virtual", editMode = false, 
         response = await api.put(`/test/${evaluationId}`, payload);
         toast({
           title: "Avaliação atualizada!",
-          description: `"${evaluationData.title}" foi atualizada com sucesso.`,
+          description: SUCCESS_MESSAGES.DATA_UPDATED,
         });
       } else {
         response = await api.post("/test", payload);
         toast({
           title: "Avaliação criada!",
-          description: `"${evaluationData.title}" foi criada com ${selectedQuestions.length} questões.`,
+          description: SUCCESS_MESSAGES.DATA_SAVED,
         });
         clearDraft(); // Limpar rascunho apenas na criação
       }
@@ -239,7 +240,7 @@ export default function EvaluationStepper({ mode = "virtual", editMode = false, 
                           "Erro desconhecido";
       toast({
         title: "Erro ao salvar avaliação",
-        description: errorMessage,
+        description: ERROR_MESSAGES.SERVER_ERROR,
         variant: "destructive",
       });
     } finally {

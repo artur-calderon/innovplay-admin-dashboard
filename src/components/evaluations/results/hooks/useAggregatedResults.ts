@@ -463,12 +463,23 @@ export const useAggregatedResults = (
   useEffect(() => {
     if (!autoRefresh) return;
     
-    const interval = setInterval(() => {
-      refetch();
-    }, refreshInterval);
+    // ✅ DEBOUNCE: Evitar chamadas excessivas
+    let timeoutId: NodeJS.Timeout;
     
-    return () => clearInterval(interval);
-  }, [autoRefresh, refreshInterval, refetch]);
+    const debouncedRefetch = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        refetch();
+      }, 1000); // Debounce de 1 segundo
+    };
+    
+    const interval = setInterval(debouncedRefetch, refreshInterval);
+    
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeoutId);
+    };
+  }, [autoRefresh, refreshInterval]); // ✅ REMOVIDO: refetch da dependência para evitar loop infinito
   
   // ===== ESTADOS COMPUTADOS =====
   

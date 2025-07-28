@@ -35,6 +35,7 @@ import { useEvaluations, useCache } from "@/hooks/use-cache";
 import { useAuth } from "@/context/authContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ErrorBoundary from "./ErrorBoundary";
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
 
 interface Evaluation {
   id: string;
@@ -704,7 +705,7 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
 
       toast({
         title: "Sucesso",
-        description: "Avaliação excluída com sucesso",
+        description: SUCCESS_MESSAGES.DATA_DELETED,
       });
 
       // ✅ NOVO: Invalidar cache e recarregar dados
@@ -720,14 +721,14 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
         data: error.response?.data
       });
 
-      let errorMessage = "Não foi possível excluir a avaliação";
+      let errorMessage = ERROR_MESSAGES.SERVER_ERROR;
 
       if (error.response?.status === 404) {
-        errorMessage = "Avaliação não encontrada";
+        errorMessage = ERROR_MESSAGES.DATA_NOT_FOUND;
       } else if (error.response?.status === 403) {
-        errorMessage = "Sem permissão para excluir esta avaliação";
+        errorMessage = ERROR_MESSAGES.FORBIDDEN;
       } else if (error.response?.status === 401) {
-        errorMessage = "Sessão expirada. Faça login novamente.";
+        errorMessage = ERROR_MESSAGES.UNAUTHORIZED;
       } else if (error.response?.data?.error) {
         errorMessage = error.response.data.error;
       }
@@ -753,7 +754,7 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
 
       toast({
         title: "Sucesso",
-        description: `${selectedIds.length} avaliações foram excluídas.`,
+        description: SUCCESS_MESSAGES.DATA_DELETED,
       });
 
       // ✅ NOVO: Invalidar cache e recarregar dados

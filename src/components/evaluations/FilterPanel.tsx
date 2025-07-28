@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Filter, X } from "lucide-react";
 import { ResultsFilters, ProficiencyLevel, proficiencyLabels } from "@/types/evaluation-results";
+import { PROFICIENCY_MAX_VALUES, CLASSIFICATION_LABELS } from "./results/constants";
 
 interface FilterPanelProps {
   filters: ResultsFilters;
@@ -37,12 +38,12 @@ export function FilterPanel({
                          selectedSubject?.toLowerCase().includes('matematica');
     
     if (selectedCourse === 'Anos Iniciais') {
-      return isMathematics ? 375 : 350;
+      return isMathematics ? PROFICIENCY_MAX_VALUES.ANOS_INICIAIS_MATEMATICA : PROFICIENCY_MAX_VALUES.ANOS_INICIAIS_OUTRAS;
     } else if (selectedCourse === 'Anos Finais' || selectedCourse === 'Ensino Médio') {
-      return isMathematics ? 425 : 400;
+      return isMathematics ? PROFICIENCY_MAX_VALUES.ANOS_FINAIS_MATEMATICA : PROFICIENCY_MAX_VALUES.ANOS_FINAIS_OUTRAS;
     }
     
-    return 425;
+    return PROFICIENCY_MAX_VALUES.ANOS_FINAIS_MATEMATICA;
   };
 
   const maxProficiencyScale = getMaxProficiencyScale();

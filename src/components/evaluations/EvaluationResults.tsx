@@ -35,6 +35,7 @@ import {
 
 import { useParams } from "react-router-dom";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
+import { ERROR_MESSAGES, SUCCESS_MESSAGES, PROFICIENCY_MAX_VALUES } from "./results/constants";
 
 interface StudentResult {
   id: string;
@@ -141,18 +142,18 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
       console.error("Erro ao buscar resultados da avaliação:", error);
       
       // ✅ CORRIGIDO: Mensagens de erro mais específicas
-      let errorMessage = "Não foi possível carregar os resultados da avaliação";
+      let errorMessage = ERROR_MESSAGES.NETWORK_ERROR;
       
       const errorObj = error as { message?: string; code?: string; response?: { status?: number } };
       
       if (errorObj.message?.includes('CORS') || errorObj.code === 'ERR_NETWORK') {
-        errorMessage = "Erro de conexão com o servidor. Verifique se o backend está rodando em http://localhost:5000";
+        errorMessage = ERROR_MESSAGES.NETWORK_ERROR;
       } else if (errorObj.message?.includes('não encontrada')) {
-        errorMessage = "Avaliação não encontrada ou não possui resultados disponíveis";
+        errorMessage = ERROR_MESSAGES.DATA_NOT_FOUND;
       } else if (errorObj.response?.status === 404) {
-        errorMessage = "Avaliação não encontrada no servidor";
+        errorMessage = ERROR_MESSAGES.DATA_NOT_FOUND;
       } else if (errorObj.response?.status && errorObj.response.status >= 500) {
-        errorMessage = "Erro interno do servidor. Tente novamente mais tarde";
+        errorMessage = ERROR_MESSAGES.SERVER_ERROR;
       }
       
       toast({
@@ -1639,6 +1640,13 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
                           e.stopPropagation();
                           setSelectedStudent(student);
                         }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const url = `/app/avaliacao/${evaluationId}/aluno/${student.id}/resultados`;
+                          window.open(url, '_blank');
+                        }}
+                        title="Clique esquerdo: ver detalhes | Clique direito: abrir em nova guia"
                       >
                         <Eye className="h-4 w-4 mr-2" />
                         Ver Detalhes
