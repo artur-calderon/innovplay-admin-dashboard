@@ -434,6 +434,11 @@ export default function Results() {
     navigate(`/app/avaliacao/${evaluationId}/resultados-detalhados`);
   };
 
+  const handleViewResultsInNewTab = (evaluationId: string) => {
+    const url = `/app/avaliacao/${evaluationId}/resultados-detalhados`;
+    window.open(url, '_blank');
+  };
+
   const handleExportResults = async () => {
     try {
       const XLSX = await import('xlsx');
@@ -1021,6 +1026,11 @@ export default function Results() {
                             <Button
                               variant="outline"
                               onClick={() => handleViewResults(evaluation.id)}
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                handleViewResultsInNewTab(evaluation.id);
+                              }}
+                              title="Clique esquerdo: abrir na mesma guia | Clique direito: abrir em nova guia"
                             >
                               <Eye className="h-4 w-4 mr-2" />
                               Ver Resultados

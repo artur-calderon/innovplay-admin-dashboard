@@ -40,6 +40,13 @@ import {
 
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
 import { DetailedEvaluationReport } from "./DetailedEvaluationReport";
+import { 
+  PROFICIENCY_MAX_VALUES, 
+  CLASSIFICATION_LABELS, 
+  ERROR_MESSAGES, 
+  SUCCESS_MESSAGES,
+  EXPORT_CONFIG 
+} from "./results/constants";
 
 interface DetailedResultViewProps {
   result: EvaluationResultsData;
@@ -112,12 +119,12 @@ export function DetailedResultView({
       
       toast({
         title: "PDF exportado com sucesso!",
-        description: "O relatório detalhado foi gerado e baixado.",
+        description: SUCCESS_MESSAGES.EXPORT_COMPLETED,
       });
     } catch (error) {
       toast({
         title: "Erro na exportação",
-        description: "Não foi possível gerar o PDF",
+        description: ERROR_MESSAGES.SERVER_ERROR,
         variant: "destructive",
       });
     } finally {
@@ -133,12 +140,12 @@ export function DetailedResultView({
       
       toast({
         title: "Excel exportado com sucesso!",
-        description: "A planilha detalhada foi gerada e baixada.",
+        description: SUCCESS_MESSAGES.EXPORT_COMPLETED,
       });
     } catch (error) {
       toast({
         title: "Erro na exportação",
-        description: "Não foi possível gerar a planilha",
+        description: ERROR_MESSAGES.SERVER_ERROR,
         variant: "destructive",
       });
     } finally {

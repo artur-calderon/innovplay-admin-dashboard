@@ -31,7 +31,7 @@ import { api } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { mockApi } from "@/lib/mockData";
+// Removido import de mockData - usando dados reais da API
 import { useEvaluationStats } from "@/hooks/use-cache";
 import ErrorBoundary from "@/components/evaluations/ErrorBoundary";
 

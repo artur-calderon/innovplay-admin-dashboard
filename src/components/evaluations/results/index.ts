@@ -98,6 +98,95 @@ export {
   isEvaluationComplete,
   validateSessionCompletion,
   validateResultCompletion,
+
+// ===== UTILITÁRIOS DE FORMATAÇÃO =====
+
+// Formatadores principais
+export {
+  formatGrade,
+  formatGradeAsPercentage,
+  formatProficiency,
+  formatProficiencyAsPercentage,
+  formatTime,
+  formatTimeMinutes,
+  formatPercentage,
+  formatCompletionRate,
+  formatClassification,
+  formatCompletionStatus,
+  formatEvaluationStatus,
+  formatDate,
+  formatDateTime,
+  formatRelativeDate,
+  formatNumber,
+  formatStats,
+  isValidNumber,
+  isValidDate,
+  truncateText,
+  capitalizeWords,
+  formatAccuracy,
+  formatAverageTimePerQuestion
+} from './utils/formatters';
+
+// ===== UTILITÁRIOS DE PROFICIÊNCIA =====
+
+// Utilitários de proficiência
+export {
+  PROFICIENCY_MAX_VALUES,
+  PROFICIENCY_TABLES,
+  getProficiencyTableInfo,
+  getProficiencyLevel,
+  getProficiencyLevelColor,
+  getProficiencyLevelLabel,
+  getProficiencyLevelDescription,
+  getProficiencyLevelIcon,
+  isValidProficiency,
+  getProficiencyPercentage,
+  getProficiencyRange,
+  getProficiencyPositionInLevel,
+  getProficiencyInfo,
+  compareProficiencies,
+  getProficiencyTrend
+} from './utils/proficiency';
+
+export type {
+  ProficiencyLevel,
+  ProficiencyTable,
+  ProficiencyTableInfo
+} from './utils/proficiency';
+
+// ===== CONSTANTES =====
+
+// Constantes do sistema
+export {
+  DEFAULT_COMPLETION_THRESHOLDS,
+  PROFICIENCY_TABLES as PROFICIENCY_TABLES_CONST,
+  PROFICIENCY_MAX_VALUES as PROFICIENCY_MAX_VALUES_CONST,
+  CLASSIFICATION_LEVELS,
+  CLASSIFICATION_LABELS,
+  CLASSIFICATION_COLORS,
+  EVALUATION_STATUS,
+  EVALUATION_STATUS_LABELS,
+  EVALUATION_STATUS_COLORS,
+  COMPLETION_STATUS_LEVELS,
+  COMPLETION_STATUS_LABELS,
+  COMPLETION_STATUS_COLORS,
+  PAGINATION_CONFIG,
+  CACHE_CONFIG,
+  AUTO_REFRESH_CONFIG,
+  EXPORT_CONFIG,
+  VALIDATION_CONFIG,
+  ERROR_MESSAGES,
+  SUCCESS_MESSAGES,
+  LOADING_CONFIG,
+  TOOLTIP_CONFIG,
+  NOTIFICATION_CONFIG,
+  PERFORMANCE_CONFIG,
+  ACCESSIBILITY_CONFIG
+} from './constants';
+
+// ===== UTILITÁRIOS DE VALIDAÇÃO =====
+
+export {
   validateAnswersConsistency,
   createCompletionStats,
   filterCompletedResults,
@@ -132,8 +221,8 @@ export type {
 // ===== COMPONENTES VISUAIS =====
 
 // Componentes de resultados
-export { ResultsTable } from './components/results/ResultsTable';
-export type { ResultsTableProps } from './components/results/ResultsTable';
+export { ResultsTable } from '../ResultsTable';
+export type { ResultsTableProps } from '../ResultsTable';
 
 // Componentes principais
 export { default as DetailedResultsView } from './DetailedResultsView';

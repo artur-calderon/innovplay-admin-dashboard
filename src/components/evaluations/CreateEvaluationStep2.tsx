@@ -18,6 +18,7 @@ import {
 import { useEvaluationActions, useQuestions } from "@/stores/useEvaluationStore";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/authContext";
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
 
 interface CreateEvaluationStep2Props {
   data: {
@@ -96,7 +97,7 @@ export const CreateEvaluationStep2 = ({
 
       toast({
         title: "Questão criada e adicionada",
-        description: "A nova questão foi criada e adicionada à avaliação com sucesso!",
+        description: SUCCESS_MESSAGES.DATA_SAVED,
       });
     }
     setShowCreateQuestion(false);
@@ -119,7 +120,7 @@ export const CreateEvaluationStep2 = ({
       if (question.subject?.id !== selectedSubjectForQuestion) {
         toast({
           title: "Erro",
-          description: "Esta questão não pertence à disciplina selecionada.",
+          description: ERROR_MESSAGES.DATA_NOT_FOUND,
           variant: "destructive",
         });
         return;

@@ -12,9 +12,9 @@ import '@testing-library/jest-dom';
 import { BrowserRouter } from 'react-router-dom';
 
 // Componentes sendo testados
-import { ResultsTable } from '../components/results/ResultsTable';
-import DetailedResultsView from '../DetailedResultsView';
-import StudentDetailedResults from '../StudentDetailedResults';
+import { ResultsTable } from '../../ResultsTable';
+import DetailedResultsView from '../../DetailedResultsView';
+import StudentDetailedResults from '../../StudentDetailedResults';
 
 // Sistema de cache
 import { validatedCache, CacheKeys, CacheDataType } from '../cache/validatedCache';

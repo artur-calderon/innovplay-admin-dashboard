@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FileText, Clock, Users, BookOpen, RefreshCw } from "lucide-react";
-import { mockEvaluations } from "@/lib/mockData";
+// Removido import de mockData - usando dados reais da API
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -155,18 +155,8 @@ export default function RecentEvaluations() {
           }
         } catch (error) {
           console.warn('⚠️ Erro ao buscar avaliações recentes:', error);
-          // Usar dados mock como fallback
-          evaluationsData = mockEvaluations.slice(0, 5).map(evaluation => ({
-            id: evaluation.id,
-            title: evaluation.title,
-            subject: evaluation.subject,
-            createdAt: evaluation.createdAt,
-            status: evaluation.status,
-            questions_count: evaluation.questions,
-            active_applications: Math.floor(Math.random() * 5) + 1,
-            total_students: Math.floor(Math.random() * 100) + 10,
-            completion_rate: Math.floor(Math.random() * 100) + 1
-          }));
+          // Usar dados vazios como fallback
+          evaluationsData = [];
         }
 
         // Buscar estatísticas do dashboard
@@ -211,8 +201,8 @@ export default function RecentEvaluations() {
           evaluationsData = cachedData.evaluations;
           dashboardStats = cachedData.stats;
         } else {
-          // Fallback para dados mock
-          evaluationsData = mockEvaluations.slice(0, 5);
+          // Fallback para dados vazios
+          evaluationsData = [];
           dashboardStats = {
             totalEvaluations: 12,
             activeEvaluations: 4,

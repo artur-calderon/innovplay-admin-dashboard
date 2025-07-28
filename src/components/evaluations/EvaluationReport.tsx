@@ -41,6 +41,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
 
 interface EvaluationReportProps {
   onBack?: () => void;
@@ -77,7 +78,7 @@ export default function EvaluationReport({ onBack }: EvaluationReportProps) {
       console.error("Erro ao buscar resultados:", error);
       toast({
         title: "Erro",
-        description: "Não foi possível carregar os dados para o relatório",
+        description: ERROR_MESSAGES.NETWORK_ERROR,
         variant: "destructive",
       });
     } finally {

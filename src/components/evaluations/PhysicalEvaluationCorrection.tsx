@@ -56,6 +56,7 @@ import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
 
 interface PhysicalEvaluation {
   id: string;
@@ -164,7 +165,7 @@ export default function PhysicalEvaluationCorrection({
       console.error("Erro ao carregar avaliação:", error);
       toast({
         title: "Erro",
-        description: "Não foi possível carregar a avaliação",
+        description: ERROR_MESSAGES.NETWORK_ERROR,
         variant: "destructive",
       });
       

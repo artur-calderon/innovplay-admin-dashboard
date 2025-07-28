@@ -17,8 +17,15 @@ import { CompletionStatus, CompletionStatusLevel, CompletionThresholds, Evaluati
  * ✅ 1. Verifica se uma avaliação está completa (total_questions === answered_questions)
  */
 export const isEvaluationComplete = (
-  result: EvaluationResultEntity | TestSessionEntity
+  result: EvaluationResultEntity | TestSessionEntity,
+  thresholds?: CompletionThresholds
 ): boolean => {
+  // ✅ VALIDAÇÃO DEFENSIVA: Verificar se result é um objeto válido
+  if (!result || typeof result !== 'object') {
+    console.warn('isEvaluationComplete: result não é um objeto válido:', result);
+    return false;
+  }
+
   // Para EvaluationResultEntity
   if ('is_complete' in result) {
     return result.total_questions === result.answered_questions && result.is_complete;

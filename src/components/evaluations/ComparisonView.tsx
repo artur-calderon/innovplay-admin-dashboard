@@ -24,6 +24,7 @@ import {
   proficiencyColors, 
   proficiencyLabels 
 } from "@/types/evaluation-results";
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
 
 interface ComparisonViewProps {
   results: EvaluationResultsData[];
@@ -51,7 +52,7 @@ export function ComparisonView({ results, onBack }: ComparisonViewProps) {
     if (!selectedEval1 || !selectedEval2) {
       toast({
         title: "Seleção incompleta",
-        description: "Selecione duas avaliações para comparar",
+        description: ERROR_MESSAGES.DATA_NOT_FOUND,
         variant: "destructive",
       });
       return;
@@ -63,7 +64,7 @@ export function ComparisonView({ results, onBack }: ComparisonViewProps) {
     if (!eval1 || !eval2) {
       toast({
         title: "Erro",
-        description: "Avaliações não encontradas",
+        description: ERROR_MESSAGES.DATA_NOT_FOUND,
         variant: "destructive",
       });
       return;
