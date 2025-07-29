@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
+import { EvaluationResultsApiService } from '../services/evaluationResultsApi';
 import { 
   QuestionData, 
   QuestionWithSkills, 
@@ -133,31 +134,70 @@ export const useSkillDescription = (skillsBySubject?: SkillsBySubject) => {
   return { getSkillDescription };
 };
 
-export const useTurmaPercentages = (questoes: QuestionData[] | undefined, totalQuestions: number) => {
+export const useTurmaPercentages = (questoes: QuestionData[] | undefined, totalQuestions: number, detailedReport?: any) => {
   const turmaPercentages = useMemo(() => {
-    // ✅ EXCLUSIVAMENTE: Usar apenas dados reais da API
-    if (!questoes || questoes.length === 0) {
-      console.warn('❌ Dados de questões não disponíveis para calcular porcentagens da turma');
+    // ✅ CALCULAR PORCENTAGENS REAIS baseado nas respostas individuais
+    if (!detailedReport?.alunos || detailedReport.alunos.length === 0) {
+      console.warn('❌ Dados de alunos não disponíveis para calcular porcentagens reais da turma');
       return Array.from({ length: totalQuestions }, () => 0);
     }
 
-    return Array.from({ length: totalQuestions }, (_, i) => {
-      const questao = questoes[i];
-      if (questao && typeof questao.porcentagem_acertos === 'number') {
-        return questao.porcentagem_acertos;
+    // Calcular porcentagens reais baseado nas respostas individuais
+    const percentages = Array.from({ length: totalQuestions }, (_, questionIndex) => {
+      const questionNumber = questionIndex + 1;
+      
+      // ✅ Contar quantos alunos responderam esta questão (não em branco)
+      let totalRespondentes = 0;
+      let totalAcertos = 0;
+      let totalNaoRespondidas = 0;
+      
+      detailedReport.alunos.forEach((aluno: any) => {
+        if (aluno.respostas && aluno.respostas.length > 0) {
+          const resposta = aluno.respostas.find((r: any) => r.questao_numero === questionNumber);
+          if (resposta) {
+            // ✅ Se a questão foi respondida (não está em branco)
+            if (!resposta.resposta_em_branco) {
+              totalRespondentes++;
+              if (resposta.resposta_correta === true) {
+                totalAcertos++;
+              }
+            } else {
+              // ✅ Questão em branco - não conta para porcentagem
+              totalNaoRespondidas++;
+            }
+          } else {
+            // ✅ Questão não respondida - não conta para porcentagem
+            totalNaoRespondidas++;
+          }
+        } else {
+          // ✅ Aluno sem respostas - não conta para porcentagem
+          totalNaoRespondidas++;
+        }
+      });
+      
+      // ✅ Calcular porcentagem apenas se há respondentes
+      let porcentagemReal = 0;
+      if (totalRespondentes > 0) {
+        porcentagemReal = (totalAcertos / totalRespondentes) * 100;
+      } else {
+        // ✅ Se não há respondentes, retornar -1 para indicar N/A
+        porcentagemReal = -1; // Usar -1 para indicar N/A
       }
       
-      console.warn(`❌ Porcentagem não disponível para questão ${i + 1}`);
-      return 0;
+      console.log(`📊 Questão ${questionNumber}: ${totalAcertos}/${totalRespondentes} acertos, ${totalNaoRespondidas} não respondidas = ${porcentagemReal === -1 ? 'N/A' : porcentagemReal.toFixed(1) + '%'}`);
+      
+      return porcentagemReal;
     });
-  }, [questoes, totalQuestions]);
+    
+    return percentages;
+  }, [questoes, totalQuestions, detailedReport]);
 
   return turmaPercentages;
 };
 
 export const useStudentAnswers = (student: any, totalQuestions: number, detailedReport?: any) => {
   const answers = useMemo(() => {
-    // ✅ EXCLUSIVAMENTE: Usar apenas dados reais da API
+    // ✅ Usar APENAS dados do backend
     if (!detailedReport?.alunos) {
       console.warn('❌ Dados detalhados não disponíveis para processar respostas');
       return Array.from({ length: totalQuestions }, () => null);
@@ -174,36 +214,36 @@ export const useStudentAnswers = (student: any, totalQuestions: number, detailed
       return Array.from({ length: totalQuestions }, () => null);
     }
 
-    // ✅ Processar apenas dados reais das respostas
+    // ✅ Processar APENAS dados do backend
     const answersArray = Array.from({ length: totalQuestions }, (_, questionIndex) => {
       const questionNumber = questionIndex + 1;
       
-      // ✅ DEBUG: Log para verificar a busca de respostas
-      console.log(`🔍 Buscando resposta para questão ${questionNumber}:`, {
-        totalRespostas: alunoData.respostas.length,
-        respostasDisponiveis: alunoData.respostas.map((r: any) => r.questao_numero),
-        questaoBuscada: questionNumber
-      });
-      
-      // Buscar resposta específica para esta questão
+      // ✅ Buscar resposta específica para esta questão
       const resposta = alunoData.respostas.find((r: any) => r.questao_numero === questionNumber);
       
-      if (resposta) {
-        // ✅ Retornar true se acertou, false se errou
-        console.log(`✅ Questão ${questionNumber}: ${resposta.resposta_correta ? 'ACERTOU' : 'ERROU'}`);
-        return resposta.resposta_correta;
-      }
+             if (resposta) {
+         // ✅ Verificar se a resposta está correta
+         // Se resposta_em_branco é true, a questão está errada
+         if (resposta.resposta_em_branco) {
+           console.log(`❌ Questão ${questionNumber}: EM BRANCO = ERRADA (backend)`);
+           return false; // Questão em branco = errada
+         }
+         // Se não está em branco, usar o valor de resposta_correta
+         const isCorrect = resposta.resposta_correta;
+         console.log(`✅ Questão ${questionNumber}: ${isCorrect ? 'ACERTOU' : 'ERROU'} (backend) - correta: ${resposta.resposta_correta}, em_branco: ${resposta.resposta_em_branco}`);
+         return isCorrect;
+       }
       
       // ✅ Se não encontrou resposta, verificar se a questão existe
       const questaoExiste = detailedReport.questoes?.some((q: any) => q.numero === questionNumber);
       if (questaoExiste) {
         // Questão existe mas não foi respondida
-        console.log(`❌ Questão ${questionNumber}: NÃO RESPONDIDA`);
+        console.log(`❌ Questão ${questionNumber}: NÃO RESPONDIDA (backend)`);
         return null;
       }
       
       // Questão não existe na avaliação
-      console.log(`❓ Questão ${questionNumber}: NÃO EXISTE`);
+      console.log(`❓ Questão ${questionNumber}: NÃO EXISTE (backend)`);
       return undefined;
     });
     
@@ -213,7 +253,7 @@ export const useStudentAnswers = (student: any, totalQuestions: number, detailed
   return answers;
 };
 
-// ✅ NOVO: Hook para usar dados reais baseado nas respostas individuais
+// ✅ SIMPLIFICADO: Hook para usar dados do backend (sem cálculos)
 export const useRealStudentData = (student: any, detailedReport?: any) => {
   const realData = useMemo(() => {
     if (!detailedReport?.alunos) {
@@ -221,48 +261,227 @@ export const useRealStudentData = (student: any, detailedReport?: any) => {
     }
 
     const alunoData = detailedReport.alunos.find((a: any) => a.id === student.id);
-    if (!alunoData || !alunoData.respostas || alunoData.respostas.length === 0) {
-      return student; // Retornar dados originais se não há respostas
+    if (!alunoData) {
+      return student; // Retornar dados originais se não há dados do aluno
     }
 
-    // ✅ Calcular dados reais baseado nas respostas individuais
-    const totalQuestions = detailedReport.questoes?.length || 0;
-    const respostas = alunoData.respostas;
-    
-    // Contar acertos, erros e não respondidas
-    const acertosReais = respostas.filter((r: any) => r.resposta_correta === true).length;
-    const errosReais = respostas.filter((r: any) => r.resposta_correta === false).length;
-    const naoRespondidas = totalQuestions - acertosReais - errosReais;
-    
-    // Calcular nota real (0-10)
-    const percentualAcertos = totalQuestions > 0 ? (acertosReais / totalQuestions) * 100 : 0;
-    const notaReal = (percentualAcertos / 100) * 10;
-    
-    // Estimar proficiência real
-    const proficienciaReal = notaReal * 40; // 10 = 400, 5 = 200, etc.
-    
-    // Determinar classificação real
-    let classificacaoReal = 'Abaixo do Básico';
-    if (notaReal >= 7.5) classificacaoReal = 'Avançado';
-    else if (notaReal >= 6.0) classificacaoReal = 'Adequado';
-    else if (notaReal >= 4.0) classificacaoReal = 'Básico';
-    
-    console.log(`✅ Usando dados reais do aluno ${student.nome}:`, {
-      dados_incorretos: { acertos: student.acertos, nota: student.nota, proficiencia: student.proficiencia },
-      dados_reais: { acertos: acertosReais, nota: notaReal, proficiencia: proficienciaReal }
+    // ✅ USAR APENAS DADOS DO BACKEND (sem cálculos)
+    console.log(`✅ Usando dados do backend para ${student.nome}:`, {
+      dados_backend: {
+        total_acertos: alunoData.total_acertos,
+        total_erros: alunoData.total_erros,
+        total_em_branco: alunoData.total_em_branco,
+        nota_final: alunoData.nota_final,
+        proficiencia: alunoData.proficiencia,
+        classificacao: alunoData.classificacao
+      }
     });
     
+    // ✅ Retornar dados EXATAMENTE como vêm do backend
     return {
       ...student,
-      acertos: acertosReais,
-      erros: errosReais,
-      em_branco: naoRespondidas,
-      questoes_respondidas: acertosReais + errosReais,
-      nota: notaReal,
-      proficiencia: proficienciaReal,
-      classificacao: classificacaoReal
+      acertos: alunoData.total_acertos || 0,
+      erros: alunoData.total_erros || 0,
+      em_branco: alunoData.total_em_branco || 0,
+      questoes_respondidas: (alunoData.total_acertos || 0) + (alunoData.total_erros || 0),
+      nota: alunoData.nota_final || 0,
+      proficiencia: alunoData.proficiencia || 0,
+      classificacao: alunoData.classificacao || 'Abaixo do Básico'
     };
   }, [student, detailedReport]);
 
   return realData;
+};
+
+// ✅ SIMPLIFICADO: Hook para usar dados do endpoint original (sem cálculos)
+export const useCorrectStudentDataSimple = (student: any, evaluationId: string) => {
+  const [correctData, setCorrectData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchCorrectData = async () => {
+      if (!evaluationId || !student?.id) return;
+      
+      setLoading(true);
+      try {
+        // ✅ Usar APENAS o endpoint original
+        const response = await EvaluationResultsApiService.getCorrectStudentResults(evaluationId);
+        
+        console.log('✅ Dados do endpoint original:', response);
+        
+                 // ✅ Verificar se a resposta tem a estrutura esperada
+         let data = response;
+         if (response && response.data && Array.isArray(response.data)) {
+           data = { alunos: response.data };
+         }
+         
+         console.log('🔍 Estrutura da resposta do endpoint /alunos (dados):', {
+           temResponse: !!response,
+           temData: !!response?.data,
+           temAlunos: !!response?.alunos,
+           responseKeys: response ? Object.keys(response) : [],
+           dataKeys: response?.data ? Object.keys(response.data) : [],
+           alunosKeys: response?.alunos ? Object.keys(response.alunos) : []
+         });
+         
+         // ✅ Encontrar o aluno específico nos dados
+         const alunoCorreto = data?.alunos?.find((a: any) => {
+           const matchById = a.id === student.id;
+           const matchByName = a.nome?.toLowerCase() === student.nome?.toLowerCase();
+           return matchById || matchByName;
+         });
+        
+        if (alunoCorreto) {
+          console.log('✅ Dados do endpoint original encontrados para', student.nome, ':', {
+            id: alunoCorreto.id,
+            nome: alunoCorreto.nome,
+            turma: alunoCorreto.turma,
+            acertos: alunoCorreto.acertos,
+            erros: alunoCorreto.erros,
+            em_branco: alunoCorreto.em_branco,
+            nota: alunoCorreto.nota,
+            grade: alunoCorreto.grade,
+            proficiencia: alunoCorreto.proficiencia,
+            classificacao: alunoCorreto.classificacao,
+            status: alunoCorreto.status,
+            respostas: alunoCorreto.respostas
+          });
+          
+          // ✅ DEBUG: Verificar estrutura do aluno
+          console.log('✅ Dados do endpoint /alunos encontrados para', student.nome, ':', {
+            acertos: alunoCorreto.acertos,
+            nota: alunoCorreto.nota,
+            proficiencia: alunoCorreto.proficiencia,
+            classificacao: alunoCorreto.classificacao,
+            respostas: alunoCorreto.respostas?.length || 0
+          });
+          
+          // ✅ Usar dados EXATAMENTE como vêm do backend (sem cálculos)
+          const dadosDoBackend = {
+            id: alunoCorreto.id,
+            nome: alunoCorreto.nome,
+            turma: alunoCorreto.turma || alunoCorreto.grade || 'A',
+            acertos: alunoCorreto.acertos || 0,
+            erros: alunoCorreto.erros || 0,
+            em_branco: alunoCorreto.em_branco || 0,
+            nota: alunoCorreto.nota || 0,
+            proficiencia: alunoCorreto.proficiencia || 0,
+            classificacao: alunoCorreto.classificacao || 'Abaixo do Básico',
+            status: alunoCorreto.status || 'concluida',
+            respostas: alunoCorreto.respostas || []
+          };
+          
+          console.log('✅ Dados do backend para exibição:', dadosDoBackend);
+          setCorrectData(dadosDoBackend);
+        } else {
+          console.warn('⚠️ Aluno não encontrado no endpoint original:', student.nome);
+          // ✅ Fallback: usar dados do relatório detalhado se disponível
+          setCorrectData(student);
+        }
+      } catch (error) {
+        console.error('❌ Erro ao buscar dados do endpoint original:', error);
+        // ✅ Fallback: usar dados do relatório detalhado
+        setCorrectData(student);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCorrectData();
+  }, [evaluationId, student?.id, student?.nome]);
+  return { correctData, loading };
+};
+
+// ✅ SIMPLIFICADO: Hook para respostas do endpoint /alunos (que tem as respostas individuais)
+export const useCorrectStudentAnswers = (student: any, totalQuestions: number, evaluationId: string) => {
+  const [correctAnswers, setCorrectAnswers] = useState<Array<boolean | null>>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchCorrectAnswers = async () => {
+      if (!student?.id || !evaluationId) {
+        setCorrectAnswers(Array.from({ length: totalQuestions }, () => null));
+        return;
+      }
+      
+      setLoading(true);
+      
+      try {
+        // ✅ Buscar dados do endpoint /alunos que contém as respostas individuais
+        const response = await EvaluationResultsApiService.getCorrectStudentResults(evaluationId);
+        
+                 // ✅ Verificar se a resposta tem a estrutura esperada
+         let data = response;
+         if (response && response.data && Array.isArray(response.data)) {
+           data = { alunos: response.data };
+         }
+         
+         console.log('🔍 Estrutura da resposta do endpoint /alunos:', {
+           temResponse: !!response,
+           temData: !!response?.data,
+           temAlunos: !!response?.alunos,
+           responseKeys: response ? Object.keys(response) : [],
+           dataKeys: response?.data ? Object.keys(response.data) : [],
+           alunosKeys: response?.alunos ? Object.keys(response.alunos) : [],
+           dataAlunosLength: data?.alunos?.length || 0
+         });
+         
+         if (data?.alunos && data.alunos.length > 0) {
+           // ✅ Encontrar o aluno específico
+           const alunoCorreto = data.alunos.find((a: any) => a.id === student.id);
+          
+                     console.log('🔍 Aluno encontrado:', {
+             id: alunoCorreto.id,
+             nome: alunoCorreto.nome,
+             temRespostas: !!alunoCorreto.respostas,
+             respostasLength: alunoCorreto.respostas?.length || 0,
+             respostasKeys: alunoCorreto.respostas ? Object.keys(alunoCorreto.respostas[0] || {}) : []
+           });
+           
+           if (alunoCorreto && alunoCorreto.respostas && alunoCorreto.respostas.length > 0) {
+             console.log('✅ Processando respostas do endpoint /alunos para', student.nome, ':', alunoCorreto.respostas.length, 'respostas');
+            
+            // ✅ Processar respostas do endpoint /alunos
+            const answersArray = Array.from({ length: totalQuestions }, (_, questionIndex) => {
+              const questionNumber = questionIndex + 1;
+              
+              // ✅ Buscar resposta específica para esta questão
+              const resposta = alunoCorreto.respostas.find((r: any) => r.questao === questionNumber);
+              
+                             if (resposta) {
+                 // ✅ Verificar se a resposta está correta
+                 // Se em_branco é true, a questão está errada (mesmo que correta seja false)
+                 if (resposta.em_branco) {
+                   console.log(`❌ Questão ${questionNumber}: EM BRANCO = ERRADA`);
+                   return false; // Questão em branco = errada
+                 }
+                 // Se não está em branco, usar o valor de correta
+                 const isCorrect = resposta.correta;
+                 console.log(`✅ Questão ${questionNumber}: ${isCorrect ? 'ACERTOU' : 'ERROU'} (correta: ${resposta.correta}, em_branco: ${resposta.em_branco})`);
+                 return isCorrect;
+               }
+              return null;
+            });
+            
+            setCorrectAnswers(answersArray);
+          } else {
+            console.warn('⚠️ Respostas não encontradas no endpoint /alunos para:', student.nome);
+            setCorrectAnswers(Array.from({ length: totalQuestions }, () => null));
+          }
+        } else {
+          console.warn('⚠️ Dados do endpoint /alunos não disponíveis');
+          setCorrectAnswers(Array.from({ length: totalQuestions }, () => null));
+        }
+      } catch (error) {
+        console.error('❌ Erro ao buscar respostas do endpoint /alunos:', error);
+        setCorrectAnswers(Array.from({ length: totalQuestions }, () => null));
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCorrectAnswers();
+  }, [student?.id, totalQuestions, evaluationId]);
+
+  return { correctAnswers, loading };
 }; 

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Eye } from 'lucide-react';
 import { StudentResult, VisibleFields } from '../../../types/results-table';
-import { useStudentAnswers, useRealStudentData } from '../../../hooks/useResultsTable';
+import { useStudentAnswers, useRealStudentData, useCorrectStudentDataSimple, useCorrectStudentAnswers } from '../../../hooks/useResultsTable';
 
 interface TableRowProps {
   student: StudentResult;
@@ -10,6 +10,7 @@ interface TableRowProps {
   visibleFields: VisibleFields;
   onViewStudentDetails: (studentId: string) => void;
   detailedReport?: any;
+  evaluationId?: string;
 }
 
 export const TableRow: React.FC<TableRowProps> = ({
@@ -18,72 +19,36 @@ export const TableRow: React.FC<TableRowProps> = ({
   totalQuestions,
   visibleFields,
   onViewStudentDetails,
-  detailedReport
+  detailedReport,
+  evaluationId
 }) => {
   const answers = useStudentAnswers(student, totalQuestions, detailedReport);
   const realStudentData = useRealStudentData(student, detailedReport);
+  // ✅ NOVO: Usar dados corretos do endpoint específico
+  const { correctData: correctStudentData, loading: correctDataLoading } = useCorrectStudentDataSimple(student, evaluationId || '');
+  // ✅ NOVO: Usar respostas corretas do endpoint /alunos (que tem as respostas individuais)
+  const { correctAnswers, loading: correctAnswersLoading } = useCorrectStudentAnswers(student, totalQuestions, evaluationId || '');
   
     // ✅ DEBUG: Log dos dados do aluno para verificar consistência
   React.useEffect(() => {
-    if (detailedReport?.alunos) {
-      const alunoData = detailedReport.alunos.find((a: any) => a.id === student.id);
-      if (alunoData) {
-        // ✅ Calcular dados reais baseados nas respostas individuais
-        const totalQuestions = detailedReport.questoes?.length || 0;
-        const respostas = alunoData.respostas || [];
-        
-        const acertosReais = respostas.filter((r: any) => r.resposta_correta === true).length;
-        const errosReais = respostas.filter((r: any) => r.resposta_correta === false).length;
-        const naoRespondidas = totalQuestions - acertosReais - errosReais;
-        
-        // Calcular nota real (0-10)
-        const percentualAcertos = totalQuestions > 0 ? (acertosReais / totalQuestions) * 100 : 0;
-        const notaReal = (percentualAcertos / 100) * 10;
-        
-        // Estimar proficiência real
-        const proficienciaReal = notaReal * 40; // 10 = 400, 5 = 200, etc.
-        
-        // Determinar classificação real
-        let classificacaoReal = 'Abaixo do Básico';
-        if (notaReal >= 7.5) classificacaoReal = 'Avançado';
-        else if (notaReal >= 6.0) classificacaoReal = 'Adequado';
-        else if (notaReal >= 4.0) classificacaoReal = 'Básico';
-        
-        console.log(`🔍 Dados do aluno ${student.nome}:`, {
-          // Dados do frontend (student) - INCORRETOS
-          frontend_incorreto: {
-            acertos: student.acertos,
-            nota: student.nota,
-            proficiencia: student.proficiencia,
-            classificacao: student.classificacao
-          },
-          // Dados do backend (alunoData) - INCORRETOS
-          backend_incorreto: {
-            total_acertos: alunoData.total_acertos,
-            nota_final: alunoData.nota_final,
-            proficiencia: alunoData.proficiencia,
-            classificacao: alunoData.classificacao,
-            respostas: alunoData.respostas?.length || 0
-          },
-          // ✅ DADOS REAIS CALCULADOS
-          dados_reais: {
-            acertos: acertosReais,
-            erros: errosReais,
-            nao_respondidas: naoRespondidas,
-            nota: notaReal,
-            proficiencia: proficienciaReal,
-            classificacao: classificacaoReal
-          },
-          // Respostas individuais
-          respostas: alunoData.respostas?.map((r: any) => ({
-            questao: r.questao_numero,
-            correta: r.resposta_correta,
-            em_branco: r.resposta_em_branco
-          })) || []
-        });
-      }
+    if (correctStudentData && correctAnswers.length > 0) {
+      console.log(`🔍 Dados do aluno ${student.nome}:`, {
+        // Dados corretos do endpoint /alunos
+        dados_corretos: {
+          acertos: correctStudentData.acertos,
+          nota: correctStudentData.nota,
+          proficiencia: correctStudentData.proficiencia,
+          classificacao: correctStudentData.classificacao,
+          respostas: correctAnswers.filter(a => a !== null).length
+        },
+        // Respostas individuais corretas
+        respostas_individuals: correctAnswers.map((answer, index) => ({
+          questao: index + 1,
+          correta: answer
+        }))
+      });
     }
-  }, [student, detailedReport]);
+  }, [student, correctStudentData, correctAnswers]);
 
   return (
     <tr 
@@ -97,48 +62,115 @@ export const TableRow: React.FC<TableRowProps> = ({
           <Eye className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
         </div>
       </td>
-      {visibleFields?.questoes && answers.map((answer, questionIndex) => (
-        <td key={`${student.id}-q${questionIndex}`} className="px-4 py-2 border-t border-gray-200 border-r-2 border-gray-200 text-center align-middle">
-          <div className="flex justify-center items-center h-full">
-            {answer === true ? (
-              <span className="text-green-700 text-2xl font-bold" title="Acertou">✓</span>
-            ) : answer === false ? (
-              <span className="text-red-600 text-2xl font-bold" title="Errou">✗</span>
-            ) : answer === null ? (
-              <span className="text-gray-400 text-lg font-bold" title="Não respondida">-</span>
-            ) : answer === undefined ? (
-              <span className="text-gray-300 text-sm" title="Questão não disponível">○</span>
-            ) : (
-              <span className="text-gray-400 text-lg font-bold" title="Status desconhecido">?</span>
-            )}
-          </div>
-        </td>
-      ))}
-      {visibleFields?.total && (
+      {visibleFields?.questoes && (() => {
+        // ✅ Usar respostas corretas se disponíveis, senão usar respostas antigas
+        const answersToShow = correctAnswersLoading ? Array.from({ length: totalQuestions }, () => null) : 
+                             correctAnswers.length > 0 ? correctAnswers : answers;
+        
+        return answersToShow.map((answer, questionIndex) => (
+          <td key={`${student.id}-q${questionIndex}`} className="px-4 py-2 border-t border-gray-200 border-r-2 border-gray-200 text-center align-middle">
+            <div className="flex justify-center items-center h-full">
+              {correctAnswersLoading ? (
+                <span className="text-gray-400 text-sm" title="Carregando...">...</span>
+              ) : answer === true ? (
+                <span className="text-green-700 text-2xl font-bold" title="Acertou">✓</span>
+              ) : answer === false ? (
+                <span className="text-red-600 text-2xl font-bold" title="Errou">✗</span>
+              ) : answer === null ? (
+                <span className="text-gray-400 text-lg font-bold" title="Não respondida">-</span>
+              ) : answer === undefined ? (
+                <span className="text-gray-300 text-sm" title="Questão não disponível">○</span>
+              ) : (
+                <span className="text-gray-400 text-lg font-bold" title="Status desconhecido">?</span>
+              )}
+            </div>
+          </td>
+        ));
+      })()}
+                    {visibleFields?.total && (
         <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50 text-center">
-          {realStudentData.acertos}
+          {(() => {
+            // ✅ Aguardar dados corretos carregarem
+            if (correctDataLoading) {
+              console.log(`⏳ Carregando dados corretos para ${student.nome}...`);
+              return <span className="text-gray-400">...</span>;
+            }
+            
+            const acertos = correctStudentData?.acertos || realStudentData.acertos;
+            console.log(`🔍 Acertos para ${student.nome}:`, {
+              correctStudentData: correctStudentData?.acertos,
+              realStudentData: realStudentData.acertos,
+              final: acertos,
+              loading: correctDataLoading
+            });
+            return acertos;
+          })()}
         </td>
       )}
       {visibleFields?.nota && (
         <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50 text-center">
-          {realStudentData.nota.toFixed(1)}
+          {(() => {
+            // ✅ Aguardar dados corretos carregarem
+            if (correctDataLoading) {
+              return <span className="text-gray-400">...</span>;
+            }
+            
+            const nota = correctStudentData?.nota || realStudentData.nota;
+            console.log(`🔍 Nota para ${student.nome}:`, {
+              correctStudentData: correctStudentData?.nota,
+              realStudentData: realStudentData.nota,
+              final: nota,
+              loading: correctDataLoading
+            });
+            return nota.toFixed(1);
+          })()}
         </td>
       )}
       {visibleFields?.proficiencia && (
         <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50 text-center">
-          {realStudentData.proficiencia.toFixed(0)}
+          {(() => {
+            // ✅ Aguardar dados corretos carregarem
+            if (correctDataLoading) {
+              return <span className="text-gray-400">...</span>;
+            }
+            
+            const proficiencia = correctStudentData?.proficiencia || realStudentData.proficiencia;
+            console.log(`🔍 Proficiência para ${student.nome}:`, {
+              correctStudentData: correctStudentData?.proficiencia,
+              realStudentData: realStudentData.proficiencia,
+              final: proficiencia,
+              loading: correctDataLoading
+            });
+            return proficiencia.toFixed(0);
+          })()}
         </td>
       )}
       {visibleFields?.nivel && (
         <td className="p-2 border-t border-gray-200 bg-gray-50 text-center">
-          <span className={`px-2 py-1 rounded-full text-xs text-white ${
-            realStudentData.classificacao === 'Abaixo do Básico' ? 'bg-red-500' :
-            realStudentData.classificacao === 'Básico' ? 'bg-yellow-400' :
-            realStudentData.classificacao === 'Adequado' ? 'bg-blue-500' :
-            'bg-green-500'
-          }`}>
-            {realStudentData.classificacao}
-          </span>
+          {(() => {
+            // ✅ Aguardar dados corretos carregarem
+            if (correctDataLoading) {
+              return <span className="text-gray-400">...</span>;
+            }
+            
+            const classificacao = correctStudentData?.classificacao || realStudentData.classificacao;
+            console.log(`🔍 Classificação para ${student.nome}:`, {
+              correctStudentData: correctStudentData?.classificacao,
+              realStudentData: realStudentData.classificacao,
+              final: classificacao,
+              loading: correctDataLoading
+            });
+            return (
+              <span className={`px-2 py-1 rounded-full text-xs text-white ${
+                classificacao === 'Abaixo do Básico' ? 'bg-red-500' :
+                classificacao === 'Básico' ? 'bg-yellow-400' :
+                classificacao === 'Adequado' ? 'bg-blue-500' :
+                'bg-green-500'
+              }`}>
+                {classificacao}
+              </span>
+            );
+          })()}
         </td>
       )}
     </tr>

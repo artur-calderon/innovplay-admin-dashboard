@@ -24,7 +24,8 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
     proficiencia: true,
     nivel: true
   },
-  subjectFilter
+  subjectFilter,
+  evaluationId
 }) => {
   return (
     <div className="overflow-x-auto">
@@ -49,6 +50,7 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
               visibleFields={visibleFields}
               onViewStudentDetails={onViewStudentDetails}
               detailedReport={detailedReport}
+              evaluationId={evaluationId}
             />
           ))}
         </tbody>
