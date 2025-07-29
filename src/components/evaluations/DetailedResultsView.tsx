@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { DonutChartComponent } from "@/components/ui/charts";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
@@ -9,8 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Switch } from "@/components/ui/switch";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
     ArrowLeft,
     Download,
@@ -31,28 +29,82 @@ import {
     RefreshCw,
     AlertCircle,
     BookOpen,
-    CheckCircle,
-    Activity,
-    Filter
+    CheckCircle
 } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
-import { useAggregatedResults } from "./results/hooks/useAggregatedResults";
-import { CompletionStatusLevel } from "./results/types/completion";
+import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
+import { api } from "@/lib/api";
+// ✅ REFATORADO: Importar o novo componente
+import { ResultsTable } from "./results-table";
 
-// ✅ INTERFACES SIMPLIFICADAS - Usando dados dos hooks refatorados
+// Importar a interface DetailedReport do serviço
+interface DetailedReport {
+    avaliacao: {
+        id: string;
+        titulo: string;
+        disciplina: string;
+        total_questoes: number;
+    };
+    questoes: Array<{
+        id: string;
+        numero: number;
+        texto: string;
+        habilidade: string;
+        codigo_habilidade: string;
+        tipo: 'multipleChoice' | 'open' | 'trueFalse';
+        dificuldade: 'Fácil' | 'Médio' | 'Difícil';
+        porcentagem_acertos: number;
+        porcentagem_erros: number;
+    }>;
+    alunos: Array<{
+        id: string;
+        nome: string;
+        turma: string;
+        respostas: Array<{
+            questao_id: string;
+            questao_numero: number;
+            resposta_correta: boolean;
+            resposta_em_branco: boolean;
+            tempo_gasto: number;
+        }>;
+        total_acertos: number;
+        total_erros: number;
+        total_em_branco: number;
+        nota_final: number;
+        proficiencia: number;
+        classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+        status: 'concluida' | 'nao_respondida';
+    }>;
+}
+
 interface DetailedResultsViewProps {
     onBack: () => void;
+}
+
+interface StudentResult {
+    id: string;
+    nome: string;
+    turma: string;
+    nota: number;
+    proficiencia: number;
+    classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+    questoes_respondidas: number;
+    acertos: number;
+    erros: number;
+    em_branco: number;
+    tempo_gasto: number;
+    status: 'concluida' | 'pendente';
 }
 
 interface EvaluationInfo {
     id: string;
     titulo: string;
     disciplina: string;
-    disciplinas?: string[];
+    disciplinas?: string[]; // ✅ Adicionado para múltiplas disciplinas
     curso: string;
     serie: string;
-    grade_id?: string;
+    grade_id?: string; // ✅ Adicionado para mapeamento de série
     escola: string;
     municipio: string;
     data_aplicacao: string;
@@ -70,444 +122,103 @@ interface EvaluationInfo {
     };
 }
 
-// ✅ TIPOS PARA A TABELA DE RESULTADOS
-interface StudentData {
-    id: string;
-    name: string;
-    class: string;
-    school?: string;
-    isComplete: boolean;
-    completionStatus: CompletionStatusLevel;
-    session?: {
-        id: string;
-        status: string;
-        startedAt: string;
-        submittedAt?: string;
-        totalQuestions: number;
-        answeredQuestions: number;
-        timeSpent: number;
-        completionPercentage: number;
-        progress?: number;
-    };
-    result?: {
-        grade: number;
-        proficiency: number;
-        classification: string;
-        correctAnswers: number;
-        totalQuestions: number;
-        scorePercentage: number;
+interface Stats {
+    totalStudents: number;
+    completedStudents: number;
+    averageScore: number;
+    averageProficiency: number;
+    distribution: {
+        abaixo_do_basico: number;
+        basico: number;
+        adequado: number;
+        avancado: number;
     };
 }
 
-interface QuestionData {
-    id: string;
-    question: string;
-    skill?: string;
-    subject?: string;
+interface ApiError {
+    message?: string;
+    code?: string;
+    response?: {
+        status?: number;
+    };
 }
 
-interface SkillsMapping {
-    [key: string]: string;
-}
+// Componente da tabela de resultados dos alunos
+// ✅ REFATORADO: Componente StudentsResultsTable removido - agora usando ResultsTable
 
-interface SkillsBySubject {
-    [subject: string]: string[];
-}
-
-interface DetailedReport {
-    [key: string]: unknown;
-}
-
-interface VisibleFields {
-    turma: boolean;
-    habilidade: boolean;
-    questoes: boolean;
-    percentualTurma: boolean;
-    total: boolean;
-    nota: boolean;
-    proficiencia: boolean;
-    nivel: boolean;
-}
-
-// ✅ COMPONENTE: RealTimeControlsCard - Controles de tempo real
-const RealTimeControlsCard: React.FC<{
-    isRealTimeMode: boolean;
-    onToggleRealTime: (enabled: boolean) => void;
-    lastUpdate: Date;
-    autoRefreshEnabled: boolean;
-    onToggleAutoRefresh: (enabled: boolean) => void;
-    completionStats: {
-        total: number;
-        completed: number;
-        partial: number;
-        completionRate: number;
-    };
-}> = ({ 
-    isRealTimeMode, 
-    onToggleRealTime, 
-    lastUpdate, 
-    autoRefreshEnabled, 
-    onToggleAutoRefresh,
-    completionStats
-}) => (
-    <Card className="border-2 border-blue-200 bg-blue-50">
-        <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-                <Activity className="h-5 w-5 text-blue-600" />
-                Controles de Visualização
-                <Badge variant="outline" className="ml-auto">
-                    {completionStats.completed}/{completionStats.total} completos
-                </Badge>
-            </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-            {/* Toggle Tempo Real */}
-            <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                    <div className="text-sm font-medium">Modo Tempo Real</div>
-                    <div className="text-xs text-gray-600">
-                        {isRealTimeMode 
-                            ? "Mostrando todos os alunos (incluindo progresso parcial)"
-                            : "Mostrando apenas alunos com avaliação completa"
-                        }
-                    </div>
-                </div>
-                <Switch
-                    checked={isRealTimeMode}
-                    onCheckedChange={onToggleRealTime}
-                />
-            </div>
-
-            {/* Toggle Auto-Refresh */}
-            {isRealTimeMode && (
-                <div className="flex items-center justify-between">
-                    <div className="space-y-1">
-                        <div className="text-sm font-medium">Atualização Automática</div>
-                        <div className="text-xs text-gray-600">
-                            Atualizar dados automaticamente a cada 30 segundos
-                        </div>
-                    </div>
-                    <Switch
-                        checked={autoRefreshEnabled}
-                        onCheckedChange={onToggleAutoRefresh}
-                    />
-                </div>
-            )}
-
-            {/* Status da Atualização */}
-            <div className="bg-white border border-blue-200 rounded-lg p-3">
-                <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-600">Última atualização:</span>
-                    <span className="font-medium">
-                        {lastUpdate.toLocaleTimeString('pt-BR')}
-                    </span>
-                </div>
-                {completionStats.partial > 0 && (
-                    <div className="mt-2 text-xs text-yellow-700">
-                        <AlertTriangle className="w-3 h-3 inline mr-1" />
-                        {completionStats.partial} aluno(s) com progresso parcial
-                    </div>
-                )}
-            </div>
-        </CardContent>
-    </Card>
-);
-
-// ✅ COMPONENTE: CompletionStatusCard - Status de completude melhorado
-const CompletionStatusCard: React.FC<{
-    stats: {
-        total: number;
-        completed: number;
-        partial: number;
-        completionRate: number;
-    };
-    isRealTimeMode: boolean;
-}> = ({ stats, isRealTimeMode }) => {
-    const getStatusColor = () => {
-        if (stats.completionRate >= 80) return "bg-green-100 border-green-300 text-green-800";
-        if (stats.completionRate >= 60) return "bg-blue-100 border-blue-300 text-blue-800";
-        if (stats.completionRate >= 40) return "bg-yellow-100 border-yellow-300 text-yellow-800";
-        return "bg-red-100 border-red-300 text-red-800";
-    };
-
-    const getStatusIcon = () => {
-        if (stats.completionRate >= 80) return <CheckCircle2 className="h-5 w-5 text-green-600" />;
-        if (stats.completionRate >= 60) return <TrendingUp className="h-5 w-5 text-blue-600" />;
-        return <AlertTriangle className="h-5 w-5 text-yellow-600" />;
-    };
-
-    return (
-        <Card className={`border-2 ${getStatusColor()}`}>
-            <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                    <span className="flex items-center gap-2">
-                        {getStatusIcon()}
-                        Status de Completude da Avaliação
-                        {isRealTimeMode && (
-                            <Badge className="bg-yellow-100 text-yellow-800 text-xs ml-auto">
-                                <Activity className="w-3 h-3 mr-1" />
-                                Tempo Real
-                            </Badge>
-                        )}
-                    </span>
-                    <Badge variant="outline" className="bg-white">
-                        <Filter className="h-3 w-3 mr-1" />
-                        Filtros Ativos
-                    </Badge>
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                <div className="space-y-4">
-                    {/* Progresso Visual */}
-                    <div className="space-y-2">
-                        <div className="flex justify-between text-sm">
-                            <span className="font-medium">Taxa de Conclusão</span>
-                            <span className="font-bold">{stats.completionRate.toFixed(1)}%</span>
-                        </div>
-                        <Progress value={stats.completionRate} className="h-3" />
-                    </div>
-
-                    {/* Estatísticas */}
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                        <div className="space-y-1">
-                            <div className="text-2xl font-bold text-green-600">{stats.completed}</div>
-                            <div className="text-xs text-gray-600">Completas</div>
-                        </div>
-                        <div className="space-y-1">
-                            <div className="text-2xl font-bold text-red-600">{stats.partial}</div>
-                            <div className="text-xs text-gray-600">Incompletas</div>
-                        </div>
-                        <div className="space-y-1">
-                            <div className="text-2xl font-bold text-blue-600">{stats.total}</div>
-                            <div className="text-xs text-gray-600">Total</div>
-                        </div>
-                    </div>
-
-                    {/* ✅ COMENTÁRIO EXPLICATIVO: Critério de filtragem */}
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                        <div className="flex items-start gap-2">
-                            <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                            <div className="text-xs text-blue-800">
-                                <strong>Filtros Aplicados:</strong> Apenas alunos que <strong>completaram integralmente</strong> a avaliação 
-                                são exibidos nos dados abaixo. Alunos com status "pendente", "incompleto" ou "não iniciado" 
-                                são automaticamente filtrados para garantir análises precisas.
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </CardContent>
-        </Card>
-    );
-};
-
-// Componente da tabela de resultados dos alunos (mantido igual)
-const StudentsResultsTable = ({ 
-    students, 
-    totalQuestions, 
-    startQuestionNumber = 1,
-    onViewStudentDetails,
-    questoes,
-    questionsWithSkills,
-    skillsMapping,
-    skillsBySubject,
-    detailedReport,
-    visibleFields = {
-        turma: true,
-        habilidade: true,
-        questoes: true,
-        percentualTurma: true,
-        total: true,
-        nota: true,
-        proficiencia: true,
-        nivel: true
-    },
-    subjectFilter,
-    showAll = false
-}: {
-    students: StudentData[];
-    totalQuestions: number;
-    startQuestionNumber?: number;
-    onViewStudentDetails: (studentId: string) => void;
-    questoes?: QuestionData[];
-    questionsWithSkills?: QuestionData[];
-    skillsMapping?: SkillsMapping;
-    skillsBySubject?: SkillsBySubject;
-    detailedReport?: DetailedReport;
-    visibleFields?: VisibleFields;
-    subjectFilter?: string;
-    showAll?: boolean;
-}) => {
-    // ✅ USAR DADOS DOS HOOKS REFATORADOS
-    const filteredStudents = showAll 
-        ? students // Mostrar todos os alunos (incluindo parciais)
-        : students.filter(student => student.isComplete); // Apenas completos
-
-    // ✅ FUNÇÃO PARA VERIFICAR SE ALUNO É PARCIAL
-    const isStudentPartial = (student: StudentData) => {
-        return !student.isComplete || student.completionStatus !== CompletionStatusLevel.COMPLETE;
-    };
-
-    // ✅ FUNÇÃO PARA OBTER BADGE DE STATUS DO ALUNO
-    const getStudentStatusBadge = (student: StudentData) => {
-        if (student.isComplete && student.completionStatus === CompletionStatusLevel.COMPLETE) {
-            return (
-                <Badge className="bg-green-100 text-green-800 text-xs ml-2">
-                    <CheckCircle className="w-3 h-3 mr-1" />
-                    Completo
-                </Badge>
-            );
-        } else {
-            const progressPercentage = student.session?.progress || student.session?.completionPercentage || 0;
-            return (
-                <Badge className="bg-yellow-100 text-yellow-800 text-xs ml-2">
-                    <Clock className="w-3 h-3 mr-1" />
-                    Parcial ({progressPercentage.toFixed(1)}%)
-                </Badge>
-            );
-        }
-    };
-
-    return (
-        <div className="overflow-x-auto">
-            <table className="min-w-max border border-gray-300 text-center text-sm shadow-md rounded-lg">
-                <thead>
-                    <tr className="bg-gray-100">
-                        <th className="p-2 min-w-[150px] text-left border-r border-gray-300">Aluno</th>
-                        {visibleFields?.questoes && Array.from({ length: totalQuestions }, (_, i) => (
-                            <th key={`header-q${i}`} className="p-2 min-w-[80px] border-r border-gray-300">
-                                Q{i + 1}
-                            </th>
-                        ))}
-                        {visibleFields?.total && <th className="p-2 bg-gray-50">Total</th>}
-                        {visibleFields?.nota && <th className="p-2 bg-gray-50">Nota</th>}
-                        {visibleFields?.proficiencia && <th className="p-2 bg-gray-50">Proficiência</th>}
-                        {visibleFields?.nivel && <th className="p-2 bg-gray-50">Nível</th>}
-                    </tr>
-                </thead>
-                <tbody>
-                    {filteredStudents.map((student, studentIndex) => (
-                        <tr key={`${student.id || 'student'}-${studentIndex}`} 
-                            className={`hover:bg-gray-50 cursor-pointer group ${
-                                isStudentPartial(student) ? 'bg-yellow-50' : ''
-                            }`}
-                            onClick={() => onViewStudentDetails(student.id)}
-                            onContextMenu={(e) => {
-                                e.preventDefault();
-                                const url = `/app/avaliacao/${window.location.pathname.split('/')[3]}/aluno/${student.id}/resultados`;
-                                window.open(url, '_blank');
-                            }}
-                            title="Clique esquerdo: ver detalhes | Clique direito: abrir em nova guia">
-                            <td className="p-2 border-t border-gray-200 text-left border-r border-gray-300">
-                                <div className="font-medium hover:text-blue-600 transition-colors flex items-center gap-2">
-                                    {student.name || student.name}
-                                    {showAll && getStudentStatusBadge(student)}
-                                    <Eye className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                </div>
-                            </td>
-                            {visibleFields?.questoes && Array.from({ length: totalQuestions }, (_, questionIndex) => (
-                                <td key={`${student.id}-q${questionIndex}`} className="p-2 border-t border-gray-200 border-r border-gray-300">
-                                    <div className="text-xl">
-                                        {questionIndex < (student.result?.correctAnswers || 0) ? (
-                                            <span className="text-blue-600">✓</span>
-                                        ) : questionIndex < (student.result?.correctAnswers || 0) + (student.result?.correctAnswers || 0) ? (
-                                            <span className="text-red-500">✗</span>
-                                        ) : (
-                                            <span className="text-gray-400">-</span>
-                                        )}
-                                    </div>
-                                </td>
-                            ))}
-                            {visibleFields?.total && <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50">{student.result?.correctAnswers || 0}</td>}
-                            {visibleFields?.nota && <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50">{(student.result?.grade || 0).toFixed(1)}</td>}
-                            {visibleFields?.proficiencia && <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50">{(student.result?.proficiency || 0).toFixed(0)}</td>}
-                            {visibleFields?.nivel && (
-                                <td className="p-2 border-t border-gray-200 bg-gray-50">
-                                    <span className={`px-2 py-1 rounded-full text-xs text-white ${
-                                        student.result?.classification === 'Abaixo do Básico' ? 'bg-red-500' :
-                                        student.result?.classification === 'Básico' ? 'bg-yellow-400' :
-                                        student.result?.classification === 'Adequado' ? 'bg-blue-500' :
-                                        'bg-green-500'
-                                    }`}>
-                                        {student.result?.classification || 'N/A'}
-                                    </span>
-                                </td>
-                            )}
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-            
-            {/* ✅ RODAPÉ INFORMATIVO MELHORADO */}
-            <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                <div className="text-xs text-gray-600 space-y-2">
-                    <div className="flex items-center justify-between">
-                        <div className="font-semibold text-gray-700">
-                            Exibindo {filteredStudents.length} de {students.length} alunos
-                        </div>
-                        {showAll && (
-                            <div className="text-yellow-700">
-                                <Clock className="w-3 h-3 inline mr-1" />
-                                Incluindo alunos com progresso parcial
-                            </div>
-                        )}
-                    </div>
-                    
-                    <div className="font-semibold text-gray-700">Legenda:</div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="flex items-center gap-1">
-                            <span className="text-blue-600 text-lg">✓</span>
-                            <span>Aluno acertou</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                            <span className="text-red-500 text-lg">✗</span>
-                            <span>Aluno errou</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                            <span className="text-gray-400 text-lg">-</span>
-                            <span>Não respondeu</span>
-                        </div>
-                        {showAll && (
-                            <>
-                                <div className="flex items-center gap-1">
-                                    <Badge className="bg-green-100 text-green-800 text-xs">
-                                        <CheckCircle className="w-3 h-3 mr-1" />
-                                        Completo
-                                    </Badge>
-                                    <span>Aluno finalizou</span>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                    <Badge className="bg-yellow-100 text-yellow-800 text-xs">
-                                        <Clock className="w-3 h-3 mr-1" />
-                                        Parcial
-                                    </Badge>
-                                    <span>Aluno em andamento</span>
-                                </div>
-                            </>
-                        )}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// ✅ COMPONENTE PRINCIPAL REFATORADO
 export default function DetailedResultsView({ onBack }: DetailedResultsViewProps) {
     const { id: evaluationId } = useParams<{ id: string }>();
-    const navigate = useNavigate();
-    const { toast } = useToast();
-
-    // ✅ ESTADOS PARA CONTROLE DE VISUALIZAÇÃO
-    const [isRealTimeMode, setIsRealTimeMode] = useState(false);
-    const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
-    const [lastUpdate, setLastUpdate] = useState(new Date());
-
-    // ✅ ESTADOS PARA FILTROS E UI
+    const [evaluationInfo, setEvaluationInfo] = useState<EvaluationInfo | null>(null);
+    const [students, setStudents] = useState<StudentResult[]>([]);
+    const [detailedReport, setDetailedReport] = useState<DetailedReport | null>(null);
+    const [stats, setStats] = useState<Stats | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isDataLoading, setIsDataLoading] = useState(false);
+    const [loadingStep, setLoadingStep] = useState('');
+    const [loadingProgress, setLoadingProgress] = useState(0);
+    const [loadingSteps] = useState([
+        'Inicializando...',
+        'Verificando status da avaliação...',
+        'Carregando informações da avaliação...',
+        'Atualizando dados de status...',
+        'Buscando dados dos alunos...',
+        'Processando resultados detalhados...',
+        'Gerando estatísticas...',
+        'Finalizando carregamento...'
+    ]);
+    const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [searchTerm, setSearchTerm] = useState('');
     const [classificationFilter, setClassificationFilter] = useState('all');
     const [statusFilter, setStatusFilter] = useState('all');
-    const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
-    const [visibleFields, setVisibleFields] = useState<VisibleFields>({
+    const [showOnlyWithScore, setShowOnlyWithScore] = useState(false);
+    const [viewMode, setViewMode] = useState<'table' | 'cards'>('table'); // Novo estado para modo de visualização
+    const [questionsWithSkills, setQuestionsWithSkills] = useState<Array<{
+        id: string;
+        number: number;
+        text: string;
+        formattedText: string;
+        alternatives?: Array<{
+            id: string;
+            text: string;
+            isCorrect: boolean;
+        }>;
+        skills: string[]; // ✅ Códigos reais como "LP5L1.2"
+        difficulty: 'Fácil' | 'Médio' | 'Difícil';
+        solution: string;
+        type: 'multipleChoice' | 'open' | 'trueFalse';
+        value: number;
+        subject: {
+            id: string;
+            name: string;
+        };
+        grade: {
+            id: string;
+            name: string;
+        };
+    }>>([]);
+    const [skillsMapping, setSkillsMapping] = useState<Record<string, string>>({}); // UUID -> Código real
+    const [skillsBySubject, setSkillsBySubject] = useState<Record<string, Array<{
+        id: string | null;
+        code: string;
+        description: string;
+        source: 'database' | 'question';
+    }>>>({}); // ✅ Skills organizadas por disciplina
+    const [gradesMapping, setGradesMapping] = useState<Record<string, string>>({}); // ✅ Adicionado para mapeamento de séries
+    
+    // ✅ ESTADO PARA CONTROLAR ESTABILIDADE DOS DADOS
+    const [isDataStable, setIsDataStable] = useState(false);
+    
+    // ✅ NOVOS ESTADOS PARA FILTROS E ORDENAÇÃO
+    const [visibleFields, setVisibleFields] = useState<{
+        turma: boolean;
+        habilidade: boolean;
+        questoes: boolean;
+        percentualTurma: boolean;
+        total: boolean;
+        nota: boolean;
+        proficiencia: boolean;
+        nivel: boolean;
+    }>({
         turma: true,
         habilidade: true,
         questoes: true,
@@ -517,430 +228,1048 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
         proficiencia: true,
         nivel: true
     });
+    
+    const [subjectFilter, setSubjectFilter] = useState<string>('all');
+    const [levelFilter, setLevelFilter] = useState<string>('all');
+    const [turmaFilter, setTurmaFilter] = useState<string>('all');
+    const [orderBy, setOrderBy] = useState<'nota' | 'proficiencia' | 'status' | 'turma' | 'nome'>('nome');
+    const [orderDirection, setOrderDirection] = useState<'asc' | 'desc'>('asc');
+    
+    // ✅ NOVO: Estado para controlar visualização de alunos
+    const [showOnlyCompleted, setShowOnlyCompleted] = useState(true);
+    const [showAbsentStudents, setShowAbsentStudents] = useState(false);
+    
+    const { toast } = useToast();
+    const navigate = useNavigate();
 
-    // ✅ HOOK REFATORADO - FONTE ÚNICA DE DADOS (SEM TRY/CATCH - REGRAS DE HOOKS)
-    const aggregatedResults = useAggregatedResults(evaluationId || '', {
-        enablePartialView: isRealTimeMode,
-        autoRefresh: false, // ✅ DESABILITADO: Auto-refresh por padrão para evitar chamadas excessivas
-        refreshInterval: 30000,
-        includePartialInStats: isRealTimeMode
-    });
+    // ✅ NOVO: Função para voltar da visualização de faltosos
+    const handleBackFromAbsentStudents = () => {
+        setShowAbsentStudents(false);
+    };
 
-    // ✅ EXTRAIR DADOS COM VERIFICAÇÕES DE SEGURANÇA
-    const {
-        students: allStudents = [],
-        allStudents: allStudentsWithPartial = [],
-        stats = null,
-        completionStatus = null,
-        isLoading = false,
-        error = null,
-        refetch = async () => {},
-        hasIncompleteStudents = false
-    } = aggregatedResults || {};
+    // ✅ FUNÇÃO PARA CONSOLIDAR ATUALIZAÇÕES DO EVALUATIONINFO
+    const consolidateEvaluationInfo = (updates: Partial<EvaluationInfo>) => {
+        setEvaluationInfo(prev => {
+            if (!prev) {
+                const newState = updates as EvaluationInfo;
+                return newState;
+            }
+            
+            // ✅ VERIFICAR SE HÁ MUDANÇAS REAIS ANTES DE ATUALIZAR
+            const hasChanges = Object.keys(updates).some(key => {
+                const updateValue = updates[key as keyof EvaluationInfo];
+                const currentValue = prev[key as keyof EvaluationInfo];
+                
+                // Para arrays, comparar conteúdo
+                if (Array.isArray(updateValue) && Array.isArray(currentValue)) {
+                    return JSON.stringify(updateValue) !== JSON.stringify(currentValue);
+                }
+                
+                // Para outros tipos, comparação direta
+                return updateValue !== currentValue;
+            });
+            
+            if (!hasChanges) {
+                return prev;
+            }
+            
+            const consolidated = {
+                ...prev,
+                ...updates
+            };
+            
+            // ✅ VERIFICAR SE OS DADOS ESTÃO ESTÁVEIS APÓS A CONSOLIDAÇÃO
+            // ✅ CORRIGIDO: Permitir que dados sejam considerados estáveis mesmo se apenas um dos campos estiver disponível
+            const hasStableData = (consolidated.disciplina && 
+                consolidated.disciplina.trim() !== '' && 
+                consolidated.disciplina !== 'N/A') ||
+                (consolidated.serie && 
+                consolidated.serie.trim() !== '' && 
+                consolidated.serie !== 'N/A');
+            
+            if (hasStableData && !isDataStable) {
+                setIsDataStable(true);
+            }
+            
+            return consolidated;
+        });
+    };
 
-    // ✅ DADOS DERIVADOS DOS HOOKS COM VERIFICAÇÕES DE SEGURANÇA
-    const studentsToShow = isRealTimeMode ? (allStudentsWithPartial || []) : (allStudents || []);
-    const evaluationInfo: EvaluationInfo | null = stats ? {
-        id: evaluationId || '',
-        titulo: 'Avaliação Detalhada', // TODO: Buscar do backend
-        disciplina: 'Múltiplas Disciplinas', // TODO: Buscar do backend
-        curso: 'Ensino Fundamental', // TODO: Buscar do backend
-        serie: '9º Ano', // TODO: Buscar do backend
-        escola: 'Escola Municipal', // TODO: Buscar do backend
-        municipio: 'São Paulo', // TODO: Buscar do backend
-        data_aplicacao: new Date().toISOString(),
-        status: completionStatus?.hasIncompleteStudents ? 'em_andamento' : 'concluida',
-        total_alunos: stats.totalStudents || 0,
-        alunos_participantes: (stats.completedStudents || 0) + (stats.partialStudents || 0),
-        alunos_ausentes: (stats.totalStudents || 0) - ((stats.completedStudents || 0) + (stats.partialStudents || 0)),
-        media_nota: stats.validStats?.averageGrade || 0,
-        media_proficiencia: stats.validStats?.averageProficiency || 0,
-        distribuicao_classificacao: stats.validStats?.classificationDistribution || {
-            abaixo_do_basico: 0,
-            basico: 0,
-            adequado: 0,
-            avancado: 0
+    // Função para atualizar o progresso do loading
+    const updateLoadingProgress = (step: number, message?: string) => {
+        setCurrentStepIndex(step);
+        setLoadingProgress((step / (loadingSteps.length - 1)) * 100);
+        if (message) {
+            setLoadingStep(message);
+        } else {
+            setLoadingStep(loadingSteps[step]);
         }
-    } : null;
-
-    // ✅ HANDLERS PARA CONTROLES
-    const handleToggleRealTime = (enabled: boolean) => {
-        setIsRealTimeMode(enabled);
-        setLastUpdate(new Date());
-        toast({
-            title: enabled ? "Modo Tempo Real Ativado" : "Modo Tempo Real Desativado",
-            description: enabled 
-                ? "Agora você pode acompanhar o progresso em tempo real."
-                : "Voltando a mostrar apenas dados completos e validados.",
-        });
     };
 
-    const handleToggleAutoRefresh = (enabled: boolean) => {
-        setAutoRefreshEnabled(enabled);
-        toast({
-            title: enabled ? "Auto-atualização Ativada" : "Auto-atualização Desativada",
-            description: enabled 
-                ? "Os dados serão atualizados automaticamente a cada 30 segundos."
-                : "Atualização automática foi desabilitada.",
-        });
+    useEffect(() => {
+        if (evaluationId) {
+            fetchDetailedResults();
+        }
+    }, [evaluationId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // ✅ Função para obter nome da série (baseada na solução do Results.tsx)
+    const getGradeName = (gradeId: string | null | undefined, gradeIdFromApi?: string | null | undefined, evaluation?: EvaluationInfo): string => {
+        // ✅ PRIORIDADE 1: Usar o campo serie da API (agora deve vir correto)
+        if (gradeId && gradeId !== 'N/A') {
+            return gradeId;
+        }
+        
+        // ✅ PRIORIDADE 2: Usar o grade_id da API (UUID da grade)
+        if (gradeIdFromApi && gradeIdFromApi !== 'N/A') {
+            if (gradeIdFromApi.includes('-')) {
+                const mappedName = gradesMapping[gradeIdFromApi];
+                if (mappedName) {
+                    return mappedName;
+                }
+                return `Série ${gradeIdFromApi.slice(0, 8)}...`;
+            }
+            return gradeIdFromApi;
+        }
+        
+        // ✅ PRIORIDADE 3: Fallback para mapeamento local (se API não retornar)
+        if (evaluation) {
+            return determineGradeFromEvaluation(evaluation);
+        }
+        
+        return 'Série não identificada';
     };
 
-    const handleRefresh = async () => {
-        setLastUpdate(new Date());
-        await refetch();
-        toast({
-            title: "Dados Atualizados",
-            description: "As informações foram atualizadas com sucesso.",
+    // ✅ Função para determinar série a partir da avaliação (fallback)
+    const determineGradeFromEvaluation = (evaluation: EvaluationInfo): string => {
+        // Fallback caso a API não retorne série (não deve mais acontecer)
+        return 'Série não identificada';
+    };
+
+    // ✅ Função para buscar mapeamento de séries
+    const fetchGradesMapping = async () => {
+        try {
+            // ✅ Tentar usar a API service primeiro
+            // ✅ Usar a rota correta do backend via API service
+            const response = await api.get('/evaluation-results/grades');
+            
+            if (response.data) {
+                const grades = response.data;
+                
+                const mapping: Record<string, string> = {};
+                if (Array.isArray(grades)) {
+                    grades.forEach((grade: { id: string; name: string }) => {
+                        mapping[grade.id] = grade.name;
+                    });
+                    setGradesMapping(mapping);
+                    return;
+                }
+            }
+        } catch (error) {
+            // Fallback silencioso
+        }
+
+        try {
+            // ✅ Fallback: tentar fetch direto
+            const response = await fetch('/evaluation-results/grades');
+            if (response.ok) {
+                const grades = await response.json();
+                const mapping: Record<string, string> = {};
+                if (Array.isArray(grades)) {
+                    grades.forEach((grade: { id: string; name: string }) => {
+                        mapping[grade.id] = grade.name;
+                    });
+                    setGradesMapping(mapping);
+                }
+            }
+        } catch (error) {
+            // Fallback silencioso
+        }
+    };
+
+    // ✅ CORRIGIDO: Calcular alunos filtrados
+    const filteredStudents = React.useMemo(() => {
+        return students.filter(student => {
+            // ✅ NOVO: Filtro para mostrar apenas alunos que realizaram a avaliação
+            if (showOnlyCompleted && student.status !== 'concluida') {
+                return false;
+            }
+            
+            const matchesSearch = searchTerm === '' || 
+                student.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                student.turma.toLowerCase().includes(searchTerm.toLowerCase());
+            
+            const matchesClassification = classificationFilter === 'all' || 
+                student.classificacao === classificationFilter;
+            
+            const matchesStatus = statusFilter === 'all' || 
+                student.status === statusFilter;
+            
+            const matchesScore = !showOnlyWithScore || student.nota > 0;
+            
+            // ✅ NOVOS FILTROS
+            const matchesLevel = levelFilter === 'all' || 
+                student.classificacao === levelFilter;
+            
+            const matchesTurma = turmaFilter === 'all' || 
+                student.turma === turmaFilter;
+            
+            return matchesSearch && matchesClassification && matchesStatus && matchesScore && matchesLevel && matchesTurma;
+        }).sort((a, b) => {
+            // ✅ ORDENAÇÃO
+            let comparison = 0;
+            
+            switch (orderBy) {
+                case 'nota':
+                    comparison = a.nota - b.nota;
+                    break;
+                case 'proficiencia':
+                    comparison = a.proficiencia - b.proficiencia;
+                    break;
+                case 'status':
+                    comparison = a.status.localeCompare(b.status);
+                    break;
+                case 'turma':
+                    comparison = a.turma.localeCompare(b.turma);
+                    break;
+                case 'nome':
+                default:
+                    comparison = a.nome.localeCompare(b.nome);
+                    break;
+            }
+            
+            return orderDirection === 'asc' ? comparison : -comparison;
         });
+    }, [students, searchTerm, classificationFilter, statusFilter, showOnlyWithScore, levelFilter, turmaFilter, orderBy, orderDirection, showOnlyCompleted]);
+
+    // ✅ NOVO: Alunos que não realizaram a avaliação
+    const absentStudents = React.useMemo(() => {
+        return students.filter(student => student.status !== 'concluida');
+    }, [students]);
+
+    // Componente de visualização em cards (mantido para compatibilidade)
+    const StudentsCardsView = ({ students }: { students: StudentResult[] }) => {
+        return (
+            <div className="space-y-4">
+                {students.map((student, index) => {
+                    const accuracyRate = student.questoes_respondidas > 0
+                        ? (student.acertos / student.questoes_respondidas) * 100
+                        : 0;
+
+                    return (
+                        <div key={`${student.id || 'student'}-${index}`} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                                {/* Informações principais */}
+                                <div className="flex-1 space-y-2">
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="font-semibold text-lg">{student.nome}</h3>
+                                        <Badge variant="outline">{student.turma}</Badge>
+                                        <Badge className={getStatusColor(student.status)}>
+                                            {student.status === 'concluida' ? 'Concluída' : 'Pendente'}
+                                        </Badge>
+                                    </div>
+
+                                    <div className="flex items-center gap-6">
+                                        <div className="flex items-center gap-2">
+                                            <Target className="h-4 w-4 text-muted-foreground" />
+                                            <span className="text-sm font-medium">
+                                                Nota: {student.nota.toFixed(1)}
+                                            </span>
+                                            {student.nota > 0 ? (
+                                                student.nota >= 7 ? (
+                                                    <TrendingUp className="h-4 w-4 text-green-600" />
+                                                ) : (
+                                                    <XCircle className="h-4 w-4 text-orange-600" />
+                                                )
+                                            ) : (
+                                                <Minus className="h-4 w-4 text-gray-400" />
+                                            )}
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                                            <span className="text-sm font-medium">
+                                                Proficiência: {student.proficiencia > 0 ? student.proficiencia.toFixed(1) : 'N/A'}
+                                            </span>
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                            <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+                                            <span className="text-sm font-medium">
+                                                Acertos: {student.acertos}/{student.questoes_respondidas}
+                                            </span>
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                            <Clock className="h-4 w-4 text-muted-foreground" />
+                                            <span className="text-sm font-medium">
+                                                Tempo: {Math.floor(student.tempo_gasto / 60)}min
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Barra de progresso de acertos */}
+                                    {student.questoes_respondidas > 0 && (
+                                        <div className="space-y-1">
+                                            <div className="flex justify-between text-xs text-muted-foreground">
+                                                <span>Taxa de Acerto</span>
+                                                <span>{accuracyRate.toFixed(1)}%</span>
+                                            </div>
+                                            <Progress value={accuracyRate} className="h-2" />
+                                        </div>
+                                    )}
+
+                                    {/* Classificação */}
+                                    <div className="flex items-center gap-2">
+                                        <Badge className={getClassificationColor(student.classificacao)}>
+                                            {student.classificacao}
+                                        </Badge>
+                                        {student.status === 'pendente' && (
+                                            <Badge variant="outline" className="text-orange-600 border-orange-300">
+                                                Aguardando conclusão
+                                            </Badge>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Ações */}
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => handleViewStudentDetails(student.id)}
+                                        disabled={student.status === 'pendente'}
+                                    >
+                                        <Eye className="h-4 w-4 mr-2" />
+                                        Ver Detalhes
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        );
+    };
+
+    const fetchDetailedResults = async () => {
+        try {
+            setIsLoading(true);
+            setIsDataLoading(true);
+            setLoadingProgress(0);
+            setIsDataStable(false); // ✅ Resetar estabilidade no início
+            updateLoadingProgress(0, 'Inicializando carregamento...');
+            
+            if (!evaluationId) {
+                throw new Error("ID da avaliação não fornecido");
+            }
+
+            // ✅ Buscar mapeamento de séries e opções de filtros
+            await fetchGradesMapping();
+            
+            // ✅ Buscar opções de filtros da avaliação (inclui disciplinas e séries)
+            const filterOptions = await EvaluationResultsApiService.getFilterOptionsForEvaluation(evaluationId);
+            
+            // ✅ ATUALIZAR evaluationInfo com múltiplas disciplinas
+            if (filterOptions?.subjects && filterOptions.subjects.length > 0) {
+                // ✅ Extrair nomes das disciplinas (pode ser string ou objeto)
+                const disciplinasNomes = filterOptions.subjects.map((disciplina: string | { name?: string; nome?: string; id?: string }) => {
+                    if (typeof disciplina === 'string') {
+                        return disciplina;
+                    } else if (disciplina && typeof disciplina === 'object') {
+                        return disciplina.name || disciplina.nome || disciplina.id || 'Disciplina não identificada';
+                    }
+                    return 'Disciplina não identificada';
+                });
+                
+                consolidateEvaluationInfo({
+                    disciplinas: disciplinasNomes
+                });
+            }
+
+            // ✅ 1. Verificar e atualizar status da avaliação
+            updateLoadingProgress(1, 'Verificando status da avaliação...');
+            const statusCheck = await EvaluationResultsApiService.checkEvaluationStatus(evaluationId);
+
+            // ✅ 2. Buscar informações básicas da avaliação
+            updateLoadingProgress(2, 'Carregando informações da avaliação...');
+            const evaluationResponse = await EvaluationResultsApiService.getEvaluationById(evaluationId);
+            
+            if (evaluationResponse) {
+                consolidateEvaluationInfo(evaluationResponse);
+                
+                // ✅ 3. Tentar recalcular a avaliação primeiro
+                updateLoadingProgress(3, 'Recalculando dados da avaliação...');
+                try {
+                    const recalculationResult = await EvaluationResultsApiService.recalculateEvaluation(evaluationId);
+                    
+                    // ✅ 3.1. Tentar calcular scores especificamente
+                    if (recalculationResult.success) {
+                        try {
+                            const calculateScoresResult = await EvaluationResultsApiService.calculateTestScores(evaluationId);
+                            
+                            // ✅ 3.3. Aguardar um pouco para o backend processar os dados
+                            await new Promise(resolve => setTimeout(resolve, 2000)); // 2 segundos
+                        } catch (error) {
+                            // Erro no cálculo de scores - continuar
+                        }
+                    }
+                } catch (error) {
+                    // Erro na recalculação - continuar
+                }
+
+                // ✅ 4. Obter resumo de status atualizado
+                updateLoadingProgress(4, 'Atualizando dados de status...');
+                const statusSummary = await EvaluationResultsApiService.getEvaluationStatusSummary(evaluationId);
+                
+                if (statusSummary) {
+                    // ✅ Usar os campos corretos que o backend agora retorna
+                    const totalAlunos = statusSummary.total_alunos || 0;
+                    const alunosParticipantes = statusSummary.alunos_participantes || 0;
+                    const alunosAusentes = statusSummary.alunos_ausentes || 0;
+                    
+                    const hasValidData = totalAlunos > 0;
+                    
+                    if (hasValidData) {
+                        // ✅ Atualizar mapeamento de séries se disponível
+                        if (filterOptions?.grades) {
+                            const newGradesMapping: Record<string, string> = {};
+                            filterOptions.grades.forEach(grade => {
+                                newGradesMapping[grade.id] = grade.name;
+                            });
+                            setGradesMapping(newGradesMapping);
+                        }
+                        
+                        // Atualizar as informações com dados mais precisos
+                        consolidateEvaluationInfo({
+                            total_alunos: totalAlunos,
+                            alunos_participantes: alunosParticipantes,
+                            alunos_ausentes: alunosAusentes,
+                            media_nota: statusSummary.average_score !== undefined ? statusSummary.average_score : evaluationInfo?.media_nota,
+                            media_proficiencia: statusSummary.average_proficiency !== undefined ? statusSummary.average_proficiency : evaluationInfo?.media_proficiencia,
+                            status: statusSummary.overall_status as 'concluida' | 'em_andamento' | 'pendente' || evaluationInfo?.status,
+                            disciplinas: filterOptions?.subjects?.map((d: string | { name?: string }) => typeof d === 'string' ? d : d.name) || evaluationInfo?.disciplinas
+                        });
+
+                        // ✅ 5. Buscar dados da avaliação novamente após recalculação (múltiplas tentativas)
+                        updateLoadingProgress(5, 'Atualizando dados finais...');
+                        
+                        let updatedEvaluationResponse = null;
+                        let attempts = 0;
+                        const maxAttempts = 3;
+                        
+                        while (attempts < maxAttempts) {
+                            attempts++;
+                            
+                            updatedEvaluationResponse = await EvaluationResultsApiService.getEvaluationById(evaluationId);
+                            
+                            // ✅ Verificar se os dados foram atualizados
+                            if (updatedEvaluationResponse && 
+                                (updatedEvaluationResponse.media_nota > 0 || updatedEvaluationResponse.media_proficiencia > 0)) {
+                                break;
+                            }
+                            
+                            if (attempts < maxAttempts) {
+                                await new Promise(resolve => setTimeout(resolve, 1000)); // 1 segundo
+                            }
+                        }
+
+                        if (updatedEvaluationResponse) {
+                            // ✅ Atualizar com os dados recalculados
+                            consolidateEvaluationInfo({
+                                media_nota: updatedEvaluationResponse.media_nota !== undefined ? updatedEvaluationResponse.media_nota : evaluationInfo?.media_nota,
+                                media_proficiencia: updatedEvaluationResponse.media_proficiencia !== undefined ? updatedEvaluationResponse.media_proficiencia : evaluationInfo?.media_proficiencia
+                            });
+                        }
+
+                        // ✅ 5.1. Calcular médias manualmente se o backend não retornar
+                        try {
+                            const studentsData = await EvaluationResultsApiService.getStudentsByEvaluation(evaluationId);
+                            
+                            if (studentsData && studentsData.length > 0) {
+                                const studentsWithScores = studentsData.filter(s => s.nota > 0);
+                                
+                                if (studentsWithScores.length > 0) {
+                                    const averageScore = studentsWithScores.reduce((sum, s) => sum + s.nota, 0) / studentsWithScores.length;
+                                    const averageProficiency = studentsWithScores.reduce((sum, s) => sum + s.proficiencia, 0) / studentsWithScores.length;
+                                    
+                                    // ✅ Atualizar com as médias calculadas manualmente
+                                    consolidateEvaluationInfo({
+                                        media_nota: averageScore,
+                                        media_proficiencia: averageProficiency
+                                    });
+                                }
+                            }
+                        } catch (error) {
+                            // Erro ao calcular médias manualmente - continuar
+                        }
+                    }
+                } else {
+                    // ✅ Tentar recalcular a avaliação se o resumo não estiver disponível
+                    try {
+                        const recalculationResult = await EvaluationResultsApiService.recalculateEvaluation(evaluationId);
+                        
+                        if (recalculationResult.success) {
+                            // Tentar obter o resumo novamente após recálculo
+                            const updatedStatusSummary = await EvaluationResultsApiService.getEvaluationStatusSummary(evaluationId);
+                            if (updatedStatusSummary) {
+                                // ✅ Usar os campos corretos que o backend agora retorna
+                                const totalAlunos = updatedStatusSummary.total_alunos || 0;
+                                const alunosParticipantes = updatedStatusSummary.alunos_participantes || 0;
+                                const alunosAusentes = updatedStatusSummary.alunos_ausentes || 0;
+                                
+                                // ✅ Buscar opções de filtros novamente após recálculo
+                                const updatedFilterOptions = await EvaluationResultsApiService.getFilterOptionsForEvaluation(evaluationId);
+                                
+                                consolidateEvaluationInfo({
+                                    total_alunos: totalAlunos,
+                                    alunos_participantes: alunosParticipantes,
+                                    alunos_ausentes: alunosAusentes,
+                                    media_nota: updatedStatusSummary.average_score !== undefined ? updatedStatusSummary.average_score : evaluationInfo?.media_nota,
+                                    media_proficiencia: updatedStatusSummary.average_proficiency !== undefined ? updatedStatusSummary.average_proficiency : evaluationInfo?.media_proficiencia,
+                                    status: updatedStatusSummary.overall_status as 'concluida' | 'em_andamento' | 'pendente' || evaluationInfo?.status,
+                                    disciplinas: updatedFilterOptions?.subjects?.map((d: string | { name?: string }) => typeof d === 'string' ? d : d.name) || evaluationInfo?.disciplinas
+                                });
+                            }
+                        }
+                    } catch (error) {
+                        // Erro ao recalcular avaliação - continuar
+                    }
+                }
+            } else {
+                console.error(`❌ Avaliação não encontrada: ${evaluationId}`);
+                return;
+            }
+            
+            // ✅ 6. Buscar dados das questões com códigos reais
+            updateLoadingProgress(6, 'Buscando dados dos alunos...');
+            let questionsWithSkillsResponse = null;
+            try {
+                questionsWithSkillsResponse = await EvaluationResultsApiService.getEvaluationSkills(evaluationId);
+                
+                // ✅ Verificar se é array ou objeto
+                if (Array.isArray(questionsWithSkillsResponse) && questionsWithSkillsResponse.length > 0) {
+                    // ✅ Extrair informações da série a partir dos dados das questões
+                    const firstQuestion = questionsWithSkillsResponse[0];
+                    
+                    if (firstQuestion.grade) {
+                        // ✅ Atualizar evaluationInfo com a série correta
+                        consolidateEvaluationInfo({
+                            serie: firstQuestion.grade.name || firstQuestion.grade.id,
+                            grade_id: firstQuestion.grade.id
+                        });
+                    }
+                    
+                    // ✅ Verificar se há informações de disciplina nos dados das questões
+                    if (firstQuestion.subject) {
+                        // ✅ Atualizar evaluationInfo com a disciplina correta se necessário
+                        if (firstQuestion.subject.name && firstQuestion.subject.name !== evaluationInfo?.disciplina) {
+                            consolidateEvaluationInfo({
+                                disciplina: firstQuestion.subject.name
+                            });
+                        }
+                    }
+                }
+            } catch (error: unknown) {
+                // Continuar sem os dados das questões
+            }
+            
+            // ✅ ALTERNATIVA: Buscar série a partir dos dados da avaliação
+            if (evaluationResponse) {
+                // ✅ Verificar se há informações de série nos dados da avaliação
+                // Usar type assertion para acessar propriedades que podem existir dinamicamente
+                const evaluationWithGrade = evaluationResponse as EvaluationInfo & { grade?: string | { name: string; id: string }; grade_id?: string | { name: string; id: string } };
+                if (evaluationWithGrade.grade || evaluationWithGrade.grade_id) {
+                    const gradeInfo = evaluationWithGrade.grade || evaluationWithGrade.grade_id;
+                    
+                    consolidateEvaluationInfo({
+                        serie: typeof gradeInfo === 'string' ? gradeInfo : gradeInfo.name || gradeInfo.id,
+                        grade_id: typeof gradeInfo === 'string' ? undefined : gradeInfo.id
+                    });
+                }
+            }
+            
+            // ✅ NOVA ALTERNATIVA: Buscar série na resposta da API /questions
+            if (questionsWithSkillsResponse && typeof questionsWithSkillsResponse === 'object') {
+                // ✅ Verificar se há informações de série na resposta
+                // Usar type assertion para acessar propriedades que podem existir dinamicamente
+                const questionsWithGrade = questionsWithSkillsResponse as { grade?: string | { name: string; id: string }; grade_id?: string | { name: string; id: string } };
+                if (questionsWithGrade.grade || questionsWithGrade.grade_id) {
+                    const gradeInfo = questionsWithGrade.grade || questionsWithGrade.grade_id;
+                    
+                    consolidateEvaluationInfo({
+                        serie: typeof gradeInfo === 'string' ? gradeInfo : gradeInfo.name || gradeInfo.id,
+                        grade_id: typeof gradeInfo === 'string' ? undefined : gradeInfo.id
+                    });
+                }
+            }
+
+            // ✅ 7. Buscar relatório detalhado
+            updateLoadingProgress(7, 'Processando resultados detalhados...');
+            let detailedReportResponse = null;
+            try {
+                detailedReportResponse = await EvaluationResultsApiService.getDetailedReport(evaluationId);
+            } catch (error: unknown) {
+                // Continuar com dados básicos se relatório detalhado falhar
+            }
+
+            // ✅ NOVO: BUSCAR SKILLS POR AVALIAÇÃO (resolve o problema das disciplinas)
+            try {
+                const evaluationSkills = await EvaluationResultsApiService.getSkillsByEvaluation(evaluationId);
+                
+                if (evaluationSkills && evaluationSkills.length > 0) {
+                    // ✅ Criar mapeamento UUID -> Código real organizado por disciplina
+                    const newSkillsMapping: Record<string, string> = {};
+                    const skillsBySubject: Record<string, Array<{
+                        id: string | null;
+                        code: string;
+                        description: string;
+                        source: 'database' | 'question';
+                    }>> = {};
+                    
+                    evaluationSkills.forEach(skill => {
+                        // ✅ Mapear UUID para código real
+                        if (skill.id && skill.code) {
+                            newSkillsMapping[skill.id] = skill.code;
+                        }
+                        
+                        // ✅ Organizar skills por disciplina
+                        const subjectId = skill.subject_id;
+                        if (!skillsBySubject[subjectId]) {
+                            skillsBySubject[subjectId] = [];
+                        }
+                        skillsBySubject[subjectId].push({
+                            id: skill.id,
+                            code: skill.code,
+                            description: skill.description,
+                            source: skill.source
+                        });
+                    });
+                    
+                    console.log('🔍 Skills organizadas por disciplina:', skillsBySubject);
+                    setSkillsMapping(newSkillsMapping);
+                    setSkillsBySubject(skillsBySubject);
+                    
+                    // ✅ Atualizar informações da avaliação com disciplinas encontradas
+                    if (Object.keys(skillsBySubject).length > 0) {
+                        // ✅ Buscar nomes das disciplinas
+                        try {
+                            const subjects = await EvaluationResultsApiService.getSubjects();
+                            const disciplinasNomes: string[] = [];
+                            
+                            Object.keys(skillsBySubject).forEach(subjectId => {
+                                const subject = subjects.find((s: { id: string; name: string }) => s.id === subjectId);
+                                if (subject) {
+                                    disciplinasNomes.push(subject.name);
+                                }
+                            });
+                            
+                            if (disciplinasNomes.length > 0) {
+                                consolidateEvaluationInfo({
+                                    disciplinas: disciplinasNomes
+                                });
+                            }
+                        } catch (error) {
+                            console.warn('⚠️ Erro ao buscar nomes das disciplinas:', error);
+                        }
+                    }
+                } else {
+                    // ✅ Criar mapeamento vazio para evitar erros
+                    setSkillsMapping({});
+                }
+            } catch (error) {
+                console.warn('⚠️ Erro ao buscar skills da avaliação:', error);
+                // ✅ Criar mapeamento vazio para evitar erros
+                setSkillsMapping({});
+            }
+            
+            if (detailedReportResponse) {
+                setDetailedReport(detailedReportResponse);
+                
+                // ✅ CORRIGIDO: Transformar alunos do relatório detalhado para o formato esperado
+                const transformedStudents: StudentResult[] = detailedReportResponse.alunos.map(aluno => {
+                    // ✅ CORREÇÃO: Converter proficiência da escala 0-1000 para a escala correta
+                    let proficienciaCorrigida = aluno.proficiencia;
+                    
+                    // Se o valor está na escala 0-1000, converter para a escala correta
+                    if (aluno.proficiencia > 500) { // Valores acima de 500 indicam escala 0-1000
+                        // Determinar o valor máximo baseado na série/disciplina
+                        const isMathematics = detailedReportResponse.avaliacao.disciplina.toLowerCase().includes('matemática') || 
+                                             detailedReportResponse.avaliacao.disciplina.toLowerCase().includes('matematica');
+
+                        // Assumir Anos Finais/EM para o exemplo (pode ser ajustado conforme necessário)
+                        const maxProficiency = isMathematics ? 425 : 425; // Usando o valor mais alto conforme as mudanças
+                        
+                        // Converter: (valor_1000 / 1000) * max_proficiency
+                        proficienciaCorrigida = (aluno.proficiencia / 1000) * maxProficiency;
+                    }
+                    
+                    return {
+                        id: aluno.id,
+                        nome: aluno.nome,
+                        turma: aluno.turma,
+                        nota: aluno.nota_final,
+                        proficiencia: proficienciaCorrigida,
+                        classificacao: aluno.classificacao,
+                        questoes_respondidas: aluno.total_acertos + aluno.total_erros + aluno.total_em_branco,
+                        acertos: aluno.total_acertos,
+                        erros: aluno.total_erros,
+                        em_branco: aluno.total_em_branco,
+                        tempo_gasto: aluno.respostas.reduce((total, resp) => total + resp.tempo_gasto, 0),
+                        status: aluno.status === 'concluida' ? 'concluida' : 'pendente'
+                    };
+                });
+
+                updateLoadingProgress(6, 'Gerando estatísticas...');
+                setStudents(transformedStudents);
+                
+                // ✅ ATUALIZAR DADOS DAS QUESTÕES COM CÓDIGOS REAIS
+                if (questionsWithSkillsResponse && questionsWithSkillsResponse.length > 0) {
+                    setQuestionsWithSkills(questionsWithSkillsResponse);
+                }
+                
+                // ✅ CORRIGIDO: Calcular estatísticas usando os dados reais
+                const totalStudents = detailedReportResponse.alunos.length;
+                const completedStudents = detailedReportResponse.alunos.filter(a => a.status === 'concluida').length;
+                
+                // Calcular média ponderada baseada no número de alunos
+                const totalScore = detailedReportResponse.alunos.reduce((sum, aluno) => sum + aluno.nota_final, 0);
+                const averageScore = totalStudents > 0 ? totalScore / totalStudents : 0;
+                
+                // Calcular média de proficiência ponderada
+                const totalProficiency = detailedReportResponse.alunos.reduce((sum, aluno) => sum + aluno.proficiencia, 0);
+                const averageProficiency = totalStudents > 0 ? totalProficiency / totalStudents : 0;
+                
+                // Calcular distribuição de classificação
+                const distribution = {
+                    abaixo_do_basico: detailedReportResponse.alunos.filter(a => a.classificacao === 'Abaixo do Básico').length,
+                    basico: detailedReportResponse.alunos.filter(a => a.classificacao === 'Básico').length,
+                    adequado: detailedReportResponse.alunos.filter(a => a.classificacao === 'Adequado').length,
+                    avancado: detailedReportResponse.alunos.filter(a => a.classificacao === 'Avançado').length,
+                };
+
+                setStats({
+                    totalStudents,
+                    completedStudents,
+                    averageScore,
+                    averageProficiency,
+                    distribution
+                });
+            } else {
+                // Se não há relatório detalhado, buscar apenas os alunos
+                updateLoadingProgress(6, 'Carregando lista de alunos...');
+                const studentsResponse = await EvaluationResultsApiService.getStudentsByEvaluation(evaluationId);
+                setStudents(studentsResponse);
+                
+                // Calcular estatísticas básicas
+                const totalStudents = studentsResponse.length;
+                const completedStudents = studentsResponse.filter(s => s.status === 'concluida').length;
+                const totalScore = studentsResponse.reduce((sum, s) => sum + s.nota, 0);
+                const averageScore = totalStudents > 0 ? totalScore / totalStudents : 0;
+                const totalProficiency = studentsResponse.reduce((sum, s) => sum + s.proficiencia, 0);
+                const averageProficiency = totalStudents > 0 ? totalProficiency / totalStudents : 0;
+                
+                const distribution = {
+                    abaixo_do_basico: studentsResponse.filter(s => s.classificacao === 'Abaixo do Básico').length,
+                    basico: studentsResponse.filter(s => s.classificacao === 'Básico').length,
+                    adequado: studentsResponse.filter(s => s.classificacao === 'Adequado').length,
+                    avancado: studentsResponse.filter(s => s.classificacao === 'Avançado').length,
+                };
+                
+                setStats({
+                    totalStudents,
+                    completedStudents,
+                    averageScore,
+                    averageProficiency,
+                    distribution
+                });
+            }
+
+        } catch (error: unknown) {
+            console.error("❌ Erro ao buscar resultados detalhados:", error);
+            
+            // ✅ CORRIGIDO: Mensagens de erro mais específicas incluindo timeout
+            let errorMessage = "Não foi possível carregar os resultados detalhados da avaliação";
+            
+            const apiError = error as ApiError;
+            
+            if (apiError.message?.includes('CORS') || apiError.code === 'ERR_NETWORK') {
+                errorMessage = "Erro de conexão com o servidor. Verifique se o backend está rodando em http://localhost:5000";
+            } else if (apiError.code === 'ECONNABORTED' || apiError.message?.includes('timeout') || apiError.message?.includes('Timeout')) {
+                errorMessage = "A requisição demorou muito para responder. O servidor pode estar processando muitos dados. Tente novamente em alguns minutos.";
+            } else if (apiError.message?.includes('não encontrada')) {
+                errorMessage = "Avaliação não encontrada ou não possui resultados disponíveis";
+            } else if (apiError.response?.status === 404) {
+                errorMessage = "Avaliação não encontrada no servidor";
+            } else if (apiError.response?.status && apiError.response.status >= 500) {
+                errorMessage = "Erro interno do servidor. Tente novamente mais tarde";
+            }
+            
+            toast({
+                title: "Erro",
+                description: errorMessage,
+                variant: "destructive",
+            });
+        } finally {
+            updateLoadingProgress(7, 'Finalizando carregamento...');
+            
+            // ✅ VERIFICAÇÃO FINAL DE ESTABILIDADE
+            if (evaluationInfo && !isDataStable) {
+                const hasStableData = evaluationInfo.disciplina && 
+                    evaluationInfo.disciplina.trim() !== '' && 
+                    evaluationInfo.disciplina !== 'N/A' &&
+                    evaluationInfo.serie && 
+                    evaluationInfo.serie.trim() !== '' && 
+                    evaluationInfo.serie !== 'N/A';
+                
+                if (hasStableData) {
+                    setIsDataStable(true);
+                }
+            }
+            
+            // ✅ VERIFICAÇÃO FINAL DE DADOS MÍNIMOS
+            if (evaluationInfo && evaluationInfo.id && evaluationInfo.titulo && students && students.length > 0) {
+                // Carregamento concluído com sucesso
+            }
+            
+            // Pequeno delay para mostrar a etapa final
+            setTimeout(() => {
+                setIsLoading(false);
+                setIsDataLoading(false);
+                setLoadingStep('');
+                setLoadingProgress(0);
+            }, 500);
+        }
+    };
+
+    const getClassificationColor = (classification: string) => {
+        switch (classification) {
+            case 'Avançado': return 'bg-green-100 text-green-800 border-green-300';
+            case 'Adequado': return 'bg-blue-100 text-blue-800 border-blue-300';
+            case 'Básico': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+            case 'Abaixo do Básico': return 'bg-red-100 text-red-800 border-red-300';
+            default: return 'bg-gray-100 text-gray-800 border-gray-300';
+        }
+    };
+
+    const getStatusColor = (status: string) => {
+        switch (status) {
+            case 'concluida': return 'bg-green-100 text-green-800 border-green-300';
+            case 'pendente': return 'bg-gray-100 text-gray-800 border-gray-300';
+            default: return 'bg-gray-100 text-gray-800 border-gray-300';
+        }
+    };
+
+    // Função utilitária para tratar valores vazios
+    const formatFieldValue = (value: string | null | undefined, fallback: string = 'Não informado') => {
+        if (!value || value.trim() === '') return fallback;
+        return value;
     };
 
     const handleViewStudentDetails = (studentId: string) => {
         navigate(`/app/avaliacao/${evaluationId}/aluno/${studentId}/resultados`);
     };
 
-    // ✅ EFEITO PARA AUTO-REFRESH
-    useEffect(() => {
-        if (!autoRefreshEnabled) return;
+    const handleExportStudents = async () => {
+        try {
+            const XLSX = await import('xlsx');
+            const { saveAs } = await import('file-saver');
 
-        const interval = setInterval(() => {
-            handleRefresh();
-        }, 30000);
+            if (filteredStudents.length === 0) {
+                toast({
+                    title: "Nenhum dado para exportar",
+                    description: "Não há alunos para gerar a planilha",
+                    variant: "destructive",
+                });
+                return;
+            }
 
-        return () => clearInterval(interval);
-    }, [autoRefreshEnabled, refetch]);
+            const worksheetData = [
+                ['Nome', 'Turma', 'Nota', 'Proficiência', 'Classificação', 'Questões Respondidas', 'Acertos', 'Erros', 'Tempo (min)', 'Status'],
+                ...filteredStudents.map(student => [
+                    student.nome,
+                    student.turma,
+                    student.nota.toFixed(1),
+                    student.proficiencia.toFixed(2),
+                    student.classificacao,
+                    student.questoes_respondidas,
+                    student.acertos,
+                    student.erros,
+                    Math.floor(student.tempo_gasto / 60),
+                    student.status === 'concluida' ? 'Concluída' : 'Pendente'
+                ])
+            ];
 
-    // ✅ FILTROS APLICADOS AOS DADOS DOS HOOKS COM VERIFICAÇÕES DE SEGURANÇA
-    const filteredStudents = React.useMemo(() => {
-        if (!Array.isArray(studentsToShow)) {
-            console.warn('studentsToShow não é um array:', studentsToShow);
-            return [];
+            const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'Resultados dos Alunos');
+
+            const fileName = `resultados-alunos-${evaluationId}-${new Date().toISOString().split('T')[0]}.xlsx`;
+            const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+            const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+            saveAs(blob, fileName);
+
+            toast({
+                title: "Exportação concluída!",
+                description: "Os resultados dos alunos foram exportados com sucesso.",
+            });
+        } catch (error) {
+            console.error("Erro na exportação:", error);
+            toast({
+                title: "Erro na exportação",
+                description: "Não foi possível exportar os resultados",
+                variant: "destructive",
+            });
         }
+    };
 
-        return studentsToShow.filter(student => {
-            if (!student) {
-                console.warn('Estudante inválido encontrado:', student);
-                return false;
-            }
+    const uniqueClassifications = [...new Set(students.map(s => s.classificacao))];
+    const uniqueTurmas = [...new Set(students.map(s => s.turma))].sort();
 
-            const matchesSearch = searchTerm === '' || 
-                (student.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                (student.class || '').toLowerCase().includes(searchTerm.toLowerCase());
-            
-            const matchesClassification = classificationFilter === 'all' || 
-                student.result?.classification === classificationFilter;
-            
-            const matchesStatus = statusFilter === 'all' || 
-                (statusFilter === 'concluida' ? student.isComplete : !student.isComplete);
-            
-            return matchesSearch && matchesClassification && matchesStatus;
-        });
-    }, [studentsToShow, searchTerm, classificationFilter, statusFilter]);
+    // ✅ VERIFICAÇÃO: Só renderizar se os dados estiverem completos
+    const hasValidEvaluationData = evaluationInfo && 
+        evaluationInfo.media_nota !== undefined && 
+        evaluationInfo.media_proficiencia !== undefined && 
+        evaluationInfo.total_alunos !== undefined && 
+        evaluationInfo.alunos_participantes !== undefined && 
+        evaluationInfo.alunos_ausentes !== undefined;
 
-    // Estados de loading
-    if (isLoading) {
+    // ✅ VERIFICAÇÃO: Só renderizar se os alunos estiverem carregados
+    const hasValidStudentsData = students && students.length > 0;
+
+    // ✅ VERIFICAÇÃO: Só renderizar se as estatísticas estiverem carregadas
+    const hasValidStatsData = stats && 
+        stats.totalStudents !== undefined && 
+        stats.averageScore !== undefined && 
+        stats.averageProficiency !== undefined;
+
+    // ✅ VERIFICAÇÃO: Dados mínimos necessários para renderizar
+    const hasMinimumData = evaluationInfo && evaluationInfo.id && evaluationInfo.titulo;
+
+    // ✅ VERIFICAÇÃO: Skills mapping carregado (pode ser vazio, mas deve estar definido)
+    const hasSkillsMappingLoaded = skillsMapping !== undefined;
+
+    // ✅ Loading state melhorado - mostrar loading se dados essenciais não estiverem prontos
+    // ✅ CORRIGIDO: Verificação mais flexível para permitir carregamento com dados parciais
+    const shouldShowLoading = isLoading || 
+        !evaluationInfo || 
+        !evaluationInfo.id || 
+        !evaluationInfo.titulo || 
+        !hasValidStudentsData;
+
+    // ✅ FALLBACK: Se ainda estiver carregando após muito tempo, mostrar dados parciais
+    const hasBeenLoadingTooLong = isLoading && loadingProgress > 50 && evaluationInfo && evaluationInfo.id;
+    
+    if (shouldShowLoading && !hasBeenLoadingTooLong) {
         return (
-            <div className="container mx-auto px-4 py-6 space-y-6">
-                <div className="flex items-center gap-4">
-                    <Button variant="outline" onClick={onBack}>
-                        <ArrowLeft className="h-4 w-4 mr-2" />
-                        Voltar
-                    </Button>
-                    <Skeleton className="h-8 w-64" />
-                </div>
+            <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center p-4">
+                <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
+                    <div className="text-center">
+                        {/* Loading Animation */}
+                        <div className="relative mb-6">
+                            <div className="w-20 h-20 mx-auto relative">
+                                {/* Spinner principal */}
+                                <div className="absolute inset-0 rounded-full border-4 border-blue-100"></div>
+                                <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-600 animate-spin"></div>
+                                
+                                {/* Ícone central */}
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                                        <BarChart3 className="w-4 h-4 text-white" />
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {/* Pontos animados */}
+                            <div className="flex justify-center mt-4 space-x-1">
+                                <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"></div>
+                                <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                                <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                            </div>
+                        </div>
 
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                    {[1, 2, 3, 4].map((i) => (
-                        <Card key={i}>
-                            <CardHeader className="pb-3">
-                                <Skeleton className="h-4 w-32" />
-                            </CardHeader>
-                            <CardContent>
-                                <Skeleton className="h-8 w-16 mb-2" />
-                                <Skeleton className="h-3 w-24" />
-                            </CardContent>
-                        </Card>
-                    ))}
-                </div>
-            </div>
-        );
-    }
-
-    // ✅ VERIFICAÇÃO DE DADOS VÁLIDOS
-    if (!aggregatedResults) {
-        return (
-            <div className="container mx-auto px-4 py-6">
-                <div className="text-center py-12">
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">
-                        Erro ao Carregar Dados
-                    </h3>
-                    <p className="text-gray-600 mb-4">
-                        Não foi possível carregar os dados da avaliação. O hook useAggregatedResults falhou.
-                    </p>
-                    <div className="space-y-2">
-                        <Button onClick={() => window.location.reload()}>
-                            <RefreshCw className="h-4 w-4 mr-2" />
-                            Recarregar Página
-                        </Button>
-                        <Button variant="outline" onClick={onBack}>
-                            <ArrowLeft className="h-4 w-4 mr-2" />
-                            Voltar
-                        </Button>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
-    // ✅ FALLBACK TEMPORÁRIO: Dados mockados para demonstração
-    if (isLoading && (!studentsToShow || studentsToShow.length === 0) && !aggregatedResults?.students?.length) {
-        const mockStudents: StudentData[] = [
-            {
-                id: '1',
-                name: 'João Silva',
-                class: '9º Ano A',
-                school: 'Escola Municipal',
-                isComplete: true,
-                completionStatus: CompletionStatusLevel.COMPLETE,
-                session: {
-                    id: 'session-1',
-                    status: 'completed',
-                    startedAt: '2024-01-15T10:00:00Z',
-                    submittedAt: '2024-01-15T11:30:00Z',
-                    totalQuestions: 20,
-                    answeredQuestions: 20,
-                    timeSpent: 5400,
-                    completionPercentage: 100
-                },
-                result: {
-                    grade: 8.5,
-                    proficiency: 325,
-                    classification: 'Adequado',
-                    correctAnswers: 17,
-                    totalQuestions: 20,
-                    scorePercentage: 85
-                }
-            },
-            {
-                id: '2',
-                name: 'Maria Santos',
-                class: '9º Ano A',
-                school: 'Escola Municipal',
-                isComplete: true,
-                completionStatus: CompletionStatusLevel.COMPLETE,
-                session: {
-                    id: 'session-2',
-                    status: 'completed',
-                    startedAt: '2024-01-15T10:00:00Z',
-                    submittedAt: '2024-01-15T11:45:00Z',
-                    totalQuestions: 20,
-                    answeredQuestions: 20,
-                    timeSpent: 6300,
-                    completionPercentage: 100
-                },
-                result: {
-                    grade: 9.2,
-                    proficiency: 380,
-                    classification: 'Avançado',
-                    correctAnswers: 18,
-                    totalQuestions: 20,
-                    scorePercentage: 92
-                }
-            },
-            {
-                id: '3',
-                name: 'Pedro Costa',
-                class: '9º Ano A',
-                school: 'Escola Municipal',
-                isComplete: false,
-                completionStatus: CompletionStatusLevel.PARTIALLY_COMPLETE,
-                session: {
-                    id: 'session-3',
-                    status: 'in_progress',
-                    startedAt: '2024-01-15T10:00:00Z',
-                    submittedAt: undefined,
-                    totalQuestions: 20,
-                    answeredQuestions: 12,
-                    timeSpent: 3600,
-                    completionPercentage: 60,
-                    progress: 60
-                },
-                result: {
-                    grade: 0,
-                    proficiency: 0,
-                    classification: 'N/A',
-                    correctAnswers: 0,
-                    totalQuestions: 20,
-                    scorePercentage: 0
-                }
-            }
-        ];
-
-        const mockStats = {
-            totalStudents: 3,
-            completedStudents: 2,
-            partialStudents: 1,
-            completionRate: 66.7,
-            validStats: {
-                averageGrade: 8.85,
-                averageProficiency: 352.5,
-                averageAccuracy: 88.5,
-                averageTimeSpent: 5850,
-                classificationDistribution: {
-                    abaixo_do_basico: 0,
-                    basico: 0,
-                    adequado: 1,
-                    avancado: 1
-                }
-            }
-        };
-
-        return (
-            <div className="container mx-auto px-4 py-6 space-y-6">
-                {/* Header */}
-                <div className="flex items-center gap-4">
-                    <Button variant="outline" onClick={onBack}>
-                        <ArrowLeft className="h-4 w-4 mr-2" />
-                        Voltar
-                    </Button>
-                    <div className="flex-1">
-                        <h1 className="text-2xl font-bold">Avaliação de Matemática - 9º Ano</h1>
-                        <p className="text-muted-foreground">
-                            Resultados detalhados (dados de demonstração)
+                        {/* Título */}
+                        <h2 className="text-xl font-bold text-gray-900 mb-3">
+                            Carregando Resultados Detalhados
+                        </h2>
+                        
+                        {/* Progress Bar */}
+                        <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
+                            <div 
+                                className="bg-gradient-to-r from-blue-500 to-indigo-600 h-2 rounded-full transition-all duration-500 ease-out"
+                                style={{ width: `${loadingProgress}%` }}
+                            ></div>
+                        </div>
+                        
+                        {/* Etapa atual */}
+                        <p className="text-sm font-medium text-blue-600 mb-2">
+                            {loadingStep}
                         </p>
+                        
+                        {/* Progresso numérico */}
+                        <p className="text-xs text-gray-500 mb-4">
+                            Etapa {currentStepIndex + 1} de {loadingSteps.length} • {Math.round(loadingProgress)}% concluído
+                        </p>
+
+                        {/* Status dos dados */}
+                        <div className="bg-blue-50 rounded-lg p-3 mb-6">
+                            <div className="text-xs text-blue-800 space-y-1">
+                                <div className="flex items-center justify-between">
+                                    <span>Dados básicos da avaliação:</span>
+                                    <span className={`font-medium ${evaluationInfo && evaluationInfo.id && evaluationInfo.titulo ? 'text-green-600' : 'text-yellow-600'}`}>
+                                        {evaluationInfo && evaluationInfo.id && evaluationInfo.titulo ? '✓' : '⏳'}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span>Lista de alunos:</span>
+                                    <span className={`font-medium ${hasValidStudentsData ? 'text-green-600' : 'text-yellow-600'}`}>
+                                        {hasValidStudentsData ? '✓' : '⏳'}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span>Dados completos da avaliação:</span>
+                                    <span className={`font-medium ${hasValidEvaluationData ? 'text-green-600' : 'text-yellow-600'}`}>
+                                        {hasValidEvaluationData ? '✓' : '⏳'}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span>Estatísticas:</span>
+                                    <span className={`font-medium ${hasValidStatsData ? 'text-green-600' : 'text-yellow-600'}`}>
+                                        {hasValidStatsData ? '✓' : '⏳'}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span>Mapeamento de habilidades:</span>
+                                    <span className={`font-medium ${hasSkillsMappingLoaded ? 'text-green-600' : 'text-yellow-600'}`}>
+                                        {hasSkillsMappingLoaded ? '✓' : '⏳'}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {/* Informação adicional */}
+                        <div className="bg-blue-50 rounded-lg p-3 mb-6">
+                            <p className="text-xs text-blue-800">
+                                💡 Esta operação pode demorar alguns segundos dependendo do tamanho dos dados da avaliação.
+                            </p>
+                        </div>
+
+                        {/* Botão para tentar novamente */}
+                        <Button 
+                            variant="outline" 
+                            onClick={fetchDetailedResults}
+                            className="text-sm border-blue-200 text-blue-700 hover:bg-blue-50"
+                        >
+                            <RefreshCw className="w-4 h-4 mr-2" />
+                            Tentar Novamente
+                        </Button>
                     </div>
-                    
-                    <Button 
-                        variant="outline" 
-                        onClick={handleRefresh}
-                        disabled={isLoading}
-                    >
-                        <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-                        Atualizar
-                    </Button>
                 </div>
-
-                {/* Controles de Visualização */}
-                <RealTimeControlsCard
-                    isRealTimeMode={isRealTimeMode}
-                    onToggleRealTime={handleToggleRealTime}
-                    lastUpdate={lastUpdate}
-                    autoRefreshEnabled={autoRefreshEnabled}
-                    onToggleAutoRefresh={handleToggleAutoRefresh}
-                    completionStats={{
-                        total: mockStats.totalStudents,
-                        completed: mockStats.completedStudents,
-                        partial: mockStats.partialStudents,
-                        completionRate: mockStats.completionRate
-                    }}
-                />
-
-                {/* Status de Completude */}
-                <CompletionStatusCard
-                    stats={{
-                        total: mockStats.totalStudents,
-                        completed: mockStats.completedStudents,
-                        partial: mockStats.partialStudents,
-                        completionRate: mockStats.completionRate
-                    }}
-                    isRealTimeMode={isRealTimeMode}
-                />
-
-                {/* Informações da Avaliação */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center justify-between">
-                            <span>Informações da Avaliação</span>
-                            <Badge className="bg-green-100 text-green-800">
-                                Concluída
-                            </Badge>
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                            <div className="space-y-2">
-                                <div className="text-sm font-medium text-muted-foreground">Disciplina</div>
-                                <div className="font-semibold">Matemática</div>
-                            </div>
-                            <div className="space-y-2">
-                                <div className="text-sm font-medium text-muted-foreground">Série</div>
-                                <div className="font-semibold">9º Ano</div>
-                            </div>
-                            <div className="space-y-2">
-                                <div className="text-sm font-medium text-muted-foreground">Escola</div>
-                                <div className="font-semibold">Escola Municipal</div>
-                            </div>
-                            <div className="space-y-2">
-                                <div className="text-sm font-medium text-muted-foreground">Município</div>
-                                <div className="font-semibold">São Paulo</div>
-                            </div>
-                        </div>
-
-                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mt-6">
-                            <div className="space-y-2">
-                                <div className="text-sm font-medium text-muted-foreground">Total de Alunos</div>
-                                <div className="text-2xl font-bold text-blue-600">{mockStats.totalStudents}</div>
-                            </div>
-                            <div className="space-y-2">
-                                <div className="text-sm font-medium text-muted-foreground">Participantes</div>
-                                <div className="text-2xl font-bold text-green-600">{mockStats.completedStudents + mockStats.partialStudents}</div>
-                            </div>
-                            <div className="space-y-2">
-                                <div className="text-sm font-medium text-muted-foreground">Nota Geral</div>
-                                <div className="text-2xl font-bold text-purple-600">
-                                    {mockStats.validStats.averageGrade.toFixed(1)}
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <div className="text-sm font-medium text-muted-foreground">Proficiência</div>
-                                <div className="text-2xl font-bold text-orange-600">
-                                    {mockStats.validStats.averageProficiency.toFixed(1)}
-                                </div>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Lista de Alunos */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center justify-between">
-                            <span>
-                                Resultados dos Alunos
-                                <Badge className="ml-2 bg-yellow-100 text-yellow-800 text-xs">
-                                    <Activity className="w-3 h-3 mr-1" />
-                                    Dados de Demonstração
-                                </Badge>
-                            </span>
-                            <div className="flex items-center gap-2">
-                                <Badge variant="outline">
-                                    {mockStudents.length} alunos
-                                </Badge>
-                            </div>
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <StudentsResultsTable 
-                            students={mockStudents} 
-                            totalQuestions={20}
-                            startQuestionNumber={1}
-                            onViewStudentDetails={handleViewStudentDetails}
-                            questoes={[]}
-                            questionsWithSkills={[]}
-                            skillsMapping={{}}
-                            skillsBySubject={{}}
-                            detailedReport={null}
-                            visibleFields={visibleFields}
-                            subjectFilter="all"
-                            showAll={isRealTimeMode}
-                        />
-                    </CardContent>
-                </Card>
             </div>
         );
     }
 
-    // Estado de erro
-    if (error) {
+    if (!evaluationInfo) {
         return (
             <div className="container mx-auto px-4 py-6">
                 <div className="flex items-center gap-4 mb-6">
@@ -954,13 +1283,17 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                         <AlertCircle className="w-8 h-8 text-red-600" />
                     </div>
                     <h3 className="text-lg font-medium text-gray-900 mb-2">
-                        Erro ao Carregar Dados
+                        Avaliação não encontrada
                     </h3>
                     <p className="text-gray-600 mb-4">
-                        {error}
+                        A avaliação solicitada não foi encontrada ou não possui resultados disponíveis.
                     </p>
-                    <Button onClick={handleRefresh}>
-                        <RefreshCw className="h-4 w-4 mr-2" />
+                    <Button 
+                        variant="outline" 
+                        onClick={fetchDetailedResults}
+                        className="text-sm"
+                    >
+                        <RefreshCw className="w-4 h-4 mr-2" />
                         Tentar Novamente
                     </Button>
                 </div>
@@ -968,57 +1301,138 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
         );
     }
 
-    // ✅ VERIFICAÇÃO DE DADOS VÁLIDOS ADICIONAL
-    if (!stats || !completionStatus) {
+    // Skeleton loading para quando os dados estão sendo processados
+    if (isDataLoading) {
         return (
-            <div className="container mx-auto px-4 py-6">
-                <div className="text-center py-12">
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">
-                        Dados Indisponíveis
-                    </h3>
-                    <p className="text-gray-600 mb-4">
-                        Os dados da avaliação não estão disponíveis no momento. 
-                        {!stats && ' Estatísticas não carregadas.'}
-                        {!completionStatus && ' Status de completude não carregado.'}
-                    </p>
-                    <div className="space-y-2">
-                        <Button onClick={handleRefresh}>
-                            <RefreshCw className="h-4 w-4 mr-2" />
-                            Tentar Novamente
-                        </Button>
-                        <Button variant="outline" onClick={onBack}>
-                            <ArrowLeft className="h-4 w-4 mr-2" />
-                            Voltar
-                        </Button>
+            <div className="container mx-auto px-4 py-6 space-y-6">
+                {/* Header Skeleton */}
+                <div className="flex items-center gap-4">
+                    <Button variant="outline" onClick={onBack}>
+                        <ArrowLeft className="h-4 w-4 mr-2" />
+                        Voltar
+                    </Button>
+                    <div className="flex-1">
+                        <Skeleton className="h-8 w-96 mb-2" />
+                        <Skeleton className="h-4 w-64" />
                     </div>
+                    <Skeleton className="h-10 w-24" />
                 </div>
+
+                {/* Cards de Estatísticas Skeleton */}
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                    {[...Array(4)].map((_, i) => (
+                        <Card key={i}>
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                <Skeleton className="h-4 w-24" />
+                                <Skeleton className="h-4 w-4" />
+                            </CardHeader>
+                            <CardContent>
+                                <Skeleton className="h-8 w-12 mb-1" />
+                                <Skeleton className="h-3 w-20" />
+                            </CardContent>
+                        </Card>
+                    ))}
+                </div>
+
+                {/* Tabela Skeleton */}
+                <Card>
+                    <CardHeader>
+                        <div className="flex items-center justify-between">
+                            <Skeleton className="h-6 w-48" />
+                            <div className="flex gap-2">
+                                <Skeleton className="h-8 w-20" />
+                                <Skeleton className="h-8 w-20" />
+                            </div>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="space-y-3">
+                            {[...Array(5)].map((_, i) => (
+                                <div key={i} className="flex items-center justify-between p-4 border rounded-lg">
+                                    <div className="flex items-center gap-4 flex-1">
+                                        <Skeleton className="h-10 w-10 rounded-full" />
+                                        <div className="space-y-2 flex-1">
+                                            <Skeleton className="h-4 w-48" />
+                                            <Skeleton className="h-3 w-32" />
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <Skeleton className="h-8 w-16" />
+                                        <Skeleton className="h-8 w-16" />
+                                        <Skeleton className="h-8 w-20" />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
         );
     }
 
-    if (!evaluationInfo || !stats) {
+    // ✅ NOVO: Visualização de alunos faltosos
+    if (showAbsentStudents) {
         return (
-            <div className="container mx-auto px-4 py-6">
-                <div className="text-center py-12">
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">
-                        Avaliação não encontrada
-                    </h3>
-                    <p className="text-gray-600 mb-4">
-                        A avaliação solicitada não foi encontrada ou não possui resultados disponíveis.
-                        {!evaluationInfo && ' Informações da avaliação não carregadas.'}
-                        {!stats && ' Estatísticas não carregadas.'}
-                    </p>
-                    <div className="space-y-2">
-                        <Button onClick={handleRefresh}>
-                            <RefreshCw className="h-4 w-4 mr-2" />
-                            Tentar Novamente
-                        </Button>
-                        <Button variant="outline" onClick={onBack}>
-                            <ArrowLeft className="h-4 w-4 mr-2" />
-                            Voltar
-                        </Button>
+            <div className="container mx-auto px-4 py-6 space-y-6">
+                {/* Header */}
+                <div className="flex items-center gap-4">
+                    <Button variant="outline" onClick={handleBackFromAbsentStudents}>
+                        <ArrowLeft className="h-4 w-4 mr-2" />
+                        Voltar aos Resultados
+                    </Button>
+                    <div className="flex-1">
+                        <h1 className="text-2xl font-bold">Alunos Faltosos</h1>
+                        <p className="text-muted-foreground">
+                            Alunos que não realizaram a avaliação {evaluationInfo.titulo}
+                        </p>
                     </div>
                 </div>
+
+                {/* Lista de Alunos Faltosos */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Lista de Alunos Faltosos</CardTitle>
+                        <CardDescription>
+                            {absentStudents.length} aluno(s) que não realizaram a avaliação
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {absentStudents.length > 0 ? (
+                            <div className="space-y-4">
+                                {absentStudents.map((student, index) => (
+                                    <div key={`${student.id || 'student'}-${index}`} className="flex items-center justify-between p-4 border rounded-lg">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                                                <XCircle className="w-5 h-5 text-red-600" />
+                                            </div>
+                                            <div>
+                                                <h3 className="font-semibold">{student.nome}</h3>
+                                                <p className="text-sm text-muted-foreground">{student.turma}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Badge variant="outline" className="text-red-600 border-red-300">
+                                                Não Realizou
+                                            </Badge>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-12">
+                                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <CheckCircle2 className="w-8 h-8 text-green-600" />
+                                </div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                                    Nenhum aluno faltoso
+                                </h3>
+                                <p className="text-gray-600">
+                                    Todos os alunos realizaram a avaliação.
+                                </p>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
             </div>
         );
     }
@@ -1034,16 +1448,12 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                 <div className="flex-1">
                     <h1 className="text-2xl font-bold">{evaluationInfo.titulo}</h1>
                     <p className="text-muted-foreground">
-                        {isRealTimeMode 
-                            ? "Resultados detalhados com monitoramento em tempo real"
-                            : "Resultados detalhados (apenas dados completos e validados)"
-                        }
+                        Resultados detalhados dos alunos
                     </p>
                 </div>
-                
                 <Button 
                     variant="outline" 
-                    onClick={handleRefresh}
+                    onClick={fetchDetailedResults}
                     disabled={isLoading}
                 >
                     <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
@@ -1051,64 +1461,81 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                 </Button>
             </div>
 
-            {/* ✅ CONTROLES DE VISUALIZAÇÃO */}
-            <RealTimeControlsCard
-                isRealTimeMode={isRealTimeMode}
-                onToggleRealTime={handleToggleRealTime}
-                lastUpdate={lastUpdate}
-                autoRefreshEnabled={autoRefreshEnabled}
-                onToggleAutoRefresh={handleToggleAutoRefresh}
-                completionStats={{
-                    total: stats?.totalStudents || 0,
-                    completed: stats?.completedStudents || 0,
-                    partial: stats?.partialStudents || 0,
-                    completionRate: stats?.completionRate || 0
-                }}
-            />
-
-            {/* ✅ STATUS DE COMPLETUDE MELHORADO */}
-            <CompletionStatusCard
-                stats={{
-                    total: stats?.totalStudents || 0,
-                    completed: stats?.completedStudents || 0,
-                    partial: stats?.partialStudents || 0,
-                    completionRate: stats?.completionRate || 0
-                }}
-                isRealTimeMode={isRealTimeMode}
-            />
-
             {/* Informações da Avaliação */}
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center justify-between">
                         <span>Informações da Avaliação</span>
-                        <Badge className={
-                            evaluationInfo.status === 'concluida' ? 'bg-green-100 text-green-800' :
-                            evaluationInfo.status === 'em_andamento' ? 'bg-blue-100 text-blue-800' :
-                            'bg-gray-100 text-gray-800'
-                        }>
+                        <Badge className={getStatusColor(evaluationInfo.status)}>
                             {evaluationInfo.status === 'concluida' ? 'Concluída' :
                                 evaluationInfo.status === 'em_andamento' ? 'Em Andamento' : 'Pendente'}
                         </Badge>
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
+                    
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                         <div className="space-y-2">
-                            <div className="text-sm font-medium text-muted-foreground">Disciplina</div>
-                            <div className="font-semibold">{evaluationInfo.disciplina}</div>
+                            <div className="text-sm font-medium text-muted-foreground">Disciplinas</div>
+                            <div className="font-semibold">
+                                {(() => {
+                                    // ✅ VERIFICAÇÃO DE ESTABILIDADE - só mostrar se dados estiverem estáveis
+                                    const hasStableDisciplinas = evaluationInfo.disciplinas && 
+                                        evaluationInfo.disciplinas.length > 0 && 
+                                        evaluationInfo.disciplinas.every(d => d && d.trim() !== '');
+                                    
+                                    const hasStableDisciplina = evaluationInfo.disciplina && 
+                                        evaluationInfo.disciplina.trim() !== '' && 
+                                        evaluationInfo.disciplina !== 'N/A';
+                                    
+                                    // ✅ CORRIGIDO: Mostrar dados mesmo se não estiverem completamente estáveis
+                                    if (hasStableDisciplinas) {
+                                        return (
+                                            <div className="flex flex-wrap gap-1">
+                                                {evaluationInfo.disciplinas.map((disciplina, index) => (
+                                                    <Badge key={index} variant="secondary" className="text-xs">
+                                                        {disciplina}
+                                                    </Badge>
+                                                ))}
+                                            </div>
+                                        );
+                                    } else if (hasStableDisciplina) {
+                                        return formatFieldValue(evaluationInfo.disciplina, 'Disciplina não informada');
+                                    } else if (!isDataStable) {
+                                        return <span className="text-gray-400">Carregando...</span>;
+                                    } else {
+                                        return <span className="text-gray-400">Disciplina não informada</span>;
+                                    }
+                                })()}
+                            </div>
                         </div>
                         <div className="space-y-2">
                             <div className="text-sm font-medium text-muted-foreground">Série</div>
-                            <div className="font-semibold">{evaluationInfo.serie}</div>
+                            <div className="font-semibold">
+                                {(() => {
+                                    // ✅ VERIFICAÇÃO DE ESTABILIDADE - só mostrar se série estiver estável
+                                    const hasStableSerie = evaluationInfo.serie && 
+                                        evaluationInfo.serie.trim() !== '' && 
+                                        evaluationInfo.serie !== 'N/A';
+                                    
+                                    if (hasStableSerie) {
+                                        const gradeName = getGradeName(evaluationInfo.serie, evaluationInfo.grade_id, evaluationInfo);
+                                        return gradeName;
+                                    } else if (!isDataStable) {
+                                        return <span className="text-gray-400">Carregando...</span>;
+                                    } else {
+                                        return <span className="text-gray-400">Série não informada</span>;
+                                    }
+                                })()}
+                            </div>
                         </div>
                         <div className="space-y-2">
                             <div className="text-sm font-medium text-muted-foreground">Escola</div>
-                            <div className="font-semibold">{evaluationInfo.escola}</div>
+                            <div className="font-semibold">{formatFieldValue(evaluationInfo.escola, 'Escola não informada')}</div>
                         </div>
                         <div className="space-y-2">
                             <div className="text-sm font-medium text-muted-foreground">Município</div>
-                            <div className="font-semibold">{evaluationInfo.municipio}</div>
+                            <div className="font-semibold">{formatFieldValue(evaluationInfo.municipio, 'Município não informado')}</div>
                         </div>
                     </div>
 
@@ -1122,6 +1549,24 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                             <div className="text-2xl font-bold text-green-600">{evaluationInfo.alunos_participantes}</div>
                         </div>
                         <div className="space-y-2">
+                            <div className="text-sm font-medium text-muted-foreground">Faltosos</div>
+                            <div className="text-2xl font-bold text-red-600">
+                                {evaluationInfo.alunos_ausentes}
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <div className="text-sm font-medium text-muted-foreground">Taxa de Participação</div>
+                            <div className="text-2xl font-bold text-blue-600">
+                                {evaluationInfo.total_alunos > 0 
+                                    ? ((evaluationInfo.alunos_participantes / evaluationInfo.total_alunos) * 100).toFixed(1)
+                                    : '0.0'
+                                }%
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mt-6">
+                        <div className="space-y-2">
                             <div className="text-sm font-medium text-muted-foreground">Nota Geral</div>
                             <div className="text-2xl font-bold text-purple-600">
                                 {evaluationInfo.media_nota.toFixed(1)}
@@ -1130,10 +1575,62 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                         <div className="space-y-2">
                             <div className="text-sm font-medium text-muted-foreground">Proficiência</div>
                             <div className="text-2xl font-bold text-orange-600">
-                                {evaluationInfo.media_proficiencia.toFixed(1)}
+                                {(() => {
+                                    const prof = evaluationInfo.media_proficiencia;
+                                    return prof && prof > 0 ? prof.toFixed(1) : '0.0';
+                                })()}
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <div className="text-sm font-medium text-muted-foreground">Taxa de Conclusão</div>
+                            <div className="text-2xl font-bold text-green-600">
+                                {evaluationInfo.total_alunos > 0 
+                                    ? ((evaluationInfo.alunos_participantes / evaluationInfo.total_alunos) * 100).toFixed(1)
+                                    : '0.0'
+                                }%
                             </div>
                         </div>
                     </div>
+
+                </CardContent>
+            </Card>
+
+            {/* Gráfico de Distribuição por Classificação */}
+            <Card>
+                <CardContent className="pt-6">
+                    <DonutChartComponent
+                        data={[
+                            {
+                                name: "Abaixo do Básico",
+                                value: students.filter(s => s.classificacao === 'Abaixo do Básico' && s.nota > 0).length
+                            },
+                            {
+                                name: "Básico",
+                                value: students.filter(s => s.classificacao === 'Básico' && s.nota > 0).length
+                            },
+                            {
+                                name: "Adequado",
+                                value: students.filter(s => s.classificacao === 'Adequado' && s.nota > 0).length
+                            },
+                            {
+                                name: "Avançado",
+                                value: students.filter(s => s.classificacao === 'Avançado' && s.nota > 0).length
+                            },
+                            {
+                                name: "Sem Nota",
+                                value: students.filter(s => s.nota === 0).length
+                            }
+                        ]}
+                        title="Distribuição por Classificação"
+                        subtitle={`Total de ${students.length} alunos`}
+                        colors={[
+                            "#ef4444", // red-500 - Abaixo do Básico
+                            "#f97316", // orange-500 - Básico
+                            "#3b82f6", // blue-500 - Adequado
+                            "#22c55e", // green-500 - Avançado
+                            "#6b7280"  // gray-500 - Sem Nota
+                        ]}
+                    />
                 </CardContent>
             </Card>
 
@@ -1148,7 +1645,7 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                             <div className="relative">
                                 <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                                 <Input
-                                    placeholder="Buscar por nome do aluno..."
+                                    placeholder="Buscar por nome do aluno ou turma..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     className="pl-10"
@@ -1181,42 +1678,429 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                 </CardContent>
             </Card>
 
+            {/* ✅ SEÇÃO COMPACTA: Controles Avançados */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-lg">Controles da Tabela</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="space-y-6">
+                        {/* Campos Visíveis - Layout Compacto */}
+                        <div>
+                            <h4 className="text-sm font-medium text-gray-700 mb-2">Colunas Visíveis</h4>
+                            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
+                                {[
+                                    { key: 'habilidade', label: 'Habilidade' },
+                                    { key: 'questoes', label: 'Questões' },
+                                    { key: 'percentualTurma', label: '% Turma' },
+                                    { key: 'total', label: 'Total' },
+                                    { key: 'nota', label: 'Nota' },
+                                    { key: 'proficiencia', label: 'Proficiência' },
+                                    { key: 'nivel', label: 'Nível' }
+                                ].map(({ key, label }) => (
+                                    <div key={key} className="flex items-center space-x-2">
+                                        <Checkbox
+                                            id={key}
+                                            checked={visibleFields[key as keyof typeof visibleFields]}
+                                            onCheckedChange={(checked) => 
+                                                setVisibleFields(prev => ({ ...prev, [key]: checked as boolean }))
+                                            }
+                                            className="data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
+                                        />
+                                        <label htmlFor={key} className="text-xs font-medium text-gray-700">{label}</label>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Separador */}
+                        <div className="border-t border-gray-200 pt-4"></div>
+
+                        {/* Filtros e Ordenação - Layout Compacto */}
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
+                            <div>
+                                <label className="text-xs font-medium text-gray-700 block mb-1">Disciplina</label>
+                                <Select value={subjectFilter} onValueChange={setSubjectFilter}>
+                                    <SelectTrigger className="h-8 text-xs">
+                                        <SelectValue placeholder="Todas" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">Todas</SelectItem>
+                                        <SelectItem value="matematica">Matemática</SelectItem>
+                                        <SelectItem value="portugues">Português</SelectItem>
+                                        <SelectItem value="ciencias">Ciências</SelectItem>
+                                        <SelectItem value="historia">História</SelectItem>
+                                        <SelectItem value="geografia">Geografia</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div>
+                                <label className="text-xs font-medium text-gray-700 block mb-1">Nível</label>
+                                <Select value={levelFilter} onValueChange={setLevelFilter}>
+                                    <SelectTrigger className="h-8 text-xs">
+                                        <SelectValue placeholder="Todos" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">Todos</SelectItem>
+                                        <SelectItem value="Abaixo do Básico">Abaixo do Básico</SelectItem>
+                                        <SelectItem value="Básico">Básico</SelectItem>
+                                        <SelectItem value="Adequado">Adequado</SelectItem>
+                                        <SelectItem value="Avançado">Avançado</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div>
+                                <label className="text-xs font-medium text-gray-700 block mb-1">Turma</label>
+                                <Select value={turmaFilter} onValueChange={setTurmaFilter}>
+                                    <SelectTrigger className="h-8 text-xs">
+                                        <SelectValue placeholder="Todas" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">Todas as Turmas</SelectItem>
+                                        {uniqueTurmas.map(turma => (
+                                            <SelectItem key={turma} value={turma}>{turma}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div>
+                                <label className="text-xs font-medium text-gray-700 block mb-1">Ordenar</label>
+                                <Select value={orderBy} onValueChange={(value: 'nota' | 'proficiencia' | 'status' | 'turma' | 'nome') => setOrderBy(value)}>
+                                    <SelectTrigger className="h-8 text-xs">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="nome">Nome</SelectItem>
+                                        <SelectItem value="nota">Nota</SelectItem>
+                                        <SelectItem value="proficiencia">Proficiência</SelectItem>
+                                        <SelectItem value="status">Status</SelectItem>
+                                        <SelectItem value="turma">Turma</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div>
+                                <label className="text-xs font-medium text-gray-700 block mb-1">Direção</label>
+                                <Select value={orderDirection} onValueChange={(value: 'asc' | 'desc') => setOrderDirection(value)}>
+                                    <SelectTrigger className="h-8 text-xs">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="asc">A→Z</SelectItem>
+                                        <SelectItem value="desc">Z→A</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                        
+                        {/* ✅ CORREÇÃO: Controles de ação em linha separada */}
+                        <div className="flex items-center gap-4 pt-3 border-t border-gray-200">
+                            {/* Toggle para mostrar apenas alunos que realizaram */}
+                            <div className="flex items-center space-x-2">
+                                <Checkbox
+                                    id="show-only-completed"
+                                    checked={showOnlyCompleted}
+                                    onCheckedChange={(checked) => setShowOnlyCompleted(checked as boolean)}
+                                    className="data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
+                                />
+                                <label htmlFor="show-only-completed" className="text-xs font-medium text-gray-700">
+                                    Apenas Concluídos
+                                </label>
+                            </div>
+                            
+                            {/* Botão para ver alunos faltosos */}
+                            <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => setShowAbsentStudents(true)}
+                                disabled={absentStudents.length === 0}
+                                className="h-8 text-xs"
+                            >
+                                Ver Faltosos ({absentStudents.length})
+                            </Button>
+                            
+                            <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={() => {
+                                    setSearchTerm('');
+                                    setClassificationFilter('all');
+                                    setStatusFilter('all');
+                                    setShowOnlyWithScore(false);
+                                    setShowOnlyCompleted(true);
+                                    setLevelFilter('all');
+                                    setTurmaFilter('all');
+                                    setSubjectFilter('all');
+                                    setOrderBy('nome');
+                                    setOrderDirection('asc');
+                                }}
+                                className="h-8 text-xs"
+                            >
+                                Limpar Filtros
+                            </Button>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Estatísticas por Turma */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-lg">Estatísticas por Turma</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {uniqueTurmas.map(turma => {
+                            const turmaStudents = students.filter(s => s.turma === turma);
+                            const turmaStudentsCompleted = turmaStudents.filter(s => s.status === 'concluida');
+                            
+                            // Usar dados reais dos alunos que temos
+                            const totalStudentsInTurma = turmaStudents.length;
+                            const completedStudentsInTurma = turmaStudentsCompleted.length;
+                            
+                            // Calcular médias apenas dos alunos que participaram
+                            const averageScore = turmaStudentsCompleted.length > 0 
+                                ? turmaStudentsCompleted.reduce((sum, s) => sum + s.nota, 0) / turmaStudentsCompleted.length 
+                                : 0;
+                            const averageProficiency = turmaStudentsCompleted.length > 0 
+                                ? turmaStudentsCompleted.reduce((sum, s) => sum + s.proficiencia, 0) / turmaStudentsCompleted.length 
+                                : 0;
+                            
+                            // Distribuição baseada em todos os alunos da turma
+                            // Alunos que não participaram são considerados "Abaixo do Básico"
+                            const alunosNaoParticiparam = totalStudentsInTurma - completedStudentsInTurma;
+                            const distribution = {
+                                abaixo_do_basico: turmaStudentsCompleted.filter(s => s.classificacao === 'Abaixo do Básico').length + alunosNaoParticiparam,
+                                basico: turmaStudentsCompleted.filter(s => s.classificacao === 'Básico').length,
+                                adequado: turmaStudentsCompleted.filter(s => s.classificacao === 'Adequado').length,
+                                avancado: turmaStudentsCompleted.filter(s => s.classificacao === 'Avançado').length,
+                            };
+
+                            const participationRate = totalStudentsInTurma > 0 
+                                ? (completedStudentsInTurma / totalStudentsInTurma) * 100 
+                                : 0;
+
+                            return (
+                                <div key={turma} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h3 className="font-semibold text-lg">{turma}</h3>
+                                        <Badge variant="outline">{totalStudentsInTurma} alunos</Badge>
+                                    </div>
+                                    
+                                    <div className="space-y-3">
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between text-sm">
+                                                <span className="text-muted-foreground">Participação:</span>
+                                                <span className="font-medium">
+                                                    {completedStudentsInTurma}/{totalStudentsInTurma} alunos
+                                                </span>
+                                            </div>
+                                            <Progress value={participationRate} className="h-2" />
+                                        </div>
+                                        
+                                        <div className="flex items-center justify-between text-sm">
+                                            <span className="text-muted-foreground">Média Nota:</span>
+                                            <span className="font-medium">{averageScore.toFixed(1)}</span>
+                                        </div>
+                                        
+                                        <div className="flex items-center justify-between text-sm">
+                                            <span className="text-muted-foreground">Proficiência:</span>
+                                            <span className="font-medium">{averageProficiency.toFixed(1)}</span>
+                                        </div>
+                                        
+                                        {/* Distribuição de classificação */}
+                                        <div className="space-y-1">
+                                            <div className="text-xs text-muted-foreground">Distribuição:</div>
+                                            <div className="flex gap-1">
+                                                <div 
+                                                    className="flex-1 bg-red-500 rounded-sm h-2" 
+                                                    title={`Abaixo do Básico: ${distribution.abaixo_do_basico}`}
+                                                    style={{ 
+                                                        width: `${totalStudentsInTurma > 0 ? (distribution.abaixo_do_basico / totalStudentsInTurma) * 100 : 0}%` 
+                                                    }}
+                                                ></div>
+                                                <div 
+                                                    className="flex-1 bg-yellow-500 rounded-sm h-2" 
+                                                    title={`Básico: ${distribution.basico}`}
+                                                    style={{ 
+                                                        width: `${totalStudentsInTurma > 0 ? (distribution.basico / totalStudentsInTurma) * 100 : 0}%` 
+                                                    }}
+                                                ></div>
+                                                <div 
+                                                    className="flex-1 bg-blue-500 rounded-sm h-2" 
+                                                    title={`Adequado: ${distribution.adequado}`}
+                                                    style={{ 
+                                                        width: `${totalStudentsInTurma > 0 ? (distribution.adequado / totalStudentsInTurma) * 100 : 0}%` 
+                                                    }}
+                                                ></div>
+                                                <div 
+                                                    className="flex-1 bg-green-500 rounded-sm h-2" 
+                                                    title={`Avançado: ${distribution.avancado}`}
+                                                    style={{ 
+                                                        width: `${totalStudentsInTurma > 0 ? (distribution.avancado / totalStudentsInTurma) * 100 : 0}%` 
+                                                    }}
+                                                ></div>
+                                            </div>
+                                            <div className="flex justify-between text-xs text-muted-foreground">
+                                                <span>{distribution.abaixo_do_basico}</span>
+                                                <span>{distribution.basico}</span>
+                                                <span>{distribution.adequado}</span>
+                                                <span>{distribution.avancado}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </CardContent>
+            </Card>
+
             {/* Lista de Alunos */}
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center justify-between">
-                        <span>
-                            Resultados dos Alunos
-                            {isRealTimeMode && (
-                                <Badge className="ml-2 bg-yellow-100 text-yellow-800 text-xs">
-                                    <Activity className="w-3 h-3 mr-1" />
-                                    Tempo Real
-                                </Badge>
-                            )}
-                        </span>
+                        <span>Resultados dos Alunos</span>
                         <div className="flex items-center gap-2">
                             <Badge variant="outline">
                                 {filteredStudents.length} {filteredStudents.length === 1 ? 'aluno' : 'alunos'}
                             </Badge>
+                            <div className="flex items-center gap-1 border rounded-lg p-1">
+                                <Button
+                                    variant={viewMode === 'table' ? 'default' : 'ghost'}
+                                    size="sm"
+                                    onClick={() => setViewMode('table')}
+                                    className="h-8 px-3"
+                                >
+                                    <BarChart3 className="h-4 w-4 mr-1" />
+                                    Tabela
+                                </Button>
+                                <Button
+                                    variant={viewMode === 'cards' ? 'default' : 'ghost'}
+                                    size="sm"
+                                    onClick={() => setViewMode('cards')}
+                                    className="h-8 px-3"
+                                >
+                                    <Users className="h-4 w-4 mr-1" />
+                                    Cards
+                                </Button>
+                            </div>
+                            <Button onClick={handleExportStudents} variant="outline">
+                                <Download className="h-4 w-4 mr-2" />
+                                Exportar
+                            </Button>
                         </div>
                     </CardTitle>
+                    {/* Resumo da situação */}
+                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                            <Minus className="h-4 w-4 text-red-600" />
+                            <span>{students.filter(s => s.status === 'pendente').length} faltosos</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Users className="h-4 w-4 text-blue-600" />
+                            <span>{((students.filter(s => s.status === 'concluida').length / students.length) * 100).toFixed(1)}% participação</span>
+                            {showOnlyCompleted && (
+                                <span className="text-xs text-green-600 font-medium">(filtrado)</span>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Target className="h-4 w-4 text-blue-600" />
+                            <span>{students.filter(s => s.nota > 0).length} com nota</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Minus className="h-4 w-4 text-gray-600" />
+                            <span>{students.filter(s => s.nota === 0).length} sem nota</span>
+                        </div>
+                    </div>
+                    
+                    {/* Filtros ativos */}
+                    {(searchTerm || classificationFilter !== 'all' || statusFilter !== 'all' || 
+                      levelFilter !== 'all' || turmaFilter !== 'all' || subjectFilter !== 'all' || showOnlyCompleted) && (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
+                            <span>Filtros ativos:</span>
+                            {searchTerm && (
+                                <Badge variant="secondary" className="text-xs">
+                                    Busca: "{searchTerm}"
+                                </Badge>
+                            )}
+                            {classificationFilter !== 'all' && (
+                                <Badge variant="secondary" className="text-xs">
+                                    Classificação: {classificationFilter}
+                                </Badge>
+                            )}
+                            {statusFilter !== 'all' && (
+                                <Badge variant="secondary" className="text-xs">
+                                    Status: {statusFilter === 'concluida' ? 'Concluída' : 'Pendente'}
+                                </Badge>
+                            )}
+                            {levelFilter !== 'all' && (
+                                <Badge variant="secondary" className="text-xs">
+                                    Nível: {levelFilter}
+                                </Badge>
+                            )}
+                            {turmaFilter !== 'all' && (
+                                <Badge variant="secondary" className="text-xs">
+                                    Turma: {turmaFilter}
+                                </Badge>
+                            )}
+                            {subjectFilter !== 'all' && (
+                                <Badge variant="secondary" className="text-xs">
+                                    Disciplina: {subjectFilter}
+                                </Badge>
+                            )}
+                            {showOnlyCompleted && (
+                                <Badge variant="secondary" className="text-xs bg-green-100 text-green-800">
+                                    Apenas Concluídos
+                                </Badge>
+                            )}
+                        </div>
+                    )}
+                    {/* Controles da tabela */}
+                    {viewMode === 'table' && (
+                        <div className="flex items-center gap-4 pt-2 border-t border-gray-200">
+                            <div className="text-xs text-gray-500">
+                                {detailedReport?.questoes.length 
+                                    ? `Total de ${detailedReport.questoes.length} questões na avaliação`
+                                    : 'Carregando questões...'
+                                }
+                            </div>
+                        </div>
+                    )}
                 </CardHeader>
                 <CardContent>
                     {filteredStudents.length > 0 ? (
-                        <StudentsResultsTable 
-                            students={filteredStudents} 
-                            totalQuestions={20} // TODO: Buscar do backend
-                            startQuestionNumber={1}
-                            onViewStudentDetails={handleViewStudentDetails}
-                            questoes={[]} // TODO: Buscar do backend
-                            questionsWithSkills={[]} // TODO: Buscar do backend
-                            skillsMapping={{}} // TODO: Buscar do backend
-                            skillsBySubject={{}} // TODO: Buscar do backend
-                            detailedReport={null} // TODO: Buscar do backend
-                            visibleFields={visibleFields}
-                            subjectFilter="all"
-                            showAll={isRealTimeMode}
-                        />
+                        viewMode === 'table' ? (
+                            detailedReport?.questoes && detailedReport.questoes.length > 0 ? (
+                                <ResultsTable 
+                                students={filteredStudents} 
+                                    totalQuestions={detailedReport.questoes.length} 
+                                    startQuestionNumber={1}
+                                onViewStudentDetails={handleViewStudentDetails}
+                                    questoes={detailedReport.questoes}
+                                questionsWithSkills={questionsWithSkills}
+                                skillsMapping={skillsMapping}
+                                skillsBySubject={skillsBySubject}
+                                detailedReport={detailedReport}
+                                visibleFields={visibleFields}
+                                subjectFilter={subjectFilter}
+                            />
+                            ) : (
+                                <div className="text-center py-12">
+                                    <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                        <span className="text-2xl">⚠️</span>
+                                    </div>
+                                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                                        Dados de questões não disponíveis
+                                    </h3>
+                                    <p className="text-gray-600">
+                                        Os dados detalhados das questões ainda não foram carregados. 
+                                        Aguarde o carregamento completo ou tente novamente.
+                                    </p>
+                                </div>
+                            )
+                        ) : (
+                            <StudentsCardsView students={filteredStudents} />
+                        )
                     ) : (
                         <div className="text-center py-12">
                             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1234,6 +2118,9 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                     )}
                 </CardContent>
             </Card>
+
+            {/* ✅ NOVO: Skills por Disciplina - Posicionado no final da página */}
+
         </div>
     );
 } 
