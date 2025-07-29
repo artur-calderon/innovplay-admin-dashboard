@@ -25,6 +25,7 @@ import {
   CompletionThresholds 
 } from '../../utils/completionValidation';
 import { CompletionStatusLevel } from '../../types/completion';
+import { calculateProficiency } from '@/types/evaluation-results';
 
 interface UseResultsDataReturn {
   // ✅ NOVO: Dados separados por completude
@@ -220,21 +221,41 @@ export const useResultsData = (
       
       if (detailedReport?.alunos) {
         // Converter dados dos alunos para formato de resultados
-        const resultsData: EvaluationResultEntity[] = detailedReport.alunos.map((aluno, index) => ({
-          id: `result-${aluno.id}-${index}`,
-          test_id: testId,
-          student_id: aluno.id,
-          session_id: `session-${aluno.id}`, // TODO: Usar session_id real quando disponível
-          correct_answers: aluno.total_acertos,
-          total_questions: aluno.total_acertos + aluno.total_erros + aluno.total_em_branco,
-          answered_questions: aluno.total_acertos + aluno.total_erros, // ✅ NOVO: Campo para controle de completude
-          score_percentage: (aluno.nota_final / 10) * 100, // Convertendo para porcentagem
-          grade: aluno.nota_final,
-          proficiency: aluno.proficiencia,
-          classification: aluno.classificacao,
-          calculated_at: new Date().toISOString(),
-          is_complete: aluno.status === 'concluida' && aluno.nota_final > 0 // ✅ NOVO: Flag de completude
-        }));
+        const resultsData: EvaluationResultEntity[] = detailedReport.alunos.map((aluno, index) => {
+          // ✅ CORREÇÃO: Recalcular proficiência usando a função oficial
+          const totalQuestions = aluno.total_acertos + aluno.total_erros + aluno.total_em_branco;
+          const calculatedProficiency = calculateProficiency(
+            aluno.nota_final,
+            totalQuestions,
+            detailedReport.avaliacao.serie, // Usar série da avaliação
+            detailedReport.avaliacao.disciplina, // Usar disciplina da avaliação
+            undefined // Course será determinado automaticamente
+          );
+
+          // ✅ VALIDAÇÃO ADICIONAL: Verificar se o valor da API está dentro dos limites
+          const maxProficiency = detailedReport.avaliacao.disciplina?.toLowerCase().includes('matemática') || 
+                                 detailedReport.avaliacao.disciplina?.toLowerCase().includes('matematica') ? 425 : 375;
+          
+          if (aluno.proficiencia > maxProficiency) {
+            console.warn(`⚠️ Proficiência inválida detectada: ${aluno.proficiencia} > ${maxProficiency} para aluno ${aluno.nome}. Usando valor recalculado.`);
+          }
+
+          return {
+            id: `result-${aluno.id}-${index}`,
+            test_id: testId,
+            student_id: aluno.id,
+            session_id: `session-${aluno.id}`, // TODO: Usar session_id real quando disponível
+            correct_answers: aluno.total_acertos,
+            total_questions: totalQuestions,
+            answered_questions: aluno.total_acertos + aluno.total_erros, // ✅ NOVO: Campo para controle de completude
+            score_percentage: (aluno.nota_final / 10) * 100, // Convertendo para porcentagem
+            grade: aluno.nota_final,
+            proficiency: calculatedProficiency.proficiencyScore, // ✅ CORREÇÃO: Usar valor recalculado
+            classification: calculatedProficiency.classification, // ✅ CORREÇÃO: Usar classificação recalculada
+            calculated_at: new Date().toISOString(),
+            is_complete: aluno.status === 'concluida' && aluno.nota_final > 0 // ✅ NOVO: Flag de completude
+          };
+        });
 
         setAllResults(resultsData);
 
