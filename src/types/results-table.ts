@@ -114,6 +114,7 @@ export interface ResultsTableProps {
   detailedReport?: DetailedReport;
   visibleFields?: VisibleFields;
   subjectFilter?: string;
+  evaluationId?: string;
 }
 
 export interface SkillCodeGeneratorParams {

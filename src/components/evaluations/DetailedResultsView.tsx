@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { DonutChartComponent } from "@/components/ui/charts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -35,8 +35,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
 import { api } from "@/lib/api";
-// ✅ REFATORADO: Importar o novo componente
-import { ResultsTable } from "./results-table";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 
 // Importar a interface DetailedReport do serviço
 interface DetailedReport {
@@ -143,8 +143,743 @@ interface ApiError {
     };
 }
 
+// ✅ NOVO: Interface para respostas detalhadas do aluno
+interface StudentDetailedAnswers {
+  test_id: string;
+  student_id: string;
+  student_name: string;
+  total_questions: number;
+  answered_questions: number;
+  correct_answers: number;
+  score_percentage: number;
+  total_score: number;
+  max_possible_score: number;
+  grade: number;
+  proficiencia: number;
+  classificacao: string;
+  status: 'concluida' | 'nao_respondida';
+  answers: Array<{
+    question_id: string;
+    question_number: number;
+    question_text: string;
+    question_type: 'multipleChoice' | 'open' | 'trueFalse';
+    question_value: number;
+    student_answer: string;
+    answered_at: string;
+    is_correct: boolean;
+    score: number;
+    feedback: string | null;
+    corrected_by: string | null;
+    corrected_at: string | null;
+  }>;
+}
+
 // Componente da tabela de resultados dos alunos
-// ✅ REFATORADO: Componente StudentsResultsTable removido - agora usando ResultsTable
+const StudentsResultsTable = ({ 
+    students, 
+    totalQuestions, 
+    startQuestionNumber = 1, // ✅ CORRIGIDO: Valor padrão 1
+    onViewStudentDetails,
+    questoes,
+    questionsWithSkills,
+    skillsMapping,
+    skillsBySubject,
+    detailedReport,
+    studentDetailedAnswers,
+    visibleFields = {
+        turma: true,
+        habilidade: true,
+        questoes: true,
+        percentualTurma: true,
+        total: true,
+        nota: true,
+        proficiencia: true,
+        nivel: true
+    },
+    subjectFilter
+}: {
+    students: StudentResult[];
+    totalQuestions: number;
+    startQuestionNumber?: number;
+    onViewStudentDetails: (studentId: string) => void;
+    questoes?: Array<{
+        id: string;
+        numero: number;
+        texto: string;
+        habilidade: string;
+        codigo_habilidade: string;
+        tipo: 'multipleChoice' | 'open' | 'trueFalse';
+        dificuldade: 'Fácil' | 'Médio' | 'Difícil';
+        porcentagem_acertos: number;
+        porcentagem_erros: number;
+    }>;
+    questionsWithSkills?: Array<{
+        id: string;
+        number: number;
+        text: string;
+        formattedText: string;
+        alternatives?: Array<{
+            id: string;
+            text: string;
+            isCorrect: boolean;
+        }>;
+        skills: string[]; // ✅ Códigos reais como "LP5L1.2"
+        difficulty: 'Fácil' | 'Médio' | 'Difícil';
+        solution: string;
+        type: 'multipleChoice' | 'open' | 'trueFalse';
+        value: number;
+        subject: {
+            id: string;
+            name: string;
+        };
+        grade: {
+            id: string;
+            name: string;
+        };
+    }>;
+    skillsMapping?: Record<string, string>; // UUID -> Código real
+    skillsBySubject?: Record<string, Array<{
+        id: string | null;
+        code: string;
+        description: string;
+        source: 'database' | 'question';
+    }>>; // ✅ Skills organizadas por disciplina
+    detailedReport?: DetailedReport; // Para acessar a disciplina
+    studentDetailedAnswers?: Record<string, StudentDetailedAnswers>;
+    visibleFields?: {
+        turma: boolean;
+        habilidade: boolean;
+        questoes: boolean;
+        percentualTurma: boolean;
+        total: boolean;
+        nota: boolean;
+        proficiencia: boolean;
+        nivel: boolean;
+    };
+    subjectFilter?: string;
+}) => {
+    // ✅ FUNÇÃO AUXILIAR: Normalizar UUID para comparação
+    const normalizeUUID = (uuid: string) => {
+        // Remove chaves, espaços extras e converte para minúsculas
+        return uuid.replace(/[{}]/g, '').trim().toLowerCase();
+    };
+
+    // ✅ PRIORIDADE: Usar códigos reais das habilidades quando disponíveis
+    const generateHabilidadeCode = (questionNumber: number, questao: {
+        id?: string;
+        numero?: number;
+        codigo_habilidade?: string;
+        skills?: string[];
+        difficulty?: string;
+        type?: string;
+        subject?: {
+            id: string;
+            name: string;
+        };
+    } | null) => {
+        // ✅ Verificar se temos dados válidos
+        if (!questao) {
+            // Fallback simples se não temos dados da questão
+            const disciplina = detailedReport?.avaliacao?.disciplina?.toLowerCase() || '';
+            const isMathematics = disciplina.includes('matemática') || disciplina.includes('matematica');
+            const grade = Math.min(Math.floor(questionNumber / 10) + 1, 9);
+            const skillNumber = ((questionNumber - 1) % 10) + 1;
+            return isMathematics ? `${grade}N1.${skillNumber}` : `LP${grade}L1.${skillNumber}`;
+        }
+
+        // ✅ Normalizar UUID para comparação
+        const normalizedUUID = normalizeUUID(questao.codigo_habilidade);
+        
+        // ✅ Tentar mapeamento direto primeiro
+        if (skillsMapping && questao.codigo_habilidade) {
+            if (skillsMapping[questao.codigo_habilidade]) {
+                return skillsMapping[questao.codigo_habilidade];
+            }
+            
+            // Tentar com UUID normalizado
+            if (skillsMapping[normalizedUUID]) {
+                return skillsMapping[normalizedUUID];
+            }
+        }
+        
+        // ✅ NOVO: Determinar disciplina baseada na questão ou dados da avaliação
+        let disciplina = '';
+        
+        // ✅ Prioridade 1: Usar disciplina da questão se disponível
+        if (questao.subject && questao.subject.name) {
+            disciplina = questao.subject.name.toLowerCase();
+        } else if (questionsWithSkills && questionsWithSkills.length > 0) {
+            // ✅ Prioridade 2: Buscar disciplina nas questões com skills
+            const questionWithSkill = questionsWithSkills.find(q => q.number === questionNumber);
+            if (questionWithSkill && questionWithSkill.subject) {
+                disciplina = questionWithSkill.subject.name.toLowerCase();
+            }
+        } else {
+            // ✅ Prioridade 3: Usar disciplina da avaliação
+            disciplina = detailedReport?.avaliacao?.disciplina?.toLowerCase() || '';
+        }
+        
+        // ✅ Determinar série baseada no número da questão ou dados da avaliação
+        let grade = 1; // Padrão
+        if (detailedReport?.avaliacao?.disciplina) {
+            // Tentar extrair série do título ou dados da avaliação
+            const serieMatch = detailedReport.avaliacao.disciplina.match(/(\d+)/);
+            if (serieMatch) {
+                grade = parseInt(serieMatch[1]);
+            } else {
+                // Usar número da questão como aproximação
+                grade = Math.min(Math.floor(questionNumber / 10) + 1, 9); // Máximo 9º ano
+            }
+        }
+        
+        const skillNumber = ((questionNumber - 1) % 10) + 1;
+        
+        // ✅ Detectar disciplina baseada no nome
+        const isMathematics = disciplina.includes('matemática') || 
+                             disciplina.includes('matematica') ||
+                             disciplina.includes('math') ||
+                             disciplina.includes('mathematics');
+        const isPortuguese = disciplina.includes('português') || 
+                            disciplina.includes('portugues') || 
+                            disciplina.includes('língua') ||
+                            disciplina.includes('lingua') ||
+                            disciplina.includes('portuguese') ||
+                            disciplina.includes('portuguesa') ||
+                            disciplina.includes('lingua portuguesa') ||
+                            disciplina.includes('língua portuguesa') ||
+                            disciplina.includes('lp') ||
+                            disciplina.includes('l.p.') ||
+                            disciplina.includes('lingua p') ||
+                            disciplina.includes('língua p') ||
+                            disciplina.includes('portuguese language');
+        const isScience = disciplina.includes('ciências') || 
+                         disciplina.includes('ciencias') || 
+                         disciplina.includes('science') ||
+                         disciplina.includes('ciência') ||
+                         disciplina.includes('ciencia');
+        const isHistory = disciplina.includes('história') || 
+                         disciplina.includes('historia') || 
+                         disciplina.includes('history');
+        const isGeography = disciplina.includes('geografia') || 
+                           disciplina.includes('geography');
+        
+        // ✅ Gerar código baseado na disciplina detectada
+        if (isMathematics) {
+            // Para matemática, usar códigos como 9N1.1, 9N1.2, etc.
+            return `${grade}N1.${skillNumber}`;
+        } else if (isPortuguese) {
+            // Para língua portuguesa, usar códigos como LP9L1.1, LP9L1.2, etc.
+            return `LP${grade}L1.${skillNumber}`;
+        } else if (isScience) {
+            // Para ciências, usar códigos como CN9L1.1, CN9L1.2, etc.
+            return `CN${grade}L1.${skillNumber}`;
+        } else if (isHistory) {
+            // Para história, usar códigos como HI9L1.1, HI9L1.2, etc.
+            return `HI${grade}L1.${skillNumber}`;
+        } else if (isGeography) {
+            // Para geografia, usar códigos como GE9L1.1, GE9L1.2, etc.
+            return `GE${grade}L1.${skillNumber}`;
+        } else {
+            // Para outras disciplinas, usar códigos genéricos como LP9L1.1, LP9L1.2, etc.
+            return `LP${grade}L1.${skillNumber}`;
+        }
+    };
+
+    // ✅ NOVO: Função para buscar descrição da skill
+    const getSkillDescription = (skillCode: string) => {
+        // Buscar em todas as disciplinas
+        for (const [subjectId, skills] of Object.entries(skillsBySubject || {})) {
+            const skill = skills.find(s => s.code === skillCode);
+            if (skill) {
+                return skill.description;
+            }
+        }
+        return null;
+    };
+
+          // ✅ CORRIGIDO: Função para gerar porcentagens da turma usando dados reais
+    const generateTurmaPercentages = useCallback(() => {
+        if (!students || students.length === 0) {
+            return Array.from({ length: totalQuestions }, () => 0);
+        }
+
+        console.log('🔍 Gerando porcentagens da turma usando dados reais para', students.length, 'alunos');
+        console.log('🔍 Alunos filtrados:', students.map(s => s.nome).join(', '));
+
+        return Array.from({ length: totalQuestions }, (_, questionIndex) => {
+            let correctCount = 0;
+            let totalAnswered = 0;
+
+            students.forEach(student => {
+                const studentAnswers = studentDetailedAnswers?.[student.id];
+                
+                console.log(`🔍 Processando ${student.nome} para Q${questionIndex + 1}:`, {
+                    hasDetailedAnswers: !!(studentAnswers && studentAnswers.answers && studentAnswers.answers.length > 0),
+                    basicData: { acertos: student.acertos, erros: student.erros }
+                });
+                
+                if (studentAnswers && studentAnswers.answers && studentAnswers.answers.length > 0) {
+                    // ✅ CORREÇÃO: Usar dados reais das respostas
+                    // Buscar TODAS as respostas para esta questão (pode haver múltiplas)
+                    const questionAnswers = studentAnswers.answers.filter(
+                        answer => answer.question_number === questionIndex + 1
+                    );
+
+                    console.log(`🔍 DEBUG: ${student.nome} - Q${questionIndex + 1} - Respostas encontradas:`, questionAnswers.length);
+                    console.log(`🔍 DEBUG: ${student.nome} - Q${questionIndex + 1} - Todas as respostas disponíveis:`, studentAnswers.answers.map(a => `Q${a.question_number}:${a.is_correct ? '✓' : '✗'}`).join(', '));
+
+                    if (questionAnswers.length > 0) {
+                        // Usar a ÚLTIMA resposta (mais recente)
+                        const lastAnswer = questionAnswers[questionAnswers.length - 1];
+                        totalAnswered++;
+                        if (lastAnswer.is_correct) {
+                            correctCount++;
+                        }
+                        console.log(`🔍 Q${questionIndex + 1} - ${student.nome}: ${lastAnswer.is_correct ? '✓' : '✗'} (dados reais - última resposta)`);
+                    } else {
+                        console.log(`🔍 Q${questionIndex + 1} - ${student.nome}: não respondeu (dados reais)`);
+                    }
+                } else {
+                    // Fallback para dados básicos se não tiver respostas detalhadas
+                    const correctAnswers = student.acertos;
+                    const wrongAnswers = student.erros;
+                    const totalAnsweredBasic = correctAnswers + wrongAnswers;
+                    
+                    if (questionIndex < totalAnsweredBasic) {
+                        totalAnswered++;
+                        if (questionIndex < correctAnswers) {
+                            correctCount++;
+                        }
+                        // console.log(`🔍 Q${questionIndex + 1} - ${student.nome}: ${questionIndex < correctAnswers ? '✓' : '✗'} (fallback)`);
+                    } else {
+                        // console.log(`🔍 Q${questionIndex + 1} - ${student.nome}: não respondeu (fallback)`);
+                    }
+                }
+            });
+
+            const percentage = totalAnswered > 0 ? Math.round((correctCount / totalAnswered) * 100) : 0;
+            
+            console.log(`🔍 Q${questionIndex + 1} - Resultado final: ${correctCount}/${totalAnswered} = ${percentage}%`);
+            
+            if (totalAnswered === 0) {
+                console.log(`🔍 Q${questionIndex + 1} - Ninguém respondeu esta questão`);
+            }
+            
+            return percentage;
+        });
+    }, [students, studentDetailedAnswers, totalQuestions]);
+
+    // ✅ CORRIGIDO: Função para obter respostas de um aluno específico
+    const getStudentAnswers = useCallback((studentId: string) => {
+        const studentAnswers = studentDetailedAnswers[studentId];
+        
+        if (!studentAnswers || !studentAnswers.answers) {
+            return Array.from({ length: totalQuestions }, () => null);
+        }
+
+        // ✅ CORREÇÃO: Usar dados reais das respostas
+        const answers = Array.from({ length: totalQuestions }, (_, questionIndex) => {
+            const questionAnswer = studentAnswers.answers.find(
+                answer => answer.question_number === questionIndex + 1
+            );
+
+            if (!questionAnswer) {
+                return null; // Questão não respondida
+            }
+
+            return questionAnswer.is_correct;
+        });
+
+        console.log(`🔍 Respostas do aluno ${studentAnswers.student_name}:`, answers.map((a, i) => `Q${i+1}:${a === true ? '✓' : a === false ? '✗' : '-'}`).join(' '));
+        
+        return answers;
+    }, [studentDetailedAnswers, totalQuestions]);
+
+    // ✅ CORRIGIDO: Gerar porcentagens da turma usando dados reais
+    const turmaPercentages = useMemo(() => {
+        return generateTurmaPercentages();
+    }, [generateTurmaPercentages]);
+
+        return (
+        <div className="overflow-x-auto">
+            <table className="min-w-max border border-gray-300 text-center text-sm shadow-md rounded-lg">
+                <thead>
+                    {/* Cabeçalho principal */}
+                    <tr className="bg-gray-100">
+                        <th className="p-2 min-w-[150px] text-left border-r border-gray-300">Aluno</th>
+                        {visibleFields?.questoes && Array.from({ length: totalQuestions }, (_, i) => {
+                            let questionNumber = i + 1;
+                            
+                            if (questoes && questoes.length > 0) {
+                                const questao = questoes[i];
+                                if (questao) {
+                                    questionNumber = questao.numero;
+                                }
+                            } else if (questionsWithSkills && questionsWithSkills.length > 0) {
+                                const questao = questionsWithSkills[i];
+                                if (questao) {
+                                    questionNumber = questao.number;
+                                }
+                            }
+                            
+                            return (
+                                <th key={`header-q${i}`} className="p-2 min-w-[80px] border-r border-gray-300">
+                                    Q{questionNumber}
+                                </th>
+                            );
+                        })}
+                        {visibleFields?.total && <th className="p-2 bg-gray-50">Total</th>}
+                        {visibleFields?.nota && <th className="p-2 bg-gray-50">Nota</th>}
+                        {visibleFields?.proficiencia && <th className="p-2 bg-gray-50">Proficiência</th>}
+                        {visibleFields?.nivel && <th className="p-2 bg-gray-50">Nível</th>}
+                    </tr>
+                    
+                    {/* Linha de habilidades (se habilitada) */}
+                    {visibleFields?.habilidade && (
+                        <tr className="bg-gray-50">
+                            <td className="p-1 text-left border-r border-gray-300 text-xs font-mono text-gray-600">
+                                Habilidade
+                            </td>
+                            {visibleFields?.questoes && Array.from({ length: totalQuestions }, (_, i) => {
+                                let questionNumber = startQuestionNumber + i;
+                                let questao = null;
+                                
+                                if (questionsWithSkills && questionsWithSkills.length > 0) {
+                                    questao = questionsWithSkills[i];
+                                    if (questao) {
+                                        questionNumber = questao.number;
+                                    }
+                                } else if (questoes && questoes.length > 0) {
+                                    questao = questoes.find(q => q.numero === questionNumber);
+                                    if (questao) {
+                                        questionNumber = questao.numero;
+                                    }
+                                }
+                                
+                                const habilidadeCode = generateHabilidadeCode(questionNumber, questao);
+                                
+                                let disciplinaIndicator = '';
+                                if (questao && questao.subject && questao.subject.name) {
+                                    const disciplina = questao.subject.name.toLowerCase();
+                                    if (disciplina.includes('português') || disciplina.includes('portugues') || disciplina.includes('língua')) {
+                                        disciplinaIndicator = ' 🇧🇷';
+                                    } else if (disciplina.includes('matemática') || disciplina.includes('matematica')) {
+                                        disciplinaIndicator = ' 🔢';
+                                    } else if (disciplina.includes('ciência') || disciplina.includes('ciencia')) {
+                                        disciplinaIndicator = ' 🔬';
+                                    } else if (disciplina.includes('história') || disciplina.includes('historia')) {
+                                        disciplinaIndicator = ' 📚';
+                                    } else if (disciplina.includes('geografia')) {
+                                        disciplinaIndicator = ' 🌍';
+                                    }
+                                }
+                                
+                                const skillDescription = getSkillDescription(habilidadeCode);
+                                
+                                return (
+                                    <td key={`habilidade-q${i}`} className="p-1 border-r border-gray-300 text-xs font-mono text-gray-600">
+                                        {skillDescription ? (
+                                            <TooltipProvider>
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <span className="cursor-help hover:text-blue-600 transition-colors group">
+                                                            {habilidadeCode}{disciplinaIndicator}
+                                                            <span className="ml-1 text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity">ℹ️</span>
+                                                        </span>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="top" className="max-w-xs bg-gray-900 text-white border-gray-700">
+                                                        <div className="space-y-2">
+                                                            <div className="font-bold text-sm text-blue-200">{habilidadeCode}</div>
+                                                            <div className="text-sm leading-relaxed">{skillDescription}</div>
+                                                        </div>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            </TooltipProvider>
+                                        ) : (
+                                            <span>{habilidadeCode}{disciplinaIndicator}</span>
+                                        )}
+                                    </td>
+                                );
+                            })}
+                            {visibleFields?.total && <td className="p-1 bg-gray-100 text-xs font-mono text-gray-600"></td>}
+                            {visibleFields?.nota && <td className="p-1 bg-gray-100 text-xs font-mono text-gray-600"></td>}
+                            {visibleFields?.proficiencia && <td className="p-1 bg-gray-100 text-xs font-mono text-gray-600"></td>}
+                            {visibleFields?.nivel && <td className="p-1 bg-gray-100 text-xs font-mono text-gray-600"></td>}
+                        </tr>
+                    )}
+                    
+                    {/* Linha de porcentagem da turma (se habilitada) */}
+                    {visibleFields?.percentualTurma && (
+                        <tr className="bg-blue-50">
+                            <td className="p-1 text-left border-r border-gray-300 text-xs font-semibold text-blue-700">
+                                % Turma
+                            </td>
+                            {visibleFields?.questoes && turmaPercentages.map((percentage, i) => {
+                                const displayColor = percentage >= 60 ? "text-green-600" : "text-red-500";
+                                
+                                return (
+                                <td key={`turma-q${i}`} className="p-1 border-r border-gray-300">
+                                        <div className={`text-xs font-bold ${displayColor}`}>
+                                        {percentage.toFixed(0)}%
+                                    </div>
+                                </td>
+                                );
+                            })}
+                            {visibleFields?.total && <td className="p-1 bg-gray-100 text-xs font-semibold text-blue-700"></td>}
+                            {visibleFields?.nota && <td className="p-1 bg-gray-100 text-xs font-semibold text-blue-700"></td>}
+                            {visibleFields?.proficiencia && <td className="p-1 bg-gray-100 text-xs font-semibold text-blue-700"></td>}
+                            {visibleFields?.nivel && <td className="p-1 bg-gray-100 text-xs font-semibold text-blue-700"></td>}
+                        </tr>
+                    )}
+                </thead>
+                <tbody>
+                    {students.map((student, studentIndex) => {
+                        // ✅ CORREÇÃO: Usar dados reais das respostas detalhadas
+                        let answers = Array.from({ length: totalQuestions }, () => null);
+                        const studentAnswers = studentDetailedAnswers?.[student.id];
+                        
+                        if (studentAnswers && studentAnswers.answers && studentAnswers.answers.length > 0) {
+                            // ✅ USANDO DADOS DO ENDPOINT
+                            console.log(`✅ ${student.nome} - USANDO DADOS DO ENDPOINT`);
+                            
+                            // Novo: Para cada questão, buscar a última resposta (mais recente) daquela questão
+                            for (let i = 0; i < totalQuestions; i++) {
+                                const qNum = i + 1;
+                                // Filtra todas as respostas para a questão qNum
+                                const respostasQuestao = studentAnswers.answers.filter(a => a.question_number === qNum);
+                                if (respostasQuestao.length > 0) {
+                                    // ✅ CORREÇÃO: Ordenar por data e pegar a mais recente (consistente com cálculo de totais)
+                                    const sortedAnswers = respostasQuestao.sort((a, b) => 
+                                        new Date(b.answered_at).getTime() - new Date(a.answered_at).getTime()
+                                    );
+                                    const ultima = sortedAnswers[0]; // Primeiro após ordenação (mais recente)
+                                    answers[i] = ultima.is_correct;
+                                    
+                                    // ✅ DEBUG: Verificar ordenação
+                                    if (respostasQuestao.length > 1) {
+                                        console.log(`🔍 Q${qNum} - ${student.nome}: ${respostasQuestao.length} respostas, usando: ${ultima.is_correct ? '✓' : '✗'} (${ultima.answered_at})`);
+                                    }
+                                } else {
+                                    answers[i] = null;
+                                }
+                            }
+                            
+                            // ✅ VERIFICAÇÃO: Comparar com dados do banco
+                            const correctCountFromAPI = answers.filter(a => a === true).length;
+                            const answeredCountFromAPI = answers.filter(a => a !== null).length;
+                            const correctCountFromDB = student.acertos;
+                            const totalAnsweredFromDB = student.acertos + student.erros;
+                            
+                            console.log(`🔍 COMPARAÇÃO ${student.nome}:`, {
+                                api: { correct: correctCountFromAPI, answered: answeredCountFromAPI },
+                                db: { correct: correctCountFromDB, answered: totalAnsweredFromDB },
+                                discrepancy: Math.abs(correctCountFromAPI - correctCountFromDB) > 1 || Math.abs(answeredCountFromAPI - totalAnsweredFromDB) > 2
+                            });
+                            
+                            // ✅ Se houver discrepância significativa, usar dados do banco
+                            if (Math.abs(correctCountFromAPI - correctCountFromDB) > 1 || Math.abs(answeredCountFromAPI - totalAnsweredFromDB) > 2) {
+                                console.log(`⚠️ ${student.nome} - DISCREPÂNCIA DETECTADA, usando dados do banco`);
+                                const correctAnswers = student.acertos;
+                                const wrongAnswers = student.erros;
+                                const totalAnswered = correctAnswers + wrongAnswers;
+                                answers = Array.from({ length: totalQuestions }, (_, questionIndex) => {
+                                    if (questionIndex < totalAnswered) {
+                                        if (questionIndex < correctAnswers) return true;
+                                        return false;
+                                    }
+                                    return null;
+                                });
+                            }
+                            
+                            console.log(`🔍 [API] Respostas reais do aluno ${student.nome}:`, answers.map((a, i) => `Q${i+1}:${a === true ? '✓' : a === false ? '✗' : '-'}`).join(' '));
+                        } else {
+                            // ⚠️ FALLBACK - DADOS BÁSICOS
+                            console.log(`⚠️ ${student.nome} - USANDO FALLBACK (sem dados do endpoint)`);
+                        const correctAnswers = student.acertos;
+                        const wrongAnswers = student.erros;
+                            const totalAnswered = correctAnswers + wrongAnswers;
+                            answers = Array.from({ length: totalQuestions }, (_, questionIndex) => {
+                                if (questionIndex < totalAnswered) {
+                            if (questionIndex < correctAnswers) return true;
+                                    return false;
+                                }
+                            return null;
+                        });
+                        }
+                        
+                        return (
+                            <tr key={`${student.id || 'student'}-${studentIndex}`} 
+                                className="hover:bg-gray-50 cursor-pointer group"
+                                onClick={() => onViewStudentDetails(student.id)}
+                                title="Clique para ver resultados detalhados do aluno">
+                                <td className="p-2 border-t border-gray-200 text-left border-r-2 border-gray-200">
+                                    <div className="font-medium hover:text-blue-600 transition-colors flex items-center gap-2">
+                                        {student.nome}
+                                        <Eye className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    </div>
+                                </td>
+                                {visibleFields?.questoes && answers.map((answer, questionIndex) => {
+                                    const displaySymbol = answer === true ? '✓' : answer === false || answer === null ? '✗' : '-';
+                                    const displayColor = answer === true ? 'text-green-700' : answer === false || answer === null ? 'text-red-600' : 'text-transparent';
+                                    
+                                    return (
+                                        <td key={`${student.id}-q${questionIndex}`} className="px-4 py-2 border-t border-gray-200 border-r-2 border-gray-200 text-center align-middle">
+                                            <div className="flex justify-center items-center h-full">
+                                                <span className={`${displayColor} text-2xl font-bold`}>{displaySymbol}</span>
+                                        </div>
+                                    </td>
+                                    );
+                                })}
+                                {visibleFields?.total && (
+                                    <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50 text-center">
+                                        {(() => {
+                                            // ✅ CORREÇÃO: Se há discrepância detectada, usar dados do banco
+                                            const correctCountFromAPI = answers.filter(a => a === true).length;
+                                            const answeredCountFromAPI = answers.filter(a => a !== null).length;
+                                            const correctCountFromDB = student.acertos;
+                                            const totalAnsweredFromDB = student.acertos + student.erros;
+                                            
+                                            if (Math.abs(correctCountFromAPI - correctCountFromDB) > 1 || Math.abs(answeredCountFromAPI - totalAnsweredFromDB) > 2) {
+                                                // ✅ Usar dados do banco
+                                                console.log(`🔍 Total usando dados do banco para ${student.nome}: ${correctCountFromDB}`);
+                                                return correctCountFromDB;
+                                            }
+                                            
+                                            // ✅ Se não há discrepância, usar dados da API
+                                            if (studentAnswers && studentAnswers.answers && studentAnswers.answers.length > 0) {
+                                                // Usar a mesma lógica de "última resposta" para consistência
+                                                const answersByQuestion: Record<number, Array<{is_correct: boolean, answered_at: string}>> = {};
+                                                studentAnswers.answers.forEach(answer => {
+                                                    if (!answersByQuestion[answer.question_number]) {
+                                                        answersByQuestion[answer.question_number] = [];
+                                                    }
+                                                    answersByQuestion[answer.question_number].push({
+                                                        is_correct: answer.is_correct,
+                                                        answered_at: answer.answered_at
+                                                    });
+                                                });
+                                                
+                                                let correctCount = 0;
+                                                Object.entries(answersByQuestion).forEach(([questionNum, questionAnswers]) => {
+                                                    const sortedAnswers = questionAnswers.sort((a, b) => 
+                                                        new Date(b.answered_at).getTime() - new Date(a.answered_at).getTime()
+                                                    );
+                                                    if (sortedAnswers[0].is_correct) {
+                                                        correctCount++;
+                                                    }
+                                                });
+                                                
+                                                console.log(`🔍 Total usando dados da API para ${student.nome}: ${correctCount}`);
+                                                return correctCount;
+                                            }
+                                            
+                                            // ✅ Fallback para dados básicos
+                                            console.log(`🔍 Total usando dados básicos para ${student.nome}: ${student.acertos}`);
+                                            return student.acertos;
+                                        })()}
+                                    </td>
+                                )}
+                                {visibleFields?.nota && (
+                                    <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50 text-center">
+                                        {(() => {
+                                            // ✅ CORREÇÃO: Se há discrepância detectada, usar dados do banco
+                                            const correctCountFromAPI = answers.filter(a => a === true).length;
+                                            const answeredCountFromAPI = answers.filter(a => a !== null).length;
+                                            const correctCountFromDB = student.acertos;
+                                            const totalAnsweredFromDB = student.acertos + student.erros;
+                                            
+                                            if (Math.abs(correctCountFromAPI - correctCountFromDB) > 1 || Math.abs(answeredCountFromAPI - totalAnsweredFromDB) > 2) {
+                                                // ✅ Usar dados do banco
+                                                console.log(`🔍 Nota usando dados do banco para ${student.nome}: ${student.nota.toFixed(1)}`);
+                                                return student.nota.toFixed(1);
+                                            }
+                                            
+                                            // ✅ Se não há discrepância, usar dados da API
+                                            if (studentAnswers && studentAnswers.answers && studentAnswers.answers.length > 0) {
+                                                // Usar a mesma lógica de "última resposta" para consistência
+                                                const answersByQuestion: Record<number, Array<{is_correct: boolean, answered_at: string}>> = {};
+                                                studentAnswers.answers.forEach(answer => {
+                                                    if (!answersByQuestion[answer.question_number]) {
+                                                        answersByQuestion[answer.question_number] = [];
+                                                    }
+                                                    answersByQuestion[answer.question_number].push({
+                                                        is_correct: answer.is_correct,
+                                                        answered_at: answer.answered_at
+                                                    });
+                                                });
+                                                
+                                                let correctCount = 0;
+                                                const totalQuestions = Object.keys(answersByQuestion).length;
+                                                Object.entries(answersByQuestion).forEach(([questionNum, questionAnswers]) => {
+                                                    const sortedAnswers = questionAnswers.sort((a, b) => 
+                                                        new Date(b.answered_at).getTime() - new Date(a.answered_at).getTime()
+                                                    );
+                                                    if (sortedAnswers[0].is_correct) {
+                                                        correctCount++;
+                                                    }
+                                                });
+                                                
+                                                const grade = totalQuestions > 0 ? (correctCount / totalQuestions) * 10 : 0;
+                                                console.log(`🔍 Nota usando dados da API para ${student.nome}: ${grade.toFixed(1)}`);
+                                                return grade.toFixed(1);
+                                            }
+                                            
+                                            // ✅ Fallback para dados básicos
+                                            console.log(`🔍 Nota usando dados básicos para ${student.nome}: ${student.nota.toFixed(1)}`);
+                                            return student.nota.toFixed(1);
+                                        })()}
+                                    </td>
+                                )}
+                                {visibleFields?.proficiencia && (
+                                    <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50 text-center">
+                                        {studentAnswers?.proficiencia?.toFixed(0) || student.proficiencia.toFixed(0)}
+                                    </td>
+                                )}
+                                {visibleFields?.nivel && (
+                                    <td className="p-2 border-t border-gray-200 bg-gray-50 text-center">
+                                        <span className={`px-2 py-1 rounded-full text-xs text-white ${
+                                            student.classificacao === 'Abaixo do Básico' ? 'bg-red-500' :
+                                            student.classificacao === 'Básico' ? 'bg-yellow-400' :
+                                            student.classificacao === 'Adequado' ? 'bg-blue-500' :
+                                            'bg-green-500'
+                                        }`}>
+                                            {student.classificacao}
+                                        </span>
+                                    </td>
+                                )}
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+            
+            {/* Legenda */}
+            <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                <div className="text-xs text-gray-600 space-y-2">
+                    <div className="font-semibold text-gray-700">Legenda:</div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="flex items-center gap-1">
+                            <span className="text-green-700 text-2xl font-bold">✓</span>
+                            <span>Aluno acertou</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                            <span className="text-red-600 text-2xl font-bold">✗</span>
+                            <span>Aluno errou ou deixou em branco</span>
+                        </div>
+                            <div className="flex items-center gap-1">
+                            <span className="text-green-700 font-bold">60%+</span>
+                            <span>Turma teve bom desempenho</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                            <span className="text-red-600 font-bold">&lt;60%</span>
+                            <span>Turma teve dificuldade</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 export default function DetailedResultsView({ onBack }: DetailedResultsViewProps) {
     const { id: evaluationId } = useParams<{ id: string }>();
@@ -239,8 +974,120 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
     const [showOnlyCompleted, setShowOnlyCompleted] = useState(true);
     const [showAbsentStudents, setShowAbsentStudents] = useState(false);
     
+    // ✅ NOVO: Estado para controlar quando mostrar a tabela
+    const [isTableReady, setIsTableReady] = useState(false);
+    
     const { toast } = useToast();
     const navigate = useNavigate();
+
+  // ✅ NOVO: Estado para armazenar respostas detalhadas de todos os alunos
+  const [studentDetailedAnswers, setStudentDetailedAnswers] = useState<Record<string, StudentDetailedAnswers>>({});
+  const [isLoadingDetailedAnswers, setIsLoadingDetailedAnswers] = useState(false);
+
+  // ✅ NOVO: Função para buscar respostas detalhadas de todos os alunos
+  const fetchAllStudentDetailedAnswers = useCallback(async () => {
+    if (!evaluationInfo?.id || !students || students.length === 0) return;
+
+    try {
+      setIsLoadingDetailedAnswers(true);
+              console.log('🔍 Buscando respostas detalhadas para', students.length, 'alunos...');
+
+      const detailedAnswers: Record<string, StudentDetailedAnswers> = {};
+      
+      // Buscar respostas detalhadas de cada aluno
+      const promises = students.map(async (student) => {
+        try {
+          const response = await api.get(`/evaluation-results/${evaluationInfo.id}/student/${student.id}/answers`);
+          const studentAnswers: StudentDetailedAnswers = response.data;
+          
+          console.log(`🔍 Respostas do aluno ${student.nome}:`, {
+            total_questions: studentAnswers.total_questions,
+            answered_questions: studentAnswers.answered_questions,
+            correct_answers: studentAnswers.correct_answers,
+            grade: studentAnswers.grade,
+            proficiencia: studentAnswers.proficiencia,
+            answers_count: studentAnswers.answers.length,
+            answers_detail: studentAnswers.answers.map(a => ({
+              q: a.question_number,
+              correct: a.is_correct,
+              score: a.score
+            }))
+          });
+
+          detailedAnswers[student.id] = studentAnswers;
+        } catch (error: unknown) {
+          console.warn(`⚠️ Erro ao buscar respostas do aluno ${student.nome}:`, error);
+          // Se não conseguir buscar respostas detalhadas, usar dados básicos
+          detailedAnswers[student.id] = {
+            test_id: evaluationInfo.id,
+            student_id: student.id,
+            student_name: student.nome,
+            total_questions: student.questoes_respondidas,
+            answered_questions: student.acertos + student.erros,
+            correct_answers: student.acertos,
+            score_percentage: (student.acertos / student.questoes_respondidas) * 100,
+            total_score: student.nota,
+            max_possible_score: student.questoes_respondidas,
+            grade: student.nota,
+            proficiencia: student.proficiencia,
+            classificacao: student.classificacao,
+            status: student.status === 'pendente' ? 'nao_respondida' : 'concluida',
+            answers: []
+          };
+          
+          // console.log(`⚠️ Fallback criado para ${student.nome}:`, {
+          //   correct_answers: student.acertos,
+          //   grade: student.nota,
+          //   total_questions: student.questoes_respondidas
+          // });
+        }
+      });
+
+      await Promise.all(promises);
+      setStudentDetailedAnswers(detailedAnswers);
+      
+      // ✅ DEBUG: Verificar dados finais carregados
+      console.log('✅ DADOS DO ENDPOINT CARREGADOS:', {
+        totalStudents: Object.keys(detailedAnswers).length,
+        studentsWithData: Object.entries(detailedAnswers).map(([studentId, data]) => ({
+          studentId,
+          studentName: data.student_name,
+          hasAnswers: !!data.answers,
+          answersCount: data.answers?.length || 0,
+          correctAnswers: data.correct_answers,
+          grade: data.grade
+        }))
+      });
+      
+      // ✅ Marcar tabela como pronta para renderizar
+      setIsTableReady(true);
+      
+      // console.log('✅ Respostas detalhadas carregadas para', Object.keys(detailedAnswers).length, 'alunos');
+    } catch (error) {
+      console.error('❌ Erro ao buscar respostas detalhadas:', error);
+    } finally {
+      setIsLoadingDetailedAnswers(false);
+    }
+  }, [evaluationInfo?.id, students]);
+
+  // ✅ NOVO: Carregar respostas detalhadas quando os dados básicos estiverem prontos
+  useEffect(() => {
+    console.log('🔍 useEffect - Verificando se deve carregar dados detalhados:', {
+      hasEvaluationId: !!evaluationInfo?.id,
+      hasStudents: !!students,
+      studentsLength: students?.length || 0,
+      isLoadingDetailedAnswers,
+      shouldCall: !!(evaluationInfo?.id && students && students.length > 0 && !isLoadingDetailedAnswers)
+    });
+    
+    if (evaluationInfo?.id && students && students.length > 0 && !isLoadingDetailedAnswers) {
+      console.log('🚀 CHAMANDO fetchAllStudentDetailedAnswers...');
+      setIsTableReady(false); // Reset table ready state
+      fetchAllStudentDetailedAnswers();
+    }
+  }, [evaluationInfo?.id, students, fetchAllStudentDetailedAnswers]);
+
+
 
     // ✅ NOVO: Função para voltar da visualização de faltosos
     const handleBackFromAbsentStudents = () => {
@@ -845,7 +1692,7 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                         });
                     });
                     
-                    console.log('🔍 Skills organizadas por disciplina:', skillsBySubject);
+                    // console.log('🔍 Skills organizadas por disciplina:', skillsBySubject);
                     setSkillsMapping(newSkillsMapping);
                     setSkillsBySubject(skillsBySubject);
                     
@@ -1818,25 +2665,25 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                                 Ver Faltosos ({absentStudents.length})
                             </Button>
                             
-                            <Button 
-                                variant="outline" 
-                                size="sm" 
-                                onClick={() => {
-                                    setSearchTerm('');
-                                    setClassificationFilter('all');
-                                    setStatusFilter('all');
-                                    setShowOnlyWithScore(false);
+                                <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    onClick={() => {
+                                        setSearchTerm('');
+                                        setClassificationFilter('all');
+                                        setStatusFilter('all');
+                                        setShowOnlyWithScore(false);
                                     setShowOnlyCompleted(true);
-                                    setLevelFilter('all');
-                                    setTurmaFilter('all');
-                                    setSubjectFilter('all');
-                                    setOrderBy('nome');
-                                    setOrderDirection('asc');
-                                }}
-                                className="h-8 text-xs"
-                            >
-                                Limpar Filtros
-                            </Button>
+                                        setLevelFilter('all');
+                                        setTurmaFilter('all');
+                                        setSubjectFilter('all');
+                                        setOrderBy('nome');
+                                        setOrderDirection('asc');
+                                    }}
+                                    className="h-8 text-xs"
+                                >
+                                    Limpar Filtros
+                                </Button>
                         </div>
                     </div>
                 </CardContent>
@@ -2070,31 +2917,32 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                 <CardContent>
                     {filteredStudents.length > 0 ? (
                         viewMode === 'table' ? (
-                            detailedReport?.questoes && detailedReport.questoes.length > 0 ? (
-                                <ResultsTable 
-                                students={filteredStudents} 
-                                    totalQuestions={detailedReport.questoes.length} 
-                                    startQuestionNumber={1}
-                                onViewStudentDetails={handleViewStudentDetails}
-                                    questoes={detailedReport.questoes}
-                                questionsWithSkills={questionsWithSkills}
-                                skillsMapping={skillsMapping}
-                                skillsBySubject={skillsBySubject}
-                                detailedReport={detailedReport}
-                                visibleFields={visibleFields}
-                                subjectFilter={subjectFilter}
-                            />
+                            // ✅ Só mostrar tabela quando os dados estiverem prontos
+                            isTableReady ? (
+                                <StudentsResultsTable 
+                                    students={filteredStudents} 
+                                    totalQuestions={detailedReport?.questoes.length || 0} 
+                                    startQuestionNumber={1} // ✅ SEMPRE começar da questão 1
+                                    onViewStudentDetails={handleViewStudentDetails}
+                                    questoes={detailedReport?.questoes}
+                                    questionsWithSkills={questionsWithSkills}
+                                    skillsMapping={skillsMapping}
+                                    skillsBySubject={skillsBySubject}
+                                    detailedReport={detailedReport}
+                                    studentDetailedAnswers={studentDetailedAnswers}
+                                    visibleFields={visibleFields}
+                                    subjectFilter={subjectFilter}
+                                />
                             ) : (
                                 <div className="text-center py-12">
-                                    <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                        <span className="text-2xl">⚠️</span>
+                                    <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                                     </div>
                                     <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                                        Dados de questões não disponíveis
+                                        Carregando dados detalhados...
                                     </h3>
                                     <p className="text-gray-600">
-                                        Os dados detalhados das questões ainda não foram carregados. 
-                                        Aguarde o carregamento completo ou tente novamente.
+                                        Aguarde enquanto carregamos as respostas individuais dos alunos.
                                     </p>
                                 </div>
                             )
@@ -2120,6 +2968,18 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
             </Card>
 
             {/* ✅ NOVO: Skills por Disciplina - Posicionado no final da página */}
+
+            {/* ✅ NOVO: Indicador de carregamento das respostas detalhadas */}
+            {isLoadingDetailedAnswers && (
+                <Card>
+                    <CardContent className="p-4">
+                        <div className="flex items-center gap-2 text-sm text-blue-600">
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                            Carregando respostas detalhadas dos alunos...
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
 
         </div>
     );

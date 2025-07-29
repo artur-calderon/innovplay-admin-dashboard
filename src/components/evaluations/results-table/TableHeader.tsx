@@ -31,7 +31,7 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
 }) => {
   const { generateHabilidadeCode } = useSkillCodeGenerator();
   const { getSkillDescription } = useSkillDescription(skillsBySubject);
-  const turmaPercentages = useTurmaPercentages(questoes, totalQuestions);
+  const turmaPercentages = useTurmaPercentages(questoes, totalQuestions, detailedReport);
 
   const getDisciplineIndicator = (questao: any) => {
     if (!questao?.subject?.name) return '';
@@ -157,11 +157,11 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
           {visibleFields?.questoes && turmaPercentages.map((percentage, i) => (
             <td key={`turma-q${i}`} className="p-1 border-r border-gray-300">
               <div className={`text-xs font-bold ${
-                percentage > 0 ? (
+                percentage === -1 ? "text-gray-400" : (
                   percentage >= 60 ? "text-green-600" : "text-red-500"
-                ) : "text-gray-400"
+                )
               }`}>
-                {percentage > 0 ? `${percentage.toFixed(0)}%` : 'N/A'}
+                {percentage === -1 ? 'N/A' : `${percentage.toFixed(0)}%`}
               </div>
             </td>
           ))}

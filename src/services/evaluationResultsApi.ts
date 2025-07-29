@@ -398,6 +398,41 @@ export class EvaluationResultsApiService {
     }, 25000); // 25s para lista de alunos
   }
 
+  // ✅ NOVO: Método para buscar dados corretos usando o endpoint específico
+  static async getCorrectStudentResults(evaluationId: string): Promise<{
+    alunos: Array<{
+      id: string;
+      nome: string;
+      turma: string;
+      acertos: number;
+      erros: number;
+      em_branco: number;
+      nota: number;
+      proficiencia: number;
+      classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+      status: 'concluida' | 'pendente';
+      respostas: Array<{
+        questao: number;
+        resposta: string;
+        correta: boolean;
+        em_branco: boolean;
+      }>;
+    }>;
+    questoes: Array<{
+      numero: number;
+      porcentagem_acertos: number;
+    }>;
+  } | null> {
+    return apiWithTimeout(async () => {
+      // ✅ Usar o endpoint específico que retorna os dados corretos
+      const response = await api.get(`/evaluation-results/alunos?avaliacao_id=${evaluationId}`);
+      
+      console.log('🔍 Dados corretos recebidos do endpoint:', response.data);
+      
+      return response.data;
+    }, 25000); // 25s para lista de alunos
+  }
+
   // Buscar resultados detalhados de um aluno específico
   static async getStudentDetailedResults(testId: string, studentId: string, includeAnswers: boolean = false): Promise<StudentDetailedResult | null> {
     try {
