@@ -510,7 +510,7 @@ export default function Results() {
       },
       agendada: {
         label: "Agendada",
-        color: "bg-yellow-100 text-yellow-800 border-yellow-300"
+        color: "bg-yellow-50 text-yellow-600 border-yellow-200"
       },
       'concluído': {
         label: "Concluída",
@@ -530,7 +530,7 @@ export default function Results() {
       },
       'agendado': {
         label: "Agendada",
-        color: "bg-yellow-100 text-yellow-800 border-yellow-300"
+        color: "bg-yellow-50 text-yellow-600 border-yellow-200"
       }
     };
 

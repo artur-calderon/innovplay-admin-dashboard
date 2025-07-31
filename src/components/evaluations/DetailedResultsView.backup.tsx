@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { PDFReportGenerator } from "./PDFReportGenerator";
 import {
     ArrowLeft,
     Download,
@@ -89,7 +88,7 @@ interface StudentResult {
     turma: string;
     nota: number;
     total_score?: number; // ✅ Campo para nota
-    grade?: string | number; // ✅ Campo para nota (do banco) - pode ser string ou number
+    grade?: number; // ✅ Campo para nota (do banco)
     proficiencia: number;
     proficiency?: number; // ✅ Campo para proficiência (do banco)
     classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
@@ -438,7 +437,7 @@ const StudentsResultsTable = ({
                         }
 
                     } else {
-                        // Questão não respondida pelo aluno
+
                     }
                 } else {
                     // Fallback para dados básicos se não tiver respostas detalhadas
@@ -682,7 +681,7 @@ const StudentsResultsTable = ({
                                 )}
                                 {visibleFields?.nota && (
                                     <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50 text-center">
-                                        {(typeof student.grade === 'number' ? student.grade?.toFixed(1) : student.grade) || student.total_score?.toFixed(1) || student.nota.toFixed(1)}
+                                        {student.grade?.toFixed(1) || student.total_score?.toFixed(1) || student.nota.toFixed(1)}
                                     </td>
                                 )}
                                 {visibleFields?.proficiencia && (
@@ -694,9 +693,9 @@ const StudentsResultsTable = ({
                                     <td className="p-2 border-t border-gray-200 bg-gray-50 text-center">
                                         <span className={`px-2 py-1 rounded-full text-xs text-white ${
                                             (student.classification || student.classificacao) === 'Abaixo do Básico' ? 'bg-red-500' :
-                                            (student.classification || student.classificacao) === 'Básico' ? 'bg-yellow-500' :
-                                            (student.classification || student.classificacao) === 'Adequado' ? 'bg-green-400' :
-                                            'bg-green-600'
+                                            (student.classification || student.classificacao) === 'Básico' ? 'bg-yellow-400' :
+                                            (student.classification || student.classificacao) === 'Adequado' ? 'bg-blue-500' :
+                                            'bg-green-500'
                                         }`}>
                                             {student.classification || student.classificacao}
                                         </span>
@@ -839,15 +838,6 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
   const [studentDetailedAnswers, setStudentDetailedAnswers] = useState<Record<string, StudentDetailedAnswers>>({});
   const [isLoadingDetailedAnswers, setIsLoadingDetailedAnswers] = useState(false);
 
-  // ✅ NOVO: Estado para filtros do gráfico
-  const [chartFilters, setChartFilters] = useState({
-    'Abaixo do Básico': true,
-    'Básico': true, 
-    'Adequado': true,
-    'Avançado': true,
-    'Sem Nota': true
-  });
-
   // ✅ NOVO: Função para buscar respostas detalhadas de todos os alunos
   const fetchAllStudentDetailedAnswers = useCallback(async () => {
     if (!evaluationInfo?.id || !students || students.length === 0) return;
@@ -870,7 +860,7 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
           score_percentage: (student.acertos / student.questoes_respondidas) * 100,
           total_score: student.total_score || student.nota,
           max_possible_score: student.questoes_respondidas,
-          grade: (typeof student.grade === 'number' ? student.grade : Number(student.grade)) || student.nota,
+          grade: student.grade || student.nota,
           proficiencia: student.proficiency || student.proficiencia,
           classificacao: student.classification || student.classificacao,
           status: student.status === 'pendente' ? 'nao_respondida' : 'concluida',
@@ -903,7 +893,7 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
       setIsTableReady(false); // Reset table ready state
       fetchAllStudentDetailedAnswers();
     }
-  }, [evaluationInfo?.id, students, fetchAllStudentDetailedAnswers, isLoadingDetailedAnswers]);
+  }, [evaluationInfo?.id, students, fetchAllStudentDetailedAnswers]);
 
 
 
@@ -1623,7 +1613,7 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                 // Se não há relatório detalhado, buscar apenas os alunos
                 updateLoadingProgress(6, 'Carregando lista de alunos...');
                 const studentsResponse = await EvaluationResultsApiService.getStudentsByEvaluation(evaluationId);
-                setStudents(studentsResponse as unknown as StudentResult[]);
+                setStudents(studentsResponse);
                 
                 // Calcular estatísticas básicas
                 const totalStudents = studentsResponse.length;
@@ -1708,10 +1698,10 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
 
     const getClassificationColor = (classification: string) => {
         switch (classification) {
-            case 'Avançado': return 'bg-green-600 text-white border-green-600';
-            case 'Adequado': return 'bg-green-400 text-white border-green-400';
-            case 'Básico': return 'bg-yellow-500 text-white border-yellow-500';
-            case 'Abaixo do Básico': return 'bg-red-500 text-white border-red-500';
+            case 'Avançado': return 'bg-green-100 text-green-800 border-green-300';
+            case 'Adequado': return 'bg-blue-100 text-blue-800 border-blue-300';
+            case 'Básico': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+            case 'Abaixo do Básico': return 'bg-red-100 text-red-800 border-red-300';
             default: return 'bg-gray-100 text-gray-800 border-gray-300';
         }
     };
@@ -2262,99 +2252,40 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
 
             {/* Gráfico de Distribuição por Classificação */}
             <Card>
-                <CardHeader>
-                    <CardTitle className="text-lg">Distribuição por Classificação</CardTitle>
-                    <CardDescription>
-                        Controles de filtro para visualizar os níveis desejados
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    {/* Controles de filtro do gráfico - Melhor posicionamento */}
-                    <div className="flex flex-wrap gap-3 mb-6 p-4 bg-gray-50 rounded-lg">
-                        {Object.keys(chartFilters).map(level => (
-                            <div key={level} className="flex items-center space-x-2">
-                                <Checkbox
-                                    id={`chart-${level}`}
-                                    checked={chartFilters[level]}
-                                    onCheckedChange={(checked) => 
-                                        setChartFilters(prev => ({ ...prev, [level]: checked as boolean }))
-                                    }
-                                />
-                                <label htmlFor={`chart-${level}`} className="text-sm font-medium text-gray-700">
-                                    {level}
-                                </label>
-                            </div>
-                        ))}
-                    </div>
-                    
+                <CardContent className="pt-6">
                     <DonutChartComponent
-                        data={(() => {
-                            const levelOrder = ["Abaixo do Básico", "Básico", "Adequado", "Avançado", "Sem Nota"];
-                            const colorMap = {
-                                "Abaixo do Básico": "#dc2626", // red-600
-                                "Básico": "#fbbf24", // yellow-400
-                                "Adequado": "#4ade80", // green-400
-                                "Avançado": "#16a34a", // green-600
-                                "Sem Nota": "#6b7280"  // gray-500
-                            };
-                            
-                            const data = levelOrder
-                                .map(level => ({
-                                    name: level,
-                                    value: level === "Sem Nota" 
-                                        ? (chartFilters[level] ? students.filter(s => s.nota === 0).length : 0)
-                                        : (chartFilters[level] ? students.filter(s => s.classificacao === level && s.nota > 0).length : 0),
-                                    color: colorMap[level] // ✅ CORREÇÃO: Adicionar cor específica para cada item
-                                }))
-                                .filter(item => item.value > 0);
-                            
-                            return data;
-                        })()}
+                        data={[
+                            {
+                                name: "Abaixo do Básico",
+                                value: students.filter(s => s.classificacao === 'Abaixo do Básico' && s.nota > 0).length
+                            },
+                            {
+                                name: "Básico",
+                                value: students.filter(s => s.classificacao === 'Básico' && s.nota > 0).length
+                            },
+                            {
+                                name: "Adequado",
+                                value: students.filter(s => s.classificacao === 'Adequado' && s.nota > 0).length
+                            },
+                            {
+                                name: "Avançado",
+                                value: students.filter(s => s.classificacao === 'Avançado' && s.nota > 0).length
+                            },
+                            {
+                                name: "Sem Nota",
+                                value: students.filter(s => s.nota === 0).length
+                            }
+                        ]}
                         title="Distribuição por Classificação"
-                        subtitle={`Total de ${students.filter(s => Object.values(chartFilters).some(f => f)).length} alunos`}
-                        colors={(() => {
-                            // ✅ CORREÇÃO: Gerar array de cores dinamicamente baseado nos dados filtrados
-                            const levelOrder = ["Abaixo do Básico", "Básico", "Adequado", "Avançado", "Sem Nota"];
-                            const colorMap = {
-                                "Abaixo do Básico": "#dc2626",
-                                "Básico": "#fbbf24", 
-                                "Adequado": "#4ade80",
-                                "Avançado": "#16a34a",
-                                "Sem Nota": "#6b7280"
-                            };
-                            
-                            return levelOrder
-                                .filter(level => {
-                                    const value = level === "Sem Nota" 
-                                        ? (chartFilters[level] ? students.filter(s => s.nota === 0).length : 0)
-                                        : (chartFilters[level] ? students.filter(s => s.classificacao === level && s.nota > 0).length : 0);
-                                    return value > 0;
-                                })
-                                .map(level => colorMap[level]);
-                        })()}
+                        subtitle={`Total de ${students.length} alunos`}
+                        colors={[
+                            "#ef4444", // red-500 - Abaixo do Básico
+                            "#f97316", // orange-500 - Básico
+                            "#3b82f6", // blue-500 - Adequado
+                            "#22c55e", // green-500 - Avançado
+                            "#6b7280"  // gray-500 - Sem Nota
+                        ]}
                     />
-                    
-                    {/* Índice fixo de cores */}
-                    <div className="mt-6 pt-4 border-t border-gray-200">
-                        <h4 className="text-sm font-medium text-gray-700 mb-3">Legenda de Cores</h4>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                            {[
-                                { name: "Abaixo do Básico", color: "#dc2626" },
-                                { name: "Básico", color: "#fbbf24" },
-                                { name: "Adequado", color: "#4ade80" },
-                                { name: "Avançado", color: "#16a34a" },
-                                { name: "Sem Nota", color: "#6b7280" }
-                            ].map((item) => (
-                                <div key={item.name} className="flex items-center space-x-2">
-                                    <div 
-                                        className="w-4 h-4 rounded-full border border-gray-300"
-                                        style={{ backgroundColor: item.color }}
-                                    />
-                                    <span className="text-sm text-gray-600">{item.name}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
                 </CardContent>
             </Card>
 
@@ -2650,14 +2581,14 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                                                     }}
                                                 ></div>
                                                 <div 
-                                                    className="flex-1 bg-green-400 rounded-sm h-2" 
+                                                    className="flex-1 bg-blue-500 rounded-sm h-2" 
                                                     title={`Adequado: ${distribution.adequado}`}
                                                     style={{ 
                                                         width: `${totalStudentsInTurma > 0 ? (distribution.adequado / totalStudentsInTurma) * 100 : 0}%` 
                                                     }}
                                                 ></div>
                                                 <div 
-                                                    className="flex-1 bg-green-600 rounded-sm h-2" 
+                                                    className="flex-1 bg-green-500 rounded-sm h-2" 
                                                     title={`Avançado: ${distribution.avancado}`}
                                                     style={{ 
                                                         width: `${totalStudentsInTurma > 0 ? (distribution.avancado / totalStudentsInTurma) * 100 : 0}%` 
@@ -2708,19 +2639,10 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                                     Cards
                                 </Button>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <PDFReportGenerator
-                                    evaluationInfo={evaluationInfo}
-                                    students={students}
-                                    detailedReport={detailedReport}
-                                    studentDetailedAnswers={studentDetailedAnswers}
-                                    skillsMapping={skillsMapping}
-                                />
-                                <Button onClick={handleExportStudents} variant="outline">
-                                    <Download className="h-4 w-4 mr-2" />
-                                    Exportar Excel
-                                </Button>
-                            </div>
+                            <Button onClick={handleExportStudents} variant="outline">
+                                <Download className="h-4 w-4 mr-2" />
+                                Exportar
+                            </Button>
                         </div>
                     </CardTitle>
                     {/* Resumo da situação */}

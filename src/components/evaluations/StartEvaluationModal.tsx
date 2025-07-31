@@ -61,6 +61,10 @@ interface EvaluationClass {
   school_name: string;
   grade_name: string;
   students_count: number;
+  status?: "applied" | "configured";
+  current_application?: string;
+  current_expiration?: string;
+  class_test_id?: string;
 }
 
 interface StartEvaluationModalProps {
@@ -72,7 +76,7 @@ interface StartEvaluationModalProps {
     title: string;
     subject: { id: string; name: string };
     subjects?: Array<{ id: string; name: string }>;
-    questions: Array<any>;
+    questions: Array<Record<string, unknown>>;
     duration?: number;
     schools?: Array<{ id: string; name: string }>;
     municipalities?: Array<{ id: string; name: string }>;
@@ -133,17 +137,17 @@ export default function StartEvaluationModal({
       
       if (response.data && Array.isArray(response.data) && response.data.length > 0) {
         // Mapear dados do backend para o formato esperado pelo componente
-        const classes = response.data.map((item: any) => ({
-          id: item.class.id,
-          name: item.class.name,
-          school_name: item.class.school?.name || "Escola não informada",
-          grade_name: item.class.grade?.name || "Série não informada",
-          students_count: item.students_count || 0,
+        const classes = response.data.map((item: Record<string, unknown>) => ({
+          id: (item.class as Record<string, unknown>).id as string,
+          name: (item.class as Record<string, unknown>).name as string,
+          school_name: ((item.class as Record<string, unknown>).school as Record<string, unknown>)?.name as string || "Escola não informada",
+          grade_name: ((item.class as Record<string, unknown>).grade as Record<string, unknown>)?.name as string || "Série não informada",
+          students_count: (item.students_count as number) || 0,
           // Dados adicionais para referência
-          class_test_id: item.class_test_id,
-          current_application: item.application,
-          current_expiration: item.expiration,
-          status: item.status || "configured"  // "applied" ou "configured"
+          class_test_id: item.class_test_id as string,
+          current_application: item.application as string,
+          current_expiration: item.expiration as string,
+          status: ((item.status as string) || "configured") as "applied" | "configured"  // "applied" ou "configured"
         }));
         
         setEvaluationClasses(classes);
@@ -156,15 +160,16 @@ export default function StartEvaluationModal({
         setEvaluationClasses([]);
         setError("Esta avaliação ainda não foi aplicada para nenhuma turma. Para aplicar, primeiro você precisa configurar as turmas no processo de criação da avaliação.");
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("❌ Erro ao buscar turmas:", error);
       setEvaluationClasses([]);
       
-      if (error.response?.status === 404) {
+      const errorResponse = error as { response?: { status?: number } };
+      if (errorResponse.response?.status === 404) {
         setError("Esta avaliação ainda não foi aplicada para nenhuma turma. Para aplicar, primeiro você precisa configurar as turmas no processo de criação da avaliação.");
-      } else if (error.response?.status === 403) {
+      } else if (errorResponse.response?.status === 403) {
         setError("Você não tem permissão para visualizar as turmas desta avaliação.");
-      } else if (error.response?.status === 401) {
+      } else if (errorResponse.response?.status === 401) {
         setError("Sua sessão expirou. Faça login novamente.");
       } else {
         setError("Erro ao carregar turmas. Verifique sua conexão e tente novamente.");

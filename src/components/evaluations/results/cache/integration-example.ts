@@ -46,7 +46,7 @@ export const useStudentResultsWithCache = (
     const {
         requireComplete = false,
         forceFresh = false,
-        enableCaching = true
+        enableCaching = false // ✅ DEBUG: Cache desabilitado temporariamente
     } = options;
 
     const [data, setData] = useState<CachedStudentResults | null>(null);
@@ -67,8 +67,22 @@ export const useStudentResultsWithCache = (
             setIsLoadingFromAPI(true);
                          conditionalLog(getCurrentConfig(), 'info', `🌐 Buscando dados da API: ${studentId}`);
 
-            // 1. Buscar dados básicos da sessão
-            const sessionResponse = await EvaluationResultsApiService.getStudentSession(testId, studentId);
+            // 1. Buscar dados básicos da sessão usando método existente
+            let sessionResponse = null;
+            try {
+                const basicResult = await EvaluationResultsApiService.getStudentDetailedResults(testId, studentId, false);
+                if (basicResult) {
+                    sessionResponse = {
+                        student_id: studentId,
+                        student_name: basicResult.student_name || 'Aluno',
+                        total_questions: basicResult.total_questions,
+                        answered_questions: basicResult.answered_questions,
+                        status: basicResult.status === 'concluida' ? 'completed' : 'pending'
+                    };
+                }
+            } catch (sessionError) {
+                conditionalLog(getCurrentConfig(), 'warn', '⚠️ Erro ao buscar dados da sessão:', sessionError);
+            }
             
             if (!sessionResponse) {
                 return null;
@@ -112,10 +126,14 @@ export const useStudentResultsWithCache = (
                 // Buscar respostas se necessário
                 if (resultData) {
                     try {
-                        answersData = await EvaluationResultsApiService.getStudentAnswers(testId, studentId);
-                                         } catch (answersError) {
-                         conditionalLog(getCurrentConfig(), 'warn', '⚠️ Erro ao buscar respostas, continuando sem elas:', answersError);
-                     }
+                        answersData = await EvaluationResultsApiService.getStudentDetailedResults(testId, studentId, true);
+                        // Extrair apenas as respostas do resultado detalhado
+                        if (answersData && answersData.answers) {
+                            answersData = answersData.answers;
+                        }
+                    } catch (answersError) {
+                        conditionalLog(getCurrentConfig(), 'warn', '⚠️ Erro ao buscar respostas, continuando sem elas:', answersError);
+                    }
                 }
             }
 

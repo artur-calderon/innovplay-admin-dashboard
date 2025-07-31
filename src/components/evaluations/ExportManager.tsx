@@ -711,9 +711,9 @@ function generateDetailedHTML(data: EvaluationResultsData[], options: ExportOpti
           <div style="font-size: 24px; font-weight: bold; color: #dc2626;">${totalDistribution.abaixo_do_basico}</div>
           <div style="font-size: 12px; color: #dc2626;">Abaixo do Básico</div>
         </div>
-        <div style="text-align: center; padding: 15px; border: 1px solid #e5e7eb; border-radius: 8px; background-color: #fffbeb;">
-          <div style="font-size: 24px; font-weight: bold; color: #d97706;">${totalDistribution.basico}</div>
-          <div style="font-size: 12px; color: #d97706;">Básico</div>
+        <div style="text-align: center; padding: 15px; border: 1px solid #e5e7eb; border-radius: 8px; background-color: #fefce8;">
+          <div style="font-size: 24px; font-weight: bold; color: #ca8a04;">${totalDistribution.basico}</div>
+          <div style="font-size: 12px; color: #ca8a04;">Básico</div>
         </div>
         <div style="text-align: center; padding: 15px; border: 1px solid #e5e7eb; border-radius: 8px; background-color: #f0fdf4;">
           <div style="font-size: 24px; font-weight: bold; color: #16a34a;">${totalDistribution.adequado}</div>

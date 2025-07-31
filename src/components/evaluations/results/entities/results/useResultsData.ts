@@ -219,41 +219,36 @@ export const useResultsData = (
       // Buscar relatório detalhado que contém os resultados
       const detailedReport = await EvaluationResultsApiService.getDetailedReport(testId);
       
+      console.log('🔍 DEBUG useResultsData - DetailedReport:', detailedReport);
+      
       if (detailedReport?.alunos) {
+        console.log('🔍 DEBUG useResultsData - Primeiro aluno:', detailedReport.alunos[0]);
+        
         // Converter dados dos alunos para formato de resultados
         const resultsData: EvaluationResultEntity[] = detailedReport.alunos.map((aluno, index) => {
-          // ✅ CORREÇÃO: Recalcular proficiência usando a função oficial
-          const totalQuestions = aluno.total_acertos + aluno.total_erros + aluno.total_em_branco;
-          const calculatedProficiency = calculateProficiency(
-            aluno.nota_final,
-            totalQuestions,
-            detailedReport.avaliacao.serie, // Usar série da avaliação
-            detailedReport.avaliacao.disciplina, // Usar disciplina da avaliação
-            undefined // Course será determinado automaticamente
-          );
-
-          // ✅ VALIDAÇÃO ADICIONAL: Verificar se o valor da API está dentro dos limites
-          const maxProficiency = detailedReport.avaliacao.disciplina?.toLowerCase().includes('matemática') || 
-                                 detailedReport.avaliacao.disciplina?.toLowerCase().includes('matematica') ? 425 : 375;
+          // ✅ USAR APENAS DADOS DO BACKEND - SEM CÁLCULOS NO FRONTEND
+          const totalQuestions = aluno.total_questions || aluno.questoes_respondidas || 2;
           
-          if (aluno.proficiencia > maxProficiency) {
-            console.warn(`⚠️ Proficiência inválida detectada: ${aluno.proficiencia} > ${maxProficiency} para aluno ${aluno.nome}. Usando valor recalculado.`);
-          }
+          console.log(`🔍 DEBUG useResultsData - Aluno ${aluno.nome}: total_questions=${aluno.total_questions}, questoes_respondidas=${aluno.questoes_respondidas}, proficiencia_backend=${aluno.proficiencia}`);
+          
+          // NÃO RECALCULAR - USAR VALOR DO BACKEND
+          const proficiencyFromBackend = aluno.proficiencia || 0;
+          const classificationFromBackend = aluno.classificacao || 'Abaixo do Básico';
 
           return {
             id: `result-${aluno.id}-${index}`,
             test_id: testId,
             student_id: aluno.id,
             session_id: `session-${aluno.id}`, // TODO: Usar session_id real quando disponível
-            correct_answers: aluno.total_acertos,
+            correct_answers: aluno.total_acertos || aluno.correct_answers || 0,
             total_questions: totalQuestions,
-            answered_questions: aluno.total_acertos + aluno.total_erros, // ✅ NOVO: Campo para controle de completude
-            score_percentage: (aluno.nota_final / 10) * 100, // Convertendo para porcentagem
-            grade: aluno.nota_final,
-            proficiency: calculatedProficiency.proficiencyScore, // ✅ CORREÇÃO: Usar valor recalculado
-            classification: calculatedProficiency.classification, // ✅ CORREÇÃO: Usar classificação recalculada
-            calculated_at: new Date().toISOString(),
-            is_complete: aluno.status === 'concluida' && aluno.nota_final > 0 // ✅ NOVO: Flag de completude
+            answered_questions: aluno.questoes_respondidas || aluno.total_acertos + aluno.total_erros || 0,
+            score_percentage: aluno.score_percentage || (aluno.nota_final / 10) * 100,
+            grade: aluno.nota_final || aluno.nota || 0,
+            proficiency: proficiencyFromBackend, // ✅ USAR VALOR DO BACKEND
+            classification: classificationFromBackend, // ✅ USAR CLASSIFICAÇÃO DO BACKEND
+            calculated_at: aluno.calculated_at || new Date().toISOString(),
+            is_complete: aluno.status === 'concluida' || aluno.status === 'completed'
           };
         });
 
