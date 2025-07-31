@@ -39,6 +39,8 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
           skillsBySubject={skillsBySubject}
           detailedReport={detailedReport}
           visibleFields={visibleFields}
+          evaluationId={evaluationId}
+          students={students}
         />
         <tbody>
           {students.map((student, studentIndex) => (

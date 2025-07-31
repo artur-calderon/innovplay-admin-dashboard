@@ -1,499 +1,215 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Switch } from "@/components/ui/switch";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
     ArrowLeft,
     CheckCircle2,
-    AlertTriangle,
     Award,
-    Target,
     BarChart3,
     FileText,
-    Clock,
     Users,
     XCircle,
     RefreshCw,
-    Minus,
-    Eye,
-    Info,
-    TrendingUp,
-    Activity
+    GraduationCap,
+    School
 } from "lucide-react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
-import { useStudentAggregatedResults } from "./results/hooks/useStudentAggregatedResults";
-import { useAggregatedResults } from "./results/hooks/useAggregatedResults";
-import { CompletionStatusLevel } from "./results/types/completion";
+import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
 
 interface StudentDetailedResultsProps {
     onBack: () => void;
 }
 
-// ✅ COMPONENTE: PartialProgressBadge - Badge para progresso parcial
-const PartialProgressBadge: React.FC<{
-    studentName?: string;
-    completionLevel: CompletionStatusLevel;
-    progressPercentage: number;
-    timeSpent: number;
-}> = ({ studentName, completionLevel, progressPercentage, timeSpent }) => {
-    const getBadgeConfig = () => {
-        switch (completionLevel) {
-            case CompletionStatusLevel.PARTIALLY_COMPLETE:
-                return {
-                    className: "bg-yellow-100 text-yellow-800 border-yellow-300",
-                    icon: <Clock className="h-4 w-4 mr-2" />,
-                    text: "Em Andamento"
-                };
-            case CompletionStatusLevel.MOSTLY_COMPLETE:
-                return {
-                    className: "bg-blue-100 text-blue-800 border-blue-300",
-                    icon: <TrendingUp className="h-4 w-4 mr-2" />,
-                    text: "Quase Completo"
-                };
-            case CompletionStatusLevel.NOT_STARTED:
-                return {
-                    className: "bg-gray-100 text-gray-800 border-gray-300",
-                    icon: <Minus className="h-4 w-4 mr-2" />,
-                    text: "Não Iniciado"
-                };
-            default:
-                return {
-                    className: "bg-red-100 text-red-800 border-red-300",
-                    icon: <XCircle className="h-4 w-4 mr-2" />,
-                    text: "Incompleto"
-                };
-        }
-    };
+interface StudentEvaluation {
+    id: string;
+    titulo: string;
+    data_aplicacao: string;
+    disciplina: string;
+    serie: string;
+    escola: string;
+    turma?: string;
+}
 
-    const badgeConfig = getBadgeConfig();
+interface StudentData {
+    student_name?: string;
+    nome?: string;
+    total_questions?: number;
+    correct_answers?: number;
+    grade?: number;
+    proficiencia?: number;
+    classificacao?: string;
+}
 
-    return (
-        <TooltipProvider>
-            <Tooltip>
-                <TooltipTrigger asChild>
-                    <Badge className={`${badgeConfig.className} px-3 py-1 cursor-help`}>
-                        {badgeConfig.icon}
-                        {studentName} - {badgeConfig.text} ({progressPercentage.toFixed(1)}%)
-                    </Badge>
-                </TooltipTrigger>
-                <TooltipContent>
-                    <div className="space-y-2">
-                        <div className="font-semibold">Status Detalhado:</div>
-                        <div className="text-sm">
-                            • Progresso: {progressPercentage.toFixed(1)}%<br/>
-                            • Tempo gasto: {timeSpent}min<br/>
-                            • Status: {badgeConfig.text}
-                        </div>
-                    </div>
-                </TooltipContent>
-            </Tooltip>
-        </TooltipProvider>
-    );
-};
+interface StudentInfo {
+    id: string;
+    nome?: string;
+    name?: string;
+    grade?: string;
+    serie?: string;
+    turma?: string;
+}
 
-// ✅ COMPONENTE: RealTimeStatusCard - Card de status tempo real
-const RealTimeStatusCard: React.FC<{
-    isRealTimeMode: boolean;
-    onToggleRealTime: (enabled: boolean) => void;
-    lastUpdate: Date;
-    autoRefreshEnabled: boolean;
-    onToggleAutoRefresh: (enabled: boolean) => void;
-}> = ({ isRealTimeMode, onToggleRealTime, lastUpdate, autoRefreshEnabled, onToggleAutoRefresh }) => (
-    <Card className="border-2 border-blue-200 bg-blue-50">
-        <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-                <Activity className="h-5 w-5 text-blue-600" />
-                Controles de Visualização
-            </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-            {/* Toggle Tempo Real */}
-            <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                    <div className="text-sm font-medium">Modo Tempo Real</div>
-                    <div className="text-xs text-gray-600">
-                        {isRealTimeMode 
-                            ? "Mostrando progresso em tempo real (incluindo dados parciais)"
-                            : "Mostrando apenas dados completos e validados"
-                        }
-                    </div>
-                </div>
-                <Switch
-                    checked={isRealTimeMode}
-                    onCheckedChange={onToggleRealTime}
-                />
-            </div>
+interface EvaluationInfo {
+    titulo?: string;
+    data_aplicacao?: string;
+    disciplina?: string;
+    escola?: string;
+    serie?: string;
+}
 
-            {/* Toggle Auto-Refresh */}
-            {isRealTimeMode && (
-                <div className="flex items-center justify-between">
-                    <div className="space-y-1">
-                        <div className="text-sm font-medium">Atualização Automática</div>
-                        <div className="text-xs text-gray-600">
-                            Atualizar dados automaticamente a cada 30 segundos
-                        </div>
-                    </div>
-                    <Switch
-                        checked={autoRefreshEnabled}
-                        onCheckedChange={onToggleAutoRefresh}
-                    />
-                </div>
-            )}
-
-            {/* Status da Atualização */}
-            <div className="bg-white border border-blue-200 rounded-lg p-3">
-                <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-600">Última atualização:</span>
-                    <span className="font-medium">
-                        {lastUpdate.toLocaleTimeString('pt-BR')}
-                    </span>
-                </div>
-            </div>
-        </CardContent>
-    </Card>
-);
-
-// ✅ COMPONENTE: IncompleteStudentAlert - Alerta para aluno incompleto (MELHORADO)
-const IncompleteStudentAlert: React.FC<{
-    studentName?: string;
-    completionLevel: CompletionStatusLevel;
-    quickStats: {
-        hasStarted: boolean;
-        hasAnswered: boolean;
-        estimatedCompletion: number;
-        timeSpent: number;
-    };
-    onRetry: () => void;
-    isRealTimeMode: boolean;
-    onEnableRealTime: () => void;
-}> = ({ studentName, completionLevel, quickStats, onRetry, isRealTimeMode, onEnableRealTime }) => {
-    const getAlertConfig = () => {
-        switch (completionLevel) {
-            case CompletionStatusLevel.NOT_STARTED:
-                return {
-                    color: "bg-gray-100 border-gray-300 text-gray-800",
-                    icon: <Minus className="h-5 w-5 text-gray-600" />,
-                    title: "Avaliação Não Iniciada",
-                    description: "O aluno ainda não começou esta avaliação."
-                };
-            case CompletionStatusLevel.PARTIALLY_COMPLETE:
-                return {
-                    color: "bg-yellow-100 border-yellow-300 text-yellow-800",
-                    icon: <Clock className="h-5 w-5 text-yellow-600" />,
-                    title: "Avaliação Em Andamento",
-                    description: "O aluno iniciou mas não finalizou a avaliação."
-                };
-            case CompletionStatusLevel.MOSTLY_COMPLETE:
-                return {
-                    color: "bg-blue-100 border-blue-300 text-blue-800",
-                    icon: <TrendingUp className="h-5 w-5 text-blue-600" />,
-                    title: "Avaliação Quase Completa",
-                    description: "O aluno respondeu a maioria das questões, mas ainda não finalizou."
-                };
-            default:
-                return {
-                    color: "bg-red-100 border-red-300 text-red-800",
-                    icon: <XCircle className="h-5 w-5 text-red-600" />,
-                    title: "Avaliação Incompleta",
-                    description: "Não foi possível carregar os dados da avaliação."
-                };
-        }
-    };
-
-    const alertConfig = getAlertConfig();
-
-    return (
-        <Card className={`border-2 ${alertConfig.color}`}>
-            <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        {alertConfig.icon}
-                        {alertConfig.title}
-                    </div>
-                    {!isRealTimeMode && quickStats.hasStarted && (
-                        <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={onEnableRealTime}
-                            className="border-blue-300 text-blue-700 hover:bg-blue-50"
-                        >
-                            <Eye className="h-4 w-4 mr-2" />
-                            Ver Progresso
-                        </Button>
-                    )}
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                <div className="space-y-4">
-                    <Alert className="border-0 bg-transparent p-0">
-                        <AlertDescription className="text-sm">
-                            <strong>{studentName || 'O aluno'}</strong> {alertConfig.description}
-                        </AlertDescription>
-                    </Alert>
-
-                    {/* Progresso Atual */}
-                    {quickStats.hasStarted && (
-                        <div className="space-y-2">
-                            <div className="flex justify-between text-sm">
-                                <span>Progresso da Avaliação</span>
-                                <span className="font-bold">{quickStats.estimatedCompletion.toFixed(1)}%</span>
-                            </div>
-                            <Progress value={quickStats.estimatedCompletion} className="h-2" />
-                        </div>
-                    )}
-
-                    {/* Estatísticas Rápidas */}
-                    <div className="grid grid-cols-2 gap-4 text-center text-sm">
-                        <div className="space-y-1">
-                            <div className="font-bold text-lg">
-                                {quickStats.hasStarted ? '✓' : '✗'}
-                            </div>
-                            <div className="text-xs text-gray-600">Iniciou</div>
-                        </div>
-                        <div className="space-y-1">
-                            <div className="font-bold text-lg">
-                                {quickStats.timeSpent}min
-                            </div>
-                            <div className="text-xs text-gray-600">Tempo Gasto</div>
-                        </div>
-                    </div>
-
-                    {/* Recomendações Baseadas no Modo */}
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                        <div className="text-xs text-blue-800">
-                            <strong>Próximos Passos:</strong>
-                            <ul className="list-disc list-inside mt-1 space-y-1">
-                                {!isRealTimeMode && quickStats.hasStarted && (
-                                    <li>
-                                        <button 
-                                            className="text-blue-700 underline hover:text-blue-900"
-                                            onClick={onEnableRealTime}
-                                        >
-                                            Ativar modo tempo real
-                                        </button> para acompanhar o progresso
-                                    </li>
-                                )}
-                                {completionLevel === CompletionStatusLevel.NOT_STARTED && (
-                                    <>
-                                        <li>Verificar se o aluno teve acesso à avaliação</li>
-                                        <li>Confirmar se as instruções foram passadas adequadamente</li>
-                                        <li>Checar se há problemas técnicos impedindo o acesso</li>
-                                    </>
-                                )}
-                                {(completionLevel === CompletionStatusLevel.PARTIALLY_COMPLETE || 
-                                  completionLevel === CompletionStatusLevel.MOSTLY_COMPLETE) && (
-                                    <>
-                                        <li>Entrar em contato com o aluno para finalizar a avaliação</li>
-                                        <li>Verificar se houve problemas técnicos durante a aplicação</li>
-                                        <li>Considerar permitir tempo adicional se necessário</li>
-                                    </>
-                                )}
-                            </ul>
-                        </div>
-                    </div>
-
-                    {/* Ações */}
-                    <div className="flex gap-2">
-                        <Button variant="outline" onClick={onRetry} className="flex-1">
-                            <RefreshCw className="h-4 w-4 mr-2" />
-                            Verificar Novamente
-                        </Button>
-                        {!isRealTimeMode && quickStats.hasStarted && (
-                            <Button onClick={onEnableRealTime} className="flex-1">
-                                <Eye className="h-4 w-4 mr-2" />
-                                Acompanhar Progresso
-                            </Button>
-                        )}
-                    </div>
-                </div>
-            </CardContent>
-        </Card>
-    );
-};
-
-// ✅ COMPONENTE: CompletedStudentBadge - Badge verde para aluno completo (MELHORADO)
-const CompletedStudentBadge: React.FC<{ 
-    studentName?: string;
-    completionTime?: string;
-    qualityScore?: number;
-}> = ({ studentName, completionTime, qualityScore }) => (
-    <TooltipProvider>
-        <Tooltip>
-            <TooltipTrigger asChild>
-                <Badge className="bg-green-100 text-green-800 border-green-300 px-3 py-1 cursor-help">
-                    <CheckCircle2 className="h-4 w-4 mr-2" />
-                    {studentName} - Avaliação Concluída
-                </Badge>
-            </TooltipTrigger>
-            <TooltipContent>
-                <div className="space-y-2">
-                    <div className="font-semibold">Status Completo:</div>
-                    <div className="text-sm">
-                        • Status: Concluída com sucesso<br/>
-                        {completionTime && `• Finalizada: ${completionTime}`}<br/>
-                        {qualityScore && `• Qualidade: ${qualityScore.toFixed(1)}%`}<br/>
-                        • Dados válidos para análise
-                    </div>
-                </div>
-            </TooltipContent>
-        </Tooltip>
-    </TooltipProvider>
-);
-
-// ✅ COMPONENTE: StudentStatsCard - Card de estatísticas do aluno (MELHORADO)
-const StudentStatsCard: React.FC<{
-    title: string;
-    value: string | number;
-    subtitle: string;
-    icon: React.ReactNode;
-    color: string;
-    isPartial?: boolean;
-    tooltip?: string;
-}> = ({ title, value, subtitle, icon, color, isPartial = false, tooltip }) => {
-    const CardContent_Component = (
-        <Card className={`border ${isPartial ? 'border-yellow-200 bg-yellow-50' : 'border-gray-200'}`}>
-            <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                    {icon}
-                    {title}
-                    {isPartial && <Clock className="h-3 w-3 text-yellow-600" />}
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                <div className={`text-2xl font-bold ${color}`}>
-                    {value}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                    {subtitle}
-                </p>
-                {isPartial && (
-                    <p className="text-xs text-yellow-700 mt-1 font-medium">
-                        Dados parciais
-                    </p>
-                )}
-            </CardContent>
-        </Card>
-    );
-
-    if (tooltip) {
-        return (
-            <TooltipProvider>
-                <Tooltip>
-                    <TooltipTrigger asChild>
-                        {CardContent_Component}
-                    </TooltipTrigger>
-                    <TooltipContent>
-                        <div className="text-sm">{tooltip}</div>
-                    </TooltipContent>
-                </Tooltip>
-            </TooltipProvider>
-        );
+// Error Boundary Component
+class ErrorBoundary extends React.Component<
+    { children: React.ReactNode },
+    { hasError: boolean; error?: Error }
+> {
+    constructor(props: { children: React.ReactNode }) {
+        super(props);
+        this.state = { hasError: false };
     }
 
-    return CardContent_Component;
-};
+    static getDerivedStateFromError(error: Error) {
+        return { hasError: true, error };
+    }
 
-// ✅ COMPONENTE PRINCIPAL REFATORADO
-export default function StudentDetailedResults({ onBack }: StudentDetailedResultsProps) {
+    componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+        console.error('Error Boundary caught an error:', error, errorInfo);
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div className="container mx-auto px-4 py-6">
+                    <div className="text-center py-12">
+                        <div className="w-16 h-16 mx-auto mb-4 bg-red-100 rounded-full flex items-center justify-center">
+                            <XCircle className="w-8 h-8 text-red-600" />
+                        </div>
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">
+                            Erro na Renderização
+                        </h3>
+                        <p className="text-gray-600 mb-4">
+                            Ocorreu um erro inesperado ao carregar os dados.
+                        </p>
+                        <Button onClick={() => window.location.reload()}>
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                            Recarregar Página
+                        </Button>
+                    </div>
+                </div>
+            );
+        }
+
+        return this.props.children;
+    }
+}
+
+// Componente interno que contém a lógica principal
+function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) {
     const { id: evaluationId, studentId } = useParams<{ id: string; studentId: string }>();
-    const navigate = useNavigate();
     const { toast } = useToast();
 
-    // ✅ ESTADOS PARA CONTROLE DE VISUALIZAÇÃO
-    const [isRealTimeMode, setIsRealTimeMode] = useState(false);
-    const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
-    const [lastUpdate, setLastUpdate] = useState(new Date());
+    const [studentData, setStudentData] = useState<StudentData | null>(null);
+    const [studentEvaluations, setStudentEvaluations] = useState<StudentEvaluation[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [studentName, setStudentName] = useState<string | null>(null);
 
-    // ✅ 1. HOOK AGREGADO PARA CONTEXTO GERAL DA AVALIAÇÃO
-    const {
-        allStudents,
-        completionStatus: generalStatus,
-        stats: generalStats
-    } = useAggregatedResults(evaluationId || '', {
-        enablePartialView: isRealTimeMode,
-        autoRefresh: autoRefreshEnabled,
-        refreshInterval: 30000
-    });
-
-    // ✅ 2. HOOK ESPECÍFICO DO ALUNO COM CONFIGURAÇÕES ADAPTÁVEIS
-    const {
-        data,
-        isLoading,
-        isCheckingCompletion,
-        error,
-        refetch,
-        canAnalyze,
-        shouldShowResults,
-        completionLevel,
-        quickStats
-    } = useStudentAggregatedResults(
-        evaluationId || '',
-        studentId || '',
-        {
-            includeAnswers: isRealTimeMode, // Carregar respostas apenas se modo tempo real
-            autoLoadDetails: completionLevel === CompletionStatusLevel.COMPLETE // Carregar detalhes apenas se completo
+    const loadStudentData = useCallback(async () => {
+        if (!evaluationId || !studentId) {
+            setError('IDs de avaliação ou aluno não fornecidos');
+            setIsLoading(false);
+            return;
         }
-    );
 
-    // ✅ ENCONTRAR DADOS DO ALUNO NO CONTEXTO GERAL
-    const studentInContext = allStudents.find(s => s.id === studentId);
+        try {
+            setIsLoading(true);
+            setError(null);
 
-    // ✅ HANDLERS PARA CONTROLES
-    const handleToggleRealTime = (enabled: boolean) => {
-        setIsRealTimeMode(enabled);
-        if (enabled) {
-            setLastUpdate(new Date());
-            toast({
-                title: "Modo Tempo Real Ativado",
-                description: "Agora você pode acompanhar o progresso em tempo real.",
-            });
-        } else {
-            setAutoRefreshEnabled(false);
-            toast({
-                title: "Modo Tempo Real Desativado",
-                description: "Voltando a mostrar apenas dados completos e validados.",
-            });
+            // 1. Disparar chamadas essenciais em paralelo
+            const [currentResult, evaluationInfo] = await Promise.all([
+                EvaluationResultsApiService.getStudentDetailedResults(evaluationId, studentId).catch((err: Error) => {
+                    console.error('Erro ao buscar resultado do aluno:', err);
+                    return null;
+                }),
+                EvaluationResultsApiService.getEvaluationById(evaluationId).catch((err: Error) => {
+                    console.warn('Erro ao buscar informações da avaliação:', err);
+                    return null;
+                })
+            ]) as [StudentData | null, EvaluationInfo | null];
+
+            // 3. Buscar dados da turma/série dos alunos da avaliação (opcional)
+            let classInfo = null;
+            let foundStudentName = null;
+            try {
+                const studentsData = await EvaluationResultsApiService.getStudentsByEvaluation(evaluationId);
+                console.log('🔍 DEBUG - Dados dos alunos:', studentsData);
+                
+                if (Array.isArray(studentsData)) {
+                    const currentStudentData = studentsData.find((student: StudentInfo) => 
+                        student && student.id === studentId
+                    );
+                    console.log('🔍 DEBUG - Dados do aluno atual:', currentStudentData);
+                    
+                                         if (currentStudentData) {
+                         classInfo = {
+                             grade: currentStudentData.grade || (currentStudentData as any).serie || 'Não informada',
+                             class: currentStudentData.turma || 'Não informada'
+                         };
+                         // Tentar obter o nome do aluno da lista de alunos
+                         foundStudentName = currentStudentData.nome || (currentStudentData as any).name || null;
+                         console.log('🔍 DEBUG - Nome do aluno encontrado:', foundStudentName);
+                     }
+                }
+            } catch (err) {
+                console.warn('Não foi possível buscar dados da turma/série:', err);
+            }
+
+            if (!currentResult) {
+                throw new Error('Resultados do aluno não encontrados.');
+            }
+
+            console.log('🔍 DEBUG - Dados detalhados do aluno:', currentResult);
+            setStudentData(currentResult);
+            setStudentName(foundStudentName);
+
+            // 2. Consolidar informações da avaliação com prioridade
+            const finalEvaluationData: StudentEvaluation = {
+                id: evaluationId,
+                titulo: evaluationInfo?.titulo || 'Avaliação',
+                data_aplicacao: evaluationInfo?.data_aplicacao || new Date().toISOString(),
+                disciplina: evaluationInfo?.disciplina || 'N/A',
+                escola: evaluationInfo?.escola || 'Não informada',
+                serie: classInfo?.grade || evaluationInfo?.serie || 'Não informada',
+                turma: classInfo?.class || 'Não informada'
+            };
+
+            setStudentEvaluations([finalEvaluationData]);
+
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+            console.error('Erro completo no loadStudentData:', err);
+            setError(errorMessage || 'Não foi possível carregar os dados do aluno.');
+        } finally {
+            setIsLoading(false);
         }
-    };
+    }, [evaluationId, studentId]);
 
-    const handleToggleAutoRefresh = (enabled: boolean) => {
-        setAutoRefreshEnabled(enabled);
-        if (enabled) {
-            toast({
-                title: "Auto-atualização Ativada",
-                description: "Os dados serão atualizados automaticamente a cada 30 segundos.",
-            });
-        }
-    };
+    useEffect(() => {
+        loadStudentData();
+    }, [loadStudentData]);
 
     const handleRefresh = async () => {
-        setLastUpdate(new Date());
-        await refetch();
+        await loadStudentData();
         toast({
             title: "Dados Atualizados",
             description: "As informações foram atualizadas com sucesso.",
         });
     };
 
-    // ✅ EFEITO PARA AUTO-REFRESH
-    useEffect(() => {
-        if (!autoRefreshEnabled) return;
-
-        const interval = setInterval(() => {
-            handleRefresh();
-        }, 30000);
-
-        return () => clearInterval(interval);
-    }, [autoRefreshEnabled, refetch]);
-
-    // Estados de loading diferentes
-    if (isLoading || isCheckingCompletion) {
+    if (isLoading) {
         return (
             <div className="container mx-auto px-4 py-6 space-y-6">
                 <div className="flex items-center gap-4">
@@ -517,29 +233,10 @@ export default function StudentDetailedResults({ onBack }: StudentDetailedResult
                         </Card>
                     ))}
                 </div>
-
-                <Card>
-                    <CardHeader>
-                        <Skeleton className="h-6 w-48" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-4">
-                            {[1, 2, 3].map((i) => (
-                                <div key={i} className="border rounded-lg p-4">
-                                    <div className="flex items-center justify-between">
-                                        <Skeleton className="h-4 w-32" />
-                                        <Skeleton className="h-4 w-16" />
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
             </div>
         );
     }
 
-    // Estado de erro
     if (error) {
         return (
             <div className="container mx-auto px-4 py-6">
@@ -568,75 +265,29 @@ export default function StudentDetailedResults({ onBack }: StudentDetailedResult
         );
     }
 
-    // ✅ LÓGICA PARA MOSTRAR DADOS PARCIAIS OU COMPLETOS
-    const shouldShowPartialData = isRealTimeMode && 
-        (completionLevel === CompletionStatusLevel.PARTIALLY_COMPLETE || 
-         completionLevel === CompletionStatusLevel.MOSTLY_COMPLETE);
-
-    const shouldShowIncompleteAlert = !canAnalyze || 
-        (completionLevel !== CompletionStatusLevel.COMPLETE && !shouldShowPartialData);
-
-    // ✅ MOSTRAR ALERTA DE ALUNO INCOMPLETO (quando não está em modo tempo real)
-    if (shouldShowIncompleteAlert) {
-        return (
-            <div className="container mx-auto px-4 py-6 space-y-6">
-                {/* Header */}
-                <div className="flex items-center gap-4">
-                    <Button variant="outline" onClick={onBack}>
-                        <ArrowLeft className="h-4 w-4 mr-2" />
-                        Voltar
-                    </Button>
-                    <div className="flex-1">
-                        <h1 className="text-2xl font-bold">Resultados do Aluno</h1>
-                        <p className="text-muted-foreground">
-                            Detalhes da avaliação individual
-                        </p>
-                    </div>
-                </div>
-
-                {/* Controles de Visualização */}
-                <RealTimeStatusCard
-                    isRealTimeMode={isRealTimeMode}
-                    onToggleRealTime={handleToggleRealTime}
-                    lastUpdate={lastUpdate}
-                    autoRefreshEnabled={autoRefreshEnabled}
-                    onToggleAutoRefresh={handleToggleAutoRefresh}
-                />
-
-                {/* ✅ ALERTA DE ALUNO INCOMPLETO MELHORADO */}
-                <IncompleteStudentAlert
-                    studentName={data?.student_name}
-                    completionLevel={completionLevel}
-                    quickStats={quickStats}
-                    onRetry={handleRefresh}
-                    isRealTimeMode={isRealTimeMode}
-                    onEnableRealTime={() => handleToggleRealTime(true)}
-                />
-            </div>
-        );
-    }
-
-    // ✅ RENDERIZAÇÃO PRINCIPAL - DADOS COMPLETOS OU PARCIAIS
-    const studentResults = data;
-    const isPartialData = shouldShowPartialData;
-    
-    if (!studentResults?.result && !isPartialData) {
+    if (!studentData) {
         return (
             <div className="container mx-auto px-4 py-6">
                 <div className="text-center py-12">
                     <h3 className="text-lg font-medium text-gray-900 mb-2">
-                        Dados de resultados não disponíveis
+                        Dados do aluno não encontrados
                     </h3>
                     <p className="text-gray-600 mb-4">
-                        {completionLevel === CompletionStatusLevel.COMPLETE
-                            ? "Embora o aluno tenha completado a avaliação, os resultados não estão disponíveis."
-                            : "O aluno ainda não completou a avaliação."
-                        }
+                        Não foi possível carregar os dados do aluno.
                     </p>
                 </div>
             </div>
         );
     }
+
+    const currentEvaluation = studentEvaluations[0];
+    // Adicionar verificações de segurança
+    const displayStudentName = studentName || studentData?.student_name || studentData?.nome || 'Nome não informado';
+    const totalQuestions = studentData?.total_questions || 0;
+    const correctAnswers = studentData?.correct_answers || 0;
+    const grade = studentData?.grade || 0;
+    const proficiencia = studentData?.proficiencia || 0;
+    const classificacao = studentData?.classificacao || 'Não classificado';
 
     return (
         <div className="container mx-auto px-4 py-6 space-y-6">
@@ -649,275 +300,232 @@ export default function StudentDetailedResults({ onBack }: StudentDetailedResult
                 <div className="flex-1">
                     <h1 className="text-2xl font-bold">Resultados Detalhados do Aluno</h1>
                     <p className="text-muted-foreground">
-                        {isRealTimeMode 
-                            ? "Análise individual com dados em tempo real"
-                            : "Análise individual completa da avaliação"
-                        }
+                        Análise individual da avaliação
                     </p>
                 </div>
-                
-                {/* ✅ BADGE DINÂMICO BASEADO NO STATUS */}
-                {completionLevel === CompletionStatusLevel.COMPLETE ? (
-                    <CompletedStudentBadge 
-                        studentName={data?.student_name}
-                        completionTime={studentResults?.session?.submittedAt 
-                            ? new Date(studentResults.session.submittedAt).toLocaleString('pt-BR')
-                            : undefined
-                        }
-                        qualityScore={100}
-                    />
-                ) : (
-                    <PartialProgressBadge
-                        studentName={data?.student_name}
-                        completionLevel={completionLevel}
-                        progressPercentage={quickStats.estimatedCompletion}
-                        timeSpent={quickStats.timeSpent}
-                    />
-                )}
             </div>
 
-            {/* Controles de Visualização */}
-            <RealTimeStatusCard
-                isRealTimeMode={isRealTimeMode}
-                onToggleRealTime={handleToggleRealTime}
-                lastUpdate={lastUpdate}
-                autoRefreshEnabled={autoRefreshEnabled}
-                onToggleAutoRefresh={handleToggleAutoRefresh}
-            />
+            {/* Informações do Aluno */}
+            <div className="grid gap-4 md:grid-cols-3">
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-sm font-medium flex items-center gap-2">
+                            <Users className="h-4 w-4 text-blue-600" />
+                            Nome do Aluno
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold text-blue-600">
+                            {displayStudentName}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                            Aluno Avaliado
+                        </p>
+                    </CardContent>
+                </Card>
 
-            {/* ✅ ALERTA INFORMATIVO PARA DADOS PARCIAIS */}
-            {isPartialData && (
-                <Alert className="border-yellow-300 bg-yellow-50">
-                    <AlertTriangle className="h-4 w-4 text-yellow-600" />
-                    <AlertDescription className="text-yellow-800">
-                        <strong>Visualização em Tempo Real:</strong> Os dados mostrados podem estar incompletos. 
-                        O aluno ainda está realizando a avaliação. Dados oficiais estarão disponíveis após a conclusão.
-                    </AlertDescription>
-                </Alert>
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-sm font-medium flex items-center gap-2">
+                            <GraduationCap className="h-4 w-4 text-green-600" />
+                            Série
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold text-green-600">
+                            {currentEvaluation?.serie || 'Não informada'}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                            Nível educacional
+                        </p>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-sm font-medium flex items-center gap-2">
+                            <School className="h-4 w-4 text-purple-600" />
+                            Escola
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold text-purple-600">
+                            {currentEvaluation?.escola || 'Não informada'}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                            Instituição de ensino
+                        </p>
+                    </CardContent>
+                </Card>
+            </div>
+
+            {/* Turma */}
+            {currentEvaluation?.turma && currentEvaluation.turma !== 'Não informada' && (
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-sm font-medium flex items-center gap-2">
+                            <Users className="h-4 w-4 text-orange-600" />
+                            Turma
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold text-orange-600">
+                            {currentEvaluation.turma}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                            Turma do aluno
+                        </p>
+                    </CardContent>
+                </Card>
             )}
 
-            {/* Estatísticas Gerais */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-                <StudentStatsCard
-                    title="Total de Questões"
-                    value={studentResults?.session?.total_questions || studentInContext?.session?.totalQuestions || 0}
-                    subtitle={`${studentResults?.session?.answered_questions || studentInContext?.session?.answeredQuestions || 0} respondidas`}
-                    icon={<FileText className="h-4 w-4 text-blue-600" />}
-                    color="text-blue-600"
-                    isPartial={isPartialData}
-                    tooltip={isPartialData ? "Número de questões pode aumentar conforme o aluno progride" : undefined}
-                />
+            {/* Estatísticas da Avaliação */}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-sm font-medium flex items-center gap-2">
+                            <FileText className="h-4 w-4 text-blue-600" />
+                            Total de Questões
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold text-blue-600">
+                            {totalQuestions}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                            Questões da avaliação
+                        </p>
+                    </CardContent>
+                </Card>
 
-                <StudentStatsCard
-                    title="Acertos"
-                    value={studentResults?.result?.correct_answers || studentInContext?.result?.correctAnswers || 0}
-                    subtitle={`${((studentResults?.result?.correct_answers || studentInContext?.result?.correctAnswers || 0) / (studentResults?.session?.total_questions || studentInContext?.session?.totalQuestions || 1) * 100).toFixed(1)}% de acerto`}
-                    icon={<CheckCircle2 className="h-4 w-4 text-green-600" />}
-                    color="text-green-600"
-                    isPartial={isPartialData}
-                    tooltip={isPartialData ? "Taxa de acerto baseada nas questões respondidas até agora" : undefined}
-                />
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-sm font-medium flex items-center gap-2">
+                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                            Acertos
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold text-green-600">
+                            {correctAnswers}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                            {totalQuestions > 0 ? 
+                                `${((correctAnswers / totalQuestions) * 100).toFixed(1)}% de acerto` 
+                                : 'Taxa de acerto'
+                            }
+                        </p>
+                    </CardContent>
+                </Card>
 
-                <StudentStatsCard
-                    title="Nota Atual"
-                    value={isPartialData 
-                        ? `${((studentResults?.result?.correct_answers || 0) / (studentResults?.session?.answered_questions || 1) * 10).toFixed(1)}`
-                        : studentResults?.result?.grade?.toFixed(1) || studentInContext?.result?.grade?.toFixed(1) || 'N/A'
-                    }
-                    subtitle={isPartialData 
-                        ? "Projeção baseada no progresso atual"
-                        : `De ${studentResults?.result?.max_possible_score || 10} pontos possíveis`
-                    }
-                    icon={<Award className="h-4 w-4 text-purple-600" />}
-                    color="text-purple-600"
-                    isPartial={isPartialData}
-                    tooltip={isPartialData ? "Nota oficial será calculada após conclusão da avaliação" : undefined}
-                />
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-sm font-medium flex items-center gap-2">
+                            <Award className="h-4 w-4 text-purple-600" />
+                            Nota
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold text-purple-600">
+                            {grade ? grade.toFixed(1) : 'N/A'}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                            Nota final da avaliação
+                        </p>
+                    </CardContent>
+                </Card>
 
-                <StudentStatsCard
-                    title="Proficiência"
-                    value={isPartialData 
-                        ? "Em cálculo..."
-                        : studentResults?.result?.proficiencia?.toFixed(0) || studentInContext?.result?.proficiency?.toFixed(0) || 'N/A'
-                    }
-                    subtitle={isPartialData 
-                        ? "Será calculada após conclusão"
-                        : `Nível: ${studentResults?.result?.classificacao || studentInContext?.result?.classification || 'Não classificado'}`
-                    }
-                    icon={<BarChart3 className="h-4 w-4 text-orange-600" />}
-                    color="text-orange-600"
-                    isPartial={isPartialData}
-                    tooltip={isPartialData ? "Proficiência é calculada apenas com avaliações completas" : undefined}
-                />
-
-                <StudentStatsCard
-                    title="Tempo Gasto"
-                    value={`${quickStats.timeSpent}min`}
-                    subtitle={isPartialData ? "Tempo em andamento" : "Duração total da avaliação"}
-                    icon={<Clock className="h-4 w-4 text-gray-600" />}
-                    color="text-gray-600"
-                    isPartial={isPartialData}
-                    tooltip={isPartialData ? "Cronômetro ainda está rodando" : undefined}
-                />
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-sm font-medium flex items-center gap-2">
+                            <BarChart3 className="h-4 w-4 text-orange-600" />
+                            Proficiência
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold text-orange-600">
+                            {proficiencia ? proficiencia.toFixed(0) : 'N/A'}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                            Nível: {classificacao}
+                        </p>
+                    </CardContent>
+                </Card>
             </div>
 
-            {/* Classificação do Aluno */}
-            {!isPartialData && studentResults?.result && (
+            {/* Classificação */}
+            {classificacao && classificacao !== 'Não classificado' && (
                 <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center justify-between">
                             <span>Classificação de Proficiência</span>
                             <Badge className={`${
-                                studentResults.result.classificacao === 'Avançado' ? 'bg-green-100 text-green-800 border-green-300' :
-                                studentResults.result.classificacao === 'Adequado' ? 'bg-blue-100 text-blue-800 border-blue-300' :
-                                studentResults.result.classificacao === 'Básico' ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
+                                classificacao === 'Avançado' ? 'bg-green-100 text-green-800 border-green-300' :
+                                classificacao === 'Adequado' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                                classificacao === 'Básico' ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
                                 'bg-red-100 text-red-800 border-red-300'
                             }`}>
-                                {studentResults.result.classificacao || 'Não Classificado'}
+                                {classificacao}
                             </Badge>
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-4">
-                            {/* Progresso de Proficiência */}
                             <div className="space-y-2">
                                 <div className="flex justify-between text-sm">
                                     <span>Nível de Proficiência Alcançado</span>
                                     <span className="font-bold">
-                                        {studentResults.result.proficiencia?.toFixed(0) || 0} pontos
+                                        {proficiencia ? proficiencia.toFixed(0) : 0} pontos
                                     </span>
                                 </div>
                                 <Progress 
-                                    value={Math.min((studentResults.result.proficiencia || 0) / 500 * 100, 100)} 
+                                    value={Math.min((proficiencia / 500) * 100, 100)} 
                                     className="h-3" 
                                 />
                             </div>
-
-                            {/* Detalhes da Performance */}
-                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                                    <div>
-                                        <div className="text-lg font-bold text-green-600">
-                                            {studentResults.result.correct_answers}
-                                        </div>
-                                        <div className="text-xs text-gray-600">Questões Corretas</div>
-                                    </div>
-                                    <div>
-                                        <div className="text-lg font-bold text-red-600">
-                                            {(studentResults.session?.answered_questions || 0) - studentResults.result.correct_answers}
-                                        </div>
-                                        <div className="text-xs text-gray-600">Questões Incorretas</div>
-                                    </div>
-                                    <div>
-                                        <div className="text-lg font-bold text-purple-600">
-                                            {studentResults.result.total_score}
-                                        </div>
-                                        <div className="text-xs text-gray-600">Pontuação Total</div>
-                                    </div>
-                                    <div>
-                                        <div className="text-lg font-bold text-blue-600">
-                                            {((studentResults.result.correct_answers / (studentResults.session?.total_questions || 1)) * 100).toFixed(1)}%
-                                        </div>
-                                        <div className="text-xs text-gray-600">Taxa de Acerto</div>
-                                    </div>
-                                </div>
-                            </div>
                         </div>
                     </CardContent>
                 </Card>
             )}
 
-            {/* Progresso em Tempo Real */}
-            {isPartialData && (
-                <Card className="bg-yellow-50 border-yellow-200">
-                    <CardHeader>
-                        <CardTitle className="text-base flex items-center gap-2">
-                            <Activity className="h-4 w-4 text-yellow-600" />
-                            Progresso em Tempo Real
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="space-y-2">
-                            <div className="flex justify-between text-sm">
-                                <span>Progresso da Avaliação</span>
-                                <span className="font-bold">{quickStats.estimatedCompletion.toFixed(1)}%</span>
-                            </div>
-                            <Progress value={quickStats.estimatedCompletion} className="h-3" />
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-4 text-center text-sm">
-                            <div>
-                                <div className="text-lg font-bold text-blue-600">
-                                    {studentResults?.session?.answered_questions || 0}
-                                </div>
-                                <div className="text-xs text-gray-600">Questões Respondidas</div>
-                            </div>
-                            <div>
-                                <div className="text-lg font-bold text-green-600">
-                                    {studentResults?.result?.correct_answers || 0}
-                                </div>
-                                <div className="text-xs text-gray-600">Acertos Até Agora</div>
-                            </div>
-                            <div>
-                                <div className="text-lg font-bold text-orange-600">
-                                    {quickStats.timeSpent}min
-                                </div>
-                                <div className="text-xs text-gray-600">Tempo Decorrido</div>
-                            </div>
-                        </div>
-
-                        <div className="bg-white border border-yellow-300 rounded-lg p-3">
-                            <div className="text-xs text-yellow-800">
-                                <strong>Nota:</strong> O aluno ainda está realizando a avaliação. 
-                                Os dados são atualizados automaticamente e podem mudar a qualquer momento.
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-            )}
-
-            {/* Informações Complementares */}
-            <Card className={isPartialData ? "bg-yellow-50 border-yellow-200" : "bg-green-50 border-green-200"}>
+            {/* Informações da Avaliação */}
+            <Card>
                 <CardHeader>
-                    <CardTitle className="text-base flex items-center gap-2">
-                        {isPartialData ? (
-                            <>
-                                <Clock className="h-4 w-4 text-yellow-600" />
-                                Avaliação em Andamento
-                            </>
-                        ) : (
-                            <>
-                                <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                Avaliação Concluída com Sucesso
-                            </>
-                        )}
+                    <CardTitle className="flex items-center gap-2">
+                        <FileText className="h-5 w-5 text-blue-600" />
+                        Informações da Avaliação
                     </CardTitle>
                 </CardHeader>
-                <CardContent className={`text-sm space-y-2 ${isPartialData ? 'text-yellow-800' : 'text-green-800'}`}>
-                    <p>
-                        <strong>Status:</strong> {isPartialData 
-                            ? "O aluno está realizando a avaliação em tempo real."
-                            : "O aluno completou integralmente esta avaliação e todos os dados necessários para análise estão disponíveis."
-                        }
-                    </p>
-                    <p>
-                        <strong>Qualidade dos Dados:</strong> {isPartialData
-                            ? "Os dados mostrados são atualizados em tempo real, mas podem estar incompletos."
-                            : "Os resultados apresentados foram validados e estão prontos para análise pedagógica."
-                        }
-                    </p>
-                    <p>
-                        <strong>Última Atualização:</strong> {lastUpdate.toLocaleString('pt-BR')}
-                    </p>
-                    {isRealTimeMode && (
-                        <p>
-                            <strong>Modo de Visualização:</strong> Tempo Real {autoRefreshEnabled && "(Auto-atualização ativa)"}
-                        </p>
-                    )}
+                <CardContent>
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <div>
+                            <h4 className="font-medium text-sm text-gray-600">Título</h4>
+                            <p className="text-lg">{currentEvaluation?.titulo || 'N/A'}</p>
+                        </div>
+                        <div>
+                            <h4 className="font-medium text-sm text-gray-600">Disciplina</h4>
+                            <p className="text-lg">{currentEvaluation?.disciplina || 'N/A'}</p>
+                        </div>
+                        <div>
+                            <h4 className="font-medium text-sm text-gray-600">Data de Aplicação</h4>
+                            <p className="text-lg">
+                                {currentEvaluation?.data_aplicacao ? 
+                                    new Date(currentEvaluation.data_aplicacao).toLocaleDateString('pt-BR') 
+                                    : 'N/A'
+                                }
+                            </p>
+                        </div>
+                        <div>
+                            <h4 className="font-medium text-sm text-gray-600">Status</h4>
+                            <Badge className="bg-green-100 text-green-800 border-green-300">
+                                Concluída
+                            </Badge>
+                        </div>
+                    </div>
                 </CardContent>
             </Card>
 
-            {/* Botão de Atualização Manual */}
+            {/* Botão de Atualização */}
             <div className="flex justify-center">
                 <Button onClick={handleRefresh} variant="outline">
                     <RefreshCw className="h-4 w-4 mr-2" />
@@ -925,5 +533,14 @@ export default function StudentDetailedResults({ onBack }: StudentDetailedResult
                 </Button>
             </div>
         </div>
+    );
+}
+
+// Componente principal exportado com Error Boundary
+export default function StudentDetailedResults(props: StudentDetailedResultsProps) {
+    return (
+        <ErrorBoundary>
+            <StudentDetailedResultsContent {...props} />
+        </ErrorBoundary>
     );
 }

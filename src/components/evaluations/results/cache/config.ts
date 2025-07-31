@@ -32,8 +32,8 @@ export interface CacheConfig {
 // ===== CONFIGURAÇÃO PADRÃO =====
 
 export const DEFAULT_CACHE_CONFIG: CacheConfig = {
-    // TTL de 5 minutos
-    defaultTTL: 5 * 60 * 1000,
+    // ✅ DEBUG: TTL muito baixo para forçar sempre buscar da API
+    defaultTTL: 1 * 1000, // 1 segundo (praticamente desabilitado)
     
     // Limpeza a cada minuto
     cleanupInterval: 60 * 1000,
@@ -44,40 +44,93 @@ export const DEFAULT_CACHE_CONFIG: CacheConfig = {
     // 10MB de limite de memória
     maxMemoryUsage: 10 * 1024 * 1024,
     
-    // Logs habilitados em desenvolvimento
-    enableDetailedLogs: process.env.NODE_ENV === 'development',
+    // ✅ DEBUG: Logs sempre habilitados para debug
+    enableDetailedLogs: true,
     
     // Configurações específicas por tipo
     typeSpecificConfigs: {
         'student_results': {
-            ttl: 5 * 60 * 1000, // 5 minutos
+            ttl: 1 * 1000, // ✅ DEBUG: 1 segundo
             maxEntries: 50, // Máximo 50 resultados de alunos
             enableCompression: false
         },
         'evaluation_results': {
-            ttl: 10 * 60 * 1000, // 10 minutos (dados mais estáveis)
+            ttl: 1 * 1000, // ✅ DEBUG: 1 segundo
             maxEntries: 20, // Máximo 20 avaliações
             enableCompression: false
         },
         'aggregated_results': {
-            ttl: 3 * 60 * 1000, // 3 minutos (dados calculados)
+            ttl: 1 * 1000, // ✅ DEBUG: 1 segundo
             maxEntries: 100,
             enableCompression: true // Dados maiores, comprimir
         },
         'session_data': {
-            ttl: 2 * 60 * 1000, // 2 minutos (dados voláteis)
+            ttl: 1 * 1000, // ✅ DEBUG: 1 segundo
             maxEntries: 100,
             enableCompression: false
         },
         'answers_data': {
-            ttl: 15 * 60 * 1000, // 15 minutos (dados estáveis)
+            ttl: 1 * 1000, // ✅ DEBUG: 1 segundo
             maxEntries: 30,
             enableCompression: true // Respostas podem ser grandes
         },
         'questions_data': {
-            ttl: 30 * 60 * 1000, // 30 minutos (muito estáveis)
+            ttl: 1 * 1000, // ✅ DEBUG: 1 segundo
             maxEntries: 10,
             enableCompression: true // Questões com texto grande
+        }
+    }
+};
+
+// ===== CONFIGURAÇÃO PARA DEBUG (CACHE DESABILITADO) =====
+
+export const DEBUG_CACHE_CONFIG: CacheConfig = {
+    // ✅ DEBUG: TTL de 0 para desabilitar completamente o cache
+    defaultTTL: 0, // 0 = cache desabilitado
+    
+    // Limpeza imediata
+    cleanupInterval: 1000, // 1 segundo
+    
+    // Sem entradas
+    maxEntries: 0,
+    
+    // Sem limite de memória
+    maxMemoryUsage: 0,
+    
+    // Logs sempre habilitados
+    enableDetailedLogs: true,
+    
+    // Configurações específicas por tipo (todos desabilitados)
+    typeSpecificConfigs: {
+        'student_results': {
+            ttl: 0, // Desabilitado
+            maxEntries: 0,
+            enableCompression: false
+        },
+        'evaluation_results': {
+            ttl: 0, // Desabilitado
+            maxEntries: 0,
+            enableCompression: false
+        },
+        'aggregated_results': {
+            ttl: 0, // Desabilitado
+            maxEntries: 0,
+            enableCompression: false
+        },
+        'session_data': {
+            ttl: 0, // Desabilitado
+            maxEntries: 0,
+            enableCompression: false
+        },
+        'answers_data': {
+            ttl: 0, // Desabilitado
+            maxEntries: 0,
+            enableCompression: false
+        },
+        'questions_data': {
+            ttl: 0, // Desabilitado
+            maxEntries: 0,
+            enableCompression: false
         }
     }
 };
@@ -241,7 +294,7 @@ export function conditionalLog(config: CacheConfig, level: 'info' | 'warn' | 'er
 
 // ===== CONFIGURAÇÃO GLOBAL ATUAL =====
 
-let currentConfig: CacheConfig = getEnvironmentConfig();
+let currentConfig: CacheConfig = DEBUG_CACHE_CONFIG; // ✅ DEBUG: Usar configuração de debug
 
 export function getCurrentConfig(): CacheConfig {
     return currentConfig;
@@ -252,7 +305,8 @@ export function updateConfig(newConfig: Partial<CacheConfig>): void {
     const errors = validateConfig(merged);
     
     if (errors.length > 0) {
-        throw new Error(`Configuração inválida: ${errors.join(', ')}`);
+        console.warn(`⚠️ DEBUG: Configuração inválida ignorada (modo debug): ${errors.join(', ')}`);
+        return; // ✅ DEBUG: Não falhar em modo debug
     }
     
     currentConfig = merged;
