@@ -78,6 +78,26 @@ interface BackendSubmissionResult {
   }>;
 }
 
+interface StudentResult {
+  id: string;
+  nome: string;
+  turma: string;
+  nota: number;
+  grade: string;
+  total_score?: number;
+  proficiencia: number;
+  proficiency?: number;
+  classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+  classification?: string;
+  correct_answers?: number;
+  questoes_respondidas: number;
+  acertos: number;
+  erros: number;
+  em_branco: number;
+  tempo_gasto: number;
+  status: 'concluida' | 'pendente';
+}
+
 // ===== INTERFACES PARA API DE RESULTADOS =====
 
 interface EvaluationResult {
@@ -193,6 +213,39 @@ interface DetailedReport {
 
 export class EvaluationResultsApiService {
 
+  // ✅ NOVO: Buscar turma e série de um aluno (TEMPORARIAMENTE DESABILITADO)
+  // static async getStudentClass(studentId: string): Promise<{
+  //   grade: string;
+  //   class: string;
+  // } | null> {
+  //   try {
+  //     const response = await api.get(`/students/${studentId}/class`);
+  //     return response.data;
+  //   } catch (error) {
+  //     console.error('Erro ao buscar turma e série do aluno:', error);
+  //     return null;
+  //   }
+  // }
+
+  // ✅ NOVO: Buscar avaliações de um aluno específico
+  static async getStudentEvaluations(studentId: string): Promise<Array<{
+    id: string;
+    titulo: string;
+    data_aplicacao: string;
+    disciplina: string;
+    serie: string;
+    escola: string;
+    turma?: string;
+  }>> {
+    try {
+      const response = await api.get(`/evaluation-results/student/${studentId}/evaluations`);
+      return response.data || [];
+    } catch (error) {
+      console.error('Erro ao buscar avaliações do aluno:', error);
+      return [];
+    }
+  }
+
   // ✅ NOVO: Buscar avaliações por escola
   static async getEvaluationsBySchool(schoolId: string): Promise<Array<{
     id: string;
@@ -213,12 +266,12 @@ export class EvaluationResultsApiService {
       }
 
       // ✅ CORREÇÃO: Mapear os campos corretos do backend
-      const mappedEvaluations = evaluationsData.map((evaluation: any) => ({
-        id: evaluation.id,
-        titulo: evaluation.title || evaluation.titulo || 'Sem título',
-        disciplina: evaluation.subject?.name || evaluation.disciplina || 'Sem disciplina',
-        status: evaluation.status || 'desconhecido',
-        data_aplicacao: evaluation.createdAt || evaluation.data_aplicacao || new Date().toISOString()
+      const mappedEvaluations = evaluationsData.map((evaluation: Record<string, unknown>) => ({
+        id: String(evaluation.id || ''),
+        titulo: String(evaluation.title || evaluation.titulo || 'Sem título'),
+        disciplina: String((evaluation.subject as Record<string, unknown>)?.name || evaluation.disciplina || 'Sem disciplina'),
+        status: String(evaluation.status || 'desconhecido'),
+        data_aplicacao: String(evaluation.createdAt || evaluation.data_aplicacao || new Date().toISOString())
       }));
 
       return mappedEvaluations;
@@ -398,30 +451,67 @@ export class EvaluationResultsApiService {
     }, 25000); // 25s para lista de alunos
   }
 
+  // ✅ NOVO: Método para buscar dados corretos usando o endpoint específico
+  static async getCorrectStudentResults(evaluationId: string): Promise<{
+    alunos: Array<{
+      id: string;
+      nome: string;
+      turma: string;
+      acertos: number;
+      erros: number;
+      em_branco: number;
+      nota: number;
+      proficiencia: number;
+      classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+      status: 'concluida' | 'pendente';
+      respostas: Array<{
+        questao: number;
+        resposta: string;
+        correta: boolean;
+        em_branco: boolean;
+      }>;
+    }>;
+    questoes: Array<{
+      numero: number;
+      porcentagem_acertos: number;
+    }>;
+  } | null> {
+    return apiWithTimeout(async () => {
+      // ✅ Usar o endpoint específico que retorna os dados corretos
+      const response = await api.get(`/evaluation-results/alunos?avaliacao_id=${evaluationId}`);
+      
+      console.log('🔍 Dados corretos recebidos do endpoint:', response.data);
+      
+      return response.data;
+    }, 25000); // 25s para lista de alunos
+  }
+
   // Buscar resultados detalhados de um aluno específico
   static async getStudentDetailedResults(testId: string, studentId: string, includeAnswers: boolean = false): Promise<StudentDetailedResult | null> {
     try {
       const params = includeAnswers ? { include_answers: 'true' } : {};
       const response = await api.get(`/evaluation-results/${testId}/student/${studentId}/results`, { params });
       return response.data;
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Se o erro contém dados da resposta (aluno não respondeu), retornar os dados
-      if (error.response?.data && error.response.data.test_id) {
+      const errorResponse = error as { response?: { data?: Record<string, unknown> } };
+      const errorData = errorResponse?.response?.data;
+      if (errorData && errorData.test_id) {
         return {
-          test_id: error.response.data.test_id,
-          student_id: error.response.data.student_id,
-          student_db_id: error.response.data.student_db_id,
-          total_questions: error.response.data.total_questions,
-          answered_questions: error.response.data.answered_questions,
-          correct_answers: error.response.data.correct_answers,
-          score_percentage: error.response.data.score_percentage,
-          total_score: error.response.data.total_score,
-          max_possible_score: error.response.data.max_possible_score,
-          grade: error.response.data.grade || 0,
-          proficiencia: error.response.data.proficiencia || 0,
-          classificacao: error.response.data.classificacao || 'Abaixo do Básico',
-          calculated_at: error.response.data.calculated_at || new Date().toISOString(),
-          status: error.response.data.status,
+          test_id: String(errorData.test_id),
+          student_id: String(errorData.student_id),
+          student_db_id: String(errorData.student_db_id),
+          total_questions: Number(errorData.total_questions),
+          answered_questions: Number(errorData.answered_questions),
+          correct_answers: Number(errorData.correct_answers),
+          score_percentage: Number(errorData.score_percentage),
+          total_score: Number(errorData.total_score),
+          max_possible_score: Number(errorData.max_possible_score),
+          grade: Number(errorData.grade) || 0,
+          proficiencia: Number(errorData.proficiencia) || 0,
+          classificacao: (String(errorData.classificacao) as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado') || 'Abaixo do Básico',
+          calculated_at: String(errorData.calculated_at) || new Date().toISOString(),
+          status: (String(errorData.status) as 'concluida' | 'nao_respondida'),
           answers: []
         };
       }

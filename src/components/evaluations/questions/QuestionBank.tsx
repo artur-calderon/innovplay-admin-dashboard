@@ -15,7 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn, getDifficultyColor } from "@/lib/utils";
-import { mockQuestions } from "@/lib/mockData";
+// Removido import de mockData - usando dados reais da API
 import { api } from "@/lib/api";
 
 interface Subject {

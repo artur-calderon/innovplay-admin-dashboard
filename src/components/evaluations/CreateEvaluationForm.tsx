@@ -19,6 +19,7 @@ import { Check, X, Loader2, BookOpen, CheckCheck } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/authContext";
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
 
 // Schema de validação
 const evaluationSchema = z.object({
@@ -382,12 +383,16 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
           created_by: user?.id || "",
           questions: [],
         });
-        toast({ title: "Avaliação criada com sucesso!", variant: "default" });
+        toast({ 
+          title: "Avaliação criada com sucesso!", 
+          description: SUCCESS_MESSAGES.DATA_SAVED,
+          variant: "default" 
+        });
         form.reset();
       }
     } catch (error: unknown) {
       const apiError = error as ApiError;
-      const errorMessage = apiError?.response?.data?.message || apiError?.message || "Erro desconhecido";
+      const errorMessage = apiError?.response?.data?.message || apiError?.message || ERROR_MESSAGES.SERVER_ERROR;
       toast({ 
         title: "Erro ao criar avaliação", 
         description: errorMessage, 
