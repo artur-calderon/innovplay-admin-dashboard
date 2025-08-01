@@ -46,7 +46,7 @@ import { Question, TestData, TestResults } from "@/types/evaluation-types";
 // Função para determinar a cor baseada na performance
 const getPerformanceColor = (percentage: number) => {
     if (percentage >= 80) return "text-green-600";
-    if (percentage >= 60) return "text-blue-600";
+            if (percentage >= 60) return "text-purple-600";
     if (percentage >= 40) return "text-yellow-600";
     return "text-red-600";
 };
@@ -56,7 +56,9 @@ export default function TakeEvaluation() {
     const navigate = useNavigate();
     const { toast } = useToast();
     const [showSubmitDialog, setShowSubmitDialog] = useState(false);
+    const [showCompletionDialog, setShowCompletionDialog] = useState(false);
     const [isNavigationMinimized, setIsNavigationMinimized] = useState(false);
+    const [shuffledQuestions, setShuffledQuestions] = useState<Question[]>([]);
 
     const {
         evaluationState,
@@ -76,37 +78,131 @@ export default function TakeEvaluation() {
         navigateToQuestion
     } = useEvaluation({ testId: evaluationId });
 
-    // ✅ NOVO: Log para debug
+    // ✅ Auto-iniciar avaliação automaticamente
     useEffect(() => {
-        console.log('TakeEvaluation - Estado atual:', {
-            evaluationState,
-            testData: testData ? 'carregado' : 'não carregado',
-            session: session ? 'existe' : 'não existe'
-        });
+        if (evaluationState === 'instructions' && testData && !session) {
+            console.log('🚀 Auto-iniciando avaliação...');
+            startTestSession();
+        }
+    }, [evaluationState, testData, session, startTestSession]);
 
-        // ✅ NOVO: Log detalhado do testData quando estiver no estado de instruções
-        if (evaluationState === 'instructions' && testData) {
-            console.log('📊 Dados da avaliação no estado de instruções:', {
-                id: testData.id,
-                title: testData.title,
-                subject: testData.subject?.name,
-                duration: testData.duration,
-                totalQuestions: testData.totalQuestions,
-                questionsCount: testData.questions?.length || 0,
-                instructions: testData.instructions
+    // Log para debug da questão atual (apenas quando muda)
+    useEffect(() => {
+        if (currentQuestionIndex >= 0 && shuffledQuestions?.[currentQuestionIndex]) {
+            const currentQuestion = shuffledQuestions[currentQuestionIndex];
+            console.log('🔍 Questão atual:', {
+                index: currentQuestionIndex,
+                questionId: currentQuestion?.id,
+                currentAnswer: answers[currentQuestion?.id]?.answer,
+                questionType: currentQuestion?.type
             });
         }
+    }, [currentQuestionIndex, shuffledQuestions, answers]);
 
-        // ✅ REMOVIDO: Redirecionamento automático - agora mostra resultados imediatos
-        // if (evaluationState === 'completed') {
-        //     console.log('✅ Avaliação concluída, redirecionando para página de avaliações...');
-        //     
-        //     setTimeout(() => {
-        //         console.log('🚀 Executando redirecionamento para /aluno/avaliacoes');
-        //         navigate('/aluno/avaliacoes');
-        //     }, 3000);
-        // }
-    }, [evaluationState, testData, session, navigate]);
+    // ✅ Embaralhar alternativas das questões
+    useEffect(() => {
+        if (testData?.questions?.length && shuffledQuestions.length === 0) {
+            console.log('🔄 Embaralhando questões...', testData.questions.length);
+            
+            const shuffled = testData.questions.map((q, questionIndex) => {
+                console.log(`Questão ${questionIndex + 1}:`, q.type, q.options?.length);
+                
+                if (
+                    ["multiple_choice", "multipleChoice", "multiple_choice"].includes(q.type) &&
+                    (q.options || q.alternatives) &&
+                    Array.isArray(q.options || q.alternatives) &&
+                    (q.options || q.alternatives).length > 0
+                ) {
+                    const optionsToShuffle = q.options || q.alternatives || [];
+                    const originalOptions = optionsToShuffle.map((opt, index) => ({
+                        ...opt,
+                        originalIndex: index,
+                    }));
+
+                    const shuffledOptions = [...originalOptions].sort(() => Math.random() - 0.5);
+                    
+                    console.log(`✅ Questão ${questionIndex + 1} embaralhada:`, {
+                        original: originalOptions.map((opt, i) => `${String.fromCharCode(65 + i)}: ${opt.text}`),
+                        shuffled: shuffledOptions.map((opt, i) => `${String.fromCharCode(65 + i)}: ${opt.text}`)
+                    });
+
+                    return {
+                        ...q,
+                        options: shuffledOptions,
+                        alternatives: shuffledOptions, // Manter compatibilidade
+                    };
+                }
+                return q;
+            });
+
+            console.log('🎯 Questões embaralhadas definidas:', shuffled.length);
+            setShuffledQuestions(shuffled);
+        }
+    }, [testData, shuffledQuestions.length]);
+
+
+
+
+
+    // ✅ Processar imagens após carregamento do HTML
+    useEffect(() => {
+        if (currentQuestionIndex >= 0 && testData?.questions?.[currentQuestionIndex]) {
+            const timeoutId = setTimeout(() => {
+                const questionContent = document.querySelector('.evaluation-question-content');
+                if (questionContent) {
+                    const images = questionContent.querySelectorAll('img');
+
+                    images.forEach((img) => {
+                        const parent = img.parentElement;
+
+                        if (parent && parent.tagName === 'P') {
+                            const before = img.previousSibling?.textContent?.trim() || '';
+                            const after = img.nextSibling?.textContent?.trim() || '';
+                            const hasTextAround = before.length > 0 || after.length > 0;
+
+                            if (hasTextAround) {
+                                img.classList.add('inline-image');
+                            }
+                        }
+
+                        img.onerror = () => {
+                            img.style.display = 'none';
+                        };
+                    });
+                }
+            }, 100);
+
+            return () => clearTimeout(timeoutId);
+        }
+    }, [currentQuestionIndex, testData]);
+
+    // ✅ Detectar quando todas as questões são respondidas
+    useEffect(() => {
+        if (shuffledQuestions.length > 0 && Object.keys(answers).length === shuffledQuestions.length) {
+            // Verificar se todas as respostas têm conteúdo
+            const allAnswered = shuffledQuestions.every(question => {
+                const answer = answers[question.id]?.answer;
+                return answer && answer.trim() !== '';
+            });
+            
+            if (allAnswered && !showCompletionDialog) {
+                console.log('🎉 Todas as questões foram respondidas!');
+                setShowCompletionDialog(true);
+            }
+        }
+    }, [answers, shuffledQuestions.length, showCompletionDialog]);
+
+    // ✅ Redirecionamento automático quando avaliação é concluída
+    useEffect(() => {
+        if (evaluationState === 'completed' && results) {
+            console.log('📊 Avaliação enviada com sucesso, redirecionando...');
+            const timer = setTimeout(() => {
+                navigate("/aluno/avaliacoes");
+            }, 3000);
+            
+            return () => clearTimeout(timer);
+        }
+    }, [evaluationState, results, navigate]);
 
     // Se não há evaluationId, mostrar erro
     if (!evaluationId) {
@@ -127,9 +223,58 @@ export default function TakeEvaluation() {
     // Loading state
     if (evaluationState === 'loading') {
         return (
-            <div className="flex items-center justify-center h-screen w-screen bg-gray-50">
-                <div className="max-w-md w-full mx-4">
-                    <Skeleton className="h-96 w-full" />
+            <div className="flex items-center justify-center h-screen w-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
+                <div className="max-w-lg w-full mx-4 text-center">
+                    <Card className="p-8 shadow-xl border-0 bg-white/80 backdrop-blur-sm">
+                        <div className="space-y-8">
+                            {/* Ícone animado */}
+                            <div className="flex justify-center">
+                                <div className="relative">
+                                    <div className="w-24 h-24 bg-gradient-to-r from-purple-500 to-blue-600 rounded-full flex items-center justify-center animate-pulse">
+                                        <Play className="h-12 w-12 text-white ml-1" />
+                                    </div>
+                                    {/* Círculos animados */}
+                                    <div className="absolute inset-0 rounded-full border-4 border-purple-200 animate-ping"></div>
+                                    <div className="absolute inset-0 rounded-full border-4 border-blue-200 animate-ping" style={{ animationDelay: '0.5s' }}></div>
+                                </div>
+                            </div>
+
+                            {/* Título */}
+                            <div className="space-y-2">
+                                <h2 className="text-2xl font-bold text-gray-800">
+                                    Preparando sua avaliação...
+                                </h2>
+                            </div>
+
+                            {/* Barra de progresso animada */}
+                            <div className="space-y-3">
+                                <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                                    <div className="bg-gradient-to-r from-purple-500 to-blue-600 h-full rounded-full animate-pulse" style={{ width: '60%' }}></div>
+                                </div>
+                                <div className="flex items-center justify-center gap-3">
+                                    <Loader2 className="h-5 w-5 animate-spin text-purple-600" />
+                                    <span className="text-sm font-medium text-gray-700">
+                                        Carregando...
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Dicas animadas */}
+                            <div className="space-y-2">
+                                <div className="text-xs text-gray-500 space-y-1">
+                                    <div className="flex items-center justify-center gap-2">
+                                        <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"></div>
+                                        <span>Preparando questões...</span>
+                                    </div>
+                                    <div className="flex items-center justify-center gap-2">
+                                        <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                                        <span>Quase pronto!</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </Card>
                 </div>
             </div>
         );
@@ -179,78 +324,8 @@ export default function TakeEvaluation() {
         );
     }
 
-    // Instructions screen
-    if (evaluationState === 'instructions' && testData) {
-        return (
-            <div className="flex items-center justify-center min-h-screen w-screen bg-gray-50 p-4">
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="text-center">Instruções da Avaliação</CardTitle>
-                        <div className="text-center space-y-2">
-                            <h2 className="text-xl font-semibold">{testData.title}</h2>
-                            <Badge variant="outline">{testData.subject.name}</Badge>
-                        </div>
-                    </CardHeader>
-                    <CardContent className="space-y-6">
-                        <div className="grid gap-4 md:grid-cols-3">
-                            <div className="text-center p-4 border rounded-lg">
-                                <Clock className="h-8 w-8 mx-auto mb-2 text-blue-600" />
-                                <div className="font-semibold">
-                                    {testData?.duration || 60} minutos
-                                </div>
-                                <div className="text-sm text-muted-foreground">Tempo disponível</div>
-                            </div>
-                            <div className="text-center p-4 border rounded-lg">
-                                <CheckCircle className="h-8 w-8 mx-auto mb-2 text-green-600" />
-                                <div className="font-semibold">
-                                    {testData.totalQuestions || testData.total_questions || testData.questions?.length || 0} questões
-                                </div>
-                                <div className="text-sm text-muted-foreground">Total de questões</div>
-                            </div>
-                            <div className="text-center p-4 border rounded-lg">
-                                <Save className="h-8 w-8 mx-auto mb-2 text-purple-600" />
-                                <div className="font-semibold">Auto-save</div>
-                                <div className="text-sm text-muted-foreground">Respostas salvas automaticamente</div>
-                            </div>
-                        </div>
-
-                        <div className="text-center">
-                            <p className="mb-4">{testData.instructions}</p>
-
-                            <div className="flex justify-center gap-4">
-                                <Button variant="outline" onClick={() => navigate("/aluno/avaliacoes")}>
-                                    <Home className="h-4 w-4 mr-2" />
-                                    Cancelar
-                                </Button>
-                                <Button
-                                    onClick={startTestSession}
-                                    size="lg"
-                                    disabled={isSubmitting}
-                                >
-                                    {isSubmitting ? (
-                                        <>
-                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                            Iniciando...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Play className="h-4 w-4 mr-2" />
-                                            Iniciar Avaliação
-                                        </>
-                                    )}
-                                </Button>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-        );
-    }
-
     // Results screen - Mostrar resultados imediatos
     if (evaluationState === 'completed' && results) {
-        console.log('📊 Avaliação enviada com sucesso, mostrando resultados...');
-        
         return (
             <div className="flex items-center justify-center min-h-screen w-screen bg-gray-50 p-4">
                 <div className="max-w-lg w-full">
@@ -263,67 +338,20 @@ export default function TakeEvaluation() {
                             </div>
                         </CardHeader>
                         <CardContent className="space-y-6">
-                            {/* ✅ NOVO: Resultados imediatos */}
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-blue-50 rounded-lg p-4 text-center">
-                                    <div className="text-2xl font-bold text-blue-600">
-                                        {results.correct_answers || 0}/{results.total_questions || 0}
-                                    </div>
-                                    <div className="text-sm text-blue-700">Acertos</div>
-                                </div>
-                                <div className="bg-green-50 rounded-lg p-4 text-center">
-                                    <div className="text-2xl font-bold text-green-600">
-                                        {results.score_percentage || 0}%
-                                    </div>
-                                    <div className="text-sm text-green-700">Desempenho</div>
-                                </div>
-                            </div>
-                            
-                            {results.grade && (
-                                <div className="bg-yellow-50 rounded-lg p-4 text-center">
-                                    <div className="text-2xl font-bold text-yellow-600">
-                                        {results.grade.toFixed(1)}/10
-                                    </div>
-                                    <div className="text-sm text-yellow-700">Nota Final</div>
-                                </div>
-                            )}
-
-                            {/* Informações detalhadas */}
-                            <div className="text-center space-y-2 text-sm text-muted-foreground">
-                                <p>
-                                    <strong>Tempo gasto:</strong> {results.duration_minutes || 0} minutos
-                                </p>
-                                <p>
-                                    <strong>Status:</strong> {results.status === 'finalizada' ? 'Concluída' : results.status}
-                                </p>
-                            </div>
-
                             {/* Mensagem de sucesso */}
                             <div className="text-center space-y-4 p-4 bg-green-50 rounded-lg border border-green-200">
                                 <CheckCircle2 className="h-8 w-8 text-green-600 mx-auto" />
                                 <div className="space-y-2">
                                     <h3 className="text-lg font-semibold text-green-800">
-                                        {results.message || 'Avaliação Enviada com Sucesso!'}
+                                        Avaliação Enviada com Sucesso!
                                     </h3>
-                                    <p className="text-green-700">
-                                        Seus resultados foram calculados automaticamente.
+                                    <p className="text-sm text-green-700">
+                                        Redirecionando em 3 segundos...
                                     </p>
                                 </div>
                             </div>
 
-                            <div className="flex justify-center gap-3">
-                                <Button onClick={() => navigate("/aluno/avaliacoes")}>
-                                    <Home className="h-4 w-4 mr-2" />
-                                    Voltar para Avaliações
-                                </Button>
-                                <Button 
-                                    variant="outline"
-                                    onClick={() => window.print()}
-                                >
-                                    <Printer className="h-4 w-4 mr-2" />
-                                    Imprimir
-                                </Button>
-                            </div>
+
                         </CardContent>
                     </Card>
                 </div>
@@ -333,8 +361,13 @@ export default function TakeEvaluation() {
 
     // Active test screen
     if (evaluationState === 'active' && testData && session) {
-        // ✅ NOVO: Verificação adicional para garantir que os dados estão carregados
-        if (!testData.questions || testData.questions.length === 0) {
+        // ✅ Verificação adicional para garantir que os dados estão carregados
+        if (!shuffledQuestions || shuffledQuestions.length === 0) {
+            console.log('⚠️ shuffledQuestions vazio, usando testData.questions como fallback');
+            if (testData?.questions?.length) {
+                setShuffledQuestions(testData.questions);
+                return null; // Aguardar re-render
+            }
             return (
                 <div className="container mx-auto px-4 py-6">
                     <Alert variant="destructive">
@@ -352,11 +385,11 @@ export default function TakeEvaluation() {
                                         <li>Questões foram removidas ou não estão disponíveis</li>
                                     </ul>
                                 </div>
-                                <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg">
-                                    <p className="text-sm text-blue-800">
+                                <div className="bg-purple-50 border border-purple-200 p-3 rounded-lg">
+                                    <p className="text-sm text-purple-800">
                                         <strong>O que fazer:</strong>
                                     </p>
-                                    <ul className="list-disc list-inside mt-1 text-sm text-blue-700">
+                                    <ul className="list-disc list-inside mt-1 text-sm text-purple-700">
                                         <li>Entre em contato com seu professor</li>
                                         <li>Verifique se a avaliação está corretamente configurada</li>
                                         <li>Aguarde até que as questões sejam adicionadas</li>
@@ -385,9 +418,9 @@ export default function TakeEvaluation() {
             );
         }
 
-        const currentQuestion = testData.questions?.[currentQuestionIndex];
+        const currentQuestion = shuffledQuestions?.[currentQuestionIndex];
 
-        // ✅ NOVO: Verificação de segurança para currentQuestion
+        // ✅ Verificação de segurança para currentQuestion
         if (!currentQuestion) {
             return (
                 <div className="container mx-auto px-4 py-6">
@@ -431,18 +464,78 @@ export default function TakeEvaluation() {
 
         return (
             <div className="h-screen w-screen bg-gray-50 flex flex-col overflow-hidden">
+<style>
+  {`
+    /* Imagens principais - tamanho médio/grande com tamanho mínimo */
+    .evaluation-question-content img:not(.inline-image) {
+        display: block;
+        margin: 2rem auto;
+        width: auto;
+        min-width: 300px;
+        max-width: 90%;
+        max-height: 450px;
+        height: auto;
+    }
+
+    /* Imagens inline (pequenas no meio do texto) */
+    .evaluation-question-content img.inline-image {
+        display: inline-block !important;
+        vertical-align: middle !important;
+        margin: 0 0.3rem !important;
+        max-height: 2.8em !important;
+        max-width: 4em !important;
+        width: auto !important;
+        height: auto !important;
+        object-fit: contain !important;
+        border-radius: 4px !important;
+        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.1) !important;
+    }
+
+    /* Ajustes opcionais por alinhamento */
+    .evaluation-question-content p[style*="text-align: center"] img:not(.inline-image) {
+        max-width: 80% !important;
+    }
+
+    .evaluation-question-content p[style*="text-align: right"] img:not(.inline-image) {
+        margin: 2rem 0 2rem auto !important;
+        max-width: 60% !important;
+    }
+
+    .evaluation-question-content p[style*="text-align: left"] img:not(.inline-image) {
+        margin: 2rem auto 2rem 0 !important;
+        max-width: 60% !important;
+    }
+  `}
+</style>
+
+
+
                 {/* Header fixo */}
                 <div className="bg-white border-b shadow-sm flex-shrink-0">
-                    <div className="px-4 py-3">
+                    <div className="px-4 py-2">
                         <div className="flex items-center justify-between">
-                            <div>
-                                <h1 className="font-semibold">{testData.title}</h1>
-                                <div className="text-sm text-muted-foreground">
-                                    Questão {currentQuestionIndex + 1} de {testData.totalQuestions}
+                            <div className="flex-1">
+                                <h1 className="text-sm font-semibold">{testData.title}</h1>
+                                <div className="text-xs text-muted-foreground">
+                                    Questão {currentQuestionIndex + 1} de {shuffledQuestions.length}
+                                </div>
+                                {/* ✅ Barra de progresso discreta */}
+                                <div className="mt-2 flex items-center gap-2">
+                                    <div className="w-24 bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                                                                            <div 
+                                        className="bg-purple-500 h-full transition-all duration-300 ease-out"
+                                        style={{ 
+                                            width: `${(Object.keys(answers).length / testData.questions.length) * 100}%` 
+                                        }}
+                                    />
+                                    </div>
+                                    <span className="text-xs text-gray-500 min-w-[30px] text-right">
+                                        {Math.round((Object.keys(answers).length / testData.questions.length) * 100)}%
+                                    </span>
                                 </div>
                             </div>
 
-                            <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-3">
                                 <EvaluationTimer
                                     timeRemaining={timeRemaining}
                                     isTimeUp={isTimeUp}
@@ -451,21 +544,9 @@ export default function TakeEvaluation() {
                                     remainingMinutes={session?.remaining_time_minutes}
                                 />
 
-
-
-                                <div className="text-right">
-                                    <div className="text-sm font-medium">
-                                        {testData.questions.length > 0 ? Math.round((Object.keys(answers).length / testData.questions.length) * 100) : 0}% concluído
-                                    </div>
-                                    <Progress
-                                        value={testData.questions.length > 0 ? (Object.keys(answers).length / testData.questions.length) * 100 : 0}
-                                        className="w-24 h-2"
-                                    />
-                                </div>
-
                                 {isSaving && (
-                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                        <Loader2 className="h-3 w-3 animate-spin" />
                                         Salvando...
                                     </div>
                                 )}
@@ -476,38 +557,26 @@ export default function TakeEvaluation() {
 
                 <div className="flex-1 overflow-hidden">
                     <div className="h-full flex flex-col">
-                        {/* ✅ NOVO: Alerta quando pausado - MAIS COMPACTO */}
-                        {isPaused && (
-                            <div className="px-6 py-3 bg-yellow-50 border-b border-yellow-200">
-                                <Alert className="border-yellow-300 bg-yellow-50 py-2">
-                                    <Pause className="h-4 w-4" />
-                                    <AlertDescription className="text-sm">
-                                        ⏸️ <strong>Cronômetro pausado</strong> - Volte para esta aba para continuar
-                                    </AlertDescription>
-                                </Alert>
-                            </div>
-                        )}
-
-                        {/* ✅ NOVO: Navegação ULTRA-COMPACTA em UMA LINHA */}
-                        <div className={`px-4 py-3 bg-white border-b border-gray-200 shadow-sm transition-all duration-300 ${isNavigationMinimized ? 'h-12 overflow-hidden' : ''}`}>
-                            <div className="flex items-center justify-between mb-3">
-                                                            <div className="flex items-center gap-3">
-                                <h3 className="text-sm font-medium text-gray-700">Navegação</h3>
-                                <div className="text-xs text-gray-500">
-                                    {Object.keys(answers).length}/{testData.questions.length}
-                                </div>
-                                {isNavigationMinimized && (
-                                    <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
-                                        Minimizada
+                        {/* ✅ Navegação ULTRA-COMPACTA em UMA LINHA */}
+                        <div className={`px-4 py-2 bg-white border-b border-gray-200 shadow-sm transition-all duration-300 ${isNavigationMinimized ? 'h-10 overflow-hidden' : ''}`}>
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-3">
+                                    <h3 className="text-xs font-medium text-gray-700">Navegação</h3>
+                                    <div className="text-xs text-gray-500">
+                                        {Object.keys(answers).length}/{shuffledQuestions.length}
                                     </div>
-                                )}
-                            </div>
+                                    {isNavigationMinimized && (
+                                        <div className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">
+                                            Minimizada
+                                        </div>
+                                    )}
+                                </div>
                                 <div className="flex items-center gap-2">
                                     <Button
                                         size="sm"
                                         variant="outline"
                                         onClick={() => setIsNavigationMinimized(!isNavigationMinimized)}
-                                        className="px-2 py-1 h-8"
+                                        className="px-2 py-0.5 h-7"
                                         title={isNavigationMinimized ? "Expandir navegação" : "Minimizar navegação"}
                                     >
                                         {isNavigationMinimized ? (
@@ -519,8 +588,17 @@ export default function TakeEvaluation() {
                                     <Button
                                         size="sm"
                                         onClick={() => setShowSubmitDialog(true)}
-                                        disabled={isTimeUp || isSubmitting}
-                                        className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 h-8"
+                                        disabled={isTimeUp || isSubmitting || Object.keys(answers).length < shuffledQuestions.length}
+                                        className={`px-3 py-0.5 h-7 text-xs ${
+                                            Object.keys(answers).length >= shuffledQuestions.length
+                                                ? 'bg-green-600 hover:bg-green-700 text-white'
+                                                : 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                                        }`}
+                                        title={
+                                            Object.keys(answers).length < shuffledQuestions.length
+                                                ? `Responda todas as ${shuffledQuestions.length} questões primeiro`
+                                                : 'Enviar avaliação'
+                                        }
                                     >
                                         <Send className="h-3 w-3 mr-1" />
                                         Enviar
@@ -528,9 +606,9 @@ export default function TakeEvaluation() {
                                 </div>
                             </div>
                             
-                            {/* ✅ NOVO: UMA LINHA com ícones mais juntinhos */}
+                            {/* ✅ UMA LINHA com ícones mais juntinhos */}
                             <div className={`flex flex-wrap gap-0.5 transition-all duration-300 ${isNavigationMinimized ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-                                {testData.questions.map((question, index) => {
+                                {shuffledQuestions.map((question, index) => {
                                     const hasAnswer = answers[question.id]?.answer && answers[question.id]?.answer !== "";
                                     const isCurrent = index === currentQuestionIndex;
 
@@ -538,9 +616,9 @@ export default function TakeEvaluation() {
                                         <button
                                             key={question.id}
                                             className={`
-                                                evaluation-navigation-button relative w-8 h-8 rounded text-sm font-medium flex-shrink-0
+                                                evaluation-navigation-button relative w-7 h-7 rounded text-xs font-medium flex-shrink-0
                                                 ${isCurrent 
-                                                    ? 'bg-blue-600 text-white ring-2 ring-blue-300 shadow-md' 
+                                                    ? 'bg-purple-600 text-white ring-2 ring-purple-300 shadow-md' 
                                                     : hasAnswer 
                                                         ? 'bg-green-100 text-green-700 border border-green-300 hover:bg-green-200' 
                                                         : 'bg-gray-100 text-gray-600 border border-gray-300 hover:bg-gray-200'
@@ -552,7 +630,7 @@ export default function TakeEvaluation() {
                                         >
                                             {index + 1}
                                             {hasAnswer && !isCurrent && (
-                                                <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full"></div>
+                                                <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-green-500 rounded-full"></div>
                                             )}
                                         </button>
                                     );
@@ -560,7 +638,7 @@ export default function TakeEvaluation() {
                             </div>
                         </div>
 
-                        {/* ✅ NOVO: Área principal - MAIS VISÍVEL e PROFISSIONAL */}
+                        {/* ✅ Área principal - MAIS VISÍVEL e PROFISSIONAL */}
                         <div className="flex-1 overflow-y-auto bg-gray-50">
                             <div className="max-w-5xl mx-auto p-6">
                                 <Card className="evaluation-question-card question-fade-in">
@@ -568,94 +646,62 @@ export default function TakeEvaluation() {
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-4">
                                                 <div className="flex items-center gap-2">
-                                                    <Badge variant="outline" className="bg-white border-blue-300 text-blue-700">
+                                                    <Badge variant="outline" className="bg-white border-purple-300 text-purple-700">
                                                         Questão {currentQuestionIndex + 1}
                                                     </Badge>
-                                                    <Badge variant="secondary" className="bg-blue-100 text-blue-800">
-                                                        {currentQuestion.points || 1} ponto{(currentQuestion.points || 1) !== 1 ? 's' : ''}
-                                                    </Badge>
-                                                </div>
-                                                <div className="text-sm text-blue-600">
-                                                    {testData.questions.length} questões • {testData.duration} minutos
-                                                </div>
-                                            </div>
-                                            <div className="text-right">
-                                                <div className="text-xs text-gray-500 mb-1">Progresso</div>
-                                                <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
-                                                    <div 
-                                                        className="h-full bg-blue-600 transition-all duration-300"
-                                                        style={{ 
-                                                            width: `${testData.questions.length > 0 ? (Object.keys(answers).length / testData.questions.length) * 100 : 0}%` 
-                                                        }}
-                                                    ></div>
                                                 </div>
                                             </div>
                                         </div>
                                     </CardHeader>
-                                    <CardContent className="p-8 space-y-8">
-                                        {/* Conteúdo da questão - MAIS LEGÍVEL */}
-                                        <div className="space-y-6">
-
-                                            
-                                            {/* Primeiro enunciado */}
+                                    <CardContent className="p-8 space-y-10">
+                                        {/* Conteúdo da Questão */}
+                                        <div className="evaluation-question-content space-y-6">
+                                            {/* Primeiro Enunciado */}
                                             {(currentQuestion?.formattedText || currentQuestion?.text) && (
-                                                <div className="text-lg leading-relaxed text-gray-800">
-                                                    <div dangerouslySetInnerHTML={{ __html: currentQuestion?.formattedText || currentQuestion?.text || '' }} />
+                                                <div className="prose max-w-none text-gray-800 text-lg leading-relaxed">
+                                                    <div
+                                                        dangerouslySetInnerHTML={{
+                                                            __html: currentQuestion?.formattedText || currentQuestion?.text || '',
+                                                        }}
+                                                    />
                                                 </div>
                                             )}
 
-                                            {/* Imagens - MELHOR DISPLAY */}
-                                            {currentQuestion?.images && Array.isArray(currentQuestion.images) && currentQuestion.images.length > 0 && (
-                                                <div className="flex flex-wrap gap-6 my-6">
-                                                    {currentQuestion.images.map((image, index) => {
-                                                        const imageUrl = typeof image === 'string' ? image : image?.url || image?.src;
-                                                        if (!imageUrl) return null;
-
-                                                        return (
-                                                            <div key={index} className="max-w-lg">
-                                                                <img
-                                                                    src={imageUrl}
-                                                                    alt={`Imagem ${index + 1} da questão`}
-                                                                    className="w-full h-auto rounded-lg border shadow-md"
-                                                                    style={{ maxHeight: '500px', objectFit: 'contain' }}
-                                                                    onError={(e) => {
-                                                                        e.currentTarget.style.display = 'none';
-                                                                    }}
-                                                                />
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            )}
-
-                                            {/* Segundo enunciado */}
-                                            {currentQuestion?.secondStatement && 
-                                             currentQuestion.secondStatement.trim().length > 0 && (
-                                                <div className="text-lg leading-relaxed text-gray-800">
-                                                    <div dangerouslySetInnerHTML={{ __html: currentQuestion.secondStatement.trim() }} />
+                                            {/* Segundo Enunciado */}
+                                            {currentQuestion?.secondStatement?.trim() && (
+                                                <div className="prose max-w-none text-gray-800 text-lg leading-relaxed">
+                                                    <div
+                                                        dangerouslySetInnerHTML={{
+                                                            __html: currentQuestion.secondStatement.trim(),
+                                                        }}
+                                                    />
                                                 </div>
                                             )}
                                         </div>
 
-                                        {/* Opções de resposta - MAIS DESTACADAS */}
-                                        <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
+                                        {/* Opções de Resposta */}
+                                        <div className="rounded-2xl border border-gray-200 bg-white shadow p-6">
                                             <QuestionOptions
                                                 question={currentQuestion}
                                                 answer={answers[currentQuestion?.id]?.answer}
                                                 onAnswerChange={(newAnswer) => {
                                                     if (currentQuestion?.id) {
+                                                        console.log('💾 Salvando resposta:', {
+                                                            questionId: currentQuestion.id,
+                                                            answer: newAnswer,
+                                                            questionType: currentQuestion.type,
+                                                            currentAnswers: Object.keys(answers)
+                                                        });
                                                         saveAnswer(currentQuestion.id, newAnswer);
-                                                        
-                                                        // ✅ NOVO: Avanço automático após seleção
-                                                        // Apenas para questões de múltipla escolha e verdadeiro/falso
-                                                        if ((currentQuestion.type === "multiple_choice" || 
-                                                             currentQuestion.type === "multipleChoice" ||
-                                                             currentQuestion.type === "true_false" || 
-                                                             currentQuestion.type === "truefalse") &&
-                                                            newAnswer && 
-                                                            currentQuestionIndex < testData.questions.length - 1) {
-                                                            
-                                                            // Delay de 1 segundo para o usuário ver a seleção
+
+                                                        // Avanço automático
+                                                        if (
+                                                            ['multiple_choice', 'multipleChoice', 'true_false', 'truefalse'].includes(
+                                                                currentQuestion.type,
+                                                            ) &&
+                                                            newAnswer &&
+                                                            currentQuestionIndex < shuffledQuestions.length - 1
+                                                        ) {
                                                             setTimeout(() => {
                                                                 navigateToQuestion(currentQuestionIndex + 1);
                                                             }, 1000);
@@ -665,36 +711,36 @@ export default function TakeEvaluation() {
                                                 disabled={isTimeUp}
                                             />
                                         </div>
-
-                                        {/* ✅ NOVO: Navegação mais elegante */}
-                                        <div className="flex items-center justify-between pt-6 border-t border-gray-200">
-                                            <Button
-                                                variant="outline"
-                                                size="lg"
-                                                onClick={() => navigateToQuestion(currentQuestionIndex - 1)}
-                                                disabled={currentQuestionIndex === 0 || isTimeUp}
-                                                className="px-6"
-                                            >
-                                                <ChevronLeft className="h-5 w-5 mr-2" />
-                                                Questão Anterior
-                                            </Button>
-
-                                            <div className="text-sm text-gray-500">
-                                                {currentQuestionIndex + 1} de {testData.questions.length}
-                                            </div>
-
-                                            <Button
-                                                size="lg"
-                                                onClick={() => navigateToQuestion(currentQuestionIndex + 1)}
-                                                disabled={currentQuestionIndex === testData.questions.length - 1 || isTimeUp}
-                                                className="px-6 bg-blue-600 hover:bg-blue-700"
-                                            >
-                                                Próxima Questão
-                                                <ChevronRight className="h-5 w-5 ml-2" />
-                                            </Button>
-                                        </div>
                                     </CardContent>
                                 </Card>
+
+                                {/* ✅ Navegação SIMPLIFICADA para crianças */}
+                                <div className="flex items-center justify-between pt-6 border-t border-gray-200">
+                                    <Button
+                                        variant="outline"
+                                        size="lg"
+                                        onClick={() => navigateToQuestion(currentQuestionIndex - 1)}
+                                        disabled={currentQuestionIndex === 0 || isTimeUp}
+                                        className="px-8 py-4 text-lg font-bold border-2 rounded-xl hover:bg-gray-50 disabled:opacity-50"
+                                    >
+                                        <ChevronLeft className="h-8 w-8 mr-3" />
+                                        ← Voltar
+                                    </Button>
+
+                                    <div className="text-lg font-bold text-purple-600 bg-purple-50 px-6 py-3 rounded-full">
+                                        {currentQuestionIndex + 1} de {shuffledQuestions.length}
+                                    </div>
+
+                                    <Button
+                                        size="lg"
+                                        onClick={() => navigateToQuestion(currentQuestionIndex + 1)}
+                                        disabled={currentQuestionIndex === shuffledQuestions.length - 1 || isTimeUp}
+                                        className="px-8 py-4 text-lg font-bold bg-purple-600 hover:bg-purple-700 text-white rounded-xl shadow-lg hover:shadow-xl transition-all"
+                                    >
+                                        Avançar →
+                                        <ChevronRight className="h-8 w-8 ml-3" />
+                                    </Button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -710,13 +756,10 @@ export default function TakeEvaluation() {
                                     <p className="mb-4">Você tem certeza que deseja enviar sua avaliação?</p>
 
                                     <div className="space-y-2 mb-4">
-                                        <div>Questões respondidas: {Object.keys(answers).length} de {testData.questions.length || 0}</div>
-                                        <div>Tempo restante: {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}</div>
+                                        <div>Questões respondidas: {Object.keys(answers).length} de {shuffledQuestions.length || 0}</div>
                                     </div>
 
-                                    <div className="text-sm text-orange-600">
-                                        ⚠️ Após enviar, você não poderá mais alterar suas respostas.
-                                    </div>
+
                                 </div>
                             </AlertDialogDescription>
                         </AlertDialogHeader>
@@ -731,6 +774,63 @@ export default function TakeEvaluation() {
                         </AlertDialogFooter>
                     </AlertDialogContent>
                 </AlertDialog>
+
+                {/* ✅ Dialog de confirmação quando todas as questões são respondidas */}
+                <AlertDialog open={showCompletionDialog} onOpenChange={setShowCompletionDialog}>
+  <AlertDialogContent className="max-w-md mx-4 sm:mx-0">
+    <AlertDialogHeader className="pb-4">
+      <AlertDialogTitle className="text-center text-xl sm:text-2xl font-bold text-green-700">
+        Avaliação Concluída
+      </AlertDialogTitle>
+      <AlertDialogDescription asChild>
+        <div className="text-center space-y-4 px-2">
+          <div className="flex items-center justify-center">
+            <CheckCircle2 className="h-12 w-12 sm:h-16 sm:w-16 text-green-600" />
+          </div>
+          <div className="space-y-2">
+            <p className="text-base sm:text-lg font-semibold text-gray-800 leading-relaxed">
+              Todas as questões foram respondidas com sucesso.
+            </p>
+            <p className="text-sm text-gray-600">
+              Deseja enviar sua avaliação agora para finalização?
+            </p>
+          </div>
+        </div>
+      </AlertDialogDescription>
+    </AlertDialogHeader>
+
+    <AlertDialogFooter className="flex flex-col sm:flex-row gap-3 px-4 pb-4">
+      <AlertDialogCancel
+        className="w-full sm:w-auto order-2 sm:order-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 px-6 rounded-lg transition-colors"
+        onClick={() => setShowCompletionDialog(false)}
+      >
+        <ChevronLeft className="h-4 w-4 mr-2 inline" />
+        Revisar Respostas
+      </AlertDialogCancel>
+
+      <AlertDialogAction
+        className="w-full sm:w-auto order-1 sm:order-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors shadow-lg hover:shadow-xl"
+        onClick={() => {
+          setShowCompletionDialog(false);
+          handleSubmitTest(false);
+        }}
+        disabled={isSubmitting}
+      >
+        {isSubmitting ? (
+          <>
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            Enviando...
+          </>
+        ) : (
+          <>
+            <Send className="h-4 w-4 mr-2" />
+            Confirmar Envio
+          </>
+        )}
+      </AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
             </div>
         );
     }
@@ -760,16 +860,32 @@ function QuestionOptions({
                     Selecione a alternativa correta:
                 </div>
                 <RadioGroup
-                    value={answer || ""}
+                    value={(() => {
+                        // Converter a letra da resposta (A, B, C, D) para o ID da opção
+                        if (!answer) return "";
+                        const answerIndex = answer.charCodeAt(0) - 65; // A=0, B=1, C=2, D=3
+                        const option = questionOptions[answerIndex];
+                        return option?.id || `option-${answerIndex}`;
+                    })()}
                     onValueChange={(val) => {
-                        // Corrigir: enviar a letra (A, B, C, D...)
-                        const index = questionOptions.findIndex((option, idx) => {
-                            const optionId = option.id || `option-${idx}`;
+                        console.log('🔄 RadioGroup onValueChange:', val);
+                        // Encontrar o índice da opção selecionada
+                        const index = questionOptions.findIndex(option => {
+                            const optionId = option.id || `option-${questionOptions.indexOf(option)}`;
                             return optionId === val;
                         });
+                        
                         if (index !== -1) {
-                            onAnswerChange(String.fromCharCode(65 + index));
+                            const correctLetter = String.fromCharCode(65 + index);
+                            console.log('📝 Resposta selecionada:', {
+                                selectedValue: val,
+                                index: index,
+                                letter: correctLetter,
+                                optionText: questionOptions[index].text
+                            });
+                            onAnswerChange(correctLetter);
                         } else {
+                            console.log('❌ Opção não encontrada:', val);
                             onAnswerChange("");
                         }
                     }}
@@ -785,10 +901,20 @@ function QuestionOptions({
                             <div
                                 key={optionId}
                                 className={`flex items-start space-x-3 p-4 rounded-lg border cursor-pointer transition-all hover:bg-gray-50 ${isSelected
-                                    ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+                                    ? 'border-purple-500 bg-purple-50 ring-2 ring-purple-200'
                                     : 'border-gray-200 hover:border-gray-300'
                                     } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                onClick={() => !disabled && onAnswerChange(String.fromCharCode(65 + index))}
+                                onClick={() => {
+                                    if (!disabled) {
+                                        const correctLetter = String.fromCharCode(65 + index);
+                                        console.log('🖱️ Click na opção:', {
+                                            index: index,
+                                            letter: correctLetter,
+                                            optionText: optionText
+                                        });
+                                        onAnswerChange(correctLetter);
+                                    }
+                                }}
                             >
                                 <RadioGroupItem
                                     value={optionId}
@@ -836,7 +962,7 @@ function QuestionOptions({
                             <div
                                 key={option.id}
                                 className={`flex items-center space-x-3 p-4 rounded-lg border cursor-pointer transition-all hover:bg-gray-50 ${isSelected
-                                    ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+                                    ? 'border-purple-500 bg-purple-50 ring-2 ring-purple-200'
                                     : 'border-gray-200 hover:border-gray-300'
                                     } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 onClick={() => !disabled && onAnswerChange(option.id)}
@@ -873,7 +999,7 @@ function QuestionOptions({
                             <div
                                 key={optionId}
                                 className={`flex items-start space-x-3 p-4 rounded-lg border cursor-pointer transition-all hover:bg-gray-50 ${isSelected
-                                    ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+                                    ? 'border-purple-500 bg-purple-50 ring-2 ring-purple-200'
                                     : 'border-gray-200 hover:border-gray-300'
                                     } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 onClick={() => {

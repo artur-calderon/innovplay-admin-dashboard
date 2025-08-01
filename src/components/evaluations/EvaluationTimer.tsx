@@ -71,21 +71,6 @@ export function EvaluationTimer({
         {getTimerText()}
       </Badge>
 
-      {/* ✅ NOVO: Informações adicionais do cronômetro */}
-      {timeLimitMinutes && remainingMinutes !== undefined && (
-        <div className="text-xs text-muted-foreground text-right">
-          <div className="flex items-center gap-2">
-            <span>{remainingMinutes}/{timeLimitMinutes} min</span>
-            <div className="w-16 h-1 bg-gray-200 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-blue-500 transition-all duration-300"
-                style={{ width: `${getTimePercentage()}%` }}
-              />
-            </div>
-            <span>{Math.round(getTimePercentage())}%</span>
-          </div>
-        </div>
-      )}
     </div>
   );
 } 
