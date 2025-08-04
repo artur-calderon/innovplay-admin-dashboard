@@ -242,13 +242,13 @@ export default function Results() {
   const loadInitialFilters = async () => {
     try {
       setIsLoadingFilters(true);
-      const [statesData, gradesData] = await Promise.all([
-        EvaluationResultsApiService.getStates(),
-        EvaluationResultsApiService.getGrades()
-      ]);
-
-      setStates(statesData);
-      setGrades(gradesData);
+      // ✅ NOVO: Usar a nova rota de estados
+      const statesData = await EvaluationResultsApiService.getFilterStates();
+      setStates(statesData.map(state => ({
+        id: state.id,
+        name: state.nome,
+        uf: state.id
+      })));
     } catch (error) {
       console.error("Erro ao carregar filtros iniciais:", error);
       toast({
@@ -262,14 +262,19 @@ export default function Results() {
     }
   };
 
-  // Carregar municípios quando estado for selecionado
+  // ✅ NOVO: Carregar municípios quando estado for selecionado
   useEffect(() => {
     const loadMunicipalities = async () => {
       if (selectedState !== 'all') {
         try {
           setIsLoadingFilters(true);
-          const municipalitiesData = await EvaluationResultsApiService.getMunicipalitiesByState(selectedState);
-          setMunicipalities(municipalitiesData);
+          const municipalitiesData = await EvaluationResultsApiService.getFilterMunicipalities(selectedState);
+          setMunicipalities(municipalitiesData.map(municipality => ({
+            id: municipality.id,
+            name: municipality.nome,
+            state: selectedState,
+            created_at: new Date().toISOString()
+          })));
           // Resetar seleções dependentes
           setSelectedMunicipality('all');
           setSelectedEvaluation('all');
@@ -308,19 +313,18 @@ export default function Results() {
       if (selectedMunicipality !== 'all') {
         try {
           setIsLoadingFilters(true);
-          // Usar o endpoint principal para buscar avaliações por município
-          const response = await EvaluationResultsApiService.getEvaluationsList(1, 10, {
+          // ✅ NOVO: Usar a nova rota de avaliações com estado e município
+          const evaluationsData = await EvaluationResultsApiService.getFilterEvaluations({
             estado: selectedState,
             municipio: selectedMunicipality
           });
-
-          if (response && response.opcoes_proximos_filtros) {
-            // Extrair avaliações da resposta (se disponível)
-            // Por enquanto, vamos usar um array vazio até o backend implementar
-            setEvaluationsByMunicipality([]);
-          } else {
-            setEvaluationsByMunicipality([]);
-          }
+          setEvaluationsByMunicipality(evaluationsData.map(evaluation => ({
+            id: evaluation.id,
+            titulo: evaluation.titulo,
+            disciplina: '', // Será preenchido quando necessário
+            status: 'concluida', // Valor padrão
+            data_aplicacao: new Date().toISOString()
+          })));
 
           // Resetar seleções dependentes
           setSelectedEvaluation('all');
@@ -351,16 +355,17 @@ export default function Results() {
     loadEvaluations();
   }, [selectedMunicipality, selectedState]);
 
-  // ✅ NOVO: Carregar escolas quando avaliação for selecionada (usando dados da API)
+  // ✅ NOVO: Carregar escolas quando município for selecionado
   useEffect(() => {
     const loadSchools = async () => {
-      if (selectedEvaluation !== 'all' && apiData?.opcoes_proximos_filtros?.escolas) {
+      if (selectedMunicipality !== 'all') {
         try {
           setIsLoadingFilters(true);
-          // Usar as escolas retornadas pela API
-          const schoolsData = apiData.opcoes_proximos_filtros.escolas.map(school => ({
+          // ✅ NOVO: Usar a nova rota de escolas com município
+          const schoolsData = await EvaluationResultsApiService.getFilterSchools(selectedMunicipality);
+          setSchools(schoolsData.map(school => ({
             id: school.id,
-            name: school.name,
+            name: school.nome,
             city: {
               id: selectedMunicipality,
               name: municipalities.find(m => m.id === selectedMunicipality)?.name || '',
@@ -368,8 +373,7 @@ export default function Results() {
             },
             students_count: 0,
             classes_count: 0
-          }));
-          setSchools(schoolsData);
+          })));
           // Resetar seleções dependentes
           setSelectedSchool('all');
           setSelectedGrade('all');
@@ -392,25 +396,29 @@ export default function Results() {
     };
 
     loadSchools();
-  }, [selectedEvaluation, apiData?.opcoes_proximos_filtros?.escolas, selectedMunicipality, municipalities, states]);
+  }, [selectedMunicipality, municipalities, states]);
 
-  // ✅ NOVO: Carregar séries quando escola for selecionada (usando dados da API)
+  // ✅ NOVO: Carregar séries quando escola for selecionada
   useEffect(() => {
     const loadGrades = async () => {
-      if (selectedSchool !== 'all' && apiData?.opcoes_proximos_filtros?.series) {
+      if (selectedSchool !== 'all') {
         try {
           setIsLoadingFilters(true);
-          // Usar as séries retornadas pela API
-          const gradesData = apiData.opcoes_proximos_filtros.series.map(grade => ({
+          // ✅ NOVO: Usar a nova rota de séries com filtros aplicados
+          const gradesData = await EvaluationResultsApiService.getFilterGrades({
+            estado: selectedState,
+            municipio: selectedMunicipality,
+            escola: selectedSchool
+          });
+          setGrades(gradesData.map(grade => ({
             id: grade.id,
-            name: grade.name,
+            name: grade.nome,
             education_stage_id: '',
             education_stage: {
               id: '',
               name: ''
             }
-          }));
-          setGrades(gradesData);
+          })));
           // Resetar seleções dependentes
           setSelectedGrade('all');
           setSelectedClass('all');
@@ -429,18 +437,24 @@ export default function Results() {
     };
 
     loadGrades();
-  }, [selectedSchool, apiData?.opcoes_proximos_filtros?.series]);
+  }, [selectedSchool, selectedState, selectedMunicipality]);
 
-  // ✅ NOVO: Carregar turmas quando série for selecionada (usando dados da API)
+  // ✅ NOVO: Carregar turmas quando série for selecionada
   useEffect(() => {
     const loadClasses = async () => {
-      if (selectedGrade !== 'all' && apiData?.opcoes_proximos_filtros?.turmas) {
+      if (selectedGrade !== 'all') {
         try {
           setIsLoadingFilters(true);
-          // Usar as turmas retornadas pela API
-          const classesData = apiData.opcoes_proximos_filtros.turmas.map(classItem => ({
+          // ✅ NOVO: Usar a nova rota de turmas com filtros aplicados
+          const classesData = await EvaluationResultsApiService.getFilterClasses({
+            estado: selectedState,
+            municipio: selectedMunicipality,
+            escola: selectedSchool,
+            serie: selectedGrade
+          });
+          setClasses(classesData.map(classItem => ({
             id: classItem.id,
-            name: classItem.name,
+            name: classItem.nome,
             school: {
               id: selectedSchool,
               name: schools.find(s => s.id === selectedSchool)?.name || ''
@@ -449,8 +463,7 @@ export default function Results() {
               id: selectedGrade,
               name: grades.find(g => g.id === selectedGrade)?.name || ''
             }
-          }));
-          setClasses(classesData);
+          })));
           setSelectedClass('all');
         } catch (error) {
           console.error("Erro ao carregar turmas:", error);
@@ -464,7 +477,7 @@ export default function Results() {
     };
 
     loadClasses();
-  }, [selectedGrade, apiData?.opcoes_proximos_filtros?.turmas, selectedSchool, schools, grades]);
+  }, [selectedGrade, selectedState, selectedMunicipality, selectedSchool, schools, grades]);
 
   // Carregar dados quando filtros mudarem
   useEffect(() => {
@@ -497,6 +510,7 @@ export default function Results() {
         turma: selectedClass,
       };
 
+      // ✅ NOVO: Usar a rota correta /evaluation-results/avaliacoes
       const response = await EvaluationResultsApiService.getEvaluationsList(currentPage, perPage, filters);
 
       // ✅ LOG: Mostrar como os dados estão sendo processados no componente
@@ -508,22 +522,54 @@ export default function Results() {
 
       // ✅ NOVO: Normalizar a estrutura da resposta para compatibilidade
       if (response) {
-        // Verificar se a resposta tem a estrutura esperada
-        if (response.resultados_detalhados) {
-          // Se resultados_detalhados.data existe, usar como avaliacoes
-          const responseAny = response as any;
-          if (responseAny.resultados_detalhados.data && !response.resultados_detalhados.avaliacoes) {
-            response.resultados_detalhados.avaliacoes = responseAny.resultados_detalhados.data;
-          }
+        // ✅ NOVO: Garantir que a estrutura seja compatível com a interface NovaRespostaAPI
+        const normalizedResponse = {
+          nivel_granularidade: response.nivel_granularidade || 'municipio',
+          filtros_aplicados: response.filtros_aplicados || {
+            estado: selectedState,
+            municipio: selectedMunicipality,
+            escola: selectedSchool || null,
+            serie: selectedGrade || null,
+            turma: selectedClass || null,
+            avaliacao: selectedEvaluation
+          },
+          estatisticas_gerais: response.estatisticas_gerais || {
+            tipo: 'municipio',
+            nome: 'Dados gerais',
+            estado: selectedState,
+            total_avaliacoes: 0,
+            total_alunos: 0,
+            alunos_participantes: 0,
+            alunos_pendentes: 0,
+            alunos_ausentes: 0,
+            media_nota_geral: 0,
+            media_proficiencia_geral: 0,
+            distribuicao_classificacao_geral: {
+              abaixo_do_basico: 0,
+              basico: 0,
+              adequado: 0,
+              avancado: 0
+            }
+          },
+          resultados_por_disciplina: response.resultados_por_disciplina || [],
+          resultados_detalhados: {
+            avaliacoes: response.resultados_detalhados?.avaliacoes || 
+                       (response.resultados_detalhados as any)?.data || 
+                       [],
+            paginacao: response.resultados_detalhados?.paginacao || {
+              page: currentPage,
+              per_page: perPage,
+              total: 0,
+              total_pages: 0
+            }
+          },
+          opcoes_proximos_filtros: response.opcoes_proximos_filtros || {}
+        };
 
-          // Garantir que avaliacoes seja sempre um array
-          if (!response.resultados_detalhados.avaliacoes) {
-            response.resultados_detalhados.avaliacoes = [];
-          }
-        }
+        setApiData(normalizedResponse);
+      } else {
+        setApiData(null);
       }
-
-      setApiData(response as any);
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
       toast({
@@ -551,7 +597,7 @@ export default function Results() {
       const XLSX = await import('xlsx');
       const { saveAs } = await import('file-saver');
 
-      if (!apiData || (!apiData.resultados_detalhados?.avaliacoes?.length && !(apiData.resultados_detalhados as any)?.data?.length) || apiData.estatisticas_gerais?.total_avaliacoes === 0) {
+      if (!apiData || (!apiData.resultados_detalhados?.avaliacoes?.length && !(apiData.resultados_detalhados as any)?.data?.length) || (apiData.estatisticas_gerais?.total_avaliacoes || 0) === 0) {
         toast({
           title: "Nenhum dado para exportar",
           description: "Não há avaliações para gerar a planilha",
@@ -563,16 +609,16 @@ export default function Results() {
       const worksheetData = [
         ['Avaliação', 'Disciplina', 'Escola', 'Série', 'Turma', 'Município', 'Estado', 'Participantes', 'Média', 'Proficiência', 'Status'],
         ...(apiData.resultados_detalhados?.avaliacoes || (apiData.resultados_detalhados as any)?.data || []).map(evaluation => [
-          evaluation.titulo,
-          evaluation.disciplina,
-          evaluation.escola,
-          evaluation.serie,
-          evaluation.turma,
-          evaluation.municipio,
-          evaluation.estado,
-          `${evaluation.alunos_participantes}/${evaluation.total_alunos}`,
-          evaluation.media_nota.toFixed(1),
-          evaluation.media_proficiencia.toFixed(1),
+          evaluation.titulo || 'Sem título',
+          evaluation.disciplina || 'Sem disciplina',
+          evaluation.escola || 'Sem escola',
+          evaluation.serie || 'Sem série',
+          evaluation.turma || 'Sem turma',
+          evaluation.municipio || 'Sem município',
+          evaluation.estado || 'Sem estado',
+          `${evaluation.alunos_participantes || 0}/${evaluation.total_alunos || 0}`,
+          (evaluation.media_nota || 0).toFixed(1),
+          (evaluation.media_proficiencia || 0).toFixed(1),
           evaluation.status === 'concluida' ? 'Concluída' : evaluation.status === 'em_andamento' ? 'Em Andamento' : 'Pendente'
         ])
       ];
@@ -719,10 +765,10 @@ export default function Results() {
           {apiData && (
             <div className="mt-2 flex items-center gap-2">
               <Badge variant="outline" className="text-xs">
-                Nível: {apiData.nivel_granularidade.charAt(0).toUpperCase() + apiData.nivel_granularidade.slice(1)}
+                Nível: {apiData.nivel_granularidade ? apiData.nivel_granularidade.charAt(0).toUpperCase() + apiData.nivel_granularidade.slice(1) : 'Município'}
               </Badge>
               <span className="text-xs text-muted-foreground">
-                {apiData.estatisticas_gerais.nome}
+                {apiData.estatisticas_gerais?.nome || 'Dados gerais'}
               </span>
             </div>
           )}
@@ -832,7 +878,7 @@ export default function Results() {
               <Select
                 value={selectedSchool}
                 onValueChange={setSelectedSchool}
-                disabled={isLoadingFilters || selectedEvaluation === 'all'}
+                disabled={isLoadingFilters || selectedMunicipality === 'all'}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione a escola" />
@@ -896,7 +942,7 @@ export default function Results() {
           {/* Informação sobre filtros */}
           <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
             <p className="text-sm text-blue-700">
-              💡 Selecione os três filtros obrigatórios para visualizar os dados: Estado, Município e Avaliação. Escola, Série e Turma são opcionais.
+              💡 Selecione os três filtros obrigatórios para visualizar os dados: Estado, Município e Avaliação. Escola, Série e Turma são opcionais e podem ser "Todos".
             </p>
           </div>
         </CardContent>
@@ -932,31 +978,33 @@ export default function Results() {
       {/* Gráficos e Dados */}
       {allRequiredFiltersSelected && !isLoadingData && apiData && (
         <>
-          {/* ✅ NOVO: Verificar se há avaliações antes de mostrar gráficos e estatísticas */}
-          {(() => {
-            const avaliacoesLength = apiData.resultados_detalhados?.avaliacoes?.length || 0;
-            const dataLength = (apiData.resultados_detalhados as any)?.data?.length || 0;
-            const totalAvaliacoes = apiData.estatisticas_gerais?.total_avaliacoes || 0;
+                     {/* ✅ NOVO: Verificar se há avaliações antes de mostrar gráficos e estatísticas */}
+           {(() => {
+             const avaliacoesLength = apiData.resultados_detalhados?.avaliacoes?.length || 0;
+             const dataLength = (apiData.resultados_detalhados as any)?.data?.length || 0;
+             const totalAvaliacoes = apiData.estatisticas_gerais?.total_avaliacoes || 0;
+             const totalAlunos = apiData.estatisticas_gerais?.total_alunos || 0;
 
-            console.log('🔍 DEBUG - Verificação de avaliações vazias:');
-            console.log('📊 avaliacoes.length:', avaliacoesLength);
-            console.log('📊 data.length:', dataLength);
-            console.log('📊 total_avaliacoes:', totalAvaliacoes);
-            console.log('📊 Condição satisfeita:', avaliacoesLength === 0 && dataLength === 0);
+             console.log('🔍 DEBUG - Verificação de avaliações vazias:');
+             console.log('📊 avaliacoes.length:', avaliacoesLength);
+             console.log('📊 data.length:', dataLength);
+             console.log('📊 total_avaliacoes:', totalAvaliacoes);
+             console.log('📊 total_alunos:', totalAlunos);
+             console.log('📊 Condição satisfeita:', (avaliacoesLength === 0 && dataLength === 0) || totalAvaliacoes === 0 || totalAlunos === 0);
 
-            return (avaliacoesLength === 0 && dataLength === 0) || totalAvaliacoes === 0;
-          })() ? (
+             return (avaliacoesLength === 0 && dataLength === 0) || totalAvaliacoes === 0 || totalAlunos === 0;
+           })() ? (
             <Card>
               <CardContent className="text-center py-12">
                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
                   <FileX className="h-8 w-8 text-gray-400" />
                 </div>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  Nenhuma avaliação encontrada
-                </h3>
-                <p className="text-gray-600">
-                  Não foram encontradas avaliações para os filtros selecionados.
-                </p>
+                                 <h3 className="text-lg font-medium text-gray-900 mb-2">
+                   Nenhum resultado para mostrar
+                 </h3>
+                 <p className="text-gray-600">
+                   Não foram encontrados resultados para os filtros selecionados.
+                 </p>
               </CardContent>
             </Card>
           ) : (
@@ -1086,14 +1134,15 @@ export default function Results() {
                 </div>
               )}
 
-              {/* Lista de Avaliações */}
-              {(() => {
-                const avaliacoesLength = apiData.resultados_detalhados?.avaliacoes?.length || 0;
-                const dataLength = (apiData.resultados_detalhados as any)?.data?.length || 0;
-                const totalAvaliacoes = apiData.estatisticas_gerais?.total_avaliacoes || 0;
+                             {/* Lista de Avaliações */}
+               {(() => {
+                 const avaliacoesLength = apiData.resultados_detalhados?.avaliacoes?.length || 0;
+                 const dataLength = (apiData.resultados_detalhados as any)?.data?.length || 0;
+                 const totalAvaliacoes = apiData.estatisticas_gerais?.total_avaliacoes || 0;
+                 const totalAlunos = apiData.estatisticas_gerais?.total_alunos || 0;
 
-                return (avaliacoesLength > 0 || dataLength > 0) && totalAvaliacoes > 0;
-              })() ? (
+                 return (avaliacoesLength > 0 || dataLength > 0) && totalAvaliacoes > 0 && totalAlunos > 0;
+               })() ? (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center justify-between">
@@ -1126,19 +1175,19 @@ export default function Results() {
 
                                 <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
                                   <div className="flex items-center gap-1">
-                                    <Badge variant="outline">{evaluation.disciplina}</Badge>
+                                    <Badge variant="outline">{evaluation.disciplina || 'Sem disciplina'}</Badge>
                                     <span>•</span>
-                                    <span>{evaluation.serie}</span>
+                                    <span>{evaluation.serie || 'Sem série'}</span>
                                     <span>•</span>
-                                    <span>{evaluation.turma}</span>
+                                    <span>{evaluation.turma || 'Sem turma'}</span>
                                   </div>
                                   <div className="flex items-center gap-1">
                                     <School className="h-4 w-4" />
-                                    <span>{evaluation.escola}</span>
+                                    <span>{evaluation.escola || 'Sem escola'}</span>
                                   </div>
                                   <div className="flex items-center gap-1">
                                     <MapPin className="h-4 w-4" />
-                                    <span>{evaluation.municipio}, {evaluation.estado}</span>
+                                    <span>{evaluation.municipio || 'Sem município'}, {evaluation.estado || 'Sem estado'}</span>
                                   </div>
                                 </div>
 
@@ -1200,12 +1249,12 @@ export default function Results() {
                     <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
                       <FileText className="h-8 w-8 text-gray-400" />
                     </div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">
-                      Nenhuma avaliação encontrada
-                    </h3>
-                    <p className="text-gray-600 text-center max-w-md">
-                      Não foram encontradas avaliações para os filtros selecionados. Tente ajustar os filtros ou verificar se existem avaliações cadastradas para este município.
-                    </p>
+                                         <h3 className="text-lg font-medium text-gray-900 mb-2">
+                       Nenhum resultado para mostrar
+                     </h3>
+                     <p className="text-gray-600 text-center max-w-md">
+                       Não foram encontrados resultados para os filtros selecionados. Tente ajustar os filtros ou verificar se existem dados cadastrados para esta seleção.
+                     </p>
                   </CardContent>
                 </Card>
               )}
