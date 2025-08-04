@@ -275,7 +275,7 @@ export default function Results() {
             state: selectedState,
             created_at: new Date().toISOString()
           })));
-          // Resetar seleções dependentes
+          // ✅ NOVO: Resetar seleções dependentes (escolas, séries e turmas agora são carregadas pelo loadData)
           setSelectedMunicipality('all');
           setSelectedEvaluation('all');
           setSelectedSchool('all');
@@ -326,7 +326,7 @@ export default function Results() {
             data_aplicacao: new Date().toISOString()
           })));
 
-          // Resetar seleções dependentes
+          // ✅ NOVO: Resetar seleções dependentes (escolas, séries e turmas agora são carregadas pelo loadData)
           setSelectedEvaluation('all');
           setSelectedSchool('all');
           setSelectedGrade('all');
@@ -355,136 +355,20 @@ export default function Results() {
     loadEvaluations();
   }, [selectedMunicipality, selectedState]);
 
-  // ✅ NOVO: Carregar escolas quando município for selecionado
+  // ✅ REMOVIDO: Os useEffect para carregar escolas, séries e turmas foram removidos
+  // ✅ NOVO: Esses dados agora são carregados apenas pelo loadData através do opcoes_proximos_filtros
+
+  // Carregar dados quando filtros obrigatórios mudarem
   useEffect(() => {
-    const loadSchools = async () => {
-      if (selectedMunicipality !== 'all') {
-        try {
-          setIsLoadingFilters(true);
-          // ✅ NOVO: Usar a nova rota de escolas com município
-          const schoolsData = await EvaluationResultsApiService.getFilterSchools(selectedMunicipality);
-          setSchools(schoolsData.map(school => ({
-            id: school.id,
-            name: school.nome,
-            city: {
-              id: selectedMunicipality,
-              name: municipalities.find(m => m.id === selectedMunicipality)?.name || '',
-              state: states.find(s => s.id === selectedState)?.name || ''
-            },
-            students_count: 0,
-            classes_count: 0
-          })));
-          // Resetar seleções dependentes
-          setSelectedSchool('all');
-          setSelectedGrade('all');
-          setSelectedClass('all');
-          setGrades([]);
-          setClasses([]);
-        } catch (error) {
-          console.error("Erro ao carregar escolas:", error);
-        } finally {
-          setIsLoadingFilters(false);
-        }
-      } else {
-        setSchools([]);
-        setSelectedSchool('all');
-        setSelectedGrade('all');
-        setSelectedClass('all');
-        setGrades([]);
-        setClasses([]);
-      }
-    };
+    loadData();
+  }, [selectedState, selectedMunicipality, selectedEvaluation, currentPage, perPage]);
 
-    loadSchools();
-  }, [selectedMunicipality, municipalities, states]);
-
-  // ✅ NOVO: Carregar séries quando escola for selecionada
+  // ✅ NOVO: Carregar dados quando filtros opcionais mudarem (apenas se os obrigatórios estiverem selecionados)
   useEffect(() => {
-    const loadGrades = async () => {
-      if (selectedSchool !== 'all') {
-        try {
-          setIsLoadingFilters(true);
-          // ✅ NOVO: Usar a nova rota de séries com filtros aplicados
-          const gradesData = await EvaluationResultsApiService.getFilterGrades({
-            estado: selectedState,
-            municipio: selectedMunicipality,
-            escola: selectedSchool
-          });
-          setGrades(gradesData.map(grade => ({
-            id: grade.id,
-            name: grade.nome,
-            education_stage_id: '',
-            education_stage: {
-              id: '',
-              name: ''
-            }
-          })));
-          // Resetar seleções dependentes
-          setSelectedGrade('all');
-          setSelectedClass('all');
-          setClasses([]);
-        } catch (error) {
-          console.error("Erro ao carregar séries:", error);
-        } finally {
-          setIsLoadingFilters(false);
-        }
-      } else {
-        setGrades([]);
-        setSelectedGrade('all');
-        setSelectedClass('all');
-        setClasses([]);
-      }
-    };
-
-    loadGrades();
-  }, [selectedSchool, selectedState, selectedMunicipality]);
-
-  // ✅ NOVO: Carregar turmas quando série for selecionada
-  useEffect(() => {
-    const loadClasses = async () => {
-      if (selectedGrade !== 'all') {
-        try {
-          setIsLoadingFilters(true);
-          // ✅ NOVO: Usar a nova rota de turmas com filtros aplicados
-          const classesData = await EvaluationResultsApiService.getFilterClasses({
-            estado: selectedState,
-            municipio: selectedMunicipality,
-            escola: selectedSchool,
-            serie: selectedGrade
-          });
-          setClasses(classesData.map(classItem => ({
-            id: classItem.id,
-            name: classItem.nome,
-            school: {
-              id: selectedSchool,
-              name: schools.find(s => s.id === selectedSchool)?.name || ''
-            },
-            grade: {
-              id: selectedGrade,
-              name: grades.find(g => g.id === selectedGrade)?.name || ''
-            }
-          })));
-          setSelectedClass('all');
-        } catch (error) {
-          console.error("Erro ao carregar turmas:", error);
-        } finally {
-          setIsLoadingFilters(false);
-        }
-      } else {
-        setClasses([]);
-        setSelectedClass('all');
-      }
-    };
-
-    loadClasses();
-  }, [selectedGrade, selectedState, selectedMunicipality, selectedSchool, schools, grades]);
-
-  // Carregar dados quando filtros mudarem
-  useEffect(() => {
-    if (!isLoading) {
+    if (selectedState !== 'all' && selectedMunicipality !== 'all' && selectedEvaluation !== 'all') {
       loadData();
     }
-  }, [selectedState, selectedMunicipality, selectedSchool, selectedGrade, selectedClass, selectedEvaluation, currentPage, perPage]);
+  }, [selectedSchool, selectedGrade, selectedClass]);
 
   const loadData = async () => {
     // ✅ NOVO: Verificar se os 3 filtros obrigatórios estão selecionados
@@ -496,8 +380,17 @@ export default function Results() {
 
     if (filtrosObrigatorios.filter(Boolean).length < 3) {
       setApiData(null);
+      // ✅ NOVO: Resetar seleções dependentes quando filtros obrigatórios não estão completos
+      setSelectedSchool('all');
+      setSelectedGrade('all');
+      setSelectedClass('all');
+      setSchools([]);
+      setGrades([]);
+      setClasses([]);
       return;
     }
+
+    // ✅ NOVO: Os dados de filtros opcionais (escolas, séries, turmas) são carregados pelo opcoes_proximos_filtros
 
     try {
       setIsLoadingData(true);
@@ -567,6 +460,65 @@ export default function Results() {
         };
 
         setApiData(normalizedResponse);
+
+        // ✅ NOVO: Extrair e atualizar as escolas das opções próximos filtros
+        if (response.opcoes_proximos_filtros?.escolas && response.opcoes_proximos_filtros.escolas.length > 0) {
+          console.log('🏫 LOG - Escolas encontradas na resposta da API:', response.opcoes_proximos_filtros.escolas);
+          setSchools(response.opcoes_proximos_filtros.escolas.map(school => ({
+            id: school.id,
+            name: school.name,
+            city: {
+              id: selectedMunicipality,
+              name: municipalities.find(m => m.id === selectedMunicipality)?.name || '',
+              state: states.find(s => s.id === selectedState)?.name || ''
+            },
+            students_count: 0,
+            classes_count: 0
+          })));
+        } else {
+          // ✅ NOVO: Limpar escolas se não houver dados
+          setSchools([]);
+          setSelectedSchool('all');
+        }
+
+        // ✅ NOVO: Extrair e atualizar as séries das opções próximos filtros
+        if (response.opcoes_proximos_filtros?.series && response.opcoes_proximos_filtros.series.length > 0) {
+          console.log('📚 LOG - Séries encontradas na resposta da API:', response.opcoes_proximos_filtros.series);
+          setGrades(response.opcoes_proximos_filtros.series.map(grade => ({
+            id: grade.id,
+            name: grade.name,
+            education_stage_id: '',
+            education_stage: {
+              id: '',
+              name: ''
+            }
+          })));
+        } else {
+          // ✅ NOVO: Limpar séries se não houver dados
+          setGrades([]);
+          setSelectedGrade('all');
+        }
+
+        // ✅ NOVO: Extrair e atualizar as turmas das opções próximos filtros
+        if (response.opcoes_proximos_filtros?.turmas && response.opcoes_proximos_filtros.turmas.length > 0) {
+          console.log('👥 LOG - Turmas encontradas na resposta da API:', response.opcoes_proximos_filtros.turmas);
+          setClasses(response.opcoes_proximos_filtros.turmas.map(classItem => ({
+            id: classItem.id,
+            name: classItem.name,
+            school: {
+              id: selectedSchool,
+              name: schools.find(s => s.id === selectedSchool)?.name || ''
+            },
+            grade: {
+              id: selectedGrade,
+              name: grades.find(g => g.id === selectedGrade)?.name || ''
+            }
+          })));
+        } else {
+          // ✅ NOVO: Limpar turmas se não houver dados
+          setClasses([]);
+          setSelectedClass('all');
+        }
       } else {
         setApiData(null);
       }
