@@ -9,6 +9,7 @@ import {
   TrendingUp,
   Users,
   FileText,
+  FileX,
   Eye,
   CheckCircle2,
   Clock,
@@ -63,53 +64,75 @@ interface EvaluationResult {
   };
 }
 
-interface MunicipioGeral {
-  nome: string;
-  estado: string;
-  total_escolas: number;
-  total_avaliacoes: number;
-  total_alunos: number;
-  alunos_participantes: number;
-  alunos_pendentes: number;
-  alunos_ausentes: number;
-  media_nota_geral: number;
-  media_proficiencia_geral: number;
-  distribuicao_classificacao_geral: {
-    abaixo_do_basico: number;
-    basico: number;
-    adequado: number;
-    avancado: number;
+// ✅ NOVO: Interface para a nova estrutura de resposta da API
+interface NovaRespostaAPI {
+  nivel_granularidade: 'municipio' | 'escola' | 'serie' | 'turma';
+  filtros_aplicados: {
+    estado: string;
+    municipio: string;
+    escola: string | null;
+    serie: string | null;
+    turma: string | null;
+    avaliacao: string;
   };
-}
-
-interface ResultadoPorDisciplina {
-  disciplina: string;
-  total_avaliacoes: number;
-  total_alunos: number;
-  alunos_participantes: number;
-  alunos_pendentes: number;
-  alunos_ausentes: number;
-  media_nota: number;
-  media_proficiencia: number;
-  distribuicao_classificacao: {
-    abaixo_do_basico: number;
-    basico: number;
-    adequado: number;
-    avancado: number;
+  estatisticas_gerais: {
+    tipo: 'municipio' | 'escola' | 'serie' | 'turma';
+    nome: string;
+    estado: string;
+    municipio?: string;
+    escola?: string;
+    serie?: string;
+    total_escolas?: number;
+    total_series?: number;
+    total_turmas?: number;
+    total_avaliacoes: number;
+    total_alunos: number;
+    alunos_participantes: number;
+    alunos_pendentes: number;
+    alunos_ausentes: number;
+    media_nota_geral: number;
+    media_proficiencia_geral: number;
+    distribuicao_classificacao_geral: {
+      abaixo_do_basico: number;
+      basico: number;
+      adequado: number;
+      avancado: number;
+    };
   };
-}
-
-interface ApiResponse {
-  municipio_geral: MunicipioGeral;
-  resultados_por_disciplina: ResultadoPorDisciplina[];
+  resultados_por_disciplina: Array<{
+    disciplina: string;
+    total_avaliacoes: number;
+    total_alunos: number;
+    alunos_participantes: number;
+    alunos_pendentes: number;
+    alunos_ausentes: number;
+    media_nota: number;
+    media_proficiencia: number;
+    distribuicao_classificacao: {
+      abaixo_do_basico: number;
+      basico: number;
+      adequado: number;
+      avancado: number;
+    };
+  }>;
   resultados_detalhados: {
-    data: EvaluationResult[];
-    total: number;
-    page: number;
-    per_page: number;
-    total_pages: number;
+    avaliacoes: EvaluationResult[];
+    paginacao: {
+      page: number;
+      per_page: number;
+      total: number;
+      total_pages: number;
+    };
+  };
+  opcoes_proximos_filtros: {
+    escolas?: Array<{ id: string; name: string }>;
+    series?: Array<{ id: string; name: string }>;
+    turmas?: Array<{ id: string; name: string }>;
+    maximo_alcancado?: boolean;
   };
 }
+
+
 
 // Interfaces para os filtros
 interface State {
@@ -160,19 +183,12 @@ interface Class {
   };
 }
 
-// ✅ NOVO: Interface para avaliações da escola
-interface SchoolEvaluation {
-  id: string;
-  titulo: string;
-  disciplina: string;
-  status: string;
-  data_aplicacao: string;
-}
+
 
 export default function Results() {
   const { id: evaluationId } = useParams<{ id: string }>();
   const { user, autoLogin } = useAuth();
-  const [apiData, setApiData] = useState<ApiResponse | null>(null);
+  const [apiData, setApiData] = useState<NovaRespostaAPI | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingFilters, setIsLoadingFilters] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -182,20 +198,19 @@ export default function Results() {
   // Estados dos filtros
   const [selectedState, setSelectedState] = useState<string>('all');
   const [selectedMunicipality, setSelectedMunicipality] = useState<string>('all');
+  const [selectedEvaluation, setSelectedEvaluation] = useState<string>('all');
   const [selectedSchool, setSelectedSchool] = useState<string>('all');
   const [selectedGrade, setSelectedGrade] = useState<string>('all');
   const [selectedClass, setSelectedClass] = useState<string>('all');
-  // ✅ NOVO: Estado para avaliação selecionada
-  const [selectedEvaluation, setSelectedEvaluation] = useState<string>('all');
 
   // Estados dos dados dos filtros
   const [states, setStates] = useState<State[]>([]);
   const [municipalities, setMunicipalities] = useState<Municipality[]>([]);
+  const [evaluationsByMunicipality, setEvaluationsByMunicipality] = useState<Array<{ id: string; titulo: string; disciplina: string; status: string; data_aplicacao: string }>>([]);
   const [schools, setSchools] = useState<School[]>([]);
   const [grades, setGrades] = useState<Grade[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
-  // ✅ NOVO: Estado para avaliações da escola
-  const [schoolEvaluations, setSchoolEvaluations] = useState<SchoolEvaluation[]>([]);
+
 
   // Estados de paginação
   const [currentPage, setCurrentPage] = useState(1);
@@ -257,13 +272,14 @@ export default function Results() {
           setMunicipalities(municipalitiesData);
           // Resetar seleções dependentes
           setSelectedMunicipality('all');
-          setSelectedSchool('all');
-          setSelectedClass('all');
-          setSchools([]);
-          setClasses([]);
-          // ✅ NOVO: Resetar avaliação também
           setSelectedEvaluation('all');
-          setSchoolEvaluations([]);
+          setSelectedSchool('all');
+          setSelectedGrade('all');
+          setSelectedClass('all');
+          setEvaluationsByMunicipality([]);
+          setSchools([]);
+          setGrades([]);
+          setClasses([]);
         } catch (error) {
           console.error("Erro ao carregar municípios:", error);
         } finally {
@@ -272,34 +288,94 @@ export default function Results() {
       } else {
         setMunicipalities([]);
         setSelectedMunicipality('all');
-        setSelectedSchool('all');
-        setSelectedClass('all');
-        setSchools([]);
-        setClasses([]);
-        // ✅ NOVO: Resetar avaliação também
         setSelectedEvaluation('all');
-        setSchoolEvaluations([]);
+        setSelectedSchool('all');
+        setSelectedGrade('all');
+        setSelectedClass('all');
+        setEvaluationsByMunicipality([]);
+        setSchools([]);
+        setGrades([]);
+        setClasses([]);
       }
     };
 
     loadMunicipalities();
   }, [selectedState]);
 
-  // Carregar escolas quando município for selecionado
+  // ✅ NOVO: Carregar avaliações quando município for selecionado
   useEffect(() => {
-    const loadSchools = async () => {
+    const loadEvaluations = async () => {
       if (selectedMunicipality !== 'all') {
         try {
           setIsLoadingFilters(true);
-          const schoolsData = await EvaluationResultsApiService.getSchoolsByCity(selectedMunicipality);
+          // Usar o endpoint principal para buscar avaliações por município
+          const response = await EvaluationResultsApiService.getEvaluationsList(1, 10, {
+            estado: selectedState,
+            municipio: selectedMunicipality
+          });
+
+          if (response && response.opcoes_proximos_filtros) {
+            // Extrair avaliações da resposta (se disponível)
+            // Por enquanto, vamos usar um array vazio até o backend implementar
+            setEvaluationsByMunicipality([]);
+          } else {
+            setEvaluationsByMunicipality([]);
+          }
+
+          // Resetar seleções dependentes
+          setSelectedEvaluation('all');
+          setSelectedSchool('all');
+          setSelectedGrade('all');
+          setSelectedClass('all');
+          setSchools([]);
+          setGrades([]);
+          setClasses([]);
+        } catch (error) {
+          console.error("Erro ao carregar avaliações:", error);
+          setEvaluationsByMunicipality([]);
+        } finally {
+          setIsLoadingFilters(false);
+        }
+      } else {
+        setEvaluationsByMunicipality([]);
+        setSelectedEvaluation('all');
+        setSelectedSchool('all');
+        setSelectedGrade('all');
+        setSelectedClass('all');
+        setSchools([]);
+        setGrades([]);
+        setClasses([]);
+      }
+    };
+
+    loadEvaluations();
+  }, [selectedMunicipality, selectedState]);
+
+  // ✅ NOVO: Carregar escolas quando avaliação for selecionada (usando dados da API)
+  useEffect(() => {
+    const loadSchools = async () => {
+      if (selectedEvaluation !== 'all' && apiData?.opcoes_proximos_filtros?.escolas) {
+        try {
+          setIsLoadingFilters(true);
+          // Usar as escolas retornadas pela API
+          const schoolsData = apiData.opcoes_proximos_filtros.escolas.map(school => ({
+            id: school.id,
+            name: school.name,
+            city: {
+              id: selectedMunicipality,
+              name: municipalities.find(m => m.id === selectedMunicipality)?.name || '',
+              state: states.find(s => s.id === selectedState)?.name || ''
+            },
+            students_count: 0,
+            classes_count: 0
+          }));
           setSchools(schoolsData);
           // Resetar seleções dependentes
           setSelectedSchool('all');
+          setSelectedGrade('all');
           setSelectedClass('all');
+          setGrades([]);
           setClasses([]);
-          // ✅ NOVO: Resetar avaliação também
-          setSelectedEvaluation('all');
-          setSchoolEvaluations([]);
         } catch (error) {
           console.error("Erro ao carregar escolas:", error);
         } finally {
@@ -308,24 +384,72 @@ export default function Results() {
       } else {
         setSchools([]);
         setSelectedSchool('all');
+        setSelectedGrade('all');
         setSelectedClass('all');
+        setGrades([]);
         setClasses([]);
-        // ✅ NOVO: Resetar avaliação também
-        setSelectedEvaluation('all');
-        setSchoolEvaluations([]);
       }
     };
 
     loadSchools();
-  }, [selectedMunicipality]);
+  }, [selectedEvaluation, apiData?.opcoes_proximos_filtros?.escolas, selectedMunicipality, municipalities, states]);
 
-  // Carregar turmas quando escola for selecionada
+  // ✅ NOVO: Carregar séries quando escola for selecionada (usando dados da API)
   useEffect(() => {
-    const loadClasses = async () => {
-      if (selectedSchool !== 'all') {
+    const loadGrades = async () => {
+      if (selectedSchool !== 'all' && apiData?.opcoes_proximos_filtros?.series) {
         try {
           setIsLoadingFilters(true);
-          const classesData = await EvaluationResultsApiService.getClassesBySchool(selectedSchool);
+          // Usar as séries retornadas pela API
+          const gradesData = apiData.opcoes_proximos_filtros.series.map(grade => ({
+            id: grade.id,
+            name: grade.name,
+            education_stage_id: '',
+            education_stage: {
+              id: '',
+              name: ''
+            }
+          }));
+          setGrades(gradesData);
+          // Resetar seleções dependentes
+          setSelectedGrade('all');
+          setSelectedClass('all');
+          setClasses([]);
+        } catch (error) {
+          console.error("Erro ao carregar séries:", error);
+        } finally {
+          setIsLoadingFilters(false);
+        }
+      } else {
+        setGrades([]);
+        setSelectedGrade('all');
+        setSelectedClass('all');
+        setClasses([]);
+      }
+    };
+
+    loadGrades();
+  }, [selectedSchool, apiData?.opcoes_proximos_filtros?.series]);
+
+  // ✅ NOVO: Carregar turmas quando série for selecionada (usando dados da API)
+  useEffect(() => {
+    const loadClasses = async () => {
+      if (selectedGrade !== 'all' && apiData?.opcoes_proximos_filtros?.turmas) {
+        try {
+          setIsLoadingFilters(true);
+          // Usar as turmas retornadas pela API
+          const classesData = apiData.opcoes_proximos_filtros.turmas.map(classItem => ({
+            id: classItem.id,
+            name: classItem.name,
+            school: {
+              id: selectedSchool,
+              name: schools.find(s => s.id === selectedSchool)?.name || ''
+            },
+            grade: {
+              id: selectedGrade,
+              name: grades.find(g => g.id === selectedGrade)?.name || ''
+            }
+          }));
           setClasses(classesData);
           setSelectedClass('all');
         } catch (error) {
@@ -340,37 +464,7 @@ export default function Results() {
     };
 
     loadClasses();
-  }, [selectedSchool]);
-
-  // ✅ NOVO: Carregar avaliações quando escola for selecionada
-  useEffect(() => {
-    const loadEvaluations = async () => {
-      if (selectedSchool !== 'all') {
-        try {
-          setIsLoadingFilters(true);
-
-          const evaluationsData = await EvaluationResultsApiService.getEvaluationsBySchool(selectedSchool);
-
-          // ✅ CORREÇÃO: Garantir que seja sempre um array
-          const finalData = Array.isArray(evaluationsData) ? evaluationsData : [];
-
-          setSchoolEvaluations(finalData);
-          setSelectedEvaluation('all');
-
-        } catch (error) {
-          console.error("❌ ERRO ao carregar avaliações:", error);
-          setSchoolEvaluations([]);
-        } finally {
-          setIsLoadingFilters(false);
-        }
-      } else {
-        setSchoolEvaluations([]);
-        setSelectedEvaluation('all');
-      }
-    };
-
-    loadEvaluations();
-  }, [selectedSchool]);
+  }, [selectedGrade, apiData?.opcoes_proximos_filtros?.turmas, selectedSchool, schools, grades]);
 
   // Carregar dados quando filtros mudarem
   useEffect(() => {
@@ -380,17 +474,14 @@ export default function Results() {
   }, [selectedState, selectedMunicipality, selectedSchool, selectedGrade, selectedClass, selectedEvaluation, currentPage, perPage]);
 
   const loadData = async () => {
-    // Verificar se pelo menos 2 filtros estão selecionados
-    const selectedFilters = [
+    // ✅ NOVO: Verificar se os 3 filtros obrigatórios estão selecionados
+    const filtrosObrigatorios = [
       selectedState !== 'all',
       selectedMunicipality !== 'all',
-      selectedSchool !== 'all',
-      selectedGrade !== 'all',
-      selectedClass !== 'all',
       selectedEvaluation !== 'all'
-    ].filter(Boolean);
+    ];
 
-    if (selectedFilters.length < 2) {
+    if (filtrosObrigatorios.filter(Boolean).length < 3) {
       setApiData(null);
       return;
     }
@@ -400,11 +491,10 @@ export default function Results() {
       const filters = {
         estado: selectedState !== 'all' ? selectedState : undefined,
         municipio: selectedMunicipality !== 'all' ? selectedMunicipality : undefined,
-        escola: selectedSchool !== 'all' ? selectedSchool : undefined,
-        serie: selectedGrade !== 'all' ? selectedGrade : undefined,
-        turma: selectedClass !== 'all' ? selectedClass : undefined,
-        // ✅ NOVO: Adicionar filtro de avaliação
-        avaliacao: selectedEvaluation !== 'all' ? selectedEvaluation : undefined,
+        avaliacao: selectedEvaluation,
+        escola: selectedSchool,
+        serie: selectedGrade,
+        turma: selectedClass,
       };
 
       const response = await EvaluationResultsApiService.getEvaluationsList(currentPage, perPage, filters);
@@ -415,6 +505,23 @@ export default function Results() {
       console.log('📥 Resposta da API:', response);
       console.log('📊 Tipo da resposta:', typeof response);
       console.log('🏗️ Estrutura da resposta:', response ? Object.keys(response) : 'null');
+
+      // ✅ NOVO: Normalizar a estrutura da resposta para compatibilidade
+      if (response) {
+        // Verificar se a resposta tem a estrutura esperada
+        if (response.resultados_detalhados) {
+          // Se resultados_detalhados.data existe, usar como avaliacoes
+          const responseAny = response as any;
+          if (responseAny.resultados_detalhados.data && !response.resultados_detalhados.avaliacoes) {
+            response.resultados_detalhados.avaliacoes = responseAny.resultados_detalhados.data;
+          }
+
+          // Garantir que avaliacoes seja sempre um array
+          if (!response.resultados_detalhados.avaliacoes) {
+            response.resultados_detalhados.avaliacoes = [];
+          }
+        }
+      }
 
       setApiData(response as any);
     } catch (error) {
@@ -444,7 +551,7 @@ export default function Results() {
       const XLSX = await import('xlsx');
       const { saveAs } = await import('file-saver');
 
-      if (!apiData || !apiData.resultados_detalhados.data.length) {
+      if (!apiData || (!apiData.resultados_detalhados?.avaliacoes?.length && !(apiData.resultados_detalhados as any)?.data?.length) || apiData.estatisticas_gerais?.total_avaliacoes === 0) {
         toast({
           title: "Nenhum dado para exportar",
           description: "Não há avaliações para gerar a planilha",
@@ -455,7 +562,7 @@ export default function Results() {
 
       const worksheetData = [
         ['Avaliação', 'Disciplina', 'Escola', 'Série', 'Turma', 'Município', 'Estado', 'Participantes', 'Média', 'Proficiência', 'Status'],
-        ...apiData.resultados_detalhados.data.map(evaluation => [
+        ...(apiData.resultados_detalhados?.avaliacoes || (apiData.resultados_detalhados as any)?.data || []).map(evaluation => [
           evaluation.titulo,
           evaluation.disciplina,
           evaluation.escola,
@@ -547,14 +654,14 @@ export default function Results() {
     if (!apiData) return null;
 
     // Verificar se os dados necessários existem
-    if (!apiData.municipio_geral || !apiData.resultados_por_disciplina) {
+    if (!apiData.estatisticas_gerais || !apiData.resultados_por_disciplina) {
       console.warn('Dados incompletos para gráficos:', apiData);
       return null;
     }
 
     // Dados para gráfico de médias de nota
     const averageScoreData = [
-      { name: "Geral", value: apiData.municipio_geral.media_nota_geral || 0 },
+      { name: "Geral", value: apiData.estatisticas_gerais.media_nota_geral || 0 },
       ...apiData.resultados_por_disciplina.map(item => ({
         name: item.disciplina.toUpperCase(),
         value: item.media_nota || 0
@@ -563,7 +670,7 @@ export default function Results() {
 
     // Dados para gráfico de médias de proficiência
     const averageProficiencyData = [
-      { name: "Geral", value: apiData.municipio_geral.media_proficiencia_geral || 0 },
+      { name: "Geral", value: apiData.estatisticas_gerais.media_proficiencia_geral || 0 },
       ...apiData.resultados_por_disciplina.map(item => ({
         name: item.disciplina.toUpperCase(),
         value: item.media_proficiencia || 0
@@ -594,11 +701,11 @@ export default function Results() {
   const selectedFiltersCount = [
     selectedState !== 'all',
     selectedMunicipality !== 'all',
-    selectedSchool !== 'all',
-    selectedGrade !== 'all',
-    selectedClass !== 'all',
     selectedEvaluation !== 'all'
   ].filter(Boolean).length;
+
+  // ✅ NOVO: Verificar se todos os filtros obrigatórios estão selecionados
+  const allRequiredFiltersSelected = selectedFiltersCount === 3;
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
@@ -609,6 +716,16 @@ export default function Results() {
           <p className="text-muted-foreground">
             Acompanhe o desempenho das avaliações e gere relatórios
           </p>
+          {apiData && (
+            <div className="mt-2 flex items-center gap-2">
+              <Badge variant="outline" className="text-xs">
+                Nível: {apiData.nivel_granularidade.charAt(0).toUpperCase() + apiData.nivel_granularidade.slice(1)}
+              </Badge>
+              <span className="text-xs text-muted-foreground">
+                {apiData.estatisticas_gerais.nome}
+              </span>
+            </div>
+          )}
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => loadData()} disabled={isLoadingData}>
@@ -678,13 +795,44 @@ export default function Results() {
               </Select>
             </div>
 
+            {/* ✅ NOVO: Avaliações */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Avaliações</label>
+              <Select
+                value={selectedEvaluation}
+                onValueChange={setSelectedEvaluation}
+                disabled={isLoadingFilters || selectedMunicipality === 'all'}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a avaliação" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {(() => {
+                    if (!Array.isArray(evaluationsByMunicipality)) {
+                      console.error('❌ ERRO: evaluationsByMunicipality não é array no render');
+                      return null;
+                    }
+
+                    return evaluationsByMunicipality.map(evaluation => {
+                      return (
+                        <SelectItem key={evaluation.id} value={evaluation.id}>
+                          {evaluation.titulo}
+                        </SelectItem>
+                      );
+                    });
+                  })()}
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Escola */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Escola</label>
               <Select
                 value={selectedSchool}
                 onValueChange={setSelectedSchool}
-                disabled={isLoadingFilters || selectedMunicipality === 'all'}
+                disabled={isLoadingFilters || selectedEvaluation === 'all'}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione a escola" />
@@ -700,44 +848,13 @@ export default function Results() {
               </Select>
             </div>
 
-            {/* ✅ NOVO: Avaliações */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Avaliações</label>
-              <Select
-                value={selectedEvaluation}
-                onValueChange={setSelectedEvaluation}
-                disabled={isLoadingFilters || selectedSchool === 'all'}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a avaliação" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
-                  {(() => {
-                    if (!Array.isArray(schoolEvaluations)) {
-                      console.error('❌ ERRO: schoolEvaluations não é array no render');
-                      return null;
-                    }
-
-                    return schoolEvaluations.map(evaluation => {
-                      return (
-                        <SelectItem key={evaluation.id} value={evaluation.id}>
-                          {evaluation.titulo}
-                        </SelectItem>
-                      );
-                    });
-                  })()}
-                </SelectContent>
-              </Select>
-            </div>
-
             {/* Série */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Série</label>
               <Select
                 value={selectedGrade}
                 onValueChange={setSelectedGrade}
-                disabled={isLoadingFilters}
+                disabled={isLoadingFilters || selectedSchool === 'all'}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione a série" />
@@ -759,7 +876,7 @@ export default function Results() {
               <Select
                 value={selectedClass}
                 onValueChange={setSelectedClass}
-                disabled={isLoadingFilters || selectedSchool === 'all'}
+                disabled={isLoadingFilters || selectedGrade === 'all'}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione a turma" />
@@ -779,36 +896,31 @@ export default function Results() {
           {/* Informação sobre filtros */}
           <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
             <p className="text-sm text-blue-700">
-              💡 Selecione no mínimo dois filtros para visualizar os dados.
-              {selectedFiltersCount > 0 && (
-                <span className="ml-2 font-medium">
-                  Filtros selecionados: {selectedFiltersCount}
-                </span>
-              )}
+              💡 Selecione os três filtros obrigatórios para visualizar os dados: Estado, Município e Avaliação. Escola, Série e Turma são opcionais.
             </p>
           </div>
         </CardContent>
       </Card>
 
       {/* Mensagem quando não há filtros suficientes */}
-      {selectedFiltersCount < 2 && !isLoading && (
+      {!allRequiredFiltersSelected && !isLoading && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
               <Filter className="h-8 w-8 text-gray-400" />
             </div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              Selecione no mínimo dois filtros para continuar
+              Selecione os três filtros obrigatórios para continuar
             </h3>
             <p className="text-gray-600 text-center max-w-md">
-              Para visualizar os resultados das avaliações, você precisa selecionar pelo menos dois filtros (Estado, Município, Escola, Avaliações, Série ou Turma).
+              Para visualizar os resultados das avaliações, você precisa selecionar: Estado, Município e Avaliação. Os filtros Escola, Série e Turma são opcionais e podem ser "Todos".
             </p>
           </CardContent>
         </Card>
       )}
 
       {/* Loading dos dados */}
-      {selectedFiltersCount >= 2 && isLoadingData && (
+      {allRequiredFiltersSelected && isLoadingData && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mb-4" />
@@ -818,231 +930,286 @@ export default function Results() {
       )}
 
       {/* Gráficos e Dados */}
-      {selectedFiltersCount >= 2 && !isLoadingData && apiData && (
+      {allRequiredFiltersSelected && !isLoadingData && apiData && (
         <>
-          {/* Estatísticas Gerais */}
-          <div className="grid gap-4 md:grid-cols-4">
-            <Card className="border-l-4 border-l-blue-500">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-blue-600" />
-                  Total de Avaliações
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-blue-600">
-                  {apiData.municipio_geral.total_avaliacoes}
+          {/* ✅ NOVO: Verificar se há avaliações antes de mostrar gráficos e estatísticas */}
+          {(() => {
+            const avaliacoesLength = apiData.resultados_detalhados?.avaliacoes?.length || 0;
+            const dataLength = (apiData.resultados_detalhados as any)?.data?.length || 0;
+            const totalAvaliacoes = apiData.estatisticas_gerais?.total_avaliacoes || 0;
+
+            console.log('🔍 DEBUG - Verificação de avaliações vazias:');
+            console.log('📊 avaliacoes.length:', avaliacoesLength);
+            console.log('📊 data.length:', dataLength);
+            console.log('📊 total_avaliacoes:', totalAvaliacoes);
+            console.log('📊 Condição satisfeita:', avaliacoesLength === 0 && dataLength === 0);
+
+            return (avaliacoesLength === 0 && dataLength === 0) || totalAvaliacoes === 0;
+          })() ? (
+            <Card>
+              <CardContent className="text-center py-12">
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                  <FileX className="h-8 w-8 text-gray-400" />
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {apiData.municipio_geral.total_escolas} escolas
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  Nenhuma avaliação encontrada
+                </h3>
+                <p className="text-gray-600">
+                  Não foram encontradas avaliações para os filtros selecionados.
                 </p>
               </CardContent>
             </Card>
-
-            <Card className="border-l-4 border-l-green-500">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <GraduationCap className="h-4 w-4 text-green-600" />
-                  Alunos Participantes
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-green-600">
-                  {apiData.municipio_geral.alunos_participantes}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  de {apiData.municipio_geral.total_alunos} total
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="border-l-4 border-l-purple-500">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Target className="h-4 w-4 text-purple-600" />
-                  Média Geral
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-purple-600">
-                  {apiData.municipio_geral.media_nota_geral.toFixed(1)}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Nota média
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="border-l-4 border-l-orange-500">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Award className="h-4 w-4 text-orange-600" />
-                  Proficiência Geral
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-orange-600">
-                  {apiData.municipio_geral.media_proficiencia_geral.toFixed(1)}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Proficiência média
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Gráficos */}
-          {chartData && chartData.averageScoreData && chartData.averageScoreData.length > 0 && (
-            <div className="space-y-6">
-              {/* Gráficos de Médias */}
-              <div className="grid gap-6 md:grid-cols-2">
-                <Card>
-                  <CardContent className="pt-6">
-                    <BarChartComponent
-                      data={chartData.averageScoreData}
-                      title="Média de Nota"
-                      subtitle="Média de Nota (Geral + Disciplinas)"
-                      color="#22c55e"
-                      yAxisDomain={[0, 10]}
-                      yAxisLabel="Nota"
-                    />
+          ) : (
+            <>
+              {/* Estatísticas Gerais */}
+              <div className="grid gap-4 md:grid-cols-4">
+                <Card className="border-l-4 border-l-blue-500">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-blue-600" />
+                      Total de Avaliações
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-blue-600">
+                      {apiData.estatisticas_gerais.total_avaliacoes}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {apiData.estatisticas_gerais.tipo === 'municipio' && `${apiData.estatisticas_gerais.total_escolas} escolas`}
+                      {apiData.estatisticas_gerais.tipo === 'escola' && `${apiData.estatisticas_gerais.total_series} séries`}
+                      {apiData.estatisticas_gerais.tipo === 'serie' && `${apiData.estatisticas_gerais.total_turmas} turmas`}
+                      {apiData.estatisticas_gerais.tipo === 'turma' && 'Nível máximo'}
+                    </p>
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardContent className="pt-6">
-                    <BarChartComponent
-                      data={chartData.averageProficiencyData}
-                      title="Média de Proficiência"
-                      subtitle="Média de Proficiência (Geral + Disciplinas)"
-                      color="#15803d"
-                      yAxisDomain={[0, 1000]}
-                      yAxisLabel="Proficiência"
-                    />
+                <Card className="border-l-4 border-l-green-500">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium flex items-center gap-2">
+                      <GraduationCap className="h-4 w-4 text-green-600" />
+                      Alunos Participantes
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-green-600">
+                      {apiData.estatisticas_gerais.alunos_participantes}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      de {apiData.estatisticas_gerais.total_alunos} total
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-l-4 border-l-purple-500">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium flex items-center gap-2">
+                      <Target className="h-4 w-4 text-purple-600" />
+                      Média Geral
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-purple-600">
+                      {apiData.estatisticas_gerais.media_nota_geral.toFixed(1)}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Nota média
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-l-4 border-l-orange-500">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium flex items-center gap-2">
+                      <Award className="h-4 w-4 text-orange-600" />
+                      Proficiência Geral
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-orange-600">
+                      {apiData.estatisticas_gerais.media_proficiencia_geral.toFixed(1)}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Proficiência média
+                    </p>
                   </CardContent>
                 </Card>
               </div>
 
-              {/* Gráficos de Distribuição */}
-              {chartData.distributionData && chartData.distributionData.length > 0 && (
-                <div className="grid gap-6 md:grid-cols-2">
-                  {chartData.distributionData.map((item, index) => (
-                    <Card key={index}>
+              {/* Gráficos */}
+              {chartData && chartData.averageScoreData && chartData.averageScoreData.length > 0 && (
+                <div className="space-y-6">
+                  {/* Gráficos de Médias */}
+                  <div className="grid gap-6 md:grid-cols-2">
+                    <Card>
                       <CardContent className="pt-6">
-                        <DonutChartComponent
-                          data={item.data}
-                          title={item.disciplina.toUpperCase()}
-                          subtitle="Distribuição de Desempenho"
+                        <BarChartComponent
+                          data={chartData.averageScoreData}
+                          title="Média de Nota"
+                          subtitle="Média de Nota (Geral + Disciplinas)"
+                          color="#22c55e"
+                          yAxisDomain={[0, 10]}
+                          yAxisLabel="Nota"
                         />
                       </CardContent>
                     </Card>
-                  ))}
+
+                    <Card>
+                      <CardContent className="pt-6">
+                        <BarChartComponent
+                          data={chartData.averageProficiencyData}
+                          title="Média de Proficiência"
+                          subtitle="Média de Proficiência (Geral + Disciplinas)"
+                          color="#15803d"
+                          yAxisDomain={[0, 1000]}
+                          yAxisLabel="Proficiência"
+                        />
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Gráficos de Distribuição */}
+                  {chartData.distributionData && chartData.distributionData.length > 0 && (
+                    <div className="grid gap-6 md:grid-cols-2">
+                      {chartData.distributionData.map((item, index) => (
+                        <Card key={index}>
+                          <CardContent className="pt-6">
+                            <DonutChartComponent
+                              data={item.data}
+                              title={item.disciplina.toUpperCase()}
+                              subtitle="Distribuição de Desempenho"
+                            />
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-          )}
 
-          {/* Lista de Avaliações */}
-          {apiData.resultados_detalhados.data.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span>Avaliações Detalhadas</span>
-                  <Badge variant="outline">
-                    {apiData.resultados_detalhados.total} avaliações
-                  </Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {apiData.resultados_detalhados.data.map((evaluation, index) => {
-                    const statusConfig = getStatusConfig(evaluation.status);
-                    const participationRate = evaluation.total_alunos > 0
-                      ? (evaluation.alunos_participantes / evaluation.total_alunos) * 100
-                      : 0;
+              {/* Lista de Avaliações */}
+              {(() => {
+                const avaliacoesLength = apiData.resultados_detalhados?.avaliacoes?.length || 0;
+                const dataLength = (apiData.resultados_detalhados as any)?.data?.length || 0;
+                const totalAvaliacoes = apiData.estatisticas_gerais?.total_avaliacoes || 0;
 
-                    return (
-                      <div key={`${evaluation.id}-${index}`} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
-                        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                          {/* Informações principais */}
-                          <div className="flex-1 space-y-2">
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-semibold text-lg">{evaluation.titulo}</h3>
-                              <Badge className={statusConfig.color}>
-                                {statusConfig.label}
-                              </Badge>
-                            </div>
+                return (avaliacoesLength > 0 || dataLength > 0) && totalAvaliacoes > 0;
+              })() ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center justify-between">
+                      <span>Avaliações Detalhadas</span>
+                      <Badge variant="outline">
+                        {(apiData.resultados_detalhados?.paginacao?.total ||
+                          (apiData.resultados_detalhados as any)?.total || 0)} avaliações
+                      </Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {(apiData.resultados_detalhados?.avaliacoes || (apiData.resultados_detalhados as any)?.data || []).map((evaluation, index) => {
+                        const statusConfig = getStatusConfig(evaluation.status);
+                        const participationRate = evaluation.total_alunos > 0
+                          ? (evaluation.alunos_participantes / evaluation.total_alunos) * 100
+                          : 0;
 
-                            <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-                              <div className="flex items-center gap-1">
-                                <Badge variant="outline">{evaluation.disciplina}</Badge>
-                                <span>•</span>
-                                <span>{evaluation.serie}</span>
-                                <span>•</span>
-                                <span>{evaluation.turma}</span>
+                        return (
+                          <div key={`${evaluation.id}-${index}`} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                              {/* Informações principais */}
+                              <div className="flex-1 space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <h3 className="font-semibold text-lg">{evaluation.titulo}</h3>
+                                  <Badge className={statusConfig.color}>
+                                    {statusConfig.label}
+                                  </Badge>
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                                  <div className="flex items-center gap-1">
+                                    <Badge variant="outline">{evaluation.disciplina}</Badge>
+                                    <span>•</span>
+                                    <span>{evaluation.serie}</span>
+                                    <span>•</span>
+                                    <span>{evaluation.turma}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <School className="h-4 w-4" />
+                                    <span>{evaluation.escola}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <MapPin className="h-4 w-4" />
+                                    <span>{evaluation.municipio}, {evaluation.estado}</span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-6">
+                                  <div className="flex items-center gap-2">
+                                    <Users className="h-4 w-4 text-muted-foreground" />
+                                    <span className="text-sm font-medium">
+                                      {evaluation.alunos_participantes}/{evaluation.total_alunos} alunos
+                                    </span>
+                                    <Progress value={participationRate} className="w-20 h-2" />
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    <Target className="h-4 w-4 text-muted-foreground" />
+                                    <span className="text-sm font-medium">
+                                      Média: {evaluation.media_nota.toFixed(1)}
+                                    </span>
+                                    {evaluation.media_nota >= 7 ? (
+                                      <TrendingUp className="h-4 w-4 text-green-600" />
+                                    ) : (
+                                      <AlertTriangle className="h-4 w-4 text-orange-600" />
+                                    )}
+                                  </div>
+
+                                  <div className="text-xs text-muted-foreground">
+                                    {formatDistanceToNow(new Date(evaluation.data_aplicacao), {
+                                      addSuffix: true,
+                                      locale: ptBR
+                                    })}
+                                  </div>
+                                </div>
                               </div>
-                              <div className="flex items-center gap-1">
-                                <School className="h-4 w-4" />
-                                <span>{evaluation.escola}</span>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <MapPin className="h-4 w-4" />
-                                <span>{evaluation.municipio}, {evaluation.estado}</span>
-                              </div>
-                            </div>
 
-                            <div className="flex items-center gap-6">
-                              <div className="flex items-center gap-2">
-                                <Users className="h-4 w-4 text-muted-foreground" />
-                                <span className="text-sm font-medium">
-                                  {evaluation.alunos_participantes}/{evaluation.total_alunos} alunos
-                                </span>
-                                <Progress value={participationRate} className="w-20 h-2" />
-                              </div>
-
-                              <div className="flex items-center gap-2">
-                                <Target className="h-4 w-4 text-muted-foreground" />
-                                <span className="text-sm font-medium">
-                                  Média: {evaluation.media_nota.toFixed(1)}
-                                </span>
-                                {evaluation.media_nota >= 7 ? (
-                                  <TrendingUp className="h-4 w-4 text-green-600" />
-                                ) : (
-                                  <AlertTriangle className="h-4 w-4 text-orange-600" />
-                                )}
-                              </div>
-
-                              <div className="text-xs text-muted-foreground">
-                                {formatDistanceToNow(new Date(evaluation.data_aplicacao), {
-                                  addSuffix: true,
-                                  locale: ptBR
-                                })}
+                              {/* Ações */}
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  onClick={() => handleViewResults(evaluation.id)}
+                                  onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    handleViewResultsInNewTab(evaluation.id);
+                                  }}
+                                  title="Clique esquerdo: abrir na mesma guia | Clique direito: abrir em nova guia"
+                                >
+                                  <Eye className="h-4 w-4 mr-2" />
+                                  Ver Resultados
+                                </Button>
                               </div>
                             </div>
                           </div>
-
-                          {/* Ações */}
-                          <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              onClick={() => handleViewResults(evaluation.id)}
-                              onContextMenu={(e) => {
-                                e.preventDefault();
-                                handleViewResultsInNewTab(evaluation.id);
-                              }}
-                              title="Clique esquerdo: abrir na mesma guia | Clique direito: abrir em nova guia"
-                            >
-                              <Eye className="h-4 w-4 mr-2" />
-                              Ver Resultados
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card>
+                  <CardContent className="flex flex-col items-center justify-center py-12">
+                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                      <FileText className="h-8 w-8 text-gray-400" />
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">
+                      Nenhuma avaliação encontrada
+                    </h3>
+                    <p className="text-gray-600 text-center max-w-md">
+                      Não foram encontradas avaliações para os filtros selecionados. Tente ajustar os filtros ou verificar se existem avaliações cadastradas para este município.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+            </>
           )}
         </>
       )}

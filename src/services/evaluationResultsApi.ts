@@ -3,6 +3,82 @@ import { EvaluationResultsData, StudentProficiency, ResultsFilters, calculatePro
 
 // ===== INTERFACES PARA BACKEND REAL =====
 
+// ✅ NOVO: Interfaces para a nova estrutura de resposta em cascata
+interface FiltrosAplicados {
+  estado: string;
+  municipio: string;
+  escola: string | null;
+  serie: string | null;
+  turma: string | null;
+  avaliacao: string;
+}
+
+interface EstatisticasGerais {
+  tipo: 'municipio' | 'escola' | 'serie' | 'turma';
+  nome: string;
+  estado: string;
+  municipio?: string;
+  escola?: string;
+  serie?: string;
+  total_escolas?: number;
+  total_series?: number;
+  total_turmas?: number;
+  total_avaliacoes: number;
+  total_alunos: number;
+  alunos_participantes: number;
+  alunos_pendentes: number;
+  alunos_ausentes: number;
+  media_nota_geral: number;
+  media_proficiencia_geral: number;
+  distribuicao_classificacao_geral: {
+    abaixo_do_basico: number;
+    basico: number;
+    adequado: number;
+    avancado: number;
+  };
+}
+
+interface OpcoesProximosFiltros {
+  escolas?: Array<{ id: string; name: string }>;
+  series?: Array<{ id: string; name: string }>;
+  turmas?: Array<{ id: string; name: string }>;
+  maximo_alcancado?: boolean;
+}
+
+interface NovaRespostaAPI {
+  nivel_granularidade: 'municipio' | 'escola' | 'serie' | 'turma';
+  filtros_aplicados: FiltrosAplicados;
+  estatisticas_gerais: EstatisticasGerais;
+  resultados_por_disciplina: Array<{
+    disciplina: string;
+    total_avaliacoes: number;
+    total_alunos: number;
+    alunos_participantes: number;
+    alunos_pendentes: number;
+    alunos_ausentes: number;
+    media_nota: number;
+    media_proficiencia: number;
+    distribuicao_classificacao: {
+      abaixo_do_basico: number;
+      basico: number;
+      adequado: number;
+      avancado: number;
+    };
+  }>;
+  resultados_detalhados: {
+    avaliacoes: EvaluationResult[];
+    paginacao: {
+      page: number;
+      per_page: number;
+      total: number;
+      total_pages: number;
+    };
+  };
+  opcoes_proximos_filtros: OpcoesProximosFiltros;
+}
+
+
+
 interface BackendEvaluationResult {
   id: string;
   session_id: string;
@@ -281,7 +357,8 @@ export class EvaluationResultsApiService {
     }
   }
 
-  // ✅ NOVO: Buscar lista de avaliações com nova estrutura
+
+
   static async getEvaluationsList(
     page: number = 1,
     perPage: number = 10,
@@ -293,73 +370,32 @@ export class EvaluationResultsApiService {
       turma?: string;
       avaliacao?: string;
     } = {}
-  ): Promise<{
-    municipio_geral: {
-      nome: string;
-      estado: string;
-      total_escolas: number;
-      total_avaliacoes: number;
-      total_alunos: number;
-      alunos_participantes: number;
-      alunos_pendentes: number;
-      alunos_ausentes: number;
-      media_nota_geral: number;
-      media_proficiencia_geral: number;
-      distribuicao_classificacao_geral: {
-        abaixo_do_basico: number;
-        basico: number;
-        adequado: number;
-        avancado: number;
-      };
-    };
-    resultados_por_disciplina: Array<{
-      disciplina: string;
-      total_avaliacoes: number;
-      total_alunos: number;
-      alunos_participantes: number;
-      alunos_pendentes: number;
-      alunos_ausentes: number;
-      media_nota: number;
-      media_proficiencia: number;
-      distribuicao_classificacao: {
-        abaixo_do_basico: number;
-        basico: number;
-        adequado: number;
-        avancado: number;
-      };
-    }>;
-    resultados_detalhados: {
-      data: EvaluationResult[];
-      total: number;
-      page: number;
-      per_page: number;
-      total_pages: number;
-    };
-  } | null> {
+  ): Promise<NovaRespostaAPI | null> {
     try {
       const params = new URLSearchParams({
         page: page.toString(),
         per_page: perPage.toString(),
       });
 
+      // ✅ NOVO: Ordem hierárquica dos filtros - Estado e Município obrigatórios, outros podem ser "all"
       if (filters.estado && filters.estado !== 'all') {
         params.append('estado', filters.estado);
       }
       if (filters.municipio && filters.municipio !== 'all') {
         params.append('municipio', filters.municipio);
       }
-      if (filters.escola && filters.escola !== 'all') {
+      // ✅ NOVO: Avaliação, Escola, Série e Turma podem ser "all"
+      if (filters.avaliacao) {
+        params.append('avaliacao', filters.avaliacao);
+      }
+      if (filters.escola) {
         params.append('escola', filters.escola);
       }
-      if (filters.serie && filters.serie !== 'all') {
+      if (filters.serie) {
         params.append('serie', filters.serie);
       }
-      if (filters.turma && filters.turma !== 'all') {
+      if (filters.turma) {
         params.append('turma', filters.turma);
-      }
-      // ✅ NOVO: Adicionar filtro de avaliação
-      if (filters.avaliacao && filters.avaliacao !== 'all') {
-        params.append('avaliacao', filters.avaliacao);
       }
 
       const response = await api.get(`/evaluation-results/avaliacoes?${params}`);
@@ -369,9 +405,12 @@ export class EvaluationResultsApiService {
       console.log('📋 Parâmetros enviados:', Object.fromEntries(params.entries()));
       console.log('📦 Resposta completa:', response);
       console.log('📊 Dados da resposta:', response.data);
-      console.log('🏫 Municipio geral:', response.data?.municipio_geral);
+      console.log('🎯 Nível de granularidade:', response.data?.nivel_granularidade);
+      console.log('🔧 Filtros aplicados:', response.data?.filtros_aplicados);
+      console.log('📈 Estatísticas gerais:', response.data?.estatisticas_gerais);
       console.log('📚 Resultados por disciplina:', response.data?.resultados_por_disciplina);
       console.log('📝 Resultados detalhados:', response.data?.resultados_detalhados);
+      console.log('🔗 Opções próximos filtros:', response.data?.opcoes_proximos_filtros);
 
       return response.data;
     } catch (error) {
@@ -479,9 +518,9 @@ export class EvaluationResultsApiService {
     return apiWithTimeout(async () => {
       // ✅ Usar o endpoint específico que retorna os dados corretos
       const response = await api.get(`/evaluation-results/alunos?avaliacao_id=${evaluationId}`);
-      
+
       console.log('🔍 Dados corretos recebidos do endpoint:', response.data);
-      
+
       return response.data;
     }, 25000); // 25s para lista de alunos
   }
