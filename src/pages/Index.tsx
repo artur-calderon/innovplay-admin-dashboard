@@ -19,7 +19,7 @@ import {
 import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import StudentProfessorIndex from "./StudentProfessorIndex";
+import ProfessorDashboard from "./ProfessorDashboard";
 
 interface DashboardStats {
   students: number;
@@ -114,8 +114,8 @@ const Index = () => {
   }, [toast, user?.role]);
 
   // Check user role and render appropriate dashboard
-  if (user?.role === "aluno" || user?.role === "professor") {
-    return <StudentProfessorIndex />;
+  if (user?.role === "professor") {
+    return <ProfessorDashboard />;
   }
 
   // Default dashboard for admin and other roles
@@ -124,6 +124,9 @@ const Index = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
         <h1 className="mobile-title font-bold">Painel Administrativo</h1>
+        <span className="text-sm sm:text-base text-muted-foreground">
+          Bem vindo! {user.name ? user.name : "Usuário"}
+        </span>
       </div>
 
       {/* Stat Cards Grid - Responsive layout */}
