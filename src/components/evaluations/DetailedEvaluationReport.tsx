@@ -39,6 +39,7 @@ import {
   DetailedReport
 } from "@/services/evaluationResultsApi";
 import { proficiencyColors, ProficiencyLevel } from "@/types/evaluation-results";
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
 
 interface DetailedEvaluationReportProps {
   evaluationId: string;
@@ -98,7 +99,7 @@ export function DetailedEvaluationReport({ evaluationId, onBack }: DetailedEvalu
       console.error("Erro ao buscar relatório detalhado:", error);
       toast({
         title: "Erro",
-        description: "Não foi possível carregar o relatório detalhado",
+        description: ERROR_MESSAGES.NETWORK_ERROR,
         variant: "destructive",
       });
     } finally {

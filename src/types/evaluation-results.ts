@@ -78,12 +78,26 @@ export interface EvaluationResultsData {
   studentsData: StudentProficiency[];
 }
 
-// Filtros para a página de resultados
+// ✅ ATUALIZADO: Filtros conforme documentação dos endpoints
 export interface ResultsFilters {
+  // ✅ Novos filtros da documentação
+  estado?: string;         // state
+  municipio?: string;      // municipality  
+  escola?: string;         // school
+  serie?: string;          // grade
+  turma?: string;          // class
+  avaliacao?: string;      // evaluation
+  
+  // ✅ Filtros existentes mantidos para compatibilidade
   course?: string;
   subject?: string;
   class?: string;
   school?: string;
+  state?: string;
+  municipality?: string;
+  grade?: string;
+  evaluation?: string;
+  
   proficiencyRange?: [number, number]; // Range de 0 a 425 (Anos Finais/EM) ou 0 a 375 (Anos Iniciais)
   scoreRange?: [number, number]; // Range de 0 a 10
   proficiencyLevels?: ProficiencyLevel[];

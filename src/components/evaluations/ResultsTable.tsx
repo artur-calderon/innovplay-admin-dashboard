@@ -1,248 +1,324 @@
+import React from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Progress } from "@/components/ui/progress";
-import { Eye, FileText, FileSpreadsheet, Users, Target, TrendingUp, TrendingDown } from "lucide-react";
-import { EvaluationResultsData, proficiencyColors, proficiencyLabels, ProficiencyLevel, getProficiencyTableInfo } from "@/types/evaluation-results";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+    CheckCircle2,
+    XCircle,
+    AlertTriangle,
+    Users,
+    Eye,
+    Award,
+    Target,
+    BarChart3
+} from "lucide-react";
+
+interface StudentResult {
+    id: string;
+    nome: string;
+    turma: string;
+    nota: number;
+    proficiencia: number;
+    classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+    acertos: number;
+    total_questoes: number;
+    status: 'concluida' | 'pendente' | 'nao_respondida';
+    tempo_gasto?: number;
+}
 
 interface ResultsTableProps {
-  results: EvaluationResultsData[];
-  onViewDetails: (result: EvaluationResultsData) => void;
-  onExportPDF: (resultId: string) => void;
-  onExportExcel: (resultId: string) => void;
+    students: StudentResult[];
+    isFiltered: boolean;
+    onViewStudentDetails?: (studentId: string) => void;
+    title?: string;
+    showActions?: boolean;
 }
 
-export function ResultsTable({ results, onViewDetails, onExportPDF, onExportExcel }: ResultsTableProps) {
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR');
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'bg-green-100 text-green-800 border-green-200';
-      case 'pending':
-        return 'bg-orange-100 text-orange-800 border-orange-200';
-      case 'in_progress':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+const ResultsTable: React.FC<ResultsTableProps> = ({
+    students,
+    isFiltered,
+    onViewStudentDetails,
+    title = "Resultados dos Alunos",
+    showActions = true
+}) => {
+    // ✅ 1. Validação de dados filtrados
+    if (!isFiltered) {
+        return (
+            <Card className="border-red-200">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-red-600">
+                        <AlertTriangle className="h-5 w-5" />
+                        Erro de Dados
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <Alert className="border-red-200 bg-red-50">
+                        <AlertTriangle className="h-4 w-4 text-red-600" />
+                        <AlertDescription className="text-red-800">
+                            <strong>Dados não filtrados detectados!</strong>
+                            <br />
+                            Esta tabela deve receber apenas dados que já foram filtrados e validados.
+                            Por favor, aplique os filtros apropriados antes de exibir a tabela.
+                        </AlertDescription>
+                    </Alert>
+                </CardContent>
+            </Card>
+        );
     }
-  };
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'Concluída';
-      case 'pending':
-        return 'Pendente';
-      case 'in_progress':
-        return 'Em Andamento';
-      default:
-        return 'Desconhecido';
-    }
-  };
-
-  // ✅ CORRIGIDO: Usar tabela de proficiência baseada no contexto da avaliação
-  const getProficiencyLevel = (proficiency: number, grade?: string, subject?: string): ProficiencyLevel => {
-    const tableInfo = getProficiencyTableInfo(grade, subject);
-    const table = tableInfo.table;
-    
-    if (proficiency <= table.abaixo_do_basico.max) return 'abaixo_do_basico';
-    if (proficiency <= table.basico.max) return 'basico';
-    if (proficiency <= table.adequado.max) return 'adequado';
-    return 'avancado';
-  };
-
-  const getDistributionSummary = (distribution: any) => {
-    const total = Object.values(distribution).reduce((sum: number, count: any) => sum + count, 0);
-    const max = Math.max(...Object.values(distribution) as number[]);
-    const maxLevel = Object.entries(distribution).find(([_, count]) => count === max)?.[0] as ProficiencyLevel;
-    
-    return {
-      total,
-      predominant: maxLevel ? proficiencyLabels[maxLevel] : 'N/A',
-      predominantCount: max
-    };
-  };
-
-  if (results.length === 0) {
-    return (
-      <div className="text-center py-12">
-        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <Target className="h-8 w-8 text-gray-400" />
-        </div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">
-          Nenhum resultado encontrado
-        </h3>
-        <p className="text-gray-600">
-          Ajuste os filtros para ver os resultados das avaliações.
-        </p>
-      </div>
+    // ✅ 5. Filtrar apenas alunos com status concluída (remover incompletos)
+    const completedStudents = students.filter(student => 
+        student.status === 'concluida' && student.nota > 0
     );
-  }
 
-  return (
-    <div className="overflow-x-auto">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="min-w-[200px]">Avaliação</TableHead>
-            <TableHead>Participação</TableHead>
-            <TableHead>Média de Nota</TableHead>
-            <TableHead>Média de Proficiência</TableHead>
-            <TableHead>Classificação Predominante</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Data</TableHead>
-            <TableHead className="text-right">Ações</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {results.map((result, index) => {
-            const proficiencyLevel = getProficiencyLevel(result.averageProficiency, result.grade, result.subject);
-            const proficiencyColor = proficiencyColors[proficiencyLevel];
-            const participationRate = (result.completedStudents / result.totalStudents) * 100;
-            const distribution = getDistributionSummary(result.distributionByLevel);
+    // Função para obter cor da classificação
+    const getClassificationColor = (classification: string) => {
+        switch (classification) {
+            case 'Avançado':
+                return 'bg-green-100 text-green-800 border-green-300';
+            case 'Adequado':
+                return 'bg-blue-100 text-blue-800 border-blue-300';
+            case 'Básico':
+                return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+            case 'Abaixo do Básico':
+                return 'bg-red-100 text-red-800 border-red-300';
+            default:
+                return 'bg-gray-100 text-gray-800 border-gray-300';
+        }
+    };
 
-            return (
-              <TableRow key={`${result.id || 'result'}-${index}`} className="hover:bg-gray-50">
-                <TableCell>
-                  <div className="space-y-1">
-                    <div className="font-medium">{result.evaluationTitle}</div>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Badge variant="outline" className="text-xs">
-                        {result.subject}
-                      </Badge>
-                      <span>•</span>
-                      <span>{result.grade}</span>
-                      <span>•</span>
-                      <span>{result.school}</span>
+    // Função para formatar tempo
+    const formatTime = (seconds?: number) => {
+        if (!seconds) return 'N/A';
+        const minutes = Math.floor(seconds / 60);
+        return `${minutes}min`;
+    };
+
+    // Se não há alunos concluídos para mostrar
+    if (completedStudents.length === 0) {
+        return (
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <Users className="h-5 w-5" />
+                        {title}
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="text-center py-12">
+                        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <Users className="h-8 w-8 text-gray-400" />
+                        </div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                            Nenhum resultado concluído
+                        </h3>
+                        <p className="text-gray-600">
+                            Não há alunos com avaliações concluídas para exibir.
+                        </p>
                     </div>
-                  </div>
-                </TableCell>
-                
-                <TableCell>
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <Users className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-medium">
-                        {result.completedStudents}/{result.totalStudents}
-                      </span>
-                    </div>
-                    <Progress value={participationRate} className="h-2" />
-                    <div className="text-xs text-muted-foreground">
-                      {participationRate.toFixed(1)}%
-                    </div>
-                  </div>
-                </TableCell>
-                
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <div className="text-lg font-bold">
-                      {result.averageRawScore.toFixed(1)}
-                    </div>
-                    {result.averageRawScore >= 7 ? (
-                      <TrendingUp className="h-4 w-4 text-green-600" />
-                    ) : (
-                      <TrendingDown className="h-4 w-4 text-red-600" />
-                    )}
-                  </div>
-                  <div className="text-xs text-muted-foreground">de 10.0</div>
-                </TableCell>
-                
-                <TableCell>
-                  <div className="space-y-1">
-                    <div className="text-lg font-bold">
-                      {Math.round(result.averageProficiency)}
-                    </div>
-                    <Badge 
-                      variant="outline" 
-                      className={`text-xs ${proficiencyColor.bg} ${proficiencyColor.text} ${proficiencyColor.border}`}
-                    >
-                      {proficiencyLabels[proficiencyLevel]}
+                </CardContent>
+            </Card>
+        );
+    }
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                        <Users className="h-5 w-5" />
+                        {title}
+                    </span>
+                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                        ✅ Dados Validados
                     </Badge>
-                  </div>
-                </TableCell>
+                </CardTitle>
+            </CardHeader>
+            <CardContent>
+                <div className="overflow-x-auto">
+                    <table className="w-full border-collapse border border-gray-300">
+                        <thead>
+                            <tr className="bg-gray-50">
+                                <th className="border border-gray-300 p-3 text-left font-semibold">
+                                    Status
+                                </th>
+                                <th className="border border-gray-300 p-3 text-left font-semibold">
+                                    Aluno
+                                </th>
+                                <th className="border border-gray-300 p-3 text-left font-semibold">
+                                    Turma
+                                </th>
+                                <th className="border border-gray-300 p-3 text-center font-semibold">
+                                    Acertos
+                                </th>
+                                <th className="border border-gray-300 p-3 text-center font-semibold">
+                                    Nota
+                                </th>
+                                <th className="border border-gray-300 p-3 text-center font-semibold">
+                                    Proficiência
+                                </th>
+                                <th className="border border-gray-300 p-3 text-center font-semibold">
+                                    Classificação
+                                </th>
+                                <th className="border border-gray-300 p-3 text-center font-semibold">
+                                    Tempo
+                                </th>
+                                {showActions && (
+                                    <th className="border border-gray-300 p-3 text-center font-semibold">
+                                        Ações
+                                    </th>
+                                )}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {completedStudents.map((student, index) => (
+                                <tr 
+                                    key={student.id}
+                                    className={`hover:bg-gray-50 transition-colors ${
+                                        index % 2 === 0 ? 'bg-white' : 'bg-gray-25'
+                                    }`}
+                                >
+                                    {/* ✅ 3. Check verde para indicar conclusão */}
+                                    <td className="border border-gray-300 p-3 text-center">
+                                        <div className="flex items-center justify-center">
+                                            <CheckCircle2 className="h-5 w-5 text-green-600" />
+                                        </div>
+                                    </td>
+                                    
+                                    <td className="border border-gray-300 p-3">
+                                        <div className="font-medium text-gray-900">
+                                            {student.nome}
+                                        </div>
+                                    </td>
+                                    
+                                    <td className="border border-gray-300 p-3">
+                                        <Badge variant="outline" className="text-xs">
+                                            {student.turma}
+                                        </Badge>
+                                    </td>
+                                    
+                                    <td className="border border-gray-300 p-3 text-center">
+                                        <div className="flex items-center justify-center gap-2">
+                                            <Target className="h-4 w-4 text-blue-600" />
+                                            <span className="font-semibold">
+                                                {student.acertos}/{student.total_questoes}
+                                            </span>
+                                        </div>
+                                    </td>
+                                    
+                                    <td className="border border-gray-300 p-3 text-center">
+                                        <div className="flex items-center justify-center gap-2">
+                                            <Award className="h-4 w-4 text-purple-600" />
+                                            <span className="font-bold text-purple-600">
+                                                {student.nota.toFixed(1)}
+                                            </span>
+                                        </div>
+                                    </td>
+                                    
+                                    <td className="border border-gray-300 p-3 text-center">
+                                        <div className="flex items-center justify-center gap-2">
+                                            <BarChart3 className="h-4 w-4 text-orange-600" />
+                                            <span className="font-bold text-orange-600">
+                                                {student.proficiencia.toFixed(0)}
+                                            </span>
+                                        </div>
+                                    </td>
+                                    
+                                    <td className="border border-gray-300 p-3 text-center">
+                                        <Badge className={getClassificationColor(student.classificacao)}>
+                                            {student.classificacao}
+                                        </Badge>
+                                    </td>
+                                    
+                                    <td className="border border-gray-300 p-3 text-center text-sm text-gray-600">
+                                        {formatTime(student.tempo_gasto)}
+                                    </td>
+                                    
+                                    {showActions && (
+                                        <td className="border border-gray-300 p-3 text-center">
+                                            {onViewStudentDetails && (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => onViewStudentDetails(student.id)}
+                                                    onContextMenu={(e) => {
+                                                        e.preventDefault();
+                                                        const url = `/app/avaliacao/${window.location.pathname.split('/')[3]}/aluno/${student.id}/resultados`;
+                                                        window.open(url, '_blank');
+                                                    }}
+                                                    title="Clique esquerdo: ver detalhes | Clique direito: abrir em nova guia"
+                                                    className="text-xs"
+                                                >
+                                                    <Eye className="h-3 w-3 mr-1" />
+                                                    Ver
+                                                </Button>
+                                            )}
+                                        </td>
+                                    )}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
                 
-                <TableCell>
-                  <div className="space-y-1">
-                    <div className="text-sm font-medium">
-                      {distribution.predominant}
+                {/* ✅ 4. Rodapé com contagem de alunos exibidos */}
+                <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <CheckCircle2 className="h-5 w-5 text-blue-600" />
+                            <span className="font-semibold text-blue-800">
+                                Resultados Validados
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-4 text-sm">
+                            <div className="flex items-center gap-2">
+                                <span className="text-blue-700">Alunos exibidos:</span>
+                                <Badge className="bg-blue-600 text-white">
+                                    {completedStudents.length}
+                                </Badge>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-gray-600">Total original:</span>
+                                <Badge variant="outline">
+                                    {students.length}
+                                </Badge>
+                            </div>
+                        </div>
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      {distribution.predominantCount} de {distribution.total} alunos
+                    
+                    {/* Estatísticas rápidas */}
+                    <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                        <div className="flex items-center gap-2">
+                            <Award className="h-3 w-3 text-purple-600" />
+                            <span>Média Nota: <strong>{
+                                (completedStudents.reduce((sum, s) => sum + s.nota, 0) / completedStudents.length).toFixed(1)
+                            }</strong></span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <BarChart3 className="h-3 w-3 text-orange-600" />
+                            <span>Média Proficiência: <strong>{
+                                (completedStudents.reduce((sum, s) => sum + s.proficiencia, 0) / completedStudents.length).toFixed(0)
+                            }</strong></span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Target className="h-3 w-3 text-blue-600" />
+                            <span>Taxa Acerto: <strong>{
+                                ((completedStudents.reduce((sum, s) => sum + s.acertos, 0) / 
+                                completedStudents.reduce((sum, s) => sum + s.total_questoes, 0)) * 100).toFixed(1)
+                            }%</strong></span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <CheckCircle2 className="h-3 w-3 text-green-600" />
+                            <span>Avançados: <strong>{
+                                completedStudents.filter(s => s.classificacao === 'Avançado').length
+                            }</strong></span>
+                        </div>
                     </div>
-                  </div>
-                </TableCell>
-                
-                <TableCell>
-                  <Badge className={getStatusColor(result.status)}>
-                    {getStatusText(result.status)}
-                  </Badge>
-                </TableCell>
-                
-                <TableCell>
-                  <div className="text-sm text-muted-foreground">
-                    {formatDate(result.appliedAt)}
-                  </div>
-                </TableCell>
-                
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onViewDetails(result)}
-                      title="Ver Detalhes"
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onExportPDF(result.id)}
-                      title="Exportar PDF"
-                    >
-                      <FileText className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onExportExcel(result.id)}
-                      title="Exportar Excel"
-                    >
-                      <FileSpreadsheet className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-    </div>
-  );
-}
+                </div>
+            </CardContent>
+        </Card>
+    );
+};
 
-// Skeleton para carregamento
-export function ResultsTableSkeleton() {
-  return (
-    <div className="space-y-3">
-      {Array.from({ length: 5 }).map((_, index) => (
-        <div key={index} className="border rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div className="space-y-2 flex-1">
-              <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-              <div className="h-3 bg-gray-200 rounded w-1/2"></div>
-            </div>
-            <div className="flex gap-2">
-              <div className="h-8 w-8 bg-gray-200 rounded"></div>
-              <div className="h-8 w-8 bg-gray-200 rounded"></div>
-              <div className="h-8 w-8 bg-gray-200 rounded"></div>
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-} 
+export default ResultsTable; 

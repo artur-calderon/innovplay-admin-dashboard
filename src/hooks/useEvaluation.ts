@@ -38,7 +38,6 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
         try {
             await EvaluationApiService.syncTimer(session.session_id, elapsedMinutes, remainingMinutes);
-            console.log('⏱️ Timer sincronizado:', { elapsedMinutes, remainingMinutes });
         } catch (error) {
             console.error('❌ Erro ao sincronizar timer:', error);
         }
@@ -50,8 +49,6 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             const sessionInfo = await EvaluationApiService.getTestSessionInfo(testId);
 
             if (sessionInfo.session_exists && sessionInfo.status === 'em_andamento') {
-                console.log('🔄 Sessão ativa encontrada:', sessionInfo);
-
                 // ✅ CORRIGIDO: Usar duration da avaliação em vez de time_limit_minutes da sessão
                 const evaluationDuration = testData?.duration || 60; // fallback para 60 minutos
 
@@ -61,16 +58,8 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 const elapsedMinutes = Math.floor((now.getTime() - startTime.getTime()) / (1000 * 60));
                 const remainingMinutes = Math.max(0, evaluationDuration - elapsedMinutes);
 
-                console.log('⏱️ Tempo calculado:', {
-                    elapsedMinutes,
-                    remainingMinutes,
-                    evaluationDuration,
-                    sessionTimeLimit: sessionInfo.time_limit_minutes // pode ser null
-                });
-
                 // Se o tempo esgotou, finalizar automaticamente
                 if (remainingMinutes <= 0) {
-                    console.log('⏰ Tempo esgotado, finalizando avaliação automaticamente');
                     await handleSubmitTest(true);
                     return true;
                 }
@@ -108,7 +97,6 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
             return false;
         } catch (error) {
-            console.error('❌ Erro ao verificar sessão ativa:', error);
             return false;
         }
     }, [testId, testData?.duration]);
@@ -139,14 +127,12 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
         try {
             setIsSaving(true);
-            console.log('🚀 Iniciando sessão de teste...');
 
             // ✅ CORRIGIDO: Usar duration da avaliação em vez de time_limit_minutes da sessão
             const evaluationDuration = testData.duration;
 
             // Iniciar nova sessão
             const sessionData = await EvaluationApiService.startSession(testId);
-            console.log('✅ Sessão iniciada:', sessionData);
 
             // Configurar sessão
             const newSession: TestSession = {
@@ -175,13 +161,9 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             // Iniciar salvamento automático
             startAutoSave(sessionData.session_id);
 
-            toast({
-                title: "🎉 Avaliação iniciada!",
-                description: `Você tem ${evaluationDuration} minutos para completar`, // ✅ Usar duration da avaliação
-            });
+
 
         } catch (error) {
-            console.error('❌ Erro ao iniciar sessão:', error);
             toast({
                 title: "❌ Erro ao iniciar avaliação",
                 description: "Não foi possível iniciar a sessão. Tente novamente.",
@@ -237,7 +219,6 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             });
 
         } catch (error) {
-            console.error('❌ Erro ao salvar resposta:', error);
             toast({
                 title: "⚠️ Erro ao salvar",
                 description: "Sua resposta pode não ter sido salva. Verifique sua conexão.",
@@ -257,9 +238,8 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                         session_id: sessionId,
                         answers: answersArray
                     });
-                    console.log('💾 Salvamento automático realizado');
                 } catch (error) {
-                    console.error('❌ Erro no salvamento automático:', error);
+                    // Erro silencioso no salvamento automático
                 }
             }
         }, 2 * 60 * 1000); // 2 minutos
@@ -271,7 +251,6 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
         try {
             setIsSubmitting(true);
-            console.log('📤 Submetendo avaliação...');
 
             const answersArray = Object.values(answers);
             const results = await EvaluationApiService.submitTest({
@@ -280,11 +259,10 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             });
 
             // ✅ NOVO: Salvar resultados imediatos
-            setResults(results);
+            setResults(results.results);
             setEvaluationState('completed');
 
             // ✅ NOVO: Limpar dados do localStorage
-            console.log('🧹 Limpando dados do localStorage...');
 
             // Limpar dados de avaliação em progresso
             localStorage.removeItem("evaluation_in_progress");
@@ -301,8 +279,6 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             // ✅ REMOVIDO: Não gerenciar status de conclusão no localStorage
             // O backend controla o status da avaliação através do campo status
 
-            console.log('✅ Dados do localStorage limpos');
-
             // Limpar timers
             if (timerRef.current) clearInterval(timerRef.current);
             if (saveIntervalRef.current) clearInterval(saveIntervalRef.current);
@@ -314,7 +290,6 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             });
 
         } catch (error) {
-            console.error('❌ Erro ao submeter avaliação:', error);
             toast({
                 title: "❌ Erro ao finalizar",
                 description: "Não foi possível finalizar a avaliação. Tente novamente.",
@@ -328,7 +303,6 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
     // ✅ NOVO: Timer countdown local
     useEffect(() => {
         if (evaluationState === 'active' && session && !isTimeUp && timeRemaining > 0) {
-            console.log('⏱️ Iniciando timer local...');
 
             timerRef.current = setInterval(() => {
                 setTimeRemaining(prev => {
@@ -344,7 +318,6 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                     }
 
                     if (newTime <= 0) {
-                        console.log('⏰ Tempo esgotado!');
                         setIsTimeUp(true);
                         handleSubmitTest(true);
                         return 0;
@@ -367,10 +340,8 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         const handleVisibilityChange = () => {
             if (document.hidden) {
                 setIsPaused(true);
-                console.log('⏸️ Página oculta - timer pausado');
             } else {
                 setIsPaused(false);
-                console.log('▶️ Página visível - timer retomado');
             }
         };
 
@@ -382,26 +353,21 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
     // ✅ NOVO: Carregar dados iniciais
     useEffect(() => {
+        let isMounted = true;
+        
         const initializeEvaluation = async () => {
             try {
+                if (!isMounted) return;
+                
                 setEvaluationState('loading');
-                console.log('🔄 Inicializando avaliação...');
 
                 // Carregar dados da avaliação usando o endpoint principal
                 const data = await EvaluationApiService.getTestData(testId);
-                console.log('📋 Dados da avaliação carregados:', data);
+                
+                if (!isMounted) return;
 
                 // ✅ VERIFICAR: Se há questões na resposta
                 if (!data.questions || data.questions.length === 0) {
-                    console.log('❌ Nenhuma questão encontrada na avaliação');
-                    console.log('📊 Dados recebidos:', {
-                        id: data.id,
-                        title: data.title,
-                        subject: data.subject?.name,
-                        questions: data.questions,
-                        questionsLength: data.questions?.length || 0
-                    });
-
                     setEvaluationState('error');
                     toast({
                         title: "❌ Avaliação sem questões",
@@ -411,30 +377,20 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                     return;
                 }
 
-                console.log('✅ Questões encontradas:', data.questions.length);
-
                 // ✅ CORRIGIDO: Garantir que totalQuestions seja definido
                 const processedData = {
                     ...data,
                     totalQuestions: data.totalQuestions || data.total_questions || data.questions.length
                 };
 
-                console.log('📊 Dados completos da avaliação:', {
-                    id: processedData.id,
-                    title: processedData.title,
-                    subject: processedData.subject?.name,
-                    duration: processedData.duration,
-                    totalQuestions: processedData.totalQuestions,
-                    total_questions: data.total_questions,
-                    questionsLength: processedData.questions?.length || 0,
-                    instructions: processedData.instructions
-                });
-
+                if (!isMounted) return;
                 setTestData(processedData);
 
                 // Verificar se há sessão ativa
                 const hasActiveSession = await checkActiveSession();
 
+                if (!isMounted) return;
+                
                 if (!hasActiveSession) {
                     setEvaluationState('instructions');
                 } else {
@@ -443,31 +399,32 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 }
 
             } catch (error) {
-                console.error('❌ Erro ao inicializar avaliação:', error);
-                setEvaluationState('error');
+                if (isMounted) {
+                    setEvaluationState('error');
+                }
             }
         };
 
         initializeEvaluation();
-    }, [testId, checkActiveSession, toast]);
+        
+        return () => {
+            isMounted = false;
+        };
+    }, [testId]);
 
     // ✅ NOVO: Carregar respostas salvas
     const loadSavedAnswers = useCallback(async () => {
         if (!session?.session_id || !testData) return;
 
         try {
-            console.log('🔄 Carregando respostas salvas...');
-            
             // Buscar respostas salvas do backend
             const response = await api.get(`/student-answers/sessions/${session.session_id}/answers`);
             const savedAnswers = response.data.answers || [];
-            
-            console.log('📋 Respostas salvas encontradas:', savedAnswers);
 
             // Processar respostas salvas
             const processedAnswers: Record<string, StudentAnswer> = {};
             
-            savedAnswers.forEach((savedAnswer: any) => {
+            savedAnswers.forEach((savedAnswer: { question_id: string; answer: string }) => {
                 const question = testData.questions.find(q => q.id === savedAnswer.question_id);
                 if (!question) return;
 
@@ -488,7 +445,6 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                         }
                     } catch (e) {
                         // Se não é JSON válido, usar o valor como está
-                        console.log('Resposta não é JSON válido, usando como texto:', answerValue);
                     }
                 }
 
@@ -498,11 +454,10 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 };
             });
 
-            console.log('✅ Respostas processadas:', processedAnswers);
             setAnswers(processedAnswers);
 
         } catch (error) {
-            console.error('❌ Erro ao carregar respostas salvas:', error);
+            // Erro silencioso ao carregar respostas
         }
     }, [session?.session_id, testData]);
 

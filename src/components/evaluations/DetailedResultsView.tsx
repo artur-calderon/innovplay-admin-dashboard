@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { DonutChartComponent } from "@/components/ui/charts";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { PDFReportGenerator } from "./PDFReportGenerator";
 import {
     ArrowLeft,
     Download,
@@ -35,6 +36,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
 import { api } from "@/lib/api";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 
 // Importar a interface DetailedReport do serviço
 interface DetailedReport {
@@ -85,8 +88,13 @@ interface StudentResult {
     nome: string;
     turma: string;
     nota: number;
+    total_score?: number; // ✅ Campo para nota
+    grade?: string | number; // ✅ Campo para nota (do banco) - pode ser string ou number
     proficiencia: number;
+    proficiency?: number; // ✅ Campo para proficiência (do banco)
     classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+    classification?: string; // ✅ Campo para nível
+    correct_answers?: number; // ✅ Campo para acertos (do banco)
     questoes_respondidas: number;
     acertos: number;
     erros: number;
@@ -141,6 +149,37 @@ interface ApiError {
     };
 }
 
+// ✅ NOVO: Interface para respostas detalhadas do aluno
+interface StudentDetailedAnswers {
+  test_id: string;
+  student_id: string;
+  student_name: string;
+  total_questions: number;
+  answered_questions: number;
+  correct_answers: number;
+  score_percentage: number;
+  total_score: number;
+  max_possible_score: number;
+  grade: number;
+  proficiencia: number;
+  classificacao: string;
+  status: 'concluida' | 'nao_respondida';
+  answers: Array<{
+    question_id: string;
+    question_number: number;
+    question_text: string;
+    question_type: 'multipleChoice' | 'open' | 'trueFalse';
+    question_value: number;
+    student_answer: string;
+    answered_at: string;
+    is_correct: boolean;
+    score: number;
+    feedback: string | null;
+    corrected_by: string | null;
+    corrected_at: string | null;
+  }>;
+}
+
 // Componente da tabela de resultados dos alunos
 const StudentsResultsTable = ({ 
     students, 
@@ -152,6 +191,7 @@ const StudentsResultsTable = ({
     skillsMapping,
     skillsBySubject,
     detailedReport,
+    studentDetailedAnswers,
     visibleFields = {
         turma: true,
         habilidade: true,
@@ -211,6 +251,7 @@ const StudentsResultsTable = ({
         source: 'database' | 'question';
     }>>; // ✅ Skills organizadas por disciplina
     detailedReport?: DetailedReport; // Para acessar a disciplina
+    studentDetailedAnswers?: Record<string, StudentDetailedAnswers>;
     visibleFields?: {
         turma: boolean;
         habilidade: boolean;
@@ -362,23 +403,99 @@ const StudentsResultsTable = ({
         return null;
     };
 
-    // ✅ USAR DADOS REAIS: Gerar porcentagens de acerto baseadas nos dados reais
-    const generateTurmaPercentages = () => {
-        if (questoes && questoes.length > 0) {
-            return Array.from({ length: totalQuestions }, (_, i) => {
-                const questao = questoes[i]; // Usar índice direto
-                return questao ? questao.porcentagem_acertos : 50; // Fallback para 50% se não encontrar
-            });
+          // ✅ CORRIGIDO: Função para gerar porcentagens da turma usando dados reais
+    const generateTurmaPercentages = useCallback(() => {
+        if (!students || students.length === 0) {
+            return Array.from({ length: totalQuestions }, () => 0);
         }
-        
-        // Fallback para dados simulados se não houver dados reais
-        return Array.from({ length: totalQuestions }, (_, i) => {
-            const basePercentage = 45 + Math.floor(Math.random() * 40); // Entre 45% e 85%
-            return Math.max(10, Math.min(90, basePercentage));
-        });
-    };
 
-    const turmaPercentages = generateTurmaPercentages();
+        
+
+        return Array.from({ length: totalQuestions }, (_, questionIndex) => {
+            let correctCount = 0;
+            let totalAnswered = 0;
+
+            students.forEach(student => {
+                const studentAnswers = studentDetailedAnswers?.[student.id];
+                
+
+                
+                if (studentAnswers && studentAnswers.answers && studentAnswers.answers.length > 0) {
+                    // ✅ CORREÇÃO: Usar dados reais das respostas
+                    // Buscar TODAS as respostas para esta questão (pode haver múltiplas)
+                    const questionAnswers = studentAnswers.answers.filter(
+                        answer => answer.question_number === questionIndex + 1
+                    );
+
+
+
+                    if (questionAnswers.length > 0) {
+                        // Usar a ÚLTIMA resposta (mais recente)
+                        const lastAnswer = questionAnswers[questionAnswers.length - 1];
+                        totalAnswered++;
+                        if (lastAnswer.is_correct) {
+                            correctCount++;
+                        }
+
+                    } else {
+                        // Questão não respondida pelo aluno
+                    }
+                } else {
+                    // Fallback para dados básicos se não tiver respostas detalhadas
+                    const correctAnswers = student.acertos;
+                    const wrongAnswers = student.erros;
+                    const totalAnsweredBasic = correctAnswers + wrongAnswers;
+                    
+                    if (questionIndex < totalAnsweredBasic) {
+                        totalAnswered++;
+                        if (questionIndex < correctAnswers) {
+                            correctCount++;
+                        }
+                        // console.log(`🔍 Q${questionIndex + 1} - ${student.nome}: ${questionIndex < correctAnswers ? '✓' : '✗'} (fallback)`);
+                    } else {
+                        // console.log(`🔍 Q${questionIndex + 1} - ${student.nome}: não respondeu (fallback)`);
+                    }
+                }
+            });
+
+            const percentage = totalAnswered > 0 ? Math.round((correctCount / totalAnswered) * 100) : 0;
+            
+
+            
+            return percentage;
+        });
+    }, [students, studentDetailedAnswers, totalQuestions]);
+
+    // ✅ CORRIGIDO: Função para obter respostas de um aluno específico
+    const getStudentAnswers = useCallback((studentId: string) => {
+        const studentAnswers = studentDetailedAnswers[studentId];
+        
+        if (!studentAnswers || !studentAnswers.answers) {
+            return Array.from({ length: totalQuestions }, () => null);
+        }
+
+        // ✅ CORREÇÃO: Usar dados reais das respostas
+        const answers = Array.from({ length: totalQuestions }, (_, questionIndex) => {
+            const questionAnswer = studentAnswers.answers.find(
+                answer => answer.question_number === questionIndex + 1
+            );
+
+            if (!questionAnswer) {
+                return null; // Questão não respondida
+            }
+
+            return questionAnswer.is_correct;
+        });
+
+
+        
+        return answers;
+    }, [studentDetailedAnswers, totalQuestions]);
+
+    // ✅ CORRIGIDO: Gerar porcentagens da turma usando dados reais
+    const turmaPercentages = useMemo(() => {
+        return generateTurmaPercentages();
+    }, [generateTurmaPercentages]);
 
         return (
         <div className="overflow-x-auto">
@@ -494,15 +611,17 @@ const StudentsResultsTable = ({
                             <td className="p-1 text-left border-r border-gray-300 text-xs font-semibold text-blue-700">
                                 % Turma
                             </td>
-                            {visibleFields?.questoes && turmaPercentages.map((percentage, i) => (
+                            {visibleFields?.questoes && turmaPercentages.map((percentage, i) => {
+                                const displayColor = percentage >= 60 ? "text-green-600" : "text-red-500";
+                                
+                                return (
                                 <td key={`turma-q${i}`} className="p-1 border-r border-gray-300">
-                                    <div className={`text-xs font-bold ${
-                                        percentage >= 60 ? "text-green-600" : "text-red-500"
-                                    }`}>
+                                        <div className={`text-xs font-bold ${displayColor}`}>
                                         {percentage.toFixed(0)}%
                                     </div>
                                 </td>
-                            ))}
+                                );
+                            })}
                             {visibleFields?.total && <td className="p-1 bg-gray-100 text-xs font-semibold text-blue-700"></td>}
                             {visibleFields?.nota && <td className="p-1 bg-gray-100 text-xs font-semibold text-blue-700"></td>}
                             {visibleFields?.proficiencia && <td className="p-1 bg-gray-100 text-xs font-semibold text-blue-700"></td>}
@@ -512,52 +631,74 @@ const StudentsResultsTable = ({
                 </thead>
                 <tbody>
                     {students.map((student, studentIndex) => {
+                        // ✅ CORREÇÃO: Usar dados reais das respostas detalhadas
+                        let answers = Array.from({ length: totalQuestions }, () => null);
+
+                        
+
+                        
+                        // ✅ Usar dados do banco para gerar respostas
                         const correctAnswers = student.acertos;
                         const wrongAnswers = student.erros;
-                        const blankAnswers = student.em_branco;
+                        const totalAnswered = correctAnswers + wrongAnswers;
                         
-                        const answers = Array.from({ length: totalQuestions }, (_, questionIndex) => {
-                            if (questionIndex < correctAnswers) return true;
-                            if (questionIndex < correctAnswers + wrongAnswers) return false;
+                        answers = Array.from({ length: totalQuestions }, (_, questionIndex) => {
+                            if (questionIndex < totalAnswered) {
+                                if (questionIndex < correctAnswers) return true;
+                                return false;
+                            }
                             return null;
                         });
+                        
+
                         
                         return (
                             <tr key={`${student.id || 'student'}-${studentIndex}`} 
                                 className="hover:bg-gray-50 cursor-pointer group"
                                 onClick={() => onViewStudentDetails(student.id)}
                                 title="Clique para ver resultados detalhados do aluno">
-                                <td className="p-2 border-t border-gray-200 text-left border-r border-gray-300">
+                                <td className="p-2 border-t border-gray-200 text-left border-r-2 border-gray-200">
                                     <div className="font-medium hover:text-blue-600 transition-colors flex items-center gap-2">
                                         {student.nome}
                                         <Eye className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                                     </div>
                                 </td>
-                                {visibleFields?.questoes && answers.map((answer, questionIndex) => (
-                                    <td key={`${student.id}-q${questionIndex}`} className="p-2 border-t border-gray-200 border-r border-gray-300">
-                                        <div className="text-xl">
-                                            {answer === true ? (
-                                                <span className="text-blue-600">✓</span>
-                                            ) : answer === false ? (
-                                                <span className="text-red-500">✗</span>
-                                            ) : (
-                                                <span className="text-gray-400">-</span>
-                                            )}
+                                {visibleFields?.questoes && answers.map((answer, questionIndex) => {
+                                    const displaySymbol = answer === true ? '✓' : answer === false || answer === null ? '✗' : '-';
+                                    const displayColor = answer === true ? 'text-green-700' : answer === false || answer === null ? 'text-red-600' : 'text-transparent';
+                                    
+                                    return (
+                                        <td key={`${student.id}-q${questionIndex}`} className="px-4 py-2 border-t border-gray-200 border-r-2 border-gray-200 text-center align-middle">
+                                            <div className="flex justify-center items-center h-full">
+                                                <span className={`${displayColor} text-2xl font-bold`}>{displaySymbol}</span>
                                         </div>
                                     </td>
-                                ))}
-                                {visibleFields?.total && <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50">{student.acertos}</td>}
-                                {visibleFields?.nota && <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50">{student.nota.toFixed(1)}</td>}
-                                {visibleFields?.proficiencia && <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50">{student.proficiencia.toFixed(0)}</td>}
+                                    );
+                                })}
+                                {visibleFields?.total && (
+                                    <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50 text-center">
+                                        {student.correct_answers || student.acertos}
+                                    </td>
+                                )}
+                                {visibleFields?.nota && (
+                                    <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50 text-center">
+                                        {(typeof student.grade === 'number' ? student.grade?.toFixed(1) : student.grade) || student.total_score?.toFixed(1) || student.nota.toFixed(1)}
+                                    </td>
+                                )}
+                                {visibleFields?.proficiencia && (
+                                    <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50 text-center">
+                                        {student.proficiency?.toFixed(0) || student.proficiencia.toFixed(0)}
+                                    </td>
+                                )}
                                 {visibleFields?.nivel && (
-                                    <td className="p-2 border-t border-gray-200 bg-gray-50">
+                                    <td className="p-2 border-t border-gray-200 bg-gray-50 text-center">
                                         <span className={`px-2 py-1 rounded-full text-xs text-white ${
-                                            student.classificacao === 'Abaixo do Básico' ? 'bg-red-500' :
-                                            student.classificacao === 'Básico' ? 'bg-yellow-400' :
-                                            student.classificacao === 'Adequado' ? 'bg-blue-500' :
-                                            'bg-green-500'
+                                            (student.classification || student.classificacao) === 'Abaixo do Básico' ? 'bg-red-500' :
+                                            (student.classification || student.classificacao) === 'Básico' ? 'bg-yellow-500' :
+                                            (student.classification || student.classificacao) === 'Adequado' ? 'bg-green-400' :
+                                            'bg-green-600'
                                         }`}>
-                                            {student.classificacao}
+                                            {student.classification || student.classificacao}
                                         </span>
                                     </td>
                                 )}
@@ -573,19 +714,19 @@ const StudentsResultsTable = ({
                     <div className="font-semibold text-gray-700">Legenda:</div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="flex items-center gap-1">
-                            <span className="text-blue-600 text-lg">✓</span>
+                            <span className="text-green-700 text-2xl font-bold">✓</span>
                             <span>Aluno acertou</span>
                         </div>
                         <div className="flex items-center gap-1">
-                            <span className="text-red-500 text-lg">✗</span>
-                            <span>Aluno errou</span>
+                            <span className="text-red-600 text-2xl font-bold">✗</span>
+                            <span>Aluno errou ou deixou em branco</span>
                         </div>
                             <div className="flex items-center gap-1">
-                            <span className="text-green-600 font-bold">60%+</span>
+                            <span className="text-green-700 font-bold">60%+</span>
                             <span>Turma teve bom desempenho</span>
                         </div>
                         <div className="flex items-center gap-1">
-                            <span className="text-red-500 font-bold">&lt;60%</span>
+                            <span className="text-red-600 font-bold">&lt;60%</span>
                             <span>Turma teve dificuldade</span>
                         </div>
                     </div>
@@ -684,8 +825,92 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
     const [orderBy, setOrderBy] = useState<'nota' | 'proficiencia' | 'status' | 'turma' | 'nome'>('nome');
     const [orderDirection, setOrderDirection] = useState<'asc' | 'desc'>('asc');
     
+    // ✅ NOVO: Estado para controlar visualização de alunos
+    const [showOnlyCompleted, setShowOnlyCompleted] = useState(true);
+    const [showAbsentStudents, setShowAbsentStudents] = useState(false);
+    
+    // ✅ NOVO: Estado para controlar quando mostrar a tabela
+    const [isTableReady, setIsTableReady] = useState(false);
+    
     const { toast } = useToast();
     const navigate = useNavigate();
+
+  // ✅ NOVO: Estado para armazenar respostas detalhadas de todos os alunos
+  const [studentDetailedAnswers, setStudentDetailedAnswers] = useState<Record<string, StudentDetailedAnswers>>({});
+  const [isLoadingDetailedAnswers, setIsLoadingDetailedAnswers] = useState(false);
+
+  // ✅ NOVO: Estado para filtros do gráfico
+  const [chartFilters, setChartFilters] = useState({
+    'Abaixo do Básico': true,
+    'Básico': true, 
+    'Adequado': true,
+    'Avançado': true,
+    'Sem Nota': true
+  });
+
+  // ✅ NOVO: Função para buscar respostas detalhadas de todos os alunos
+  const fetchAllStudentDetailedAnswers = useCallback(async () => {
+    if (!evaluationInfo?.id || !students || students.length === 0) return;
+
+    try {
+      setIsLoadingDetailedAnswers(true);
+
+
+      const detailedAnswers: Record<string, StudentDetailedAnswers> = {};
+      
+      // ✅ SIMPLIFICADO: Usar apenas dados do banco
+      students.forEach((student) => {
+        detailedAnswers[student.id] = {
+          test_id: evaluationInfo.id,
+          student_id: student.id,
+          student_name: student.nome,
+          total_questions: student.questoes_respondidas,
+          answered_questions: student.acertos + student.erros,
+          correct_answers: student.correct_answers || student.acertos,
+          score_percentage: (student.acertos / student.questoes_respondidas) * 100,
+          total_score: student.total_score || student.nota,
+          max_possible_score: student.questoes_respondidas,
+          grade: (typeof student.grade === 'number' ? student.grade : Number(student.grade)) || student.nota,
+          proficiencia: student.proficiency || student.proficiencia,
+          classificacao: student.classification || student.classificacao,
+          status: student.status === 'pendente' ? 'nao_respondida' : 'concluida',
+          answers: []
+        };
+        
+
+      });
+
+      setStudentDetailedAnswers(detailedAnswers);
+      
+
+      
+      // ✅ Marcar tabela como pronta para renderizar
+      setIsTableReady(true);
+      
+    } catch (error) {
+      console.error('Erro ao processar dados do banco:', error);
+    } finally {
+      setIsLoadingDetailedAnswers(false);
+    }
+  }, [evaluationInfo?.id, students]);
+
+  // ✅ NOVO: Carregar respostas detalhadas quando os dados básicos estiverem prontos
+  useEffect(() => {
+
+    
+    if (evaluationInfo?.id && students && students.length > 0 && !isLoadingDetailedAnswers) {
+
+      setIsTableReady(false); // Reset table ready state
+      fetchAllStudentDetailedAnswers();
+    }
+  }, [evaluationInfo?.id, students, fetchAllStudentDetailedAnswers, isLoadingDetailedAnswers]);
+
+
+
+    // ✅ NOVO: Função para voltar da visualização de faltosos
+    const handleBackFromAbsentStudents = () => {
+        setShowAbsentStudents(false);
+    };
 
     // ✅ FUNÇÃO PARA CONSOLIDAR ATUALIZAÇÕES DO EVALUATIONINFO
     const consolidateEvaluationInfo = (updates: Partial<EvaluationInfo>) => {
@@ -829,6 +1054,11 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
     // ✅ CORRIGIDO: Calcular alunos filtrados
     const filteredStudents = React.useMemo(() => {
         return students.filter(student => {
+            // ✅ NOVO: Filtro para mostrar apenas alunos que realizaram a avaliação
+            if (showOnlyCompleted && student.status !== 'concluida') {
+                return false;
+            }
+            
             const matchesSearch = searchTerm === '' || 
                 student.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 student.turma.toLowerCase().includes(searchTerm.toLowerCase());
@@ -874,7 +1104,12 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
             
             return orderDirection === 'asc' ? comparison : -comparison;
         });
-    }, [students, searchTerm, classificationFilter, statusFilter, showOnlyWithScore, levelFilter, turmaFilter, orderBy, orderDirection]);
+    }, [students, searchTerm, classificationFilter, statusFilter, showOnlyWithScore, levelFilter, turmaFilter, orderBy, orderDirection, showOnlyCompleted]);
+
+    // ✅ NOVO: Alunos que não realizaram a avaliação
+    const absentStudents = React.useMemo(() => {
+        return students.filter(student => student.status !== 'concluida');
+    }, [students]);
 
     // Componente de visualização em cards (mantido para compatibilidade)
     const StudentsCardsView = ({ students }: { students: StudentResult[] }) => {
@@ -1275,7 +1510,7 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                         });
                     });
                     
-                    console.log('🔍 Skills organizadas por disciplina:', skillsBySubject);
+                    // console.log('🔍 Skills organizadas por disciplina:', skillsBySubject);
                     setSkillsMapping(newSkillsMapping);
                     setSkillsBySubject(skillsBySubject);
                     
@@ -1388,7 +1623,7 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                 // Se não há relatório detalhado, buscar apenas os alunos
                 updateLoadingProgress(6, 'Carregando lista de alunos...');
                 const studentsResponse = await EvaluationResultsApiService.getStudentsByEvaluation(evaluationId);
-                setStudents(studentsResponse);
+                setStudents(studentsResponse as unknown as StudentResult[]);
                 
                 // Calcular estatísticas básicas
                 const totalStudents = studentsResponse.length;
@@ -1473,10 +1708,10 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
 
     const getClassificationColor = (classification: string) => {
         switch (classification) {
-            case 'Avançado': return 'bg-green-100 text-green-800 border-green-300';
-            case 'Adequado': return 'bg-blue-100 text-blue-800 border-blue-300';
-            case 'Básico': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-            case 'Abaixo do Básico': return 'bg-red-100 text-red-800 border-red-300';
+            case 'Avançado': return 'bg-green-600 text-white border-green-600';
+            case 'Adequado': return 'bg-green-400 text-white border-green-400';
+            case 'Básico': return 'bg-yellow-500 text-white border-yellow-500';
+            case 'Abaixo do Básico': return 'bg-red-500 text-white border-red-500';
             default: return 'bg-gray-100 text-gray-800 border-gray-300';
         }
     };
@@ -1800,6 +2035,73 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
         );
     }
 
+    // ✅ NOVO: Visualização de alunos faltosos
+    if (showAbsentStudents) {
+        return (
+            <div className="container mx-auto px-4 py-6 space-y-6">
+                {/* Header */}
+                <div className="flex items-center gap-4">
+                    <Button variant="outline" onClick={handleBackFromAbsentStudents}>
+                        <ArrowLeft className="h-4 w-4 mr-2" />
+                        Voltar aos Resultados
+                    </Button>
+                    <div className="flex-1">
+                        <h1 className="text-2xl font-bold">Alunos Faltosos</h1>
+                        <p className="text-muted-foreground">
+                            Alunos que não realizaram a avaliação {evaluationInfo.titulo}
+                        </p>
+                    </div>
+                </div>
+
+                {/* Lista de Alunos Faltosos */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Lista de Alunos Faltosos</CardTitle>
+                        <CardDescription>
+                            {absentStudents.length} aluno(s) que não realizaram a avaliação
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {absentStudents.length > 0 ? (
+                            <div className="space-y-4">
+                                {absentStudents.map((student, index) => (
+                                    <div key={`${student.id || 'student'}-${index}`} className="flex items-center justify-between p-4 border rounded-lg">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                                                <XCircle className="w-5 h-5 text-red-600" />
+                                            </div>
+                                            <div>
+                                                <h3 className="font-semibold">{student.nome}</h3>
+                                                <p className="text-sm text-muted-foreground">{student.turma}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Badge variant="outline" className="text-red-600 border-red-300">
+                                                Não Realizou
+                                            </Badge>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-12">
+                                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <CheckCircle2 className="w-8 h-8 text-green-600" />
+                                </div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                                    Nenhum aluno faltoso
+                                </h3>
+                                <p className="text-gray-600">
+                                    Todos os alunos realizaram a avaliação.
+                                </p>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
+
     return (
         <div className="container mx-auto px-4 py-6 space-y-6">
             {/* Header */}
@@ -1960,40 +2262,99 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
 
             {/* Gráfico de Distribuição por Classificação */}
             <Card>
-                <CardContent className="pt-6">
+                <CardHeader>
+                    <CardTitle className="text-lg">Distribuição por Classificação</CardTitle>
+                    <CardDescription>
+                        Controles de filtro para visualizar os níveis desejados
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    {/* Controles de filtro do gráfico - Melhor posicionamento */}
+                    <div className="flex flex-wrap gap-3 mb-6 p-4 bg-gray-50 rounded-lg">
+                        {Object.keys(chartFilters).map(level => (
+                            <div key={level} className="flex items-center space-x-2">
+                                <Checkbox
+                                    id={`chart-${level}`}
+                                    checked={chartFilters[level]}
+                                    onCheckedChange={(checked) => 
+                                        setChartFilters(prev => ({ ...prev, [level]: checked as boolean }))
+                                    }
+                                />
+                                <label htmlFor={`chart-${level}`} className="text-sm font-medium text-gray-700">
+                                    {level}
+                                </label>
+                            </div>
+                        ))}
+                    </div>
+                    
                     <DonutChartComponent
-                        data={[
-                            {
-                                name: "Abaixo do Básico",
-                                value: students.filter(s => s.classificacao === 'Abaixo do Básico' && s.nota > 0).length
-                            },
-                            {
-                                name: "Básico",
-                                value: students.filter(s => s.classificacao === 'Básico' && s.nota > 0).length
-                            },
-                            {
-                                name: "Adequado",
-                                value: students.filter(s => s.classificacao === 'Adequado' && s.nota > 0).length
-                            },
-                            {
-                                name: "Avançado",
-                                value: students.filter(s => s.classificacao === 'Avançado' && s.nota > 0).length
-                            },
-                            {
-                                name: "Sem Nota",
-                                value: students.filter(s => s.nota === 0).length
-                            }
-                        ]}
+                        data={(() => {
+                            const levelOrder = ["Abaixo do Básico", "Básico", "Adequado", "Avançado", "Sem Nota"];
+                            const colorMap = {
+                                "Abaixo do Básico": "#dc2626", // red-600
+                                "Básico": "#fbbf24", // yellow-400
+                                "Adequado": "#4ade80", // green-400
+                                "Avançado": "#16a34a", // green-600
+                                "Sem Nota": "#6b7280"  // gray-500
+                            };
+                            
+                            const data = levelOrder
+                                .map(level => ({
+                                    name: level,
+                                    value: level === "Sem Nota" 
+                                        ? (chartFilters[level] ? students.filter(s => s.nota === 0).length : 0)
+                                        : (chartFilters[level] ? students.filter(s => s.classificacao === level && s.nota > 0).length : 0),
+                                    color: colorMap[level] // ✅ CORREÇÃO: Adicionar cor específica para cada item
+                                }))
+                                .filter(item => item.value > 0);
+                            
+                            return data;
+                        })()}
                         title="Distribuição por Classificação"
-                        subtitle={`Total de ${students.length} alunos`}
-                        colors={[
-                            "#ef4444", // red-500 - Abaixo do Básico
-                            "#f97316", // orange-500 - Básico
-                            "#3b82f6", // blue-500 - Adequado
-                            "#22c55e", // green-500 - Avançado
-                            "#6b7280"  // gray-500 - Sem Nota
-                        ]}
+                        subtitle={`Total de ${students.filter(s => Object.values(chartFilters).some(f => f)).length} alunos`}
+                        colors={(() => {
+                            // ✅ CORREÇÃO: Gerar array de cores dinamicamente baseado nos dados filtrados
+                            const levelOrder = ["Abaixo do Básico", "Básico", "Adequado", "Avançado", "Sem Nota"];
+                            const colorMap = {
+                                "Abaixo do Básico": "#dc2626",
+                                "Básico": "#fbbf24", 
+                                "Adequado": "#4ade80",
+                                "Avançado": "#16a34a",
+                                "Sem Nota": "#6b7280"
+                            };
+                            
+                            return levelOrder
+                                .filter(level => {
+                                    const value = level === "Sem Nota" 
+                                        ? (chartFilters[level] ? students.filter(s => s.nota === 0).length : 0)
+                                        : (chartFilters[level] ? students.filter(s => s.classificacao === level && s.nota > 0).length : 0);
+                                    return value > 0;
+                                })
+                                .map(level => colorMap[level]);
+                        })()}
                     />
+                    
+                    {/* Índice fixo de cores */}
+                    <div className="mt-6 pt-4 border-t border-gray-200">
+                        <h4 className="text-sm font-medium text-gray-700 mb-3">Legenda de Cores</h4>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                            {[
+                                { name: "Abaixo do Básico", color: "#dc2626" },
+                                { name: "Básico", color: "#fbbf24" },
+                                { name: "Adequado", color: "#4ade80" },
+                                { name: "Avançado", color: "#16a34a" },
+                                { name: "Sem Nota", color: "#6b7280" }
+                            ].map((item) => (
+                                <div key={item.name} className="flex items-center space-x-2">
+                                    <div 
+                                        className="w-4 h-4 rounded-full border border-gray-300"
+                                        style={{ backgroundColor: item.color }}
+                                    />
+                                    <span className="text-sm text-gray-600">{item.name}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
                 </CardContent>
             </Card>
 
@@ -2047,11 +2408,11 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                     <CardTitle className="text-lg">Controles da Tabela</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <div className="space-y-4">
+                    <div className="space-y-6">
                         {/* Campos Visíveis - Layout Compacto */}
                         <div>
                             <h4 className="text-sm font-medium text-gray-700 mb-2">Colunas Visíveis</h4>
-                            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2">
+                            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
                                 {[
                                     { key: 'habilidade', label: 'Habilidade' },
                                     { key: 'questoes', label: 'Questões' },
@@ -2068,15 +2429,19 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                                             onCheckedChange={(checked) => 
                                                 setVisibleFields(prev => ({ ...prev, [key]: checked as boolean }))
                                             }
+                                            className="data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
                                         />
-                                        <label htmlFor={key} className="text-xs">{label}</label>
+                                        <label htmlFor={key} className="text-xs font-medium text-gray-700">{label}</label>
                                     </div>
                                 ))}
                             </div>
                         </div>
 
+                        {/* Separador */}
+                        <div className="border-t border-gray-200 pt-4"></div>
+
                         {/* Filtros e Ordenação - Layout Compacto */}
-                        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
                             <div>
                                 <label className="text-xs font-medium text-gray-700 block mb-1">Disciplina</label>
                                 <Select value={subjectFilter} onValueChange={setSubjectFilter}>
@@ -2149,7 +2514,34 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <div className="flex items-end">
+                        </div>
+                        
+                        {/* ✅ CORREÇÃO: Controles de ação em linha separada */}
+                        <div className="flex items-center gap-4 pt-3 border-t border-gray-200">
+                            {/* Toggle para mostrar apenas alunos que realizaram */}
+                            <div className="flex items-center space-x-2">
+                                <Checkbox
+                                    id="show-only-completed"
+                                    checked={showOnlyCompleted}
+                                    onCheckedChange={(checked) => setShowOnlyCompleted(checked as boolean)}
+                                    className="data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
+                                />
+                                <label htmlFor="show-only-completed" className="text-xs font-medium text-gray-700">
+                                    Apenas Concluídos
+                                </label>
+                            </div>
+                            
+                            {/* Botão para ver alunos faltosos */}
+                            <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => setShowAbsentStudents(true)}
+                                disabled={absentStudents.length === 0}
+                                className="h-8 text-xs"
+                            >
+                                Ver Faltosos ({absentStudents.length})
+                            </Button>
+                            
                                 <Button 
                                     variant="outline" 
                                     size="sm" 
@@ -2158,6 +2550,7 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                                         setClassificationFilter('all');
                                         setStatusFilter('all');
                                         setShowOnlyWithScore(false);
+                                    setShowOnlyCompleted(true);
                                         setLevelFilter('all');
                                         setTurmaFilter('all');
                                         setSubjectFilter('all');
@@ -2168,7 +2561,6 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                                 >
                                     Limpar Filtros
                                 </Button>
-                            </div>
                         </div>
                     </div>
                 </CardContent>
@@ -2258,14 +2650,14 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                                                     }}
                                                 ></div>
                                                 <div 
-                                                    className="flex-1 bg-blue-500 rounded-sm h-2" 
+                                                    className="flex-1 bg-green-400 rounded-sm h-2" 
                                                     title={`Adequado: ${distribution.adequado}`}
                                                     style={{ 
                                                         width: `${totalStudentsInTurma > 0 ? (distribution.adequado / totalStudentsInTurma) * 100 : 0}%` 
                                                     }}
                                                 ></div>
                                                 <div 
-                                                    className="flex-1 bg-green-500 rounded-sm h-2" 
+                                                    className="flex-1 bg-green-600 rounded-sm h-2" 
                                                     title={`Avançado: ${distribution.avancado}`}
                                                     style={{ 
                                                         width: `${totalStudentsInTurma > 0 ? (distribution.avancado / totalStudentsInTurma) * 100 : 0}%` 
@@ -2316,10 +2708,19 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                                     Cards
                                 </Button>
                             </div>
-                            <Button onClick={handleExportStudents} variant="outline">
-                                <Download className="h-4 w-4 mr-2" />
-                                Exportar
-                            </Button>
+                            <div className="flex items-center gap-2">
+                                <PDFReportGenerator
+                                    evaluationInfo={evaluationInfo}
+                                    students={students}
+                                    detailedReport={detailedReport}
+                                    studentDetailedAnswers={studentDetailedAnswers}
+                                    skillsMapping={skillsMapping}
+                                />
+                                <Button onClick={handleExportStudents} variant="outline">
+                                    <Download className="h-4 w-4 mr-2" />
+                                    Exportar Excel
+                                </Button>
+                            </div>
                         </div>
                     </CardTitle>
                     {/* Resumo da situação */}
@@ -2331,6 +2732,9 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                         <div className="flex items-center gap-2">
                             <Users className="h-4 w-4 text-blue-600" />
                             <span>{((students.filter(s => s.status === 'concluida').length / students.length) * 100).toFixed(1)}% participação</span>
+                            {showOnlyCompleted && (
+                                <span className="text-xs text-green-600 font-medium">(filtrado)</span>
+                            )}
                         </div>
                         <div className="flex items-center gap-2">
                             <Target className="h-4 w-4 text-blue-600" />
@@ -2344,7 +2748,7 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                     
                     {/* Filtros ativos */}
                     {(searchTerm || classificationFilter !== 'all' || statusFilter !== 'all' || 
-                      levelFilter !== 'all' || turmaFilter !== 'all' || subjectFilter !== 'all') && (
+                      levelFilter !== 'all' || turmaFilter !== 'all' || subjectFilter !== 'all' || showOnlyCompleted) && (
                         <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
                             <span>Filtros ativos:</span>
                             {searchTerm && (
@@ -2377,6 +2781,11 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                                     Disciplina: {subjectFilter}
                                 </Badge>
                             )}
+                            {showOnlyCompleted && (
+                                <Badge variant="secondary" className="text-xs bg-green-100 text-green-800">
+                                    Apenas Concluídos
+                                </Badge>
+                            )}
                         </div>
                     )}
                     {/* Controles da tabela */}
@@ -2394,19 +2803,35 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                 <CardContent>
                     {filteredStudents.length > 0 ? (
                         viewMode === 'table' ? (
-                            <StudentsResultsTable 
-                                students={filteredStudents} 
-                                totalQuestions={detailedReport?.questoes.length || 0} 
-                                startQuestionNumber={1} // ✅ SEMPRE começar da questão 1
-                                onViewStudentDetails={handleViewStudentDetails}
-                                questoes={detailedReport?.questoes}
-                                questionsWithSkills={questionsWithSkills}
-                                skillsMapping={skillsMapping}
-                                skillsBySubject={skillsBySubject}
-                                detailedReport={detailedReport}
-                                visibleFields={visibleFields}
-                                subjectFilter={subjectFilter}
-                            />
+                            // ✅ Só mostrar tabela quando os dados estiverem prontos
+                            isTableReady ? (
+                                <StudentsResultsTable 
+                                    students={filteredStudents} 
+                                    totalQuestions={detailedReport?.questoes.length || 0} 
+                                    startQuestionNumber={1} // ✅ SEMPRE começar da questão 1
+                                    onViewStudentDetails={handleViewStudentDetails}
+                                    questoes={detailedReport?.questoes}
+                                    questionsWithSkills={questionsWithSkills}
+                                    skillsMapping={skillsMapping}
+                                    skillsBySubject={skillsBySubject}
+                                    detailedReport={detailedReport}
+                                    studentDetailedAnswers={studentDetailedAnswers}
+                                    visibleFields={visibleFields}
+                                    subjectFilter={subjectFilter}
+                                />
+                            ) : (
+                                <div className="text-center py-12">
+                                    <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                                    </div>
+                                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                                        Carregando dados detalhados...
+                                    </h3>
+                                    <p className="text-gray-600">
+                                        Aguarde enquanto carregamos as respostas individuais dos alunos.
+                                    </p>
+                                </div>
+                            )
                         ) : (
                             <StudentsCardsView students={filteredStudents} />
                         )
@@ -2429,6 +2854,18 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
             </Card>
 
             {/* ✅ NOVO: Skills por Disciplina - Posicionado no final da página */}
+
+            {/* ✅ NOVO: Indicador de carregamento das respostas detalhadas */}
+            {isLoadingDetailedAnswers && (
+                <Card>
+                    <CardContent className="p-4">
+                        <div className="flex items-center gap-2 text-sm text-blue-600">
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                            Carregando respostas detalhadas dos alunos...
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
 
         </div>
     );

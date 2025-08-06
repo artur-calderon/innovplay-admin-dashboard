@@ -46,6 +46,7 @@ import { EvaluationApiService } from "@/services/evaluationApi";
 
 import { format, isAfter, isBefore, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
 
 interface DetailedAnswer {
   question_id: string;
@@ -264,6 +265,12 @@ export default function StudentEvaluations() {
         response: error.response?.data,
         status: error.response?.status,
         stack: error.stack
+      });
+      
+      toast({
+        title: "Erro",
+        description: ERROR_MESSAGES.NETWORK_ERROR,
+        variant: "destructive",
       });
 
       setEvaluations([]);

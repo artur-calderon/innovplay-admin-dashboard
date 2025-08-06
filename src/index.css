@@ -877,8 +877,8 @@
 }
 
 .evaluation-question-header {
-  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
-  border-bottom: 1px solid #93c5fd;
+  background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);
+  border-bottom: 1px solid #c084fc;
 }
 
 .evaluation-navigation-button {

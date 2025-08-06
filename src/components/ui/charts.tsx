@@ -26,9 +26,9 @@ interface PieChartProps {
 
 const defaultColors = [
     "#ef4444", // red-500 - Abaixo do Básico
-    "#f97316", // orange-500 - Básico
-    "#22c55e", // green-500 - Adequado
-    "#15803d", // green-700 - Avançado
+    "#fbbf24", // yellow-400 - Básico (amarelo mais claro)
+    "#4ade80", // green-400 - Adequado (verde claro)
+    "#16a34a", // green-600 - Avançado (verde escuro)
 ]
 
 export function BarChartComponent({

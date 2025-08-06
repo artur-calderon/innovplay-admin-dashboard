@@ -30,6 +30,7 @@ import { Check, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
 
 // Form schema
 const evaluationFormSchema = z.object({
@@ -127,7 +128,7 @@ export default function EvaluationForm({ onSubmit, initialValues }: EvaluationFo
       console.error("Erro ao buscar escolas:", error);
       toast({
         title: "Erro",
-        description: "Erro ao carregar escolas. Verifique sua conexão.",
+        description: ERROR_MESSAGES.NETWORK_ERROR,
         variant: "destructive",
       });
     } finally {
@@ -144,7 +145,7 @@ export default function EvaluationForm({ onSubmit, initialValues }: EvaluationFo
       console.error("Erro ao buscar disciplinas:", error);
       toast({
         title: "Erro",
-        description: "Erro ao carregar disciplinas. Verifique sua conexão.",
+        description: ERROR_MESSAGES.NETWORK_ERROR,
         variant: "destructive",
       });
     } finally {
@@ -162,7 +163,7 @@ export default function EvaluationForm({ onSubmit, initialValues }: EvaluationFo
       console.error("Erro ao buscar turmas:", error);
       toast({
         title: "Erro",
-        description: "Erro ao carregar turmas da escola selecionada.",
+        description: ERROR_MESSAGES.NETWORK_ERROR,
         variant: "destructive",
       });
       setFilteredClasses([]);
