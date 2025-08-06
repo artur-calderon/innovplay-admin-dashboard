@@ -23,6 +23,7 @@ const StudentEvaluations = React.lazy(() => import("./components/evaluations/Stu
 const Users = React.lazy(() => import("./pages/Users"));
 const Profile = React.lazy(() => import("./pages/Profile"));
 const ClassDetails = React.lazy(() => import("./components/schools/ClassDetails"));
+const SchoolDetails = React.lazy(() => import("./components/schools/SchoolDetails"));
 const CreateEvaluation = React.lazy(() => import("./pages/CreateEvaluation"));
 const EditEvaluation = React.lazy(() => import("./pages/EditEvaluation"));
 const Cities = React.lazy(() => import("./pages/Cities"));
@@ -162,6 +163,7 @@ const App = () => {
               <Route path="/app/olimpiadas" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
               <Route path="/app/city" element={<PrivateRoute><Cities /></PrivateRoute>} />
               <Route path="/app/turma/:id" element={<PrivateRoute><ClassDetails /></PrivateRoute>} />
+              <Route path="/app/escola/:id" element={<PrivateRoute><SchoolDetails /></PrivateRoute>} />
               <Route path="/app/usuarios" element={<PrivateRoute><Users /></PrivateRoute>} />
               <Route path="/app/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
               <Route path="/app/avisos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
