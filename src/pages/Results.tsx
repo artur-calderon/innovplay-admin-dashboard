@@ -321,12 +321,12 @@ export default function Results() {
           setEvaluationsByMunicipality(evaluationsData.map(evaluation => ({
             id: evaluation.id,
             titulo: evaluation.titulo,
-            disciplina: '', // Será preenchido quando necessário
-            status: 'concluida', // Valor padrão
+            disciplina: '',
+            status: 'concluida',
             data_aplicacao: new Date().toISOString()
           })));
 
-          // ✅ NOVO: Resetar seleções dependentes (escolas, séries e turmas agora são carregadas pelo loadData)
+          // ✅ NOVO: Resetar seleções dependentes
           setSelectedEvaluation('all');
           setSelectedSchool('all');
           setSelectedGrade('all');
@@ -355,8 +355,139 @@ export default function Results() {
     loadEvaluations();
   }, [selectedMunicipality, selectedState]);
 
-  // ✅ REMOVIDO: Os useEffect para carregar escolas, séries e turmas foram removidos
-  // ✅ NOVO: Esses dados agora são carregados apenas pelo loadData através do opcoes_proximos_filtros
+  // ✅ NOVO: Carregar escolas quando avaliação for selecionada
+  useEffect(() => {
+    const loadSchools = async () => {
+      if (selectedEvaluation !== 'all') {
+        try {
+          setIsLoadingFilters(true);
+          const schoolsData = await EvaluationResultsApiService.getFilterSchoolsByEvaluation({
+            estado: selectedState,
+            municipio: selectedMunicipality,
+            avaliacao: selectedEvaluation
+          });
+          setSchools(schoolsData.map(school => ({
+            id: school.id,
+            name: school.nome,
+            city: {
+              id: selectedMunicipality,
+              name: '',
+              state: selectedState
+            },
+            students_count: 0,
+            classes_count: 0
+          })));
+
+          // Resetar seleções dependentes
+          setSelectedSchool('all');
+          setSelectedGrade('all');
+          setSelectedClass('all');
+          setGrades([]);
+          setClasses([]);
+        } catch (error) {
+          console.error("Erro ao carregar escolas:", error);
+          setSchools([]);
+        } finally {
+          setIsLoadingFilters(false);
+        }
+      } else {
+        setSchools([]);
+        setSelectedSchool('all');
+        setSelectedGrade('all');
+        setSelectedClass('all');
+        setGrades([]);
+        setClasses([]);
+      }
+    };
+
+    loadSchools();
+  }, [selectedEvaluation, selectedState, selectedMunicipality]);
+
+  // ✅ NOVO: Carregar séries quando escola for selecionada
+  useEffect(() => {
+    const loadGrades = async () => {
+      if (selectedSchool !== 'all') {
+        try {
+          setIsLoadingFilters(true);
+          const gradesData = await EvaluationResultsApiService.getFilterGradesByEvaluation({
+            estado: selectedState,
+            municipio: selectedMunicipality,
+            avaliacao: selectedEvaluation,
+            escola: selectedSchool
+          });
+          setGrades(gradesData.map(grade => ({
+            id: grade.id,
+            name: grade.nome,
+            education_stage_id: '',
+            education_stage: {
+              id: '',
+              name: ''
+            }
+          })));
+
+          // Resetar seleções dependentes
+          setSelectedGrade('all');
+          setSelectedClass('all');
+          setClasses([]);
+        } catch (error) {
+          console.error("Erro ao carregar séries:", error);
+          setGrades([]);
+        } finally {
+          setIsLoadingFilters(false);
+        }
+      } else {
+        setGrades([]);
+        setSelectedGrade('all');
+        setSelectedClass('all');
+        setClasses([]);
+      }
+    };
+
+    loadGrades();
+  }, [selectedSchool, selectedState, selectedMunicipality, selectedEvaluation]);
+
+  // ✅ NOVO: Carregar turmas quando série for selecionada
+  useEffect(() => {
+    const loadClasses = async () => {
+      if (selectedGrade !== 'all') {
+        try {
+          setIsLoadingFilters(true);
+          const classesData = await EvaluationResultsApiService.getFilterClassesByEvaluation({
+            estado: selectedState,
+            municipio: selectedMunicipality,
+            avaliacao: selectedEvaluation,
+            escola: selectedSchool,
+            serie: selectedGrade
+          });
+          setClasses(classesData.map(classItem => ({
+            id: classItem.id,
+            name: classItem.nome,
+            school: {
+              id: selectedSchool,
+              name: ''
+            },
+            grade: {
+              id: selectedGrade,
+              name: ''
+            }
+          })));
+
+          // Resetar seleção dependente
+          setSelectedClass('all');
+        } catch (error) {
+          console.error("Erro ao carregar turmas:", error);
+          setClasses([]);
+        } finally {
+          setIsLoadingFilters(false);
+        }
+      } else {
+        setClasses([]);
+        setSelectedClass('all');
+      }
+    };
+
+    loadClasses();
+  }, [selectedGrade, selectedState, selectedMunicipality, selectedEvaluation, selectedSchool]);
 
   // Carregar dados quando filtros obrigatórios mudarem
   useEffect(() => {
@@ -380,17 +511,8 @@ export default function Results() {
 
     if (filtrosObrigatorios.filter(Boolean).length < 3) {
       setApiData(null);
-      // ✅ NOVO: Resetar seleções dependentes quando filtros obrigatórios não estão completos
-      setSelectedSchool('all');
-      setSelectedGrade('all');
-      setSelectedClass('all');
-      setSchools([]);
-      setGrades([]);
-      setClasses([]);
       return;
     }
-
-    // ✅ NOVO: Os dados de filtros opcionais (escolas, séries, turmas) são carregados pelo opcoes_proximos_filtros
 
     try {
       setIsLoadingData(true);
@@ -410,8 +532,6 @@ export default function Results() {
       console.log('🎯 LOG - Dados processados no componente Results:');
       console.log('🔧 Filtros aplicados:', filters);
       console.log('📥 Resposta da API:', response);
-      console.log('📊 Tipo da resposta:', typeof response);
-      console.log('🏗️ Estrutura da resposta:', response ? Object.keys(response) : 'null');
 
       // ✅ NOVO: Normalizar a estrutura da resposta para compatibilidade
       if (response) {
@@ -460,65 +580,6 @@ export default function Results() {
         };
 
         setApiData(normalizedResponse);
-
-        // ✅ NOVO: Extrair e atualizar as escolas das opções próximos filtros
-        if (response.opcoes_proximos_filtros?.escolas && response.opcoes_proximos_filtros.escolas.length > 0) {
-          console.log('🏫 LOG - Escolas encontradas na resposta da API:', response.opcoes_proximos_filtros.escolas);
-          setSchools(response.opcoes_proximos_filtros.escolas.map(school => ({
-            id: school.id,
-            name: school.name,
-            city: {
-              id: selectedMunicipality,
-              name: municipalities.find(m => m.id === selectedMunicipality)?.name || '',
-              state: states.find(s => s.id === selectedState)?.name || ''
-            },
-            students_count: 0,
-            classes_count: 0
-          })));
-        } else {
-          // ✅ NOVO: Limpar escolas se não houver dados
-          setSchools([]);
-          setSelectedSchool('all');
-        }
-
-        // ✅ NOVO: Extrair e atualizar as séries das opções próximos filtros
-        if (response.opcoes_proximos_filtros?.series && response.opcoes_proximos_filtros.series.length > 0) {
-          console.log('📚 LOG - Séries encontradas na resposta da API:', response.opcoes_proximos_filtros.series);
-          setGrades(response.opcoes_proximos_filtros.series.map(grade => ({
-            id: grade.id,
-            name: grade.name,
-            education_stage_id: '',
-            education_stage: {
-              id: '',
-              name: ''
-            }
-          })));
-        } else {
-          // ✅ NOVO: Limpar séries se não houver dados
-          setGrades([]);
-          setSelectedGrade('all');
-        }
-
-        // ✅ NOVO: Extrair e atualizar as turmas das opções próximos filtros
-        if (response.opcoes_proximos_filtros?.turmas && response.opcoes_proximos_filtros.turmas.length > 0) {
-          console.log('👥 LOG - Turmas encontradas na resposta da API:', response.opcoes_proximos_filtros.turmas);
-          setClasses(response.opcoes_proximos_filtros.turmas.map(classItem => ({
-            id: classItem.id,
-            name: classItem.name,
-            school: {
-              id: selectedSchool,
-              name: schools.find(s => s.id === selectedSchool)?.name || ''
-            },
-            grade: {
-              id: selectedGrade,
-              name: grades.find(g => g.id === selectedGrade)?.name || ''
-            }
-          })));
-        } else {
-          // ✅ NOVO: Limpar turmas se não houver dados
-          setClasses([]);
-          setSelectedClass('all');
-        }
       } else {
         setApiData(null);
       }
@@ -830,7 +891,7 @@ export default function Results() {
               <Select
                 value={selectedSchool}
                 onValueChange={setSelectedSchool}
-                disabled={isLoadingFilters || selectedMunicipality === 'all'}
+                disabled={isLoadingFilters || selectedEvaluation === 'all'}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione a escola" />
@@ -894,7 +955,10 @@ export default function Results() {
           {/* Informação sobre filtros */}
           <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
             <p className="text-sm text-blue-700">
-              💡 Selecione os três filtros obrigatórios para visualizar os dados: Estado, Município e Avaliação. Escola, Série e Turma são opcionais e podem ser "Todos".
+              💡 <strong>Hierarquia dos Filtros:</strong> Estado → Município → Avaliação → Escola → Série → Turma
+            </p>
+            <p className="text-sm text-blue-700 mt-1">
+              Os três primeiros filtros são obrigatórios. Escola, Série e Turma são opcionais e podem ser "Todos".
             </p>
           </div>
         </CardContent>
@@ -911,7 +975,7 @@ export default function Results() {
               Selecione os três filtros obrigatórios para continuar
             </h3>
             <p className="text-gray-600 text-center max-w-md">
-              Para visualizar os resultados das avaliações, você precisa selecionar: Estado, Município e Avaliação. Os filtros Escola, Série e Turma são opcionais e podem ser "Todos".
+              Para visualizar os resultados das avaliações, você precisa selecionar: <strong>Estado</strong>, <strong>Município</strong> e <strong>Avaliação</strong>. Os filtros Escola, Série e Turma são opcionais e podem ser "Todos".
             </p>
           </CardContent>
         </Card>
