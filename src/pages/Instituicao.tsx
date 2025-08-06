@@ -1,19 +1,19 @@
 import { useState, useEffect } from "react";
+import { useAuth } from "@/context/authContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { PlusCircle, Search, Edit, Trash2, Building, Loader2 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PlusCircle, Search, Edit, Trash2, Building, Loader2, Eye, Users, GraduationCap, UserPlus, ArrowLeft, Filter, Settings } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import SchoolForm from "@/components/schools/SchoolForm";
+import { InstituicaoUserManagement } from "@/components/schools/InstituicaoUserManagement";
+import { AddTeacherForm } from "@/components/schools/AddTeacherForm";
+import { AddStudentForm } from "@/components/schools/AddStudentForm";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,7 +24,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Label } from "@/components/ui/label";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -53,166 +60,274 @@ interface Instituicao {
   created_at?: string;
 }
 
-interface FormData {
+interface Class {
+  id: string;
   name: string;
-  address: string;
-  domain: string;
-  city_id: string;
+  school_id: string;
+  grade_id: string;
+  grade?: {
+    id: string;
+    name: string;
+  };
+}
+
+interface Teacher {
+  id: string;
+  name: string;
+  email: string;
+  registration?: string;
+  birth_date?: string;
+}
+
+interface Student {
+  id: string;
+  name: string;
+  registration?: string;
+  birth_date?: string;
+  user?: {
+    email: string;
+  };
 }
 
 export default function Instituicao() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const [instituicoes, setInstituicoes] = useState<Instituicao[]>([]);
-  const [cities, setCities] = useState<City[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [selectedInstituicao, setSelectedInstituicao] = useState<Instituicao | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<Instituicao | null>(null);
-  const [deletingItem, setDeletingItem] = useState<Instituicao | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState<FormData>({
-    name: "",
-    address: "",
-    domain: "",
-    city_id: "",
-  });
+  const [instituicaoToDelete, setInstituicaoToDelete] = useState<Instituicao | null>(null);
+  const [selectedInstituicaoForDetails, setSelectedInstituicaoForDetails] = useState<Instituicao | null>(null);
+  
+  // Estados para detalhes da instituição
+  const [classes, setClasses] = useState<Class[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  
+  // Estados para responsividade
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [sortBy, setSortBy] = useState<'name' | 'city' | 'domain'>('name');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  
   const { toast } = useToast();
 
-  useEffect(() => {
-    fetchInstituicoes();
-    fetchCities();
-  }, []);
-
   const fetchInstituicoes = async () => {
+    setIsLoading(true);
     try {
-      setIsLoading(true);
-      const response = await api.get("/school");
-      setInstituicoes(response.data || []);
+      let instituicoesData: Instituicao[] = [];
+
+      if (user.role === 'admin') {
+        // Admin vê todas as instituições
+        const response = await api.get("/school");
+        instituicoesData = response.data;
+      } else if (user.role === 'diretor' || user.role === 'coordenador' || user.role === 'professor') {
+        // Diretores, coordenadores e professores veem apenas sua instituição
+        try {
+          const response = await api.get(`/users/school/${user.id}`);
+          if (response.data && response.data.school) {
+            instituicoesData = [response.data.school];
+          }
+        } catch (error) {
+          console.error("Erro ao buscar instituição do usuário:", error);
+        }
+      } else {
+        // Outros roles (tecadmin, aluno) veem apenas as instituições do município
+        const response = await api.get("/school");
+        instituicoesData = response.data.filter((instituicao: Instituicao) => 
+          instituicao.city_id === user.tenant_id
+        );
+      }
+
+      setInstituicoes(instituicoesData);
     } catch (error) {
       console.error("Erro ao buscar instituições:", error);
       toast({
         title: "Erro",
-        description: "Erro ao carregar instituições. Verifique sua conexão.",
+        description: user.role === 'professor' 
+          ? "Erro ao carregar sua instituição" 
+          : "Erro ao carregar instituições",
         variant: "destructive",
       });
-      setInstituicoes([]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const fetchCities = async () => {
+  const fetchInstituicaoDetails = async (schoolId: string) => {
+    setIsLoadingDetails(true);
     try {
-      const response = await api.get("/city/");
-      setCities(response.data || []);
+      // Buscar turmas
+      const classesResponse = await api.get(`/classes/school/${schoolId}`);
+      setClasses(classesResponse.data || []);
+
+      // Buscar professores
+      const teachersResponse = await api.get(`/teacher/school/${schoolId}`);
+      setTeachers(Array.isArray(teachersResponse.data) ? teachersResponse.data : []);
+
+      // Buscar alunos
+      const studentsResponse = await api.get(`/students/school/${schoolId}`);
+      setStudents(studentsResponse.data || []);
     } catch (error) {
-      console.error("Erro ao buscar cidades:", error);
-    }
-  };
-
-  const openCreateModal = () => {
-    setEditingItem(null);
-    setFormData({ name: "", address: "", domain: "", city_id: "" });
-    setIsModalOpen(true);
-  };
-
-  const openEditModal = (item: Instituicao) => {
-    setEditingItem(item);
-    setFormData({
-      name: item.name,
-      address: item.address || "",
-      domain: item.domain || "",
-      city_id: item.city_id || "",
-    });
-    setIsModalOpen(true);
-  };
-
-  const openDeleteDialog = (item: Instituicao) => {
-    setDeletingItem(item);
-    setIsDeleteDialogOpen(true);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!formData.name.trim()) {
+      console.error("Erro ao buscar detalhes da instituição:", error);
       toast({
         title: "Erro",
-        description: "Nome é obrigatório",
+        description: user.role === 'professor' 
+          ? "Erro ao carregar detalhes da sua instituição" 
+          : "Erro ao carregar detalhes da instituição",
         variant: "destructive",
       });
-      return;
+    } finally {
+      setIsLoadingDetails(false);
     }
+  };
 
+  useEffect(() => {
+    fetchInstituicoes();
+  }, [user.role, user.tenant_id, user.id, toast]);
+
+  useEffect(() => {
+    if (selectedInstituicaoForDetails) {
+      fetchInstituicaoDetails(selectedInstituicaoForDetails.id);
+    }
+  }, [selectedInstituicaoForDetails]);
+
+  const handleSaveInstituicao = async (instituicao: Partial<Instituicao>) => {
+    setIsSaving(true);
     try {
-      setIsSubmitting(true);
-      
-      if (editingItem) {
-        // Editar
-        await api.put(`/school/${editingItem.id}`, formData);
+      if (selectedInstituicao) {
+        // Atualizar instituição existente
+        const response = await api.put(`/school/${selectedInstituicao.id}`, instituicao);
+        setInstituicoes(instituicoes.map(i => i.id === selectedInstituicao.id ? response.data : i));
         toast({
           title: "Sucesso",
-          description: "Instituição atualizada com sucesso!",
+          description: "Instituição atualizada com sucesso",
         });
       } else {
-        // Criar
-        await api.post("/school", formData);
+        // Adicionar nova instituição
+        const response = await api.post("/school", instituicao);
+        await fetchInstituicoes(); // Recarrega a lista completa
         toast({
           title: "Sucesso",
-          description: "Instituição criada com sucesso!",
+          description: "Instituição criada com sucesso",
         });
       }
-      
-      setIsModalOpen(false);
-      fetchInstituicoes();
-    } catch (error: any) {
-      console.error("Erro ao salvar:", error);
+      setIsAddDialogOpen(false);
+      setSelectedInstituicao(null);
+    } catch (error: unknown) {
+      console.error("Erro ao salvar instituição:", error);
+      let errorMessage = "Erro ao salvar instituição";
+
+      if (error && typeof error === 'object' && 'response' in error) {
+        const axiosError = error as { response?: { data?: { campos_faltantes?: string[] } } };
+        if (axiosError.response?.data?.campos_faltantes) {
+          const campos = axiosError.response.data.campos_faltantes.join(", ");
+          errorMessage = `Campos obrigatórios faltando: ${campos}`;
+        }
+      }
+
       toast({
         title: "Erro",
-        description: error.response?.data?.error || "Erro ao salvar instituição",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
-      setIsSubmitting(false);
+      setIsSaving(false);
     }
   };
 
-  const handleDelete = async () => {
-    if (!deletingItem) return;
-
+  const handleDeleteInstituicao = async (instituicaoId: string) => {
+    setIsDeleting(true);
     try {
-      setIsSubmitting(true);
-      await api.delete(`/school/${deletingItem.id}`);
+      await api.delete(`/school/${instituicaoId}`);
+      await fetchInstituicoes(); // Recarrega a lista completa
+      setInstituicaoToDelete(null);
+      setIsDeleteDialogOpen(false);
       toast({
         title: "Sucesso",
-        description: "Instituição excluída com sucesso!",
+        description: "Instituição excluída com sucesso",
       });
-      setIsDeleteDialogOpen(false);
-      setDeletingItem(null);
-      fetchInstituicoes();
-    } catch (error: any) {
-      console.error("Erro ao excluir:", error);
+    } catch (error) {
+      console.error("Erro ao excluir instituição:", error);
       toast({
         title: "Erro",
-        description: error.response?.data?.error || "Erro ao excluir instituição",
+        description: "Erro ao excluir instituição",
         variant: "destructive",
       });
     } finally {
-      setIsSubmitting(false);
+      setIsDeleting(false);
     }
   };
 
-  const filteredInstituicoes = instituicoes.filter(instituicao =>
-    instituicao.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (instituicao.address || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (instituicao.domain || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (instituicao.city?.name || '').toLowerCase().includes(searchTerm.toLowerCase())
+  const handleViewInstituicao = (instituicaoId: string) => {
+    navigate(`/app/escola/${instituicaoId}`);
+  };
+
+  const handleManageDetails = (instituicao: Instituicao) => {
+    setSelectedInstituicaoForDetails(instituicao);
+  };
+
+  const handleTeacherAdded = () => {
+    if (selectedInstituicaoForDetails) {
+      fetchInstituicaoDetails(selectedInstituicaoForDetails.id);
+    }
+  };
+
+  const handleStudentAdded = () => {
+    if (selectedInstituicaoForDetails) {
+      fetchInstituicaoDetails(selectedInstituicaoForDetails.id);
+    }
+  };
+
+  // Função para ordenar instituições
+  const sortInstituicoes = (data: Instituicao[]) => {
+    return [...data].sort((a, b) => {
+      let aValue = '';
+      let bValue = '';
+
+      switch (sortBy) {
+        case 'name':
+          aValue = a.name.toLowerCase();
+          bValue = b.name.toLowerCase();
+          break;
+        case 'city':
+          aValue = (a.city?.name || '').toLowerCase();
+          bValue = (b.city?.name || '').toLowerCase();
+          break;
+        case 'domain':
+          aValue = (a.domain || '').toLowerCase();
+          bValue = (b.domain || '').toLowerCase();
+          break;
+        default:
+          aValue = a.name.toLowerCase();
+          bValue = b.name.toLowerCase();
+      }
+
+      if (sortOrder === 'asc') {
+        return aValue.localeCompare(bValue);
+      } else {
+        return bValue.localeCompare(aValue);
+      }
+    });
+  };
+
+  const filteredAndSortedInstituicoes = sortInstituicoes(
+    instituicoes.filter(instituicao =>
+      instituicao.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (instituicao.address || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (instituicao.domain || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (instituicao.city?.name || '').toLowerCase().includes(searchTerm.toLowerCase())
+    )
   );
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
+      <div className="space-y-6 p-4 md:p-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <Skeleton className="h-9 w-64 mb-2" />
             <Skeleton className="h-5 w-48" />
@@ -220,11 +335,12 @@ export default function Instituicao() {
           <Skeleton className="h-10 w-32" />
         </div>
 
-        <div className="flex items-center space-x-2">
-          <Skeleton className="h-10 w-64" />
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <Skeleton className="h-10 w-full sm:w-64" />
+          <Skeleton className="h-10 w-24" />
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
           {[...Array(6)].map((_, index) => (
             <Card key={index} className="hover:shadow-md transition-shadow">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -238,7 +354,7 @@ export default function Instituicao() {
                 <div className="space-y-2">
                   <Skeleton className="h-5 w-full" />
                   <Skeleton className="h-4 w-24" />
-                  <div className="flex gap-2 mt-4">
+                  <div className="flex flex-wrap gap-2 mt-4">
                     <Skeleton className="h-8 w-16" />
                     <Skeleton className="h-8 w-16" />
                   </div>
@@ -252,212 +368,299 @@ export default function Instituicao() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="space-y-6 p-4 md:p-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Gerenciar Instituições</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Gerenciar Instituições</h1>
+          <p className="text-muted-foreground text-sm md:text-base">
             Cadastre e gerencie as instituições de ensino
           </p>
         </div>
-        <Button onClick={openCreateModal}>
-          <PlusCircle className="h-4 w-4 mr-2" />
-          Nova Instituição
-        </Button>
+        {user.role === 'admin' && (
+          <Button onClick={() => setIsAddDialogOpen(true)} className="w-full sm:w-auto">
+            <PlusCircle className="h-4 w-4 mr-2" />
+            Nova Instituição
+          </Button>
+        )}
       </div>
 
-      <div className="flex items-center space-x-2">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+      {/* Search and Filters */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+        <div className="relative flex-1 w-full sm:max-w-sm">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Buscar instituições..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-8"
+            className="pl-10"
           />
         </div>
-        <Button
-          variant="outline"
-          onClick={fetchInstituicoes}
-          disabled={isLoading}
-        >
-          {isLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            "Atualizar"
-          )}
-        </Button>
-      </div>
-
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {filteredInstituicoes.map((instituicao) => (
-          <Card key={instituicao.id} className="hover:shadow-md transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                <Building className="h-5 w-5 text-orange-600" />
-                {instituicao.name}
-              </CardTitle>
-              <Badge variant="default">
-                Ativa
-              </Badge>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <div>
-                  <p className="text-sm text-muted-foreground">
-                    {instituicao.city?.name ? `${instituicao.city.name} - ${instituicao.city.state}` : "Localização não definida"}
-                  </p>
-                  {instituicao.domain && (
-                    <p className="text-sm text-muted-foreground">
-                      Domínio: {instituicao.domain}
-                    </p>
-                  )}
-                </div>
-                <div className="flex gap-2 mt-4">
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => openEditModal(instituicao)}
-                  >
-                    <Edit className="h-3 w-3 mr-1" />
-                    Editar
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => openDeleteDialog(instituicao)}
-                  >
-                    <Trash2 className="h-3 w-3 mr-1" />
-                    Excluir
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {filteredInstituicoes.length === 0 && !isLoading && (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-10">
-            <Building className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">
-              {searchTerm ? "Nenhuma instituição encontrada" : "Nenhuma instituição cadastrada"}
-            </h3>
-            <p className="text-muted-foreground text-center mb-4">
-              {searchTerm 
-                ? "Tente ajustar sua pesquisa" 
-                : "Comece criando sua primeira instituição no sistema"}
-            </p>
-            {!searchTerm && (
-              <Button onClick={openCreateModal}>
-                <PlusCircle className="h-4 w-4 mr-2" />
-                Nova Instituição
-              </Button>
+        
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <Select value={sortBy} onValueChange={(value: 'name' | 'city' | 'domain') => setSortBy(value)}>
+            <SelectTrigger className="w-full sm:w-32">
+              <SelectValue placeholder="Ordenar por" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="name">Nome</SelectItem>
+              <SelectItem value="city">Cidade</SelectItem>
+              <SelectItem value="domain">Domínio</SelectItem>
+            </SelectContent>
+          </Select>
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+            className="w-10 h-10 p-0"
+          >
+            {sortOrder === 'asc' ? '↑' : '↓'}
+          </Button>
+          
+          <Button
+            variant="outline"
+            onClick={() => setViewMode(viewMode === 'cards' ? 'table' : 'cards')}
+            className="w-full sm:w-auto"
+          >
+            {viewMode === 'cards' ? 'Tabela' : 'Cards'}
+          </Button>
+          
+          <Button
+            variant="outline"
+            onClick={fetchInstituicoes}
+            disabled={isLoading}
+            className="w-full sm:w-auto"
+          >
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              "Atualizar"
             )}
-          </CardContent>
-        </Card>
+          </Button>
+        </div>
+      </div>
+
+             {/* Content */}
+       <div className="space-y-4">
+          {/* View Mode Toggle */}
+          <div className="flex justify-between items-center">
+            <p className="text-sm text-muted-foreground">
+              {filteredAndSortedInstituicoes.length} {filteredAndSortedInstituicoes.length === 1 ? 'instituição encontrada' : 'instituições encontradas'}
+            </p>
+          </div>
+
+          {/* Cards View */}
+                     {viewMode === 'cards' && (
+             <div className="grid gap-6 sm:gap-8 md:grid-cols-2 lg:grid-cols-3">
+              {filteredAndSortedInstituicoes.map((instituicao) => (
+                                 <Card key={instituicao.id} className="hover:shadow-lg transition-all duration-200 hover:scale-[1.02]">
+                   <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+                     <CardTitle className="text-base md:text-lg font-semibold flex items-center gap-2 min-w-0 flex-1">
+                       <Building className="h-4 w-4 md:h-5 md:w-5 text-orange-600 flex-shrink-0" />
+                       <span className="truncate">{instituicao.name}</span>
+                     </CardTitle>
+                     <Badge variant="default" className="text-xs flex-shrink-0 ml-2">
+                       Ativa
+                     </Badge>
+                   </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-xs md:text-sm text-muted-foreground">
+                          {instituicao.city?.name ? `${instituicao.city.name} - ${instituicao.city.state}` : "Localização não definida"}
+                        </p>
+                        {instituicao.domain && (
+                          <p className="text-xs md:text-sm text-muted-foreground">
+                            Domínio: {instituicao.domain}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1 md:gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleViewInstituicao(instituicao.id)}
+                          className="text-xs h-7 md:h-8"
+                        >
+                                                     <Settings className="h-3 w-3 mr-1" />
+                           <span className="hidden sm:inline">Gerenciar</span>
+                        </Button>
+
+                        {user.role === 'admin' && (
+                          <>
+
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => {
+                                setInstituicaoToDelete(instituicao);
+                                setIsDeleteDialogOpen(true);
+                              }}
+                              className="text-xs h-7 md:h-8 text-red-600 hover:text-red-700"
+                            >
+                              <Trash2 className="h-3 w-3 mr-1" />
+                              <span className="hidden sm:inline">Excluir</span>
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* Table View */}
+          {viewMode === 'table' && (
+            <div className="border rounded-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Instituição</TableHead>
+                      <TableHead>Cidade</TableHead>
+                      <TableHead>Domínio</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredAndSortedInstituicoes.map((instituicao) => (
+                      <TableRow key={instituicao.id}>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            <Building className="h-4 w-4 text-orange-600" />
+                            {instituicao.name}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {instituicao.city?.name ? `${instituicao.city.name} - ${instituicao.city.state}` : "-"}
+                        </TableCell>
+                        <TableCell>{instituicao.domain || "-"}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                                                         <Button 
+                               variant="outline" 
+                               size="sm"
+                               onClick={() => handleViewInstituicao(instituicao.id)}
+                             >
+                               <Settings className="h-3 w-3" />
+                             </Button>
+
+                            {user.role === 'admin' && (
+                              <>
+
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => {
+                                    setInstituicaoToDelete(instituicao);
+                                    setIsDeleteDialogOpen(true);
+                                  }}
+                                  className="text-red-600 hover:text-red-700"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+
+          {/* Empty State */}
+          {filteredAndSortedInstituicoes.length === 0 && !isLoading && (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-10">
+                <Building className="h-12 w-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2 text-center">
+                  {searchTerm 
+                    ? "Nenhuma instituição encontrada" 
+                    : user.role === 'professor' 
+                      ? "Você não está cadastrado em uma instituição!"
+                      : "Nenhuma instituição cadastrada"}
+                </h3>
+                <p className="text-muted-foreground text-center mb-4 max-w-md">
+                  {searchTerm 
+                    ? "Tente ajustar sua pesquisa ou verificar os filtros aplicados" 
+                    : user.role === 'professor'
+                      ? "Entre em contato com o diretor ou coordenador da sua escola para visualizar a sua escola"
+                      : "Não há instituições cadastradas no sistema."}
+                </p>
+                {!searchTerm && user.role === 'admin' && (
+                  <Button onClick={() => setIsAddDialogOpen(true)}>
+                    <PlusCircle className="h-4 w-4 mr-2" />
+                    Nova Instituição
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+      {/* Add/Edit Instituição Dialog */}
+      {(isAddDialogOpen || selectedInstituicao) && (
+        <SchoolForm
+          school={selectedInstituicao ? {
+            id: selectedInstituicao.id,
+            name: selectedInstituicao.name,
+            city_id: selectedInstituicao.city_id || '',
+            address: selectedInstituicao.address || '',
+            domain: selectedInstituicao.domain || '',
+            created_at: selectedInstituicao.created_at || '',
+            city: selectedInstituicao.city ? {
+              id: selectedInstituicao.city.id,
+              name: selectedInstituicao.city.name,
+              state: selectedInstituicao.city.state,
+              created_at: ''
+            } : { id: '', name: '', state: '', created_at: '' }
+          } : undefined}
+          onClose={() => {
+            setIsAddDialogOpen(false);
+            setSelectedInstituicao(null);
+          }}
+          onSave={handleSaveInstituicao}
+          isLoading={isSaving}
+        />
       )}
 
-      {/* Modal Criar/Editar */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>
-              {editingItem ? "Editar Instituição" : "Nova Instituição"}
-            </DialogTitle>
-            <DialogDescription>
-              {editingItem 
-                ? "Atualize as informações da instituição" 
-                : "Preencha os dados para criar uma nova instituição"}
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Nome *</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) => setFormData({...formData, name: e.target.value})}
-                placeholder="Nome da instituição"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="address">Endereço</Label>
-              <Input
-                id="address"
-                value={formData.address}
-                onChange={(e) => setFormData({...formData, address: e.target.value})}
-                placeholder="Endereço completo"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="domain">Domínio</Label>
-              <Input
-                id="domain"
-                value={formData.domain}
-                onChange={(e) => setFormData({...formData, domain: e.target.value})}
-                placeholder="www.exemplo.com"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="city">Cidade</Label>
-              <Select value={formData.city_id} onValueChange={(value) => setFormData({...formData, city_id: value})}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione uma cidade" />
-                </SelectTrigger>
-                <SelectContent>
-                  {cities.map((city) => (
-                    <SelectItem key={city.id} value={city.id}>
-                      {city.name} - {city.state}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex justify-end space-x-2 pt-4">
-              <Button 
-                type="button" 
-                variant="outline" 
-                onClick={() => setIsModalOpen(false)}
-                disabled={isSubmitting}
-              >
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Salvando...
-                  </>
-                ) : (
-                  editingItem ? "Atualizar" : "Criar"
-                )}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog Confirmar Exclusão */}
-      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={(open) => {
+        if (!open && !isDeleting) {
+          setIsDeleteDialogOpen(false);
+          setInstituicaoToDelete(null);
+        }
+      }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+            <AlertDialogTitle>Você tem certeza?</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir a instituição "{deletingItem?.name}"? 
-              Esta ação não pode ser desfeita.
+              Esta ação não pode ser desfeita. Isso excluirá permanentemente a
+              instituição {instituicaoToDelete?.name} e removerá os dados associados.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isSubmitting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleDelete}
-              disabled={isSubmitting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            <AlertDialogCancel
+              onClick={() => {
+                setInstituicaoToDelete(null);
+                setIsDeleteDialogOpen(false);
+              }}
+              disabled={isDeleting}
             >
-              {isSubmitting ? (
+              Cancelar
+            </AlertDialogCancel>
+            <Button
+              variant="destructive"
+              onClick={() => instituicaoToDelete && handleDeleteInstituicao(instituicaoToDelete.id)}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Excluindo...
@@ -465,7 +668,7 @@ export default function Instituicao() {
               ) : (
                 "Excluir"
               )}
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
