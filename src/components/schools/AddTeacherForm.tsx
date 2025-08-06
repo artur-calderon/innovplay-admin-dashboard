@@ -25,7 +25,7 @@ import { MultiSelect } from "@/components/ui/multi-select";
 interface AddTeacherFormProps {
     schoolId: string;
     schoolName: string;
-    classes: {
+    classes?: {
         id: string;
         name: string;
     }[];
@@ -40,7 +40,7 @@ interface Teacher {
     birth_date?: string;
 }
 
-export function AddTeacherForm({ schoolId, schoolName, classes, onSuccess }: AddTeacherFormProps) {
+export function AddTeacherForm({ schoolId, schoolName, classes = [], onSuccess }: AddTeacherFormProps) {
     const { user } = useAuth();
     const { toast } = useToast();
     const [isOpen, setIsOpen] = useState(false);
@@ -230,12 +230,18 @@ export function AddTeacherForm({ schoolId, schoolName, classes, onSuccess }: Add
 
                         <div className="space-y-2">
                             <Label>Turmas</Label>
-                            <MultiSelect
-                                options={classes.map((c) => ({ id: c.id, name: c.name }))}
-                                selected={selectedClasses}
-                                onChange={setSelectedClasses}
-                                placeholder="Selecione as turmas"
-                            />
+                            {classes && classes.length > 0 ? (
+                                <MultiSelect
+                                    options={classes.map((c) => ({ id: c.id, name: c.name }))}
+                                    selected={selectedClasses}
+                                    onChange={setSelectedClasses}
+                                    placeholder="Selecione as turmas"
+                                />
+                            ) : (
+                                <p className="text-sm text-muted-foreground">
+                                    Nenhuma turma disponível para seleção
+                                </p>
+                            )}
                         </div>
 
                         {!selectedTeacher && (

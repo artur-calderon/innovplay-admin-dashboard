@@ -156,33 +156,51 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
       role: ["admin", "professor"],
       links: [
         {
-          icon: List,
-          label: "Cadastros",
-          role: ["admin", "professor"],
-          children: [
-            {
-              icon: Building,
-              label: "Instituição",
-              role: ["admin"],
-              children: [
-                { icon: Building, label: "Instituição", href: "/app/cadastros/instituicao", role: ["admin"] },
-                { icon: BookOpen, label: "Curso", href: "/app/cadastros/curso", role: ["admin"] },
-                { icon: BookOpen, label: "Série", href: "/app/cadastros/serie", role: ["admin"] },
-                { icon: BookOpen, label: "Disciplina", href: "/app/cadastros/disciplina", role: ["admin"] },
-                { icon: Users2, label: "Turma", href: "/app/cadastros/turma", role: ["admin"] },
-              ]
-            },
-            { icon: List, label: "Avaliações", href: "/app/avaliacoes", role: ["admin", "professor"] },
+            icon: Building,
+            label: "Instituição",
+            href: "/app/cadastros/instituicao",
+            role: ["professor"]
+          },
+          {
+            icon: List,
+            label: "Avaliações",
+            href: "/app/avaliacoes",
+            role: ["professor"]
+          },
+          {
+            icon: HelpCircle,
+            label: "Questão",
+            href: "/app/cadastros/questao",
+            role: ["professor"]
+          },
+          {
+            icon: List,
+            label: "Cadastros",
+            role: ["admin"],
+            children: [
+              {
+                icon: Building,
+                label: "Instituição",
+                role: ["admin"],
+                children: [
+                  { icon: Building, label: "Instituição", href: "/app/cadastros/instituicao", role: ["admin"] },
+                  { icon: BookOpen, label: "Curso", href: "/app/cadastros/curso", role: ["admin"] },
+                  { icon: BookOpen, label: "Série", href: "/app/cadastros/serie", role: ["admin"] },
+                  { icon: BookOpen, label: "Disciplina", href: "/app/cadastros/disciplina", role: ["admin"] },
+                  { icon: Users2, label: "Turma", href: "/app/cadastros/turma", role: ["admin"] },
+                ]
+              },
+              { icon: List, label: "Avaliações", href: "/app/avaliacoes", role: ["admin"] },
 
 
 
-            { icon: LandPlot, label: "Municípios", href: "/app/city", role: ["admin"] },
-            { icon: HelpCircle, label: "Questão", href: "/app/cadastros/questao", role: ["admin", "professor"] },
+              { icon: LandPlot, label: "Municípios", href: "/app/city", role: ["admin"] },
+              { icon: HelpCircle, label: "Questão", href: "/app/cadastros/questao", role: ["admin"] },
 
 
-            { icon: User, label: "Usuário", href: "/app/usuarios", role: ["admin"] },
-          ]
-        },
+              { icon: User, label: "Usuário", href: "/app/usuarios", role: ["admin"] },
+            ]
+          },
         {
           icon: Ticket,
           label: "Cartão Resposta",
