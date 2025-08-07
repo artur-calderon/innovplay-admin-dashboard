@@ -1,10 +1,8 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Skeleton } from "@/components/ui/skeleton";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -20,22 +18,14 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-    Clock,
     ChevronLeft,
     ChevronRight,
-    ChevronUp,
-    ChevronDown,
     Send,
     AlertTriangle,
-    CheckCircle,
-    Save,
     Home,
     Play,
     Loader2,
     CheckCircle2,
-    Pause,
-    Info,
-    Printer,
     Maximize2,
     X
 } from "lucide-react";
@@ -43,15 +33,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { EvaluationTimer } from "../EvaluationTimer";
 import { useEvaluation } from "@/hooks/useEvaluation";
-import { Question, TestData, TestResults } from "@/types/evaluation-types";
-
-// Função para determinar a cor baseada na performance
-const getPerformanceColor = (percentage: number) => {
-    if (percentage >= 80) return "text-green-600";
-            if (percentage >= 60) return "text-purple-600";
-    if (percentage >= 40) return "text-yellow-600";
-    return "text-red-600";
-};
+import { Question } from "@/types/evaluation-types";
 
 export default function TakeEvaluation() {
     const { id: evaluationId } = useParams<{ id: string }>();
