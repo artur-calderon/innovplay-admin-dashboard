@@ -37,44 +37,95 @@ interface User {
     registration?: string;
     birth_date?: string;
     role?: string;
+    city_id?: string;
 }
 
 const USER_TYPE_CONFIG = {
     professor: {
         title: "Professor",
-        apiEndpoint: "/users",
+        apiEndpoint: "/teacher",
+        fetchEndpoint: "/teacher",
         linkEndpoint: "/teacher",
         schoolsEndpoint: "/teacher",
         classesEndpoint: "/teacher",
         role: "professor",
-        color: "blue"
+        color: "blue",
+        responseKey: "professores",
+        requiredFields: ["name", "email", "password"],
+        optionalFields: ["registration", "birthDate"],
+        dataMapping: {
+            name: "nome",
+            email: "email",
+            password: "senha",
+            registration: "matricula",
+            birthDate: "birth_date"
+        },
+        requiresCityId: false
     },
     diretor: {
         title: "Diretor",
-        apiEndpoint: "/users",
+        apiEndpoint: "/teacher/directors",
+        fetchEndpoint: "/teacher/directors",
         linkEndpoint: "/teacher",
         schoolsEndpoint: "/teacher",
         classesEndpoint: "/teacher",
         role: "diretor",
-        color: "red"
+        color: "red",
+        responseKey: "diretores",
+        requiredFields: ["name", "email", "password", "registration"],
+        optionalFields: ["birthDate"],
+        dataMapping: {
+            name: "nome",
+            email: "email",
+            password: "senha",
+            registration: "matricula",
+            birthDate: "birth_date"
+        },
+        requiresCityId: true
     },
     coordenador: {
         title: "Coordenador",
-        apiEndpoint: "/users",
+        apiEndpoint: "/teacher/coordinators",
+        fetchEndpoint: "/teacher/coordinators",
         linkEndpoint: "/teacher",
         schoolsEndpoint: "/teacher",
         classesEndpoint: "/teacher",
         role: "coordenador",
-        color: "orange"
+        color: "orange",
+        responseKey: "coordenadores",
+        requiredFields: ["name", "email", "password", "registration"],
+        optionalFields: ["birthDate"],
+        dataMapping: {
+            name: "nome",
+            email: "email",
+            password: "senha",
+            registration: "matricula",
+            birthDate: "birth_date"
+        },
+        requiresCityId: true
     },
     aluno: {
         title: "Aluno",
-        apiEndpoint: "/users",
+        apiEndpoint: "/students",
+        fetchEndpoint: "/students/",
         linkEndpoint: "/students",
         schoolsEndpoint: "/students",
         classesEndpoint: "/students",
         role: "aluno",
-        color: "green"
+        color: "green",
+        responseKey: null,
+        requiredFields: ["name", "email", "password"],
+        optionalFields: ["registration", "birthDate", "classId", "gradeId"],
+        dataMapping: {
+            name: "name",
+            email: "email",
+            password: "password",
+            registration: "registration",
+            birthDate: "birth_date",
+            classId: "class_id",
+            gradeId: "grade_id"
+        },
+        requiresCityId: false
     }
 };
 
@@ -94,6 +145,8 @@ export function AddUserForm({ schoolId, schoolName, userType, onSuccess }: AddUs
         password: "",
         registration: "",
         birthDate: "",
+        classId: "",
+        gradeId: "",
     });
 
     const config = USER_TYPE_CONFIG[userType];
@@ -136,12 +189,47 @@ export function AddUserForm({ schoolId, schoolName, userType, onSuccess }: AddUs
                 
                 try {
                     if (userType === 'aluno') {
-                        response = await api.get('/students/');
+                        response = await api.get(config.fetchEndpoint);
+                        users = Array.isArray(response.data) ? response.data : [];
                     } else {
-                        response = await api.get('/teacher/');
+                        response = await api.get(config.fetchEndpoint);
+                        console.log(response.data);
+                        
+                        // Verificar se a resposta tem a estrutura esperada
+                        console.log('Checking response structure...');
+                        console.log('config.responseKey:', config.responseKey);
+                        console.log('response.data[config.responseKey]:', response.data[config.responseKey]);
+                        
+                        if (response.data && response.data.professores) {
+                            // Fallback para estrutura antiga de professores
+                            console.log('Using old professor structure');
+                            users = response.data.professores.map((prof: any) => {
+                                console.log('Processing professor:', prof);
+                                console.log('prof.usuario:', prof.usuario);
+                                console.log('prof.professor:', prof.professor);
+                                
+                                const processedUser = {
+                                    id: prof.usuario?.id || prof.professor?.id || `prof-${Math.random()}`,
+                                    name: prof.usuario?.name || prof.professor?.name || 'Nome não informado',
+                                    email: prof.usuario?.email || prof.professor?.email || 'email@não.informado',
+                                    registration: prof.vinculo_escola?.registration || prof.vinculos_escolares?.[0]?.registration || prof.usuario?.registration,
+                                    role: prof.usuario?.role || 'professor',
+                                    birth_date: prof.professor?.birth_date
+                                };
+                                
+                                console.log('Processed user:', processedUser);
+                                return processedUser;
+                            });
+                        } else if (response.data && config.responseKey && response.data[config.responseKey]) {
+                            // Usar a nova estrutura padronizada
+                            console.log('Using new standardized structure');
+                            users = response.data[config.responseKey];
+                        } else if (Array.isArray(response.data)) {
+                            users = response.data;
+                        } else {
+                            users = [];
+                        }
                     }
-                    
-                    users = Array.isArray(response.data) ? response.data : [];
                 } catch (error) {
                     console.log('First endpoint failed, trying alternative...');
                     // Tentar endpoint alternativo
@@ -159,6 +247,9 @@ export function AddUserForm({ schoolId, schoolName, userType, onSuccess }: AddUs
                 
                 // Log para debug
                 console.log(`Found ${usersToShow.length} users for ${userType}`);
+                console.log('Processed users:', usersToShow);
+                console.log('User IDs:', usersToShow.map(u => ({ id: u.id, name: u.name })));
+                console.log('Raw response data:', response.data);
                 if (usersToShow.length === 0) {
                     console.log('No users found. This might be because:');
                     console.log('1. The API endpoint is not working');
@@ -205,7 +296,7 @@ export function AddUserForm({ schoolId, schoolName, userType, onSuccess }: AddUs
         };
 
         fetchUsers();
-    }, [isOpen, config.apiEndpoint, config.role, userType, toast]);
+    }, [isOpen, config.fetchEndpoint, config.role, userType, toast]);
 
     // Filtrar usuários quando o termo de busca mudar
     useEffect(() => {
@@ -232,6 +323,8 @@ export function AddUserForm({ schoolId, schoolName, userType, onSuccess }: AddUs
                 password: "",
                 registration: selected.registration || "",
                 birthDate: selected.birth_date || "",
+                classId: "",
+                gradeId: "",
             });
         }
     };
@@ -239,20 +332,41 @@ export function AddUserForm({ schoolId, schoolName, userType, onSuccess }: AddUs
     const handleCreateUser = async () => {
         setIsLoading(true);
         try {
-            const userData = {
-                ...formData,
-                role: config.role,
-                matricula: formData.registration || undefined,
-            };
+            // Mapear dados conforme a estrutura esperada pela API
+            const mappedData: any = {};
+            
+            // Mapear campos usando a configuração
+            Object.entries(config.dataMapping).forEach(([formKey, apiKey]) => {
+                if (formData[formKey as keyof typeof formData]) {
+                    mappedData[apiKey] = formData[formKey as keyof typeof formData];
+                }
+            });
 
-            // Adicionar escolas_ids apenas se não for aluno
-            if (userType !== 'aluno') {
-                userData.escolas_ids = [schoolId];
+            // Adicionar campos específicos baseado no tipo
+            if (userType === 'aluno') {
+                // Para alunos, adicionar class_id e grade_id se fornecidos
+                if (formData.classId) mappedData.class_id = formData.classId;
+                if (formData.gradeId) mappedData.grade_id = formData.gradeId;
             } else {
-                userData.escola_id = schoolId;
+                // Para professores, diretores e coordenadores
+                mappedData.escolas_ids = [schoolId];
+                
+                // Adicionar city_id se necessário
+                if (config.requiresCityId) {
+                    // Se o usuário atual é admin, permitir especificar city_id
+                    // Se é diretor, usar o próprio city_id
+                    if (user?.role === 'admin') {
+                        // TODO: Adicionar campo para city_id no formulário
+                        // Por enquanto, usar o city_id da escola
+                        mappedData.city_id = schoolId; // Placeholder
+                    } else {
+                        // Usar city_id do usuário atual se disponível
+                        mappedData.city_id = (user as any)?.city_id;
+                    }
+                }
             }
 
-            const response = await api.post(config.apiEndpoint, userData);
+            const response = await api.post(config.apiEndpoint, mappedData);
 
             toast({
                 title: "Sucesso",
@@ -311,6 +425,8 @@ export function AddUserForm({ schoolId, schoolName, userType, onSuccess }: AddUs
             password: "",
             registration: "",
             birthDate: "",
+            classId: "",
+            gradeId: "",
         });
         setSelectedUser(null);
         setSearchTerm("");
@@ -359,9 +475,9 @@ export function AddUserForm({ schoolId, schoolName, userType, onSuccess }: AddUs
                             </div>
                         ) : filteredUsers.length > 0 ? (
                             <div className="space-y-2 max-h-60 overflow-y-auto">
-                                {filteredUsers.map((user) => (
+                                {filteredUsers.map((user, index) => (
                                     <div
-                                        key={user.id}
+                                        key={user.id || `user-${index}`}
                                         className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 ${
                                             selectedUser?.id === user.id ? 'bg-blue-50 border-blue-200' : ''
                                         }`}
@@ -461,12 +577,36 @@ export function AddUserForm({ schoolId, schoolName, userType, onSuccess }: AddUs
                                     onChange={(e) => setFormData({ ...formData, birthDate: e.target.value })}
                                 />
                             </div>
+                            
+                            {userType === 'aluno' && (
+                                <>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="classId">Turma (opcional)</Label>
+                                        <Input
+                                            id="classId"
+                                            value={formData.classId}
+                                            onChange={(e) => setFormData({ ...formData, classId: e.target.value })}
+                                            placeholder="ID da turma"
+                                        />
+                                    </div>
+                                    
+                                    <div className="space-y-2">
+                                        <Label htmlFor="gradeId">Série (opcional)</Label>
+                                        <Input
+                                            id="gradeId"
+                                            value={formData.gradeId}
+                                            onChange={(e) => setFormData({ ...formData, gradeId: e.target.value })}
+                                            placeholder="ID da série"
+                                        />
+                                    </div>
+                                </>
+                            )}
                         </div>
 
                         <div className="flex justify-end gap-2 pt-4">
                             <Button
                                 onClick={handleCreateUser}
-                                disabled={isLoading || !formData.name || !formData.email || !formData.password}
+                                disabled={isLoading || config.requiredFields.some(field => !formData[field as keyof typeof formData])}
                             >
                                 {isLoading ? "Criando..." : `Criar ${config.title}`}
                             </Button>
