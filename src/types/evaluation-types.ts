@@ -25,6 +25,7 @@ export interface Question {
     images?: (string | { url?: string; src?: string; name?: string })[];
     secondstatement?: string;
     secondStatement?: string;
+    subject?: { id: string; name: string };
     options?: {
         id: string;
         text: string;
