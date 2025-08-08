@@ -1,10 +1,8 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Skeleton } from "@/components/ui/skeleton";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -20,36 +18,22 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-    Clock,
     ChevronLeft,
     ChevronRight,
-    ChevronUp,
-    ChevronDown,
     Send,
     AlertTriangle,
-    CheckCircle,
-    Save,
     Home,
     Play,
     Loader2,
     CheckCircle2,
-    Pause,
-    Info,
-    Printer
+    Maximize2,
+    X
 } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { EvaluationTimer } from "../EvaluationTimer";
 import { useEvaluation } from "@/hooks/useEvaluation";
-import { Question, TestData, TestResults } from "@/types/evaluation-types";
-
-// Função para determinar a cor baseada na performance
-const getPerformanceColor = (percentage: number) => {
-    if (percentage >= 80) return "text-green-600";
-            if (percentage >= 60) return "text-purple-600";
-    if (percentage >= 40) return "text-yellow-600";
-    return "text-red-600";
-};
+import { Question } from "@/types/evaluation-types";
 
 export default function TakeEvaluation() {
     const { id: evaluationId } = useParams<{ id: string }>();
@@ -57,7 +41,7 @@ export default function TakeEvaluation() {
     const { toast } = useToast();
     const [showSubmitDialog, setShowSubmitDialog] = useState(false);
     const [showCompletionDialog, setShowCompletionDialog] = useState(false);
-    const [isNavigationMinimized, setIsNavigationMinimized] = useState(false);
+    const [showFullscreenQuestion, setShowFullscreenQuestion] = useState(false);
     const [shuffledQuestions, setShuffledQuestions] = useState<Question[]>([]);
 
     const {
@@ -77,6 +61,23 @@ export default function TakeEvaluation() {
         submitTest: handleSubmitTest,
         navigateToQuestion
     } = useEvaluation({ testId: evaluationId });
+
+    // ✅ Verificar se avaliação já foi enviada antes de iniciar
+    useEffect(() => {
+        if (evaluationState === 'completed' && !results) {
+            console.log('⚠️ Avaliação já foi enviada anteriormente - bloqueando acesso');
+            toast({
+                title: "Acesso Negado",
+                description: "Esta avaliação já foi enviada anteriormente. Você será redirecionado.",
+                variant: "destructive",
+            });
+            const timer = setTimeout(() => {
+                navigate("/aluno/avaliacoes");
+            }, 2000);
+            
+            return () => clearTimeout(timer);
+        }
+    }, [evaluationState, results, navigate, toast]);
 
     // ✅ Auto-iniciar avaliação automaticamente
     useEffect(() => {
@@ -99,44 +100,65 @@ export default function TakeEvaluation() {
         }
     }, [currentQuestionIndex, shuffledQuestions, answers]);
 
-    // ✅ Embaralhar alternativas das questões
+    // ✅ Organizar questões por disciplina e embaralhar alternativas
     useEffect(() => {
         if (testData?.questions?.length && shuffledQuestions.length === 0) {
-            console.log('🔄 Embaralhando questões...', testData.questions.length);
+            console.log('🔄 Organizando questões por disciplina...', testData.questions.length);
             
-            const shuffled = testData.questions.map((q, questionIndex) => {
-                console.log(`Questão ${questionIndex + 1}:`, q.type, q.options?.length);
-                
-                if (
-                    ["multiple_choice", "multipleChoice", "multiple_choice"].includes(q.type) &&
-                    (q.options || q.alternatives) &&
-                    Array.isArray(q.options || q.alternatives) &&
-                    (q.options || q.alternatives).length > 0
-                ) {
-                    const optionsToShuffle = q.options || q.alternatives || [];
-                    const originalOptions = optionsToShuffle.map((opt, index) => ({
-                        ...opt,
-                        originalIndex: index,
-                    }));
-
-                    const shuffledOptions = [...originalOptions].sort(() => Math.random() - 0.5);
-                    
-                    console.log(`✅ Questão ${questionIndex + 1} embaralhada:`, {
-                        original: originalOptions.map((opt, i) => `${String.fromCharCode(65 + i)}: ${opt.text}`),
-                        shuffled: shuffledOptions.map((opt, i) => `${String.fromCharCode(65 + i)}: ${opt.text}`)
-                    });
-
-                    return {
-                        ...q,
-                        options: shuffledOptions,
-                        alternatives: shuffledOptions, // Manter compatibilidade
-                    };
+            // Agrupar questões por disciplina
+            const questionsBySubject = testData.questions.reduce((acc, question) => {
+                const subjectName = question.subject?.name || 'Sem disciplina';
+                if (!acc[subjectName]) {
+                    acc[subjectName] = [];
                 }
-                return q;
+                acc[subjectName].push(question);
+                return acc;
+            }, {} as Record<string, Question[]>);
+
+            console.log('📚 Questões agrupadas por disciplina:', Object.keys(questionsBySubject));
+
+            // Processar questões de cada disciplina
+            const processedQuestions: Question[] = [];
+            
+            Object.entries(questionsBySubject).forEach(([subject, questions]) => {
+                console.log(`📖 Processando disciplina: ${subject} (${questions.length} questões)`);
+                
+                const processedSubjectQuestions = questions.map((q, questionIndex) => {
+                    console.log(`Questão ${questionIndex + 1} de ${subject}:`, q.type, q.options?.length);
+                    
+                    if (
+                        ["multiple_choice", "multipleChoice", "multiple_choice"].includes(q.type) &&
+                        (q.options || q.alternatives) &&
+                        Array.isArray(q.options || q.alternatives) &&
+                        (q.options || q.alternatives).length > 0
+                    ) {
+                        const optionsToShuffle = q.options || q.alternatives || [];
+                        const originalOptions = optionsToShuffle.map((opt, index) => ({
+                            ...opt,
+                            originalIndex: index,
+                        }));
+
+                        const shuffledOptions = [...originalOptions].sort(() => Math.random() - 0.5);
+                        
+                        console.log(`✅ Questão ${questionIndex + 1} de ${subject} embaralhada:`, {
+                            original: originalOptions.map((opt, i) => `${String.fromCharCode(65 + i)}: ${opt.text}`),
+                            shuffled: shuffledOptions.map((opt, i) => `${String.fromCharCode(65 + i)}: ${opt.text}`)
+                        });
+
+                        return {
+                            ...q,
+                            options: shuffledOptions,
+                            alternatives: shuffledOptions, // Manter compatibilidade
+                        };
+                    }
+                    return q;
+                });
+
+                processedQuestions.push(...processedSubjectQuestions);
             });
 
-            console.log('🎯 Questões embaralhadas definidas:', shuffled.length);
-            setShuffledQuestions(shuffled);
+            console.log('🎯 Questões organizadas por disciplina definidas:', processedQuestions.length);
+            setShuffledQuestions(processedQuestions);
         }
     }, [testData, shuffledQuestions.length]);
 
@@ -198,11 +220,13 @@ export default function TakeEvaluation() {
             console.log('📊 Avaliação enviada com sucesso, redirecionando...');
             const timer = setTimeout(() => {
                 navigate("/aluno/avaliacoes");
-            }, 3000);
+            }, 2000);
             
             return () => clearTimeout(timer);
         }
     }, [evaluationState, results, navigate]);
+
+
 
     // Se não há evaluationId, mostrar erro
     if (!evaluationId) {
@@ -325,33 +349,59 @@ export default function TakeEvaluation() {
     }
 
     // Results screen - Mostrar resultados imediatos
-    if (evaluationState === 'completed' && results) {
+    if (evaluationState === 'completed') {
         return (
             <div className="flex items-center justify-center min-h-screen w-screen bg-gray-50 p-4">
                 <div className="max-w-lg w-full">
                     <Card>
                         <CardHeader>
-                            <CardTitle className="text-center">✅ Avaliação Concluída!</CardTitle>
+                            <CardTitle className="text-center">
+                                {results ? "✅ Avaliação Concluída!" : "⚠️ Avaliação Já Enviada"}
+                            </CardTitle>
                             <div className="text-center space-y-2">
                                 <h2 className="text-xl font-semibold">{testData?.title}</h2>
                                 <Badge variant="outline">{testData?.subject.name}</Badge>
                             </div>
                         </CardHeader>
                         <CardContent className="space-y-6">
-                            {/* Mensagem de sucesso */}
-                            <div className="text-center space-y-4 p-4 bg-green-50 rounded-lg border border-green-200">
-                                <CheckCircle2 className="h-8 w-8 text-green-600 mx-auto" />
+                            {/* Mensagem de sucesso ou aviso */}
+                            <div className={`text-center space-y-4 p-4 rounded-lg border ${
+                                results 
+                                    ? 'bg-green-50 border-green-200' 
+                                    : 'bg-yellow-50 border-yellow-200'
+                            }`}>
+                                {results ? (
+                                    <CheckCircle2 className="h-8 w-8 text-green-600 mx-auto" />
+                                ) : (
+                                    <AlertTriangle className="h-8 w-8 text-yellow-600 mx-auto" />
+                                )}
                                 <div className="space-y-2">
-                                    <h3 className="text-lg font-semibold text-green-800">
-                                        Avaliação Enviada com Sucesso!
+                                    <h3 className={`text-lg font-semibold ${
+                                        results ? 'text-green-800' : 'text-yellow-800'
+                                    }`}>
+                                        {results 
+                                            ? "Avaliação Enviada com Sucesso!" 
+                                            : "Avaliação Já Foi Enviada Anteriormente"
+                                        }
                                     </h3>
-                                    <p className="text-sm text-green-700">
-                                        Redirecionando em 3 segundos...
+                                    <p className={`text-sm ${
+                                        results ? 'text-green-700' : 'text-yellow-700'
+                                    }`}>
+                                        Redirecionando em 2 segundos...
                                     </p>
                                 </div>
                             </div>
 
-
+                            {/* Botão para redirecionamento manual */}
+                            <div className="text-center">
+                                <Button
+                                    onClick={() => navigate("/aluno/avaliacoes")}
+                                    className="bg-purple-600 hover:bg-purple-700"
+                                >
+                                    <Home className="h-4 w-4 mr-2" />
+                                    Voltar às Avaliações
+                                </Button>
+                            </div>
                         </CardContent>
                     </Card>
                 </div>
@@ -505,6 +555,24 @@ export default function TakeEvaluation() {
         margin: 2rem auto 2rem 0 !important;
         max-width: 60% !important;
     }
+
+    /* Modal fullscreen customizado */
+    .fullscreen-modal {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        max-width: 100vw !important;
+        max-height: 100vh !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
+        transform: none !important;
+    }
   `}
 </style>
 
@@ -514,82 +582,58 @@ export default function TakeEvaluation() {
                 <div className="bg-white border-b shadow-sm flex-shrink-0">
                     <div className="px-4 py-2">
                         <div className="flex items-center justify-between">
-                            <div className="flex-1">
+                            {/* Espaço vazio à esquerda para balancear */}
+                            <div className="w-32"></div>
+                            
+                            {/* Conteúdo centralizado */}
+                            <div className="flex-1 flex flex-col items-center text-center">
                                 <h1 className="text-sm font-semibold">{testData.title}</h1>
                                 <div className="text-xs text-muted-foreground">
                                     Questão {currentQuestionIndex + 1} de {shuffledQuestions.length}
                                 </div>
-                                {/* ✅ Barra de progresso discreta */}
-                                <div className="mt-2 flex items-center gap-2">
-                                    <div className="w-24 bg-gray-200 rounded-full h-1.5 overflow-hidden">
-                                                                            <div 
-                                        className="bg-purple-500 h-full transition-all duration-300 ease-out"
-                                        style={{ 
-                                            width: `${(Object.keys(answers).length / testData.questions.length) * 100}%` 
-                                        }}
-                                    />
-                                    </div>
-                                    <span className="text-xs text-gray-500 min-w-[30px] text-right">
-                                        {Math.round((Object.keys(answers).length / testData.questions.length) * 100)}%
-                                    </span>
-                                </div>
                             </div>
 
-                            <div className="flex items-center gap-3">
-                                <EvaluationTimer
-                                    timeRemaining={timeRemaining}
-                                    isTimeUp={isTimeUp}
-                                    isPaused={isPaused}
-                                    timeLimitMinutes={testData?.duration}
-                                    remainingMinutes={session?.remaining_time_minutes}
-                                />
+                            {/* Timer à direita */}
+                            <div className="w-32 flex justify-end">
+                                <div className="flex items-center gap-3">
+                                    <EvaluationTimer
+                                        timeRemaining={timeRemaining}
+                                        isTimeUp={isTimeUp}
+                                        isPaused={isPaused}
+                                        timeLimitMinutes={testData?.duration}
+                                        remainingMinutes={session?.remaining_time_minutes}
+                                    />
 
-                                {isSaving && (
-                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                        <Loader2 className="h-3 w-3 animate-spin" />
-                                        Salvando...
-                                    </div>
-                                )}
+                                    {isSaving && (
+                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                            Salvando...
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <div className="flex-1 overflow-hidden">
-                    <div className="h-full flex flex-col">
-                        {/* ✅ Navegação ULTRA-COMPACTA em UMA LINHA */}
-                        <div className={`px-4 py-2 bg-white border-b border-gray-200 shadow-sm transition-all duration-300 ${isNavigationMinimized ? 'h-10 overflow-hidden' : ''}`}>
-                            <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-3">
-                                    <h3 className="text-xs font-medium text-gray-700">Navegação</h3>
-                                    <div className="text-xs text-gray-500">
-                                        {Object.keys(answers).length}/{shuffledQuestions.length}
-                                    </div>
-                                    {isNavigationMinimized && (
-                                        <div className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">
-                                            Minimizada
+                    <div className="h-full flex">
+                        {/* ✅ Navegação lateral */}
+                        <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
+                            {/* Header da navegação */}
+                            <div className="p-4 border-b border-gray-200">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-3">
+                                        <h3 className="text-sm font-semibold text-gray-700">Navegação</h3>
+                                        <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                                            {Object.keys(answers).length}/{shuffledQuestions.length}
                                         </div>
-                                    )}
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => setIsNavigationMinimized(!isNavigationMinimized)}
-                                        className="px-2 py-0.5 h-7"
-                                        title={isNavigationMinimized ? "Expandir navegação" : "Minimizar navegação"}
-                                    >
-                                        {isNavigationMinimized ? (
-                                            <ChevronDown className="h-3 w-3" />
-                                        ) : (
-                                            <ChevronUp className="h-3 w-3" />
-                                        )}
-                                    </Button>
+                                    </div>
                                     <Button
                                         size="sm"
                                         onClick={() => setShowSubmitDialog(true)}
                                         disabled={isTimeUp || isSubmitting || Object.keys(answers).length < shuffledQuestions.length}
-                                        className={`px-3 py-0.5 h-7 text-xs ${
+                                        className={`px-3 py-1 h-8 text-xs ${
                                             Object.keys(answers).length >= shuffledQuestions.length
                                                 ? 'bg-green-600 hover:bg-green-700 text-white'
                                                 : 'bg-gray-400 text-gray-200 cursor-not-allowed'
@@ -604,43 +648,62 @@ export default function TakeEvaluation() {
                                         Enviar
                                     </Button>
                                 </div>
+                                
+                                {/* Progresso visual */}
+                                <div className="mb-4">
+                                    <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
+                                        <span>Progresso</span>
+                                        <span>{Math.round((Object.keys(answers).length / shuffledQuestions.length) * 100)}%</span>
+                                    </div>
+                                    <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                                        <div 
+                                            className="bg-gradient-to-r from-purple-500 to-blue-600 h-full transition-all duration-300 ease-out"
+                                            style={{ 
+                                                width: `${(Object.keys(answers).length / shuffledQuestions.length) * 100}%` 
+                                            }}
+                                        />
+                                    </div>
+                                </div>
                             </div>
                             
-                            {/* ✅ UMA LINHA com ícones mais juntinhos */}
-                            <div className={`flex flex-wrap gap-0.5 transition-all duration-300 ${isNavigationMinimized ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-                                {shuffledQuestions.map((question, index) => {
-                                    const hasAnswer = answers[question.id]?.answer && answers[question.id]?.answer !== "";
-                                    const isCurrent = index === currentQuestionIndex;
+                            {/* Grid de navegação */}
+                            <div className="flex-1 overflow-y-auto p-4">
+                                <div className="grid grid-cols-5 gap-2">
+                                    {shuffledQuestions.map((question, index) => {
+                                        const hasAnswer = answers[question.id]?.answer && answers[question.id]?.answer !== "";
+                                        const isCurrent = index === currentQuestionIndex;
 
-                                    return (
-                                        <button
-                                            key={question.id}
-                                            className={`
-                                                evaluation-navigation-button relative w-7 h-7 rounded text-xs font-medium flex-shrink-0
-                                                ${isCurrent 
-                                                    ? 'bg-purple-600 text-white ring-2 ring-purple-300 shadow-md' 
-                                                    : hasAnswer 
-                                                        ? 'bg-green-100 text-green-700 border border-green-300 hover:bg-green-200' 
-                                                        : 'bg-gray-100 text-gray-600 border border-gray-300 hover:bg-gray-200'
-                                                }
-                                                ${isTimeUp ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
-                                            `}
-                                            onClick={() => !isTimeUp && navigateToQuestion(index)}
-                                            disabled={isTimeUp}
-                                        >
-                                            {index + 1}
-                                            {hasAnswer && !isCurrent && (
-                                                <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-                                            )}
-                                        </button>
-                                    );
-                                })}
+                                        return (
+                                            <button
+                                                key={question.id}
+                                                className={`
+                                                    relative w-12 h-12 rounded-lg text-sm font-medium flex items-center justify-center transition-all
+                                                    ${isCurrent 
+                                                        ? 'bg-purple-600 text-white ring-2 ring-purple-300 shadow-lg scale-105' 
+                                                        : hasAnswer 
+                                                            ? 'bg-green-100 text-green-700 border border-green-300 hover:bg-green-200 hover:scale-105' 
+                                                            : 'bg-gray-100 text-gray-600 border border-gray-300 hover:bg-gray-200 hover:scale-105'
+                                                    }
+                                                    ${isTimeUp ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
+                                                `}
+                                                onClick={() => !isTimeUp && navigateToQuestion(index)}
+                                                disabled={isTimeUp}
+                                                title={`Questão ${index + 1}${hasAnswer ? ' (Respondida)' : ''}`}
+                                            >
+                                                {index + 1}
+                                                {hasAnswer && !isCurrent && (
+                                                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full border border-white"></div>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
 
                         {/* ✅ Área principal - MAIS VISÍVEL e PROFISSIONAL */}
                         <div className="flex-1 overflow-y-auto bg-gray-50">
-                            <div className="max-w-5xl mx-auto p-6">
+                            <div className="max-w-4xl mx-auto p-6">
                                 <Card className="evaluation-question-card question-fade-in">
                                     <CardHeader className="evaluation-question-header">
                                         <div className="flex items-center justify-between">
@@ -649,8 +712,22 @@ export default function TakeEvaluation() {
                                                     <Badge variant="outline" className="bg-white border-purple-300 text-purple-700">
                                                         Questão {currentQuestionIndex + 1}
                                                     </Badge>
+                                                    {currentQuestion?.subject?.name && (
+                                                        <Badge variant="outline" className="bg-white border-blue-300 text-blue-700">
+                                                            {currentQuestion.subject.name}
+                                                        </Badge>
+                                                    )}
                                                 </div>
                                             </div>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => setShowFullscreenQuestion(true)}
+                                                className="h-8 w-8 p-0"
+                                                title="Visualizar questão em tela cheia"
+                                            >
+                                                <Maximize2 className="h-4 w-4" />
+                                            </Button>
                                         </div>
                                     </CardHeader>
                                     <CardContent className="p-8 space-y-10">
@@ -831,6 +908,166 @@ export default function TakeEvaluation() {
     </AlertDialogFooter>
   </AlertDialogContent>
 </AlertDialog>
+
+                {/* ✅ Modal de visualização em tela cheia */}
+                {showFullscreenQuestion && (
+                    <div 
+                        className="fixed inset-0 z-[9999] bg-white"
+                        style={{
+                            position: 'fixed',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            width: '100vw',
+                            height: '100vh',
+                            zIndex: 9999
+                        }}
+                    >
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-6 py-3 bg-white border-b shadow-sm">
+                            <div className="flex items-center gap-4">
+                                <h2 className="text-lg font-bold">
+                                    Questão {currentQuestionIndex + 1} de {shuffledQuestions.length}
+                                </h2>
+                                {currentQuestion?.subject?.name && (
+                                    <Badge variant="outline" className="bg-purple-50 border-purple-300 text-purple-700">
+                                        {currentQuestion.subject.name}
+                                    </Badge>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <span className="text-sm text-gray-600">
+                                    {answers[currentQuestion?.id]?.answer ? (
+                                        <span className="flex items-center gap-2 text-green-600 font-medium">
+                                            <CheckCircle2 className="h-4 w-4" />
+                                            Respondida
+                                        </span>
+                                    ) : (
+                                        <span className="text-gray-500">
+                                            Não respondida
+                                        </span>
+                                    )}
+                                </span>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setShowFullscreenQuestion(false)}
+                                    className="h-8 w-8 p-0 hover:bg-gray-100 rounded-full"
+                                    title="Fechar visualização"
+                                >
+                                    <X className="h-5 w-5" />
+                                </Button>
+                            </div>
+                        </div>
+                        
+                        {/* Conteúdo principal */}
+                        <div className="flex h-[calc(100vh-60px)]">
+                            {/* Lado esquerdo - Questão */}
+                            <div className="flex-1 bg-white overflow-y-auto">
+                                <div className="p-8">
+                                    <div className="evaluation-question-content space-y-6">
+                                        {/* Primeiro Enunciado */}
+                                        {(currentQuestion?.formattedText || currentQuestion?.text) && (
+                                            <div className="prose prose-lg max-w-none text-gray-800" style={{ fontSize: '1.25rem', lineHeight: '1.8' }}>
+                                                <div
+                                                    dangerouslySetInnerHTML={{
+                                                        __html: currentQuestion?.formattedText || currentQuestion?.text || '',
+                                                    }}
+                                                />
+                                            </div>
+                                        )}
+
+                                        {/* Segundo Enunciado */}
+                                        {currentQuestion?.secondStatement?.trim() && (
+                                            <div className="prose prose-lg max-w-none text-gray-800 pt-6 mt-6 border-t-2 border-gray-200" style={{ fontSize: '1.25rem', lineHeight: '1.8' }}>
+                                                <div
+                                                    dangerouslySetInnerHTML={{
+                                                        __html: currentQuestion.secondStatement.trim(),
+                                                    }}
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Divisor vertical */}
+                            <div className="w-px bg-gray-300"></div>
+
+                            {/* Lado direito - Alternativas */}
+                            <div className="w-1/2 flex flex-col bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
+                                {/* Área das alternativas */}
+                                <div className="flex-1 overflow-y-auto">
+                                    <div className="p-8">
+                                        <div className="mb-6">
+                                            <h3 className="text-xl font-bold text-gray-800 mb-2">Selecione sua resposta:</h3>
+                                            <div className="h-0.5 w-20 bg-purple-500 rounded-full"></div>
+                                        </div>
+                                        <QuestionOptions
+                                            question={currentQuestion}
+                                            answer={answers[currentQuestion?.id]?.answer}
+                                            onAnswerChange={(newAnswer) => {
+                                                if (currentQuestion?.id) {
+                                                    console.log('💾 Salvando resposta (fullscreen):', {
+                                                        questionId: currentQuestion.id,
+                                                        answer: newAnswer,
+                                                        questionType: currentQuestion.type,
+                                                        currentAnswers: Object.keys(answers)
+                                                    });
+                                                    saveAnswer(currentQuestion.id, newAnswer);
+                                                    
+                                                    // Auto-fechar modal após seleção em múltipla escolha
+                                                    if (['multiple_choice', 'multipleChoice', 'true_false', 'truefalse'].includes(currentQuestion.type) && newAnswer) {
+                                                        setTimeout(() => {
+                                                            setShowFullscreenQuestion(false);
+                                                            // Avançar para próxima questão se não for a última
+                                                            if (currentQuestionIndex < shuffledQuestions.length - 1) {
+                                                                navigateToQuestion(currentQuestionIndex + 1);
+                                                            }
+                                                        }, 800);
+                                                    }
+                                                }
+                                            }}
+                                            disabled={isTimeUp}
+                                        />
+                                        <div className="h-8"></div>
+                                    </div>
+                                </div>
+
+                                {/* Navegação fixa no rodapé */}
+                                <div className="border-t-2 border-gray-200 bg-white p-6 shadow-lg">
+                                    <div className="flex items-center justify-between">
+                                        <Button
+                                            variant="outline"
+                                            size="lg"
+                                            onClick={() => navigateToQuestion(currentQuestionIndex - 1)}
+                                            disabled={currentQuestionIndex === 0 || isTimeUp}
+                                            className="px-6 py-3 text-base font-semibold border-2 hover:bg-gray-50 disabled:opacity-50"
+                                        >
+                                            <ChevronLeft className="h-5 w-5 mr-2" />
+                                            Anterior
+                                        </Button>
+
+                                        <div className="text-lg font-bold text-purple-600 bg-purple-50 px-5 py-2.5 rounded-full border-2 border-purple-200">
+                                            {currentQuestionIndex + 1} / {shuffledQuestions.length}
+                                        </div>
+
+                                        <Button
+                                            size="lg"
+                                            onClick={() => navigateToQuestion(currentQuestionIndex + 1)}
+                                            disabled={currentQuestionIndex === shuffledQuestions.length - 1 || isTimeUp}
+                                            className="px-6 py-3 text-base font-semibold bg-purple-600 hover:bg-purple-700 text-white shadow-md hover:shadow-lg transition-all disabled:opacity-50"
+                                        >
+                                            Próxima
+                                            <ChevronRight className="h-5 w-5 ml-2" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
@@ -855,8 +1092,8 @@ function QuestionOptions({
         const questionOptions = question.options || question.alternatives || [];
 
         return (
-            <div className="space-y-3">
-                <div className="text-sm font-medium text-gray-700 mb-3">
+            <div className="space-y-6">
+                <div className="text-xl font-bold text-gray-800 mb-6">
                     Selecione a alternativa correta:
                 </div>
                 <RadioGroup
@@ -900,9 +1137,9 @@ function QuestionOptions({
                         return (
                             <div
                                 key={optionId}
-                                className={`flex items-start space-x-3 p-4 rounded-lg border cursor-pointer transition-all hover:bg-gray-50 ${isSelected
-                                    ? 'border-purple-500 bg-purple-50 ring-2 ring-purple-200'
-                                    : 'border-gray-200 hover:border-gray-300'
+                                className={`flex items-start space-x-4 p-6 rounded-xl border-2 cursor-pointer transition-all hover:bg-gray-50 ${isSelected
+                                    ? 'border-purple-500 bg-purple-50 ring-4 ring-purple-200 shadow-lg'
+                                    : 'border-gray-300 hover:border-gray-400 hover:shadow-md'
                                     } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 onClick={() => {
                                     if (!disabled) {
@@ -919,18 +1156,18 @@ function QuestionOptions({
                                 <RadioGroupItem
                                     value={optionId}
                                     id={optionId}
-                                    className="mt-0.5"
+                                    className="mt-1 w-5 h-5"
                                     checked={isSelected}
                                 />
                                 <Label
                                     htmlFor={optionId}
-                                    className="flex-1 cursor-pointer text-sm leading-relaxed"
+                                    className="flex-1 cursor-pointer text-lg leading-relaxed"
                                 >
-                                    <div className="flex items-start gap-2">
-                                        <span className="font-medium text-gray-600 min-w-[20px]">
+                                    <div className="flex items-start gap-3">
+                                        <span className="font-bold text-gray-700 min-w-[30px] text-xl">
                                             {String.fromCharCode(65 + index)})
                                         </span>
-                                        <div dangerouslySetInnerHTML={{ __html: optionText }} />
+                                        <div className="text-lg leading-relaxed" dangerouslySetInnerHTML={{ __html: optionText }} />
                                     </div>
                                 </Label>
                             </div>
@@ -943,8 +1180,8 @@ function QuestionOptions({
 
     if (question.type === "true_false" || question.type === "truefalse") {
         return (
-            <div className="space-y-3">
-                <div className="text-sm font-medium text-gray-700 mb-3">
+            <div className="space-y-6">
+                <div className="text-xl font-bold text-gray-800 mb-6">
                     Selecione Verdadeiro ou Falso:
                 </div>
                 <RadioGroup
@@ -961,14 +1198,14 @@ function QuestionOptions({
                         return (
                             <div
                                 key={option.id}
-                                className={`flex items-center space-x-3 p-4 rounded-lg border cursor-pointer transition-all hover:bg-gray-50 ${isSelected
-                                    ? 'border-purple-500 bg-purple-50 ring-2 ring-purple-200'
-                                    : 'border-gray-200 hover:border-gray-300'
+                                className={`flex items-center space-x-4 p-6 rounded-xl border-2 cursor-pointer transition-all hover:bg-gray-50 ${isSelected
+                                    ? 'border-purple-500 bg-purple-50 ring-4 ring-purple-200 shadow-lg'
+                                    : 'border-gray-300 hover:border-gray-400 hover:shadow-md'
                                     } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 onClick={() => !disabled && onAnswerChange(option.id)}
                             >
-                                <RadioGroupItem value={option.id} id={option.id} />
-                                <Label htmlFor={option.id} className="flex-1 cursor-pointer font-medium">
+                                <RadioGroupItem value={option.id} id={option.id} className="w-5 h-5" />
+                                <Label htmlFor={option.id} className="flex-1 cursor-pointer font-bold text-lg">
                                     {option.text}
                                 </Label>
                             </div>
@@ -1046,19 +1283,19 @@ function QuestionOptions({
 
     if (question.type === "essay" || question.type === "open" || question.type === "dissertativa" || question.type === "text" || question.type === "short_answer") {
         return (
-            <div className="space-y-3">
-                <div className="text-sm font-medium text-gray-700 mb-3">
+            <div className="space-y-6">
+                <div className="text-xl font-bold text-gray-800 mb-6">
                     Digite sua resposta:
                 </div>
                 <Textarea
                     placeholder="Digite sua resposta aqui..."
                     value={answer || ""}
                     onChange={(e) => onAnswerChange(e.target.value)}
-                    rows={6}
+                    rows={8}
                     disabled={disabled}
-                    className="min-h-[120px] resize-none"
+                    className="min-h-[200px] resize-none text-lg p-4 border-2 rounded-xl"
                 />
-                <div className="text-xs text-gray-500">
+                <div className="text-sm text-gray-600 font-medium">
                     {answer ? `${answer.length} caracteres` : '0 caracteres'}
                 </div>
             </div>
