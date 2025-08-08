@@ -85,7 +85,7 @@ export function LinkTeacherModal({
     if (user?.role === 'admin') {
       const fetchMunicipios = async () => {
         try {
-          const response = await api.get('/cities');
+          const response = await api.get('/city/');
           setMunicipios(response.data || []);
         } catch (error) {
           console.error('Erro ao carregar municípios:', error);
@@ -125,14 +125,11 @@ export function LinkTeacherModal({
           allTeachers = [];
         }
         
-        console.log('👨‍🏫 Todos os professores carregados:', allTeachers);
-        
         // Filtrar apenas professores (não diretores/coordenadores) que não estão na turma
         const availableTeachers = allTeachers.filter((teacher: any) => 
           teacher.role === 'professor' && !teacher.class_id
         );
 
-        console.log('👨‍🏫 Professores disponíveis para vincular:', availableTeachers);
         setTeachers(availableTeachers);
       } catch (error) {
         console.error("Erro ao buscar professores:", error);
@@ -168,9 +165,6 @@ export function LinkTeacherModal({
 
     setIsLinking(true);
     try {
-      console.log('🔗 Vincular professores à turma:', classId);
-      console.log('🔗 Professores selecionados:', selectedTeachers);
-      
       // Vincular cada professor selecionado à turma
       const linkPromises = selectedTeachers.map(teacherId =>
         api.post("/teacher-class", {

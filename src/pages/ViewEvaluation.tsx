@@ -687,15 +687,19 @@ export default function ViewEvaluation() {
               <CardContent className="p-6">
                 <div className="space-y-8">
                   {subjectData.questions.map((question, index) => {
-                    // Debug temporário
-                    console.log(`🔍 Questão ${index + 1}:`, {
+                    const questionData = {
                       id: question.id,
-                      number: question.number,
-                      skills: question.skills,
+                      title: question.title,
+                      text: question.text,
+                      type: question.type,
                       difficulty: question.difficulty,
                       value: question.value,
-                      type: question.type
-                    });
+                      options: question.options || [],
+                      solution: question.solution || '',
+                      subject: question.subject,
+                      grade: question.grade,
+                      skills: question.skills || []
+                    };
                     
                     return (
                     <div key={question.id} className="question-preview-content bg-white rounded-xl border border-gray-200 overflow-hidden">

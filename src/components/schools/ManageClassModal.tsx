@@ -43,6 +43,7 @@ interface Student {
 interface ClassData {
   id: string;
   name: string;
+  school_id?: string;
   grade?: string | { id: string; name: string; education_stage: any };
 }
 
@@ -78,77 +79,87 @@ export function ManageClassModal({
   });
   const { toast } = useToast();
 
+  // Função para buscar professores e alunos da turma
+  const fetchClassData = async () => {
+    setIsLoading(true);
+    try {
+             // Buscar professores da turma
+       let teachersData = [];
+       try {
+         const teachersResponse = await api.get(`/classes/${classData.id}/teachers`);
+         if (teachersResponse.data && teachersResponse.data.professores) {
+           teachersData = teachersResponse.data.professores;
+         } else if (Array.isArray(teachersResponse.data)) {
+           teachersData = teachersResponse.data;
+         }
+       } catch (error) {
+         console.error("Erro ao buscar professores da turma:", error);
+         // Fallback: tentar buscar professores da escola
+         try {
+           const fallbackResponse = await api.get(`/teacher/school/${schoolId}`);
+           if (fallbackResponse.data && fallbackResponse.data.professores) {
+             teachersData = fallbackResponse.data.professores;
+           } else if (Array.isArray(fallbackResponse.data)) {
+             teachersData = fallbackResponse.data;
+           }
+         } catch (fallbackError) {
+           console.error("Erro no fallback de busca de professores:", fallbackError);
+           teachersData = [];
+         }
+       }
+      
+             const classTeachers = teachersData.map((teacher: any) => ({
+         id: teacher.professor?.id || teacher.usuario?.id || teacher.id,
+         name: teacher.professor?.name || teacher.usuario?.name || teacher.name || 'Nome não informado',
+         email: teacher.professor?.email || teacher.usuario?.email || teacher.email || 'Email não informado',
+         vinculo_id: teacher.teacher_class?.id || teacher.vinculo_turma?.teacher_class_id || teacher.vinculo_id
+       }));
+      
+      setTeachers(classTeachers);
+      
+             // Buscar alunos da turma
+       let studentsData = [];
+       try {
+         const studentsResponse = await api.get(`/students/classes/${classData.id}`);
+         if (Array.isArray(studentsResponse.data)) {
+           studentsData = studentsResponse.data;
+         } else if (studentsResponse.data && studentsResponse.data.alunos) {
+           studentsData = studentsResponse.data.alunos;
+         }
+       } catch (error) {
+         // Fallback: tentar buscar por escola
+         try {
+           const fallbackResponse = await api.get(`/students/school/${schoolId}/class/${classData.id}`);
+           studentsData = Array.isArray(fallbackResponse.data) ? fallbackResponse.data : [];
+         } catch (fallbackError) {
+           console.error("Erro no fallback de busca de alunos:", fallbackError);
+           studentsData = [];
+         }
+       }
+      
+             const classStudents = studentsData.map((student: any) => ({
+         id: student.id,
+         name: student.name || student.usuario?.name || 'Nome não informado',
+         email: student.email || student.user?.email || student.usuario?.email || 'Email não informado',
+         registration: student.registration
+       }));
+      
+      setStudents(classStudents);
+    } catch (error) {
+      console.error("Erro ao carregar dados da turma:", error);
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar dados da turma",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Buscar professores e alunos da turma
   useEffect(() => {
     if (!isOpen) return;
-
-         const fetchClassData = async () => {
-       setIsLoading(true);
-       try {
-         console.log('🔍 Buscando dados da turma:', classData.id);
-         
-                   // Buscar professores da turma específica
-          console.log('📚 Fazendo requisição para professores da turma:', classData.id);
-          const teachersResponse = await api.get(`/classes/${classData.id}/teachers`);
-          console.log('📚 Response professores:', teachersResponse);
-          console.log('📚 Data professores:', teachersResponse.data);
-          console.log('📚 URL da requisição:', `/classes/${classData.id}/teachers`);
-         
-         let classTeachers = [];
-         
-                   if (teachersResponse.data && teachersResponse.data.professores) {
-            console.log('📚 Professores encontrados:', teachersResponse.data.professores);
-            classTeachers = teachersResponse.data.professores.map((item: any) => {
-              const teacher = {
-                id: item.professor?.id || item.usuario?.id,
-                name: item.professor?.name || item.usuario?.name,
-                email: item.professor?.email || item.usuario?.email,
-                registration: item.professor?.registration || item.usuario?.registration,
-                role: item.usuario?.role || 'professor',
-                class_id: classData.id,
-                vinculo_id: item.teacher_class?.id || item.vinculo_turma?.teacher_class_id
-              };
-              console.log('📚 Professor mapeado:', teacher);
-              return teacher;
-            });
-          } else {
-            console.log('⚠️ Nenhum professor encontrado ou estrutura inesperada');
-          }
-
-         // Buscar alunos da turma específica
-         console.log('👥 Fazendo requisição para alunos...');
-         const studentsResponse = await api.get(`/students/classes/${classData.id}`);
-         console.log('👥 Response alunos:', studentsResponse);
-         console.log('👥 Data alunos:', studentsResponse.data);
-         
-         const classStudents = Array.isArray(studentsResponse.data) ? studentsResponse.data : [];
-         console.log('👥 Alunos processados:', classStudents);
-
-         console.log('✅ Professores finais:', classTeachers);
-         console.log('✅ Alunos finais:', classStudents);
-         
-         setTeachers(classTeachers);
-         
-         setStudents(classStudents.map((student: any) => ({
-           id: student.id,
-           name: student.name,
-           email: student.email || student.user?.email,
-           registration: student.registration,
-           user: student.user,
-           class_id: student.class_id
-         })));
-      } catch (error) {
-        console.error("Erro ao buscar dados da turma:", error);
-        toast({
-          title: "Erro",
-          description: "Erro ao carregar dados da turma",
-          variant: "destructive",
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     fetchClassData();
   }, [isOpen, schoolId, classData.id, toast]);
 
@@ -157,30 +168,18 @@ export function ManageClassModal({
     try {
       const teacher = teachers.find(t => t.id === teacherId);
       
-      console.log('🗑️ Remover professor da turma:', teacherId);
-      console.log('🗑️ Dados do professor:', teacher);
-      
       if (teacher?.vinculo_id) {
-        // Remover vínculo usando o ID do vínculo
-        console.log('🗑️ Removendo vínculo:', teacher.vinculo_id);
-        console.log('🗑️ URL da requisição:', `/teacher-class/${teacher.vinculo_id}`);
         await api.delete(`/teacher-class/${teacher.vinculo_id}`);
-        console.log('🗑️ Vínculo removido com sucesso via API');
-      } else {
-        // Fallback: remover apenas do estado local
-        console.warn('Vinculo ID não encontrado, removendo apenas do estado local');
       }
       
-      setTeachers(prev => prev.filter(teacher => teacher.id !== teacherId));
-      
-      console.log('✅ Professor removido com sucesso!');
+      setTeachers(prevState => prevState.filter(t => t.id !== teacherId));
       
       toast({
         title: "Sucesso",
-        description: "Professor removido da turma com sucesso!",
+        description: "Professor removido com sucesso!",
       });
       
-      onSuccess();
+      await fetchClassData();
     } catch (error) {
       console.error("Erro ao remover professor:", error);
       toast({
@@ -196,23 +195,16 @@ export function ManageClassModal({
   const handleRemoveStudent = async (studentId: string) => {
     setIsRemoving(`student-${studentId}`);
     try {
-      console.log('🗑️ Remover aluno da turma:', studentId);
-      console.log('🗑️ URL da requisição:', `/classes/${classData.id}/remove_student`);
-      
       await api.put(`/classes/${classData.id}/remove_student`, {
         student_id: studentId
       });
-
-      console.log('✅ Aluno removido com sucesso!');
-
-      setStudents(prev => prev.filter(student => student.id !== studentId));
       
       toast({
         title: "Sucesso",
-        description: "Aluno removido da turma com sucesso!",
+        description: "Aluno removido com sucesso!",
       });
       
-      onSuccess();
+      await fetchClassData();
     } catch (error) {
       console.error("Erro ao remover aluno:", error);
       toast({
@@ -225,10 +217,7 @@ export function ManageClassModal({
     }
   };
 
-  const handleLinkSuccess = () => {
-    // Recarregar dados da turma
-    onSuccess();
-  };
+
 
   const handleCreateStudent = async () => {
     if (!formData.name || !formData.email || !formData.password || !formData.birth_date) {
@@ -268,7 +257,7 @@ export function ManageClassModal({
       });
 
       // Recarregar dados da turma
-      handleLinkSuccess();
+      await fetchClassData();
     } catch (error: any) {
       console.error("Erro ao criar aluno:", error);
       const errorMessage = error.response?.data?.error || "Erro ao criar aluno";
@@ -320,7 +309,7 @@ export function ManageClassModal({
       });
 
       // Recarregar dados da turma
-      handleLinkSuccess();
+      await fetchClassData();
     } catch (error: any) {
       console.error("Erro ao criar professor:", error);
       const errorMessage = error.response?.data?.error || "Erro ao criar professor";
@@ -335,8 +324,8 @@ export function ManageClassModal({
   };
 
   const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({
-      ...prev,
+    setFormData(prevState => ({
+      ...prevState,
       [field]: value
     }));
   };
@@ -366,8 +355,8 @@ export function ManageClassModal({
 
   // Atualizar email e senha quando o nome mudar
   const handleNameChange = (value: string) => {
-    setFormData(prev => ({
-      ...prev,
+    setFormData(prevState => ({
+      ...prevState,
       name: value,
       email: generateEmail(value),
       password: generatePassword(value)
@@ -739,7 +728,7 @@ export function ManageClassModal({
         schoolId={schoolId}
         classId={classData.id}
         className={classData.name}
-        onSuccess={handleLinkSuccess}
+        onSuccess={fetchClassData}
       />
 
       {/* Link Student Modal */}
@@ -749,7 +738,7 @@ export function ManageClassModal({
         schoolId={schoolId}
         classId={classData.id}
         className={classData.name}
-        onSuccess={handleLinkSuccess}
+        onSuccess={fetchClassData}
       />
     </>
   );

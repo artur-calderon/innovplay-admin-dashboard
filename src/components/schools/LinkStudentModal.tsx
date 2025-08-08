@@ -72,51 +72,16 @@ export function LinkStudentModal({
     if (!isOpen) return;
 
     const fetchStudents = async () => {
-      setIsLoading(true);
       try {
-        // Determinar endpoint baseado na permissão do usuário
-        const canViewAllStudents = user?.role === 'admin';
-        const endpoint = canViewAllStudents ? '/students' : `/students/school/${schoolId}`;
-        
-        console.log('👥 Buscando alunos para vincular à turma:', classId);
-        console.log('👥 Endpoint:', endpoint);
-        console.log('👥 Permissão do usuário:', user?.role);
-        
+        setIsLoading(true);
+        const endpoint = user?.role === 'admin' ? '/students' : '/students/available';
         const response = await api.get(endpoint);
-        console.log('👥 Response alunos:', response);
-        console.log('👥 Data alunos:', response.data);
+        const allStudents = response.data || [];
         
-        const allStudents = Array.isArray(response.data) ? response.data : [];
-        console.log('👥 Todos os alunos carregados:', allStudents);
-        
-        // Filtrar apenas alunos que não estão na turma atual
-        const availableStudents = allStudents.filter((student: any) => {
-          // Se o aluno não tem class_id, está disponível
-          if (!student.class_id) return true;
-          
-          // Se o aluno tem class_id, só está disponível se for diferente da turma atual
-          return student.class_id !== classId;
-        });
-        console.log('👥 Alunos disponíveis para vincular:', availableStudents);
-        console.log('👥 Turma atual:', classId);
-        console.log('👥 Total de alunos:', allStudents.length);
-        console.log('👥 Alunos disponíveis:', availableStudents.length);
-        console.log('👥 Alunos filtrados:', allStudents.length - availableStudents.length);
-
-        setStudents(availableStudents.map((student: any) => ({
-          id: student.id,
-          name: student.name,
-          email: student.email || student.user?.email,
-          registration: student.registration,
-          user: student.user
-        })));
+        setStudents(allStudents);
       } catch (error) {
         console.error("Erro ao buscar alunos:", error);
-        toast({
-          title: "Erro",
-          description: "Erro ao carregar alunos disponíveis",
-          variant: "destructive",
-        });
+        setStudents([]);
       } finally {
         setIsLoading(false);
       }
@@ -140,33 +105,19 @@ export function LinkStudentModal({
   };
 
   const handleLinkStudents = async () => {
-    if (selectedStudents.length === 0) return;
-
-    setIsLinking(true);
     try {
-      console.log('🔗 Vincular alunos à turma:', classId);
-      console.log('🔗 Alunos selecionados:', selectedStudents);
-      console.log('🔗 URL da requisição:', `/classes/${classId}/add_student`);
+      setIsLinking(true);
+      await api.post(`/classes/${classId}/add_student`, {
+        student_ids: selectedStudents
+      });
       
-      // Vincular cada aluno selecionado à turma
-      const linkPromises = selectedStudents.map(studentId =>
-        api.put(`/classes/${classId}/add_student`, {
-          student_id: studentId
-        })
-      );
-
-      await Promise.all(linkPromises);
-
-      console.log('✅ Alunos vinculados com sucesso!');
-
       toast({
         title: "Sucesso",
-        description: `${selectedStudents.length} aluno(s) vinculado(s) à turma com sucesso!`,
+        description: "Alunos vinculados com sucesso!",
       });
-
-      onSuccess();
+      
       onClose();
-      setSelectedStudents([]);
+      onSuccess();
     } catch (error) {
       console.error("Erro ao vincular alunos:", error);
       toast({
