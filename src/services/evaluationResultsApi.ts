@@ -384,17 +384,17 @@ export class EvaluationResultsApiService {
       if (filters.municipio && filters.municipio !== 'all') {
         params.append('municipio', filters.municipio);
       }
-      // ✅ NOVO: Avaliação, Escola, Série e Turma podem ser "all"
-      if (filters.avaliacao) {
+      // ✅ NOVO: Avaliação, Escola, Série e Turma: não enviar quando forem "all"
+      if (filters.avaliacao && filters.avaliacao !== 'all') {
         params.append('avaliacao', filters.avaliacao);
       }
-      if (filters.escola) {
+      if (filters.escola && filters.escola !== 'all') {
         params.append('escola', filters.escola);
       }
-      if (filters.serie) {
+      if (filters.serie && filters.serie !== 'all') {
         params.append('serie', filters.serie);
       }
-      if (filters.turma) {
+      if (filters.turma && filters.turma !== 'all') {
         params.append('turma', filters.turma);
       }
 

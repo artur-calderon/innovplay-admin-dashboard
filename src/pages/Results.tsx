@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import {
   Download,
@@ -11,24 +10,19 @@ import {
   FileText,
   FileX,
   Eye,
-  CheckCircle2,
-  Clock,
   AlertTriangle,
   Target,
   Award,
   RefreshCw,
-  Search,
   School,
   MapPin,
   GraduationCap,
-  BarChart3,
   Filter
 } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
 import { useAuth } from "@/context/authContext";
@@ -37,12 +31,10 @@ import { BarChartComponent, DonutChartComponent } from "@/components/ui/charts";
 // Interfaces para os dados da API
 interface EvaluationResult {
   id: string;
-  class_test_id?: string;
   titulo: string;
   disciplina: string;
   curso: string;
   serie: string;
-  grade_id?: string;
   turma?: string;
   escola: string;
   municipio: string;
@@ -141,53 +133,80 @@ interface State {
   uf: string;
 }
 
-interface Municipality {
-  id: string;
-  name: string;
-  state: string;
-  created_at: string;
-}
+interface Municipality { id: string; name: string; state: string; }
 
-interface School {
-  id: string;
-  name: string;
-  city: {
-    id: string;
-    name: string;
-    state: string;
+interface School { id: string; name: string; }
+
+interface Grade { id: string; name: string; }
+
+interface Class { id: string; name: string; }
+
+// Tipagem auxiliar para lidar com respostas legadas que usam "data" e "total"
+type ResultadosDetalhadosFromAPI = {
+  avaliacoes?: EvaluationResult[];
+  paginacao?: {
+    page: number;
+    per_page: number;
+    total: number;
+    total_pages: number;
   };
-  students_count: number;
-  classes_count: number;
-}
+  data?: EvaluationResult[];
+  total?: number;
+};
 
-interface Grade {
-  id: string;
-  name: string;
-  education_stage_id: string;
-  education_stage: {
-    id: string;
-    name: string;
+
+
+// Mapa de status estático (fora do componente)
+const getStatusConfig = (status: EvaluationResult['status']) => {
+  const configs: Record<string, { label: string; color: string }> = {
+    concluida: {
+      label: "Concluída",
+      color: "bg-green-100 text-green-800 border-green-300"
+    },
+    em_andamento: {
+      label: "Em Andamento",
+      color: "bg-blue-100 text-blue-800 border-blue-300"
+    },
+    pendente: {
+      label: "Pendente",
+      color: "bg-gray-100 text-gray-800 border-gray-300"
+    },
+    agendada: {
+      label: "Agendada",
+      color: "bg-yellow-50 text-yellow-600 border-yellow-200"
+    },
+    'concluído': {
+      label: "Concluída",
+      color: "bg-green-100 text-green-800 border-green-300"
+    },
+    'em andamento': {
+      label: "Em Andamento",
+      color: "bg-blue-100 text-blue-800 border-blue-300"
+    },
+    'finalizada': {
+      label: "Concluída",
+      color: "bg-green-100 text-green-800 border-green-300"
+    },
+    'finalizado': {
+      label: "Concluída",
+      color: "bg-green-100 text-green-800 border-green-300"
+    },
+    'agendado': {
+      label: "Agendada",
+      color: "bg-yellow-50 text-yellow-600 border-yellow-200"
+    }
   };
-}
 
-interface Class {
-  id: string;
-  name: string;
-  school: {
-    id: string;
-    name: string;
+  const config = configs[status] || {
+    label: "Desconhecido",
+    color: "bg-gray-100 text-gray-800 border-gray-300"
   };
-  grade: {
-    id: string;
-    name: string;
-  };
-}
 
-
+  return config;
+};
 
 export default function Results() {
-  const { id: evaluationId } = useParams<{ id: string }>();
-  const { user, autoLogin } = useAuth();
+  const { autoLogin } = useAuth();
   const [apiData, setApiData] = useState<NovaRespostaAPI | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingFilters, setIsLoadingFilters] = useState(false);
@@ -216,30 +235,8 @@ export default function Results() {
   const [currentPage, setCurrentPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
 
-  useEffect(() => {
-    const initializeData = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        try {
-          await autoLogin();
-        } catch (error) {
-          console.error("Erro no login automático:", error);
-          toast({
-            title: "Erro de Autenticação",
-            description: "Não foi possível fazer login automático. Verifique suas credenciais.",
-            variant: "destructive",
-          });
-          return;
-        }
-      }
-      await loadInitialFilters();
-    };
-
-    initializeData();
-  }, [autoLogin]);
-
   // Carregar filtros iniciais
-  const loadInitialFilters = async () => {
+  const loadInitialFilters = useCallback(async () => {
     try {
       setIsLoadingFilters(true);
       // ✅ NOVO: Usar a nova rota de estados
@@ -260,7 +257,53 @@ export default function Results() {
       setIsLoadingFilters(false);
       setIsLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    const initializeData = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        try {
+          await autoLogin();
+        } catch (error) {
+          console.error("Erro no login automático:", error);
+          toast({
+            title: "Erro de Autenticação",
+            description: "Não foi possível fazer login automático. Verifique suas credenciais.",
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+      await loadInitialFilters();
+    };
+
+    initializeData();
+  }, [autoLogin, loadInitialFilters, toast]);
+
+  // Helpers de reset em cascata
+  const resetAfterGrade = useCallback(() => {
+    setSelectedClass('all');
+    setClasses([]);
+  }, []);
+
+  const resetAfterSchool = useCallback(() => {
+    setSelectedGrade('all');
+    setGrades([]);
+    resetAfterGrade();
+  }, [resetAfterGrade]);
+
+  const resetAfterEvaluation = useCallback(() => {
+    setSelectedSchool('all');
+    setSchools([]);
+    resetAfterSchool();
+  }, [resetAfterSchool]);
+
+  const resetAfterState = useCallback(() => {
+    setSelectedMunicipality('all');
+    setSelectedEvaluation('all');
+    resetAfterEvaluation();
+  }, [resetAfterEvaluation]);
 
   // ✅ NOVO: Carregar municípios quando estado for selecionado
   useEffect(() => {
@@ -272,19 +315,11 @@ export default function Results() {
           setMunicipalities(municipalitiesData.map(municipality => ({
             id: municipality.id,
             name: municipality.nome,
-            state: selectedState,
-            created_at: new Date().toISOString()
+            state: selectedState
           })));
-          // ✅ NOVO: Resetar seleções dependentes (escolas, séries e turmas agora são carregadas pelo loadData)
-          setSelectedMunicipality('all');
-          setSelectedEvaluation('all');
-          setSelectedSchool('all');
-          setSelectedGrade('all');
-          setSelectedClass('all');
+          // ✅ Reset em cascata
           setEvaluationsByMunicipality([]);
-          setSchools([]);
-          setGrades([]);
-          setClasses([]);
+          resetAfterState();
         } catch (error) {
           console.error("Erro ao carregar municípios:", error);
         } finally {
@@ -292,20 +327,13 @@ export default function Results() {
         }
       } else {
         setMunicipalities([]);
-        setSelectedMunicipality('all');
-        setSelectedEvaluation('all');
-        setSelectedSchool('all');
-        setSelectedGrade('all');
-        setSelectedClass('all');
         setEvaluationsByMunicipality([]);
-        setSchools([]);
-        setGrades([]);
-        setClasses([]);
+        resetAfterState();
       }
     };
 
     loadMunicipalities();
-  }, [selectedState]);
+  }, [selectedState, resetAfterState]);
 
   // ✅ NOVO: Carregar avaliações quando município for selecionado
   useEffect(() => {
@@ -326,14 +354,8 @@ export default function Results() {
             data_aplicacao: new Date().toISOString()
           })));
 
-          // ✅ NOVO: Resetar seleções dependentes
-          setSelectedEvaluation('all');
-          setSelectedSchool('all');
-          setSelectedGrade('all');
-          setSelectedClass('all');
-          setSchools([]);
-          setGrades([]);
-          setClasses([]);
+          // ✅ Reset em cascata
+          resetAfterEvaluation();
         } catch (error) {
           console.error("Erro ao carregar avaliações:", error);
           setEvaluationsByMunicipality([]);
@@ -342,18 +364,12 @@ export default function Results() {
         }
       } else {
         setEvaluationsByMunicipality([]);
-        setSelectedEvaluation('all');
-        setSelectedSchool('all');
-        setSelectedGrade('all');
-        setSelectedClass('all');
-        setSchools([]);
-        setGrades([]);
-        setClasses([]);
+        resetAfterEvaluation();
       }
     };
 
     loadEvaluations();
-  }, [selectedMunicipality, selectedState]);
+  }, [selectedMunicipality, selectedState, resetAfterEvaluation]);
 
   // ✅ NOVO: Carregar escolas quando avaliação for selecionada
   useEffect(() => {
@@ -368,22 +384,11 @@ export default function Results() {
           });
           setSchools(schoolsData.map(school => ({
             id: school.id,
-            name: school.nome,
-            city: {
-              id: selectedMunicipality,
-              name: '',
-              state: selectedState
-            },
-            students_count: 0,
-            classes_count: 0
+            name: school.nome
           })));
 
-          // Resetar seleções dependentes
-          setSelectedSchool('all');
-          setSelectedGrade('all');
-          setSelectedClass('all');
-          setGrades([]);
-          setClasses([]);
+          // Reset em cascata
+          resetAfterSchool();
         } catch (error) {
           console.error("Erro ao carregar escolas:", error);
           setSchools([]);
@@ -392,16 +397,12 @@ export default function Results() {
         }
       } else {
         setSchools([]);
-        setSelectedSchool('all');
-        setSelectedGrade('all');
-        setSelectedClass('all');
-        setGrades([]);
-        setClasses([]);
+        resetAfterSchool();
       }
     };
 
     loadSchools();
-  }, [selectedEvaluation, selectedState, selectedMunicipality]);
+  }, [selectedEvaluation, selectedState, selectedMunicipality, resetAfterSchool]);
 
   // ✅ NOVO: Carregar séries quando escola for selecionada
   useEffect(() => {
@@ -417,18 +418,11 @@ export default function Results() {
           });
           setGrades(gradesData.map(grade => ({
             id: grade.id,
-            name: grade.nome,
-            education_stage_id: '',
-            education_stage: {
-              id: '',
-              name: ''
-            }
+            name: grade.nome
           })));
 
-          // Resetar seleções dependentes
-          setSelectedGrade('all');
-          setSelectedClass('all');
-          setClasses([]);
+          // Reset em cascata
+          resetAfterGrade();
         } catch (error) {
           console.error("Erro ao carregar séries:", error);
           setGrades([]);
@@ -437,14 +431,12 @@ export default function Results() {
         }
       } else {
         setGrades([]);
-        setSelectedGrade('all');
-        setSelectedClass('all');
-        setClasses([]);
+        resetAfterGrade();
       }
     };
 
     loadGrades();
-  }, [selectedSchool, selectedState, selectedMunicipality, selectedEvaluation]);
+  }, [selectedSchool, selectedState, selectedMunicipality, selectedEvaluation, resetAfterGrade]);
 
   // ✅ NOVO: Carregar turmas quando série for selecionada
   useEffect(() => {
@@ -461,15 +453,7 @@ export default function Results() {
           });
           setClasses(classesData.map(classItem => ({
             id: classItem.id,
-            name: classItem.nome,
-            school: {
-              id: selectedSchool,
-              name: ''
-            },
-            grade: {
-              id: selectedGrade,
-              name: ''
-            }
+            name: classItem.nome
           })));
 
           // Resetar seleção dependente
@@ -489,19 +473,9 @@ export default function Results() {
     loadClasses();
   }, [selectedGrade, selectedState, selectedMunicipality, selectedEvaluation, selectedSchool]);
 
-  // Carregar dados quando filtros obrigatórios mudarem
-  useEffect(() => {
-    loadData();
-  }, [selectedState, selectedMunicipality, selectedEvaluation, currentPage, perPage]);
+  
 
-  // ✅ NOVO: Carregar dados quando filtros opcionais mudarem (apenas se os obrigatórios estiverem selecionados)
-  useEffect(() => {
-    if (selectedState !== 'all' && selectedMunicipality !== 'all' && selectedEvaluation !== 'all') {
-      loadData();
-    }
-  }, [selectedSchool, selectedGrade, selectedClass]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     // ✅ NOVO: Verificar se os 3 filtros obrigatórios estão selecionados
     const filtrosObrigatorios = [
       selectedState !== 'all',
@@ -520,18 +494,16 @@ export default function Results() {
         estado: selectedState !== 'all' ? selectedState : undefined,
         municipio: selectedMunicipality !== 'all' ? selectedMunicipality : undefined,
         avaliacao: selectedEvaluation,
-        escola: selectedSchool,
-        serie: selectedGrade,
-        turma: selectedClass,
+          escola: selectedSchool !== 'all' ? selectedSchool : undefined,
+          serie: selectedGrade !== 'all' ? selectedGrade : undefined,
+          turma: selectedClass !== 'all' ? selectedClass : undefined,
       };
 
       // ✅ NOVO: Usar a rota correta /evaluation-results/avaliacoes
       const response = await EvaluationResultsApiService.getEvaluationsList(currentPage, perPage, filters);
 
-      // ✅ LOG: Mostrar como os dados estão sendo processados no componente
-      console.log('🎯 LOG - Dados processados no componente Results:');
-      console.log('🔧 Filtros aplicados:', filters);
-      console.log('📥 Resposta da API:', response);
+      // LOG desativado em produção; habilite se necessário
+      // console.debug('Resultados - filtros aplicados:', filters, 'resposta:', response);
 
       // ✅ NOVO: Normalizar a estrutura da resposta para compatibilidade
       if (response) {
@@ -541,9 +513,9 @@ export default function Results() {
           filtros_aplicados: response.filtros_aplicados || {
             estado: selectedState,
             municipio: selectedMunicipality,
-            escola: selectedSchool || null,
-            serie: selectedGrade || null,
-            turma: selectedClass || null,
+            escola: selectedSchool !== 'all' ? selectedSchool : null,
+            serie: selectedGrade !== 'all' ? selectedGrade : null,
+            turma: selectedClass !== 'all' ? selectedClass : null,
             avaliacao: selectedEvaluation
           },
           estatisticas_gerais: response.estatisticas_gerais || {
@@ -566,8 +538,8 @@ export default function Results() {
           },
           resultados_por_disciplina: response.resultados_por_disciplina || [],
           resultados_detalhados: {
-            avaliacoes: response.resultados_detalhados?.avaliacoes || 
-                       (response.resultados_detalhados as any)?.data || 
+            avaliacoes: response.resultados_detalhados?.avaliacoes ||
+                       (response.resultados_detalhados as ResultadosDetalhadosFromAPI)?.data ||
                        [],
             paginacao: response.resultados_detalhados?.paginacao || {
               page: currentPage,
@@ -594,7 +566,29 @@ export default function Results() {
     } finally {
       setIsLoadingData(false);
     }
-  };
+  }, [
+    selectedState,
+    selectedMunicipality,
+    selectedEvaluation,
+    currentPage,
+    perPage,
+    selectedSchool,
+    selectedGrade,
+    selectedClass,
+    toast
+  ]);
+
+  // Carregar dados quando filtros obrigatórios mudarem
+  useEffect(() => {
+    loadData();
+  }, [selectedState, selectedMunicipality, selectedEvaluation, currentPage, perPage, loadData]);
+
+  // ✅ NOVO: Carregar dados quando filtros opcionais mudarem (apenas se os obrigatórios estiverem selecionados)
+  useEffect(() => {
+    if (selectedState !== 'all' && selectedMunicipality !== 'all' && selectedEvaluation !== 'all') {
+      loadData();
+    }
+  }, [selectedSchool, selectedGrade, selectedClass, selectedState, selectedMunicipality, selectedEvaluation, loadData]);
 
   const handleViewResults = (evaluationId: string) => {
     navigate(`/app/avaliacao/${evaluationId}/resultados-detalhados`);
@@ -610,7 +604,7 @@ export default function Results() {
       const XLSX = await import('xlsx');
       const { saveAs } = await import('file-saver');
 
-      if (!apiData || (!apiData.resultados_detalhados?.avaliacoes?.length && !(apiData.resultados_detalhados as any)?.data?.length) || (apiData.estatisticas_gerais?.total_avaliacoes || 0) === 0) {
+      if (!apiData || (!apiData.resultados_detalhados?.avaliacoes?.length) || (apiData.estatisticas_gerais?.total_avaliacoes || 0) === 0) {
         toast({
           title: "Nenhum dado para exportar",
           description: "Não há avaliações para gerar a planilha",
@@ -621,7 +615,7 @@ export default function Results() {
 
       const worksheetData = [
         ['Avaliação', 'Disciplina', 'Escola', 'Série', 'Turma', 'Município', 'Estado', 'Participantes', 'Média', 'Proficiência', 'Status'],
-        ...(apiData.resultados_detalhados?.avaliacoes || (apiData.resultados_detalhados as any)?.data || []).map(evaluation => [
+        ...(apiData.resultados_detalhados?.avaliacoes || []).map(evaluation => [
           evaluation.titulo || 'Sem título',
           evaluation.disciplina || 'Sem disciplina',
           evaluation.escola || 'Sem escola',
@@ -660,53 +654,35 @@ export default function Results() {
     }
   };
 
-  const getStatusConfig = (status: EvaluationResult['status']) => {
-    const configs = {
-      concluida: {
-        label: "Concluída",
-        color: "bg-green-100 text-green-800 border-green-300"
-      },
-      em_andamento: {
-        label: "Em Andamento",
-        color: "bg-blue-100 text-blue-800 border-blue-300"
-      },
-      pendente: {
-        label: "Pendente",
-        color: "bg-gray-100 text-gray-800 border-gray-300"
-      },
-      agendada: {
-        label: "Agendada",
-        color: "bg-yellow-50 text-yellow-600 border-yellow-200"
-      },
-      'concluído': {
-        label: "Concluída",
-        color: "bg-green-100 text-green-800 border-green-300"
-      },
-      'em andamento': {
-        label: "Em Andamento",
-        color: "bg-blue-100 text-blue-800 border-blue-300"
-      },
-      'finalizada': {
-        label: "Concluída",
-        color: "bg-green-100 text-green-800 border-green-300"
-      },
-      'finalizado': {
-        label: "Concluída",
-        color: "bg-green-100 text-green-800 border-green-300"
-      },
-      'agendado': {
-        label: "Agendada",
-        color: "bg-yellow-50 text-yellow-600 border-yellow-200"
-      }
-    };
+  // Descobre se a disciplina é Matemática
+  const isMath = useCallback((name?: string) => (name || "").toLowerCase().includes("matem"), []);
 
-    const config = configs[status] || {
-      label: "Desconhecido",
-      color: "bg-gray-100 text-gray-800 border-gray-300"
-    };
+  // Infere o grupo do nível (group1 = EI/AI/EJA/Especial; group2 = AF/EM)
+  // Usa: série selecionada, estatísticas gerais, ou a primeira avaliação da lista
+  type StageGroup = "group1" | "group2";
+  const inferStageGroup = useCallback((): StageGroup => {
+    const names = [
+      grades.find(g => g.id === selectedGrade)?.name,
+      apiData?.estatisticas_gerais?.serie,
+      apiData?.resultados_detalhados?.avaliacoes?.[0]?.serie,
+    ]
+      .filter(Boolean)
+      .map((s: string) => s.toLowerCase());
 
-    return config;
-  };
+    const has = (re: RegExp) => names.some(n => re.test(n));
+
+    if (has(/infantil|eja|especial/)) return "group1";
+    if (has(/\b(1º|1o|1°|1)\s*ano\b|\b(2º|2o|2°|2)\s*ano\b|\b(3º|3o|3°|3)\s*ano\b|\b(4º|4o|4°|4)\s*ano\b|\b(5º|5o|5°|5)\s*ano\b/) && !has(/m[eé]dio/)) {
+      return "group1";
+    }
+    return "group2";
+  }, [grades, selectedGrade, apiData]);
+
+  // Retorna o teto por disciplina x grupo
+  const getMaxForDiscipline = useCallback((discipline: string, group: StageGroup) => {
+    if (group === "group1") return isMath(discipline) ? 375 : 350; // AI/EI/EJA/Especial
+    return isMath(discipline) ? 425 : 400; // AF/EM
+  }, [isMath]);
 
   // Preparar dados para os gráficos
   const prepareChartData = () => {
@@ -746,15 +722,24 @@ export default function Results() {
         { name: "Avançado", value: item.distribuicao_classificacao?.avancado || 0 }
       ]
     }));
+  
+  // >>> NOVO: teto dinâmico da proficiência
+  const group = inferStageGroup();
+  const profMaxCandidates = (apiData.resultados_por_disciplina.length
+    ? apiData.resultados_por_disciplina.map(d => getMaxForDiscipline(d.disciplina, group))
+    : [getMaxForDiscipline("outras", group)]);
 
-    return {
+  const proficiencyMax = Math.max(...profMaxCandidates);
+
+  return {
       averageScoreData,
       averageProficiencyData,
-      distributionData
+    distributionData,
+    proficiencyMax,
     };
   };
 
-  const chartData = prepareChartData();
+  const chartData = useMemo(prepareChartData, [apiData, inferStageGroup, getMaxForDiscipline]);
 
   // Contar filtros selecionados
   const selectedFiltersCount = [
@@ -997,18 +982,10 @@ export default function Results() {
                      {/* ✅ NOVO: Verificar se há avaliações antes de mostrar gráficos e estatísticas */}
            {(() => {
              const avaliacoesLength = apiData.resultados_detalhados?.avaliacoes?.length || 0;
-             const dataLength = (apiData.resultados_detalhados as any)?.data?.length || 0;
              const totalAvaliacoes = apiData.estatisticas_gerais?.total_avaliacoes || 0;
              const totalAlunos = apiData.estatisticas_gerais?.total_alunos || 0;
 
-             console.log('🔍 DEBUG - Verificação de avaliações vazias:');
-             console.log('📊 avaliacoes.length:', avaliacoesLength);
-             console.log('📊 data.length:', dataLength);
-             console.log('📊 total_avaliacoes:', totalAvaliacoes);
-             console.log('📊 total_alunos:', totalAlunos);
-             console.log('📊 Condição satisfeita:', (avaliacoesLength === 0 && dataLength === 0) || totalAvaliacoes === 0 || totalAlunos === 0);
-
-             return (avaliacoesLength === 0 && dataLength === 0) || totalAvaliacoes === 0 || totalAlunos === 0;
+             return avaliacoesLength === 0 || totalAvaliacoes === 0 || totalAlunos === 0;
            })() ? (
             <Card>
               <CardContent className="text-center py-12">
@@ -1124,7 +1101,7 @@ export default function Results() {
                           title="Média de Proficiência"
                           subtitle="Média de Proficiência (Geral + Disciplinas)"
                           color="#15803d"
-                          yAxisDomain={[0, 1000]}
+                          yAxisDomain={[0, chartData.proficiencyMax]}
                           yAxisLabel="Proficiência"
                         />
                       </CardContent>
@@ -1153,25 +1130,23 @@ export default function Results() {
                              {/* Lista de Avaliações */}
                {(() => {
                  const avaliacoesLength = apiData.resultados_detalhados?.avaliacoes?.length || 0;
-                 const dataLength = (apiData.resultados_detalhados as any)?.data?.length || 0;
                  const totalAvaliacoes = apiData.estatisticas_gerais?.total_avaliacoes || 0;
                  const totalAlunos = apiData.estatisticas_gerais?.total_alunos || 0;
 
-                 return (avaliacoesLength > 0 || dataLength > 0) && totalAvaliacoes > 0 && totalAlunos > 0;
+                 return avaliacoesLength > 0 && totalAvaliacoes > 0 && totalAlunos > 0;
                })() ? (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center justify-between">
                       <span>Avaliações Detalhadas</span>
                       <Badge variant="outline">
-                        {(apiData.resultados_detalhados?.paginacao?.total ||
-                          (apiData.resultados_detalhados as any)?.total || 0)} avaliações
+                          {(apiData.resultados_detalhados?.paginacao?.total || apiData.resultados_detalhados?.avaliacoes?.length || 0)} avaliações
                       </Badge>
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      {(apiData.resultados_detalhados?.avaliacoes || (apiData.resultados_detalhados as any)?.data || []).map((evaluation, index) => {
+                      {(apiData.resultados_detalhados?.avaliacoes || []).map((evaluation, index) => {
                         const statusConfig = getStatusConfig(evaluation.status);
                         const participationRate = evaluation.total_alunos > 0
                           ? (evaluation.alunos_participantes / evaluation.total_alunos) * 100
@@ -1228,12 +1203,15 @@ export default function Results() {
                                     )}
                                   </div>
 
-                                  <div className="text-xs text-muted-foreground">
-                                    {formatDistanceToNow(new Date(evaluation.data_aplicacao), {
-                                      addSuffix: true,
-                                      locale: ptBR
-                                    })}
-                                  </div>
+                                  {(() => {
+                                    const d = new Date(evaluation.data_aplicacao);
+                                    if (isNaN(d.getTime())) return null;
+                                    return (
+                                      <div className="text-xs text-muted-foreground">
+                                        {formatDistanceToNow(d, { addSuffix: true, locale: ptBR })}
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                               </div>
 
