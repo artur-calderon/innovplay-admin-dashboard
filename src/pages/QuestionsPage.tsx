@@ -463,11 +463,11 @@ const QuestionsPage = () => {
 
       // Log temporário para testar novos parâmetros
       if (user.role === 'professor' && filterType === 'all') {
-        console.log('🧪 TESTE - Professor tentando ver todas as questões:', params);
+        // console.log('🧪 TESTE - Professor tentando ver todas as questões:', params);
       }
 
       if (isDebugMode) {
-        console.log('📡 Fazendo requisição para /questions/ com params:', params);
+        // console.log('📡 Fazendo requisição para /questions/ com params:', params);
       }
       
       let response = await api.get("/questions/", { params });
@@ -475,23 +475,23 @@ const QuestionsPage = () => {
       // Se professor não recebeu questões, tentar abordagem alternativa
       if (user.role === 'professor' && filterType === 'all' && 
           (!response.data || response.data.length === 0)) {
-        console.log('🔄 Primeira tentativa vazia, tentando endpoint alternativo...');
+        // console.log('🔄 Primeira tentativa vazia, tentando endpoint alternativo...');
         
         try {
           // Tentar sem parâmetros especiais
           response = await api.get("/questions/");
-          console.log('🆔 Tentativa sem parâmetros:', response.data?.length);
+          // console.log('🆔 Tentativa sem parâmetros:', response.data?.length);
         } catch (altError) {
-          console.log('❌ Falha na tentativa alternativa');
+          // console.log('❌ Falha na tentativa alternativa');
         }
         
         // Se ainda vazio, tentar com endpoint de admin (pode não existir)
         if (!response.data || response.data.length === 0) {
           try {
             response = await api.get("/admin/questions");
-            console.log('🔧 Tentativa com endpoint admin:', response.data?.length);
+            // console.log('🔧 Tentativa com endpoint admin:', response.data?.length);
           } catch (adminError) {
-            console.log('❌ Endpoint admin não existe');
+            // console.log('❌ Endpoint admin não existe');
           }
         }
       }
@@ -499,7 +499,7 @@ const QuestionsPage = () => {
 
 
       if (isDebugMode) {
-        console.log('✅ Resposta recebida:', response.status, response.data?.length);
+        // console.log('✅ Resposta recebida:', response.status, response.data?.length);
       }
       
       if (!response.data || !Array.isArray(response.data)) {
@@ -539,7 +539,7 @@ const QuestionsPage = () => {
       if (normalizedQuestions.length === 0) {
         setEmptyResults(prev => new Set(prev).add(cacheKey));
         if (isDebugMode) {
-          console.log('🗳️ Marcando resultado vazio para:', cacheKey);
+          // console.log('🗳️ Marcando resultado vazio para:', cacheKey);
         }
       } else {
         // Remover dos resultados vazios se agora tem dados
@@ -565,7 +565,7 @@ const QuestionsPage = () => {
 
     } catch (error) {
       if (isDebugMode) {
-        console.error("❌ Erro ao buscar questões:", error);
+        // console.error("❌ Erro ao buscar questões:", error);
       }
       
       let errorMessage = "Erro desconhecido";
@@ -575,7 +575,7 @@ const QuestionsPage = () => {
           if (error.response) {
             const status = error.response.status;
             if (isDebugMode) {
-              console.log('🔍 Status do erro:', status, error.response.data);
+              // console.log('🔍 Status do erro:', status, error.response.data);
             }
           
           switch (status) {
@@ -635,7 +635,7 @@ const QuestionsPage = () => {
         error.code === 'ECONNABORTED'
       )) {
         if (isDebugMode) {
-          console.log(`🔄 Tentativa ${retryCount + 1}/3 em 2 segundos...`);
+          // console.log(`🔄 Tentativa ${retryCount + 1}/3 em 2 segundos...`);
         }
         setRetryCount(prev => prev + 1);
         setTimeout(() => {
@@ -690,7 +690,7 @@ const QuestionsPage = () => {
       setEmptyResults(new Set());
       
       if (isDebugMode) {
-        console.log('🧹 Limpeza periódica de resultados vazios');
+        // console.log('🧹 Limpeza periódica de resultados vazios');
       }
     }, 10 * 60 * 1000); // 10 minutos
 
@@ -706,7 +706,7 @@ const QuestionsPage = () => {
     if (!deleteQuestionId) return;
 
     try {
-      console.log(`🗑️ Tentando excluir questão: ${deleteQuestionId}`);
+      // console.log(`🗑️ Tentando excluir questão: ${deleteQuestionId}`);
       await api.delete(`/questions/${deleteQuestionId}`);
       toast({
         title: "Sucesso!",
@@ -717,14 +717,14 @@ const QuestionsPage = () => {
       setQuestionsCache({});
       fetchQuestions();
     } catch (error: any) {
-      console.error("❌ Erro detalhado ao excluir questão:", {
-        error,
-        questionId: deleteQuestionId,
-        message: error.message,
-        response: error.response,
-        status: error.response?.status,
-        data: error.response?.data
-      });
+      // console.error("❌ Erro detalhado ao excluir questão:", {
+      //   error,
+      //   questionId: deleteQuestionId,
+      //   message: error.message,
+      //   response: error.response,
+      //   status: error.response?.status,
+      //   data: error.response?.data
+      // });
       
       let errorMessage = "Não foi possível excluir a questão.";
       
@@ -752,7 +752,7 @@ const QuestionsPage = () => {
 
   const handleBulkDelete = async () => {
     try {
-      console.log(`🗑️ Tentando excluir ${selectedIds.length} questões:`, selectedIds);
+      // console.log(`🗑️ Tentando excluir ${selectedIds.length} questões:`, selectedIds);
       await api.delete("/questions", { data: { ids: selectedIds } });
       toast({
         title: "Sucesso!",
@@ -763,14 +763,14 @@ const QuestionsPage = () => {
       setQuestionsCache({});
       fetchQuestions();
     } catch (error: any) {
-      console.error("❌ Erro detalhado ao excluir questões em massa:", {
-        error,
-        selectedIds,
-        message: error.message,
-        response: error.response,
-        status: error.response?.status,
-        data: error.response?.data
-      });
+      // console.error("❌ Erro detalhado ao excluir questões em massa:", {
+      //   error,
+      //   selectedIds,
+      //   message: error.message,
+      //   response: error.response,
+      //   status: error.response?.status,
+      //   data: error.response?.data
+      // });
       
       let errorMessage = "Não foi possível excluir as questões selecionadas.";
       
@@ -815,24 +815,24 @@ const QuestionsPage = () => {
     });
 
     if (problematic.length > 0) {
-      console.warn(`🚨 Encontradas ${problematic.length} questões com possíveis problemas:`, 
-        problematic.map(q => ({
-          id: q.id,
-          title: q.title,
-          optionsCount: q.options?.length || 0,
-          correctOptionsCount: q.options?.filter(opt => opt.isCorrect).length || 0,
-          issues: {
-            multipleCorrect: q.options && q.options.filter(opt => opt.isCorrect).length > 1,
-            tooManyOptions: q.options && q.options.length > 10,
-            strangeIds: q.options && q.options.some(opt => 
-              opt.id && opt.id.includes('option-') && parseInt(opt.id.replace('option-', ''), 10) > 100
-            ),
-            invalidText: q.options && q.options.some(opt => 
-              opt.text && opt.text.length === 1 && /[^\w\s]/.test(opt.text)
-            )
-          }
-        }))
-      );
+      // console.warn(`🚨 Encontradas ${problematic.length} questões com possíveis problemas:`, 
+      //   problematic.map(q => ({
+      //     id: q.id,
+      //     title: q.title,
+      //     optionsCount: q.options?.length || 0,
+      //     correctOptionsCount: q.options?.filter(opt => opt.isCorrect).length || 0,
+      //     issues: {
+      //       multipleCorrect: q.options && q.options.filter(opt => opt.isCorrect).length > 1,
+      //       tooManyOptions: q.options && q.options.length > 10,
+      //       strangeIds: q.options && q.options.some(opt => 
+      //         opt.id && opt.id.includes('option-') && parseInt(opt.id.replace('option-', ''), 10) > 100
+      //       ),
+      //       invalidText: q.options && q.options.some(opt => 
+      //         opt.text && opt.text.length === 1 && /[^\w\s]/.test(opt.text)
+      //       )
+      //     }
+      //   }))
+      // );
       
       toast({
         title: `${problematic.length} questões problemáticas detectadas`,
@@ -872,11 +872,11 @@ const QuestionsPage = () => {
         lastModifiedBy: user?.id
       };
 
-      console.log("📤 Payload sendo enviado:", duplicatedQuestion);
+      // console.log("📤 Payload sendo enviado:", duplicatedQuestion);
 
       const response = await api.post("/questions", duplicatedQuestion);
       
-      console.log("✅ Resposta da API:", response.data);
+      // console.log("✅ Resposta da API:", response.data);
       
       toast({
         title: "Questão duplicada! 🎉",
@@ -886,7 +886,7 @@ const QuestionsPage = () => {
       // Atualizar a lista de questões
       fetchQuestions(false, true);
     } catch (error: unknown) {
-      console.error("❌ Erro ao duplicar questão:", error);
+      // console.error("❌ Erro ao duplicar questão:", error);
       
       let errorMessage = "Erro desconhecido";
       
@@ -895,7 +895,7 @@ const QuestionsPage = () => {
         // Se for um erro do axios, tentar acessar a resposta
         if ('response' in error && error.response && typeof error.response === 'object') {
           const response = error.response as { data?: { message?: string } };
-          console.error("📄 Detalhes do erro:", response.data);
+          // console.error("📄 Detalhes do erro:", response.data);
           errorMessage = response.data?.message || error.message;
         }
       }

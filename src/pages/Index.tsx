@@ -56,20 +56,16 @@ const Index = () => {
           try {
             const comprehensiveStatsResponse = await api.get('/dashboard/comprehensive-stats');
             comprehensiveStats = comprehensiveStatsResponse.data;
-            console.log('✅ Estatísticas abrangentes carregadas:', comprehensiveStats);
           } catch (error) {
             console.warn('⚠️ Erro ao buscar estatísticas abrangentes:', error);
-            comprehensiveStats = null;
           }
 
           // Tentar buscar lista de usuários
           try {
             const usersResponse = await api.get('/users/list');
             users = usersResponse.data?.users || [];
-            console.log('✅ Lista de usuários carregada:', users.length, 'usuários');
           } catch (error) {
             console.warn('⚠️ Erro ao buscar lista de usuários:', error);
-            users = [];
           }
 
           // Calcular estatísticas

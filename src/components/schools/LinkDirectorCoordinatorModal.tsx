@@ -81,9 +81,7 @@ export function LinkDirectorCoordinatorModal({
     const fetchUsers = async () => {
       setIsLoading(true);
       try {
-        console.log('👥 Buscando usuários para vincular à escola:', schoolId);
-        console.log('👥 Tipo de usuário:', userType);
-        
+              
         // Buscar usuários baseado no tipo
         let endpoint;
         if (userType === 'diretor') {
@@ -92,7 +90,6 @@ export function LinkDirectorCoordinatorModal({
           endpoint = '/teacher/coordinators';
         }
         
-        console.log('👥 Endpoint:', endpoint);
         
         const response = await api.get(endpoint);
 

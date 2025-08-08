@@ -193,36 +193,10 @@ export function AddUserForm({ schoolId, schoolName, userType, onSuccess }: AddUs
                         users = Array.isArray(response.data) ? response.data : [];
                     } else {
                         response = await api.get(config.fetchEndpoint);
-                        console.log(response.data);
                         
                         // Verificar se a resposta tem a estrutura esperada
-                        console.log('Checking response structure...');
-                        console.log('config.responseKey:', config.responseKey);
-                        console.log('response.data[config.responseKey]:', response.data[config.responseKey]);
-                        
-                        if (response.data && response.data.professores) {
-                            // Fallback para estrutura antiga de professores
-                            console.log('Using old professor structure');
-                            users = response.data.professores.map((prof: any) => {
-                                console.log('Processing professor:', prof);
-                                console.log('prof.usuario:', prof.usuario);
-                                console.log('prof.professor:', prof.professor);
-                                
-                                const processedUser = {
-                                    id: prof.usuario?.id || prof.professor?.id || `prof-${Math.random()}`,
-                                    name: prof.usuario?.name || prof.professor?.name || 'Nome não informado',
-                                    email: prof.usuario?.email || prof.professor?.email || 'email@não.informado',
-                                    registration: prof.vinculo_escola?.registration || prof.vinculos_escolares?.[0]?.registration || prof.usuario?.registration,
-                                    role: prof.usuario?.role || 'professor',
-                                    birth_date: prof.professor?.birth_date
-                                };
-                                
-                                console.log('Processed user:', processedUser);
-                                return processedUser;
-                            });
-                        } else if (response.data && config.responseKey && response.data[config.responseKey]) {
+                        if (response.data && config.responseKey && response.data[config.responseKey]) {
                             // Usar a nova estrutura padronizada
-                            console.log('Using new standardized structure');
                             users = response.data[config.responseKey];
                         } else if (Array.isArray(response.data)) {
                             users = response.data;
@@ -231,13 +205,13 @@ export function AddUserForm({ schoolId, schoolName, userType, onSuccess }: AddUs
                         }
                     }
                 } catch (error) {
-                    console.log('First endpoint failed, trying alternative...');
+                    console.error('First endpoint failed, trying alternative...');
                     // Tentar endpoint alternativo
                     try {
                         response = await api.get('/users/');
                         users = Array.isArray(response.data) ? response.data : [];
                     } catch (secondError) {
-                        console.log('Both endpoints failed');
+                        console.error('Both endpoints failed');
                         users = [];
                     }
                 }
@@ -245,44 +219,13 @@ export function AddUserForm({ schoolId, schoolName, userType, onSuccess }: AddUs
                 // Mostrar todos os usuários disponíveis para permitir vinculação
                 const usersToShow = users;
                 
-                // Log para debug
-                console.log(`Found ${usersToShow.length} users for ${userType}`);
-                console.log('Processed users:', usersToShow);
-                console.log('User IDs:', usersToShow.map(u => ({ id: u.id, name: u.name })));
-                console.log('Raw response data:', response.data);
-                if (usersToShow.length === 0) {
-                    console.log('No users found. This might be because:');
-                    console.log('1. The API endpoint is not working');
-                    console.log('2. There are no users in the system');
-                    console.log('3. The user does not have permission to view users');
-                    
-                    // Mostrar dados de exemplo para testar a interface
-                    if (process.env.NODE_ENV === 'development') {
-                        const mockUsers = [
-                            {
-                                id: '1',
-                                name: 'João Silva',
-                                email: 'joao.silva@email.com',
-                                registration: '12345',
-                                role: config.role
-                            },
-                            {
-                                id: '2',
-                                name: 'Maria Santos',
-                                email: 'maria.santos@email.com',
-                                registration: '67890',
-                                role: config.role
-                            }
-                        ];
-                        console.log('Using mock data for development');
-                        setAllUsers(mockUsers);
-                        setFilteredUsers(mockUsers);
-                        return;
-                    }
+                if (usersToShow.length > 0) {
+                    setAllUsers(usersToShow);
+                    setFilteredUsers(usersToShow);
+                } else {
+                    setAllUsers([]);
+                    setFilteredUsers([]);
                 }
-                
-                setAllUsers(usersToShow);
-                setFilteredUsers(usersToShow);
             } catch (error) {
                 console.error(`Error fetching ${userType}:`, error);
                 toast({
