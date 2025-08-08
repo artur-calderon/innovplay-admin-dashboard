@@ -154,6 +154,26 @@ type ResultadosDetalhadosFromAPI = {
   total?: number;
 };
 
+// ✅ Info resumida e precisa da avaliação (para exibir no topo dos gráficos)
+interface EvaluationInfoSummary {
+  id: string;
+  titulo: string;
+  disciplina?: string;
+  disciplinas?: string[];
+  curso?: string;
+  serie?: string;
+  grade_id?: string;
+  escola?: string;
+  municipio?: string;
+  data_aplicacao?: string;
+  status: 'concluida' | 'em_andamento' | 'pendente' | string;
+  total_alunos: number;
+  alunos_participantes: number;
+  alunos_ausentes: number;
+  media_nota: number;
+  media_proficiencia: number;
+}
+
 
 
 // Mapa de status estático (fora do componente)
@@ -229,11 +249,22 @@ export default function Results() {
   const [schools, setSchools] = useState<School[]>([]);
   const [grades, setGrades] = useState<Grade[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
+  const [evaluationInfo, setEvaluationInfo] = useState<EvaluationInfoSummary | null>(null);
 
 
   // Estados de paginação
   const [currentPage, setCurrentPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
+
+  // ✅ Extrai nome de disciplina de respostas variadas (string ou objeto)
+  const extractSubjectName = useCallback((subject: unknown): string => {
+    if (typeof subject === 'string') return subject;
+    if (subject && typeof subject === 'object') {
+      const possible = subject as { name?: string; nome?: string };
+      return possible.name || possible.nome || '';
+    }
+    return '';
+  }, []);
 
   // Carregar filtros iniciais
   const loadInitialFilters = useCallback(async () => {
@@ -552,8 +583,58 @@ export default function Results() {
         };
 
         setApiData(normalizedResponse);
+
+        // ✅ Construir resumo preciso da avaliação selecionada (se houver)
+        if (selectedEvaluation !== 'all') {
+          // Tentar consolidar a partir da primeira avaliação retornada (quando nível >= escola)
+          const firstEval = normalizedResponse.resultados_detalhados?.avaliacoes?.[0];
+          const status = firstEval?.status || (normalizedResponse.estatisticas_gerais ? (normalizedResponse.estatisticas_gerais.tipo ? 'concluida' : 'pendente') : 'pendente');
+
+          // Fallbacks a partir das estatísticas e filtros
+          const resumo: EvaluationInfoSummary = {
+            id: String(firstEval?.id || selectedEvaluation),
+            titulo: String(firstEval?.titulo || 'Avaliação'),
+            disciplina: firstEval?.disciplina,
+            curso: firstEval?.curso,
+            serie: firstEval?.serie || normalizedResponse.estatisticas_gerais?.serie,
+            escola: firstEval?.escola || normalizedResponse.estatisticas_gerais?.escola,
+            municipio: firstEval?.municipio || normalizedResponse.estatisticas_gerais?.municipio,
+            data_aplicacao: firstEval?.data_aplicacao,
+            status: status as EvaluationInfoSummary['status'],
+            total_alunos: firstEval?.total_alunos ?? normalizedResponse.estatisticas_gerais?.total_alunos ?? 0,
+            alunos_participantes: firstEval?.alunos_participantes ?? normalizedResponse.estatisticas_gerais?.alunos_participantes ?? 0,
+            alunos_ausentes: firstEval?.alunos_ausentes ?? 0,
+            media_nota: firstEval?.media_nota ?? normalizedResponse.estatisticas_gerais?.media_nota_geral ?? 0,
+            media_proficiencia: firstEval?.media_proficiencia ?? normalizedResponse.estatisticas_gerais?.media_proficiencia_geral ?? 0,
+          };
+
+          // ✅ Consolidar TODAS as disciplinas: resultados_por_disciplina + disciplina da primeira avaliação + opções da avaliação
+          const subjectsFromResults = (normalizedResponse.resultados_por_disciplina || [])
+            .map(d => extractSubjectName(d.disciplina as unknown))
+            .filter(Boolean);
+          const singleSubject = extractSubjectName(firstEval?.disciplina as unknown);
+          // Buscar também as disciplinas listadas nas opções de filtros da avaliação
+          const filterOptions = await EvaluationResultsApiService.getFilterOptionsForEvaluation(String(selectedEvaluation));
+          const subjectsFromOptions = (filterOptions?.subjects || [])
+            .map(s => extractSubjectName(s as unknown))
+            .filter(Boolean);
+
+          const allSubjects = Array.from(new Set([
+            ...subjectsFromResults,
+            ...subjectsFromOptions,
+            ...(singleSubject ? [singleSubject] : []),
+          ]));
+          if (allSubjects.length > 0) {
+            resumo.disciplinas = allSubjects;
+          }
+
+          setEvaluationInfo(resumo);
+        } else {
+          setEvaluationInfo(null);
+        }
       } else {
         setApiData(null);
+        setEvaluationInfo(null);
       }
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
@@ -563,6 +644,7 @@ export default function Results() {
         variant: "destructive",
       });
       setApiData(null);
+      setEvaluationInfo(null);
     } finally {
       setIsLoadingData(false);
     }
@@ -575,7 +657,8 @@ export default function Results() {
     selectedSchool,
     selectedGrade,
     selectedClass,
-    toast
+    toast,
+    extractSubjectName
   ]);
 
   // Carregar dados quando filtros obrigatórios mudarem
@@ -683,6 +766,12 @@ export default function Results() {
     if (group === "group1") return isMath(discipline) ? 375 : 350; // AI/EI/EJA/Especial
     return isMath(discipline) ? 425 : 400; // AF/EM
   }, [isMath]);
+
+  // ✅ Normalizador de status para manter o tipo estrito
+  const normalizeStatus = useCallback((status: string | undefined): 'concluida' | 'em_andamento' | 'pendente' => {
+    if (status === 'concluida' || status === 'em_andamento' || status === 'pendente') return status;
+    return 'pendente';
+  }, []);
 
   // Preparar dados para os gráficos
   const prepareChartData = () => {
@@ -979,6 +1068,87 @@ export default function Results() {
       {/* Gráficos e Dados */}
       {allRequiredFiltersSelected && !isLoadingData && apiData && (
         <>
+          {/* ✅ Informações da Avaliação (resumo) */}
+          {evaluationInfo && (
+            <Card className="mb-4">
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span>Informações da Avaliação</span>
+                  <Badge className={getStatusConfig(normalizeStatus(evaluationInfo.status)).color}>
+                    {evaluationInfo.status === 'concluida' ? 'Concluída' : evaluationInfo.status === 'em_andamento' ? 'Em Andamento' : 'Pendente'}
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-muted-foreground">Disciplinas</div>
+                    <div className="font-semibold">
+                      {evaluationInfo.disciplinas && evaluationInfo.disciplinas.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {evaluationInfo.disciplinas.map((disc, idx) => (
+                            <Badge key={idx} variant="secondary" className="text-xs">{disc}</Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-700">{evaluationInfo.disciplina || 'Disciplina não informada'}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-muted-foreground">Série</div>
+                    <div className="font-semibold">{evaluationInfo.serie || 'Série não informada'}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-muted-foreground">Escola</div>
+                    <div className="font-semibold">{evaluationInfo.escola || 'Escola não informada'}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-muted-foreground">Município</div>
+                    <div className="font-semibold">{evaluationInfo.municipio || 'Município não informado'}</div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mt-6">
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-muted-foreground">Total de Alunos</div>
+                    <div className="text-2xl font-bold text-blue-600">{evaluationInfo.total_alunos}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-muted-foreground">Participantes</div>
+                    <div className="text-2xl font-bold text-green-600">{evaluationInfo.alunos_participantes}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-muted-foreground">Faltosos</div>
+                    <div className="text-2xl font-bold text-red-600">{evaluationInfo.alunos_ausentes}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-muted-foreground">Taxa de Participação</div>
+                    <div className="text-2xl font-bold text-blue-600">
+                      {evaluationInfo.total_alunos > 0 ? ((evaluationInfo.alunos_participantes / evaluationInfo.total_alunos) * 100).toFixed(1) : '0.0'}%
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mt-6">
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-muted-foreground">Nota Geral</div>
+                    <div className="text-2xl font-bold text-purple-600">{evaluationInfo.media_nota.toFixed(1)}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-muted-foreground">Proficiência</div>
+                    <div className="text-2xl font-bold text-orange-600">{Number(evaluationInfo.media_proficiencia || 0).toFixed(1)}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-muted-foreground">Taxa de Conclusão</div>
+                    <div className="text-2xl font-bold text-green-600">
+                      {evaluationInfo.total_alunos > 0 ? ((evaluationInfo.alunos_participantes / evaluationInfo.total_alunos) * 100).toFixed(1) : '0.0'}%
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
                      {/* ✅ NOVO: Verificar se há avaliações antes de mostrar gráficos e estatísticas */}
            {(() => {
              const avaliacoesLength = apiData.resultados_detalhados?.avaliacoes?.length || 0;
