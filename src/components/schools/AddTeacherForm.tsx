@@ -67,7 +67,6 @@ export function AddTeacherForm({ schoolId, schoolName, classes = [], onSuccess }
             try {
                 const response = await api.get(`/teacher/`);
                 const teachers = Array.isArray(response.data) ? response.data : [];
-                console.log(teachers);
                 setAllTeachers(teachers);
                 setFilteredTeachers(teachers);
             } catch (error) {

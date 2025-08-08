@@ -585,7 +585,6 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
         questions: [],
       };
 
-      console.log("📤 Dados estruturados para envio:", evaluationData);
       onNext(evaluationData);
     } catch (error) {
       console.error("Erro no Step 1:", error);

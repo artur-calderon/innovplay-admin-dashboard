@@ -37,23 +37,19 @@ import { BarChartComponent, DonutChartComponent } from "@/components/ui/charts";
 // Interfaces para os dados da API
 interface EvaluationResult {
   id: string;
-  class_test_id?: string;
-  titulo: string;
+  titulo: string; // Changed from 'nome' to 'titulo'
   disciplina: string;
-  curso: string;
-  serie: string;
-  grade_id?: string;
-  turma?: string;
-  escola: string;
-  municipio: string;
-  estado?: string;
   data_aplicacao: string;
-  data_correcao?: string;
-  status: 'concluida' | 'em_andamento' | 'pendente' | string;
+  municipio?: string;
+  estado?: string;
+  escola: string; // Changed from object to string
+  serie: string; // Changed from object to string
+  turma: string; // Changed from object to string
+  // Flattened 'estatisticas' fields
   total_alunos: number;
   alunos_participantes: number;
-  alunos_pendentes?: number;
-  alunos_ausentes?: number;
+  alunos_pendentes: number;
+  alunos_ausentes: number;
   media_nota: number;
   media_proficiencia: number;
   distribuicao_classificacao: {
@@ -101,11 +97,8 @@ interface NovaRespostaAPI {
   };
   resultados_por_disciplina: Array<{
     disciplina: string;
-    total_avaliacoes: number;
     total_alunos: number;
     alunos_participantes: number;
-    alunos_pendentes: number;
-    alunos_ausentes: number;
     media_nota: number;
     media_proficiencia: number;
     distribuicao_classificacao: {
@@ -128,7 +121,6 @@ interface NovaRespostaAPI {
     escolas?: Array<{ id: string; name: string }>;
     series?: Array<{ id: string; name: string }>;
     turmas?: Array<{ id: string; name: string }>;
-    maximo_alcancado?: boolean;
   };
 }
 
@@ -525,13 +517,8 @@ export default function Results() {
         turma: selectedClass,
       };
 
-      // ✅ NOVO: Usar a rota correta /evaluation-results/avaliacoes
+            // ✅ NOVO: Usar a rota correta /evaluation-results/avaliacoes
       const response = await EvaluationResultsApiService.getEvaluationsList(currentPage, perPage, filters);
-
-      // ✅ LOG: Mostrar como os dados estão sendo processados no componente
-      console.log('🎯 LOG - Dados processados no componente Results:');
-      console.log('🔧 Filtros aplicados:', filters);
-      console.log('📥 Resposta da API:', response);
 
       // ✅ NOVO: Normalizar a estrutura da resposta para compatibilidade
       if (response) {
@@ -569,16 +556,30 @@ export default function Results() {
             avaliacoes: response.resultados_detalhados?.avaliacoes || 
                        (response.resultados_detalhados as any)?.data || 
                        [],
-            paginacao: response.resultados_detalhados?.paginacao || {
-              page: currentPage,
-              per_page: perPage,
-              total: 0,
-              total_pages: 0
+            paginacao: {
+              page: (response.resultados_detalhados?.paginacao as any)?.page || currentPage,
+              per_page: (response.resultados_detalhados?.paginacao as any)?.per_page || perPage,
+              total: (response.resultados_detalhados?.paginacao as any)?.total || 0,
+              total_pages: (response.resultados_detalhados?.paginacao as any)?.total_pages || 0
             }
           },
-          opcoes_proximos_filtros: response.opcoes_proximos_filtros || {}
+          opcoes_proximos_filtros: {
+            escolas: response.opcoes_proximos_filtros?.escolas?.map((escola: any) => ({
+              id: escola.id,
+              name: escola.name || escola.nome || ''
+            })) || [],
+            series: response.opcoes_proximos_filtros?.series?.map((serie: any) => ({
+              id: serie.id,
+              name: serie.name || serie.nome || ''
+            })) || [],
+            turmas: response.opcoes_proximos_filtros?.turmas?.map((turma: any) => ({
+              id: turma.id,
+              name: turma.name || turma.nome || ''
+            })) || []
+          }
         };
 
+        console.log('🔍 LOG - Dados normalizados para apiData:', normalizedResponse);
         setApiData(normalizedResponse);
       } else {
         setApiData(null);
@@ -632,7 +633,7 @@ export default function Results() {
           `${evaluation.alunos_participantes || 0}/${evaluation.total_alunos || 0}`,
           (evaluation.media_nota || 0).toFixed(1),
           (evaluation.media_proficiencia || 0).toFixed(1),
-          evaluation.status === 'concluida' ? 'Concluída' : evaluation.status === 'em_andamento' ? 'Em Andamento' : 'Pendente'
+          'Concluída' // Status padrão para nova estrutura
         ])
       ];
 
@@ -660,7 +661,7 @@ export default function Results() {
     }
   };
 
-  const getStatusConfig = (status: EvaluationResult['status']) => {
+  const getStatusConfig = (status: string) => {
     const configs = {
       concluida: {
         label: "Concluída",
@@ -718,10 +719,15 @@ export default function Results() {
       return null;
     }
 
+    console.log('Preparando dados para gráficos:', {
+      estatisticas_gerais: apiData.estatisticas_gerais,
+      resultados_por_disciplina: apiData.resultados_por_disciplina
+    });
+
     // Dados para gráfico de médias de nota
     const averageScoreData = [
       { name: "Geral", value: apiData.estatisticas_gerais.media_nota_geral || 0 },
-      ...apiData.resultados_por_disciplina.map(item => ({
+      ...apiData.resultados_por_disciplina.map((item) => ({
         name: item.disciplina.toUpperCase(),
         value: item.media_nota || 0
       }))
@@ -730,14 +736,14 @@ export default function Results() {
     // Dados para gráfico de médias de proficiência
     const averageProficiencyData = [
       { name: "Geral", value: apiData.estatisticas_gerais.media_proficiencia_geral || 0 },
-      ...apiData.resultados_por_disciplina.map(item => ({
+      ...apiData.resultados_por_disciplina.map((item) => ({
         name: item.disciplina.toUpperCase(),
         value: item.media_proficiencia || 0
       }))
     ];
 
     // Dados para gráficos de distribuição por disciplina
-    const distributionData = apiData.resultados_por_disciplina.map(item => ({
+    const distributionData = apiData.resultados_por_disciplina.map((item) => ({
       disciplina: item.disciplina,
       data: [
         { name: "Abaixo do Básico", value: item.distribuicao_classificacao?.abaixo_do_basico || 0 },
@@ -747,14 +753,28 @@ export default function Results() {
       ]
     }));
 
-    return {
+    const result = {
       averageScoreData,
       averageProficiencyData,
       distributionData
     };
+
+    console.log('Dados dos gráficos preparados:', result);
+    return result;
   };
 
   const chartData = prepareChartData();
+  
+  console.log('chartData final:', chartData);
+  console.log('apiData estado atual:', {
+    hasApiData: !!apiData,
+    estatisticasGerais: apiData?.estatisticas_gerais,
+    resultadosPorDisciplina: apiData?.resultados_por_disciplina,
+    resultadosDetalhados: apiData?.resultados_detalhados,
+    avaliacoesLength: apiData?.resultados_detalhados?.avaliacoes?.length || 0
+  });
+  
+
 
   // Contar filtros selecionados
   const selectedFiltersCount = [
@@ -778,7 +798,7 @@ export default function Results() {
           {apiData && (
             <div className="mt-2 flex items-center gap-2">
               <Badge variant="outline" className="text-xs">
-                Nível: {apiData.nivel_granularidade ? apiData.nivel_granularidade.charAt(0).toUpperCase() + apiData.nivel_granularidade.slice(1) : 'Município'}
+                Nível: {apiData.estatisticas_gerais?.tipo ? apiData.estatisticas_gerais.tipo.charAt(0).toUpperCase() + apiData.estatisticas_gerais.tipo.slice(1) : 'Município'}
               </Badge>
               <span className="text-xs text-muted-foreground">
                 {apiData.estatisticas_gerais?.nome || 'Dados gerais'}
@@ -994,22 +1014,14 @@ export default function Results() {
       {/* Gráficos e Dados */}
       {allRequiredFiltersSelected && !isLoadingData && apiData && (
         <>
-                     {/* ✅ NOVO: Verificar se há avaliações antes de mostrar gráficos e estatísticas */}
-           {(() => {
-             const avaliacoesLength = apiData.resultados_detalhados?.avaliacoes?.length || 0;
-             const dataLength = (apiData.resultados_detalhados as any)?.data?.length || 0;
-             const totalAvaliacoes = apiData.estatisticas_gerais?.total_avaliacoes || 0;
-             const totalAlunos = apiData.estatisticas_gerais?.total_alunos || 0;
-
-             console.log('🔍 DEBUG - Verificação de avaliações vazias:');
-             console.log('📊 avaliacoes.length:', avaliacoesLength);
-             console.log('📊 data.length:', dataLength);
-             console.log('📊 total_avaliacoes:', totalAvaliacoes);
-             console.log('📊 total_alunos:', totalAlunos);
-             console.log('📊 Condição satisfeita:', (avaliacoesLength === 0 && dataLength === 0) || totalAvaliacoes === 0 || totalAlunos === 0);
-
-             return (avaliacoesLength === 0 && dataLength === 0) || totalAvaliacoes === 0 || totalAlunos === 0;
-           })() ? (
+          {/* ✅ CORRIGIDO: Verificar se há avaliações detalhadas disponíveis */}
+          {(() => {
+            const avaliacoesLength = apiData.resultados_detalhados?.avaliacoes?.length || 0;
+            const dataLength = (apiData.resultados_detalhados as any)?.data?.length || 0;
+            
+            // ✅ NOVO: Mostrar conteúdo se houver avaliações detalhadas, independente das estatísticas gerais
+            return (avaliacoesLength === 0 && dataLength === 0);
+          })() ? (
             <Card>
               <CardContent className="text-center py-12">
                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
@@ -1072,9 +1084,9 @@ export default function Results() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-purple-600">
-                      {apiData.estatisticas_gerais.media_nota_geral.toFixed(1)}
-                    </div>
+                                         <div className="text-2xl font-bold text-purple-600">
+                       {apiData.estatisticas_gerais.media_nota_geral.toFixed(1)}
+                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
                       Nota média
                     </p>
@@ -1089,9 +1101,9 @@ export default function Results() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-orange-600">
-                      {apiData.estatisticas_gerais.media_proficiencia_geral.toFixed(1)}
-                    </div>
+                                         <div className="text-2xl font-bold text-orange-600">
+                       {apiData.estatisticas_gerais.media_proficiencia_geral.toFixed(1)}
+                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
                       Proficiência média
                     </p>
@@ -1100,7 +1112,16 @@ export default function Results() {
               </div>
 
               {/* Gráficos */}
-              {chartData && chartData.averageScoreData && chartData.averageScoreData.length > 0 && (
+              {(() => {
+                const shouldShowCharts = chartData && chartData.averageScoreData && chartData.averageScoreData.length > 0;
+                console.log('Condição para mostrar gráficos:', {
+                  chartData: !!chartData,
+                  averageScoreData: !!chartData?.averageScoreData,
+                  averageScoreDataLength: chartData?.averageScoreData?.length,
+                  shouldShowCharts
+                });
+                return shouldShowCharts;
+              })() && (
                 <div className="space-y-6">
                   {/* Gráficos de Médias */}
                   <div className="grid gap-6 md:grid-cols-2">
@@ -1150,32 +1171,31 @@ export default function Results() {
                 </div>
               )}
 
-                             {/* Lista de Avaliações */}
-               {(() => {
-                 const avaliacoesLength = apiData.resultados_detalhados?.avaliacoes?.length || 0;
-                 const dataLength = (apiData.resultados_detalhados as any)?.data?.length || 0;
-                 const totalAvaliacoes = apiData.estatisticas_gerais?.total_avaliacoes || 0;
-                 const totalAlunos = apiData.estatisticas_gerais?.total_alunos || 0;
-
-                 return (avaliacoesLength > 0 || dataLength > 0) && totalAvaliacoes > 0 && totalAlunos > 0;
-               })() ? (
+              {/* Lista de Avaliações */}
+              {(() => {
+                const avaliacoesLength = apiData.resultados_detalhados?.avaliacoes?.length || 0;
+                const dataLength = (apiData.resultados_detalhados as any)?.data?.length || 0;
+                
+                // ✅ CORRIGIDO: Mostrar lista se houver avaliações detalhadas
+                return (avaliacoesLength > 0 || dataLength > 0);
+              })() ? (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center justify-between">
                       <span>Avaliações Detalhadas</span>
-                      <Badge variant="outline">
-                        {(apiData.resultados_detalhados?.paginacao?.total ||
-                          (apiData.resultados_detalhados as any)?.total || 0)} avaliações
-                      </Badge>
+                                             <Badge variant="outline">
+                                                  {(apiData.resultados_detalhados?.paginacao?.total ||
+                            (apiData.resultados_detalhados as any)?.total || 0)} avaliações
+                       </Badge>
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      {(apiData.resultados_detalhados?.avaliacoes || (apiData.resultados_detalhados as any)?.data || []).map((evaluation, index) => {
-                        const statusConfig = getStatusConfig(evaluation.status);
-                        const participationRate = evaluation.total_alunos > 0
-                          ? (evaluation.alunos_participantes / evaluation.total_alunos) * 100
-                          : 0;
+                                                                                           {(apiData.resultados_detalhados?.avaliacoes || (apiData.resultados_detalhados as any)?.data || []).map((evaluation, index) => {
+                         const statusConfig = getStatusConfig('concluida'); // Status padrão para nova estrutura
+                         const participationRate = evaluation.total_alunos > 0
+                           ? (evaluation.alunos_participantes / evaluation.total_alunos) * 100
+                           : 0;
 
                         return (
                           <div key={`${evaluation.id}-${index}`} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
@@ -1208,25 +1228,25 @@ export default function Results() {
                                 </div>
 
                                 <div className="flex items-center gap-6">
-                                  <div className="flex items-center gap-2">
-                                    <Users className="h-4 w-4 text-muted-foreground" />
-                                    <span className="text-sm font-medium">
-                                      {evaluation.alunos_participantes}/{evaluation.total_alunos} alunos
-                                    </span>
-                                    <Progress value={participationRate} className="w-20 h-2" />
-                                  </div>
+                                                                     <div className="flex items-center gap-2">
+                                     <Users className="h-4 w-4 text-muted-foreground" />
+                                     <span className="text-sm font-medium">
+                                       {evaluation.alunos_participantes || 0}/{evaluation.total_alunos || 0} alunos
+                                     </span>
+                                     <Progress value={participationRate} className="w-20 h-2" />
+                                   </div>
 
-                                  <div className="flex items-center gap-2">
-                                    <Target className="h-4 w-4 text-muted-foreground" />
-                                    <span className="text-sm font-medium">
-                                      Média: {evaluation.media_nota.toFixed(1)}
-                                    </span>
-                                    {evaluation.media_nota >= 7 ? (
-                                      <TrendingUp className="h-4 w-4 text-green-600" />
-                                    ) : (
-                                      <AlertTriangle className="h-4 w-4 text-orange-600" />
-                                    )}
-                                  </div>
+                                   <div className="flex items-center gap-2">
+                                     <Target className="h-4 w-4 text-muted-foreground" />
+                                     <span className="text-sm font-medium">
+                                       Média: {(evaluation.media_nota || 0).toFixed(1)}
+                                     </span>
+                                     {(evaluation.media_nota || 0) >= 7 ? (
+                                       <TrendingUp className="h-4 w-4 text-green-600" />
+                                     ) : (
+                                       <AlertTriangle className="h-4 w-4 text-orange-600" />
+                                     )}
+                                   </div>
 
                                   <div className="text-xs text-muted-foreground">
                                     {formatDistanceToNow(new Date(evaluation.data_aplicacao), {
