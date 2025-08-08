@@ -262,6 +262,7 @@ export const CreateEvaluationStep2 = ({
         evaluation_mode: "virtual",
         municipalities: data.municipalities || [],
         schools: data.selectedSchools?.map(s => s.id) || data.schools || [],
+        classes: data.selectedClasses?.map(c => c.id) || data.classes || [], // ✅ CORREÇÃO: Adicionar campo classes
         subjects: data.subjects.map(subject => subject.id), // Corrigido: enviar array de IDs
         subjects_info: data.subjects.map(subject => ({
           subject: subject.id,

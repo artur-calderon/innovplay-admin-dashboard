@@ -132,6 +132,14 @@ export interface ClassInfo {
     id: string;
     name: string;
   };
+  grade?: {
+    id: string;
+    name: string;
+    education_stage?: {
+      id: string;
+      name: string;
+    };
+  };
 }
 
 export interface TeacherSchool {

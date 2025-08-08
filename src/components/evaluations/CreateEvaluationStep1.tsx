@@ -219,10 +219,6 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
         const response = await api.get(`/classes/school/${schoolId}`);
         const allClasses = response.data || [];
 
-        // Log apenas os nomes das turmas e o nome da série selecionada
-        console.log('Série selecionada:', grades.find(g => g.id === selectedGrade)?.name || '');
-        console.log('Turmas retornadas:', allClasses.map(c => c.name));
-
         // Filtrar turmas por série no frontend (comparação por string, sem espaços)
         const filteredClasses = allClasses.filter((classItem: any) =>
           String(classItem.grade_id).trim() === String(selectedGrade).trim()
@@ -1138,8 +1134,8 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
                             variant="secondary"
                             className="flex items-center gap-1"
                           >
-                            {classItem.name}
-                            {classItem.students_count && (
+                            {classItem.grade?.name ? `${classItem.grade.name} ${classItem.name}` : classItem.name}
+                            {classItem.students_count !== undefined && (
                               <span className="text-xs ml-1">({classItem.students_count} alunos)</span>
                             )}
                             <Button
@@ -1202,8 +1198,13 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
                                     className="text-sm cursor-pointer flex-1"
                                   >
                                     <div className="flex flex-col">
-                                      <span>{classItem.name} - {classItem.school?.name || "Escola não definida"}</span>
-                                      {classItem.students_count && (
+                                      <span className="font-medium">
+                                        {classItem.grade?.name ? `${classItem.grade.name} ${classItem.name}` : classItem.name}
+                                      </span>
+                                      <span className="text-xs text-muted-foreground">
+                                        {classItem.school?.name || "Escola não definida"}
+                                      </span>
+                                      {classItem.students_count !== undefined && (
                                         <span className="text-xs text-muted-foreground">
                                           {classItem.students_count} alunos
                                         </span>
