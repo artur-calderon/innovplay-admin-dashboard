@@ -207,33 +207,20 @@ export default function Turmas() {
   const fetchStudentsForView = async (classId: string, schoolId?: string) => {
     setIsLoadingViewStudents(true);
     try {
-      // Tenta rota principal e NÃO lança erro em 404 para evitar logs no console
-      const response = await api.get(`/classes/${classId}/students`, {
-        validateStatus: () => true,
-      });
-
-      if (response.status >= 200 && response.status < 300) {
-        setViewStudents(response.data || []);
+      // Usar apenas a rota suportada pelo backend para evitar 404 no console
+      const effectiveSchoolId = schoolId || viewingClass?.school_id;
+      if (!effectiveSchoolId) {
+        setViewStudents([]);
         return;
       }
-
-      // Fallback para rota alternativa
-      const effectiveSchoolId = schoolId || viewingClass?.school_id;
-      if (effectiveSchoolId) {
-        const fallback = await api.get(`/students/school/${effectiveSchoolId}/class/${classId}`, {
-          validateStatus: () => true,
-        });
-        if (fallback.status >= 200 && fallback.status < 300) {
-          setViewStudents(fallback.data || []);
-        } else {
-          setViewStudents([]);
-        }
+      const res = await api.get(`/students/school/${effectiveSchoolId}/class/${classId}`, {
+        validateStatus: () => true,
+      });
+      if (res.status >= 200 && res.status < 300) {
+        setViewStudents(res.data || []);
       } else {
         setViewStudents([]);
       }
-    } catch (_) {
-      // Silenciar erros inesperados nesta visualização; apenas limpa a lista
-      setViewStudents([]);
     } finally {
       setIsLoadingViewStudents(false);
     }
