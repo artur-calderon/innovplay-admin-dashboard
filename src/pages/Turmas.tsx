@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { PlusCircle, Search, Edit, Trash2, Users, Building, Loader2, AlertCircle, UserPlus, X, Eye, RefreshCw, GraduationCap } from "lucide-react";
+import { PlusCircle, Search, Trash2, Users, Building, Loader2, AlertCircle, UserPlus, X, Eye, GraduationCap } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -133,22 +133,17 @@ export default function Turmas() {
   const [isAddingStudent, setIsAddingStudent] = useState(false);
   const [updatingCounters, setUpdatingCounters] = useState<Set<string>>(new Set());
 
+  // Estados para visualização de alunos da turma
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+  const [viewingClass, setViewingClass] = useState<Turma | null>(null);
+  const [viewStudents, setViewStudents] = useState<Student[]>([]);
+  const [isLoadingViewStudents, setIsLoadingViewStudents] = useState(false);
+
   const { toast } = useToast();
 
-  useEffect(() => {
-    fetchTurmas();
-    fetchSchools();
-    fetchGrades();
-  }, []);
+  // Carregamento de alunos vinculado à edição foi removido com o botão Editar
 
-  // Buscar alunos quando uma turma é selecionada para edição
-  useEffect(() => {
-    if (editingItem?.id) {
-      fetchStudentsByClass(editingItem.id);
-    }
-  }, [editingItem]);
-
-  const fetchTurmas = async () => {
+  const fetchTurmas = useCallback(async () => {
     try {
       setIsLoading(true);
 
@@ -182,7 +177,7 @@ export default function Turmas() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [toast]);
 
   const fetchSchools = async () => {
     try {
@@ -200,6 +195,54 @@ export default function Turmas() {
     } catch (error) {
       console.error("Erro ao buscar séries:", error);
     }
+  };
+
+  // Carregar dados iniciais após as funções estarem definidas
+  useEffect(() => {
+    fetchTurmas();
+    fetchSchools();
+    fetchGrades();
+  }, [fetchTurmas]);
+
+  const fetchStudentsForView = async (classId: string, schoolId?: string) => {
+    setIsLoadingViewStudents(true);
+    try {
+      // Tenta rota principal e NÃO lança erro em 404 para evitar logs no console
+      const response = await api.get(`/classes/${classId}/students`, {
+        validateStatus: () => true,
+      });
+
+      if (response.status >= 200 && response.status < 300) {
+        setViewStudents(response.data || []);
+        return;
+      }
+
+      // Fallback para rota alternativa
+      const effectiveSchoolId = schoolId || viewingClass?.school_id;
+      if (effectiveSchoolId) {
+        const fallback = await api.get(`/students/school/${effectiveSchoolId}/class/${classId}`, {
+          validateStatus: () => true,
+        });
+        if (fallback.status >= 200 && fallback.status < 300) {
+          setViewStudents(fallback.data || []);
+        } else {
+          setViewStudents([]);
+        }
+      } else {
+        setViewStudents([]);
+      }
+    } catch (_) {
+      // Silenciar erros inesperados nesta visualização; apenas limpa a lista
+      setViewStudents([]);
+    } finally {
+      setIsLoadingViewStudents(false);
+    }
+  };
+
+  const openViewDialog = (turma: Turma) => {
+    setViewingClass(turma);
+    setIsViewDialogOpen(true);
+    fetchStudentsForView(turma.id, turma.school_id);
   };
 
   const fetchStudentsByClass = async (classId: string) => {
@@ -328,11 +371,11 @@ export default function Turmas() {
 
       setIsModalOpen(false);
       fetchTurmas(); // Recarregar a lista
-    } catch (error: any) {
+    } catch (error) {
       console.error("Erro ao salvar turma:", error);
       toast({
         title: "Erro",
-        description: error.response?.data?.error || "Erro ao salvar turma",
+        description: (error as { response?: { data?: { error?: string } } }).response?.data?.error || "Erro ao salvar turma",
         variant: "destructive",
       });
     } finally {
@@ -353,11 +396,11 @@ export default function Turmas() {
       setIsDeleteDialogOpen(false);
       setDeletingItem(null);
       fetchTurmas(); // Recarregar a lista
-    } catch (error: any) {
+    } catch (error) {
       console.error("Erro ao excluir turma:", error);
       toast({
         title: "Erro",
-        description: error.response?.data?.error || "Erro ao excluir turma",
+        description: (error as { response?: { data?: { error?: string } } }).response?.data?.error || "Erro ao excluir turma",
         variant: "destructive",
       });
     } finally {
@@ -419,11 +462,11 @@ export default function Turmas() {
       fetchStudentsByClass(editingItem.id);
       // Atualizar contador de alunos de forma mais eficiente
       updateClassStudentCount(editingItem.id, editingItem.school_id);
-    } catch (error: any) {
+    } catch (error) {
       console.error("Erro ao adicionar aluno:", error);
       toast({
         title: "Erro",
-        description: error.response?.data?.error || "Erro ao adicionar aluno",
+        description: (error as { response?: { data?: { error?: string } } }).response?.data?.error || "Erro ao adicionar aluno",
         variant: "destructive",
       });
     } finally {
@@ -443,11 +486,11 @@ export default function Turmas() {
         title: "Sucesso",
         description: "Aluno removido da turma com sucesso",
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error("Erro ao remover aluno:", error);
       toast({
         title: "Erro",
-        description: error.response?.data?.error || "Erro ao remover aluno da turma",
+        description: (error as { response?: { data?: { error?: string } } }).response?.data?.error || "Erro ao remover aluno da turma",
         variant: "destructive",
       });
     }
@@ -523,17 +566,7 @@ export default function Turmas() {
             className="pl-8"
           />
         </div>
-        <Button
-          variant="outline"
-          onClick={fetchTurmas}
-          disabled={isLoading}
-        >
-          {isLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            "Atualizar"
-          )}
-        </Button>
+        {/* Botão de recarregar removido */}
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -585,22 +618,14 @@ export default function Turmas() {
                   </div>
                 </div>
                 <div className="flex gap-2 mt-4">
+                  {/* Botões Editar e Atualizar removidos */}
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => openEditModal(turma)}
+                    onClick={() => openViewDialog(turma)}
                   >
-                    <Edit className="h-3 w-3 mr-1" />
-                    Editar
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => updateClassStudentCount(turma.id, turma.school_id)}
-                    disabled={updatingCounters.has(turma.id)}
-                    title="Atualizar contador de alunos"
-                  >
-                    <RefreshCw className={`h-3 w-3 ${updatingCounters.has(turma.id) ? 'animate-spin' : ''}`} />
+                    <Eye className="h-3 w-3 mr-1" />
+                    Visualizar
                   </Button>
                   <Button
                     variant="outline"
@@ -947,6 +972,56 @@ export default function Turmas() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Dialog Visualizar Alunos da Turma */}
+      <Dialog open={isViewDialogOpen} onOpenChange={(open) => {
+        setIsViewDialogOpen(open);
+        if (!open) {
+          setViewingClass(null);
+          setViewStudents([]);
+        }
+      }}>
+        <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Alunos da Turma {viewingClass?.name || ''}</DialogTitle>
+            <DialogDescription>
+              Lista de alunos vinculados a esta turma
+            </DialogDescription>
+          </DialogHeader>
+
+          {isLoadingViewStudents ? (
+            <div className="space-y-2">
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+            </div>
+          ) : viewStudents.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Users className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
+              <p>Nenhum aluno cadastrado nesta turma</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Matrícula</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {viewStudents.map((student) => (
+                  <TableRow key={student.id}>
+                    <TableCell className="font-medium">{student.name}</TableCell>
+                    <TableCell>{student.email}</TableCell>
+                    <TableCell>{student.registration || '-'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 
