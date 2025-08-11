@@ -5,8 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Calendar, Trophy, BarChart3, ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "@/context/authContext";
-import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -41,78 +39,45 @@ interface MyClassTestItem {
 
 export default function StudentResults() {
   const navigate = useNavigate();
-  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [tests, setTests] = useState<MyClassTestItem[]>([]);
-  const [evaluationsMeta, setEvaluationsMeta] = useState<Record<string, { status?: string; data_aplicacao?: string }>>({});
-  const [studentScores, setStudentScores] = useState<Record<string, { grade?: number | null; score?: number | null }>>({});
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
-        // 1) Avaliações do aluno (via service)
-        const studentEvals = await EvaluationResultsApiService.getStudentEvaluations(String(user.id));
-
-        // Normalizar para estrutura local mínima
-        const basicTests: MyClassTestItem[] = studentEvals.map((e: any) => ({
-          test_id: String(e.id),
-          title: e.titulo || e.title || "Avaliação",
-          subject: e.disciplina ? { id: "", name: e.disciplina } : undefined,
-          application_info: { application: e.data_aplicacao, expiration: undefined },
-          availability: { is_available: true, status: "completed" },
-          student_status: { has_completed: true, status: "finalizada", can_start: false }
-        }));
-        setTests(basicTests);
-
-        // 2) Buscar metadados e notas do aluno em paralelo
-        const metaEntries: Record<string, { status?: string; data_aplicacao?: string }> = {};
-        const scoreEntries: Record<string, { grade?: number | null; score?: number | null }> = {};
-
-        await Promise.allSettled(basicTests.map(async (t) => {
-          // Detalhes da avaliação
-          const evalInfo = await EvaluationResultsApiService.getEvaluationById(t.test_id).catch(() => null);
-          if (evalInfo) {
-            metaEntries[t.test_id] = { status: (evalInfo as any).status, data_aplicacao: (evalInfo as any).data_aplicacao };
-          }
-          // Resultado do aluno
-          const myResult = await EvaluationResultsApiService.getStudentResults(t.test_id, String(user.id)).catch(() => null);
-          if (myResult) {
-            scoreEntries[t.test_id] = {
-              grade: typeof myResult.grade === 'number' ? myResult.grade : null,
-              score: typeof myResult.score_percentage === 'number' ? myResult.score_percentage : null,
-            };
-          }
-        }));
-
-        setEvaluationsMeta(metaEntries);
-        setStudentScores(scoreEntries);
+        // Usar rotas diretas do backend (sem prefixo /api)
+        const resp = await fetch('/test/my-class/tests');
+        const data = await resp.json();
+        const items: MyClassTestItem[] = data?.tests || [];
+        setTests(items);
+      } catch (e) {
+        setTests([]);
       } finally {
         setLoading(false);
       }
     };
     load();
-  }, [user.id]);
+  }, []);
 
   const availableResults = useMemo(() => {
     return tests
-      .map(t => {
-        const meta = evaluationsMeta[t.test_id] || {};
-        const score = studentScores[t.test_id] || {};
-        return {
-          id: t.test_id,
-          title: t.title,
-          subjects: t.subjects_info && t.subjects_info.length > 0
-            ? t.subjects_info.map(s => s.name).join(", ")
-            : (t.subject?.name || ""),
-          released: meta.status === 'concluida' || (score.grade != null || score.score != null),
-          released_at: meta.data_aplicacao,
-          grade: score.grade ?? null,
-          score: score.score ?? null,
-        };
+      .filter(t => t.student_status?.has_completed)
+      .filter(t => {
+        const exp = t.application_info?.expiration;
+        return exp ? new Date() >= new Date(exp) : false;
       })
-      .filter(r => r.released);
-  }, [tests, evaluationsMeta, studentScores]);
+      .map(t => ({
+        id: t.test_id,
+        title: t.title,
+        subjects: t.subjects_info && t.subjects_info.length > 0
+          ? t.subjects_info.map(s => s.name).join(", ")
+          : (t.subject?.name || ""),
+        expiration: t.application_info?.expiration,
+        grade: typeof t.student_status?.grade === 'number' ? t.student_status.grade : null,
+        score: typeof t.student_status?.score === 'number' ? t.student_status.score : null
+      }));
+  }, [tests]);
 
   if (loading) {
     return (
@@ -166,11 +131,7 @@ export default function StudentResults() {
                   )}
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <Calendar className="h-4 w-4" />
-                    {r.released_at ? (
-                      <>Liberado em {format(parseISO(r.released_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}</>
-                    ) : (
-                      <>Resultado disponível</>
-                    )}
+                    Liberado em {r.expiration ? format(parseISO(r.expiration), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) : '-'}
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="text-gray-700">
