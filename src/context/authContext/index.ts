@@ -97,7 +97,7 @@ export const useAuth = create<AuthContext>((set) => ({
             toast.success("Login realizado com sucesso!", {
                 autoClose: 3000, // 3 segundos para sucesso
             });
-
+            console.log(response.data)
             localStorage.setItem('token', response.data.token)
 
             // ✅ CORRIGIDO: Usar a instância da API corretamente

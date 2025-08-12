@@ -123,44 +123,19 @@ export default function Instituicao() {
   const fetchInstituicoes = useCallback(async () => {
     setIsLoading(true);
     try {
-      let instituicoesData: Instituicao[] = [];
-
-      if (user.role === 'admin') {
-        // Admin vê todas as instituições
-        const response = await api.get("/school");
-        instituicoesData = response.data;
-      } else if (user.role === 'diretor' || user.role === 'coordenador' || user.role === 'professor') {
-        // Diretores, coordenadores e professores veem apenas sua instituição
-        try {
-          const response = await api.get(`/users/school/${user.id}`);
-          if (response.data && response.data.school) {
-            instituicoesData = [response.data.school];
-          }
-        } catch (error) {
-          console.error("Erro ao buscar instituição do usuário:", error);
-        }
-      } else {
-        // Outros roles (tecadmin, aluno) veem apenas as instituições do município
-        const response = await api.get("/school");
-        instituicoesData = response.data.filter((instituicao: Instituicao) => 
-          instituicao.city_id === user.tenant_id
-        );
-      }
-
-      setInstituicoes(instituicoesData);
+      const response = await api.get("/school");
+      setInstituicoes(response.data);
     } catch (error) {
       console.error("Erro ao buscar instituições:", error);
       toast({
         title: "Erro",
-        description: user.role === 'professor' 
-          ? "Erro ao carregar sua instituição" 
-          : "Erro ao carregar instituições",
+        description: "Erro ao carregar instituições",
         variant: "destructive",
       });
     } finally {
       setIsLoading(false);
     }
-  }, [toast, user.id, user.role, user.tenant_id]);
+  }, [toast]);
 
   const fetchInstituicaoDetails = useCallback(async (schoolId: string) => {
     setIsLoadingDetails(true);
@@ -409,7 +384,7 @@ export default function Instituicao() {
             Cadastre e gerencie as instituições de ensino
           </p>
         </div>
-        {user.role === 'admin' && (
+        {(user.role === 'admin' || user.role === 'tecadm') && (
           <Button onClick={() => setIsAddDialogOpen(true)} className="w-full sm:w-auto">
             <PlusCircle className="h-4 w-4 mr-2" />
             Nova Instituição
@@ -682,7 +657,7 @@ export default function Instituicao() {
                       ? "Entre em contato com o diretor ou coordenador da sua escola para visualizar a sua escola"
                       : "Não há instituições cadastradas no sistema."}
                 </p>
-                {!searchTerm && user.role === 'admin' && (
+                {!searchTerm && (user.role === 'admin' || user.role === 'tecadm') && (
                   <Button onClick={() => setIsAddDialogOpen(true)}>
                     <PlusCircle className="h-4 w-4 mr-2" />
                     Nova Instituição

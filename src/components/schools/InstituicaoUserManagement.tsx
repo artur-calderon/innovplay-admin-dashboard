@@ -72,14 +72,9 @@ interface InstituicaoUserManagementProps {
 }
 
 // Mapeamento de roles para exibição
-const roleDisplayMapping: { [key: string]: string } = {
-  "admin": "Administrador",
-  "professor": "Professor",
-  "coordenador": "Coordenador",
-  "diretor": "Diretor",
-  "tecadmin": "Técnico administrativo",
-  "aluno": "Aluno"
-};
+import { ROLE_DISPLAY_MAPPING } from "@/lib/constants";
+
+const roleDisplayMapping = ROLE_DISPLAY_MAPPING;
 
 // Mapeamento de roles para criação
 const roleMapping: { [key: string]: string } = {
@@ -87,11 +82,11 @@ const roleMapping: { [key: string]: string } = {
   "Professor": "professor",
   "Coordenador": "coordenador",
   "Diretor": "diretor",
-  "Técnico administrativo": "tecadmin",
+  "Técnico Administrador": "tecadm",
   "Aluno": "aluno"
 };
 
-const ROLES = ['Professor', 'Coordenador', 'Diretor', 'Técnico administrativo'];
+import { ROLES } from "@/lib/constants";
 
 export function InstituicaoUserManagement({ schoolId, schoolName, onSuccess }: InstituicaoUserManagementProps) {
   const { user } = useAuth();
@@ -300,7 +295,7 @@ export function InstituicaoUserManagement({ schoolId, schoolName, onSuccess }: I
         return <UserCheck className="h-4 w-4" />;
       case "diretor":
         return <Building2 className="h-4 w-4" />;
-      case "tecadmin":
+      case "tecadm":
         return <Users className="h-4 w-4" />;
       default:
         return <Users className="h-4 w-4" />;
@@ -315,7 +310,7 @@ export function InstituicaoUserManagement({ schoolId, schoolName, onSuccess }: I
         return "bg-green-100 text-green-800";
       case "diretor":
         return "bg-purple-100 text-purple-800";
-      case "tecadmin":
+      case "tecadm":
         return "bg-orange-100 text-orange-800";
       default:
         return "bg-gray-100 text-gray-800";
@@ -385,7 +380,7 @@ export function InstituicaoUserManagement({ schoolId, schoolName, onSuccess }: I
                     <SelectValue placeholder="Selecione uma função" />
                   </SelectTrigger>
                   <SelectContent>
-                    {ROLES.map((role) => (
+                    {ROLES.filter(role => role !== "Administrador" && role !== "Aluno").map((role) => (
                       <SelectItem key={role} value={role}>
                         {role}
                       </SelectItem>
@@ -461,7 +456,7 @@ export function InstituicaoUserManagement({ schoolId, schoolName, onSuccess }: I
             <SelectItem value="professor">Professores</SelectItem>
             <SelectItem value="coordenador">Coordenadores</SelectItem>
             <SelectItem value="diretor">Diretores</SelectItem>
-            <SelectItem value="tecadmin">Técnicos administrativos</SelectItem>
+            <SelectItem value="tecadm">Técnicos administrativos</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -498,7 +493,7 @@ export function InstituicaoUserManagement({ schoolId, schoolName, onSuccess }: I
                       {user.name}
                     </CardTitle>
                     <Badge className={getRoleColor(user.role)}>
-                      {roleDisplayMapping[user.role] || user.role}
+                      {getRoleDisplayName(user.role)}
                     </Badge>
                   </CardHeader>
                   <CardContent>

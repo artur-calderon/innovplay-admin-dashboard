@@ -13,6 +13,7 @@ import { api } from "@/lib/api";
 import { Loader2, Users, Building, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/context/authContext";
+import { getRoleDisplayName } from "@/lib/constants";
 
 interface SchoolLink {
   manager: {
@@ -62,7 +63,7 @@ export function ManageSchoolLinksModal({
     if (!user) return false;
     
     // Apenas admin e tecadm podem gerenciar vínculos
-    return ['admin', 'tecadmin'].includes(user.role);
+    return ['admin', 'tecadm'].includes(user.role);
   };
 
   // Se não tem permissão, não renderizar o modal

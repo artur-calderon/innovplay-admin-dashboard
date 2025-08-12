@@ -56,7 +56,7 @@ interface QuestionApiResponse {
   topics: string[] | string;
   subject?: { id: string; name: string };
   grade?: { id: string; name: string };
-  created_by: string;
+  createdBy: { id: string; name: string }; // Changed from created_by: string to match API response
   solution?: string;
   formattedText?: string;
   formattedSolution?: string;
@@ -256,8 +256,8 @@ const QuestionsPage = () => {
     if (!sortOption) return questions;
 
     return [...questions].sort((a, b) => {
-      let aValue: string | number;
-      let bValue: string | number;
+      let aValue: string;
+      let bValue: string;
 
       switch (sortOption.key) {
         case 'title':
@@ -275,13 +275,13 @@ const QuestionsPage = () => {
         case 'difficulty': {
           // Mapear dificuldades para valores numéricos
           const difficultyOrder = { 'Abaixo do Básico': 1, 'Básico': 2, 'Adequado': 3, 'Avançado': 4 };
-          aValue = difficultyOrder[a.difficulty as keyof typeof difficultyOrder] || 0;
-          bValue = difficultyOrder[b.difficulty as keyof typeof difficultyOrder] || 0;
+          aValue = String(difficultyOrder[a.difficulty as keyof typeof difficultyOrder] || 0);
+          bValue = String(difficultyOrder[b.difficulty as keyof typeof difficultyOrder] || 0);
           break;
         }
         case 'value':
-          aValue = parseFloat(a.value) || 0;
-          bValue = parseFloat(b.value) || 0;
+          aValue = String(a.value || 0);
+          bValue = String(b.value || 0);
           break;
         case 'type': {
           // Mapear tipos para valores numéricos
@@ -346,16 +346,16 @@ const QuestionsPage = () => {
     return filteredAndSortedQuestions.slice(startIndex, startIndex + pageSize);
   }, [filteredAndSortedQuestions, currentPage, pageSize]);
 
-  // Definir filtro inicial para professores
+  // Definir filtro inicial para professores, tecadm, diretores e coordenadores
   useEffect(() => {
-    if (user.role === 'professor' && filterType === 'my') {
+    if ((user.role === 'professor' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && filterType === 'my') {
       setFilterType('all');
     }
-  }, [user.role, filterType]);
+  }, [user.role]); // Removido filterType da dependência para evitar loop infinito
 
-  // Limpar cache quando professor acessa "Todas as Questões"
+  // Limpar cache quando professor, tecadm, diretor ou coordenador acessa "Todas as Questões"
   useEffect(() => {
-    if (user.role === 'professor' && filterType === 'all') {
+    if ((user.role === 'professor' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && filterType === 'all') {
       const cacheKey = `${filterType}-${user.id || 'all'}`;
       
       setQuestionsCache(prev => {
@@ -452,7 +452,7 @@ const QuestionsPage = () => {
 
       if (filterType === 'my' && user.id) {
         params.created_by = user.id;
-      } else if (filterType === 'all' && user.role === 'professor') {
+      } else if (filterType === 'all' && (user.role === 'professor' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador')) {
         // Tentar diferentes parâmetros para forçar busca de todas as questões
         params.scope = 'global';
         params.all = 'true';
@@ -462,8 +462,8 @@ const QuestionsPage = () => {
 
 
       // Log temporário para testar novos parâmetros
-      if (user.role === 'professor' && filterType === 'all') {
-        // console.log('🧪 TESTE - Professor tentando ver todas as questões:', params);
+      if ((user.role === 'professor' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && filterType === 'all') {
+        // console.log('🧪 TESTE - Usuário tentando ver todas as questões:', params);
       }
 
       if (isDebugMode) {
@@ -472,8 +472,10 @@ const QuestionsPage = () => {
       
       let response = await api.get("/questions/", { params });
       
-      // Se professor não recebeu questões, tentar abordagem alternativa
-      if (user.role === 'professor' && filterType === 'all' && 
+      
+      
+      // Se usuário não recebeu questões, tentar abordagem alternativa
+      if ((user.role === 'professor' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && filterType === 'all' && 
           (!response.data || response.data.length === 0)) {
         // console.log('🔄 Primeira tentativa vazia, tentando endpoint alternativo...');
         
@@ -506,25 +508,28 @@ const QuestionsPage = () => {
         throw new Error('Dados inválidos recebidos do servidor');
       }
 
-      const normalizedQuestions: Question[] = response.data.map((q: QuestionApiResponse) => ({
-        id: q.id,
-        title: q.title,
-        text: q.text,
-        secondStatement: q.secondStatement || '',
-        type: q.type as "multipleChoice" | "dissertativa" | "trueFalse",
-        subjectId: q.subject?.id || '',
-        subject: q.subject || { id: '', name: '' },
-        grade: q.grade || { id: '', name: '' },
-        difficulty: q.difficulty,
-        value: q.value,
-        solution: q.solution || '',
-        formattedText: q.formattedText,
-        formattedSolution: q.formattedSolution,
-        options: q.options || [],
-        skills: Array.isArray(q.skills) ? q.skills : (q.skills && typeof q.skills === 'string' ? q.skills.split(',').map(s => s.trim()) : []),
-        created_by: q.created_by,
-        educationStage: null
-      }));
+              const normalizedQuestions: Question[] = response.data.map((q: QuestionApiResponse) => {
+        
+        return {
+          id: q.id,
+          title: q.title,
+          text: q.text,
+          secondStatement: q.secondStatement || '',
+          type: q.type as "multipleChoice" | "dissertativa" | "trueFalse",
+          subjectId: q.subject?.id || '',
+          subject: q.subject || { id: '', name: '' },
+          grade: q.grade || { id: '', name: '' },
+          difficulty: q.difficulty,
+          value: q.value,
+          solution: q.solution || '',
+          formattedText: q.formattedText,
+          formattedSolution: q.formattedSolution,
+          options: q.options || [],
+          skills: Array.isArray(q.skills) ? q.skills : (q.skills && typeof q.skills === 'string' ? q.skills.split(',').map(s => s.trim()) : []),
+          created_by: q.createdBy.id, // Changed from q.created_by to q.createdBy.id
+          educationStage: null
+        };
+      });
       
       // Salvar no cache
       setQuestionsCache(prev => ({
@@ -862,7 +867,7 @@ const QuestionsPage = () => {
         grade: question.grade?.id,
         gradeId: question.grade?.id,
         difficulty: question.difficulty,
-        value: parseFloat(question.value) || 0,
+        value: question.value || 0,
         solution: question.solution || "",
         formattedSolution: question.formattedSolution || question.solution || "",
         skills: question.skills || [],
@@ -1121,8 +1126,12 @@ const QuestionsPage = () => {
     const handleDuplicateClick = useCallback(() => handleDuplicate(question), [question]);
     const handleSelect = useCallback((checked: boolean) => handleSelectOne(question.id, checked), [question.id]);
     
-    // Verificar se usuário pode editar/deletar (se é o criador ou admin)
+    // Verificar se usuário pode editar/deletar
+    // Admin pode excluir qualquer questão
+    // Tecadm, diretor, coordenador e professor podem excluir apenas suas questões
     const canEditDelete = user?.id === question.created_by || user?.role === 'admin';
+    
+    
 
     return (
       <div 
@@ -1313,7 +1322,7 @@ const QuestionsPage = () => {
           <Tabs value={filterType} onValueChange={(value) => setFilterType(value as 'my' | 'all')} className="w-full sm:w-auto">
             <TabsList className="h-9 w-full sm:w-auto">
               <TabsTrigger value="my" className="text-sm flex-1 sm:flex-none">Minhas</TabsTrigger>
-              {(user.role === 'admin' || user.role === 'professor') && 
+              {(user.role === 'admin' || user.role === 'professor' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && 
                 <TabsTrigger value="all" className="text-sm flex-1 sm:flex-none">Todas</TabsTrigger>
               }
             </TabsList>
@@ -1503,7 +1512,10 @@ const QuestionsPage = () => {
                         >
                           <Copy className="h-3 w-3" />
                         </Button>
-                        {(user?.id === question.created_by || user?.role === 'admin') && (
+                                {(() => {
+          const canEditDelete = user?.id === question.created_by || user?.role === 'admin';
+          return canEditDelete;
+        })() && (
                           <>
                             <Button 
                               variant="ghost" 
