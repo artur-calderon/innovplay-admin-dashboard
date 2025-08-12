@@ -179,7 +179,7 @@ export default function QuestionSelectionStep({
       subject: apiQuestion.subject || { id: apiQuestion.subject_id, name: "Disciplina não definida" },
       grade: apiQuestion.grade || { id: apiQuestion.grade_id || "", name: "Série não definida" },
       difficulty: apiQuestion.difficulty_level || "Básico",
-      type: apiQuestion.question_type === "essay" ? "open" : 
+      type: apiQuestion.question_type === "essay" ? "dissertativa" : 
             apiQuestion.question_type === "trueFalse" ? "trueFalse" : "multipleChoice",
       value: String(apiQuestion.value || 1.0),
       solution: apiQuestion.correct_answer || "",

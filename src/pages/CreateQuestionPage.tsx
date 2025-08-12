@@ -16,19 +16,31 @@ const CreateQuestionPage = () => {
   const handleSubmit = async (questionData: Question) => {
     try {
       setIsLoading(true);
+      
+      // Verificar se o usuário está autenticado
+      if (!user?.id) {
+        toast.error("Erro de autenticação", {
+          description: "Usuário não autenticado. Faça login novamente.",
+        });
+        return;
+      }
+
+      // Usar created_by do questionData se disponível, senão usar user.id
+      const createdBy = questionData.created_by || user.id;
+
       const response = await api.post("/questions", {
         title: questionData.title,
         text: questionData.text,
         second_statement: questionData.secondStatement,
         type: questionData.type,
-        subject: questionData.subject,
-        grade: questionData.grade,
+        subjectId: questionData.subjectId,
+        grade: questionData.grade?.id || questionData.grade,
         difficulty: questionData.difficulty,
         value: questionData.value,
         solution: questionData.solution,
         skills: questionData.skills,
         options: questionData.options,
-        created_by: user?.id
+        createdBy: createdBy
       });
 
       toast.success("Questão criada com sucesso! 🎉", {

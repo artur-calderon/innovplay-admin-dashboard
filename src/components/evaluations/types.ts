@@ -68,7 +68,7 @@ export interface Question {
   title: string;
   text: string;
   formattedText?: string;
-  type: 'multipleChoice' | 'open' | 'trueFalse'; // <-- Make sure 'type' is typed as the union
+  type: 'multipleChoice' | 'dissertativa' | 'trueFalse'; // Atualizado para usar 'dissertativa' em vez de 'open'
   subjectId: string;
   subject?: Subject; // Assuming Subject is also defined
   educationStage?: EducationStage; // Assuming EducationStage is also defined

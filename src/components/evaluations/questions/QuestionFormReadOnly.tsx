@@ -46,7 +46,7 @@ const questionSchema = z.object({
     secondStatement: z.string().optional(),
     skills: z.array(z.string()).optional(),
     topics: z.string().optional(),
-    questionType: z.enum(['multipleChoice', 'open']),
+    questionType: z.enum(['multipleChoice', 'dissertativa']),
 }).refine((data) => {
     // Se for múltipla escolha, as opções são obrigatórias
     if (data.questionType === 'multipleChoice') {
@@ -237,7 +237,7 @@ const QuestionFormReadOnly = ({
     const [grades, setGrades] = useState<{ id: string; name: string }[]>([]);
     const [skills, setSkills] = useState<Option[]>([]);
     const [showPreview, setShowPreview] = useState(false);
-    const [questionType, setQuestionType] = useState<'multipleChoice' | 'open'>('multipleChoice');
+    const [questionType, setQuestionType] = useState<'multipleChoice' | 'dissertativa'>('multipleChoice');
     const { toast } = useToast();
     const navigate = useNavigate();
 
@@ -275,7 +275,7 @@ const QuestionFormReadOnly = ({
         form.setValue('questionType', questionType);
 
         // Limpar opções quando mudar para dissertativa
-        if (questionType === 'open') {
+        if (questionType === 'dissertativa') {
             form.setValue('options', []);
             form.clearErrors('options');
         } else {
@@ -368,9 +368,11 @@ const QuestionFormReadOnly = ({
 
     const handleFormSubmit = async (data: QuestionFormValues) => {
         try {
+            // Mapear o tipo da questão para o formato esperado pela API
+            const questionTypeForAPI = data.questionType === 'multipleChoice' ? 'multipleChoice' : 'dissertativa';
+            
             // Monta as opções com id baseado na letra (apenas para múltipla escolha)
             const options = data.questionType === 'multipleChoice' ? (data.options || []).map((opt, index) => ({
-                id: String.fromCharCode(65 + index), // A, B, C, D, etc.
                 text: opt.text,
                 isCorrect: opt.isCorrect,
             })) : [];
@@ -387,7 +389,7 @@ const QuestionFormReadOnly = ({
                 title: data.title,
                 text: data.text,
                 secondStatement: data.secondStatement || '',
-                type: data.questionType,
+                type: questionTypeForAPI,
                 subjectId: data.subjectId,
                 subject: selectedSubject || { id: data.subjectId, name: '' },
                 grade: selectedGrade || { id: data.grade, name: '' },
@@ -644,10 +646,10 @@ const QuestionFormReadOnly = ({
 
                                 <Button
                                     type="button"
-                                    variant={questionType === 'open' ? 'default' : 'outline'}
+                                    variant={questionType === 'dissertativa' ? 'default' : 'outline'}
                                     size="lg"
-                                    onClick={() => setQuestionType('open')}
-                                    className={`w-full h-auto min-h-[4rem] p-4 ${questionType === 'open'
+                                    onClick={() => setQuestionType('dissertativa')}
+                                    className={`w-full h-auto min-h-[4rem] p-4 ${questionType === 'dissertativa'
                                         ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg'
                                         : 'hover:bg-purple-50 hover:border-purple-300'
                                         }`}
