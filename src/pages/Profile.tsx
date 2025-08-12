@@ -7,6 +7,7 @@ import { Lock } from "lucide-react";
 const Profile = () => {
   const user = useAuth((state) => state.user);
   const navigate = useNavigate();
+  console.log(user);
 
   const formatDate = (dateString: string) => {
     if (!dateString) return "Data não informada";

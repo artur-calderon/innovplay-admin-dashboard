@@ -84,7 +84,7 @@ interface SortOption {
 const DIFFICULTIES = ['Abaixo do Básico', 'Básico', 'Adequado', 'Avançado'];
 const QUESTION_TYPES = [
   { value: 'multipleChoice', label: 'Múltipla Escolha' },
-  { value: 'open', label: 'Dissertativa' }
+  { value: 'dissertativa', label: 'Dissertativa' }
 ];
 const PAGE_SIZE_OPTIONS = [10, 15, 20, 25];
 
@@ -285,9 +285,9 @@ const QuestionsPage = () => {
           break;
         case 'type': {
           // Mapear tipos para valores numéricos
-          const typeOrder = { 'multipleChoice': 1, 'open': 2, 'trueFalse': 3 };
-          aValue = typeOrder[a.type as keyof typeof typeOrder] || 0;
-          bValue = typeOrder[b.type as keyof typeof typeOrder] || 0;
+          const typeOrder = { 'multipleChoice': 1, 'dissertativa': 2, 'trueFalse': 3 };
+          aValue = String(typeOrder[a.type as keyof typeof typeOrder] || 0);
+          bValue = String(typeOrder[b.type as keyof typeof typeOrder] || 0);
           break;
         }
         default:
@@ -511,12 +511,12 @@ const QuestionsPage = () => {
         title: q.title,
         text: q.text,
         secondStatement: q.secondStatement || '',
-        type: q.type as "multipleChoice" | "open" | "trueFalse",
+        type: q.type as "multipleChoice" | "dissertativa" | "trueFalse",
         subjectId: q.subject?.id || '',
         subject: q.subject || { id: '', name: '' },
         grade: q.grade || { id: '', name: '' },
         difficulty: q.difficulty,
-        value: q.value.toString(),
+        value: q.value,
         solution: q.solution || '',
         formattedText: q.formattedText,
         formattedSolution: q.formattedSolution,

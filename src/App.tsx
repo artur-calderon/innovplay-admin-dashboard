@@ -60,7 +60,9 @@ const TorneioExecucao = React.lazy(() => import("./pages/TorneioExecucao"));
 
 // Lazy loading para dashboards específicos
 const StudentDashboard = React.lazy(() => import("./pages/StudentDashboard"));
+const StudentResult = React.lazy(() => import("./pages/StudentResult"));
 const ProfessorDashboard = React.lazy(() => import("./pages/ProfessorDashboard"));
+const StudentResults = React.lazy(() => import("./pages/StudentResults"));
 
 // Loading component
 const LoadingSpinner = () => (
@@ -117,6 +119,8 @@ const App = () => {
             <Route path="/aluno" element={<Layout />}>
               <Route index element={<PrivateRoute><StudentDashboard /></PrivateRoute>} />
               <Route path="/aluno/avaliacoes" element={<PrivateRoute><StudentEvaluations /></PrivateRoute>} />
+              <Route path="/aluno/resultados" element={<PrivateRoute><StudentResults /></PrivateRoute>} />
+              <Route path="/aluno/avaliacao/:id/resultado" element={<PrivateRoute><StudentResult /></PrivateRoute>} />
               <Route path="/aluno/agenda" element={<PrivateRoute><StudentAgenda /></PrivateRoute>} />
               <Route path="/aluno/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
               <Route path="/aluno/jogos" element={<PrivateRoute><StudentGames /></PrivateRoute>} />
