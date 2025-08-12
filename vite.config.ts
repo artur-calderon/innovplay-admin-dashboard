@@ -9,6 +9,15 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080, // ✅ Pode mudar para 3000, 5173, etc. se preferir
+    // Proxy para evitar CORS em desenvolvimento
+    proxy: {
+      "/api": {
+        target: process.env.VITE_API_BASE_URL || "http://localhost:5000",
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/_?api/, ""),
+      },
+    },
     // ✅ CONFIGURAÇÃO OPCIONAL DE HTTPS PARA DESENVOLVIMENTO
     // Descomente as linhas abaixo se quiser HTTPS local
     // https: {

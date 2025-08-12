@@ -243,6 +243,14 @@ export const CreateEvaluationStep2 = ({
         return;
       }
 
+      // Helper para normalizar o tipo para o formato aceito pelo backend
+      const normalizeQuestionType = (t?: string) => {
+        const s = (t || '').toLowerCase();
+        if (s === 'multiplechoice' || s === 'multiple_choice') return 'multiple_choice';
+        if (s === 'truefalse' || s === 'true_false') return 'true_false';
+        return 'essay';
+      };
+
       // Estruturar dados da avaliação no formato que o backend espera
       const backendEvaluationData = {
         title: data.title.trim(),
@@ -278,6 +286,21 @@ export const CreateEvaluationStep2 = ({
           }
 
           // Se é uma nova questão, enviar todos os dados
+          const normalizedType = normalizeQuestionType(question.type);
+
+          // Calcular opções e solução para múltipla escolha
+          const options = normalizedType === 'multiple_choice'
+            ? (question.options || []).map((opt, optIndex) => ({
+                id: opt.id || String.fromCharCode(65 + optIndex),
+                text: opt.text,
+              }))
+            : [];
+
+          const correctIndex = (question.options || []).findIndex((o) => o.isCorrect);
+          const solution = normalizedType === 'multiple_choice'
+            ? (correctIndex >= 0 ? String.fromCharCode(65 + correctIndex) : '')
+            : (question.formattedSolution || question.solution || '');
+
           return {
             number: index + 1,
             text: question.text,
@@ -288,14 +311,11 @@ export const CreateEvaluationStep2 = ({
             description: question.title,
             command: question.title,
             subtitle: question.title,
-            options: question.options?.map((opt, optIndex) => ({
-              text: opt.text,
-              value: String.fromCharCode(65 + optIndex) // A, B, C, D...
-            })) || [],
+            options,
             skills: question.skills || [],
             grade: { id: question.grade?.id || data.grade },
             difficulty: question.difficulty,
-            solution: question.options?.find(opt => opt.isCorrect)?.text || "",
+            solution,
             formattedSolution: question.formattedSolution || question.solution || "",
             type: question.type === 'multipleChoice' ? 'multipleChoice' : 'dissertativa',
             value: question.value || 0,

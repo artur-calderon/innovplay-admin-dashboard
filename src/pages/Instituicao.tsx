@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/authContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -113,10 +113,14 @@ export default function Instituicao() {
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [sortBy, setSortBy] = useState<'name' | 'city' | 'domain'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  // Filtros: Estado, Município e Escola
+  const [selectedState, setSelectedState] = useState<string>("ALL");
+  const [selectedCityId, setSelectedCityId] = useState<string>("ALL");
+  const [selectedSchoolId, setSelectedSchoolId] = useState<string>("ALL");
   
   const { toast } = useToast();
 
-  const fetchInstituicoes = async () => {
+  const fetchInstituicoes = useCallback(async () => {
     setIsLoading(true);
     try {
       let instituicoesData: Instituicao[] = [];
@@ -156,9 +160,9 @@ export default function Instituicao() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [toast, user.id, user.role, user.tenant_id]);
 
-  const fetchInstituicaoDetails = async (schoolId: string) => {
+  const fetchInstituicaoDetails = useCallback(async (schoolId: string) => {
     setIsLoadingDetails(true);
     try {
       // Buscar turmas
@@ -184,17 +188,17 @@ export default function Instituicao() {
     } finally {
       setIsLoadingDetails(false);
     }
-  };
+  }, [toast, user.role]);
 
   useEffect(() => {
     fetchInstituicoes();
-  }, [user.role, user.tenant_id, user.id, toast]);
+  }, [fetchInstituicoes]);
 
   useEffect(() => {
     if (selectedInstituicaoForDetails) {
       fetchInstituicaoDetails(selectedInstituicaoForDetails.id);
     }
-  }, [selectedInstituicaoForDetails]);
+  }, [selectedInstituicaoForDetails, fetchInstituicaoDetails]);
 
   const handleSaveInstituicao = async (instituicao: Partial<Instituicao>) => {
     setIsSaving(true);
@@ -315,13 +319,41 @@ export default function Instituicao() {
     });
   };
 
-  const filteredAndSortedInstituicoes = sortInstituicoes(
-    instituicoes.filter(instituicao =>
-      instituicao.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (instituicao.address || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (instituicao.domain || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (instituicao.city?.name || '').toLowerCase().includes(searchTerm.toLowerCase())
+  // Opções disponíveis para filtros
+  const availableStates: string[] = Array.from(
+    new Set(
+      instituicoes
+        .map((i) => i.city?.state)
+        .filter((s): s is string => Boolean(s))
     )
+  ).sort();
+
+  const availableCities: City[] = (() => {
+    const map = new Map<string, City>();
+    for (const inst of instituicoes) {
+      if (inst.city && (selectedState === 'ALL' || inst.city.state === selectedState)) {
+        map.set(inst.city.id, inst.city);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  })();
+
+  const availableSchools: Instituicao[] = instituicoes
+    .filter((i) => (selectedState === 'ALL' || i.city?.state === selectedState))
+    .filter((i) => (selectedCityId === 'ALL' || i.city_id === selectedCityId))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const filteredAndSortedInstituicoes = sortInstituicoes(
+    instituicoes
+      .filter((instituicao) =>
+        instituicao.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (instituicao.address || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (instituicao.domain || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (instituicao.city?.name || "").toLowerCase().includes(searchTerm.toLowerCase())
+      )
+      .filter((i) => (selectedState === 'ALL' || i.city?.state === selectedState))
+      .filter((i) => (selectedCityId === 'ALL' || i.city_id === selectedCityId))
+      .filter((i) => (selectedSchoolId === 'ALL' || i.id === selectedSchoolId))
   );
 
   if (isLoading) {
@@ -397,6 +429,63 @@ export default function Instituicao() {
           />
         </div>
         
+        {/* Filtros: Estado, Município e Escola */}
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <Select
+            value={selectedState}
+            onValueChange={(value) => {
+              setSelectedState(value);
+              setSelectedCityId('ALL');
+              setSelectedSchoolId('ALL');
+            }}
+          >
+            <SelectTrigger className="w-full sm:w-32">
+              <SelectValue placeholder="Estado" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Todos</SelectItem>
+              {availableStates.map((state) => (
+                <SelectItem key={state} value={state}>{state}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={selectedCityId}
+            onValueChange={(value) => {
+              setSelectedCityId(value);
+              setSelectedSchoolId('ALL');
+            }}
+            disabled={availableCities.length === 0}
+          >
+            <SelectTrigger className="w-full sm:w-40">
+              <SelectValue placeholder="Município" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Todos</SelectItem>
+              {availableCities.map((city) => (
+                <SelectItem key={city.id} value={city.id}>{city.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={selectedSchoolId}
+            onValueChange={(value) => setSelectedSchoolId(value)}
+            disabled={availableSchools.length === 0}
+          >
+            <SelectTrigger className="w-full sm:w-40">
+              <SelectValue placeholder="Escola" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Todas</SelectItem>
+              {availableSchools.map((sch) => (
+                <SelectItem key={sch.id} value={sch.id}>{sch.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <Select value={sortBy} onValueChange={(value: 'name' | 'city' | 'domain') => setSortBy(value)}>
             <SelectTrigger className="w-full sm:w-32">
