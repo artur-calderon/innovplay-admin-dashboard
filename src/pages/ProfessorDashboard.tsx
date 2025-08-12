@@ -6,9 +6,6 @@ import {
   List, 
   Sparkles, 
   CalendarDays, 
-  ArrowLeft, 
-  ArrowRight, 
-  Plus, 
   Pencil,
   Gamepad,
   Tv,
@@ -32,6 +29,8 @@ import { useNavigate } from "react-router-dom";
 import { quickLinksApi, QuickLink } from "./EditQuickLinks";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { api } from "@/lib/api";
+// import RecentEvaluations from "@/components/dashboard/RecentEvaluations";
 
 // Mapeamento de ícones para converter strings em componentes
 const iconMap = {
@@ -66,13 +65,8 @@ const ProfessorDashboard = () => {
   const [quickLinks, setQuickLinks] = useState<QuickLink[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Dummy data for Agenda
-  const agendaItems = [
-    { date: "Ter 3", event: "Nenhum evento encontrado" },
-    { date: "Qua 4", event: "Nenhum evento encontrado" },
-    { date: "Qui 5", event: "Nenhum evento encontrado" },
-    { date: "Sex 6", event: "Nenhum evento encontrado" },
-  ];
+  const [schoolName, setSchoolName] = useState<string>("");
+  
 
   // Carregar atalhos salvos do usuário
   useEffect(() => {
@@ -96,7 +90,80 @@ const ProfessorDashboard = () => {
     };
 
     loadQuickLinks();
-  }, [user?.id, toast]);
+  }, [user?.id, user.role, toast]);
+
+  // Carregar dados de escola
+  useEffect(() => {
+    const loadSchool = async () => {
+      if (!user?.id) return;
+      try {
+        // 1) Tentar rota direta do usuário -> escola (se existir/permitida)
+        try {
+          const schoolResp = await api.get(`/users/school/${user.id}`);
+          const school = schoolResp.data?.school || schoolResp.data;
+          const name: unknown = school?.name || school?.nome;
+          if (name) {
+            setSchoolName(String(name));
+            return;
+          }
+        } catch (e) {
+          // Ignorar 404/sem permissão e seguir fallback por função/role
+        }
+
+        // 2) Fallback via endpoints de professor -> vínculos -> escola (apenas para roles permitidas)
+        const canQueryTeacher = ['admin', 'diretor', 'coordenador', 'tecadm'].includes(String(user.role).toLowerCase());
+        if (!canQueryTeacher) {
+          setSchoolName("");
+          return;
+        }
+
+        const teachersResp = await api.get('/teacher');
+        const teachers: Array<{ id?: string; user_id?: string; usuario_id?: string; user?: { id?: string } }> = Array.isArray(teachersResp.data) ? teachersResp.data : (teachersResp.data?.data || []);
+        const teacher = teachers.find((t) => (
+          t?.user_id === user.id || t?.usuario_id === user.id || t?.user?.id === user.id
+        ));
+
+        if (!teacher?.id) {
+          setSchoolName("");
+          return;
+        }
+
+        let links: Array<{ teacher_id?: string; school_id?: string; school?: { id?: string } }> = [];
+        try {
+          const linksResp = await api.get('/school-teacher', { params: { teacher_id: teacher.id } });
+          links = Array.isArray(linksResp.data) ? linksResp.data : (linksResp.data?.data || []);
+        } catch {
+          const allLinksResp = await api.get('/school-teacher');
+          const allLinks: Array<{ teacher_id?: string; school_id?: string; school?: { id?: string } }> = Array.isArray(allLinksResp.data) ? allLinksResp.data : (allLinksResp.data?.data || []);
+          links = allLinks.filter((lk) => lk?.teacher_id === teacher.id);
+        }
+
+        const firstLink = links[0];
+        const schoolId = firstLink?.school_id || firstLink?.school?.id;
+        if (!schoolId) {
+          setSchoolName("");
+          return;
+        }
+
+        try {
+          const schoolDetail = await api.get(`/school/${schoolId}`);
+          const schoolNameCandidate: unknown = schoolDetail.data?.name || schoolDetail.data?.nome || schoolDetail.data?.school?.name;
+          if (schoolNameCandidate) {
+            setSchoolName(String(schoolNameCandidate));
+          } else {
+            setSchoolName("");
+          }
+        } catch {
+          setSchoolName("");
+        }
+      } catch (err) {
+        // Tratar silenciosamente quaisquer falhas
+        setSchoolName("");
+      }
+    };
+
+    loadSchool();
+  }, [user?.id, user.role, toast]);
 
   const handleEditQuickLinks = () => {
     const baseRoute = user?.role === "aluno" ? "/aluno" : "/app";
@@ -108,31 +175,49 @@ const ProfessorDashboard = () => {
     return iconMap[iconName as keyof typeof iconMap] || List;
   };
 
+  const formatRole = (role?: string) => {
+    if (!role) return "Professor";
+    const normalized = String(role);
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1).toLowerCase();
+  };
+
+  const formatDisplayName = (name?: string) => {
+    if (!name || typeof name !== 'string') return "Professor";
+    return name
+      .trim()
+      .split(/\s+/)
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+      .join(' ');
+  };
+
   return (
     <div className="container mx-auto py-6 px-4">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* User Info Card */}
         <div className="lg:col-span-1">
-          <Card className="h-[20rem] bg-green-700 text-white">
+          <Card className="h-[20rem] bg-gradient-to-br from-innov-blue to-innov-purple text-white shadow-lg">
             <CardContent className="flex flex-col items-center justify-center h-full">
-              <div className="w-20 h-20 rounded-full bg-blue-300 flex items-center justify-center text-3xl font-bold mb-4">
+              <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center text-3xl font-bold mb-4">
                 {user?.name ? user.name.charAt(0).toUpperCase() : "P"}
               </div>
-              <h2 className="text-xl font-bold">{user?.name || "Professor"}</h2>
-              <p className="text-sm opacity-80">{user?.role || "Professor"}</p>
-              <p className="text-sm opacity-80">7º ANO +1</p>
-              <p className="text-sm opacity-80">NASCIMENTO E MENEZES...</p>
+              <h2 className="text-xl font-bold">{formatDisplayName(user?.name)}</h2>
+              <p className="text-sm opacity-80">{formatRole(user?.role)}</p>
+              {schoolName && (
+                <p className="text-sm opacity-80 text-center px-4 truncate w-full" title={schoolName}>
+                  {schoolName}
+                </p>
+              )}
             </CardContent>
           </Card>
         </div>
 
-        {/* Quick Links and Agenda */}
+        {/* Quick Links e Comunicados */}
         <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Quick Links */}
           <Card className="md:col-span-2">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Atalhos rápidos</CardTitle>
-              <Pencil className="h-4 w-4 text-muted-foreground cursor-pointer" onClick={handleEditQuickLinks} />
+              <Pencil className="h-4 w-4 text-muted-foreground hover:text-innov-purple cursor-pointer transition-colors" onClick={handleEditQuickLinks} />
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-4">
               {isLoading ? (
@@ -166,8 +251,8 @@ const ProfessorDashboard = () => {
                       className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-all duration-200 hover:shadow-sm"
                       onClick={() => navigate(link.href)}
                     >
-                      <div className="p-3 rounded-full bg-green-100 flex-shrink-0">
-                        <IconComponent className="h-6 w-6 text-green-700" />
+                      <div className="p-3 rounded-full bg-innov-purple/10 flex-shrink-0">
+                        <IconComponent className="h-6 w-6 text-innov-purple" />
                       </div>
                       <span className="font-medium text-sm">{link.label}</span>
                     </div>
@@ -175,42 +260,6 @@ const ProfessorDashboard = () => {
                 })
               )}
             </CardContent>
-          </Card>
-
-          {/* Agenda */}
-          <Card className="md:col-span-2">
-            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-              <CardTitle>Agenda</CardTitle>
-              <div className="flex items-center space-x-2">
-                <span className="text-sm text-muted-foreground">1 Jun. - 7 Jun.</span>
-                <ArrowLeft className="h-4 w-4 text-muted-foreground cursor-pointer" />
-                <span className="text-sm text-green-700 font-semibold cursor-pointer">Hoje</span>
-                <ArrowRight className="h-4 w-4 text-muted-foreground cursor-pointer" />
-              </div>
-            </CardHeader>
-            <CardContent className="grid grid-cols-7 text-center text-sm font-medium text-muted-foreground gap-2 pb-4">
-                <div>Dom 1</div>
-                <div>Seg 2</div>
-                <div className="text-green-700">Ter 3</div>
-                <div>Qua 4</div>
-                <div>Qui 5</div>
-                <div>Sex 6</div>
-                <div>Sáb 7</div>
-            </CardContent>
-             <CardContent className="space-y-4">
-                {agendaItems.map((item, index) => (
-                    <div key={index} className="flex items-center border-b pb-2 last:border-b-0">
-                        <span className="w-16 font-semibold text-muted-foreground">{item.date}</span>
-                        <span className="ml-4 text-sm">{item.event}</span>
-                    </div>
-                ))}
-             </CardContent>
-             <CardContent>
-                 <button className="w-full text-center text-green-700 flex items-center justify-center gap-1">
-                     <Plus className="h-4 w-4" />
-                     Criar lembrete
-                 </button>
-             </CardContent>
           </Card>
 
           {/* Comunicados COC - Placeholder for now, can be refined later */}
@@ -221,8 +270,8 @@ const ProfessorDashboard = () => {
             <CardContent>
               <div className="space-y-4">
                 <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-full bg-green-100">
-                        <List className="h-6 w-6 text-green-700" />
+                    <div className="p-3 rounded-full bg-innov-purple/10">
+                        <List className="h-6 w-6 text-innov-purple" />
                     </div>
                     <div>
                         <h4 className="font-semibold">Tem novidade no ar!</h4>
@@ -230,8 +279,8 @@ const ProfessorDashboard = () => {
                     </div>
                 </div>
                  <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-full bg-green-100">
-                        <List className="h-6 w-6 text-green-700" />
+                    <div className="p-3 rounded-full bg-innov-purple/10">
+                        <List className="h-6 w-6 text-innov-purple" />
                     </div>
                     <div>
                         <h4 className="font-semibold">Está disponível: Fala, Professor!</h4>
@@ -239,8 +288,8 @@ const ProfessorDashboard = () => {
                     </div>
                 </div>
                  <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-full bg-green-100">
-                        <List className="h-6 w-6 text-green-700" />
+                    <div className="p-3 rounded-full bg-innov-purple/10">
+                        <List className="h-6 w-6 text-innov-purple" />
                     </div>
                     <div>
                         <h4 className="font-semibold">Jornada COC: Conheça os recursos de Avaliações!</h4>
@@ -248,8 +297,8 @@ const ProfessorDashboard = () => {
                     </div>
                 </div>
                  <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-full bg-green-100">
-                        <List className="h-6 w-6 text-green-700" />
+                    <div className="p-3 rounded-full bg-innov-purple/10">
+                        <List className="h-6 w-6 text-innov-purple" />
                     </div>
                     <div>
                         <h4 className="font-semibold">Jornada COC: Conheça os recursos de Aprendizagem!</h4>
