@@ -374,7 +374,7 @@ export function QuestionBank({
   const getTypeLabel = (type: string) => {
     switch (type) {
       case 'multipleChoice': return 'Múltipla Escolha';
-      case 'open': return 'Dissertativa';
+      case 'dissertativa': return 'Dissertativa';
       case 'trueFalse': return 'Verdadeiro/Falso';
       default: return type;
     }

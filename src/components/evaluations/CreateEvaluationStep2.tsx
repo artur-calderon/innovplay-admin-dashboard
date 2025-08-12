@@ -297,7 +297,7 @@ export const CreateEvaluationStep2 = ({
             difficulty: question.difficulty,
             solution: question.options?.find(opt => opt.isCorrect)?.text || "",
             formattedSolution: question.formattedSolution || question.solution || "",
-            type: question.type === 'multipleChoice' ? 'multiple_choice' : 'open',
+            type: question.type === 'multipleChoice' ? 'multipleChoice' : 'dissertativa',
             value: question.value || 0,
             topics: [],
             created_by: user?.id || ""
@@ -363,7 +363,7 @@ export const CreateEvaluationStep2 = ({
   const getTypeLabel = (type: string) => {
     switch (type) {
       case 'multipleChoice': return 'Múltipla Escolha';
-      case 'open': return 'Dissertativa';
+      case 'dissertativa': return 'Dissertativa';
       case 'trueFalse': return 'Verdadeiro/Falso';
       default: return type;
     }
