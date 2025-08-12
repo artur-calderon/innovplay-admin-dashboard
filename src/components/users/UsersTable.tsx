@@ -22,29 +22,15 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { useDataContext } from "@/context/dataContext";
+import { ROLE_DISPLAY_MAPPING, ROLES, ROLE_HIERARCHY, getRoleDisplayName } from "@/lib/constants";
 
 // Role mapping for display
-const roleDisplayMapping: { [key: string]: string } = {
-  "admin": "Administrador",
-  "professor": "Professor",
-  "coordenador": "Coordenador",
-  "diretor": "Diretor",
-  "tecadmin": "Técnico administrativo",
-  "aluno": "Aluno"
-};
+const roleDisplayMapping = ROLE_DISPLAY_MAPPING;
 
-const ROLES = ['Administrador', 'Professor', 'Coordenador', 'Diretor', 'Técnico administrativo', 'Aluno'];
 const PAGE_SIZE_OPTIONS = [10, 15, 20, 25];
 
 // Hierarquia de funções para ordenação por nível
-const roleHierarchy: { [key: string]: number } = {
-  "Administrador": 1,
-  "Diretor": 2,
-  "Coordenador": 3,
-  "Professor": 4,
-  "Técnico administrativo": 5,
-  "Aluno": 6
-};
+const roleHierarchy = ROLE_HIERARCHY;
 
 // Tipos de ordenação
 type SortField = 'name' | 'email' | 'role' | 'city' | 'id' | 'none';
@@ -334,7 +320,7 @@ export default function UsersTable() {
       // Transform the roles to display format (city names will be added separately)
       const formattedUsers = usersData.map((user: User) => ({
         ...user,
-        role: roleDisplayMapping[user.role] || user.role,
+                        role: getRoleDisplayName(user.role),
         city_name: '' // Will be populated by separate effect
       }));
       

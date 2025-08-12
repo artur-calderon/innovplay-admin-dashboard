@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/authContext";
 import { useNavigate } from "react-router-dom";
 import { Lock } from "lucide-react";
+import { getRoleDisplayName } from "@/lib/constants";
 
 const Profile = () => {
   const user = useAuth((state) => state.user);
@@ -98,8 +99,10 @@ const Profile = () => {
           </div>
           <h1 className="text-2xl font-bold">{user.name || "Usuário"}</h1>
           <p className="text-muted-foreground">{user.email || "usuario@exemplo.com"}</p>
+
+
           <span className="inline-flex items-center mt-2 px-2 py-1 text-xs font-medium rounded-md bg-gradient-to-r from-innov-blue to-innov-purple text-white">
-            {user.role === "admin" ? "Administrador" : user.role === "professor" ? "Professor" : "Aluno"}
+            {getRoleDisplayName(user.role)}
           </span>
 
           <div className="mt-4">
