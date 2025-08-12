@@ -124,12 +124,6 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           href: `${user.role === 'aluno' ? "/aluno/avaliacoes" : "/app/avaliacoes"}`,
           role: ["aluno"]
         },
-        {
-          icon: BarChart3,
-          label: "Resultados",
-          href: `${user.role === 'aluno' ? "/aluno/resultados" : "/app/resultados"}`,
-          role: ["aluno"]
-        },
       ]
     },
     {
