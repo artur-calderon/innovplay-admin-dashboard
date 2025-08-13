@@ -914,6 +914,7 @@ const QuestionForm = ({
                           onChange={field.onChange}
                           placeholder={selectedSubjectId ? "Clique para abrir o seletor de habilidades" : "Selecione uma disciplina primeiro"}
                           disabled={!selectedSubjectId || skills.length === 0}
+                          gradeId={form.watch('grade')}
                         />
                       </FormControl>
                       <FormMessage />
