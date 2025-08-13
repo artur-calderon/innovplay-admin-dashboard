@@ -105,19 +105,19 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
   const sidebarCategories: SidebarCategory[] = [
     {
       name: "Principal",
-      role: ["admin", "professor", "aluno", "tecadm"],
+      role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"],
       links: [
         {
           icon: LayoutDashboard,
           label: "Painel",
           href: `${user.role === 'aluno' ? "/aluno" : "/app"}`,
-          role: ["admin", "professor", "aluno", "tecadm"]
+          role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"]
         },
         {
           icon: CalendarDays,
           label: "Agenda",
           href: `${user.role === 'aluno' ? "/aluno/agenda" : "/app/agenda"}`,
-          role: ["admin", "professor", "aluno", "tecadm"]
+          role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"]
         },
         {
           icon: List,
@@ -135,20 +135,20 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
     },
     {
       name: "Plataforma",
-      role: ["admin", "professor", "aluno", "tecadm"],
+      role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"],
       links: [
         {
           icon: Gamepad,
           label: "Jogos",
           href: `${user.role === 'aluno' ? "/aluno/jogos" : "/app/jogos"}`,
-          role: ["admin", "professor", "aluno", "tecadm"],
+          role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"],
           badge: gamesCount > 0 ? gamesCount.toString() : "0"
         },
         {
           icon: Tv,
           label: "Play TV",
           href: `${user.role === 'aluno' ? "/aluno/play-tv" : "/app/play-tv"}`,
-          role: ["admin", "professor", "aluno", "tecadm"]
+          role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"]
         },
         {
           icon: Headset,
@@ -160,25 +160,25 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
     },
     {
       name: "Gestão",
-      role: ["admin", "professor", "tecadm"],
+      role: ["admin", "professor", "diretor", "coordenador", "tecadm"],
       links: [
-        {
+                  {
             icon: Building,
             label: "Instituição",
             href: "/app/cadastros/instituicao",
-            role: ["professor", "tecadm"]
+            role: ["professor", "diretor", "coordenador", "tecadm"]
           },
           {
             icon: List,
             label: "Avaliações",
             href: "/app/avaliacoes",
-            role: ["professor", "tecadm"]
+            role: ["professor", "diretor", "coordenador", "tecadm"]
           },
           {
             icon: HelpCircle,
             label: "Questão",
             href: "/app/cadastros/questao",
-            role: ["professor"]
+            role: ["professor", "diretor", "coordenador"]
           },
           {
             icon: List,
@@ -212,66 +212,66 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           icon: Ticket,
           label: "Cartão Resposta",
           href: "/app/cartao-resposta",
-          role: ["admin", "professor", "tecadm"]
+          role: ["admin", "professor", "diretor", "coordenador", "tecadm"]
         },
-        { icon: Calculator, label: "Calculadora SAEB", href: "/app/calculadora-saeb", role: ["admin", "professor", "tecadm"] },
-        { icon: ClipboardCheck, label: "Correção", href: "/app/avaliacoes/correcao", role: ["admin", "professor", "tecadm"], badge: "3" },
-        { icon: BarChart3, label: "Resultados", href: "/app/resultados", role: ["admin", "professor", "tecadm"] },
+        { icon: Calculator, label: "Calculadora SAEB", href: "/app/calculadora-saeb", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+        { icon: ClipboardCheck, label: "Correção", href: "/app/avaliacoes/correcao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"], badge: "3" },
+        { icon: BarChart3, label: "Resultados", href: "/app/resultados", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
       ]
     },
     {
       name: "Atividades",
-      role: ["admin", "professor", "aluno", "tecadm"],
+      role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"],
       links: [
         {
           icon: Award,
           label: "Certificados",
           href: `${user.role === 'aluno' ? "/aluno/certificados" : "/app/certificados"}`,
-          role: ["admin", "professor", "aluno", "tecadm"]
+          role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"]
         },
         {
           icon: Trophy,
           label: "Competições",
           href: `${user.role === 'aluno' ? "/aluno/competicoes" : "/app/competicoes"}`,
-          role: ["admin", "professor", "aluno", "tecadm"  ],
+          role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"  ],
           badge: "2"
         },
         {
           icon: Award,
           label: "Olimpíadas",
           href: `${user.role === 'aluno' ? "/aluno/olimpiadas" : "/app/olimpiadas"}`,
-          role: ["admin", "professor", "aluno", "tecadm"]
+          role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"]
         },
       ]
     },
     {
       name: "Configurações",
-      role: ["admin", "professor", "aluno", "tecadm"],
+      role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"],
       links: [
         {
           icon: Edit,
           label: "Editar Perfil",
           href: `${user.role === 'aluno' ? "/aluno/perfil" : "/app/perfil"}`,
-          role: ["admin", "professor", "aluno", "tecadm"]
+          role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"]
         },
         {
           icon: Bell,
           label: "Avisos",
           href: `${user.role === 'aluno' ? "/aluno/avisos" : "/app/avisos"}`,
-          role: ["admin", "professor", "aluno", "tecadm"],
+          role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"],
           badge: "5"
         },
         {
           icon: Settings,
           label: "Configurações",
           href: "/app/configuracoes",
-          role: ["admin", "professor", "tecadm"]
+          role: ["admin", "professor", "diretor", "coordenador", "tecadm"]
         },
         {
           icon: LogOut,
           label: "Sair",
           href: "/logout",
-          role: ["admin", "professor", "aluno", "tecadm"],
+          role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"],
           divider: true
         },
       ]
