@@ -320,6 +320,7 @@ export const CreateEvaluationStep2 = ({
             type: question.type === 'multipleChoice' ? 'multipleChoice' : 'dissertativa',
             value: question.value || 0,
             topics: [],
+            secondStatement: question.secondStatement || '',
             created_by: user?.id || ""
           };
         })

@@ -68,8 +68,8 @@ export function LinkTeacherModal({
   const canLinkTeachers = () => {
     if (!user) return false;
     
-    // Admin pode vincular qualquer professor
-    if (user.role === 'admin') return true;
+    // Admin e tecadm podem vincular qualquer professor
+    if (['admin', 'tecadm'].includes(user.role)) return true;
     
     // Diretor, coordenador e professor podem vincular professores da sua escola
     return ['diretor', 'coordenador', 'professor'].includes(user.role);
@@ -80,9 +80,9 @@ export function LinkTeacherModal({
     return null;
   }
 
-  // Carregar municípios se for admin
+  // Carregar municípios se for admin ou tecadm
   useEffect(() => {
-    if (user?.role === 'admin') {
+    if (['admin', 'tecadm'].includes(user?.role || '')) {
       const fetchMunicipios = async () => {
         try {
           const response = await api.get('/city/');
@@ -103,7 +103,7 @@ export function LinkTeacherModal({
       setIsLoading(true);
       try {
         // Determinar endpoint baseado na permissão do usuário
-        const canViewAllTeachers = user?.role === 'admin';
+        const canViewAllTeachers = ['admin', 'tecadm'].includes(user?.role || '');
         const endpoint = canViewAllTeachers ? '/teacher' : `/teacher/school/${schoolId}`;
         
         const response = await api.get(endpoint);
@@ -206,7 +206,7 @@ export function LinkTeacherModal({
     }
 
     // Verificar se precisa de city_id
-    if (user?.role === 'admin' && !formData.city_id) {
+          if (['admin', 'tecadm'].includes(user?.role || '') && !formData.city_id) {
       toast({
         title: "Erro",
         description: "Selecione um município",
@@ -224,7 +224,7 @@ export function LinkTeacherModal({
         matricula: formData.matricula || undefined,
         birth_date: formData.birth_date,
         escolas_ids: [schoolId],
-        city_id: user?.role === 'admin' ? formData.city_id : user?.city_id
+        city_id: ['admin', 'tecadm'].includes(user?.role || '') ? formData.city_id : user?.city_id
       };
 
       const response = await api.post("/teacher", teacherData);
@@ -276,7 +276,7 @@ export function LinkTeacherModal({
           </DialogTitle>
           <DialogDescription>
             Vincule professores existentes ou crie novos para a turma <strong>{className}</strong>
-            {user?.role === 'admin' && (
+            {['admin', 'tecadm'].includes(user?.role || '') && (
               <span className="block mt-1 text-xs text-blue-600">
                 ⚡ Visualizando todos os professores do sistema
               </span>
@@ -434,7 +434,7 @@ export function LinkTeacherModal({
                         onChange={(e) => handleInputChange('birth_date', e.target.value)}
                       />
                     </div>
-                    {user?.role === 'admin' && (
+                    {['admin', 'tecadm'].includes(user?.role || '') && (
                       <div className="space-y-2">
                         <Label htmlFor="city_id">Município *</Label>
                         <Select onValueChange={(value) => handleInputChange('city_id', value)} value={formData.city_id}>

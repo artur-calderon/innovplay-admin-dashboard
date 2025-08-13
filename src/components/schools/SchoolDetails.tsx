@@ -26,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getRoleDisplayName } from "@/lib/constants";
 
 interface City {
   id: string;
@@ -462,7 +463,7 @@ export default function SchoolDetails() {
               <Building className="h-5 w-5 text-orange-600" />
               Informações da Instituição
             </CardTitle>
-            {(user.role === 'admin' || user.role === 'tecadmin') && (
+            {(user.role === 'admin' || user.role === 'tecadm') && (
               <Button onClick={() => setIsEditDialogOpen(true)} variant="outline" size="sm" className="w-full sm:w-auto">
                 <Edit className="mr-2 h-4 w-4" />
                 Editar
@@ -532,7 +533,7 @@ export default function SchoolDetails() {
                   Diretores e coordenadores responsáveis pela gestão da instituição
                 </CardDescription>
               </div>
-              {(user.role === 'admin' || user.role === 'tecadmin') && (
+              {(user.role === 'admin' || user.role === 'tecadm') && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -552,14 +553,16 @@ export default function SchoolDetails() {
                     <Users className="h-4 w-4 text-red-600" />
                     Diretores ({directors.length})
                   </h4>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowLinkDirectorModal(true)}
-                  >
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Adicionar
-                  </Button>
+                  {(user.role === 'admin' || user.role === 'tecadm') && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowLinkDirectorModal(true)}
+                    >
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Adicionar
+                    </Button>
+                  )}
                 </div>
                 {directors.length === 0 ? (
                   <div className="text-center py-4 bg-gray-50 rounded-lg">
@@ -589,14 +592,16 @@ export default function SchoolDetails() {
                     <Users className="h-4 w-4 text-orange-600" />
                     Coordenadores ({coordinators.length})
                   </h4>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowLinkCoordinatorModal(true)}
-                  >
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Adicionar
-                  </Button>
+                  {(user.role === 'admin' || user.role === 'tecadm') && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowLinkCoordinatorModal(true)}
+                    >
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Adicionar
+                    </Button>
+                  )}
                 </div>
                 {coordinators.length === 0 ? (
                   <div className="text-center py-4 bg-gray-50 rounded-lg">
@@ -641,14 +646,16 @@ export default function SchoolDetails() {
                   <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <h3 className="text-lg font-semibold mb-2">Nenhuma turma cadastrada</h3>
                                      <p className="text-muted-foreground mb-4 text-sm">Crie turmas para organizar professores e alunos</p>
-                   <CreateClassForm
-                     schoolId={school.id}
-                     schoolName={school.name}
-                     onSuccess={() => {
-                       // Recarregar turmas
-                       window.location.reload();
-                     }}
-                   />
+                   {(user.role === 'admin' || user.role === 'tecadm') && (
+                     <CreateClassForm
+                       schoolId={school.id}
+                       schoolName={school.name}
+                       onSuccess={() => {
+                         // Recarregar turmas
+                         window.location.reload();
+                       }}
+                     />
+                   )}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -696,14 +703,16 @@ export default function SchoolDetails() {
                     Organize professores e alunos por turmas
                   </CardDescription>
                 </div>
-                                 <CreateClassForm
-                   schoolId={school.id}
-                   schoolName={school.name}
-                   onSuccess={() => {
-                     // Recarregar turmas
-                     window.location.reload();
-                   }}
-                 />
+                                 {(user.role === 'admin' || user.role === 'tecadm') && (
+                                   <CreateClassForm
+                                     schoolId={school.id}
+                                     schoolName={school.name}
+                                     onSuccess={() => {
+                                       // Recarregar turmas
+                                       window.location.reload();
+                                     }}
+                                   />
+                                 )}
               </div>
             </CardHeader>
             <CardContent>
@@ -732,19 +741,21 @@ export default function SchoolDetails() {
                               </p>
                             )}
                           </div>
-                          <div className="flex gap-2">
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => {
-                                setSelectedClass(classItem);
-                                setShowManageClassModal(true);
-                              }}
-                            >
-                              <Pencil className="h-4 w-4 mr-2" />
-                              Gerenciar
-                            </Button>
-                          </div>
+                          {(user.role === 'admin' || user.role === 'tecadm') && (
+                            <div className="flex gap-2">
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedClass(classItem);
+                                  setShowManageClassModal(true);
+                                }}
+                              >
+                                <Pencil className="h-4 w-4 mr-2" />
+                                Gerenciar
+                              </Button>
+                            </div>
+                          )}
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

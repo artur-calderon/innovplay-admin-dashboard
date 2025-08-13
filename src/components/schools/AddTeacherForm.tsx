@@ -21,6 +21,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { MultiSelect } from "@/components/ui/multi-select";
+import { getRoleDisplayName } from "@/lib/constants";
 
 interface AddTeacherFormProps {
     schoolId: string;
@@ -61,7 +62,7 @@ export function AddTeacherForm({ schoolId, schoolName, classes = [], onSuccess }
     // Carregar professores ao abrir o modal
     useEffect(() => {
         const fetchTeachers = async () => {
-            if (!isOpen || !user || (user.role !== "admin" && user.role !== "tecadmin")) return;
+            if (!isOpen || !user || (user.role !== "admin" && user.role !== "tecadm")) return;
 
             setIsLoading(true);
             try {
@@ -100,7 +101,7 @@ export function AddTeacherForm({ schoolId, schoolName, classes = [], onSuccess }
     }, [searchTerm, allTeachers]);
 
     // Verificar se o usuário tem permissão
-    if (!user || (user.role !== "admin" && user.role !== "tecadmin")) {
+    if (!user || (user.role !== "admin" && user.role !== "tecadm")) {
         return null;
     }
 

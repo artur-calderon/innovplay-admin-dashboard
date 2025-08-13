@@ -368,6 +368,14 @@ const QuestionFormReadOnly = ({
 
     const handleFormSubmit = async (data: QuestionFormValues) => {
         try {
+            // LOG: Mostrar todos os dados do formulário antes do envio
+            console.log('=== DADOS DO FORMULÁRIO ANTES DO ENVIO ===');
+            console.log('Dados completos do formulário:', data);
+            console.log('Campo secondStatement:', data.secondStatement);
+            console.log('Tipo do secondStatement:', typeof data.secondStatement);
+            console.log('Tamanho do secondStatement:', data.secondStatement?.length);
+            console.log('==========================================');
+
             // Mapear o tipo da questão para o formato esperado pela API
             const questionTypeForAPI = data.questionType === 'multipleChoice' ? 'multipleChoice' : 'dissertativa';
             
@@ -400,6 +408,12 @@ const QuestionFormReadOnly = ({
                 skills,
                 created_by: '', // Será preenchido pelo backend
             };
+
+            // LOG: Mostrar o objeto Question que será enviado
+            console.log('=== OBJETO QUESTION QUE SERÁ ENVIADO ===');
+            console.log('Objeto Question completo:', question);
+            console.log('Campo secondStatement no objeto:', question.secondStatement);
+            console.log('==========================================');
             await onQuestionAdded(question);
             form.reset();
             toast({

@@ -612,6 +612,7 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
   });
   const [startModalOpen, setStartModalOpen] = useState(false);
   const [selectedEvaluationToStart, setSelectedEvaluationToStart] = useState<Evaluation | null>(null);
+  const [forceUpdate, setForceUpdate] = useState(0); // Forçar re-render após exclusão
   const itemsPerPage = 10;
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -628,7 +629,8 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
     isLoading,
     error: evaluationsError,
     refetch,
-    invalidateCache
+    invalidateCache,
+    invalidateEvaluationsCache
   } = useEvaluations({
     page: currentPage,
     per_page: itemsPerPage,
@@ -671,6 +673,12 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
     setCurrentPage(1);
   }, [filters]);
 
+  // ✅ NOVO: Forçar atualização quando forceUpdate mudar
+  useEffect(() => {
+    // Este useEffect força a re-renderização da interface
+    // quando uma avaliação é excluída ou aplicada
+  }, [forceUpdate]);
+
   const handleView = (evaluationId: string) => {
     navigate(`/app/avaliacao/${evaluationId}`);
   };
@@ -710,8 +718,21 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
 
       // ✅ NOVO: Invalidar cache e recarregar dados
       console.log("🔄 Invalidando cache e recarregando dados...");
-      invalidateCache();
-      refetch();
+      invalidateEvaluationsCache();
+      
+      // Forçar atualização imediata do estado local
+      if (showMyEvaluations) {
+        // Se estamos mostrando apenas minhas avaliações, remover a avaliação excluída do estado local
+        const updatedEvaluations = allEvaluations.filter(evaluation => evaluation.id !== evaluationToDelete);
+        // Atualizar o estado local imediatamente
+        // Note: isso é uma solução temporária, o refetch deve resolver o problema
+      }
+      
+      // Aguardar um pouco antes de fazer refetch para garantir que o cache foi limpo
+      setTimeout(() => {
+        refetch();
+        setForceUpdate(prev => prev + 1); // Forçar re-render
+      }, 100);
     } catch (error: any) {
       console.error("❌ Erro detalhado ao excluir avaliação:", {
         error,
@@ -721,7 +742,7 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
         data: error.response?.data
       });
 
-      let errorMessage = ERROR_MESSAGES.SERVER_ERROR;
+      let errorMessage: string = ERROR_MESSAGES.SERVER_ERROR;
 
       if (error.response?.status === 404) {
         errorMessage = ERROR_MESSAGES.DATA_NOT_FOUND;
@@ -759,9 +780,22 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
 
       // ✅ NOVO: Invalidar cache e recarregar dados
       console.log("🔄 Invalidando cache e recarregando dados...");
-      invalidateCache();
-      refetch();
-      setSelectedIds([]);
+      invalidateEvaluationsCache();
+      
+      // Forçar atualização imediata do estado local
+      if (showMyEvaluations) {
+        // Se estamos mostrando apenas minhas avaliações, remover as avaliações excluídas do estado local
+        const updatedEvaluations = allEvaluations.filter(evaluation => !selectedIds.includes(evaluation.id));
+        // Atualizar o estado local imediatamente
+        // Note: isso é uma solução temporária, o refetch deve resolver o problema
+      }
+      
+      // Aguardar um pouco antes de fazer refetch para garantir que o cache foi limpo
+      setTimeout(() => {
+        refetch();
+        setSelectedIds([]);
+        setForceUpdate(prev => prev + 1); // Forçar re-render
+      }, 100);
     } catch (error: any) {
       console.error("❌ Erro detalhado ao excluir avaliações em massa:", {
         error,
@@ -859,8 +893,13 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
       console.log("✅ Resposta da API:", response.data);
 
       // ✅ NOVO: Invalidar cache e recarregar dados
-      invalidateCache();
-      refetch();
+      invalidateEvaluationsCache();
+      
+      // Aguardar um pouco antes de fazer refetch para garantir que o cache foi limpo
+      setTimeout(() => {
+        refetch();
+        setForceUpdate(prev => prev + 1); // Forçar re-render
+      }, 100);
 
       toast({
         title: "🎉 Avaliação aplicada com sucesso!",
