@@ -353,8 +353,13 @@ const QuestionFormReadOnly = ({
                     const bySubject: ApiSkill[] = Array.isArray(bySubjectRes.data) ? bySubjectRes.data : [];
                     const byGrade: ApiSkill[] = Array.isArray(byGradeRes.data) ? byGradeRes.data : [];
 
-                    const byGradeIds = new Set(byGrade.map((s) => s.id));
-                    const intersected = bySubject.filter((s) => byGradeIds.has(s.id));
+                    const byGradeCodes = new Set(byGrade.map((s) => s.code));
+                    let intersected = bySubject.filter((s) => byGradeCodes.has(s.code));
+                    // Fallback: se necessário, intersecta por id
+                    if (intersected.length === 0) {
+                        const byGradeIds = new Set(byGrade.map((s) => s.id));
+                        intersected = bySubject.filter((s) => byGradeIds.has(s.id));
+                    }
 
                     const formattedSkills: Option[] = intersected.map((skill) => ({
                         id: skill.id,
