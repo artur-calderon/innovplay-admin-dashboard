@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { getRoleDisplayName } from "@/lib/constants";
 
 interface AddUserFormProps {
     schoolId: string;
@@ -155,16 +156,16 @@ export function AddUserForm({ schoolId, schoolName, userType, onSuccess }: AddUs
     const canAddUser = () => {
         if (!user) return false;
         
-        // Permitir que admin e tecadmin vejam todos os usuários
-        if (user.role === 'admin' || user.role === 'tecadmin') return true;
+        // Permitir que admin e tecadm vejam todos os usuários
+if (user.role === 'admin' || user.role === 'tecadm') return true;
         
         switch (userType) {
             case 'diretor':
-                return user.role === 'admin' || user.role === 'tecadmin';
+                return user.role === 'admin' || user.role === 'tecadm';
             case 'coordenador':
-                return user.role === 'admin' || user.role === 'tecadmin' || user.role === 'diretor';
+                return user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor';
             case 'professor':
-                return user.role === 'admin' || user.role === 'tecadmin' || user.role === 'diretor' || user.role === 'coordenador';
+                return user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador';
             case 'aluno':
                 return user.role !== 'aluno';
             default:
@@ -296,9 +297,9 @@ export function AddUserForm({ schoolId, schoolName, userType, onSuccess }: AddUs
                 
                 // Adicionar city_id se necessário
                 if (config.requiresCityId) {
-                    // Se o usuário atual é admin, permitir especificar city_id
+                    // Se o usuário atual é admin ou tecadm, permitir especificar city_id
                     // Se é diretor, usar o próprio city_id
-                    if (user?.role === 'admin') {
+                    if (['admin', 'tecadm'].includes(user?.role || '')) {
                         // TODO: Adicionar campo para city_id no formulário
                         // Por enquanto, usar o city_id da escola
                         mappedData.city_id = schoolId; // Placeholder

@@ -55,8 +55,8 @@ export function LinkStudentModal({
   const canLinkStudents = () => {
     if (!user) return false;
     
-    // Admin pode vincular qualquer aluno
-    if (user.role === 'admin') return true;
+    // Admin e tecadm podem vincular qualquer aluno
+    if (['admin', 'tecadm'].includes(user.role)) return true;
     
     // Diretor, coordenador e professor podem vincular alunos da sua escola
     return ['diretor', 'coordenador', 'professor'].includes(user.role);
@@ -74,7 +74,7 @@ export function LinkStudentModal({
     const fetchStudents = async () => {
       try {
         setIsLoading(true);
-        const endpoint = user?.role === 'admin' ? '/students' : '/students/available';
+        const endpoint = ['admin', 'tecadm'].includes(user?.role || '') ? '/students' : '/students/available';
         const response = await api.get(endpoint);
         const allStudents = response.data || [];
         
@@ -140,7 +140,7 @@ export function LinkStudentModal({
           </DialogTitle>
           <DialogDescription>
             Selecione os alunos que deseja vincular à turma <strong>{className}</strong>
-            {user?.role === 'admin' && (
+            {['admin', 'tecadm'].includes(user?.role || '') && (
               <span className="block mt-1 text-xs text-blue-600">
                 ⚡ Visualizando todos os alunos do sistema
               </span>

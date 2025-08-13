@@ -25,13 +25,15 @@ import { toast } from "sonner";
 import { useDataContext } from "@/context/dataContext";
 import { MultiSelect } from "@/components/ui/multi-select";
 
-// Role mapping object
+import { ROLE_DISPLAY_MAPPING } from "@/lib/constants";
+
+// Role mapping object (inverso para conversão de volta para o backend)
 const roleMapping: { [key: string]: string } = {
   "Administrador": "admin",
   "Professor": "professor",
   "Coordenador": "coordenador",
   "Diretor": "diretor",
-  "Técnico administrativo": "tecadmin",
+  "Técnico Administrador": "tecadm",
   "Aluno": "aluno"
 };
 
@@ -343,7 +345,7 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
                   <SelectItem value="Professor">Professor</SelectItem>
                   <SelectItem value="Coordenador">Coordenador</SelectItem>
                   <SelectItem value="Diretor">Diretor</SelectItem>
-                  <SelectItem value="Técnico administrativo">Técnico administrativo</SelectItem>
+                  <SelectItem value="Técnico Administrador">Técnico Administrador</SelectItem>
                 </SelectContent>
               </Select>
               <FormMessage />

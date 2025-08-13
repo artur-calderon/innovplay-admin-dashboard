@@ -18,6 +18,7 @@ import { useAuth } from "@/context/authContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getRoleDisplayName } from "@/lib/constants";
 
 interface User {
   id: string;
@@ -66,7 +67,7 @@ export function LinkDirectorCoordinatorModal({
     if (!user) return false;
     
     // Apenas admin e tecadm podem vincular diretores e coordenadores
-    return ['admin', 'tecadmin'].includes(user.role);
+    return ['admin', 'tecadm'].includes(user.role);
   };
 
   // Se não tem permissão, não renderizar o modal
