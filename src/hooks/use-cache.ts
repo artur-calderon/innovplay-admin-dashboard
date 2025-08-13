@@ -129,6 +129,15 @@ export function useCache<T>(
     }
   }, [url, customCacheKey]);
 
+  // Função para invalidar cache por padrão (para avaliações)
+  const invalidateCacheByPattern = useCallback((pattern: string) => {
+    for (const key of cache.keys()) {
+      if (key.includes(pattern)) {
+        cache.delete(key);
+      }
+    }
+  }, []);
+
   // Função para refetch
   const refetch = useCallback((params?: any) => {
     return fetchData(params, true);
@@ -162,7 +171,8 @@ export function useCache<T>(
     isValidating,
     refetch,
     mutate,
-    invalidateCache
+    invalidateCache,
+    invalidateCacheByPattern
   };
 }
 
@@ -195,9 +205,19 @@ export function useEvaluations(params: {
     staleTime: 2 * 60 * 1000 // 2 minutos
   });
 
+  // Função para invalidar cache de avaliações de forma abrangente
+  const invalidateEvaluationsCache = useCallback(() => {
+    // Invalidar cache específico desta instância
+    result.invalidateCache();
+    
+    // Invalidar todas as chaves de cache relacionadas a avaliações
+    result.invalidateCacheByPattern('evaluations-');
+  }, [result]);
+
   // Garantir que sempre retornamos um objeto válido
   return {
     ...result,
+    invalidateEvaluationsCache,
     data: result.data || {
       data: [],
       pagination: {

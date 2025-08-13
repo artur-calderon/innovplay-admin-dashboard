@@ -43,6 +43,7 @@ interface Question {
   number: number;
   text: string;
   formattedText?: string;
+  secondStatement?: string; // Campo para segundo enunciado
   type: string;
   value: number;
   difficulty: string;
@@ -123,6 +124,13 @@ export default function ViewEvaluation() {
       if (!id) return;
       try {
         const response = await api.get(`/test/${id}`);
+        console.log("Resposta da API:", response.data);
+        console.log("Campo secondStatement nas questões:", response.data.questions?.map(q => ({
+          id: q.id,
+          secondStatement: q.secondStatement,
+          text: q.text,
+          formattedText: q.formattedText
+        })));
         setEvaluation(response.data);
       } catch (error) {
         console.error("Erro ao buscar avaliação:", error);
@@ -743,11 +751,11 @@ export default function ViewEvaluation() {
                         </div>
 
                         {/* Segundo Enunciado (se houver) */}
-                        {question.formattedText && question.formattedText !== question.text && (
+                        {(question.secondStatement || (question.formattedText && question.formattedText !== question.text)) && (
                           <div className="prose prose-sm max-w-none question-continuation">
                             <div
                               className="text-base leading-relaxed text-gray-700 p-4 bg-blue-50 rounded-lg border border-blue-200"
-                              dangerouslySetInnerHTML={{ __html: question.formattedText }}
+                              dangerouslySetInnerHTML={{ __html: question.secondStatement || question.formattedText }}
                             />
                           </div>
                         )}
