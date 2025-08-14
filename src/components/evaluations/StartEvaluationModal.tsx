@@ -76,7 +76,7 @@ interface StartEvaluationModalProps {
     title: string;
     subject: { id: string; name: string };
     subjects?: Array<{ id: string; name: string }>;
-    questions: Array<Record<string, unknown>>;
+    questions: Array<any>; // Aceitar qualquer tipo de questão
     duration?: number;
     schools?: Array<{ id: string; name: string }>;
     municipalities?: Array<{ id: string; name: string }>;
@@ -449,6 +449,7 @@ export default function StartEvaluationModal({
                     </span>
                   </div>
                   <div className="text-xs text-purple-600 space-y-1">
+                    <p>• <strong>Timezone:</strong> {Intl.DateTimeFormat().resolvedOptions().timeZone}</p>
                     <p>• A avaliação ficará disponível na agenda dos alunos</p>
                     <p>• Status será "Agendada" até o horário de início</p>
                     <p>• Alunos poderão clicar em "Iniciar Avaliação" apenas no período configurado</p>

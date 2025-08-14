@@ -866,11 +866,15 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
   const handleConfirmStartEvaluation = async (startDateTime: string, endDateTime: string, classIds: string[]) => {
     if (!selectedEvaluationToStart) return;
 
+    // Capturar timezone do usuário automaticamente
+    const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
     console.log("🚀 Aplicando avaliação:", {
       evaluationId: selectedEvaluationToStart.id,
       classIds,
       startDateTime,
-      endDateTime
+      endDateTime,
+      timezone: userTimezone
     });
 
     try {
@@ -883,11 +887,12 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
 
       console.log("📡 Enviando dados para API:", {
         url: `/test/${selectedEvaluationToStart.id}/apply`,
-        data: { classes: classesData }
+        data: { classes: classesData, timezone: userTimezone }
       });
 
       const response = await api.post(`/test/${selectedEvaluationToStart.id}/apply`, {
-        classes: classesData
+        classes: classesData,
+        timezone: userTimezone
       });
 
       console.log("✅ Resposta da API:", response.data);

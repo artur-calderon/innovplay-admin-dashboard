@@ -60,7 +60,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
                 // Se o tempo esgotou, finalizar automaticamente
                 if (remainingMinutes <= 0) {
-                    await handleSubmitTest(true);
+                    await handleSubmitTestRef.current(true);
                     return true;
                 }
 
@@ -116,10 +116,10 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             // Se o tempo acabou, finalizar
             if (remainingMinutes <= 0) {
                 setIsTimeUp(true);
-                handleSubmitTest(true);
+                handleSubmitTestRef.current(true);
             }
         }, 5 * 60 * 1000); // 5 minutos
-    }, [syncTimerWithBackend]);
+    }, []); // ✅ REMOVIDO: syncTimerWithBackend para evitar dependência circular
 
     // ✅ NOVO: Iniciar sessão de teste
     const startTestSession = useCallback(async (): Promise<void> => {
@@ -172,7 +172,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         } finally {
             setIsSaving(false);
         }
-    }, [testData, testId, toast, startTimerSync]);
+    }, [testData, testId, toast]); // ✅ REMOVIDO: startTimerSync para evitar dependência circular
 
     // ✅ NOVO: Salvar resposta
     const saveAnswer = useCallback(async (questionId: string, answer: string | string[] | null): Promise<void> => {
@@ -300,6 +300,10 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         }
     }, [session, testData, answers, toast, testId, user?.id]);
 
+    // ✅ NOVO: Ref para evitar dependência circular
+    const handleSubmitTestRef = useRef(handleSubmitTest);
+    handleSubmitTestRef.current = handleSubmitTest;
+
     // ✅ NOVO: Timer countdown local
     useEffect(() => {
         if (evaluationState === 'active' && session && !isTimeUp && timeRemaining > 0) {
@@ -319,7 +323,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
                     if (newTime <= 0) {
                         setIsTimeUp(true);
-                        handleSubmitTest(true);
+                        handleSubmitTestRef.current(true);
                         return 0;
                     }
 
@@ -333,7 +337,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 }
             };
         }
-    }, [evaluationState, session, isTimeUp, timeRemaining, toast, handleSubmitTest]);
+    }, [evaluationState, session, isTimeUp, timeRemaining, toast]);
 
     // ✅ NOVO: Controle de visibilidade (pausar timer)
     useEffect(() => {
