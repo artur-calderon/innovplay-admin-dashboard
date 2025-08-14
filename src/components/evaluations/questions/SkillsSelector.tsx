@@ -51,8 +51,13 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
       }
       try {
         const gradeSkills = await fetchSkillsByGrade(gradeId);
-        const allowedIds = new Set(gradeSkills.map(s => s.id));
-        const intersected = skills.filter(s => allowedIds.has(s.id));
+        const allowedCodes = new Set(gradeSkills.map(s => s.code));
+        let intersected = skills.filter(s => allowedCodes.has(s.code));
+        // Fallback: se não encontrou por código, tenta por id
+        if (intersected.length === 0) {
+          const allowedIds = new Set(gradeSkills.map(s => s.id));
+          intersected = skills.filter(s => allowedIds.has(s.id));
+        }
         if (isMounted) setEffectiveSkills(intersected);
       } catch {
         if (isMounted) setEffectiveSkills([]);

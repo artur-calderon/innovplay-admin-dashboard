@@ -54,8 +54,13 @@ export const useSkillsStore = create<SkillsStore>((set, get) => ({
 
             // 3) Se já tivermos caches individuais, intersecta e salva como combinado
             if (skillsBySubject[subjectId] && skillsByGrade[gradeId]) {
-                const gradeIds = new Set(skillsByGrade[gradeId].map(s => s.id));
-                const intersected = skillsBySubject[subjectId].filter(s => gradeIds.has(s.id));
+                const gradeCodes = new Set(skillsByGrade[gradeId].map(s => s.code));
+                let intersected = skillsBySubject[subjectId].filter(s => gradeCodes.has(s.code));
+                // Fallback: intersecta por id se necessário
+                if (intersected.length === 0) {
+                    const gradeIds = new Set(skillsByGrade[gradeId].map(s => s.id));
+                    intersected = skillsBySubject[subjectId].filter(s => gradeIds.has(s.id));
+                }
                 set(state => ({
                     skillsBySubjectAndGrade: {
                         ...state.skillsBySubjectAndGrade,
@@ -110,8 +115,13 @@ export const useSkillsStore = create<SkillsStore>((set, get) => ({
 
                 let result: Skill[] = [];
                 if (gradeList.length > 0 && subjectList.length > 0) {
-                    const gradeIds = new Set(gradeList.map(s => s.id));
-                    result = subjectList.filter(s => gradeIds.has(s.id));
+                    const gradeCodes = new Set(gradeList.map(s => s.code));
+                    result = subjectList.filter(s => gradeCodes.has(s.code));
+                    // Fallback: se vazio por código, tenta por id
+                    if (result.length === 0) {
+                        const gradeIds = new Set(gradeList.map(s => s.id));
+                        result = subjectList.filter(s => gradeIds.has(s.id));
+                    }
                 } else if (gradeList.length > 0) {
                     // Fallback: se só série retornou, usa série
                     result = gradeList;
