@@ -8,16 +8,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
     ChevronLeft,
     ChevronRight,
     Send,
@@ -42,6 +32,8 @@ export default function TakeEvaluation() {
     const [showSubmitDialog, setShowSubmitDialog] = useState(false);
     const [showCompletionDialog, setShowCompletionDialog] = useState(false);
     const [showFullscreenQuestion, setShowFullscreenQuestion] = useState(false);
+    const [hasSeenCompletionDialog, setHasSeenCompletionDialog] = useState(false);
+    const [isCompletionDialogClosed, setIsCompletionDialogClosed] = useState(false);
     const [shuffledQuestions, setShuffledQuestions] = useState<Question[]>([]);
 
     const {
@@ -86,6 +78,65 @@ export default function TakeEvaluation() {
             startTestSession();
         }
     }, [evaluationState, testData, session, startTestSession]);
+
+    // ✅ Fechar modal fullscreen com Escape
+    useEffect(() => {
+        const handleEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape' && showFullscreenQuestion) {
+                console.log('🔒 Fechando modal fullscreen com Escape...');
+                setShowFullscreenQuestion(false);
+            }
+        };
+
+        if (showFullscreenQuestion) {
+            document.addEventListener('keydown', handleEscape);
+            return () => document.removeEventListener('keydown', handleEscape);
+        }
+    }, [showFullscreenQuestion]);
+
+    // ✅ Limpar estado dos modais quando necessário
+    useEffect(() => {
+        if (!showFullscreenQuestion && !showCompletionDialog && !showSubmitDialog) {
+            // Garantir que o body não tenha scroll bloqueado
+            document.body.style.overflow = 'auto';
+            document.body.removeAttribute('data-scroll-locked');
+            
+            // Remover qualquer overlay que possa ter ficado
+            const overlays = document.querySelectorAll('[data-state="open"]');
+            overlays.forEach(overlay => {
+                if (overlay.classList.contains('fixed') && overlay.classList.contains('inset-0')) {
+                    overlay.remove();
+                }
+            });
+        }
+    }, [showFullscreenQuestion, showCompletionDialog, showSubmitDialog]);
+
+    // ✅ Garantir que apenas um modal esteja aberto por vez
+    useEffect(() => {
+        if (showFullscreenQuestion) {
+            // Se o modal fullscreen está aberto, fechar outros modais
+            setShowCompletionDialog(false);
+            setShowSubmitDialog(false);
+        }
+    }, [showFullscreenQuestion]);
+
+    // ✅ Fechar modais quando avaliação for enviada
+    useEffect(() => {
+        if (evaluationState === 'completed') {
+            setShowFullscreenQuestion(false);
+            setShowCompletionDialog(false);
+            setShowSubmitDialog(false);
+            setIsCompletionDialogClosed(false);
+        }
+    }, [evaluationState]);
+
+    // ✅ Fechar modal fullscreen quando navegar para uma questão
+    useEffect(() => {
+        if (currentQuestionIndex >= 0 && showFullscreenQuestion) {
+            // Se o usuário navegou para uma questão, fechar o modal fullscreen
+            setShowFullscreenQuestion(false);
+        }
+    }, [currentQuestionIndex, showFullscreenQuestion]);
 
     // Log para debug da questão atual (apenas quando muda)
     useEffect(() => {
@@ -200,6 +251,11 @@ export default function TakeEvaluation() {
 
     // ✅ Detectar quando todas as questões são respondidas
     useEffect(() => {
+        // Só executar se não foi visto antes E não foi fechado pelo usuário
+        if (hasSeenCompletionDialog || isCompletionDialogClosed) {
+            return;
+        }
+
         if (shuffledQuestions.length > 0 && Object.keys(answers).length === shuffledQuestions.length) {
             // Verificar se todas as respostas têm conteúdo
             const allAnswered = shuffledQuestions.every(question => {
@@ -207,12 +263,13 @@ export default function TakeEvaluation() {
                 return answer && answer.trim() !== '';
             });
             
-            if (allAnswered && !showCompletionDialog) {
+            if (allAnswered) {
                 console.log('🎉 Todas as questões foram respondidas!');
                 setShowCompletionDialog(true);
+                setHasSeenCompletionDialog(true);
             }
         }
-    }, [answers, shuffledQuestions.length, showCompletionDialog]);
+    }, [answers, shuffledQuestions.length, hasSeenCompletionDialog, isCompletionDialogClosed]);
 
     // ✅ Redirecionamento automático quando avaliação é concluída
     useEffect(() => {
@@ -573,6 +630,14 @@ export default function TakeEvaluation() {
         box-sizing: border-box !important;
         transform: none !important;
     }
+
+    /* Line clamp para truncar texto */
+    .line-clamp-3 {
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
   `}
 </style>
 
@@ -823,91 +888,136 @@ export default function TakeEvaluation() {
                     </div>
                 </div>
 
-                {/* Dialog de confirmação de envio */}
-                <AlertDialog open={showSubmitDialog} onOpenChange={setShowSubmitDialog}>
-                    <AlertDialogContent>
-                        <AlertDialogHeader>
-                            <AlertDialogTitle>Confirmar envio da avaliação</AlertDialogTitle>
-                            <AlertDialogDescription asChild>
-                                <div>
-                                    <p className="mb-4">Você tem certeza que deseja enviar sua avaliação?</p>
+                 {/* Dialog de confirmação de envio */}
+                 {showSubmitDialog && (
+                     <>
+                         {/* Overlay com blur ATRÁS */}
+                         <div 
+                             className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm cursor-pointer"
+                             onClick={() => setShowSubmitDialog(false)}
+                         />
+                         
+                         {/* Modal na FRENTE */}
+                         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+                             <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 sm:mx-0 border border-gray-200 pointer-events-auto">
+                                 <div className="p-6 pb-4">
+                                     <div className="space-y-4">
+                                         <h2 className="text-xl font-bold text-gray-800">Confirmar envio da avaliação</h2>
+                                         <div className="space-y-2">
+                                             <p className="mb-4">Você tem certeza que deseja enviar sua avaliação?</p>
+                                             <div>Questões respondidas: {Object.keys(answers).length} de {shuffledQuestions.length || 0}</div>
+                                         </div>
+                                     </div>
+                                 </div>
+                                 <div className="flex gap-3 px-6 pb-6">
+                                     <button
+                                         className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                                         onClick={() => setShowSubmitDialog(false)}
+                                         disabled={isSubmitting}
+                                     >
+                                         Cancelar
+                                     </button>
+                                     <button
+                                         className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                                         onClick={() => {
+                                             if (isSubmitting) {
+                                                 console.log('⚠️ Tentativa de envio bloqueada - já está enviando');
+                                                 return;
+                                             }
+                                             console.log('🚀 Modal de envio: Enviando avaliação...');
+                                             handleSubmitTest(false);
+                                         }}
+                                         disabled={isSubmitting}
+                                     >
+                                         {isSubmitting ? "Enviando..." : "Confirmar Envio"}
+                                     </button>
+                                 </div>
+                             </div>
+                         </div>
+                     </>
+                 )}
 
-                                    <div className="space-y-2 mb-4">
-                                        <div>Questões respondidas: {Object.keys(answers).length} de {shuffledQuestions.length || 0}</div>
-                                    </div>
+                 {/* ✅ Dialog de confirmação quando todas as questões são respondidas */}
+                 {showCompletionDialog && (
+                     <>
+                         {/* Overlay com blur ATRÁS */}
+                         <div 
+                             className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm cursor-pointer"
+                             onClick={() => {
+                                 setShowCompletionDialog(false);
+                                 setHasSeenCompletionDialog(false);
+                                 setIsCompletionDialogClosed(true);
+                             }}
+                         />
+                         
+                         {/* Modal na FRENTE */}
+                         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+                             <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 sm:mx-0 border border-gray-200 pointer-events-auto">
+                                 <div className="p-6 pb-4">
+                                     <div className="text-center space-y-4">
+                                         <div className="flex items-center justify-center">
+                                             <CheckCircle2 className="h-12 w-12 sm:h-16 sm:w-16 text-green-600" />
+                                         </div>
+                                         <div className="space-y-2">
+                                             <h2 className="text-xl sm:text-2xl font-bold text-green-700">
+                                                 Avaliação Concluída
+                                             </h2>
+                                             <p className="text-base sm:text-lg font-semibold text-gray-800 leading-relaxed">
+                                                 Todas as questões foram respondidas com sucesso.
+                                             </p>
+                                             <p className="text-sm text-gray-600">
+                                                 Deseja enviar sua avaliação agora para finalização?
+                                             </p>
+                                         </div>
+                                     </div>
+                                 </div>
 
+                                 <div className="flex flex-col sm:flex-row gap-3 px-6 pb-6">
+                                     <button
+                                         className="w-full sm:w-auto order-2 sm:order-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 px-6 rounded-lg transition-colors"
+                                         onClick={() => {
+                                             console.log('🔍 Fechando modal de conclusão para permitir revisão...');
+                                             setShowCompletionDialog(false);
+                                             setHasSeenCompletionDialog(false);
+                                             setIsCompletionDialogClosed(true);
+                                         }}
+                                     >
+                                         <ChevronLeft className="h-4 w-4 mr-2 inline" />
+                                         Revisar Respostas
+                                     </button>
 
-                                </div>
-                            </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                            <AlertDialogCancel disabled={isSubmitting}>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction
-                                onClick={() => handleSubmitTest(false)}
-                                disabled={isSubmitting}
-                            >
-                                {isSubmitting ? "Enviando..." : "Confirmar Envio"}
-                            </AlertDialogAction>
-                        </AlertDialogFooter>
-                    </AlertDialogContent>
-                </AlertDialog>
-
-                {/* ✅ Dialog de confirmação quando todas as questões são respondidas */}
-                <AlertDialog open={showCompletionDialog} onOpenChange={setShowCompletionDialog}>
-  <AlertDialogContent className="max-w-md mx-4 sm:mx-0">
-    <AlertDialogHeader className="pb-4">
-      <AlertDialogTitle className="text-center text-xl sm:text-2xl font-bold text-green-700">
-        Avaliação Concluída
-      </AlertDialogTitle>
-      <AlertDialogDescription asChild>
-        <div className="text-center space-y-4 px-2">
-          <div className="flex items-center justify-center">
-            <CheckCircle2 className="h-12 w-12 sm:h-16 sm:w-16 text-green-600" />
-          </div>
-          <div className="space-y-2">
-            <p className="text-base sm:text-lg font-semibold text-gray-800 leading-relaxed">
-              Todas as questões foram respondidas com sucesso.
-            </p>
-            <p className="text-sm text-gray-600">
-              Deseja enviar sua avaliação agora para finalização?
-            </p>
-          </div>
-        </div>
-      </AlertDialogDescription>
-    </AlertDialogHeader>
-
-    <AlertDialogFooter className="flex flex-col sm:flex-row gap-3 px-4 pb-4">
-      <AlertDialogCancel
-        className="w-full sm:w-auto order-2 sm:order-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 px-6 rounded-lg transition-colors"
-        onClick={() => setShowCompletionDialog(false)}
-      >
-        <ChevronLeft className="h-4 w-4 mr-2 inline" />
-        Revisar Respostas
-      </AlertDialogCancel>
-
-      <AlertDialogAction
-        className="w-full sm:w-auto order-1 sm:order-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors shadow-lg hover:shadow-xl"
-        onClick={() => {
-          setShowCompletionDialog(false);
-          handleSubmitTest(false);
-        }}
-        disabled={isSubmitting}
-      >
-        {isSubmitting ? (
-          <>
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            Enviando...
-          </>
-        ) : (
-          <>
-            <Send className="h-4 w-4 mr-2" />
-            Confirmar Envio
-          </>
-        )}
-      </AlertDialogAction>
-    </AlertDialogFooter>
-  </AlertDialogContent>
-</AlertDialog>
+                                     <button
+                                         className="w-full sm:w-auto order-1 sm:order-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors shadow-lg hover:shadow-xl"
+                                         onClick={() => {
+                                             if (isSubmitting) {
+                                                 console.log('⚠️ Tentativa de envio bloqueada - já está enviando');
+                                                 return;
+                                             }
+                                             console.log('🚀 Modal de conclusão: Enviando avaliação...');
+                                             setShowCompletionDialog(false);
+                                             setHasSeenCompletionDialog(false);
+                                             setIsCompletionDialogClosed(true);
+                                             handleSubmitTest(false);
+                                         }}
+                                         disabled={isSubmitting}
+                                     >
+                                         {isSubmitting ? (
+                                             <>
+                                                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                                 Enviando...
+                                             </>
+                                         ) : (
+                                             <>
+                                                 <Send className="h-4 w-4 mr-2" />
+                                                 Confirmar Envio
+                                             </>
+                                         )}
+                                     </button>
+                                 </div>
+                             </div>
+                         </div>
+                     </>
+                 )}
 
                 {/* ✅ Modal de visualização em tela cheia */}
                 {showFullscreenQuestion && (
@@ -997,72 +1107,16 @@ export default function TakeEvaluation() {
 
                             {/* Lado direito - Alternativas */}
                             <div className="w-1/2 flex flex-col bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
-                                {/* Área das alternativas */}
-                                <div className="flex-1 overflow-y-auto">
-                                    <div className="p-8">
-                                        <div className="mb-6">
-                                            <h3 className="text-xl font-bold text-gray-800 mb-2">Selecione sua resposta:</h3>
-                                            <div className="h-0.5 w-20 bg-purple-500 rounded-full"></div>
-                                        </div>
-                                        <QuestionOptions
-                                            question={currentQuestion}
-                                            answer={answers[currentQuestion?.id]?.answer}
-                                            onAnswerChange={(newAnswer) => {
-                                                if (currentQuestion?.id) {
-                                                    console.log('💾 Salvando resposta (fullscreen):', {
-                                                        questionId: currentQuestion.id,
-                                                        answer: newAnswer,
-                                                        questionType: currentQuestion.type,
-                                                        currentAnswers: Object.keys(answers)
-                                                    });
-                                                    saveAnswer(currentQuestion.id, newAnswer);
-                                                    
-                                                    // Auto-fechar modal após seleção em múltipla escolha
-                                                    if (['multiple_choice', 'multipleChoice', 'true_false', 'truefalse'].includes(currentQuestion.type) && newAnswer) {
-                                                        setTimeout(() => {
-                                                            setShowFullscreenQuestion(false);
-                                                            // Avançar para próxima questão se não for a última
-                                                            if (currentQuestionIndex < shuffledQuestions.length - 1) {
-                                                                navigateToQuestion(currentQuestionIndex + 1);
-                                                            }
-                                                        }, 800);
-                                                    }
-                                                }
-                                            }}
-                                            disabled={isTimeUp}
-                                        />
-                                        <div className="h-8"></div>
-                                    </div>
-                                </div>
-
-                                {/* Navegação fixa no rodapé */}
-                                <div className="border-t-2 border-gray-200 bg-white p-6 shadow-lg">
-                                    <div className="flex items-center justify-between">
-                                        <Button
-                                            variant="outline"
-                                            size="lg"
-                                            onClick={() => navigateToQuestion(currentQuestionIndex - 1)}
-                                            disabled={currentQuestionIndex === 0 || isTimeUp}
-                                            className="px-6 py-3 text-base font-semibold border-2 hover:bg-gray-50 disabled:opacity-50"
-                                        >
-                                            <ChevronLeft className="h-5 w-5 mr-2" />
-                                            Anterior
-                                        </Button>
-
-                                        <div className="text-lg font-bold text-purple-600 bg-purple-50 px-5 py-2.5 rounded-full border-2 border-purple-200">
-                                            {currentQuestionIndex + 1} / {shuffledQuestions.length}
-                                        </div>
-
-                                        <Button
-                                            size="lg"
-                                            onClick={() => navigateToQuestion(currentQuestionIndex + 1)}
-                                            disabled={currentQuestionIndex === shuffledQuestions.length - 1 || isTimeUp}
-                                            className="px-6 py-3 text-base font-semibold bg-purple-600 hover:bg-purple-700 text-white shadow-md hover:shadow-lg transition-all disabled:opacity-50"
-                                        >
-                                            Próxima
-                                            <ChevronRight className="h-5 w-5 ml-2" />
-                                        </Button>
-                                    </div>
+                                <div className="p-8">
+                                    <h3 className="text-xl font-bold text-gray-800 mb-6">Alternativas:</h3>
+                                    <QuestionOptions
+                                        question={currentQuestion}
+                                        answer={answers[currentQuestion?.id]?.answer}
+                                        onAnswerChange={(answer) => {
+                                            saveAnswer(currentQuestion?.id, answer);
+                                        }}
+                                        disabled={false}
+                                    />
                                 </div>
                             </div>
                         </div>

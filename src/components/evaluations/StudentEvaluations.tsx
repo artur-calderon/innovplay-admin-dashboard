@@ -864,10 +864,10 @@ export default function StudentEvaluations() {
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <span>
-                    Disponível até: {evaluation.endDateTime ?
-                      format(parseISO(evaluation.endDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) :
-                      "Sem prazo definido"
-                    }
+                                                              Disponível até: {evaluation.endDateTime ?
+                        format(new Date(evaluation.endDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) :
+                        "Sem prazo definido"
+                      }
                   </span>
                 </div>
               </div>
@@ -914,7 +914,7 @@ export default function StudentEvaluations() {
                 )}
 
                 {/* ✅ Botão "Ver Resultado" aparece quando concluída e após o prazo final */}
-                {evaluation.student_status.has_completed && evaluation.endDateTime && new Date() >= new Date(evaluation.endDateTime) && (
+                                 {evaluation.student_status.has_completed && evaluation.endDateTime && new Date() >= new Date(evaluation.endDateTime) && (
                   <Button
                     className="flex-1 bg-purple-600 hover:bg-purple-700"
                     onClick={() => navigate(`/aluno/avaliacao/${evaluation.id}/resultado`)}
@@ -1025,10 +1025,10 @@ export default function StudentEvaluations() {
                   Tempo disponível
                 </h5>
                 <p className="text-sm text-purple-800">
-                  Até {selectedEvaluation.endDateTime ?
-                    format(parseISO(selectedEvaluation.endDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) :
-                    "sem prazo definido"
-                  }
+                                                        Até {selectedEvaluation.endDateTime ?
+                      format(new Date(selectedEvaluation.endDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) :
+                      "sem prazo definido"
+                    }
                 </p>
               </div>
             )}

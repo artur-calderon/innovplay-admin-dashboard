@@ -189,14 +189,18 @@ export default function ViewEvaluation() {
     setShowStartEvaluationModal(true);
   };
 
-  const handleConfirmStartEvaluation = async (startDateTime: string, endDateTime: string) => {
+  const handleConfirmStartEvaluation = async (startDateTime: string, endDateTime: string, classIds: string[]) => {
     if (!evaluation) return;
+
+    // Capturar timezone do usuário automaticamente
+    const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     try {
       // Aqui seria chamada a API para ativar a avaliação com as datas
       await api.put(`/test/${evaluation.id}/start`, {
         startDateTime,
         endDateTime,
+        timezone: userTimezone,
         status: 'active'
       });
 
@@ -697,7 +701,6 @@ export default function ViewEvaluation() {
                   {subjectData.questions.map((question, index) => {
                     const questionData = {
                       id: question.id,
-                      title: question.title,
                       text: question.text,
                       type: question.type,
                       difficulty: question.difficulty,
@@ -705,7 +708,6 @@ export default function ViewEvaluation() {
                       options: question.options || [],
                       solution: question.solution || '',
                       subject: question.subject,
-                      grade: question.grade,
                       skills: question.skills || []
                     };
                     
