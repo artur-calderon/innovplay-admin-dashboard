@@ -60,6 +60,13 @@ const questionSchema = z.object({
 
 type QuestionFormValues = z.infer<typeof questionSchema>;
 
+// Tipagem para resposta de habilidades na API
+interface ApiSkill {
+    id: string;
+    code: string;
+    description: string;
+}
+
 interface QuestionFormReadOnlyProps {
     onSubmit?: (data: QuestionFormValues) => void;
     open: boolean;
@@ -98,9 +105,9 @@ const QuestionPreview: React.FC<{ data: QuestionFormValues }> = ({ data }) => {
         const fetchSkills = async () => {
             if (data.subjectId) {
                 try {
-                    const response = await api.get(`/skills/subject/${data.subjectId}`);
+                    const response = await api.get<ApiSkill[]>(`/skills/subject/${data.subjectId}`);
                     if (Array.isArray(response.data)) {
-                        setSkillsOptions(response.data.map((skill: any) => ({ id: skill.id, name: `${skill.code} - ${skill.description}` })));
+                        setSkillsOptions(response.data.map((skill) => ({ id: skill.id, name: `${skill.code} - ${skill.description}` })));
                     } else {
                         setSkillsOptions([]);
                     }
@@ -336,31 +343,43 @@ const QuestionFormReadOnly = ({
 
     useEffect(() => {
         const fetchSkills = async () => {
-            if (evaluationData.subject) {
+            if (evaluationData.subject && evaluationData.grade) {
                 try {
-                    const response = await api.get(`/skills/subject/${evaluationData.subject}`);
-                    if (Array.isArray(response.data)) {
-                        const formattedSkills = response.data.map((skill: any) => ({
-                            id: skill.id,
-                            name: `${skill.code} - ${skill.description}`,
-                        }));
-                        setSkills(formattedSkills);
-                    } else {
-                        setSkills([]);
+                    const [bySubjectRes, byGradeRes] = await Promise.all([
+                        api.get<ApiSkill[]>(`/skills/subject/${evaluationData.subject}`),
+                        api.get<ApiSkill[]>(`/skills/grade/${evaluationData.grade}`),
+                    ]);
+
+                    const bySubject: ApiSkill[] = Array.isArray(bySubjectRes.data) ? bySubjectRes.data : [];
+                    const byGrade: ApiSkill[] = Array.isArray(byGradeRes.data) ? byGradeRes.data : [];
+
+                    const byGradeCodes = new Set(byGrade.map((s) => s.code));
+                    let intersected = bySubject.filter((s) => byGradeCodes.has(s.code));
+                    // Fallback: se necessário, intersecta por id
+                    if (intersected.length === 0) {
+                        const byGradeIds = new Set(byGrade.map((s) => s.id));
+                        intersected = bySubject.filter((s) => byGradeIds.has(s.id));
                     }
+
+                    const formattedSkills: Option[] = intersected.map((skill) => ({
+                        id: skill.id,
+                        name: `${skill.code} - ${skill.description}`,
+                        code: skill.code,
+                    }));
+                    setSkills(formattedSkills);
                 } catch (error) {
                     console.error("Erro ao buscar habilidades:", error);
                     setSkills([]);
                     toast({
                         title: "Aviso",
-                        description: "Nenhuma habilidade encontrada para esta disciplina.",
+                        description: "Nenhuma habilidade encontrada para esta disciplina/série.",
                         variant: "default",
                     });
                 }
             }
         };
         fetchSkills();
-    }, [evaluationData.subject, toast]);
+    }, [evaluationData.subject, evaluationData.grade, toast]);
 
     useEffect(() => {
         form.setValue('subjectId', evaluationData.subject);
