@@ -107,8 +107,9 @@ export default function StudentResult() {
         } catch (e) {
           // Ignorar, manter sem nota (em processamento)
         }
-      } catch (e: any) {
-        setError(e?.message || "Erro ao carregar resultado");
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : "Erro ao carregar resultado";
+        setError(message);
       } finally {
         setLoading(false);
       }
