@@ -43,6 +43,7 @@ interface Question {
   number: number;
   text: string;
   formattedText?: string;
+  secondStatement?: string; // Campo para segundo enunciado
   type: string;
   value: number;
   difficulty: string;
@@ -123,6 +124,13 @@ export default function ViewEvaluation() {
       if (!id) return;
       try {
         const response = await api.get(`/test/${id}`);
+        console.log("Resposta da API:", response.data);
+        console.log("Campo secondStatement nas questões:", response.data.questions?.map(q => ({
+          id: q.id,
+          secondStatement: q.secondStatement,
+          text: q.text,
+          formattedText: q.formattedText
+        })));
         setEvaluation(response.data);
       } catch (error) {
         console.error("Erro ao buscar avaliação:", error);
@@ -181,14 +189,18 @@ export default function ViewEvaluation() {
     setShowStartEvaluationModal(true);
   };
 
-  const handleConfirmStartEvaluation = async (startDateTime: string, endDateTime: string) => {
+  const handleConfirmStartEvaluation = async (startDateTime: string, endDateTime: string, classIds: string[]) => {
     if (!evaluation) return;
+
+    // Capturar timezone do usuário automaticamente
+    const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     try {
       // Aqui seria chamada a API para ativar a avaliação com as datas
       await api.put(`/test/${evaluation.id}/start`, {
         startDateTime,
         endDateTime,
+        timezone: userTimezone,
         status: 'active'
       });
 
@@ -687,15 +699,17 @@ export default function ViewEvaluation() {
               <CardContent className="p-6">
                 <div className="space-y-8">
                   {subjectData.questions.map((question, index) => {
-                    // Debug temporário
-                    console.log(`🔍 Questão ${index + 1}:`, {
+                    const questionData = {
                       id: question.id,
-                      number: question.number,
-                      skills: question.skills,
+                      text: question.text,
+                      type: question.type,
                       difficulty: question.difficulty,
                       value: question.value,
-                      type: question.type
-                    });
+                      options: question.options || [],
+                      solution: question.solution || '',
+                      subject: question.subject,
+                      skills: question.skills || []
+                    };
                     
                     return (
                     <div key={question.id} className="question-preview-content bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -739,11 +753,11 @@ export default function ViewEvaluation() {
                         </div>
 
                         {/* Segundo Enunciado (se houver) */}
-                        {question.formattedText && question.formattedText !== question.text && (
+                        {(question.secondStatement || (question.formattedText && question.formattedText !== question.text)) && (
                           <div className="prose prose-sm max-w-none question-continuation">
                             <div
                               className="text-base leading-relaxed text-gray-700 p-4 bg-blue-50 rounded-lg border border-blue-200"
-                              dangerouslySetInnerHTML={{ __html: question.formattedText }}
+                              dangerouslySetInnerHTML={{ __html: question.secondStatement || question.formattedText }}
                             />
                           </div>
                         )}

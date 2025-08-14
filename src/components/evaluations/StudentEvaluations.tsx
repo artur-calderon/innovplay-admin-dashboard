@@ -40,6 +40,7 @@ import {
   Info
 } from "lucide-react";
 import { useAuth } from "@/context/authContext";
+import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { EvaluationApiService } from "@/services/evaluationApi";
@@ -162,6 +163,7 @@ export default function StudentEvaluations() {
 
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchStudentEvaluations();
@@ -862,10 +864,10 @@ export default function StudentEvaluations() {
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <span>
-                    Disponível até: {evaluation.endDateTime ?
-                      format(parseISO(evaluation.endDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) :
-                      "Sem prazo definido"
-                    }
+                                                              Disponível até: {evaluation.endDateTime ?
+                        format(new Date(evaluation.endDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) :
+                        "Sem prazo definido"
+                      }
                   </span>
                 </div>
               </div>
@@ -911,14 +913,14 @@ export default function StudentEvaluations() {
                   </Button>
                 )}
 
-                {/* ✅ CORRIGIDO: Botão "Concluída" se has_completed === true (removido botão ver resultado) */}
-                {evaluation.student_status.has_completed && (
+                {/* ✅ Botão "Ver Resultado" aparece quando concluída e após o prazo final */}
+                                 {evaluation.student_status.has_completed && evaluation.endDateTime && new Date() >= new Date(evaluation.endDateTime) && (
                   <Button
-                    className="flex-1 bg-gray-600 hover:bg-gray-700"
-                    disabled
+                    className="flex-1 bg-purple-600 hover:bg-purple-700"
+                    onClick={() => navigate(`/aluno/avaliacao/${evaluation.id}/resultado`)}
                   >
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    Concluída
+                    <Trophy className="h-4 w-4 mr-2" />
+                    Ver Resultado
                   </Button>
                 )}
 
@@ -1023,10 +1025,10 @@ export default function StudentEvaluations() {
                   Tempo disponível
                 </h5>
                 <p className="text-sm text-purple-800">
-                  Até {selectedEvaluation.endDateTime ?
-                    format(parseISO(selectedEvaluation.endDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) :
-                    "sem prazo definido"
-                  }
+                                                        Até {selectedEvaluation.endDateTime ?
+                      format(new Date(selectedEvaluation.endDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) :
+                      "sem prazo definido"
+                    }
                 </p>
               </div>
             )}

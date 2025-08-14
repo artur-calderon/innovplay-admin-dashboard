@@ -21,11 +21,12 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { MultiSelect } from "@/components/ui/multi-select";
+import { getRoleDisplayName } from "@/lib/constants";
 
 interface AddTeacherFormProps {
     schoolId: string;
     schoolName: string;
-    classes: {
+    classes?: {
         id: string;
         name: string;
     }[];
@@ -40,7 +41,7 @@ interface Teacher {
     birth_date?: string;
 }
 
-export function AddTeacherForm({ schoolId, schoolName, classes, onSuccess }: AddTeacherFormProps) {
+export function AddTeacherForm({ schoolId, schoolName, classes = [], onSuccess }: AddTeacherFormProps) {
     const { user } = useAuth();
     const { toast } = useToast();
     const [isOpen, setIsOpen] = useState(false);
@@ -61,13 +62,12 @@ export function AddTeacherForm({ schoolId, schoolName, classes, onSuccess }: Add
     // Carregar professores ao abrir o modal
     useEffect(() => {
         const fetchTeachers = async () => {
-            if (!isOpen || !user || (user.role !== "admin" && user.role !== "tecadmin")) return;
+            if (!isOpen || !user || (user.role !== "admin" && user.role !== "tecadm")) return;
 
             setIsLoading(true);
             try {
                 const response = await api.get(`/teacher/`);
                 const teachers = Array.isArray(response.data) ? response.data : [];
-                console.log(teachers);
                 setAllTeachers(teachers);
                 setFilteredTeachers(teachers);
             } catch (error) {
@@ -101,7 +101,7 @@ export function AddTeacherForm({ schoolId, schoolName, classes, onSuccess }: Add
     }, [searchTerm, allTeachers]);
 
     // Verificar se o usuário tem permissão
-    if (!user || (user.role !== "admin" && user.role !== "tecadmin")) {
+    if (!user || (user.role !== "admin" && user.role !== "tecadm")) {
         return null;
     }
 
@@ -230,12 +230,18 @@ export function AddTeacherForm({ schoolId, schoolName, classes, onSuccess }: Add
 
                         <div className="space-y-2">
                             <Label>Turmas</Label>
-                            <MultiSelect
-                                options={classes.map((c) => ({ id: c.id, name: c.name }))}
-                                selected={selectedClasses}
-                                onChange={setSelectedClasses}
-                                placeholder="Selecione as turmas"
-                            />
+                            {classes && classes.length > 0 ? (
+                                <MultiSelect
+                                    options={classes.map((c) => ({ id: c.id, name: c.name }))}
+                                    selected={selectedClasses}
+                                    onChange={setSelectedClasses}
+                                    placeholder="Selecione as turmas"
+                                />
+                            ) : (
+                                <p className="text-sm text-muted-foreground">
+                                    Nenhuma turma disponível para seleção
+                                </p>
+                            )}
                         </div>
 
                         {!selectedTeacher && (

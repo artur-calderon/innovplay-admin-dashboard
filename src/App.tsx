@@ -23,6 +23,7 @@ const StudentEvaluations = React.lazy(() => import("./components/evaluations/Stu
 const Users = React.lazy(() => import("./pages/Users"));
 const Profile = React.lazy(() => import("./pages/Profile"));
 const ClassDetails = React.lazy(() => import("./components/schools/ClassDetails"));
+const SchoolDetails = React.lazy(() => import("./components/schools/SchoolDetails"));
 const CreateEvaluation = React.lazy(() => import("./pages/CreateEvaluation"));
 const EditEvaluation = React.lazy(() => import("./pages/EditEvaluation"));
 const Cities = React.lazy(() => import("./pages/Cities"));
@@ -59,6 +60,7 @@ const TorneioExecucao = React.lazy(() => import("./pages/TorneioExecucao"));
 
 // Lazy loading para dashboards específicos
 const StudentDashboard = React.lazy(() => import("./pages/StudentDashboard"));
+const StudentResult = React.lazy(() => import("./pages/StudentResult"));
 const ProfessorDashboard = React.lazy(() => import("./pages/ProfessorDashboard"));
 
 // Loading component
@@ -116,6 +118,8 @@ const App = () => {
             <Route path="/aluno" element={<Layout />}>
               <Route index element={<PrivateRoute><StudentDashboard /></PrivateRoute>} />
               <Route path="/aluno/avaliacoes" element={<PrivateRoute><StudentEvaluations /></PrivateRoute>} />
+              {/** Rota removida: página de resultados do aluno foi descontinuada */}
+              <Route path="/aluno/avaliacao/:id/resultado" element={<PrivateRoute><StudentResult /></PrivateRoute>} />
               <Route path="/aluno/agenda" element={<PrivateRoute><StudentAgenda /></PrivateRoute>} />
               <Route path="/aluno/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
               <Route path="/aluno/jogos" element={<PrivateRoute><StudentGames /></PrivateRoute>} />
@@ -162,6 +166,7 @@ const App = () => {
               <Route path="/app/olimpiadas" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
               <Route path="/app/city" element={<PrivateRoute><Cities /></PrivateRoute>} />
               <Route path="/app/turma/:id" element={<PrivateRoute><ClassDetails /></PrivateRoute>} />
+              <Route path="/app/escola/:id" element={<PrivateRoute><SchoolDetails /></PrivateRoute>} />
               <Route path="/app/usuarios" element={<PrivateRoute><Users /></PrivateRoute>} />
               <Route path="/app/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
               <Route path="/app/avisos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />

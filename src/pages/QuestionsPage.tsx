@@ -56,7 +56,7 @@ interface QuestionApiResponse {
   topics: string[] | string;
   subject?: { id: string; name: string };
   grade?: { id: string; name: string };
-  created_by: string;
+  createdBy: { id: string; name: string }; // Changed from created_by: string to match API response
   solution?: string;
   formattedText?: string;
   formattedSolution?: string;
@@ -84,7 +84,7 @@ interface SortOption {
 const DIFFICULTIES = ['Abaixo do Básico', 'Básico', 'Adequado', 'Avançado'];
 const QUESTION_TYPES = [
   { value: 'multipleChoice', label: 'Múltipla Escolha' },
-  { value: 'open', label: 'Dissertativa' }
+  { value: 'dissertativa', label: 'Dissertativa' }
 ];
 const PAGE_SIZE_OPTIONS = [10, 15, 20, 25];
 
@@ -256,8 +256,8 @@ const QuestionsPage = () => {
     if (!sortOption) return questions;
 
     return [...questions].sort((a, b) => {
-      let aValue: string | number;
-      let bValue: string | number;
+      let aValue: string;
+      let bValue: string;
 
       switch (sortOption.key) {
         case 'title':
@@ -275,19 +275,19 @@ const QuestionsPage = () => {
         case 'difficulty': {
           // Mapear dificuldades para valores numéricos
           const difficultyOrder = { 'Abaixo do Básico': 1, 'Básico': 2, 'Adequado': 3, 'Avançado': 4 };
-          aValue = difficultyOrder[a.difficulty as keyof typeof difficultyOrder] || 0;
-          bValue = difficultyOrder[b.difficulty as keyof typeof difficultyOrder] || 0;
+          aValue = String(difficultyOrder[a.difficulty as keyof typeof difficultyOrder] || 0);
+          bValue = String(difficultyOrder[b.difficulty as keyof typeof difficultyOrder] || 0);
           break;
         }
         case 'value':
-          aValue = parseFloat(a.value) || 0;
-          bValue = parseFloat(b.value) || 0;
+          aValue = String(a.value || 0);
+          bValue = String(b.value || 0);
           break;
         case 'type': {
           // Mapear tipos para valores numéricos
-          const typeOrder = { 'multipleChoice': 1, 'open': 2, 'trueFalse': 3 };
-          aValue = typeOrder[a.type as keyof typeof typeOrder] || 0;
-          bValue = typeOrder[b.type as keyof typeof typeOrder] || 0;
+          const typeOrder = { 'multipleChoice': 1, 'dissertativa': 2, 'trueFalse': 3 };
+          aValue = String(typeOrder[a.type as keyof typeof typeOrder] || 0);
+          bValue = String(typeOrder[b.type as keyof typeof typeOrder] || 0);
           break;
         }
         default:
@@ -346,16 +346,16 @@ const QuestionsPage = () => {
     return filteredAndSortedQuestions.slice(startIndex, startIndex + pageSize);
   }, [filteredAndSortedQuestions, currentPage, pageSize]);
 
-  // Definir filtro inicial para professores
+  // Definir filtro inicial para professores, tecadm, diretores e coordenadores
   useEffect(() => {
-    if (user.role === 'professor' && filterType === 'my') {
+    if ((user.role === 'professor' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && filterType === 'my') {
       setFilterType('all');
     }
-  }, [user.role, filterType]);
+  }, [user.role]); // Removido filterType da dependência para evitar loop infinito
 
-  // Limpar cache quando professor acessa "Todas as Questões"
+  // Limpar cache quando professor, tecadm, diretor ou coordenador acessa "Todas as Questões"
   useEffect(() => {
-    if (user.role === 'professor' && filterType === 'all') {
+    if ((user.role === 'professor' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && filterType === 'all') {
       const cacheKey = `${filterType}-${user.id || 'all'}`;
       
       setQuestionsCache(prev => {
@@ -452,7 +452,7 @@ const QuestionsPage = () => {
 
       if (filterType === 'my' && user.id) {
         params.created_by = user.id;
-      } else if (filterType === 'all' && user.role === 'professor') {
+      } else if (filterType === 'all' && (user.role === 'professor' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador')) {
         // Tentar diferentes parâmetros para forçar busca de todas as questões
         params.scope = 'global';
         params.all = 'true';
@@ -462,36 +462,38 @@ const QuestionsPage = () => {
 
 
       // Log temporário para testar novos parâmetros
-      if (user.role === 'professor' && filterType === 'all') {
-        console.log('🧪 TESTE - Professor tentando ver todas as questões:', params);
+      if ((user.role === 'professor' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && filterType === 'all') {
+        // console.log('🧪 TESTE - Usuário tentando ver todas as questões:', params);
       }
 
       if (isDebugMode) {
-        console.log('📡 Fazendo requisição para /questions/ com params:', params);
+        // console.log('📡 Fazendo requisição para /questions/ com params:', params);
       }
       
       let response = await api.get("/questions/", { params });
       
-      // Se professor não recebeu questões, tentar abordagem alternativa
-      if (user.role === 'professor' && filterType === 'all' && 
+      
+      
+      // Se usuário não recebeu questões, tentar abordagem alternativa
+      if ((user.role === 'professor' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && filterType === 'all' && 
           (!response.data || response.data.length === 0)) {
-        console.log('🔄 Primeira tentativa vazia, tentando endpoint alternativo...');
+        // console.log('🔄 Primeira tentativa vazia, tentando endpoint alternativo...');
         
         try {
           // Tentar sem parâmetros especiais
           response = await api.get("/questions/");
-          console.log('🆔 Tentativa sem parâmetros:', response.data?.length);
+          // console.log('🆔 Tentativa sem parâmetros:', response.data?.length);
         } catch (altError) {
-          console.log('❌ Falha na tentativa alternativa');
+          // console.log('❌ Falha na tentativa alternativa');
         }
         
         // Se ainda vazio, tentar com endpoint de admin (pode não existir)
         if (!response.data || response.data.length === 0) {
           try {
             response = await api.get("/admin/questions");
-            console.log('🔧 Tentativa com endpoint admin:', response.data?.length);
+            // console.log('🔧 Tentativa com endpoint admin:', response.data?.length);
           } catch (adminError) {
-            console.log('❌ Endpoint admin não existe');
+            // console.log('❌ Endpoint admin não existe');
           }
         }
       }
@@ -499,32 +501,35 @@ const QuestionsPage = () => {
 
 
       if (isDebugMode) {
-        console.log('✅ Resposta recebida:', response.status, response.data?.length);
+        // console.log('✅ Resposta recebida:', response.status, response.data?.length);
       }
       
       if (!response.data || !Array.isArray(response.data)) {
         throw new Error('Dados inválidos recebidos do servidor');
       }
 
-      const normalizedQuestions: Question[] = response.data.map((q: QuestionApiResponse) => ({
-        id: q.id,
-        title: q.title,
-        text: q.text,
-        secondStatement: q.secondStatement || '',
-        type: q.type as "multipleChoice" | "open" | "trueFalse",
-        subjectId: q.subject?.id || '',
-        subject: q.subject || { id: '', name: '' },
-        grade: q.grade || { id: '', name: '' },
-        difficulty: q.difficulty,
-        value: q.value.toString(),
-        solution: q.solution || '',
-        formattedText: q.formattedText,
-        formattedSolution: q.formattedSolution,
-        options: q.options || [],
-        skills: Array.isArray(q.skills) ? q.skills : (q.skills && typeof q.skills === 'string' ? q.skills.split(',').map(s => s.trim()) : []),
-        created_by: q.created_by,
-        educationStage: null
-      }));
+              const normalizedQuestions: Question[] = response.data.map((q: QuestionApiResponse) => {
+        
+        return {
+          id: q.id,
+          title: q.title,
+          text: q.text,
+          secondStatement: q.secondStatement || '',
+          type: q.type as "multipleChoice" | "dissertativa" | "trueFalse",
+          subjectId: q.subject?.id || '',
+          subject: q.subject || { id: '', name: '' },
+          grade: q.grade || { id: '', name: '' },
+          difficulty: q.difficulty,
+          value: q.value,
+          solution: q.solution || '',
+          formattedText: q.formattedText,
+          formattedSolution: q.formattedSolution,
+          options: q.options || [],
+          skills: Array.isArray(q.skills) ? q.skills : (q.skills && typeof q.skills === 'string' ? q.skills.split(',').map(s => s.trim()) : []),
+          created_by: q.createdBy.id, // Changed from q.created_by to q.createdBy.id
+          educationStage: null
+        };
+      });
       
       // Salvar no cache
       setQuestionsCache(prev => ({
@@ -539,7 +544,7 @@ const QuestionsPage = () => {
       if (normalizedQuestions.length === 0) {
         setEmptyResults(prev => new Set(prev).add(cacheKey));
         if (isDebugMode) {
-          console.log('🗳️ Marcando resultado vazio para:', cacheKey);
+          // console.log('🗳️ Marcando resultado vazio para:', cacheKey);
         }
       } else {
         // Remover dos resultados vazios se agora tem dados
@@ -565,7 +570,7 @@ const QuestionsPage = () => {
 
     } catch (error) {
       if (isDebugMode) {
-        console.error("❌ Erro ao buscar questões:", error);
+        // console.error("❌ Erro ao buscar questões:", error);
       }
       
       let errorMessage = "Erro desconhecido";
@@ -575,7 +580,7 @@ const QuestionsPage = () => {
           if (error.response) {
             const status = error.response.status;
             if (isDebugMode) {
-              console.log('🔍 Status do erro:', status, error.response.data);
+              // console.log('🔍 Status do erro:', status, error.response.data);
             }
           
           switch (status) {
@@ -635,7 +640,7 @@ const QuestionsPage = () => {
         error.code === 'ECONNABORTED'
       )) {
         if (isDebugMode) {
-          console.log(`🔄 Tentativa ${retryCount + 1}/3 em 2 segundos...`);
+          // console.log(`🔄 Tentativa ${retryCount + 1}/3 em 2 segundos...`);
         }
         setRetryCount(prev => prev + 1);
         setTimeout(() => {
@@ -690,7 +695,7 @@ const QuestionsPage = () => {
       setEmptyResults(new Set());
       
       if (isDebugMode) {
-        console.log('🧹 Limpeza periódica de resultados vazios');
+        // console.log('🧹 Limpeza periódica de resultados vazios');
       }
     }, 10 * 60 * 1000); // 10 minutos
 
@@ -706,7 +711,7 @@ const QuestionsPage = () => {
     if (!deleteQuestionId) return;
 
     try {
-      console.log(`🗑️ Tentando excluir questão: ${deleteQuestionId}`);
+      // console.log(`🗑️ Tentando excluir questão: ${deleteQuestionId}`);
       await api.delete(`/questions/${deleteQuestionId}`);
       toast({
         title: "Sucesso!",
@@ -717,14 +722,14 @@ const QuestionsPage = () => {
       setQuestionsCache({});
       fetchQuestions();
     } catch (error: any) {
-      console.error("❌ Erro detalhado ao excluir questão:", {
-        error,
-        questionId: deleteQuestionId,
-        message: error.message,
-        response: error.response,
-        status: error.response?.status,
-        data: error.response?.data
-      });
+      // console.error("❌ Erro detalhado ao excluir questão:", {
+      //   error,
+      //   questionId: deleteQuestionId,
+      //   message: error.message,
+      //   response: error.response,
+      //   status: error.response?.status,
+      //   data: error.response?.data
+      // });
       
       let errorMessage = "Não foi possível excluir a questão.";
       
@@ -752,7 +757,7 @@ const QuestionsPage = () => {
 
   const handleBulkDelete = async () => {
     try {
-      console.log(`🗑️ Tentando excluir ${selectedIds.length} questões:`, selectedIds);
+      // console.log(`🗑️ Tentando excluir ${selectedIds.length} questões:`, selectedIds);
       await api.delete("/questions", { data: { ids: selectedIds } });
       toast({
         title: "Sucesso!",
@@ -763,14 +768,14 @@ const QuestionsPage = () => {
       setQuestionsCache({});
       fetchQuestions();
     } catch (error: any) {
-      console.error("❌ Erro detalhado ao excluir questões em massa:", {
-        error,
-        selectedIds,
-        message: error.message,
-        response: error.response,
-        status: error.response?.status,
-        data: error.response?.data
-      });
+      // console.error("❌ Erro detalhado ao excluir questões em massa:", {
+      //   error,
+      //   selectedIds,
+      //   message: error.message,
+      //   response: error.response,
+      //   status: error.response?.status,
+      //   data: error.response?.data
+      // });
       
       let errorMessage = "Não foi possível excluir as questões selecionadas.";
       
@@ -815,24 +820,24 @@ const QuestionsPage = () => {
     });
 
     if (problematic.length > 0) {
-      console.warn(`🚨 Encontradas ${problematic.length} questões com possíveis problemas:`, 
-        problematic.map(q => ({
-          id: q.id,
-          title: q.title,
-          optionsCount: q.options?.length || 0,
-          correctOptionsCount: q.options?.filter(opt => opt.isCorrect).length || 0,
-          issues: {
-            multipleCorrect: q.options && q.options.filter(opt => opt.isCorrect).length > 1,
-            tooManyOptions: q.options && q.options.length > 10,
-            strangeIds: q.options && q.options.some(opt => 
-              opt.id && opt.id.includes('option-') && parseInt(opt.id.replace('option-', ''), 10) > 100
-            ),
-            invalidText: q.options && q.options.some(opt => 
-              opt.text && opt.text.length === 1 && /[^\w\s]/.test(opt.text)
-            )
-          }
-        }))
-      );
+      // console.warn(`🚨 Encontradas ${problematic.length} questões com possíveis problemas:`, 
+      //   problematic.map(q => ({
+      //     id: q.id,
+      //     title: q.title,
+      //     optionsCount: q.options?.length || 0,
+      //     correctOptionsCount: q.options?.filter(opt => opt.isCorrect).length || 0,
+      //     issues: {
+      //       multipleCorrect: q.options && q.options.filter(opt => opt.isCorrect).length > 1,
+      //       tooManyOptions: q.options && q.options.length > 10,
+      //       strangeIds: q.options && q.options.some(opt => 
+      //         opt.id && opt.id.includes('option-') && parseInt(opt.id.replace('option-', ''), 10) > 100
+      //       ),
+      //       invalidText: q.options && q.options.some(opt => 
+      //         opt.text && opt.text.length === 1 && /[^\w\s]/.test(opt.text)
+      //       )
+      //     }
+      //   }))
+      // );
       
       toast({
         title: `${problematic.length} questões problemáticas detectadas`,
@@ -862,7 +867,7 @@ const QuestionsPage = () => {
         grade: question.grade?.id,
         gradeId: question.grade?.id,
         difficulty: question.difficulty,
-        value: parseFloat(question.value) || 0,
+        value: question.value || 0,
         solution: question.solution || "",
         formattedSolution: question.formattedSolution || question.solution || "",
         skills: question.skills || [],
@@ -872,11 +877,11 @@ const QuestionsPage = () => {
         lastModifiedBy: user?.id
       };
 
-      console.log("📤 Payload sendo enviado:", duplicatedQuestion);
+      // console.log("📤 Payload sendo enviado:", duplicatedQuestion);
 
       const response = await api.post("/questions", duplicatedQuestion);
       
-      console.log("✅ Resposta da API:", response.data);
+      // console.log("✅ Resposta da API:", response.data);
       
       toast({
         title: "Questão duplicada! 🎉",
@@ -886,7 +891,7 @@ const QuestionsPage = () => {
       // Atualizar a lista de questões
       fetchQuestions(false, true);
     } catch (error: unknown) {
-      console.error("❌ Erro ao duplicar questão:", error);
+      // console.error("❌ Erro ao duplicar questão:", error);
       
       let errorMessage = "Erro desconhecido";
       
@@ -895,7 +900,7 @@ const QuestionsPage = () => {
         // Se for um erro do axios, tentar acessar a resposta
         if ('response' in error && error.response && typeof error.response === 'object') {
           const response = error.response as { data?: { message?: string } };
-          console.error("📄 Detalhes do erro:", response.data);
+          // console.error("📄 Detalhes do erro:", response.data);
           errorMessage = response.data?.message || error.message;
         }
       }
@@ -1121,8 +1126,12 @@ const QuestionsPage = () => {
     const handleDuplicateClick = useCallback(() => handleDuplicate(question), [question]);
     const handleSelect = useCallback((checked: boolean) => handleSelectOne(question.id, checked), [question.id]);
     
-    // Verificar se usuário pode editar/deletar (se é o criador ou admin)
+    // Verificar se usuário pode editar/deletar
+    // Admin pode excluir qualquer questão
+    // Tecadm, diretor, coordenador e professor podem excluir apenas suas questões
     const canEditDelete = user?.id === question.created_by || user?.role === 'admin';
+    
+    
 
     return (
       <div 
@@ -1313,7 +1322,7 @@ const QuestionsPage = () => {
           <Tabs value={filterType} onValueChange={(value) => setFilterType(value as 'my' | 'all')} className="w-full sm:w-auto">
             <TabsList className="h-9 w-full sm:w-auto">
               <TabsTrigger value="my" className="text-sm flex-1 sm:flex-none">Minhas</TabsTrigger>
-              {(user.role === 'admin' || user.role === 'professor') && 
+              {(user.role === 'admin' || user.role === 'professor' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && 
                 <TabsTrigger value="all" className="text-sm flex-1 sm:flex-none">Todas</TabsTrigger>
               }
             </TabsList>
@@ -1503,7 +1512,10 @@ const QuestionsPage = () => {
                         >
                           <Copy className="h-3 w-3" />
                         </Button>
-                        {(user?.id === question.created_by || user?.role === 'admin') && (
+                                {(() => {
+          const canEditDelete = user?.id === question.created_by || user?.role === 'admin';
+          return canEditDelete;
+        })() && (
                           <>
                             <Button 
                               variant="ghost" 

@@ -785,7 +785,6 @@ export default function EvaluationCorrection() {
                   // Se as opções são iguais, mas o backend diz que está errado, usar lógica local
                   if (!isCorrect) {
                     isCorrect = true;
-                    console.log(`🔧 Frontend override: Question ${question.id} marked as correct (backend was wrong)`);
                   }
                 }
               }

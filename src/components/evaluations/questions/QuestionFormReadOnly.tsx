@@ -46,7 +46,7 @@ const questionSchema = z.object({
     secondStatement: z.string().optional(),
     skills: z.array(z.string()).optional(),
     topics: z.string().optional(),
-    questionType: z.enum(['multipleChoice', 'open']),
+    questionType: z.enum(['multipleChoice', 'dissertativa']),
 }).refine((data) => {
     // Se for múltipla escolha, as opções são obrigatórias
     if (data.questionType === 'multipleChoice') {
@@ -59,6 +59,13 @@ const questionSchema = z.object({
 });
 
 type QuestionFormValues = z.infer<typeof questionSchema>;
+
+// Tipagem para resposta de habilidades na API
+interface ApiSkill {
+    id: string;
+    code: string;
+    description: string;
+}
 
 interface QuestionFormReadOnlyProps {
     onSubmit?: (data: QuestionFormValues) => void;
@@ -98,9 +105,9 @@ const QuestionPreview: React.FC<{ data: QuestionFormValues }> = ({ data }) => {
         const fetchSkills = async () => {
             if (data.subjectId) {
                 try {
-                    const response = await api.get(`/skills/subject/${data.subjectId}`);
+                    const response = await api.get<ApiSkill[]>(`/skills/subject/${data.subjectId}`);
                     if (Array.isArray(response.data)) {
-                        setSkillsOptions(response.data.map((skill: any) => ({ id: skill.id, name: `${skill.code} - ${skill.description}` })));
+                        setSkillsOptions(response.data.map((skill) => ({ id: skill.id, name: `${skill.code} - ${skill.description}` })));
                     } else {
                         setSkillsOptions([]);
                     }
@@ -237,7 +244,7 @@ const QuestionFormReadOnly = ({
     const [grades, setGrades] = useState<{ id: string; name: string }[]>([]);
     const [skills, setSkills] = useState<Option[]>([]);
     const [showPreview, setShowPreview] = useState(false);
-    const [questionType, setQuestionType] = useState<'multipleChoice' | 'open'>('multipleChoice');
+    const [questionType, setQuestionType] = useState<'multipleChoice' | 'dissertativa'>('multipleChoice');
     const { toast } = useToast();
     const navigate = useNavigate();
 
@@ -275,7 +282,7 @@ const QuestionFormReadOnly = ({
         form.setValue('questionType', questionType);
 
         // Limpar opções quando mudar para dissertativa
-        if (questionType === 'open') {
+        if (questionType === 'dissertativa') {
             form.setValue('options', []);
             form.clearErrors('options');
         } else {
@@ -336,31 +343,43 @@ const QuestionFormReadOnly = ({
 
     useEffect(() => {
         const fetchSkills = async () => {
-            if (evaluationData.subject) {
+            if (evaluationData.subject && evaluationData.grade) {
                 try {
-                    const response = await api.get(`/skills/subject/${evaluationData.subject}`);
-                    if (Array.isArray(response.data)) {
-                        const formattedSkills = response.data.map((skill: any) => ({
-                            id: skill.id,
-                            name: `${skill.code} - ${skill.description}`,
-                        }));
-                        setSkills(formattedSkills);
-                    } else {
-                        setSkills([]);
+                    const [bySubjectRes, byGradeRes] = await Promise.all([
+                        api.get<ApiSkill[]>(`/skills/subject/${evaluationData.subject}`),
+                        api.get<ApiSkill[]>(`/skills/grade/${evaluationData.grade}`),
+                    ]);
+
+                    const bySubject: ApiSkill[] = Array.isArray(bySubjectRes.data) ? bySubjectRes.data : [];
+                    const byGrade: ApiSkill[] = Array.isArray(byGradeRes.data) ? byGradeRes.data : [];
+
+                    const byGradeCodes = new Set(byGrade.map((s) => s.code));
+                    let intersected = bySubject.filter((s) => byGradeCodes.has(s.code));
+                    // Fallback: se necessário, intersecta por id
+                    if (intersected.length === 0) {
+                        const byGradeIds = new Set(byGrade.map((s) => s.id));
+                        intersected = bySubject.filter((s) => byGradeIds.has(s.id));
                     }
+
+                    const formattedSkills: Option[] = intersected.map((skill) => ({
+                        id: skill.id,
+                        name: `${skill.code} - ${skill.description}`,
+                        code: skill.code,
+                    }));
+                    setSkills(formattedSkills);
                 } catch (error) {
                     console.error("Erro ao buscar habilidades:", error);
                     setSkills([]);
                     toast({
                         title: "Aviso",
-                        description: "Nenhuma habilidade encontrada para esta disciplina.",
+                        description: "Nenhuma habilidade encontrada para esta disciplina/série.",
                         variant: "default",
                     });
                 }
             }
         };
         fetchSkills();
-    }, [evaluationData.subject, toast]);
+    }, [evaluationData.subject, evaluationData.grade, toast]);
 
     useEffect(() => {
         form.setValue('subjectId', evaluationData.subject);
@@ -368,9 +387,19 @@ const QuestionFormReadOnly = ({
 
     const handleFormSubmit = async (data: QuestionFormValues) => {
         try {
+            // LOG: Mostrar todos os dados do formulário antes do envio
+            console.log('=== DADOS DO FORMULÁRIO ANTES DO ENVIO ===');
+            console.log('Dados completos do formulário:', data);
+            console.log('Campo secondStatement:', data.secondStatement);
+            console.log('Tipo do secondStatement:', typeof data.secondStatement);
+            console.log('Tamanho do secondStatement:', data.secondStatement?.length);
+            console.log('==========================================');
+
+            // Mapear o tipo da questão para o formato esperado pela API
+            const questionTypeForAPI = data.questionType === 'multipleChoice' ? 'multipleChoice' : 'dissertativa';
+            
             // Monta as opções com id baseado na letra (apenas para múltipla escolha)
             const options = data.questionType === 'multipleChoice' ? (data.options || []).map((opt, index) => ({
-                id: String.fromCharCode(65 + index), // A, B, C, D, etc.
                 text: opt.text,
                 isCorrect: opt.isCorrect,
             })) : [];
@@ -387,7 +416,7 @@ const QuestionFormReadOnly = ({
                 title: data.title,
                 text: data.text,
                 secondStatement: data.secondStatement || '',
-                type: data.questionType,
+                type: questionTypeForAPI,
                 subjectId: data.subjectId,
                 subject: selectedSubject || { id: data.subjectId, name: '' },
                 grade: selectedGrade || { id: data.grade, name: '' },
@@ -398,6 +427,12 @@ const QuestionFormReadOnly = ({
                 skills,
                 created_by: '', // Será preenchido pelo backend
             };
+
+            // LOG: Mostrar o objeto Question que será enviado
+            console.log('=== OBJETO QUESTION QUE SERÁ ENVIADO ===');
+            console.log('Objeto Question completo:', question);
+            console.log('Campo secondStatement no objeto:', question.secondStatement);
+            console.log('==========================================');
             await onQuestionAdded(question);
             form.reset();
             toast({
@@ -644,10 +679,10 @@ const QuestionFormReadOnly = ({
 
                                 <Button
                                     type="button"
-                                    variant={questionType === 'open' ? 'default' : 'outline'}
+                                    variant={questionType === 'dissertativa' ? 'default' : 'outline'}
                                     size="lg"
-                                    onClick={() => setQuestionType('open')}
-                                    className={`w-full h-auto min-h-[4rem] p-4 ${questionType === 'open'
+                                    onClick={() => setQuestionType('dissertativa')}
+                                    className={`w-full h-auto min-h-[4rem] p-4 ${questionType === 'dissertativa'
                                         ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg'
                                         : 'hover:bg-purple-50 hover:border-purple-300'
                                         }`}
