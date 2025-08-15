@@ -99,6 +99,7 @@ export default function SchoolDetails() {
   const [showLinkDirectorModal, setShowLinkDirectorModal] = useState(false);
   const [showLinkCoordinatorModal, setShowLinkCoordinatorModal] = useState(false);
   const [showManageSchoolLinksModal, setShowManageSchoolLinksModal] = useState(false);
+  const [showLinkTeacherModal, setShowLinkTeacherModal] = useState(false);
 
   useEffect(() => {
     const fetchSchool = async () => {
@@ -228,15 +229,17 @@ export default function SchoolDetails() {
 
       try {
         console.log('👨‍🏫 Buscando professores da escola:', id);
-        const response = await api.get(`/teacher/school/${id}`);
+        const response = await api.get(`/school-teacher`);
         console.log('👨‍🏫 Response professores:', response);
         console.log('👨‍🏫 Data professores:', response.data);
         
         const allTeachers = Array.isArray(response.data) ? response.data : [];
         console.log('👨‍🏫 Todos os professores:', allTeachers);
         
-        // Filtrar apenas professores (não diretores/coordenadores)
-        const teachers = allTeachers.filter(teacher => teacher.role === 'professor');
+        // Filtrar apenas professores da escola específica e com role 'professor'
+        const teachers = allTeachers.filter(teacher => 
+          teacher.school_id === id && teacher.role === 'professor'
+        );
         
         console.log('👨‍🏫 Professores filtrados:', teachers);
         
@@ -336,7 +339,32 @@ export default function SchoolDetails() {
     fetchStudents();
   }, [id, toast]);
 
+  const handleRemoveTeacher = async (teacherId: string) => {
+    if (!id) return;
 
+    try {
+      await api.delete(`/school-teacher/${teacherId}`);
+      toast({
+        title: "Sucesso",
+        description: "Professor removido com sucesso.",
+      });
+      
+      // Recarregar lista de professores
+      const response = await api.get(`/school-teacher`);
+      const allTeachers = Array.isArray(response.data) ? response.data : [];
+      const teachers = allTeachers.filter(teacher => 
+        teacher.school_id === id && teacher.role === 'professor'
+      );
+      setTeachers(teachers);
+    } catch (error) {
+      console.error("Erro ao remover professor:", error);
+      toast({
+        title: "Erro",
+        description: "Erro ao remover professor",
+        variant: "destructive",
+      });
+    }
+  };
 
   if (isLoadingSchool) {
     return (
@@ -463,7 +491,7 @@ export default function SchoolDetails() {
               <Building className="h-5 w-5 text-orange-600" />
               Informações da Instituição
             </CardTitle>
-            {(user.role === 'admin' || user.role === 'tecadm') && (
+            {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
               <Button onClick={() => setIsEditDialogOpen(true)} variant="outline" size="sm" className="w-full sm:w-auto">
                 <Edit className="mr-2 h-4 w-4" />
                 Editar
@@ -533,7 +561,7 @@ export default function SchoolDetails() {
                   Diretores e coordenadores responsáveis pela gestão da instituição
                 </CardDescription>
               </div>
-              {(user.role === 'admin' || user.role === 'tecadm') && (
+              {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -553,7 +581,7 @@ export default function SchoolDetails() {
                     <Users className="h-4 w-4 text-red-600" />
                     Diretores ({directors.length})
                   </h4>
-                  {(user.role === 'admin' || user.role === 'tecadm') && (
+                  {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -592,7 +620,7 @@ export default function SchoolDetails() {
                     <Users className="h-4 w-4 text-orange-600" />
                     Coordenadores ({coordinators.length})
                   </h4>
-                  {(user.role === 'admin' || user.role === 'tecadm') && (
+                  {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -646,7 +674,7 @@ export default function SchoolDetails() {
                   <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <h3 className="text-lg font-semibold mb-2">Nenhuma turma cadastrada</h3>
                                      <p className="text-muted-foreground mb-4 text-sm">Crie turmas para organizar professores e alunos</p>
-                   {(user.role === 'admin' || user.role === 'tecadm') && (
+                   {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
                      <CreateClassForm
                        schoolId={school.id}
                        schoolName={school.name}
@@ -703,7 +731,7 @@ export default function SchoolDetails() {
                     Organize professores e alunos por turmas
                   </CardDescription>
                 </div>
-                                 {(user.role === 'admin' || user.role === 'tecadm') && (
+                                 {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
                                    <CreateClassForm
                                      schoolId={school.id}
                                      schoolName={school.name}
@@ -741,7 +769,7 @@ export default function SchoolDetails() {
                               </p>
                             )}
                           </div>
-                          {(user.role === 'admin' || user.role === 'tecadm') && (
+                          {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
                             <div className="flex gap-2">
                               <Button 
                                 variant="outline" 

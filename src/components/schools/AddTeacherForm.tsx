@@ -125,7 +125,12 @@ export function AddTeacherForm({ schoolId, schoolName, classes = [], onSuccess }
             const response = await api.post("/teacher", {
                 ...formData,
                 matricula: formData.registration || undefined,
-                escolas_ids: [schoolId],
+            });
+
+            // Vincular professor à escola
+            await api.post("/school-teacher", {
+                teacher_id: response.data.id,
+                school_id: schoolId
             });
 
             if (selectedClasses.length > 0) {
@@ -156,8 +161,9 @@ export function AddTeacherForm({ schoolId, schoolName, classes = [], onSuccess }
         if (!selectedTeacher) return;
         setIsLoading(true);
         try {
-            await api.post(`/teacher/${selectedTeacher.id}/schools`, {
-                escolas_ids: [schoolId],
+            await api.post("/school-teacher", {
+                teacher_id: selectedTeacher.id,
+                school_id: schoolId
             });
 
             if (selectedClasses.length > 0) {
