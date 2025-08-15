@@ -108,12 +108,12 @@ export function ManageClassModal({
          }
        }
       
-             const classTeachers = teachersData.map((teacher: any) => ({
-         id: teacher.professor?.id || teacher.usuario?.id || teacher.id,
-         name: teacher.professor?.name || teacher.usuario?.name || teacher.name || 'Nome não informado',
-         email: teacher.professor?.email || teacher.usuario?.email || teacher.email || 'Email não informado',
-         vinculo_id: teacher.teacher_class?.id || teacher.vinculo_turma?.teacher_class_id || teacher.vinculo_id
-       }));
+                           const classTeachers = teachersData.map((teacher: any) => ({
+          id: teacher.professor?.id || teacher.usuario?.id || teacher.id,
+          name: teacher.professor?.name || teacher.usuario?.name || teacher.name || 'Nome não informado',
+          email: teacher.professor?.email || teacher.usuario?.email || teacher.email || 'Email não informado',
+          vinculo_id: teacher.teacher_class?.id || teacher.vinculo_turma?.teacher_class_id || teacher.vinculo_id
+        }));
       
       setTeachers(classTeachers);
       
