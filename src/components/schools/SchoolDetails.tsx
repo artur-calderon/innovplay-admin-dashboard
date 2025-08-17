@@ -232,16 +232,31 @@ export default function SchoolDetails() {
         const response = await api.get(`/school-teacher`);
         console.log('👨‍🏫 Response professores:', response);
         console.log('👨‍🏫 Data professores:', response.data);
+        console.log('👨‍🏫 RETORNO COMPLETO DA API /school-teacher:', JSON.stringify(response.data, null, 2));
         
-        const allTeachers = Array.isArray(response.data) ? response.data : [];
-        console.log('👨‍🏫 Todos os professores:', allTeachers);
+        // A API retorna um objeto com 'vinculos', não um array direto
+        const vinculos = response.data?.vinculos || [];
+        console.log('👨‍🏫 Vínculos encontrados:', vinculos);
         
-        // Filtrar apenas professores da escola específica e com role 'professor'
+        // Mapear os vínculos para o formato esperado pelo componente
+        const allTeachers = vinculos.map(vinculo => ({
+          id: vinculo.professor.id,
+          name: vinculo.professor.name,
+          email: vinculo.professor.email,
+          registration: vinculo.registration,
+          school_id: vinculo.school_id,
+          teacher_id: vinculo.teacher_id,
+          role: 'professor' // Assumindo que todos são professores
+        }));
+        
+        console.log('👨‍🏫 Todos os professores mapeados:', allTeachers);
+        
+        // Filtrar apenas professores da escola específica
         const teachers = allTeachers.filter(teacher => 
-          teacher.school_id === id && teacher.role === 'professor'
+          teacher.school_id === id
         );
         
-        console.log('👨‍🏫 Professores filtrados:', teachers);
+        console.log('👨‍🏫 Professores filtrados para a escola:', teachers);
         
         setTeachers(teachers);
       } catch (error) {
@@ -351,9 +366,18 @@ export default function SchoolDetails() {
       
       // Recarregar lista de professores
       const response = await api.get(`/school-teacher`);
-      const allTeachers = Array.isArray(response.data) ? response.data : [];
+      const vinculos = response.data?.vinculos || [];
+      const allTeachers = vinculos.map(vinculo => ({
+        id: vinculo.professor.id,
+        name: vinculo.professor.name,
+        email: vinculo.professor.email,
+        registration: vinculo.registration,
+        school_id: vinculo.school_id,
+        teacher_id: vinculo.teacher_id,
+        role: 'professor'
+      }));
       const teachers = allTeachers.filter(teacher => 
-        teacher.school_id === id && teacher.role === 'professor'
+        teacher.school_id === id
       );
       setTeachers(teachers);
     } catch (error) {
