@@ -5,6 +5,10 @@
 @tailwind utilities;
 
 @layer base {
+  /* Grid personalizado para 13 colunas */
+  .grid-cols-13 {
+    grid-template-columns: repeat(13, minmax(0, 1fr));
+  }
   :root {
     /* Core Colors - Refined Palette */
     --background: 0 0% 100%;

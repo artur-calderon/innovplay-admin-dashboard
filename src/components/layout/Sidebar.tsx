@@ -27,7 +27,9 @@ import {
   BarChart3,
   Calculator,
   Menu,
-  ChevronLeft
+  ChevronLeft,
+  FileText,
+  Target
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -211,6 +213,31 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         { icon: Calculator, label: "Calculadora SAEB", href: "/app/calculadora-saeb", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: ClipboardCheck, label: "Correção", href: "/app/avaliacoes/correcao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"], badge: "3" },
         { icon: BarChart3, label: "Resultados", href: "/app/resultados", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+        {
+          icon: FileText,
+          label: "Relatórios",
+          role: ["admin", "tecadm"],
+          children: [
+            {
+              icon: Target,
+              label: "Acerto e Níveis",
+              href: "/app/relatorios/acerto-niveis",
+              role: ["admin", "tecadm"]
+            },
+            {
+              icon: BarChart3,
+              label: "Análise das Avaliações",
+              href: "/app/relatorios/analise-avaliacoes",
+              role: ["admin", "tecadm"]
+            },
+            {
+              icon: School,
+              label: "Relatório Escolar",
+              href: "/app/relatorios/relatorio-escolar",
+              role: ["admin", "tecadm"]
+            }
+          ]
+        },
       ]
     },
     {
