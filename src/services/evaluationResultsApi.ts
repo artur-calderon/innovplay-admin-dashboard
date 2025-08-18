@@ -1532,4 +1532,71 @@ export class EvaluationResultsApiService {
       };
     }
   }
+
+  // ✅ NOVO: Buscar relatório completo de uma avaliação
+  static async getRelatorioCompleto(evaluationId: string): Promise<any> {
+    try {
+      console.log('🔍 LOG - Iniciando busca do relatório completo');
+      console.log('📋 ID da avaliação:', evaluationId);
+      console.log('📡 URL da requisição:', `/reports/relatorio-completo/${evaluationId}`);
+      
+      const response = await api.get(`/reports/relatorio-completo/${evaluationId}`);
+      
+      console.log('✅ LOG - Resposta recebida com sucesso');
+      console.log('📦 Resposta completa:', response);
+      console.log('📊 Status da resposta:', response.status);
+      console.log('📋 Headers da resposta:', response.headers);
+      console.log('📄 Dados da resposta (response.data):', response.data);
+      
+      // Log detalhado da estrutura dos dados
+      if (response.data) {
+        console.log('🏗️ Estrutura dos dados:');
+        console.log('  - Tipo de response.data:', typeof response.data);
+        console.log('  - É um array?', Array.isArray(response.data));
+        console.log('  - É um objeto?', typeof response.data === 'object' && response.data !== null);
+        
+        if (typeof response.data === 'object' && response.data !== null) {
+          console.log('  - Chaves do objeto:', Object.keys(response.data));
+          
+          // Log de cada seção principal
+          if (response.data.avaliacao) {
+            console.log('  📚 Seção "avaliacao":', response.data.avaliacao);
+          }
+          if (response.data.total_alunos) {
+            console.log('  👥 Seção "total_alunos":', response.data.total_alunos);
+          }
+          if (response.data.niveis_aprendizagem) {
+            console.log('  🎯 Seção "niveis_aprendizagem":', response.data.niveis_aprendizagem);
+          }
+          if (response.data.proficiencia) {
+            console.log('  📈 Seção "proficiencia":', response.data.proficiencia);
+          }
+          if (response.data.nota_geral) {
+            console.log('  🏆 Seção "nota_geral":', response.data.nota_geral);
+          }
+          if (response.data.acertos_por_habilidade) {
+            console.log('  🎓 Seção "acertos_por_habilidade":', response.data.acertos_por_habilidade);
+          }
+        }
+      }
+      
+      return response.data;
+    } catch (error) {
+      console.error('❌ LOG - Erro ao buscar relatório completo:');
+      console.error('  - Tipo do erro:', typeof error);
+      console.error('  - Mensagem do erro:', error);
+      
+      if (error.response) {
+        console.error('  - Status do erro:', error.response.status);
+        console.error('  - Dados do erro:', error.response.data);
+        console.error('  - Headers do erro:', error.response.headers);
+      } else if (error.request) {
+        console.error('  - Erro de requisição (sem resposta):', error.request);
+      } else {
+        console.error('  - Erro de configuração:', error.message);
+      }
+      
+      throw error;
+    }
+  }
 } 
