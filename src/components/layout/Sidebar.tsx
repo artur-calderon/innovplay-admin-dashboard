@@ -160,13 +160,13 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
             icon: Building,
             label: "Instituição",
             href: "/app/cadastros/instituicao",
-            role: ["professor", "diretor", "coordenador", "tecadm"]
+            role: ["professor", "diretor", "coordenador"]
           },
           {
             icon: List,
             label: "Avaliações",
             href: "/app/avaliacoes",
-            role: ["professor", "diretor", "coordenador", "tecadm"]
+            role: ["professor", "diretor", "coordenador"]
           },
           {
             icon: HelpCircle,
