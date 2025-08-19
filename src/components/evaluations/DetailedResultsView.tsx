@@ -9,17 +9,14 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { PDFReportGenerator } from "./PDFReportGenerator";
 import {
     ArrowLeft,
-    Download,
     CheckCircle2,
     XCircle,
     Minus,
     Clock,
     Target,
     BarChart3,
-    FileText,
     AlertTriangle,
     Award,
     Users,
@@ -1734,59 +1731,7 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
         navigate(`/app/avaliacao/${evaluationId}/aluno/${studentId}/resultados`);
     };
 
-    const handleExportStudents = async () => {
-        try {
-            const XLSX = await import('xlsx');
-            const { saveAs } = await import('file-saver');
-
-            if (filteredStudents.length === 0) {
-                toast({
-                    title: "Nenhum dado para exportar",
-                    description: "Não há alunos para gerar a planilha",
-                    variant: "destructive",
-                });
-                return;
-            }
-
-            const worksheetData = [
-                ['Nome', 'Turma', 'Nota', 'Proficiência', 'Classificação', 'Questões Respondidas', 'Acertos', 'Erros', 'Tempo (min)', 'Status'],
-                ...filteredStudents.map(student => [
-                    student.nome,
-                    student.turma,
-                    student.nota.toFixed(1),
-                    student.proficiencia.toFixed(2),
-                    student.classificacao,
-                    student.questoes_respondidas,
-                    student.acertos,
-                    student.erros,
-                    Math.floor(student.tempo_gasto / 60),
-                    student.status === 'concluida' ? 'Concluída' : 'Pendente'
-                ])
-            ];
-
-            const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
-            const workbook = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(workbook, worksheet, 'Resultados dos Alunos');
-
-            const fileName = `resultados-alunos-${evaluationId}-${new Date().toISOString().split('T')[0]}.xlsx`;
-            const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-            const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-
-            saveAs(blob, fileName);
-
-            toast({
-                title: "Exportação concluída!",
-                description: "Os resultados dos alunos foram exportados com sucesso.",
-            });
-        } catch (error) {
-            console.error("Erro na exportação:", error);
-            toast({
-                title: "Erro na exportação",
-                description: "Não foi possível exportar os resultados",
-                variant: "destructive",
-            });
-        }
-    };
+    // Botão de exportação removido
 
     const uniqueClassifications = [...new Set(students.map(s => s.classificacao))];
     const uniqueTurmas = [...new Set(students.map(s => s.turma))].sort();
@@ -2708,19 +2653,7 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                                     Cards
                                 </Button>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <PDFReportGenerator
-                                    evaluationInfo={evaluationInfo}
-                                    students={students}
-                                    detailedReport={detailedReport}
-                                    studentDetailedAnswers={studentDetailedAnswers}
-                                    skillsMapping={skillsMapping}
-                                />
-                                <Button onClick={handleExportStudents} variant="outline">
-                                    <Download className="h-4 w-4 mr-2" />
-                                    Exportar Excel
-                                </Button>
-                            </div>
+                            <div className="flex items-center gap-2"></div>
                         </div>
                     </CardTitle>
                     {/* Resumo da situação */}
