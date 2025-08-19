@@ -924,6 +924,11 @@ export default function TakeEvaluation() {
                                                  console.log('⚠️ Tentativa de envio bloqueada - já está enviando');
                                                  return;
                                              }
+                                             // ✅ NOVO: Verificar se já foi enviada
+                                             if (evaluationState !== 'active') {
+                                                 console.log('⚠️ Tentativa de envio bloqueada - avaliação não está ativa');
+                                                 return;
+                                             }
                                              console.log('🚀 Modal de envio: Enviando avaliação...');
                                              handleSubmitTest(false);
                                          }}
@@ -991,6 +996,11 @@ export default function TakeEvaluation() {
                                          onClick={() => {
                                              if (isSubmitting) {
                                                  console.log('⚠️ Tentativa de envio bloqueada - já está enviando');
+                                                 return;
+                                             }
+                                             // ✅ NOVO: Verificar se já foi enviada
+                                             if (evaluationState !== 'active') {
+                                                 console.log('⚠️ Tentativa de envio bloqueada - avaliação não está ativa');
                                                  return;
                                              }
                                              console.log('🚀 Modal de conclusão: Enviando avaliação...');
