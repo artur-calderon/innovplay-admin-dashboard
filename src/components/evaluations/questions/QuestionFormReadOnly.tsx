@@ -400,6 +400,7 @@ const QuestionFormReadOnly = ({
             
             // Monta as opções com id baseado na letra (apenas para múltipla escolha)
             const options = data.questionType === 'multipleChoice' ? (data.options || []).map((opt, index) => ({
+                id: String.fromCharCode(65 + index), // "A", "B", "C", "D"...
                 text: opt.text,
                 isCorrect: opt.isCorrect,
             })) : [];
