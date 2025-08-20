@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +35,62 @@ export default function TakeEvaluation() {
     const [hasSeenCompletionDialog, setHasSeenCompletionDialog] = useState(false);
     const [isCompletionDialogClosed, setIsCompletionDialogClosed] = useState(false);
     const [shuffledQuestions, setShuffledQuestions] = useState<Question[]>([]);
+    // ✅ NOVO: Manter referência às questões originais para mapeamento correto
+    const [originalQuestions, setOriginalQuestions] = useState<Question[]>([]);
+
+    // ✅ NOVO: Função para mapear resposta da interface para ID original
+    const mapAnswerToOriginalId = useCallback((questionId: string, selectedText: string | string[]): string => {
+        // Se for array, pegar o primeiro elemento
+        const textToMap = Array.isArray(selectedText) ? selectedText[0] : selectedText;
+        
+        // ✅ SIMPLIFICADO: Buscar pela posição na interface embaralhada
+        const shuffledQuestion = shuffledQuestions.find(q => q.id === questionId);
+        if (shuffledQuestion) {
+            const shuffledOptions = shuffledQuestion.options || shuffledQuestion.alternatives || [];
+            const selectedIndex = shuffledOptions.findIndex(opt => opt.text === textToMap);
+            
+            if (selectedIndex !== -1) {
+                // ✅ NOVO: Usar a posição da interface para mapear para a opção original
+                const originalQuestion = originalQuestions.find(q => q.id === questionId);
+                if (originalQuestion) {
+                    const originalOptions = originalQuestion.options || originalQuestion.alternatives || [];
+                    const originalOption = originalOptions[selectedIndex];
+                    
+                    if (originalOption) {
+                        console.log('✅ Mapeamento de resposta por posição da interface:', {
+                            questionId,
+                            selectedText: textToMap,
+                            selectedIndex,
+                            originalId: originalOption.id,
+                            originalText: originalOption.text,
+                            totalOptions: shuffledOptions.length
+                        });
+                        return originalOption.id;
+                    }
+                }
+            }
+        }
+        
+        // ✅ FALLBACK: Buscar nas opções originais pelo texto selecionado
+        const originalQuestion = originalQuestions.find(q => q.id === questionId);
+        if (originalQuestion) {
+            const originalOptions = originalQuestion.options || originalQuestion.alternatives || [];
+            const originalOption = originalOptions.find(opt => opt.text === textToMap);
+            
+            if (originalOption) {
+                console.log('✅ Mapeamento de resposta por texto (fallback):', {
+                    questionId,
+                    selectedText: textToMap,
+                    originalId: originalOption.id,
+                    originalText: originalOption.text
+                });
+                return originalOption.id;
+            }
+        }
+
+        console.warn('⚠️ Opção original não encontrada para texto:', textToMap);
+        return textToMap; // Fallback para resposta direta
+    }, [originalQuestions, shuffledQuestions]);
 
     const {
         evaluationState,
@@ -58,6 +114,20 @@ export default function TakeEvaluation() {
     useEffect(() => {
         if (evaluationState === 'completed' && !results) {
             console.log('⚠️ Avaliação já foi enviada anteriormente - bloqueando acesso');
+            console.log('🔍 Debug do estado:', {
+                evaluationState,
+                hasResults: !!results,
+                testData: !!testData,
+                session: !!session
+            });
+            
+            // ✅ NOVO: Verificação adicional para evitar falsos positivos
+            // Se não há dados da avaliação ou sessão, pode ser um erro de carregamento
+            if (!testData || !session) {
+                console.log('⚠️ Dados incompletos - pode ser erro de carregamento, não bloqueando acesso');
+                return;
+            }
+            
             toast({
                 title: "Acesso Negado",
                 description: "Esta avaliação já foi enviada anteriormente. Você será redirecionado.",
@@ -69,7 +139,7 @@ export default function TakeEvaluation() {
             
             return () => clearTimeout(timer);
         }
-    }, [evaluationState, results, navigate, toast]);
+    }, [evaluationState, results, testData, session, navigate, toast]);
 
     // ✅ Auto-iniciar avaliação automaticamente
     useEffect(() => {
@@ -120,15 +190,7 @@ export default function TakeEvaluation() {
         }
     }, [showFullscreenQuestion]);
 
-    // ✅ Fechar modais quando avaliação for enviada
-    useEffect(() => {
-        if (evaluationState === 'completed') {
-            setShowFullscreenQuestion(false);
-            setShowCompletionDialog(false);
-            setShowSubmitDialog(false);
-            setIsCompletionDialogClosed(false);
-        }
-    }, [evaluationState]);
+    // ✅ Fechar modais quando avaliação for enviada (agora feito no useEffect de redirecionamento)
 
     // ✅ Fechar modal fullscreen quando navegar para uma questão
     useEffect(() => {
@@ -155,6 +217,9 @@ export default function TakeEvaluation() {
     useEffect(() => {
         if (testData?.questions?.length && shuffledQuestions.length === 0) {
             console.log('🔄 Organizando questões por disciplina...', testData.questions.length);
+            
+            // ✅ NOVO: Salvar questões originais antes de embaralhar
+            setOriginalQuestions([...testData.questions]);
             
             // Agrupar questões por disciplina
             const questionsBySubject = testData.questions.reduce((acc, question) => {
@@ -184,23 +249,20 @@ export default function TakeEvaluation() {
                         (q.options || q.alternatives).length > 0
                     ) {
                         const optionsToShuffle = q.options || q.alternatives || [];
-                        const originalOptions = optionsToShuffle.map((opt, index) => ({
-                            ...opt,
-                            originalIndex: index,
-                        }));
-
-                        const shuffledOptions = [...originalOptions].sort(() => Math.random() - 0.5);
+                        // ✅ SIMPLIFICADO: Apenas embaralhar as opções sem modificar tipos
+                        const shuffledOptions = [...optionsToShuffle].sort(() => Math.random() - 0.5);
                         
                         console.log(`✅ Questão ${questionIndex + 1} de ${subject} embaralhada:`, {
-                            original: originalOptions.map((opt, i) => `${String.fromCharCode(65 + i)}: ${opt.text}`),
-                            shuffled: shuffledOptions.map((opt, i) => `${String.fromCharCode(65 + i)}: ${opt.text}`)
+                            original: optionsToShuffle.map((opt, i) => `${String.fromCharCode(65 + i)}: ${opt.text}`),
+                            shuffled: shuffledOptions.map((opt, i) => `${String.fromCharCode(65 + i)}: ${opt.text}`),
+                            totalOptions: shuffledOptions.length
                         });
 
                         return {
                             ...q,
                             options: shuffledOptions,
                             alternatives: shuffledOptions, // Manter compatibilidade
-                        };
+                        } as Question;
                     }
                     return q;
                 });
@@ -273,15 +335,53 @@ export default function TakeEvaluation() {
 
     // ✅ Redirecionamento automático quando avaliação é concluída
     useEffect(() => {
-        if (evaluationState === 'completed' && results) {
-            console.log('📊 Avaliação enviada com sucesso, redirecionando...');
+        console.log('🔍 Verificando redirecionamento:', {
+            evaluationState,
+            hasResults: !!results,
+            shouldRedirect: evaluationState === 'completed'
+        });
+        
+        if (evaluationState === 'completed') {
+            console.log('📊 Avaliação enviada com sucesso, redirecionando...', {
+                evaluationState,
+                hasResults: !!results,
+                resultsData: results
+            });
+            
+            // Fechar todos os modais imediatamente
+            setShowFullscreenQuestion(false);
+            setShowCompletionDialog(false);
+            setShowSubmitDialog(false);
+            setIsCompletionDialogClosed(false);
+            
+            // Mostrar toast de sucesso
+            toast({
+                title: "✅ Avaliação enviada com sucesso!",
+                description: "Redirecionando para a listagem de avaliações...",
+            });
+            
+            // Redirecionar após um breve delay para o usuário ver o toast
             const timer = setTimeout(() => {
+                console.log('🔄 Executando redirecionamento para /aluno/avaliacoes');
                 navigate("/aluno/avaliacoes");
-            }, 2000);
+            }, 1500);
             
             return () => clearTimeout(timer);
         }
-    }, [evaluationState, results, navigate]);
+    }, [evaluationState, results, navigate, toast]);
+
+    // ✅ NOVO: Log para debug do estado da avaliação
+    useEffect(() => {
+        console.log('🔍 Estado da avaliação mudou:', {
+            evaluationState,
+            hasResults: !!results,
+            showCompletionDialog,
+            showSubmitDialog,
+            showFullscreenQuestion
+        });
+    }, [evaluationState, results, showCompletionDialog, showSubmitDialog, showFullscreenQuestion]);
+
+    // ✅ REMOVIDO: useEffect duplicado que estava causando conflitos
 
 
 
@@ -828,13 +928,19 @@ export default function TakeEvaluation() {
                                                 answer={answers[currentQuestion?.id]?.answer}
                                                 onAnswerChange={(newAnswer) => {
                                                     if (currentQuestion?.id) {
+                                                        // ✅ NOVO: Mapear resposta para ID original antes de salvar
+                                                        const originalAnswerId = mapAnswerToOriginalId(currentQuestion.id, newAnswer);
+                                                        
                                                         console.log('💾 Salvando resposta:', {
                                                             questionId: currentQuestion.id,
-                                                            answer: newAnswer,
+                                                            interfaceAnswer: newAnswer,
+                                                            originalAnswerId: originalAnswerId,
                                                             questionType: currentQuestion.type,
                                                             currentAnswers: Object.keys(answers)
                                                         });
-                                                        saveAnswer(currentQuestion.id, newAnswer);
+                                                        
+                                                        // ✅ NOVO: Salvar o ID original, não o da interface
+                                                        saveAnswer(currentQuestion.id, originalAnswerId);
 
                                                         // Avanço automático
                                                         if (
@@ -924,7 +1030,15 @@ export default function TakeEvaluation() {
                                                  console.log('⚠️ Tentativa de envio bloqueada - já está enviando');
                                                  return;
                                              }
+                                             // ✅ NOVO: Verificar se já foi enviada
+                                             if (evaluationState !== 'active') {
+                                                 console.log('⚠️ Tentativa de envio bloqueada - avaliação não está ativa');
+                                                 return;
+                                             }
                                              console.log('🚀 Modal de envio: Enviando avaliação...');
+                                             
+                                             // ✅ CORRIGIDO: Não fechar modal imediatamente - deixar o hook gerenciar
+                                             // Apenas chamar handleSubmitTest
                                              handleSubmitTest(false);
                                          }}
                                          disabled={isSubmitting}
@@ -993,10 +1107,18 @@ export default function TakeEvaluation() {
                                                  console.log('⚠️ Tentativa de envio bloqueada - já está enviando');
                                                  return;
                                              }
+                                             // ✅ NOVO: Verificar se já foi enviada
+                                             if (evaluationState !== 'active') {
+                                                 console.log('⚠️ Tentativa de envio bloqueada - avaliação não está ativa');
+                                                 return;
+                                             }
                                              console.log('🚀 Modal de conclusão: Enviando avaliação...');
-                                             setShowCompletionDialog(false);
+                                             
+                                             // ✅ CORRIGIDO: Não fechar modal imediatamente - deixar o hook gerenciar
+                                             // Apenas marcar que está enviando
                                              setHasSeenCompletionDialog(false);
-                                             setIsCompletionDialogClosed(true);
+                                             
+                                             // ✅ NOVO: Chamar handleSubmitTest diretamente
                                              handleSubmitTest(false);
                                          }}
                                          disabled={isSubmitting}
@@ -1113,7 +1235,9 @@ export default function TakeEvaluation() {
                                         question={currentQuestion}
                                         answer={answers[currentQuestion?.id]?.answer}
                                         onAnswerChange={(answer) => {
-                                            saveAnswer(currentQuestion?.id, answer);
+                                            // ✅ NOVO: Mapear resposta para ID original antes de salvar
+                                            const originalAnswerId = mapAnswerToOriginalId(currentQuestion?.id, answer);
+                                            saveAnswer(currentQuestion?.id, originalAnswerId);
                                         }}
                                         disabled={false}
                                     />
@@ -1128,6 +1252,8 @@ export default function TakeEvaluation() {
 
     return null;
 }
+
+
 
 // Componente para opções de resposta
 function QuestionOptions({
@@ -1160,21 +1286,23 @@ function QuestionOptions({
                     })()}
                     onValueChange={(val) => {
                         console.log('🔄 RadioGroup onValueChange:', val);
-                        // Encontrar o índice da opção selecionada
+                        // ✅ CORRIGIDO: Encontrar o índice da opção selecionada de forma mais robusta
                         const index = questionOptions.findIndex(option => {
                             const optionId = option.id || `option-${questionOptions.indexOf(option)}`;
                             return optionId === val;
                         });
                         
                         if (index !== -1) {
-                            const correctLetter = String.fromCharCode(65 + index);
+                            // ✅ NOVO: Enviar o texto da opção selecionada para mapeamento correto
+                            const selectedOptionText = questionOptions[index].text;
                             console.log('📝 Resposta selecionada:', {
                                 selectedValue: val,
                                 index: index,
-                                letter: correctLetter,
-                                optionText: questionOptions[index].text
+                                selectedText: selectedOptionText,
+                                optionText: questionOptions[index].text,
+                                totalOptions: questionOptions.length
                             });
-                            onAnswerChange(correctLetter);
+                            onAnswerChange(selectedOptionText);
                         } else {
                             console.log('❌ Opção não encontrada:', val);
                             onAnswerChange("");
@@ -1197,13 +1325,14 @@ function QuestionOptions({
                                     } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 onClick={() => {
                                     if (!disabled) {
-                                        const correctLetter = String.fromCharCode(65 + index);
+                                        // ✅ NOVO: Enviar o texto da opção selecionada para mapeamento correto
+                                        const selectedOptionText = optionText;
                                         console.log('🖱️ Click na opção:', {
                                             index: index,
-                                            letter: correctLetter,
+                                            selectedText: selectedOptionText,
                                             optionText: optionText
                                         });
-                                        onAnswerChange(correctLetter);
+                                        onAnswerChange(selectedOptionText);
                                     }
                                 }}
                             >
