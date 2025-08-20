@@ -26,6 +26,7 @@ import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
+import { RelatorioCompleto } from "@/types/evaluation-results";
 import { useAuth } from "@/context/authContext";
 import { BarChartComponent, DonutChartComponent } from "@/components/ui/charts";
 
@@ -120,7 +121,7 @@ const getStatusConfig = (status: 'concluida' | 'em_andamento' | 'pendente' | str
 
 export default function AnaliseAvaliacoes() {
   const { autoLogin, user } = useAuth();
-  const [apiData, setApiData] = useState<any>(null);
+  const [apiData, setApiData] = useState<RelatorioCompleto | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingFilters, setIsLoadingFilters] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -481,7 +482,7 @@ export default function AnaliseAvaliacoes() {
                     </tr>
                   </thead>
                   <tbody>
-                    {apiData.total_alunos.por_turma.map((turma: any, index: number) => (
+                    {apiData.total_alunos.por_turma.map((turma, index: number) => (
                       <tr key={index} className="hover:bg-gray-50">
                         <td className="border border-gray-300 px-4 py-2">{turma.turma}</td>
                         <td className="border border-gray-300 px-4 py-2 text-center">{turma.matriculados}</td>
@@ -513,7 +514,7 @@ export default function AnaliseAvaliacoes() {
              </CardHeader>
              <CardContent>
                <div className="space-y-8">
-                 {Object.entries(apiData.niveis_aprendizagem).map(([disciplina, dadosDisciplina]: [string, any]) => (
+                 {Object.entries(apiData.niveis_aprendizagem).map(([disciplina, dadosDisciplina]) => (
                    <div key={disciplina} className="space-y-4">
                      <h4 className="text-xl font-bold text-gray-800 text-center uppercase">
                        {disciplina}
@@ -531,7 +532,7 @@ export default function AnaliseAvaliacoes() {
                            </tr>
                          </thead>
                          <tbody>
-                           {dadosDisciplina.por_turma.map((turma: any, index: number) => (
+                           {dadosDisciplina.por_turma.map((turma, index: number) => (
                              <tr key={index} className="hover:bg-gray-50">
                                <td className="border border-gray-300 px-4 py-2 font-medium">{turma.turma}</td>
                                <td className="border border-gray-300 px-4 py-2 text-center bg-red-50">{turma.abaixo_do_basico}</td>
@@ -568,7 +569,7 @@ export default function AnaliseAvaliacoes() {
              </CardHeader>
              <CardContent>
                <div className="space-y-8">
-                 {Object.entries(apiData.proficiencia.por_disciplina).map(([disciplina, dadosDisciplina]: [string, any]) => (
+                 {Object.entries(apiData.proficiencia.por_disciplina).map(([disciplina, dadosDisciplina]) => (
                    <div key={disciplina} className="space-y-4">
                      <h4 className="text-xl font-bold text-gray-800 text-center uppercase">
                        {disciplina}
@@ -582,7 +583,7 @@ export default function AnaliseAvaliacoes() {
                            </tr>
                          </thead>
                          <tbody>
-                           {dadosDisciplina.por_turma.map((turma: any, index: number) => (
+                           {dadosDisciplina.por_turma.map((turma, index: number) => (
                              <tr key={index} className="hover:bg-gray-50">
                                <td className="border border-gray-300 px-4 py-2 font-medium">{turma.turma}</td>
                                <td className="border border-gray-300 px-4 py-2 text-center">{turma.proficiencia.toFixed(2)}</td>
@@ -592,10 +593,12 @@ export default function AnaliseAvaliacoes() {
                              <td className="border border-gray-300 px-4 py-2">MÉDIA GERAL</td>
                              <td className="border border-gray-300 px-4 py-2 text-center">{dadosDisciplina.media_geral.toFixed(2)}</td>
                            </tr>
-                           <tr className="bg-green-50 font-semibold">
-                             <td className="border border-gray-300 px-4 py-2">MÉDIA MUNICIPAL</td>
-                             <td className="border border-gray-300 px-4 py-2 text-center">{apiData.proficiencia.media_municipal_por_disciplina[disciplina].toFixed(2)}</td>
-                           </tr>
+                           {disciplina !== 'GERAL' && (
+                             <tr className="bg-green-50 font-semibold">
+                               <td className="border border-gray-300 px-4 py-2">MÉDIA MUNICIPAL</td>
+                               <td className="border border-gray-300 px-4 py-2 text-center">{apiData.proficiencia.media_municipal_por_disciplina[disciplina]?.toFixed(2) || 'N/A'}</td>
+                             </tr>
+                           )}
                          </tbody>
                        </table>
                      </div>
@@ -615,7 +618,7 @@ export default function AnaliseAvaliacoes() {
              </CardHeader>
              <CardContent>
                <div className="space-y-8">
-                 {Object.entries(apiData.nota_geral.por_disciplina).map(([disciplina, dadosDisciplina]: [string, any]) => (
+                 {Object.entries(apiData.nota_geral.por_disciplina).map(([disciplina, dadosDisciplina]) => (
                    <div key={disciplina} className="space-y-4">
                      <h4 className="text-xl font-bold text-gray-800 text-center uppercase">
                        {disciplina}
@@ -629,7 +632,7 @@ export default function AnaliseAvaliacoes() {
                            </tr>
                          </thead>
                          <tbody>
-                           {dadosDisciplina.por_turma.map((turma: any, index: number) => (
+                           {dadosDisciplina.por_turma.map((turma, index: number) => (
                              <tr key={index} className="hover:bg-gray-50">
                                <td className="border border-gray-300 px-4 py-2 font-medium">{turma.turma}</td>
                                <td className="border border-gray-300 px-4 py-2 text-center">{turma.nota.toFixed(2)}</td>
@@ -639,10 +642,12 @@ export default function AnaliseAvaliacoes() {
                              <td className="border border-gray-300 px-4 py-2">MÉDIA GERAL</td>
                              <td className="border border-gray-300 px-4 py-2 text-center">{dadosDisciplina.media_geral.toFixed(2)}</td>
                            </tr>
-                           <tr className="bg-green-50 font-semibold">
-                             <td className="border border-gray-300 px-4 py-2">MÉDIA MUNICIPAL</td>
-                             <td className="border border-gray-300 px-4 py-2 text-center">{apiData.nota_geral.media_municipal_por_disciplina[disciplina].toFixed(2)}</td>
-                           </tr>
+                           {disciplina !== 'GERAL' && (
+                             <tr className="bg-green-50 font-semibold">
+                               <td className="border border-gray-300 px-4 py-2">MÉDIA MUNICIPAL</td>
+                               <td className="border border-gray-300 px-4 py-2 text-center">{apiData.nota_geral.media_municipal_por_disciplina[disciplina]?.toFixed(2) || 'N/A'}</td>
+                             </tr>
+                           )}
                          </tbody>
                        </table>
                      </div>
@@ -662,7 +667,7 @@ export default function AnaliseAvaliacoes() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-8">
-                  {Object.entries(apiData.acertos_por_habilidade).map(([disciplina, dadosDisciplina]: [string, any]) => (
+                  {Object.entries(apiData.acertos_por_habilidade).map(([disciplina, dadosDisciplina]) => (
                     <div key={disciplina} className="space-y-4">
                       <h4 className="text-xl font-bold text-gray-800 text-center uppercase">
                         {disciplina}
@@ -670,7 +675,7 @@ export default function AnaliseAvaliacoes() {
                       
                       {/* Grid de habilidades */}
                       <div className="grid grid-cols-13 gap-0 border border-gray-300">
-                        {dadosDisciplina.habilidades.map((habilidade: any, index: number) => (
+                        {dadosDisciplina.habilidades.map((habilidade, index: number) => (
                           <div key={index} className="flex flex-col">
                             {/* Header da questão */}
                             <div className="bg-blue-600 text-white text-center py-2 px-1 text-sm font-medium border-r border-gray-300 last:border-r-0">
