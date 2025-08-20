@@ -1,5 +1,5 @@
 import { api, apiWithRetry, apiWithTimeout } from '@/lib/api';
-import { EvaluationResultsData, StudentProficiency, ResultsFilters, calculateProficiency } from '@/types/evaluation-results';
+import { EvaluationResultsData, StudentProficiency, ResultsFilters, calculateProficiency, RelatorioCompleto } from '@/types/evaluation-results';
 
 // ===== INTERFACES PARA BACKEND REAL =====
 
@@ -1534,7 +1534,7 @@ export class EvaluationResultsApiService {
   }
 
   // ✅ NOVO: Buscar relatório completo de uma avaliação
-  static async getRelatorioCompleto(evaluationId: string): Promise<any> {
+  static async getRelatorioCompleto(evaluationId: string): Promise<RelatorioCompleto> {
     try {
       console.log('🔍 LOG - Iniciando busca do relatório completo');
       console.log('📋 ID da avaliação:', evaluationId);

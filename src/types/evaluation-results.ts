@@ -382,3 +382,129 @@ export function getProficiencyTableInfo(grade?: string, subject?: string, course
     }
   }
 } 
+
+// ===== NOVAS INTERFACES PARA RELATÓRIO COMPLETO =====
+
+export interface RelatorioCompletoAvaliacao {
+  id: string;
+  titulo: string;
+  descricao: string;
+  disciplinas: string[];
+}
+
+export interface TotalAlunosTurma {
+  turma: string;
+  matriculados: number;
+  avaliados: number;
+  percentual: number;
+  faltosos: number;
+}
+
+export interface TotalAlunosGeral {
+  matriculados: number;
+  avaliados: number;
+  percentual: number;
+  faltosos: number;
+}
+
+export interface TotalAlunos {
+  por_turma: TotalAlunosTurma[];
+  total_geral: TotalAlunosGeral;
+}
+
+export interface NivelAprendizagemTurma {
+  turma: string;
+  abaixo_do_basico: number;
+  basico: number;
+  adequado: number;
+  avancado: number;
+  total: number;
+}
+
+export interface NivelAprendizagemGeral {
+  abaixo_do_basico: number;
+  basico: number;
+  adequado: number;
+  avancado: number;
+  total: number;
+}
+
+export interface NivelAprendizagemDisciplina {
+  por_turma: NivelAprendizagemTurma[];
+  geral: NivelAprendizagemGeral;
+}
+
+export interface NiveisAprendizagem {
+  [disciplina: string]: NivelAprendizagemDisciplina;
+}
+
+export interface ProficienciaTurma {
+  turma: string;
+  proficiencia: number;
+}
+
+export interface ProficienciaDisciplina {
+  por_turma: ProficienciaTurma[];
+  media_geral: number;
+}
+
+export interface Proficiencia {
+  por_disciplina: {
+    [disciplina: string]: ProficienciaDisciplina;
+  };
+  media_municipal_por_disciplina: {
+    [disciplina: string]: number;
+  };
+}
+
+export interface NotaGeralTurma {
+  turma: string;
+  nota: number;
+}
+
+export interface NotaGeralDisciplina {
+  por_turma: NotaGeralTurma[];
+  media_geral: number;
+}
+
+export interface NotaGeral {
+  por_disciplina: {
+    [disciplina: string]: NotaGeralDisciplina;
+  };
+  media_municipal_por_disciplina: {
+    [disciplina: string]: number;
+  };
+}
+
+export interface QuestaoHabilidade {
+  numero: number;
+  acertos: number;
+  total: number;
+}
+
+export interface Habilidade {
+  ranking: number;
+  codigo: string;
+  descricao: string;
+  acertos: number;
+  total: number;
+  percentual: number;
+  questoes: QuestaoHabilidade[];
+}
+
+export interface AcertosPorHabilidadeDisciplina {
+  habilidades: Habilidade[];
+}
+
+export interface AcertosPorHabilidade {
+  [disciplina: string]: AcertosPorHabilidadeDisciplina;
+}
+
+export interface RelatorioCompleto {
+  avaliacao: RelatorioCompletoAvaliacao;
+  total_alunos: TotalAlunos;
+  niveis_aprendizagem: NiveisAprendizagem;
+  proficiencia: Proficiencia;
+  nota_geral: NotaGeral;
+  acertos_por_habilidade: AcertosPorHabilidade;
+} 
