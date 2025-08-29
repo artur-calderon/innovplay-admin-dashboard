@@ -127,7 +127,7 @@ export default function AnaliseAvaliacoes() {
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingFilters, setIsLoadingFilters] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
-  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -268,20 +268,20 @@ export default function AnaliseAvaliacoes() {
 
 
 
-  // Função para baixar PDF
-  const downloadPDF = async () => {
+  // Função para baixar relatório DOCX
+  const downloadReport = async () => {
     if (!selectedEvaluation || !apiData) return;
     
     try {
-      setIsGeneratingPDF(true);
+      setIsGeneratingReport(true);
       
-      // Buscar o PDF diretamente do backend
+      // Buscar o relatório DOCX diretamente do backend
       const response = await api.get(`/reports/relatorio-pdf/${selectedEvaluation}`, {
         responseType: 'blob' // Importante: receber como blob
       });
       
       // Criar URL do blob
-      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
       const url = window.URL.createObjectURL(blob);
       
       // Criar link de download
@@ -292,7 +292,7 @@ export default function AnaliseAvaliacoes() {
       const selectedEvaluationData = evaluationsByMunicipality.find(evaluation => evaluation.id === selectedEvaluation);
       const evaluationName = selectedEvaluationData?.titulo || 'avaliacao';
       const sanitizedName = evaluationName.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_').toLowerCase();
-      const fileName = `relatorio_${sanitizedName}_${new Date().toISOString().split('T')[0]}.pdf`;
+      const fileName = `relatorio_${sanitizedName}_${new Date().toISOString().split('T')[0]}.docx`;
       link.download = fileName;
       
       // Simular clique para download
@@ -304,19 +304,19 @@ export default function AnaliseAvaliacoes() {
       window.URL.revokeObjectURL(url);
       
       toast({
-        title: "PDF Baixado com Sucesso",
-        description: "O relatório foi salvo no seu dispositivo.",
+        title: "Relatório Baixado com Sucesso",
+        description: "O relatório DOCX foi salvo no seu dispositivo.",
       });
       
     } catch (error) {
-      console.error("Erro ao baixar PDF:", error);
+      console.error("Erro ao baixar relatório:", error);
       toast({
-        title: "Erro ao Baixar PDF",
-        description: "Não foi possível baixar o PDF. Tente novamente.",
+        title: "Erro ao Baixar Relatório",
+        description: "Não foi possível baixar o relatório. Tente novamente.",
         variant: "destructive",
       });
     } finally {
-      setIsGeneratingPDF(false);
+      setIsGeneratingReport(false);
     }
   };
 
@@ -499,20 +499,20 @@ export default function AnaliseAvaliacoes() {
                   Informações da Avaliação
                 </CardTitle>
                                  <Button 
-                   onClick={downloadPDF}
-                   disabled={isGeneratingPDF}
+                   onClick={downloadReport}
+                   disabled={isGeneratingReport}
                    className="flex items-center gap-2"
                    variant="outline"
                  >
-                   {isGeneratingPDF ? (
+                   {isGeneratingReport ? (
                      <>
                        <RefreshCw className="h-4 w-4 animate-spin" />
-                       Baixando PDF...
+                       Baixando Relatório...
                      </>
                    ) : (
                      <>
                        <Download className="h-4 w-4" />
-                       Baixar PDF
+                       Baixar Relatório
                      </>
                    )}
                  </Button>
