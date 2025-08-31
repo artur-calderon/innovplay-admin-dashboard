@@ -1652,9 +1652,9 @@ export default function Results() {
                 <PieChart className="h-4 w-4" />
                 Proficiência
               </TabsTrigger>
-              <TabsTrigger value="terceira" className="flex items-center gap-2">
-                <Target className="h-4 w-4" />
-                Terceira Aba
+              <TabsTrigger value="ranking" className="flex items-center gap-2">
+                <Award className="h-4 w-4" />
+                Ranking
               </TabsTrigger>
             </TabsList>
 
@@ -2036,21 +2036,279 @@ export default function Results() {
               )}
             </TabsContent>
 
-            {/* Aba Terceira (espaço reservado) */}
-            <TabsContent value="terceira" className="space-y-6 mt-6">
-              <Card>
-                <CardContent className="flex flex-col items-center justify-center py-12">
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                    <Target className="h-8 w-8 text-gray-400" />
-                  </div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">
-                    Terceira Aba
-                  </h3>
-                  <p className="text-gray-600 text-center max-w-md">
-                    Esta aba está reservada para funcionalidades futuras. Em breve será implementada.
-                  </p>
-                </CardContent>
-              </Card>
+            {/* Aba Ranking */}
+            <TabsContent value="ranking" className="space-y-6 mt-6">
+              {/* ✅ NOVO: Loading state para dados do ranking */}
+              {isLoadingStudents && (
+                <Card>
+                  <CardContent className="flex flex-col items-center justify-center py-12">
+                    <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mb-4" />
+                    <p className="text-gray-600">Carregando ranking dos alunos...</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* ✅ NOVO: Mensagem quando não há dados para ranking */}
+              {!isLoadingStudents && (!tabelaDetalhada || !tabelaDetalhada.disciplinas || tabelaDetalhada.disciplinas.length === 0) && (
+                <Card>
+                  <CardContent className="flex flex-col items-center justify-center py-12">
+                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                      <Award className="h-8 w-8 text-gray-400" />
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">
+                      Nenhum dado encontrado para ranking
+                    </h3>
+                    <p className="text-gray-600 text-center max-w-md">
+                      {selectedEvaluation === 'all' 
+                        ? 'Selecione uma avaliação para ver o ranking dos alunos.'
+                        : 'Não há dados registrados nesta avaliação ou os dados ainda estão sendo carregados.'
+                      }
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* ✅ NOVO: Ranking dos alunos */}
+              {!isLoadingStudents && tabelaDetalhada && tabelaDetalhada.disciplinas && tabelaDetalhada.disciplinas.length > 0 && (
+                <>
+                  {/* Ranking Geral */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-xl font-bold text-gray-800">
+                        Ranking Geral
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-6 pt-0">
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse border border-gray-300">
+                          <thead>
+                            <tr className="bg-yellow-500">
+                              <th className="border border-gray-300 px-4 py-3 text-center font-bold text-gray-800">
+                                #
+                              </th>
+                              <th className="border border-gray-300 px-4 py-3 text-left font-bold text-gray-800">
+                                Aluno
+                              </th>
+                              <th className="border border-gray-300 px-4 py-3 text-center font-bold text-gray-800">
+                                Acertos
+                              </th>
+                              <th className="border border-gray-300 px-4 py-3 text-center font-bold text-gray-800">
+                                Nota
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(() => {
+                              // ✅ Consolidar todos os alunos de todas as disciplinas
+                              const todosAlunosRanking: Array<{
+                                id: string;
+                                nome: string;
+                                escola: string;
+                                serie: string;
+                                turma: string;
+                                total_acertos: number;
+                                total_respondidas: number;
+                                nota: number;
+                                proficiencia: number;
+                                nivel_proficiencia: string;
+                              }> = [];
+
+                              tabelaDetalhada.disciplinas.forEach((disciplina: any) => {
+                                if (disciplina.alunos && Array.isArray(disciplina.alunos)) {
+                                  disciplina.alunos.forEach((aluno: any) => {
+                                    // ✅ Verificar se o aluno já foi adicionado (evitar duplicatas)
+                                    const alunoExistente = todosAlunosRanking.find(a => a.id === aluno.id);
+                                    if (!alunoExistente) {
+                                      todosAlunosRanking.push({
+                                        id: aluno.id,
+                                        nome: aluno.nome,
+                                        escola: aluno.escola || 'Escola não informada',
+                                        serie: aluno.serie || 'Série não informada',
+                                        turma: aluno.turma || 'Turma não informada',
+                                        total_acertos: aluno.total_acertos || 0,
+                                        total_respondidas: aluno.total_respondidas || 0,
+                                        nota: aluno.nota || 0,
+                                        proficiencia: aluno.proficiencia || 0,
+                                        nivel_proficiencia: aluno.nivel_proficiencia || 'Adequado'
+                                      });
+                                    }
+                                  });
+                                }
+                              });
+
+                              // ✅ Ordenar por nota (decrescente) e depois por acertos (decrescente)
+                              const rankingOrdenado = todosAlunosRanking.sort((a, b) => {
+                                if (b.nota !== a.nota) {
+                                  return b.nota - a.nota;
+                                }
+                                return b.total_acertos - a.total_acertos;
+                              });
+
+                              // ✅ Retornar as linhas da tabela
+                              return rankingOrdenado.map((aluno, index) => (
+                                <tr key={aluno.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100`}>
+                                  <td className="border border-gray-300 px-4 py-3 text-center font-bold text-orange-600">
+                                    {index + 1}
+                                  </td>
+                                  <td className="border border-gray-300 px-4 py-3 font-medium text-gray-900">
+                                    {aluno.nome.toUpperCase()}
+                                  </td>
+                                  <td className="border border-gray-300 px-4 py-3 text-center font-bold text-green-600">
+                                    {aluno.total_acertos}
+                                  </td>
+                                  <td className="border border-gray-300 px-4 py-3 text-center font-bold text-blue-600">
+                                    {aluno.nota.toFixed(2).replace('.', ',')}
+                                  </td>
+                                </tr>
+                              ));
+                            })()}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* ✅ Informações adicionais do ranking */}
+                      {(() => {
+                        const totalAlunos = tabelaDetalhada.disciplinas.reduce((total: number, disciplina: any) => {
+                          return total + (disciplina.alunos?.length || 0);
+                        }, 0);
+
+                        const mediaGeral = tabelaDetalhada.disciplinas.reduce((total: number, disciplina: any) => {
+                          return total + (disciplina.alunos?.reduce((sum: number, aluno: any) => sum + (aluno.nota || 0), 0) || 0);
+                        }, 0) / totalAlunos;
+
+                        return (
+                          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="text-center p-4 bg-blue-50 rounded-lg border border-blue-200">
+                              <div className="text-2xl font-bold text-blue-600">{totalAlunos}</div>
+                              <div className="text-sm text-blue-700">Total de Alunos</div>
+                            </div>
+                            <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
+                              <div className="text-2xl font-bold text-green-600">{mediaGeral.toFixed(2).replace('.', ',')}</div>
+                              <div className="text-sm text-green-700">Média Geral</div>
+                            </div>
+                            <div className="text-center p-4 bg-purple-50 rounded-lg border border-purple-200">
+                              <div className="text-2xl font-bold text-purple-600">
+                                {tabelaDetalhada.disciplinas.length}
+                              </div>
+                              <div className="text-sm text-purple-700">Disciplinas Avaliadas</div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </CardContent>
+                  </Card>
+
+                  {/* ✅ Ranking por Disciplina */}
+                  {tabelaDetalhada.disciplinas.map((disciplina: any, discIndex: number) => {
+                    if (!disciplina.alunos || disciplina.alunos.length === 0) return null;
+
+                    // ✅ Ordenar alunos desta disciplina por nota e acertos
+                    const rankingDisciplina = [...disciplina.alunos].sort((a: any, b: any) => {
+                      if (b.nota !== a.nota) {
+                        return b.nota - a.nota;
+                      }
+                      return b.total_acertos - a.total_acertos;
+                    });
+
+                    return (
+                      <Card key={`ranking-${disciplina.id || discIndex}`}>
+                        <CardHeader>
+                          <CardTitle className="text-lg text-center text-gray-700">
+                            Ranking - {disciplina.nome}
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-6 pt-0">
+                          <div className="overflow-x-auto">
+                            <table className="w-full border-collapse border border-gray-300">
+                              <thead>
+                                <tr className="bg-blue-500">
+                                  <th className="border border-gray-300 px-4 py-3 text-center font-bold text-white">
+                                    #
+                                  </th>
+                                  <th className="border border-gray-300 px-4 py-3 text-left font-bold text-white">
+                                    Aluno
+                                  </th>
+                                  <th className="border border-gray-300 px-4 py-3 text-center font-bold text-white">
+                                    Acertos
+                                  </th>
+                                  <th className="border border-gray-300 px-4 py-3 text-center font-bold text-white">
+                                    Nota
+                                  </th>
+                                  <th className="border border-gray-300 px-4 py-3 text-center font-bold text-white">
+                                    Proficiência
+                                  </th>
+                                  <th className="border border-gray-300 px-4 py-3 text-center font-bold text-white">
+                                    Nível
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {rankingDisciplina.map((aluno: any, index: number) => (
+                                  <tr key={aluno.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100`}>
+                                    <td className="border border-gray-300 px-4 py-3 text-center font-bold text-blue-600">
+                                      {index + 1}
+                                    </td>
+                                    <td className="border border-gray-300 px-4 py-3 font-medium text-gray-900">
+                                      {aluno.nome.toUpperCase()}
+                                    </td>
+                                    <td className="border border-gray-300 px-4 py-3 text-center font-bold text-green-600">
+                                      {aluno.total_acertos}
+                                    </td>
+                                    <td className="border border-gray-300 px-4 py-3 text-center font-bold text-purple-600">
+                                      {aluno.nota.toFixed(2).replace('.', ',')}
+                                    </td>
+                                    <td className="border border-gray-300 px-4 py-3 text-center font-medium">
+                                      {aluno.proficiencia}
+                                    </td>
+                                    <td className="border border-gray-300 px-4 py-3 text-center">
+                                      <Badge 
+                                        className={`${
+                                          aluno.nivel_proficiencia === 'Abaixo do Básico' ? 'bg-red-100 text-red-800 border-red-300' :
+                                          aluno.nivel_proficiencia === 'Básico' ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
+                                          aluno.nivel_proficiencia === 'Adequado' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                                          'bg-green-100 text-green-800 border-green-300'
+                                        }`}
+                                      >
+                                        {aluno.nivel_proficiencia}
+                                      </Badge>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          {/* ✅ Estatísticas da disciplina */}
+                          <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
+                              <div className="text-lg font-bold text-blue-600">{disciplina.alunos.length}</div>
+                              <div className="text-xs text-blue-700">Alunos</div>
+                            </div>
+                            <div className="text-center p-3 bg-green-50 rounded-lg border border-green-200">
+                              <div className="text-lg font-bold text-green-600">
+                                {(disciplina.alunos.reduce((sum: number, aluno: any) => sum + (aluno.nota || 0), 0) / disciplina.alunos.length).toFixed(2).replace('.', ',')}
+                              </div>
+                              <div className="text-xs text-green-700">Média</div>
+                            </div>
+                            <div className="text-center p-3 bg-orange-50 rounded-lg border border-orange-200">
+                              <div className="text-lg font-bold text-orange-600">
+                                {disciplina.alunos.reduce((sum: number, aluno: any) => sum + (aluno.total_acertos || 0), 0)}
+                              </div>
+                              <div className="text-xs text-orange-700">Total Acertos</div>
+                            </div>
+                            <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-200">
+                              <div className="text-lg font-bold text-purple-600">
+                                {disciplina.questoes?.length || 0}
+                              </div>
+                              <div className="text-xs text-purple-700">Questões</div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </>
+              )}
             </TabsContent>
           </Tabs>
         </>
