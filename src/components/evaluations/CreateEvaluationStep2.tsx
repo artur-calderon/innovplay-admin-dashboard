@@ -281,26 +281,29 @@ export const CreateEvaluationStep2 = ({
           return {
             number: index + 1,
             text: question.text,
-            formattedText: question.formattedText || question.text,
-            subjectId: question.subjectId,
-            subject_id: question.subjectId,
-            title: question.title,
-            description: question.title,
-            command: question.title,
-            subtitle: question.title,
-            options: question.options?.map((opt, optIndex) => ({
-              text: opt.text,
-              value: String.fromCharCode(65 + optIndex) // A, B, C, D...
-            })) || [],
-            skills: question.skills || [],
-            grade: { id: question.grade?.id || data.grade },
-            difficulty: question.difficulty,
-            solution: question.options?.find(opt => opt.isCorrect)?.text || "",
-            formattedSolution: question.formattedSolution || question.solution || "",
-            type: question.type === 'multipleChoice' ? 'multiple_choice' : 'open',
-            value: question.value || 0,
-            topics: [],
-            created_by: user?.id || ""
+                         formattedText: question.formattedText || question.text,
+             subjectId: question.subjectId,
+             title: question.title,
+             description: question.title,
+             command: question.title,
+             subtitle: question.title,
+             secondStatement: question.secondStatement || '',
+             options: question.options?.map((opt, optIndex) => ({
+               id: String.fromCharCode(65 + optIndex), // A, B, C, D...
+               text: opt.text,
+               isCorrect: opt.isCorrect
+             })) || [],
+             skill: question.skills || [],
+             grade: question.grade?.id || data.grade,
+             difficulty: question.difficulty,
+             solution: question.options?.find(opt => opt.isCorrect)?.text || "",
+             formattedSolution: question.formattedSolution || question.solution || "",
+             type: question.type === 'multipleChoice' ? 'multiple_choice' : 'open',
+             value: question.value || 0,
+             topics: [],
+             educationStageId: data.course,
+             created_by: user?.id || "",
+             lastModifiedBy: user?.id || ""
           };
         })
       };

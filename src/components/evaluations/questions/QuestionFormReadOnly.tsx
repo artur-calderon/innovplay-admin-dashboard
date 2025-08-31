@@ -8,7 +8,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, Book, Check, List as ListIcon, Minus, Plus, Save, Eye, Heading1, Heading2, Heading3, List, Code, Type, Trash } from "lucide-react";
@@ -240,6 +240,7 @@ const QuestionFormReadOnly = ({
     const [questionType, setQuestionType] = useState<'multipleChoice' | 'open'>('multipleChoice');
     const { toast } = useToast();
     const navigate = useNavigate();
+    const { user } = useAuth();
 
 
 
@@ -271,36 +272,71 @@ const QuestionFormReadOnly = ({
         name: "options"
     });
 
+    // Monitorar mudanças no formulário para debug
+    const watchedForm = useWatch({
+        control: form.control,
+        name: ["title", "text", "secondStatement", "options", "difficulty", "value", "solution", "skills"]
+    });
+
     useEffect(() => {
+        console.log('🔍 QuestionFormReadOnly - Formulário alterado:', watchedForm);
+        console.log('🔍 QuestionFormReadOnly - Estado atual do form:', form.getValues());
+    }, [watchedForm, form]);
+
+    useEffect(() => {
+        console.log('🔍 QuestionFormReadOnly - Configurando questionType:', questionType);
+        console.log('🔍 QuestionFormReadOnly - Opções antes da configuração:', form.getValues("options"));
+        
         form.setValue('questionType', questionType);
 
         // Limpar opções quando mudar para dissertativa
         if (questionType === 'open') {
+            console.log('🔍 QuestionFormReadOnly - Limpando opções para questão dissertativa');
             form.setValue('options', []);
             form.clearErrors('options');
         } else {
-            // Adicionar opções padrão quando mudar para múltipla escolha
-            form.setValue('options', [
-                { text: "", isCorrect: false },
-                { text: "", isCorrect: false },
-                { text: "", isCorrect: false },
-            ]);
+            // Adicionar opções padrão apenas se não existirem opções com texto
+            const currentOptions = form.getValues("options");
+            const hasOptionsWithText = currentOptions && currentOptions.some(opt => opt.text && opt.text.trim() !== '');
+            
+            console.log('🔍 QuestionFormReadOnly - Verificando opções existentes:', currentOptions);
+            console.log('🔍 QuestionFormReadOnly - Tem opções com texto?', hasOptionsWithText);
+            
+            if (!hasOptionsWithText) {
+                console.log('🔍 QuestionFormReadOnly - Adicionando opções padrão para questão de múltipla escolha');
+                form.setValue('options', [
+                    { text: "", isCorrect: false },
+                    { text: "", isCorrect: false },
+                    { text: "", isCorrect: false },
+                ]);
+            } else {
+                console.log('🔍 QuestionFormReadOnly - Mantendo opções existentes:', currentOptions);
+            }
         }
+        
+        console.log('🔍 QuestionFormReadOnly - Opções após configuração:', form.getValues("options"));
     }, [questionType, form]);
 
     // Função para adicionar alternativa
     const addOption = () => {
         if (fields.length < 5) {
+            console.log('🔍 QuestionFormReadOnly - Adicionando nova alternativa');
+            console.log('🔍 QuestionFormReadOnly - Estado do form antes de adicionar:', form.getValues());
             append({ text: "", isCorrect: false });
+            console.log('🔍 QuestionFormReadOnly - Opções após adicionar:', form.getValues("options"));
+            console.log('🔍 QuestionFormReadOnly - Estado completo do form após adicionar:', form.getValues());
         }
     };
 
     // Função para marcar uma alternativa como correta
     const handleRadioChange = (index: number) => {
         const currentOptions = form.getValues("options");
+        console.log('🔍 QuestionFormReadOnly - Marcando alternativa como correta:', index, currentOptions);
         currentOptions.forEach((option, i) => {
             update(i, { ...option, isCorrect: i === index });
         });
+        console.log('🔍 QuestionFormReadOnly - Opções após marcar correta:', form.getValues("options"));
+        console.log('🔍 QuestionFormReadOnly - Estado completo do form após marcar correta:', form.getValues());
     };
 
     useEffect(() => {
@@ -337,6 +373,7 @@ const QuestionFormReadOnly = ({
     useEffect(() => {
         const fetchSkills = async () => {
             if (evaluationData.subject) {
+                console.log('🔍 QuestionFormReadOnly - Buscando habilidades para disciplina:', evaluationData.subject);
                 try {
                     const response = await api.get(`/skills/subject/${evaluationData.subject}`);
                     if (Array.isArray(response.data)) {
@@ -344,8 +381,10 @@ const QuestionFormReadOnly = ({
                             id: skill.id,
                             name: `${skill.code} - ${skill.description}`,
                         }));
+                        console.log('🔍 QuestionFormReadOnly - Habilidades encontradas:', formattedSkills);
                         setSkills(formattedSkills);
                     } else {
+                        console.log('🔍 QuestionFormReadOnly - Nenhuma habilidade encontrada');
                         setSkills([]);
                     }
                 } catch (error) {
@@ -363,11 +402,25 @@ const QuestionFormReadOnly = ({
     }, [evaluationData.subject, toast]);
 
     useEffect(() => {
+        console.log('🔍 QuestionFormReadOnly - Configurando subjectId:', evaluationData.subject);
+        console.log('🔍 QuestionFormReadOnly - Estado do form antes de configurar subjectId:', form.getValues());
         form.setValue('subjectId', evaluationData.subject);
+        console.log('🔍 QuestionFormReadOnly - Estado do form após configurar subjectId:', form.getValues());
     }, [evaluationData.subject, form]);
+
+    const htmlToText = (html: string) => {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = html;
+        return tempDiv.textContent || tempDiv.innerText || '';
+    }
 
     const handleFormSubmit = async (data: QuestionFormValues) => {
         try {
+            // Debug: verificar dados do formulário
+            console.log('🔍 QuestionFormReadOnly - Dados do formulário:', data);
+            console.log('🔍 QuestionFormReadOnly - evaluationData:', evaluationData);
+            console.log('🔍 QuestionFormReadOnly - user:', user);
+
             // Monta as opções com id baseado na letra (apenas para múltipla escolha)
             const options = data.questionType === 'multipleChoice' ? (data.options || []).map((opt, index) => ({
                 id: String.fromCharCode(65 + index), // A, B, C, D, etc.
@@ -375,31 +428,82 @@ const QuestionFormReadOnly = ({
                 isCorrect: opt.isCorrect,
             })) : [];
 
+            console.log('🔍 QuestionFormReadOnly - Opções montadas:', options);
+            console.log('🔍 QuestionFormReadOnly - Verificando formato das opções:');
+            options.forEach((opt, index) => {
+                console.log(`  Opção ${index}:`, opt);
+            });
+
             // skills como array de strings
             const skills = Array.isArray(data.skills) ? data.skills : [];
+            console.log('🔍 QuestionFormReadOnly - Skills selecionadas:', skills);
 
             // Encontrar o subject e grade para criar o objeto Question completo
             const selectedSubject = subjects.find(s => s.id === data.subjectId);
             const selectedGrade = grades.find(g => g.id === data.grade);
 
-            const question: Question = {
-                id: '', // Será gerado pelo backend
+            console.log('🔍 QuestionFormReadOnly - Subject encontrado:', selectedSubject);
+            console.log('🔍 QuestionFormReadOnly - Grade encontrada:', selectedGrade);
+
+            // Criar payload seguindo o mesmo padrão do QuestionForm
+            const payload = {
                 title: data.title,
-                text: data.text,
-                secondStatement: data.secondStatement || '',
+                text: htmlToText(data.text),
+                formattedText: data.text,
                 type: data.questionType,
                 subjectId: data.subjectId,
-                subject: selectedSubject || { id: data.subjectId, name: '' },
-                grade: selectedGrade || { id: data.grade, name: '' },
+                educationStageId: evaluationData.course, // ID do curso
+                grade: data.grade, // UUID da série (string)
                 difficulty: data.difficulty,
                 value: Number(data.value),
                 solution: data.solution || '',
-                options,
-                skills,
-                created_by: '', // Será preenchido pelo backend
+                formattedSolution: data.solution || '',
+                options: data.questionType === 'multipleChoice' ? (data.options || []).map((opt, index) => ({
+                    id: String.fromCharCode(65 + index), // A, B, C, D, etc.
+                    text: opt.text,
+                    isCorrect: opt.isCorrect
+                })) : [],
+                skills: data.skills || [],
+                secondStatement: data.secondStatement || '',
+                lastModifiedBy: user?.id || '',
+                createdBy: user?.id || '',
             };
+
+            // Criar objeto Question para compatibilidade com a interface
+            const question: Question = {
+                id: '', // Será gerado pelo backend
+                title: payload.title,
+                text: payload.text,
+                formattedText: payload.formattedText,
+                secondStatement: payload.secondStatement,
+                type: payload.type,
+                subjectId: payload.subjectId,
+                subject: selectedSubject || { id: data.subjectId, name: '' },
+                educationStageId: payload.educationStageId,
+                grade: payload.grade,
+                difficulty: payload.difficulty,
+                value: payload.value,
+                solution: payload.solution,
+                formattedSolution: payload.formattedSolution,
+                options: payload.options,
+                skills: payload.skills,
+                createdBy: payload.createdBy,
+                lastModifiedBy: payload.lastModifiedBy,
+            };
+
+            // Debug: verificar payload final
+            console.log('📤 QuestionFormReadOnly - Payload sendo enviado:', question);
+            console.log('📤 QuestionFormReadOnly - Campos específicos:');
+            console.log('  - secondStatement:', question.secondStatement);
+            console.log('  - options:', question.options);
+            console.log('  - educationStageId:', question.educationStageId);
+            console.log('  - lastModifiedBy:', question.lastModifiedBy);
+            console.log('  - createdBy:', question.createdBy);
+
             await onQuestionAdded(question);
+            console.log('🔍 QuestionFormReadOnly - Formulário será resetado após envio');
             form.reset();
+            console.log('🔍 QuestionFormReadOnly - Formulário resetado, estado atual:', form.getValues());
             toast({
                 title: "Sucesso",
                 description: "Questão salva com sucesso!",
