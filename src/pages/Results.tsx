@@ -3,6 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Download,
   TrendingUp,
@@ -17,16 +20,19 @@ import {
   School,
   MapPin,
   GraduationCap,
-  Filter
+  Filter,
+  BarChart3,
+  PieChart
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
 import { useAuth } from "@/context/authContext";
 import { BarChartComponent, DonutChartComponent } from "@/components/ui/charts";
+
+import type { StudentResult, DetailedReport as DetailedReportType, QuestionWithSkills } from "@/types/results-table";
 
 // Interfaces para os dados da API
 interface EvaluationResult {
@@ -119,6 +125,35 @@ interface NovaRespostaAPI {
     series?: Array<{ id: string; name: string }>;
     turmas?: Array<{ id: string; name: string }>;
   };
+  // ✅ NOVO: Campo tabela_detalhada
+  tabela_detalhada?: {
+    disciplinas: Array<{
+      id: string;
+      nome: string;
+      questoes: Array<{
+        numero: number;
+        habilidade: string;
+        codigo_habilidade: string;
+      }>;
+      alunos: Array<{
+        id: string;
+        nome: string;
+        escola: string;
+        serie: string;
+        turma: string;
+        respostas_por_questao: Array<{
+          questao: number;
+          acertou: boolean;
+        }>;
+        total_acertos: number;
+        total_erros: number;
+        total_questoes_disciplina: number;
+        nivel_proficiencia: string;
+        nota: number;
+        proficiencia: number;
+      }>;
+    }>;
+  };
 }
 
 
@@ -171,6 +206,36 @@ interface EvaluationInfoSummary {
   media_proficiencia: number;
 }
 
+// ✅ NOVO: Interface para questões da avaliação (igual ao DetailedResultsView)
+interface Question {
+  id: string;
+  numero: number;
+  texto: string;
+  habilidade: string;
+  codigo_habilidade: string;
+  tipo: 'multipleChoice' | 'open' | 'trueFalse';
+  dificuldade: 'Fácil' | 'Médio' | 'Difícil';
+  porcentagem_acertos: number;
+  porcentagem_erros: number;
+  disciplina?: string; // ✅ Adicionado para identificar a disciplina da questão
+}
+
+// ✅ NOVO: Interface para skills/habilidades (igual ao DetailedResultsView)
+interface Skill {
+  id: string | null;
+  code: string;
+  description: string;
+  source: 'database' | 'question';
+}
+
+// ✅ NOVO: Interface para relatório detalhado (igual ao DetailedResultsView)
+type DetailedReport = DetailedReportType & {
+  id?: string;
+  disciplina?: string;
+  questoes?: Question[];
+  skills?: Record<string, any[]>;
+  [key: string]: any;
+};
 
 
 // Mapa de status estático (fora do componente)
@@ -248,10 +313,27 @@ export default function Results() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [evaluationInfo, setEvaluationInfo] = useState<EvaluationInfoSummary | null>(null);
 
-
   // Estados de paginação
   const [currentPage, setCurrentPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
+
+  // Estados para a aba Proficiência
+  const [visibleFields, setVisibleFields] = useState({
+    turma: true,
+    habilidade: true,
+    questoes: true,
+    percentualTurma: true,
+    total: true,
+    nota: true,
+    proficiencia: true,
+    nivel: true
+  });
+  const [subjectFilter, setSubjectFilter] = useState<string>('all');
+  const [levelFilter, setLevelFilter] = useState<string>('all');
+  const [classFilter, setClassFilter] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<string>('nome');
+  const [sortDirection, setSortDirection] = useState<string>('asc');
+  const [showOnlyCompleted, setShowOnlyCompleted] = useState(true);
 
   // ✅ Extrai nome de disciplina de respostas variadas (string ou objeto)
   const extractSubjectName = useCallback((subject: unknown): string => {
@@ -262,6 +344,29 @@ export default function Results() {
     }
     return '';
   }, []);
+
+  // ✅ NOVO: Estados para dados da avaliação (igual ao DetailedResultsView)
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [skillsMapping, setSkillsMapping] = useState<Record<string, string>>({});
+  const [skillsBySubject, setSkillsBySubject] = useState<Record<string, Skill[]>>({});
+  const [detailedReport, setDetailedReport] = useState<DetailedReport | null>(null);
+
+  // ✅ NOVO: Estados para dados dos alunos (igual ao DetailedResultsView)
+  const [students, setStudents] = useState<StudentResult[]>([]);
+  const [isLoadingStudents, setIsLoadingStudents] = useState(false);
+  const [studentDetailedAnswers, setStudentDetailedAnswers] = useState<Record<string, any>>({});
+
+  // ✅ NOVO: Estados para respostas detalhadas dos alunos (igual ao DetailedResultsView)
+  const [studentResponses, setStudentResponses] = useState<Record<string, Array<{
+    questao_id: string;
+    questao_numero: number;
+    resposta_correta: boolean;
+    resposta_em_branco: boolean;
+    tempo_gasto: number;
+  }>>>({});
+
+  // ✅ NOVO: Estado para dados da tabela detalhada
+  const [tabelaDetalhada, setTabelaDetalhada] = useState<any>(null);
 
   // Carregar filtros iniciais
   const loadInitialFilters = useCallback(async () => {
@@ -513,6 +618,7 @@ export default function Results() {
 
     if (filtrosObrigatorios.filter(Boolean).length < 3) {
       setApiData(null);
+      setTabelaDetalhada(null);
       return;
     }
 
@@ -528,7 +634,12 @@ export default function Results() {
       };
 
             // ✅ NOVO: Usar a rota correta /evaluation-results/avaliacoes
+      console.log('🔍 LOG - Chamando API getEvaluationsList com filtros:', filters);
       const response = await EvaluationResultsApiService.getEvaluationsList(currentPage, perPage, filters);
+      console.log('🔍 LOG - Resposta bruta da API:', response);
+      console.log('🔍 LOG - Tipo da resposta:', typeof response);
+      console.log('🔍 LOG - Keys da resposta:', response ? Object.keys(response) : 'null');
+      
       // ✅ NOVO: Normalizar a estrutura da resposta para compatibilidade
       if (response) {
         // ✅ NOVO: Garantir que a estrutura seja compatível com a interface NovaRespostaAPI
@@ -585,11 +696,31 @@ export default function Results() {
               id: turma.id,
               name: turma.name || turma.nome || ''
             })) || []
-          }
+          },
+          // ✅ NOVO: Incluir tabela_detalhada
+          tabela_detalhada: (response as any).tabela_detalhada || null
         };
 
         console.log('🔍 LOG - Dados normalizados para apiData:', normalizedResponse);
+        console.log('🔍 LOG - Campo tabela_detalhada encontrado:', !!normalizedResponse.tabela_detalhada);
+        if (normalizedResponse.tabela_detalhada) {
+          console.log('🔍 LOG - Conteúdo da tabela_detalhada:', normalizedResponse.tabela_detalhada);
+          console.log('🔍 LOG - Disciplinas na tabela:', normalizedResponse.tabela_detalhada.disciplinas?.length || 0);
+          if (normalizedResponse.tabela_detalhada.disciplinas?.length > 0) {
+            console.log('🔍 LOG - Primeira disciplina:', normalizedResponse.tabela_detalhada.disciplinas[0]);
+            console.log('🔍 LOG - Questões da primeira disciplina:', normalizedResponse.tabela_detalhada.disciplinas[0].questoes?.length || 0);
+            console.log('🔍 LOG - Alunos da primeira disciplina:', normalizedResponse.tabela_detalhada.disciplinas[0].alunos?.length || 0);
+          }
+        }
         setApiData(normalizedResponse);
+        
+        // ✅ NOVO: Extrair dados da tabela detalhada
+        if (normalizedResponse.tabela_detalhada) {
+          setTabelaDetalhada(normalizedResponse.tabela_detalhada);
+          
+          // ✅ NOVO: Processar questões e alunos da tabela detalhada
+          processTabelaDetalhada(normalizedResponse.tabela_detalhada);
+        }
 
         // ✅ Construir resumo preciso da avaliação selecionada (se houver)
         if (selectedEvaluation !== 'all') {
@@ -642,6 +773,7 @@ export default function Results() {
       } else {
         setApiData(null);
         setEvaluationInfo(null);
+        setTabelaDetalhada(null);
       }
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
@@ -652,6 +784,7 @@ export default function Results() {
       });
       setApiData(null);
       setEvaluationInfo(null);
+      setTabelaDetalhada(null);
     } finally {
       setIsLoadingData(false);
     }
@@ -667,6 +800,141 @@ export default function Results() {
     toast,
     extractSubjectName
   ]);
+
+  // ✅ NOVO: Função para processar dados da tabela detalhada
+  const processTabelaDetalhada = useCallback((tabelaData: any) => {
+    console.log('🔍 LOG - processTabelaDetalhada chamada com:', tabelaData);
+    
+    if (!tabelaData || !tabelaData.disciplinas || tabelaData.disciplinas.length === 0) {
+      console.log('🔍 LOG - Tabela detalhada vazia ou inválida');
+      setQuestions([]);
+      setStudents([]);
+      setStudentResponses({});
+      return;
+    }
+
+    // ✅ CORRIGIDO: Extrair TODAS as questões de TODAS as disciplinas
+    const todasQuestoes: Question[] = [];
+    const questoesPorDisciplina = new Map<string, Question[]>();
+    
+    console.log('🔍 LOG - Processando questões de todas as disciplinas...');
+    
+    tabelaData.disciplinas.forEach((disciplina: any, discIndex: number) => {
+      console.log(`🔍 LOG - Disciplina ${discIndex + 1}: ${disciplina.nome} com ${disciplina.questoes?.length || 0} questões`);
+      
+      if (disciplina.questoes && Array.isArray(disciplina.questoes)) {
+        const questoesDisciplina = disciplina.questoes.map((q: any) => ({
+          id: `questao-${q.numero}`,
+          numero: q.numero,
+          texto: `Questão ${q.numero}`,
+          habilidade: q.habilidade,
+          codigo_habilidade: q.codigo_habilidade,
+          tipo: 'multipleChoice',
+          dificuldade: 'Médio',
+          porcentagem_acertos: 0,
+          porcentagem_erros: 0,
+          disciplina: disciplina.nome // ✅ Adicionar nome da disciplina para referência
+        }));
+        
+        questoesPorDisciplina.set(disciplina.nome, questoesDisciplina);
+        todasQuestoes.push(...questoesDisciplina);
+        
+        console.log(`🔍 LOG - Questões da disciplina ${disciplina.nome}:`, questoesDisciplina);
+      }
+    });
+    
+    // ✅ Ordenar questões por número
+    todasQuestoes.sort((a, b) => a.numero - b.numero);
+    
+    console.log('🔍 LOG - Total de questões encontradas:', todasQuestoes.length);
+    console.log('🔍 LOG - Questões ordenadas:', todasQuestoes);
+    console.log('🔍 LOG - Questões por disciplina:', Object.fromEntries(questoesPorDisciplina));
+    
+    setQuestions(todasQuestoes);
+
+    // ✅ CORRIGIDO: Extrair alunos e consolidar respostas de TODAS as disciplinas
+    const todosAlunos: StudentResult[] = [];
+    const respostasAlunos: Record<string, Array<{
+      questao_id: string;
+      questao_numero: number;
+      resposta_correta: boolean;
+      resposta_em_branco: boolean;
+      tempo_gasto: number;
+    }>> = {};
+
+    console.log('🔍 LOG - Processando disciplinas para extrair alunos...');
+    
+    // ✅ Primeiro: coletar todos os alunos únicos
+    const alunosUnicos = new Map<string, any>();
+    
+    tabelaData.disciplinas.forEach((disciplina: any, discIndex: number) => {
+      console.log(`🔍 LOG - Processando disciplina ${discIndex + 1}:`, disciplina.nome, 'com', disciplina.alunos?.length || 0, 'alunos');
+      
+      if (disciplina.alunos) {
+        disciplina.alunos.forEach((aluno: any) => {
+          if (!alunosUnicos.has(aluno.id)) {
+            alunosUnicos.set(aluno.id, {
+              ...aluno,
+              respostas_consolidadas: []
+            });
+          }
+          
+          // ✅ Adicionar respostas desta disciplina ao aluno
+          if (aluno.respostas_por_questao) {
+            const alunoConsolidado = alunosUnicos.get(aluno.id);
+            alunoConsolidado.respostas_consolidadas.push(...aluno.respostas_por_questao);
+          }
+        });
+      }
+    });
+
+    // ✅ Segundo: processar alunos consolidados
+    alunosUnicos.forEach((aluno, alunoId) => {
+      console.log(`🔍 LOG - Processando aluno consolidado: ${aluno.nome} com ${aluno.respostas_consolidadas.length} respostas`);
+      
+      // ✅ Calcular totais consolidados
+      const totalAcertos = aluno.respostas_consolidadas.filter((r: any) => r.acertou).length;
+      const totalErros = aluno.respostas_consolidadas.filter((r: any) => !r.acertou).length;
+      const totalQuestoes = todasQuestoes.length;
+      
+      const studentResult: StudentResult = {
+        id: aluno.id,
+        nome: aluno.nome,
+        turma: aluno.turma,
+        nota: aluno.nota,
+        proficiencia: aluno.proficiencia,
+        classificacao: aluno.nivel_proficiencia as any,
+        questoes_respondidas: totalQuestoes,
+        acertos: totalAcertos,
+        erros: totalErros,
+        em_branco: totalQuestoes - totalAcertos - totalErros,
+        tempo_gasto: 0,
+        status: 'concluida'
+      };
+      
+      todosAlunos.push(studentResult);
+
+      // ✅ Processar respostas consolidadas por questão
+      respostasAlunos[aluno.id] = aluno.respostas_consolidadas.map((resposta: any) => ({
+        questao_id: `questao-${resposta.questao}`,
+        questao_numero: resposta.questao,
+        resposta_correta: resposta.acertou,
+        resposta_em_branco: false, // Assumindo que todas as questões foram respondidas
+        tempo_gasto: 0
+      }));
+      
+      console.log(`🔍 LOG - Aluno ${aluno.nome}: ${totalAcertos} acertos, ${totalErros} erros de ${totalQuestoes} questões`);
+    });
+
+    console.log('🔍 LOG - Processamento concluído:');
+    console.log('🔍 LOG - Total de alunos processados:', todosAlunos.length);
+    console.log('🔍 LOG - Total de respostas processadas:', Object.keys(respostasAlunos).length);
+    console.log('🔍 LOG - Primeiros 3 alunos:', todosAlunos.slice(0, 3));
+    console.log('🔍 LOG - Respostas consolidadas:', respostasAlunos);
+    
+    setStudents(todosAlunos);
+    setStudentResponses(respostasAlunos);
+  }, []);
 
   // Carregar dados quando filtros obrigatórios mudarem
   useEffect(() => {
@@ -845,6 +1113,180 @@ export default function Results() {
 
   const chartData = useMemo(prepareChartData, [apiData, inferStageGroup, getMaxForDiscipline]);
 
+  // ✅ NOVO: Função para buscar dados detalhados da avaliação (igual ao DetailedResultsView)
+  const loadEvaluationDetails = useCallback(async () => {
+    if (!selectedEvaluation || selectedEvaluation === 'all') {
+      setQuestions([]);
+      setSkillsMapping({});
+      setSkillsBySubject({});
+      setDetailedReport(null);
+      return;
+    }
+
+    try {
+      // ✅ Buscar relatório detalhado da avaliação
+      const detailedResponse = await EvaluationResultsApiService.getDetailedReport(selectedEvaluation);
+      
+      if (detailedResponse) {
+        setDetailedReport(detailedResponse);
+        
+        // ✅ Extrair questões da avaliação
+        if (detailedResponse.questoes && Array.isArray(detailedResponse.questoes)) {
+          setQuestions(detailedResponse.questoes);
+        }
+        
+        // ✅ Extrair skills/habilidades
+        if ((detailedResponse as any).skills) {
+          const skillsMap: Record<string, string> = {};
+          const skillsBySubj: Record<string, Skill[]> = {};
+          
+          Object.entries((detailedResponse as any).skills).forEach(([subject, skills]) => {
+            if (Array.isArray(skills)) {
+              skillsBySubj[subject] = skills.map((skill: any) => ({
+                id: skill.id,
+                code: skill.code || skill.codigo,
+                description: skill.description || skill.descricao,
+                source: skill.source || 'database'
+              }));
+              
+              // Mapear UUID -> código real
+              skills.forEach((skill: any) => {
+                if (skill.id && skill.code) {
+                  skillsMap[skill.id] = skill.code;
+                }
+              });
+            }
+          });
+          
+          setSkillsMapping(skillsMap);
+          setSkillsBySubject(skillsBySubj);
+        }
+      }
+    } catch (error) {
+      console.error("Erro ao carregar detalhes da avaliação:", error);
+      setQuestions([]);
+      setSkillsMapping({});
+      setSkillsBySubject({});
+      setDetailedReport(null);
+    }
+  }, [selectedEvaluation]);
+
+  // ✅ NOVO: Carregar detalhes da avaliação quando avaliação for selecionada
+  useEffect(() => {
+    if (selectedEvaluation !== 'all') {
+      loadEvaluationDetails();
+    } else {
+      setQuestions([]);
+      setSkillsMapping({});
+      setSkillsBySubject({});
+      setDetailedReport(null);
+    }
+  }, [selectedEvaluation, loadEvaluationDetails]);
+
+  // ✅ NOVO: Função para buscar dados dos alunos (igual ao DetailedResultsView)
+  const loadStudentsData = useCallback(async () => {
+    if (!selectedEvaluation || selectedEvaluation === 'all') {
+      setStudents([]);
+      return;
+    }
+
+    try {
+      setIsLoadingStudents(true);
+      
+      // ✅ Usar a mesma API que funcionava no DetailedResultsView
+      const studentsResponse = await EvaluationResultsApiService.getStudentsByEvaluation(selectedEvaluation);
+      
+      if (studentsResponse && Array.isArray(studentsResponse)) {
+        // ✅ Transformar para o formato StudentResult correto
+        const transformedStudents: StudentResult[] = studentsResponse.map((student: any) => ({
+          id: student.id || String(Math.random()),
+          nome: student.nome || student.name || 'Aluno sem nome',
+          turma: student.turma || student.class || 'Turma não informada',
+          nota: student.nota || student.grade || student.total_score || 0,
+          total_score: student.total_score || student.nota || 0,
+          grade: student.grade || student.nota || 0,
+          proficiencia: student.proficiencia || student.proficiency || 0,
+          proficiency: student.proficiency || student.proficiencia || 0,
+          classificacao: student.classificacao || student.classification || 'Adequado',
+          classification: student.classification || student.classificacao || 'Adequado',
+          correct_answers: student.correct_answers || student.acertos || 0,
+          questoes_respondidas: student.questoes_respondidas || student.total_questions || 10,
+          acertos: student.acertos || student.correct_answers || 0,
+          erros: student.erros || student.wrong_answers || 0,
+          em_branco: student.em_branco || student.blank_answers || 0,
+          tempo_gasto: student.tempo_gasto || student.time_spent || 0,
+          status: student.status === 'concluida' || student.status === 'completed' ? 'concluida' : 'pendente'
+        }));
+
+        setStudents(transformedStudents);
+        
+        // ✅ Simular respostas detalhadas (como no DetailedResultsView)
+        const detailedAnswers: Record<string, any> = {};
+        transformedStudents.forEach((student) => {
+          detailedAnswers[student.id] = {
+            test_id: selectedEvaluation,
+            student_id: student.id,
+            student_name: student.nome,
+            total_questions: student.questoes_respondidas,
+            answered_questions: student.acertos + student.erros,
+            correct_answers: student.acertos,
+            score_percentage: (student.acertos / student.questoes_respondidas) * 100,
+            total_score: student.nota,
+            max_possible_score: student.questoes_respondidas,
+            grade: student.nota,
+            proficiencia: student.proficiencia,
+            classificacao: student.classificacao,
+            status: student.status === 'pendente' ? 'nao_respondida' : 'concluida',
+            answers: []
+          };
+        });
+        setStudentDetailedAnswers(detailedAnswers);
+      } else {
+        setStudents([]);
+        setStudentDetailedAnswers({});
+      }
+    } catch (error) {
+      console.error("Erro ao carregar dados dos alunos:", error);
+      setStudents([]);
+      setStudentDetailedAnswers({});
+    } finally {
+      setIsLoadingStudents(false);
+    }
+  }, [selectedEvaluation]);
+
+  // ✅ NOVO: Carregar dados dos alunos quando avaliação for selecionada
+  useEffect(() => {
+    if (selectedEvaluation !== 'all') {
+      loadStudentsData();
+    } else {
+      setStudents([]);
+      setStudentDetailedAnswers({});
+    }
+  }, [selectedEvaluation, loadStudentsData]);
+
+  // ✅ CORRIGIDO: Preparar dados para a tabela de alunos (igual ao DetailedResultsView)
+  const prepareTableData = useMemo(() => {
+    if (!students || students.length === 0) return [];
+
+    // ✅ Retornar os dados reais dos alunos com campos obrigatórios
+    return students.map((student) => ({
+      id: student.id,
+      nome: student.nome,
+      turma: student.turma,
+      nota: student.nota,
+      proficiencia: student.proficiencia,
+      classificacao: student.classificacao,
+      acertos: student.acertos,
+      total_questoes: student.questoes_respondidas,
+      status: student.status,
+      tempo_gasto: student.tempo_gasto,
+      // ✅ Campos obrigatórios da interface StudentResult
+      questoes_respondidas: student.questoes_respondidas,
+      erros: student.erros,
+      em_branco: student.em_branco
+    }));
+  }, [students]);
+
   // Contar filtros selecionados
   const selectedFiltersCount = [
     selectedState !== 'all',
@@ -854,6 +1296,40 @@ export default function Results() {
 
   // ✅ NOVO: Verificar se todos os filtros obrigatórios estão selecionados
   const allRequiredFiltersSelected = selectedFiltersCount === 3;
+
+  // ✅ NOVO: Calcular % da turma para cada questão (igual ao DetailedResultsView)
+  const calculateClassPercentage = useCallback((questionNumber: number) => {
+    if (!students.length || !studentResponses) return 0;
+    
+    let correctAnswers = 0;
+    let totalAnswers = 0;
+    
+    Object.values(studentResponses).forEach((responses) => {
+      const response = responses.find(r => r.questao_numero === questionNumber);
+      if (response && !response.resposta_em_branco) {
+        totalAnswers++;
+        if (response.resposta_correta) {
+          correctAnswers++;
+        }
+      }
+    });
+    
+    return totalAnswers > 0 ? Math.round((correctAnswers / totalAnswers) * 100) : 0;
+  }, [students, studentResponses]);
+
+  // ✅ NOVO: Verificar se aluno acertou a questão (igual ao DetailedResultsView)
+  const getStudentQuestionResult = useCallback((studentId: string, questionNumber: number) => {
+    const responses = studentResponses[studentId];
+    if (!responses) return { isCorrect: false, isBlank: true };
+    
+    const response = responses.find(r => r.questao_numero === questionNumber);
+    if (!response) return { isCorrect: false, isBlank: true };
+    
+    return {
+      isCorrect: response.resposta_correta,
+      isBlank: response.resposta_em_branco
+    };
+  }, [studentResponses]);
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
@@ -1164,28 +1640,26 @@ export default function Results() {
               </CardContent>
             </Card>
           )}
-          {/* ✅ CORRIGIDO: Verificar se há avaliações detalhadas disponíveis */}
-          {(() => {
-            const avaliacoesLength = apiData.resultados_detalhados?.avaliacoes?.length || 0;
-            const dataLength = (apiData.resultados_detalhados as any)?.data?.length || 0;
-            // ✅ NOVO: Mostrar conteúdo se houver avaliações detalhadas, independente das estatísticas gerais
-            return (avaliacoesLength === 0 && dataLength === 0);
-          })() ? (
-            <Card>
-              <CardContent className="text-center py-12">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                  <FileX className="h-8 w-8 text-gray-400" />
-                </div>
-                                 <h3 className="text-lg font-medium text-gray-900 mb-2">
-                   Nenhum resultado para mostrar
-                 </h3>
-                 <p className="text-gray-600">
-                   Não foram encontrados resultados para os filtros selecionados.
-                 </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <>
+
+          {/* ✅ NOVO: Sistema de Abas */}
+          <Tabs defaultValue="dashboard" className="w-full">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="dashboard" className="flex items-center gap-2">
+                <BarChart3 className="h-4 w-4" />
+                Dashboard
+              </TabsTrigger>
+              <TabsTrigger value="proficiencia" className="flex items-center gap-2">
+                <PieChart className="h-4 w-4" />
+                Proficiência
+              </TabsTrigger>
+              <TabsTrigger value="ranking" className="flex items-center gap-2">
+                <Award className="h-4 w-4" />
+                Ranking
+              </TabsTrigger>
+            </TabsList>
+
+            {/* Aba Dashboard */}
+            <TabsContent value="dashboard" className="space-y-6 mt-6">
               {/* Estatísticas Gerais */}
               <div className="grid gap-4 md:grid-cols-4">
                 <Card className="border-l-4 border-l-blue-500">
@@ -1233,9 +1707,9 @@ export default function Results() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                                         <div className="text-2xl font-bold text-purple-600">
-                       {apiData.estatisticas_gerais.media_nota_geral.toFixed(1)}
-                     </div>
+                    <div className="text-2xl font-bold text-purple-600">
+                      {apiData.estatisticas_gerais.media_nota_geral.toFixed(1)}
+                    </div>
                     <p className="text-xs text-muted-foreground mt-1">
                       Nota média
                     </p>
@@ -1250,9 +1724,9 @@ export default function Results() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                                         <div className="text-2xl font-bold text-orange-600">
-                       {apiData.estatisticas_gerais.media_proficiencia_geral.toFixed(1)}
-                     </div>
+                    <div className="text-2xl font-bold text-orange-600">
+                      {apiData.estatisticas_gerais.media_proficiencia_geral.toFixed(1)}
+                    </div>
                     <p className="text-xs text-muted-foreground mt-1">
                       Proficiência média
                     </p>
@@ -1319,135 +1793,524 @@ export default function Results() {
                   )}
                 </div>
               )}
+            </TabsContent>
 
-              {/* Lista de Avaliações */}
-              {(() => {
-                const avaliacoesLength = apiData.resultados_detalhados?.avaliacoes?.length || 0;
-                const dataLength = (apiData.resultados_detalhados as any)?.data?.length || 0;
-                
-                // ✅ CORRIGIDO: Mostrar lista se houver avaliações detalhadas
-                return (avaliacoesLength > 0 || dataLength > 0);
-              })() ? (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center justify-between">
-                      <span>Avaliações Detalhadas</span>
-                      <Badge variant="outline">
-                        {(apiData.resultados_detalhados?.paginacao?.total ||
-                          (apiData.resultados_detalhados as any)?.total || 0)} avaliações
-                      </Badge>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      {(apiData.resultados_detalhados?.avaliacoes || (apiData.resultados_detalhados as any)?.data || []).map((evaluation, index) => {
-                        const statusConfig = getStatusConfig('concluida');
-                        const participationRate = evaluation.total_alunos > 0
-                          ? (evaluation.alunos_participantes / evaluation.total_alunos) * 100
-                          : 0;
-
-                        return (
-                          <div key={`${evaluation.id}-${index}`} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
-                            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                              {/* Informações principais */}
-                              <div className="flex-1 space-y-2">
-                                <div className="flex items-center gap-2">
-                                  <h3 className="font-semibold text-lg">{evaluation.titulo}</h3>
-                                  <Badge className={statusConfig.color}>
-                                    {statusConfig.label}
-                                  </Badge>
-                                </div>
-
-                                <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-                                  <div className="flex items-center gap-1">
-                                    <Badge variant="outline">{evaluation.disciplina || 'Sem disciplina'}</Badge>
-                                    <span>•</span>
-                                    <span>{evaluation.serie || 'Sem série'}</span>
-                                    <span>•</span>
-                                    <span>{evaluation.turma || 'Sem turma'}</span>
-                                  </div>
-                                  <div className="flex items-center gap-1">
-                                    <School className="h-4 w-4" />
-                                    <span>{evaluation.escola || 'Sem escola'}</span>
-                                  </div>
-                                  <div className="flex items-center gap-1">
-                                    <MapPin className="h-4 w-4" />
-                                    <span>{evaluation.municipio || 'Sem município'}, {evaluation.estado || 'Sem estado'}</span>
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center gap-6">
-                                                                     <div className="flex items-center gap-2">
-                                     <Users className="h-4 w-4 text-muted-foreground" />
-                                     <span className="text-sm font-medium">
-                                       {evaluation.alunos_participantes || 0}/{evaluation.total_alunos || 0} alunos
-                                     </span>
-                                     <Progress value={participationRate} className="w-20 h-2" />
-                                   </div>
-
-                                   <div className="flex items-center gap-2">
-                                     <Target className="h-4 w-4 text-muted-foreground" />
-                                     <span className="text-sm font-medium">
-                                       Média: {(evaluation.media_nota || 0).toFixed(1)}
-                                     </span>
-                                     {(evaluation.media_nota || 0) >= 7 ? (
-                                       <TrendingUp className="h-4 w-4 text-green-600" />
-                                     ) : (
-                                       <AlertTriangle className="h-4 w-4 text-orange-600" />
-                                     )}
-                                   </div>
-
-                                  {(() => {
-                                    const d = new Date(evaluation.data_aplicacao);
-                                    if (isNaN(d.getTime())) return null;
-                                    return (
-                                      <div className="text-xs text-muted-foreground">
-                                        {formatDistanceToNow(d, { addSuffix: true, locale: ptBR })}
-                                      </div>
-                                    );
-                                  })()}
-                                </div>
-                              </div>
-
-                              {/* Ações */}
-                              <div className="flex gap-2">
-                                <Button
-                                  variant="outline"
-                                  onClick={() => handleViewResults(evaluation.id)}
-                                  onContextMenu={(e) => {
-                                    e.preventDefault();
-                                    handleViewResultsInNewTab(evaluation.id);
-                                  }}
-                                  title="Clique esquerdo: abrir na mesma guia | Clique direito: abrir em nova guia"
-                                >
-                                  <Eye className="h-4 w-4 mr-2" />
-                                  Ver Resultados
-                                </Button>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </CardContent>
-                </Card>
-              ) : (
+                        {/* Aba Proficiência */}
+            <TabsContent value="proficiencia" className="space-y-6 mt-6">
+              {/* ✅ NOVO: Loading state para dados dos alunos */}
+              {isLoadingStudents && (
                 <Card>
                   <CardContent className="flex flex-col items-center justify-center py-12">
-                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                      <FileText className="h-8 w-8 text-gray-400" />
-                    </div>
-                                         <h3 className="text-lg font-medium text-gray-900 mb-2">
-                       Nenhum resultado para mostrar
-                     </h3>
-                     <p className="text-gray-600 text-center max-w-md">
-                       Não foram encontrados resultados para os filtros selecionados. Tente ajustar os filtros ou verificar se existem dados cadastrados para esta seleção.
-                     </p>
+                    <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mb-4" />
+                    <p className="text-gray-600">Carregando dados dos alunos...</p>
                   </CardContent>
                 </Card>
               )}
-            </>
-          )}
+
+              {/* ✅ NOVO: Mensagem quando não há dados da tabela detalhada */}
+              {!isLoadingStudents && (!tabelaDetalhada || !tabelaDetalhada.disciplinas || tabelaDetalhada.disciplinas.length === 0) && (
+                <Card>
+                  <CardContent className="flex flex-col items-center justify-center py-12">
+                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                      <Users className="h-8 w-8 text-gray-400" />
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">
+                      Nenhum dado encontrado
+                    </h3>
+                    <p className="text-gray-600 text-center max-w-md">
+                      {selectedEvaluation === 'all' 
+                        ? 'Selecione uma avaliação para ver os dados dos alunos.'
+                        : 'Não há dados registrados nesta avaliação ou os dados ainda estão sendo carregados.'
+                      }
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* ✅ NOVO: Tabelas separadas por disciplina */}
+              {!isLoadingStudents && tabelaDetalhada && tabelaDetalhada.disciplinas && tabelaDetalhada.disciplinas.length > 0 && (
+                <>
+                  {tabelaDetalhada.disciplinas.map((disciplina: any, discIndex: number) => {
+                    // ✅ Calcular % da turma para cada questão desta disciplina
+                    const calculateDisciplinaClassPercentage = (questaoNumero: number) => {
+                      if (!disciplina.alunos || disciplina.alunos.length === 0) return 0;
+                      
+                      let correctAnswers = 0;
+                      let totalAnswers = 0;
+                      
+                      disciplina.alunos.forEach((aluno: any) => {
+                        const resposta = aluno.respostas_por_questao?.find((r: any) => r.questao === questaoNumero);
+                        if (resposta && resposta.respondeu) {
+                          totalAnswers++;
+                          if (resposta.acertou) {
+                            correctAnswers++;
+                          }
+                        }
+                      });
+                      
+                      return totalAnswers > 0 ? Math.round((correctAnswers / totalAnswers) * 100) : 0;
+                    };
+
+                    // ✅ Verificar se aluno acertou questão específica desta disciplina
+                    const getStudentDisciplinaQuestionResult = (alunoId: string, questaoNumero: number) => {
+                      const aluno = disciplina.alunos.find((a: any) => a.id === alunoId);
+                      if (!aluno) return { isCorrect: false, isBlank: true };
+                      
+                      const resposta = aluno.respostas_por_questao?.find((r: any) => r.questao === questaoNumero);
+                      if (!resposta) return { isCorrect: false, isBlank: true };
+                      
+                      return {
+                        isCorrect: resposta.acertou,
+                        isBlank: !resposta.respondeu
+                      };
+                    };
+
+                    return (
+                      <Card key={disciplina.id || discIndex}>
+                        <CardHeader>
+                          <CardTitle className="text-lg text-center">
+                            {disciplina.nome}
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-6 pt-0">
+                          {disciplina.alunos && disciplina.alunos.length > 0 && disciplina.questoes && disciplina.questoes.length > 0 ? (
+                            <div className="overflow-x-auto">
+                              <table className="w-full border-collapse border border-gray-300">
+                                <thead>
+                                  {/* Header principal */}
+                                  <tr className="bg-gray-50">
+                                    <th className="border border-gray-300 px-3 py-2 text-left font-medium text-gray-700">
+                                      Aluno
+                                    </th>
+                                    {disciplina.questoes.map((questao: any) => (
+                                      <th key={questao.numero} className="border border-gray-300 px-2 py-2 text-center font-medium text-gray-700 min-w-[60px]">
+                                        Q{questao.numero}
+                                      </th>
+                                    ))}
+                                    <th className="border border-gray-300 px-3 py-2 text-center font-medium text-gray-700">
+                                      Total
+                                    </th>
+                                    <th className="border border-gray-300 px-3 py-2 text-center font-medium text-gray-700">
+                                      Nota
+                                    </th>
+                                    <th className="border border-gray-300 px-3 py-2 text-center font-medium text-gray-700">
+                                      Proficiência
+                                    </th>
+                                    <th className="border border-gray-300 px-3 py-2 text-center font-medium text-gray-700">
+                                      Nível
+                                    </th>
+                                  </tr>
+                                  
+                                  {/* Sub-header: Habilidades */}
+                                  <tr className="bg-blue-50">
+                                    <th className="border border-gray-300 px-3 py-2 text-left font-medium text-blue-700">
+                                      Habilidade
+                                    </th>
+                                    {disciplina.questoes.map((questao: any) => (
+                                      <th key={questao.numero} className="border border-gray-300 px-2 py-2 text-center font-medium text-blue-700 text-xs">
+                                        {questao.codigo_habilidade !== 'N/A' ? questao.codigo_habilidade : questao.habilidade}
+                                      </th>
+                                    ))}
+                                    <th className="border border-gray-300 px-3 py-2 text-center font-medium text-blue-700">
+                                      -
+                                    </th>
+                                    <th className="border border-gray-300 px-3 py-2 text-center font-medium text-blue-700">
+                                      -
+                                    </th>
+                                    <th className="border border-gray-300 px-3 py-2 text-center font-medium text-blue-700">
+                                      -
+                                    </th>
+                                    <th className="border border-gray-300 px-3 py-2 text-center font-medium text-blue-700">
+                                      -
+                                    </th>
+                                  </tr>
+                                  
+                                  {/* Sub-header: % da Turma */}
+                                  <tr className="bg-green-50">
+                                    <th className="border border-gray-300 px-3 py-2 text-left font-medium text-green-700">
+                                      % Turma
+                                    </th>
+                                    {disciplina.questoes.map((questao: any) => {
+                                      const classPercentage = calculateDisciplinaClassPercentage(questao.numero);
+                                      return (
+                                        <th key={questao.numero} className="border border-gray-300 px-2 py-2 text-center font-medium text-green-700 text-xs">
+                                          {classPercentage}%
+                                        </th>
+                                      );
+                                    })}
+                                    <th className="border border-gray-300 px-3 py-2 text-center font-medium text-green-700">
+                                      -
+                                    </th>
+                                    <th className="border border-gray-300 px-3 py-2 text-center font-medium text-green-700">
+                                      -
+                                    </th>
+                                    <th className="border border-gray-300 px-3 py-2 text-center font-medium text-green-700">
+                                      -
+                                    </th>
+                                    <th className="border border-gray-300 px-3 py-2 text-center font-medium text-green-700">
+                                      -
+                                    </th>
+                                  </tr>
+                                </thead>
+                                
+                                <tbody>
+                                  {disciplina.alunos.map((aluno: any) => (
+                                    <tr key={aluno.id} className="hover:bg-gray-50">
+                                      {/* Nome do Aluno */}
+                                      <td className="border border-gray-300 px-3 py-2 font-medium text-gray-900">
+                                        {aluno.nome}
+                                      </td>
+                                      
+                                      {/* Resultados por Questão */}
+                                      {disciplina.questoes.map((questao: any) => {
+                                        const result = getStudentDisciplinaQuestionResult(aluno.id, questao.numero);
+                                        return (
+                                          <td key={questao.numero} className="border border-gray-300 px-2 py-2 text-center">
+                                            {result.isCorrect ? (
+                                              <span className="text-green-600 text-lg">✅</span>
+                                            ) : (
+                                              <span className="text-red-600 text-lg">❌</span>
+                                            )}
+                                          </td>
+                                        );
+                                      })}
+                                      
+                                      {/* Total de Acertos */}
+                                      <td className="border border-gray-300 px-3 py-2 text-center font-medium">
+                                        {aluno.total_acertos}
+                                      </td>
+                                      
+                                      {/* Nota */}
+                                      <td className="border border-gray-300 px-3 py-2 text-center font-medium">
+                                        {aluno.nota.toFixed(1)}
+                                      </td>
+                                      
+                                      {/* Proficiência */}
+                                      <td className="border border-gray-300 px-3 py-2 text-center font-medium">
+                                        {aluno.proficiencia}
+                                      </td>
+                                      
+                                      {/* Nível */}
+                                      <td className="border border-gray-300 px-3 py-2 text-center">
+                                        <Badge 
+                                          className={`${
+                                            aluno.nivel_proficiencia === 'Abaixo do Básico' ? 'bg-red-100 text-red-800 border-red-300' :
+                                            aluno.nivel_proficiencia === 'Básico' ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
+                                            aluno.nivel_proficiencia === 'Adequado' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                                            'bg-green-100 text-green-800 border-green-300'
+                                          }`}
+                                        >
+                                          {aluno.nivel_proficiencia}
+                                        </Badge>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <div className="text-center py-8">
+                              <p className="text-gray-600">Nenhum dado encontrado para {disciplina.nome}</p>
+                            </div>
+                          )}
+                          
+                          {/* Legenda */}
+                          <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                            <h4 className="text-sm font-medium text-gray-700 mb-2">Legenda:</h4>
+                            <div className="flex flex-wrap gap-4 text-xs text-gray-600">
+                              <div className="flex items-center gap-2">
+                                <span className="text-green-600 text-lg">✅</span>
+                                <span>Acertou a questão</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-red-600 text-lg">❌</span>
+                                <span>Errou a questão</span>
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </>
+              )}
+            </TabsContent>
+
+            {/* Aba Ranking */}
+            <TabsContent value="ranking" className="space-y-6 mt-6">
+              {/* ✅ NOVO: Loading state para dados do ranking */}
+              {isLoadingStudents && (
+                <Card>
+                  <CardContent className="flex flex-col items-center justify-center py-12">
+                    <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mb-4" />
+                    <p className="text-gray-600">Carregando ranking dos alunos...</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* ✅ NOVO: Mensagem quando não há dados para ranking */}
+              {!isLoadingStudents && (!tabelaDetalhada || !tabelaDetalhada.disciplinas || tabelaDetalhada.disciplinas.length === 0) && (
+                <Card>
+                  <CardContent className="flex flex-col items-center justify-center py-12">
+                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                      <Award className="h-8 w-8 text-gray-400" />
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">
+                      Nenhum dado encontrado para ranking
+                    </h3>
+                    <p className="text-gray-600 text-center max-w-md">
+                      {selectedEvaluation === 'all' 
+                        ? 'Selecione uma avaliação para ver o ranking dos alunos.'
+                        : 'Não há dados registrados nesta avaliação ou os dados ainda estão sendo carregados.'
+                      }
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* ✅ NOVO: Ranking dos alunos */}
+              {!isLoadingStudents && tabelaDetalhada && tabelaDetalhada.disciplinas && tabelaDetalhada.disciplinas.length > 0 && (
+                <>
+                  {/* Ranking Geral */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-xl font-bold text-gray-800">
+                        Ranking Geral
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-6 pt-0">
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse border border-gray-300">
+                          <thead>
+                            <tr className="bg-yellow-500">
+                              <th className="border border-gray-300 px-4 py-3 text-center font-bold text-gray-800">
+                                #
+                              </th>
+                              <th className="border border-gray-300 px-4 py-3 text-left font-bold text-gray-800">
+                                Aluno
+                              </th>
+                              <th className="border border-gray-300 px-4 py-3 text-center font-bold text-gray-800">
+                                Acertos
+                              </th>
+                              <th className="border border-gray-300 px-4 py-3 text-center font-bold text-gray-800">
+                                Nota
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(() => {
+                              // ✅ Consolidar todos os alunos de todas as disciplinas
+                              const todosAlunosRanking: Array<{
+                                id: string;
+                                nome: string;
+                                escola: string;
+                                serie: string;
+                                turma: string;
+                                total_acertos: number;
+                                total_respondidas: number;
+                                nota: number;
+                                proficiencia: number;
+                                nivel_proficiencia: string;
+                              }> = [];
+
+                              tabelaDetalhada.disciplinas.forEach((disciplina: any) => {
+                                if (disciplina.alunos && Array.isArray(disciplina.alunos)) {
+                                  disciplina.alunos.forEach((aluno: any) => {
+                                    // ✅ Verificar se o aluno já foi adicionado (evitar duplicatas)
+                                    const alunoExistente = todosAlunosRanking.find(a => a.id === aluno.id);
+                                    if (!alunoExistente) {
+                                      todosAlunosRanking.push({
+                                        id: aluno.id,
+                                        nome: aluno.nome,
+                                        escola: aluno.escola || 'Escola não informada',
+                                        serie: aluno.serie || 'Série não informada',
+                                        turma: aluno.turma || 'Turma não informada',
+                                        total_acertos: aluno.total_acertos || 0,
+                                        total_respondidas: aluno.total_respondidas || 0,
+                                        nota: aluno.nota || 0,
+                                        proficiencia: aluno.proficiencia || 0,
+                                        nivel_proficiencia: aluno.nivel_proficiencia || 'Adequado'
+                                      });
+                                    }
+                                  });
+                                }
+                              });
+
+                              // ✅ Ordenar por nota (decrescente) e depois por acertos (decrescente)
+                              const rankingOrdenado = todosAlunosRanking.sort((a, b) => {
+                                if (b.nota !== a.nota) {
+                                  return b.nota - a.nota;
+                                }
+                                return b.total_acertos - a.total_acertos;
+                              });
+
+                              // ✅ Retornar as linhas da tabela
+                              return rankingOrdenado.map((aluno, index) => (
+                                <tr key={aluno.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100`}>
+                                  <td className="border border-gray-300 px-4 py-3 text-center font-bold text-orange-600">
+                                    {index + 1}
+                                  </td>
+                                  <td className="border border-gray-300 px-4 py-3 font-medium text-gray-900">
+                                    {aluno.nome.toUpperCase()}
+                                  </td>
+                                  <td className="border border-gray-300 px-4 py-3 text-center font-bold text-green-600">
+                                    {aluno.total_acertos}
+                                  </td>
+                                  <td className="border border-gray-300 px-4 py-3 text-center font-bold text-blue-600">
+                                    {aluno.nota.toFixed(2).replace('.', ',')}
+                                  </td>
+                                </tr>
+                              ));
+                            })()}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* ✅ Informações adicionais do ranking */}
+                      {(() => {
+                        const totalAlunos = tabelaDetalhada.disciplinas.reduce((total: number, disciplina: any) => {
+                          return total + (disciplina.alunos?.length || 0);
+                        }, 0);
+
+                        const mediaGeral = tabelaDetalhada.disciplinas.reduce((total: number, disciplina: any) => {
+                          return total + (disciplina.alunos?.reduce((sum: number, aluno: any) => sum + (aluno.nota || 0), 0) || 0);
+                        }, 0) / totalAlunos;
+
+                        return (
+                          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="text-center p-4 bg-blue-50 rounded-lg border border-blue-200">
+                              <div className="text-2xl font-bold text-blue-600">{totalAlunos}</div>
+                              <div className="text-sm text-blue-700">Total de Alunos</div>
+                            </div>
+                            <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
+                              <div className="text-2xl font-bold text-green-600">{mediaGeral.toFixed(2).replace('.', ',')}</div>
+                              <div className="text-sm text-green-700">Média Geral</div>
+                            </div>
+                            <div className="text-center p-4 bg-purple-50 rounded-lg border border-purple-200">
+                              <div className="text-2xl font-bold text-purple-600">
+                                {tabelaDetalhada.disciplinas.length}
+                              </div>
+                              <div className="text-sm text-purple-700">Disciplinas Avaliadas</div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </CardContent>
+                  </Card>
+
+                  {/* ✅ Ranking por Disciplina */}
+                  {tabelaDetalhada.disciplinas.map((disciplina: any, discIndex: number) => {
+                    if (!disciplina.alunos || disciplina.alunos.length === 0) return null;
+
+                    // ✅ Ordenar alunos desta disciplina por nota e acertos
+                    const rankingDisciplina = [...disciplina.alunos].sort((a: any, b: any) => {
+                      if (b.nota !== a.nota) {
+                        return b.nota - a.nota;
+                      }
+                      return b.total_acertos - a.total_acertos;
+                    });
+
+                    return (
+                      <Card key={`ranking-${disciplina.id || discIndex}`}>
+                        <CardHeader>
+                          <CardTitle className="text-lg text-center text-gray-700">
+                            Ranking - {disciplina.nome}
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-6 pt-0">
+                          <div className="overflow-x-auto">
+                            <table className="w-full border-collapse border border-gray-300">
+                              <thead>
+                                <tr className="bg-blue-500">
+                                  <th className="border border-gray-300 px-4 py-3 text-center font-bold text-white">
+                                    #
+                                  </th>
+                                  <th className="border border-gray-300 px-4 py-3 text-left font-bold text-white">
+                                    Aluno
+                                  </th>
+                                  <th className="border border-gray-300 px-4 py-3 text-center font-bold text-white">
+                                    Acertos
+                                  </th>
+                                  <th className="border border-gray-300 px-4 py-3 text-center font-bold text-white">
+                                    Nota
+                                  </th>
+                                  <th className="border border-gray-300 px-4 py-3 text-center font-bold text-white">
+                                    Proficiência
+                                  </th>
+                                  <th className="border border-gray-300 px-4 py-3 text-center font-bold text-white">
+                                    Nível
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {rankingDisciplina.map((aluno: any, index: number) => (
+                                  <tr key={aluno.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100`}>
+                                    <td className="border border-gray-300 px-4 py-3 text-center font-bold text-blue-600">
+                                      {index + 1}
+                                    </td>
+                                    <td className="border border-gray-300 px-4 py-3 font-medium text-gray-900">
+                                      {aluno.nome.toUpperCase()}
+                                    </td>
+                                    <td className="border border-gray-300 px-4 py-3 text-center font-bold text-green-600">
+                                      {aluno.total_acertos}
+                                    </td>
+                                    <td className="border border-gray-300 px-4 py-3 text-center font-bold text-purple-600">
+                                      {aluno.nota.toFixed(2).replace('.', ',')}
+                                    </td>
+                                    <td className="border border-gray-300 px-4 py-3 text-center font-medium">
+                                      {aluno.proficiencia}
+                                    </td>
+                                    <td className="border border-gray-300 px-4 py-3 text-center">
+                                      <Badge 
+                                        className={`${
+                                          aluno.nivel_proficiencia === 'Abaixo do Básico' ? 'bg-red-100 text-red-800 border-red-300' :
+                                          aluno.nivel_proficiencia === 'Básico' ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
+                                          aluno.nivel_proficiencia === 'Adequado' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                                          'bg-green-100 text-green-800 border-green-300'
+                                        }`}
+                                      >
+                                        {aluno.nivel_proficiencia}
+                                      </Badge>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          {/* ✅ Estatísticas da disciplina */}
+                          <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
+                              <div className="text-lg font-bold text-blue-600">{disciplina.alunos.length}</div>
+                              <div className="text-xs text-blue-700">Alunos</div>
+                            </div>
+                            <div className="text-center p-3 bg-green-50 rounded-lg border border-green-200">
+                              <div className="text-lg font-bold text-green-600">
+                                {(disciplina.alunos.reduce((sum: number, aluno: any) => sum + (aluno.nota || 0), 0) / disciplina.alunos.length).toFixed(2).replace('.', ',')}
+                              </div>
+                              <div className="text-xs text-green-700">Média</div>
+                            </div>
+                            <div className="text-center p-3 bg-orange-50 rounded-lg border border-orange-200">
+                              <div className="text-lg font-bold text-orange-600">
+                                {disciplina.alunos.reduce((sum: number, aluno: any) => sum + (aluno.total_acertos || 0), 0)}
+                              </div>
+                              <div className="text-xs text-orange-700">Total Acertos</div>
+                            </div>
+                            <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-200">
+                              <div className="text-lg font-bold text-purple-600">
+                                {disciplina.questoes?.length || 0}
+                              </div>
+                              <div className="text-xs text-purple-700">Questões</div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </>
+              )}
+            </TabsContent>
+          </Tabs>
         </>
       )}
     </div>

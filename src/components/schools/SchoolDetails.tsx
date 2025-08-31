@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/authContext";
-import { UserPlus, Eye, Pencil, Trash2, Edit, Loader2, ArrowLeft, Building, Users, GraduationCap, MapPin, Globe, Calendar, Plus, BookOpen, School } from "lucide-react";
+import { UserPlus, Eye, Pencil, Trash2, Edit, Loader2, ArrowLeft, Building, Users, GraduationCap, MapPin, Globe, Calendar, Plus, BookOpen, School, Upload, FileSpreadsheet } from "lucide-react";
 import { AddUserForm } from "./AddUserForm";
 import { CreateClassForm } from "./CreateClassForm";
 import { LinkTeacherModal } from "./LinkTeacherModal";
@@ -11,6 +11,7 @@ import { LinkStudentModal } from "./LinkStudentModal";
 import { ManageClassModal } from "./ManageClassModal";
 import { LinkDirectorCoordinatorModal } from "./LinkDirectorCoordinatorModal";
 import { ManageSchoolLinksModal } from "./ManageSchoolLinksModal";
+import { BulkUploadStudentsModal } from "./BulkUploadStudentsModal";
 import {
   Table,
   TableBody,
@@ -100,6 +101,7 @@ export default function SchoolDetails() {
   const [showLinkCoordinatorModal, setShowLinkCoordinatorModal] = useState(false);
   const [showManageSchoolLinksModal, setShowManageSchoolLinksModal] = useState(false);
   const [showLinkTeacherModal, setShowLinkTeacherModal] = useState(false);
+  const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
 
   useEffect(() => {
     const fetchSchool = async () => {
@@ -585,16 +587,28 @@ export default function SchoolDetails() {
                   Diretores e coordenadores responsáveis pela gestão da instituição
                 </CardDescription>
               </div>
-              {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowManageSchoolLinksModal(true)}
-                >
-                  <Users className="h-4 w-4 mr-2" />
-                  Gerenciar
-                </Button>
-              )}
+              <div className="flex gap-2">
+                {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowBulkUploadModal(true)}
+                  >
+                    <Users className="h-4 w-4 mr-2" />
+                    Importar Alunos
+                  </Button>
+                )}
+                {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowManageSchoolLinksModal(true)}
+                  >
+                    <Users className="h-4 w-4 mr-2" />
+                    Gerenciar
+                  </Button>
+                )}
+              </div>
             </div>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -949,6 +963,20 @@ export default function SchoolDetails() {
           window.location.reload();
         }}
       />
+
+      {/* Bulk Upload Students Modal */}
+      {showBulkUploadModal && (
+        <BulkUploadStudentsModal
+          isOpen={showBulkUploadModal}
+          onClose={() => setShowBulkUploadModal(false)}
+          schoolId={school.id}
+          schoolName={school.name}
+          onSuccess={() => {
+            // Recarregar dados da escola
+            window.location.reload();
+          }}
+        />
+      )}
     </div>
   );
 }

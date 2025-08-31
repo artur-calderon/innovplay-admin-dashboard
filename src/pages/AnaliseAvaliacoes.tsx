@@ -20,6 +20,7 @@ import {
   Filter,
   BarChart3
 } from "lucide-react";
+
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
@@ -28,6 +29,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
 import { RelatorioCompleto } from "@/types/evaluation-results";
 import { useAuth } from "@/context/authContext";
+import { api } from "@/lib/api";
 import { BarChartComponent, DonutChartComponent } from "@/components/ui/charts";
 
 // Interfaces para os dados da API
@@ -125,6 +127,7 @@ export default function AnaliseAvaliacoes() {
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingFilters, setIsLoadingFilters] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -262,6 +265,60 @@ export default function AnaliseAvaliacoes() {
 
   // Verificar se todos os filtros obrigatórios estão selecionados
   const allRequiredFiltersSelected = selectedState !== 'all' && selectedMunicipality !== 'all' && selectedEvaluation !== 'all';
+
+
+
+  // Função para baixar relatório DOCX
+  const downloadReport = async () => {
+    if (!selectedEvaluation || !apiData) return;
+    
+    try {
+      setIsGeneratingReport(true);
+      
+      // Buscar o relatório DOCX diretamente do backend
+      const response = await api.get(`/reports/relatorio-pdf/${selectedEvaluation}`, {
+        responseType: 'blob' // Importante: receber como blob
+      });
+      
+      // Criar URL do blob
+      const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+      const url = window.URL.createObjectURL(blob);
+      
+      // Criar link de download
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Definir nome do arquivo
+      const selectedEvaluationData = evaluationsByMunicipality.find(evaluation => evaluation.id === selectedEvaluation);
+      const evaluationName = selectedEvaluationData?.titulo || 'avaliacao';
+      const sanitizedName = evaluationName.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_').toLowerCase();
+      const fileName = `relatorio_${sanitizedName}_${new Date().toISOString().split('T')[0]}.docx`;
+      link.download = fileName;
+      
+      // Simular clique para download
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Limpar URL do blob
+      window.URL.revokeObjectURL(url);
+      
+      toast({
+        title: "Relatório Baixado com Sucesso",
+        description: "O relatório DOCX foi salvo no seu dispositivo.",
+      });
+      
+    } catch (error) {
+      console.error("Erro ao baixar relatório:", error);
+      toast({
+        title: "Erro ao Baixar Relatório",
+        description: "Não foi possível baixar o relatório. Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
 
   // Carregar dados quando todos os filtros estiverem selecionados
   useEffect(() => {
@@ -436,10 +493,30 @@ export default function AnaliseAvaliacoes() {
           {/* Informações da Avaliação */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                Informações da Avaliação
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Informações da Avaliação
+                </CardTitle>
+                                 <Button 
+                   onClick={downloadReport}
+                   disabled={isGeneratingReport}
+                   className="flex items-center gap-2"
+                   variant="outline"
+                 >
+                   {isGeneratingReport ? (
+                     <>
+                       <RefreshCw className="h-4 w-4 animate-spin" />
+                       Baixando Relatório...
+                     </>
+                   ) : (
+                     <>
+                       <Download className="h-4 w-4" />
+                       Baixar Relatório
+                     </>
+                   )}
+                 </Button>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

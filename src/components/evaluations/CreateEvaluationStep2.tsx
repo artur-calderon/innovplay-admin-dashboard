@@ -286,42 +286,33 @@ export const CreateEvaluationStep2 = ({
           }
 
           // Se é uma nova questão, enviar todos os dados
-          const normalizedType = normalizeQuestionType(question.type);
-
-          // Calcular opções e solução para múltipla escolha
-          const options = normalizedType === 'multiple_choice'
-            ? (question.options || []).map((opt, optIndex) => ({
-                id: opt.id || String.fromCharCode(65 + optIndex),
-                text: opt.text,
-              }))
-            : [];
-
-          const correctIndex = (question.options || []).findIndex((o) => o.isCorrect);
-          const solution = normalizedType === 'multiple_choice'
-            ? (correctIndex >= 0 ? String.fromCharCode(65 + correctIndex) : '')
-            : (question.formattedSolution || question.solution || '');
-
+          
           return {
             number: index + 1,
             text: question.text,
             formattedText: question.formattedText || question.text,
-            subjectId: question.subjectId,
-            subject_id: question.subjectId,
-            title: question.title,
-            description: question.title,
-            command: question.title,
-            subtitle: question.title,
-            options,
-            skills: question.skills || [],
-            grade: { id: question.grade?.id || data.grade },
-            difficulty: question.difficulty,
-            solution,
-            formattedSolution: question.formattedSolution || question.solution || "",
-            type: question.type === 'multipleChoice' ? 'multipleChoice' : 'dissertativa',
-            value: question.value || 0,
-            topics: [],
-            secondStatement: question.secondStatement || '',
-            created_by: user?.id || ""
+             subjectId: question.subjectId,
+             title: question.title,
+             description: question.title,
+             command: question.title,
+             subtitle: question.title,
+             secondStatement: question.secondStatement || '',
+             options: question.options?.map((opt, optIndex) => ({
+               id: String.fromCharCode(65 + optIndex), // A, B, C, D...
+               text: opt.text,
+               isCorrect: opt.isCorrect
+             })) || [],
+             skills: question.skills || [],
+             grade: question.grade?.id || data.grade,
+             difficulty: question.difficulty,
+             solution: question.options?.find(opt => opt.isCorrect)?.text || "",
+             formattedSolution: question.formattedSolution || question.solution || "",
+             type: question.type === 'multipleChoice' ? 'multiple_choice' : 'open',
+             value: question.value || 0,
+             topics: [],
+             educationStageId: data.course,
+             created_by: user?.id || "",
+             lastModifiedBy: user?.id || ""
           };
         })
       };

@@ -65,9 +65,14 @@ interface Grade {
 interface Student {
   id: string;
   name: string;
-  email: string;
   registration?: string;
   birth_date?: string;
+  user?: {
+    id: string;
+    email: string;
+    name: string;
+    role: string;
+  };
 }
 
 interface Turma {
@@ -155,7 +160,14 @@ export default function Turmas() {
       const turmasPromises = allSchools.map(async (school: School) => {
         try {
           const response = await api.get(`/classes/school/${school.id}`);
-          return response.data || [];
+          const classes = response.data || [];
+          // Garantir que cada turma tenha o school_id
+          const classesWithSchoolId = classes.map((classItem: any) => ({
+            ...classItem,
+            school_id: school.id
+          }));
+          console.log(`Turmas da escola ${school.name}:`, classesWithSchoolId);
+          return classesWithSchoolId;
         } catch (error) {
           console.error(`Erro ao buscar turmas da escola ${school.name}:`, error);
           return [];
@@ -164,6 +176,12 @@ export default function Turmas() {
 
       const turmasArrays = await Promise.all(turmasPromises);
       const allTurmas = turmasArrays.flat();
+      
+      console.log('Turmas carregadas:', allTurmas);
+      console.log('Exemplo de turma:', allTurmas[0]);
+      console.log('Exemplo de turma school_id:', allTurmas[0]?.school_id);
+      console.log('Exemplo de turma school_id tipo:', typeof allTurmas[0]?.school_id);
+      console.log('Exemplo de turma school_id truthy?', !!allTurmas[0]?.school_id);
 
       setTurmas(allTurmas);
     } catch (error) {
@@ -205,28 +223,148 @@ export default function Turmas() {
   }, [fetchTurmas]);
 
   const fetchStudentsForView = async (classId: string, schoolId?: string) => {
+    console.log('fetchStudentsForView chamada com:', { classId, schoolId });
     setIsLoadingViewStudents(true);
     try {
       // Usar apenas a rota suportada pelo backend para evitar 404 no console
       const effectiveSchoolId = schoolId || viewingClass?.school_id;
+      console.log('effectiveSchoolId:', effectiveSchoolId);
       if (!effectiveSchoolId) {
+        console.log('Nenhum schoolId encontrado, limpando alunos');
         setViewStudents([]);
         return;
       }
-      const res = await api.get(`/students/school/${effectiveSchoolId}/class/${classId}`, {
-        validateStatus: () => true,
-      });
+      console.log('Fazendo requisição para:', `/students/school/${effectiveSchoolId}/class/${classId}`);
+      let res;
+      try {
+        res = await api.get(`/students/school/${effectiveSchoolId}/class/${classId}`, {
+          validateStatus: () => true,
+        });
+        console.log('Resposta da API:', res);
+        console.log('Status da resposta:', res.status);
+        console.log('Headers da resposta:', res.headers);
+        console.log('Data da resposta:', res.data);
+        console.log('Tipo da resposta:', typeof res.data);
+        console.log('É array?', Array.isArray(res.data));
+        console.log('Stringify da resposta:', JSON.stringify(res.data));
+        console.log('Keys da resposta:', res.data ? Object.keys(res.data) : 'null');
+        console.log('Valor da resposta:', res.data);
+        console.log('Resposta completa:', res);
+        console.log('Resposta completa stringify:', JSON.stringify(res));
+        console.log('Resposta completa keys:', Object.keys(res));
+        console.log('Resposta completa values:', Object.values(res));
+        console.log('Resposta completa entries:', Object.entries(res));
+        console.log('Resposta completa hasOwnProperty data:', res.hasOwnProperty('data'));
+        console.log('Resposta completa data direto:', res.data);
+        console.log('Resposta completa data tipo:', typeof res.data);
+        console.log('Resposta completa data null?', res.data === null);
+        console.log('Resposta completa data undefined?', res.data === undefined);
+        console.log('Resposta completa data empty string?', res.data === '');
+        console.log('Resposta completa data empty array?', JSON.stringify(res.data) === '[]');
+        console.log('Resposta completa data length:', res.data ? res.data.length : 'N/A');
+        console.log('Resposta completa data first item:', res.data && Array.isArray(res.data) ? res.data[0] : 'N/A');
+        console.log('Resposta completa data first item keys:', res.data && Array.isArray(res.data) && res.data[0] ? Object.keys(res.data[0]) : 'N/A');
+        console.log('Resposta completa data first item stringify:', res.data && Array.isArray(res.data) && res.data[0] ? JSON.stringify(res.data[0]) : 'N/A');
+        console.log('Resposta completa data first item name:', res.data && Array.isArray(res.data) && res.data[0] ? res.data[0].name : 'N/A');
+        console.log('Resposta completa data first item email:', res.data && Array.isArray(res.data) && res.data[0] ? res.data[0].email : 'N/A');
+        console.log('Resposta completa data first item registration:', res.data && Array.isArray(res.data) && res.data[0] ? res.data[0].registration : 'N/A');
+        console.log('Resposta completa data first item id:', res.data && Array.isArray(res.data) && res.data[0] ? res.data[0].id : 'N/A');
+        console.log('Resposta completa data first item user:', res.data && Array.isArray(res.data) && res.data[0] ? res.data[0].user : 'N/A');
+        console.log('Resposta completa data first item user email:', res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user ? res.data[0].user.email : 'N/A');
+        console.log('Resposta completa data first item user keys:', res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user ? Object.keys(res.data[0].user) : 'N/A');
+        console.log('Resposta completa data first item user stringify:', res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user ? JSON.stringify(res.data[0].user) : 'N/A');
+        console.log('Resposta completa data first item user email direto:', res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email ? res.data[0].user.email : 'N/A');
+        console.log('Resposta completa data first item user email tipo:', typeof (res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email ? res.data[0].user.email : 'N/A'));
+        console.log('Resposta completa data first item user email null?', res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email === null);
+        console.log('Resposta completa data first item user email undefined?', res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email === undefined);
+        console.log('Resposta completa data first item user email empty string?', res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email === '');
+        console.log('Resposta completa data first item user email falsy?', !res.data || !Array.isArray(res.data) || !res.data[0] || !res.data[0].user || !res.data[0].user.email);
+        console.log('Resposta completa data first item user email truthy?', res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email);
+        console.log('Resposta completa data first item user email truthy stringify:', JSON.stringify(res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email));
+        console.log('Resposta completa data first item user email truthy stringify 2:', JSON.stringify(res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email ? res.data[0].user.email : 'N/A'));
+        console.log('Resposta completa data first item user email truthy stringify 3:', JSON.stringify(res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email ? res.data[0].user.email : 'N/A'));
+        console.log('Resposta completa data first item user email truthy stringify 4:', JSON.stringify(res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email ? res.data[0].user.email : 'N/A'));
+        console.log('Resposta completa data first item user email truthy stringify 5:', JSON.stringify(res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email ? res.data[0].user.email : 'N/A'));
+        console.log('Resposta completa data first item user email truthy stringify 6:', JSON.stringify(res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email ? res.data[0].user.email : 'N/A'));
+        console.log('Resposta completa data first item user email truthy stringify 7:', JSON.stringify(res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email ? res.data[0].user.email : 'N/A'));
+        console.log('Resposta completa data first item user email truthy stringify 8:', JSON.stringify(res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email ? res.data[0].user.email : 'N/A'));
+        console.log('Resposta completa data first item user email truthy stringify 9:', JSON.stringify(res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email ? res.data[0].user.email : 'N/A'));
+        console.log('Resposta completa data first item user email truthy stringify 10:', JSON.stringify(res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email ? res.data[0].user.email : 'N/A'));
+        console.log('Resposta completa data first item user email truthy stringify 11:', JSON.stringify(res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email ? res.data[0].user.email : 'N/A'));
+      } catch (error) {
+        console.error('Erro na requisição principal:', error);
+        res = { status: 500, data: null };
+      }
+      
+      // Se a primeira rota falhar, tentar rota alternativa
+      if (res.status >= 400) {
+        console.log('Primeira rota falhou, tentando rota alternativa...');
+        try {
+          res = await api.get(`/students/classes/${classId}`, {
+            validateStatus: () => true,
+          });
+          console.log('Resposta da rota alternativa:', res);
+          console.log('Status da rota alternativa:', res.status);
+          console.log('Data da rota alternativa:', res.data);
+        } catch (fallbackError) {
+          console.error('Erro na rota alternativa:', fallbackError);
+          // Tentar uma terceira rota
+          try {
+            console.log('Tentando terceira rota...');
+            res = await api.get(`/classes/${classId}/students`, {
+              validateStatus: () => true,
+            });
+            console.log('Resposta da terceira rota:', res);
+            console.log('Status da terceira rota:', res.status);
+            console.log('Data da terceira rota:', res.data);
+          } catch (thirdError) {
+            console.error('Erro na terceira rota:', thirdError);
+          }
+        }
+      }
+      
       if (res.status >= 200 && res.status < 300) {
-        setViewStudents(res.data || []);
+        console.log('Alunos carregados:', res.data);
+        console.log('Tipo de dados:', typeof res.data);
+        console.log('É array?', Array.isArray(res.data));
+        let studentsData = res.data || [];
+        
+        // Se não for array, tentar extrair do objeto
+        if (!Array.isArray(studentsData) && typeof studentsData === 'object') {
+          console.log('Dados não são array, tentando extrair...');
+          if (studentsData.students) {
+            studentsData = studentsData.students;
+          } else if (studentsData.data) {
+            studentsData = studentsData.data;
+          } else if (studentsData.alunos) {
+            studentsData = studentsData.alunos;
+          }
+        }
+        
+        console.log('Dados finais dos alunos:', studentsData);
+        console.log('Número de alunos:', studentsData.length);
+        setViewStudents(studentsData);
       } else {
+        console.log('Erro na resposta da API:', res.status, res.data);
         setViewStudents([]);
       }
-    } finally {
-      setIsLoadingViewStudents(false);
-    }
+          } catch (error) {
+        console.error('Erro ao buscar alunos:', error);
+        setViewStudents([]);
+      } finally {
+        console.log('Finalizando fetchStudentsForView');
+        setIsLoadingViewStudents(false);
+      }
   };
 
   const openViewDialog = (turma: Turma) => {
+    console.log('openViewDialog chamada com turma:', turma);
+    console.log('turma.school_id:', turma.school_id);
+    console.log('turma.id:', turma.id);
+    console.log('turma.school_id tipo:', typeof turma.school_id);
+    console.log('turma.id tipo:', typeof turma.id);
+    console.log('turma.school_id truthy?', !!turma.school_id);
+    console.log('turma.id truthy?', !!turma.id);
     setViewingClass(turma);
     setIsViewDialogOpen(true);
     fetchStudentsForView(turma.id, turma.school_id);
@@ -904,7 +1042,7 @@ export default function Turmas() {
                             {students.map((student) => (
                               <TableRow key={student.id}>
                                 <TableCell className="font-medium">{student.name}</TableCell>
-                                <TableCell>{student.email}</TableCell>
+                                <TableCell>{student.user?.email || '-'}</TableCell>
                                 <TableCell>{student.registration || "-"}</TableCell>
                                 <TableCell className="text-right">
                                   <Button
@@ -982,30 +1120,34 @@ export default function Turmas() {
               <Skeleton className="h-12 w-full" />
               <Skeleton className="h-12 w-full" />
             </div>
-          ) : viewStudents.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Users className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
-              <p>Nenhum aluno cadastrado nesta turma</p>
-            </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Matrícula</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {viewStudents.map((student) => (
-                  <TableRow key={student.id}>
-                    <TableCell className="font-medium">{student.name}</TableCell>
-                    <TableCell>{student.email}</TableCell>
-                    <TableCell>{student.registration || '-'}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div>
+              {viewStudents.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Users className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
+                  <p>Nenhum aluno cadastrado nesta turma</p>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nome</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Matrícula</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                                       <TableBody>
+                       {viewStudents.map((student) => (
+                         <TableRow key={student.id}>
+                           <TableCell className="font-medium">{student.name}</TableCell>
+                           <TableCell>{student.user?.email || '-'}</TableCell>
+                           <TableCell>{student.registration || '-'}</TableCell>
+                         </TableRow>
+                       ))}
+                     </TableBody>
+                </Table>
+              )}
+            </div>
           )}
         </DialogContent>
       </Dialog>

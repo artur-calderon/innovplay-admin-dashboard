@@ -370,25 +370,25 @@ const QuestionForm = ({
             return [];
           };
 
-          const formData: QuestionFormValues = { // Keep the explicit type here for clarity
-            title: questionData.title || "",
-            text: questionData.formattedText || questionData.text || "",
-            educationStageId: questionData.educationStage?.id || "",
-            subjectId: questionData.subject?.id || "",
-            grade: questionData.grade?.id || "",
-            difficulty: questionData.difficulty || "",
-            value: questionData.value?.toString() || "",
-            solution: questionData.formattedSolution || questionData.solution || "",
-            options: questionData.options || [],
-            secondStatement: questionData.secondStatement || "",
-            skills: normalizeSkills(questionData.skills),
-            // Now that questionData.type is correctly typed, you can use it directly
-            questionType: questionData.type as "multipleChoice" | "dissertativa",
-          };
+                     const formData: QuestionFormValues = { // Keep the explicit type here for clarity
+             title: questionData.title || "",
+             text: questionData.formattedText || questionData.text || "",
+             educationStageId: questionData.educationStage?.id || "",
+             subjectId: questionData.subject?.id || "",
+             grade: questionData.grade?.id || "",
+             difficulty: questionData.difficulty || "",
+             value: questionData.value?.toString() || "",
+             solution: questionData.formattedSolution || questionData.solution || "",
+             options: questionData.options || [],
+             secondStatement: questionData.secondStatement || "",
+             skills: normalizeSkills(questionData.skills),
+             // Corrigir o mapeamento do tipo da questão
+             questionType: questionData.type === 'multiple_choice' ? 'multipleChoice' : 'open',
+           };
 
-          // Map API data to form values
-          form.reset(formData);
-          setQuestionType(questionData.type === 'dissertativa' ? 'dissertativa' : 'multipleChoice');
+                     // Map API data to form values
+           form.reset(formData);
+           setQuestionType(questionData.type === 'multiple_choice' ? 'multipleChoice' : 'open');
         } catch (error) {
           console.error("Erro ao buscar dados da questão:", error);
           toast({
@@ -400,7 +400,7 @@ const QuestionForm = ({
       }
     };
     fetchQuestionData();
-  }, [questionId, form, toast]);
+  }, [questionId]); // Removido 'form' e 'toast' das dependências para evitar loops
 
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -421,7 +421,7 @@ const QuestionForm = ({
       }
     };
     fetchInitialData();
-  }, [toast]);
+  }, []); // Removido 'toast' das dependências para evitar loops
 
   useEffect(() => {
     const fetchGrades = async () => {
@@ -451,7 +451,7 @@ const QuestionForm = ({
       }
     };
     fetchGrades();
-  }, [selectedEducationStageId, form, toast, questionId]);
+  }, [selectedEducationStageId, questionId]); // Removido 'form' e 'toast' das dependências para evitar loops
 
   useEffect(() => {
     const fetchSkills = async () => {
@@ -486,11 +486,11 @@ const QuestionForm = ({
       }
     };
     fetchSkills();
-  }, [selectedSubjectId, form, toast]);
+  }, [selectedSubjectId, selectedEducationStageId]); // Removido 'form' e 'toast' das dependências para evitar loops
 
   useEffect(() => {
     form.setValue('questionType', questionType);
-  }, [questionType]);
+  }, [questionType]); // Removido 'form' das dependências para evitar loops
 
   const htmlToText = (html: string) => {
     const tempDiv = document.createElement('div');
@@ -535,10 +535,9 @@ const QuestionForm = ({
       subjectId: data.subjectId,
       educationStageId: data.educationStageId,
       grade: data.grade,
-      gradeId: data.grade, // Campo alternativo para compatibilidade
       difficulty: data.difficulty,
       value: data.value ? parseFloat(data.value) : 0,
-      solution, // <-- corrigido
+      solution,
       formattedSolution: data.solution || "",
       options: options,
       skills: data.skills || [],
@@ -547,87 +546,48 @@ const QuestionForm = ({
       createdBy: user.id,
     };
 
-    // Se onQuestionAdded estiver presente, significa que o componente pai quer controlar a API
-    // Neste caso, apenas chamamos o callback com os dados do formulário
-    if (onQuestionAdded) {
-      // Se estamos editando uma questão existente, não devemos chamar onQuestionAdded
-      // pois isso pode causar problemas de duplicação
-      if (questionId) {
-        // Para edição, fazer a chamada à API diretamente aqui
-        try {
-          setIsSubmitting(true);
-          const response = await api.put(`/questions/${questionId}`, { ...payload, last_modified_by: user.id });
-          
-          const updatedQuestion: Question = response.data;
-          toast({
-            title: "Sucesso",
-            description: "Questão atualizada com sucesso!",
-          });
-          
-          // Chamar o callback com a questão atualizada
-          onQuestionAdded(updatedQuestion);
-          onClose();
-        } catch (error) {
-          console.error("Erro ao atualizar questão:", error);
-          toast({
-            title: "Erro",
-            description: "Não foi possível atualizar a questão",
-            variant: "destructive",
-          });
-        } finally {
-          setIsSubmitting(false);
-        }
-        return;
-      }
-      
-      // Para criação, criar um objeto Question temporário para passar ao callback
-      const tempQuestion: Question = {
-        id: 'temp',
-        title: data.title,
-        text: data.text,
-        formattedText: data.text,
-        type: questionTypeForAPI as 'multipleChoice' | 'dissertativa' | 'trueFalse',
-        subjectId: data.subjectId,
-        subject: subjects.find(s => s.id === data.subjectId) || { id: data.subjectId, name: '' },
-        grade: grades.find(g => g.id === data.grade) || { id: data.grade, name: '' },
-        difficulty: data.difficulty,
-        value: parseFloat(data.value) || 0,
-        solution: solution,
-        formattedSolution: data.solution || '',
-        options: options,
-        skills: data.skills || [],
-        created_by: user.id,
-        secondStatement: data.secondStatement || '',
-        educationStage: null
-      };
+    // Debug: verificar se os campos obrigatórios estão presentes
+    console.log('🔍 Debug - Dados do formulário:', data);
+    console.log('📤 Debug - Payload sendo enviado:', payload);
 
-      // Chamar o callback do componente pai
-      onQuestionAdded(tempQuestion);
-      onClose();
-      return;
-    }
-
-    // Se não houver onQuestionAdded, o componente funciona independentemente
     try {
       setIsSubmitting(true);
-      let response;
+      
       if (questionId) {
-        // Update existing question
-        response = await api.put(`/questions/${questionId}`, { ...payload, last_modified_by: user.id });
+        // Update existing question - fazer a chamada direta
+        const response = await api.put(`/questions/${questionId}`, payload);
+        const updatedQuestion: Question = response.data;
+        
+        toast({
+          title: "Sucesso",
+          description: "Questão atualizada com sucesso!",
+        });
+        
+        if (externalOnSubmit) {
+          externalOnSubmit(data);
+        }
+        if (onQuestionAdded) {
+          onQuestionAdded(updatedQuestion);
+        }
+        onClose();
       } else {
-        // Create new question
-        response = await api.post("/questions", { ...payload, created_by: user.id });
+        // Create new question - fazer a chamada direta para a API
+        const response = await api.post("/questions", payload);
+        const newQuestion: Question = response.data;
+        
+        toast({
+          title: "Sucesso",
+          description: "Questão criada com sucesso!",
+        });
+        
+        if (externalOnSubmit) {
+          externalOnSubmit(data);
+        }
+        if (onQuestionAdded) {
+          onQuestionAdded(newQuestion);
+        }
+        onClose();
       }
-
-      const updatedOrNewQuestion: Question = response.data;
-      toast({
-        title: "Sucesso",
-        description: `Questão ${questionId ? 'atualizada' : 'criada'} com sucesso!`,
-      });
-      if (externalOnSubmit) {
-        externalOnSubmit(data);
-      }
-      onClose();
     } catch (error) {
       console.error(`Erro ao ${questionId ? 'atualizar' : 'criar'} questão:`, error);
       toast({
@@ -670,7 +630,7 @@ const QuestionForm = ({
         form.setValue('skills', [matchingSkill.id]);
       }
     }
-  }, [selectedEducationStageId, selectedSubjectId, skills, form]);
+  }, [selectedEducationStageId, selectedSubjectId, skills]); // Removido 'form' das dependências para evitar loops
 
   return (
     <div className="space-y-6">
@@ -1164,12 +1124,12 @@ const QuestionForm = ({
               >
                 Cancelar
               </Button>
-              <Button
-                type="submit"
-                disabled={isSubmitting}
-                size="lg"
-                className="w-full sm:w-auto px-6 sm:px-8 bg-blue-600 hover:bg-blue-700 order-1 sm:order-2"
-              >
+                             <Button
+                 type="submit"
+                 disabled={isSubmitting}
+                 size="lg"
+                 className="w-full sm:w-auto px-6 sm:px-8 bg-blue-600 hover:bg-blue-700 order-1 sm:order-2"
+               >
                 {isSubmitting ? (
                   <div className="flex items-center justify-center gap-2">
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>

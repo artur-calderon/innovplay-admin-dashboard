@@ -17,39 +17,20 @@ const CreateQuestionPage = () => {
     try {
       setIsLoading(true);
       
-      // Verificar se o usuário está autenticado
-      if (!user?.id) {
-        toast.error("Erro de autenticação", {
-          description: "Usuário não autenticado. Faça login novamente.",
-        });
-        return;
-      }
-
-      // Usar created_by do questionData se disponível, senão usar user.id
-      const createdBy = questionData.created_by || user.id;
-
-      const response = await api.post("/questions", {
-        title: questionData.title,
-        text: questionData.text,
-        second_statement: questionData.secondStatement,
-        type: questionData.type,
-        subjectId: questionData.subjectId,
-        grade: questionData.grade?.id || questionData.grade,
-        difficulty: questionData.difficulty,
-        value: questionData.value,
-        solution: questionData.solution,
-        skills: questionData.skills,
-        options: questionData.options,
-        createdBy: createdBy
-      });
-
+      // Debug: verificar os dados recebidos
+      console.log('🔍 Debug - Dados recebidos do QuestionForm:', questionData);
+      
+      // Não criar payload aqui - apenas redirecionar após sucesso
+      // O QuestionForm já fez a chamada para a API
+      
       toast.success("Questão criada com sucesso! 🎉", {
         description: "A nova questão foi adicionada ao banco de questões",
       });
       navigate("/app/cadastros/questao");
+      
     } catch (error) {
-      console.error("Erro ao criar questão:", error);
-      toast.error("Erro ao criar questão", {
+      console.error("Erro ao processar questão:", error);
+      toast.error("Erro ao processar questão", {
         description: "Tente novamente ou entre em contato com o suporte",
       });
     } finally {
