@@ -346,16 +346,16 @@ const QuestionsPage = () => {
     return filteredAndSortedQuestions.slice(startIndex, startIndex + pageSize);
   }, [filteredAndSortedQuestions, currentPage, pageSize]);
 
-  // Definir filtro inicial para professores
-  useEffect(() => {
-    if (user.role === 'professor' && filterType === 'my') {
-      setFilterType('all');
-    }
-  }, [user.role, filterType]);
+  // Definir filtro inicial para professores (removido - permite que professores escolham entre Minhas e Todas)
+  // useEffect(() => {
+  //   if (user.role === 'professor' && filterType === 'my') {
+  //     setFilterType('all');
+  //   }
+  // }, [user.role, filterType]);
 
-  // Limpar cache quando professor acessa "Todas as Questões"
+  // Limpar cache quando professor acessa "Todas as Questões" (apenas na primeira vez)
   useEffect(() => {
-    if (user.role === 'professor' && filterType === 'all') {
+    if (user.role === 'professor' && filterType === 'all' && !fetchedKeys.has(`${filterType}-${user.id || 'all'}`)) {
       const cacheKey = `${filterType}-${user.id || 'all'}`;
       
       setQuestionsCache(prev => {
@@ -376,7 +376,7 @@ const QuestionsPage = () => {
         return newSet;
       });
     }
-  }, [user.role, filterType, user.id]);
+  }, [user.role, filterType, user.id, fetchedKeys]);
 
   // Fetch inicial de dados (executar em paralelo)
   useEffect(() => {
@@ -400,6 +400,8 @@ const QuestionsPage = () => {
   // Fetch questões com cache e retry
   const fetchQuestions = useCallback(async (isRetry = false, forceRefresh = false) => {
     const cacheKey = `${filterType}-${user.id || 'all'}`;
+    
+    
     
     // Verificar se já está fazendo fetch da mesma chave
     if (!forceRefresh && isCurrentlyFetching === cacheKey) {
@@ -472,6 +474,8 @@ const QuestionsPage = () => {
       
       let response = await api.get("/questions/", { params });
       
+    
+      
       // Se professor não recebeu questões, tentar abordagem alternativa
       if (user.role === 'professor' && filterType === 'all' && 
           (!response.data || response.data.length === 0)) {
@@ -506,25 +510,29 @@ const QuestionsPage = () => {
         throw new Error('Dados inválidos recebidos do servidor');
       }
 
-      const normalizedQuestions: Question[] = response.data.map((q: QuestionApiResponse) => ({
-        id: q.id,
-        title: q.title,
-        text: q.text,
-        secondStatement: q.secondStatement || '',
-        type: q.type as "multipleChoice" | "open" | "trueFalse",
-        subjectId: q.subject?.id || '',
-        subject: q.subject || { id: '', name: '' },
-        grade: q.grade || { id: '', name: '' },
-        difficulty: q.difficulty,
-        value: q.value.toString(),
-        solution: q.solution || '',
-        formattedText: q.formattedText,
-        formattedSolution: q.formattedSolution,
-        options: q.options || [],
-        skills: Array.isArray(q.skills) ? q.skills : (q.skills && typeof q.skills === 'string' ? q.skills.split(',').map(s => s.trim()) : []),
-        created_by: q.created_by,
-        educationStage: null
-      }));
+      const normalizedQuestions: Question[] = response.data.map((q: QuestionApiResponse) => {
+      
+        
+        return {
+          id: q.id,
+          title: q.title,
+          text: q.text,
+          secondStatement: q.secondStatement || '',
+          type: q.type as "multipleChoice" | "open" | "trueFalse",
+          subjectId: q.subject?.id || '',
+          subject: q.subject || { id: '', name: '' },
+          grade: q.grade || { id: '', name: '' },
+          difficulty: q.difficulty,
+          value: q.value.toString(),
+          solution: q.solution || '',
+          formattedText: q.formattedText,
+          formattedSolution: q.formattedSolution,
+          options: q.options || [],
+          skills: Array.isArray(q.skills) ? q.skills : (q.skills && typeof q.skills === 'string' ? q.skills.split(',').map(s => s.trim()) : []),
+          created_by: q.created_by || (q as any).createdBy || (q as any).created_by_id || 'unknown',
+          educationStage: null
+        };
+      });
       
       // Salvar no cache
       setQuestionsCache(prev => ({
@@ -661,7 +669,7 @@ const QuestionsPage = () => {
   }, [user.id, filterType, questionsCache, retryCount, toast, isCurrentlyFetching, emptyResults, isDebugMode, isInitialLoad]);
 
   useEffect(() => {
-    if (user.id || filterType === 'all') {
+    if (user.id || filterType === 'all' || filterType === 'my') {
       fetchQuestions();
     }
   }, [user.id, filterType, fetchQuestions]);
@@ -675,12 +683,10 @@ const QuestionsPage = () => {
   useEffect(() => {
     const cacheKey = `${filterType}-${user.id || 'all'}`;
     
-    // Só limpar se estiver mudando para uma chave diferente
-    if (!fetchedKeys.has(cacheKey)) {
-      setError(null);
-      setRetryCount(0);
-    }
-  }, [filterType, user.id, fetchedKeys]);
+    // Limpar estados de erro e retry quando mudar de aba
+    setError(null);
+    setRetryCount(0);
+  }, [filterType, user.id]);
 
   // Limpar resultados vazios antigos periodicamente (limpeza de memória)
   useEffect(() => {
@@ -1122,7 +1128,9 @@ const QuestionsPage = () => {
     const handleSelect = useCallback((checked: boolean) => handleSelectOne(question.id, checked), [question.id]);
     
     // Verificar se usuário pode editar/deletar (se é o criador ou admin)
-    const canEditDelete = user?.id === question.created_by || user?.role === 'admin';
+    const canEditDelete = user?.id === question.created_by?.id || user?.role === 'admin';
+    
+   
 
     return (
       <div 
@@ -1456,77 +1464,81 @@ const QuestionsPage = () => {
                 </tr>
               </thead>
               <tbody>
-                {paginatedQuestions.map((question, index) => (
-                  <tr 
-                    key={question.id} 
-                    className="border-b hover:bg-muted/20 transition-colors" 
-                    data-state={selectedIds.includes(question.id) && "selected"}
-                  >
-                    <td className="p-3">
-                      <Checkbox
-                        checked={selectedIds.includes(question.id)}
-                        onCheckedChange={(checked) => handleSelectOne(question.id, !!checked)}
-                        aria-label={`Selecionar questão ${question.id}`}
-                      />
-                    </td>
-                    <td className="px-3 py-2 text-sm font-mono">{((currentPage - 1) * pageSize) + index + 1}</td>
-                    <td className="px-3 py-2 max-w-xs truncate font-medium">{question.title}</td>
-                    <td className="px-3 py-2 text-sm">{question.subject?.name}</td>
-                    <td className="px-3 py-2 text-sm">{question.grade?.name}</td>
-                    <td className="px-3 py-2">
-                      <Badge 
-                        variant="outline"
-                        className={`text-xs ${getDifficultyColor(question.difficulty)}`}
-                      >
-                        {question.difficulty}
-                      </Badge>
-                    </td>
-                    <td className="px-3 py-2 text-sm">
-                      {question.type === "multipleChoice" ? "Múltipla Escolha" : "Dissertativa"}
-                    </td>
-                    <td className="px-3 py-2 text-sm font-mono">{question.value}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-1">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={() => setViewQuestion(question)}
-                          title="Visualizar"
+                {paginatedQuestions.map((question, index) => {
+                 
+                  
+                  return (
+                    <tr 
+                      key={question.id} 
+                      className="border-b hover:bg-muted/20 transition-colors" 
+                      data-state={selectedIds.includes(question.id) && "selected"}
+                    >
+                      <td className="p-3">
+                        <Checkbox
+                          checked={selectedIds.includes(question.id)}
+                          onCheckedChange={(checked) => handleSelectOne(question.id, !!checked)}
+                          aria-label={`Selecionar questão ${question.id}`}
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-sm font-mono">{((currentPage - 1) * pageSize) + index + 1}</td>
+                      <td className="px-3 py-2 max-w-xs truncate font-medium">{question.title}</td>
+                      <td className="px-3 py-2 text-sm">{question.subject?.name}</td>
+                      <td className="px-3 py-2 text-sm">{question.grade?.name}</td>
+                      <td className="px-3 py-2">
+                        <Badge 
+                          variant="outline"
+                          className={`text-xs ${getDifficultyColor(question.difficulty)}`}
                         >
-                          <Eye className="h-3 w-3" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={() => handleDuplicate(question)}
-                          title="Duplicar questão"
-                        >
-                          <Copy className="h-3 w-3" />
-                        </Button>
-                        {(user?.id === question.created_by || user?.role === 'admin') && (
-                          <>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              onClick={() => navigate(`/app/cadastros/questao/editar/${question.id}`)}
-                              title="Editar"
-                            >
-                              <Pencil className="h-3 w-3" />
-                            </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              onClick={() => setDeleteQuestionId(question.id)}
-                              title="Excluir"
-                            >
-                              <Trash2 className="h-3 w-3 text-destructive" />
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {question.difficulty}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-2 text-sm">
+                        {question.type === "multipleChoice" ? "Múltipla Escolha" : "Dissertativa"}
+                      </td>
+                      <td className="px-3 py-2 text-sm font-mono">{question.value}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => setViewQuestion(question)}
+                            title="Visualizar"
+                          >
+                            <Eye className="h-3 w-3" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => handleDuplicate(question)}
+                            title="Duplicar questão"
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                                                     {(user?.id === question.created_by?.id || user?.role === 'admin') && (
+                            <>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => navigate(`/app/cadastros/questao/editar/${question.id}`)}
+                                title="Editar"
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => setDeleteQuestionId(question.id)}
+                                title="Excluir"
+                              >
+                                <Trash2 className="h-3 w-3 text-destructive" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

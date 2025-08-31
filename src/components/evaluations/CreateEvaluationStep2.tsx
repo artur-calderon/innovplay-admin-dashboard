@@ -278,10 +278,11 @@ export const CreateEvaluationStep2 = ({
           }
 
           // Se é uma nova questão, enviar todos os dados
+          
           return {
             number: index + 1,
             text: question.text,
-                         formattedText: question.formattedText || question.text,
+            formattedText: question.formattedText || question.text,
              subjectId: question.subjectId,
              title: question.title,
              description: question.title,
@@ -293,7 +294,7 @@ export const CreateEvaluationStep2 = ({
                text: opt.text,
                isCorrect: opt.isCorrect
              })) || [],
-             skill: question.skills || [],
+             skills: question.skills || [],
              grade: question.grade?.id || data.grade,
              difficulty: question.difficulty,
              solution: question.options?.find(opt => opt.isCorrect)?.text || "",
