@@ -243,6 +243,14 @@ export const CreateEvaluationStep2 = ({
         return;
       }
 
+      // Helper para normalizar o tipo para o formato aceito pelo backend
+      const normalizeQuestionType = (t?: string) => {
+        const s = (t || '').toLowerCase();
+        if (s === 'multiplechoice' || s === 'multiple_choice') return 'multiple_choice';
+        if (s === 'truefalse' || s === 'true_false') return 'true_false';
+        return 'essay';
+      };
+
       // Estruturar dados da avaliação no formato que o backend espera
       const backendEvaluationData = {
         title: data.title.trim(),
@@ -367,7 +375,7 @@ export const CreateEvaluationStep2 = ({
   const getTypeLabel = (type: string) => {
     switch (type) {
       case 'multipleChoice': return 'Múltipla Escolha';
-      case 'open': return 'Dissertativa';
+      case 'dissertativa': return 'Dissertativa';
       case 'trueFalse': return 'Verdadeiro/Falso';
       default: return type;
     }

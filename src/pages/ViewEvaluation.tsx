@@ -43,6 +43,7 @@ interface Question {
   number: number;
   text: string;
   formattedText?: string;
+  secondStatement?: string; // Campo para segundo enunciado
   type: string;
   value: number;
   difficulty: string;
@@ -66,6 +67,25 @@ interface Municipality {
 interface SchoolInfo {
   id: string;
   name: string;
+}
+
+interface AppliedClass {
+  class_test_id: string | null;
+  class: {
+    id: string;
+    name: string;
+    students_count: number;
+    school: {
+      id: string;
+      name: string;
+    };
+    grade: {
+      id: string;
+      name: string;
+    };
+  };
+  application: string | null;
+  expiration: string | null;
 }
 
 interface Evaluation {
@@ -98,6 +118,9 @@ interface Evaluation {
   schools_count?: number;
   total_students?: number;
   applied_classes_count?: number;
+  status?: string;
+  is_applied?: boolean;
+  applied_classes?: AppliedClass[];
 }
 
 // Interface para questões agrupadas por matéria
@@ -123,6 +146,13 @@ export default function ViewEvaluation() {
       if (!id) return;
       try {
         const response = await api.get(`/test/${id}`);
+        console.log("Resposta da API:", response.data);
+        console.log("Campo secondStatement nas questões:", response.data.questions?.map(q => ({
+          id: q.id,
+          secondStatement: q.secondStatement,
+          text: q.text,
+          formattedText: q.formattedText
+        })));
         setEvaluation(response.data);
       } catch (error) {
         console.error("Erro ao buscar avaliação:", error);
@@ -181,14 +211,18 @@ export default function ViewEvaluation() {
     setShowStartEvaluationModal(true);
   };
 
-  const handleConfirmStartEvaluation = async (startDateTime: string, endDateTime: string) => {
+  const handleConfirmStartEvaluation = async (startDateTime: string, endDateTime: string, classIds: string[]) => {
     if (!evaluation) return;
+
+    // Capturar timezone do usuário automaticamente
+    const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     try {
       // Aqui seria chamada a API para ativar a avaliação com as datas
       await api.put(`/test/${evaluation.id}/start`, {
         startDateTime,
         endDateTime,
+        timezone: userTimezone,
         status: 'active'
       });
 
@@ -578,16 +612,128 @@ export default function ViewEvaluation() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {totalStudents > 0 && (
+            {/* Status de Aplicação */}
+            <div className="flex items-center gap-3 mb-4">
+                             <Badge 
+                 variant={evaluation.is_applied ? "default" : "secondary"}
+                 className={evaluation.is_applied 
+                   ? "bg-green-100 text-green-800 border-green-200" 
+                   : "bg-yellow-100 text-yellow-800 border-yellow-200"
+                 }
+               >
+                 {evaluation.is_applied ? "✅ Aplicada" : "❌ Não aplicada"}
+               </Badge>
+              {evaluation.status && (
+                <Badge variant="outline" className="text-xs">
+                  Status: {evaluation.status}
+                </Badge>
+              )}
+            </div>
+
+            {/* Informações de aplicação */}
+            {evaluation.is_applied && evaluation.applied_classes && evaluation.applied_classes.length > 0 && (
               <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center gap-2 mb-3">
                   <Users className="h-5 w-5 text-green-600" />
                   <span className="font-semibold text-green-800">
                     {totalStudents} alunos receberam a prova
                   </span>
                 </div>
-                <p className="text-sm text-green-700">
+                <p className="text-sm text-green-700 mb-4">
                   Distribuída em {appliedClassesCount} turmas de {schoolsCount} escolas
+                </p>
+                
+                {/* Turmas aplicadas */}
+                <div>
+                  <label className="text-sm font-medium text-green-700 mb-2 block">
+                    Turmas onde foi aplicada:
+                  </label>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {evaluation.applied_classes
+                      .filter(appliedClass => appliedClass.class_test_id !== null)
+                      .map((appliedClass, idx) => (
+                        <div key={appliedClass.class.id || idx} className="bg-white/80 rounded-lg p-3 border border-green-200">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-medium text-green-800">
+                              {appliedClass.class.name}
+                            </span>
+                            <Badge variant="outline" className="text-xs bg-green-50 text-green-700">
+                              {appliedClass.class.students_count} alunos
+                            </Badge>
+                          </div>
+                          <div className="text-xs text-green-600 space-y-1">
+                            <div className="flex items-center gap-1">
+                              <School className="h-3 w-3" />
+                              <span>{appliedClass.class.school.name}</span>
+                            </div>
+                            {appliedClass.application && appliedClass.expiration && (
+                              <div className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3" />
+                                <span>
+                                  {new Date(appliedClass.application).toLocaleDateString('pt-BR')} às {new Date(appliedClass.application).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} - {new Date(appliedClass.expiration).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Turmas pendentes */}
+            {!evaluation.is_applied && evaluation.applied_classes && evaluation.applied_classes.length > 0 && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Users className="h-5 w-5 text-yellow-600" />
+                  <span className="font-semibold text-yellow-800">
+                    {totalStudents} alunos agendados para receber a prova
+                  </span>
+                </div>
+                <p className="text-sm text-yellow-700 mb-4">
+                  Agendada para {appliedClassesCount} turmas de {schoolsCount} escolas
+                </p>
+                
+                <div>
+                  <label className="text-sm font-medium text-yellow-700 mb-2 block">
+                    Turmas agendadas:
+                  </label>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {evaluation.applied_classes.map((appliedClass, idx) => (
+                      <div key={appliedClass.class.id || idx} className="bg-white/80 rounded-lg p-3 border border-yellow-200">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-medium text-yellow-800">
+                            {appliedClass.class.name}
+                          </span>
+                          <Badge variant="outline" className="text-xs bg-yellow-50 text-yellow-700">
+                            {appliedClass.class.students_count} alunos
+                          </Badge>
+                        </div>
+                        <div className="text-xs text-yellow-600">
+                          <div className="flex items-center gap-1">
+                            <School className="h-3 w-3" />
+                            <span>{appliedClass.class.school.name}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Quando não há turmas aplicadas ou agendadas */}
+            {(!evaluation.applied_classes || evaluation.applied_classes.length === 0) && (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Users className="h-5 w-5 text-gray-500" />
+                  <span className="font-semibold text-gray-700">
+                    Nenhuma turma selecionada
+                  </span>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Esta avaliação ainda não foi agendada para nenhuma turma.
                 </p>
               </div>
             )}
@@ -689,7 +835,6 @@ export default function ViewEvaluation() {
                   {subjectData.questions.map((question, index) => {
                     const questionData = {
                       id: question.id,
-                      title: question.title,
                       text: question.text,
                       type: question.type,
                       difficulty: question.difficulty,
@@ -697,7 +842,6 @@ export default function ViewEvaluation() {
                       options: question.options || [],
                       solution: question.solution || '',
                       subject: question.subject,
-                      grade: question.grade,
                       skills: question.skills || []
                     };
                     
@@ -743,11 +887,11 @@ export default function ViewEvaluation() {
                         </div>
 
                         {/* Segundo Enunciado (se houver) */}
-                        {question.formattedText && question.formattedText !== question.text && (
+                        {(question.secondStatement || (question.formattedText && question.formattedText !== question.text)) && (
                           <div className="prose prose-sm max-w-none question-continuation">
                             <div
                               className="text-base leading-relaxed text-gray-700 p-4 bg-blue-50 rounded-lg border border-blue-200"
-                              dangerouslySetInnerHTML={{ __html: question.formattedText }}
+                              dangerouslySetInnerHTML={{ __html: question.secondStatement || question.formattedText }}
                             />
                           </div>
                         )}

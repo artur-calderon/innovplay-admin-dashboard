@@ -21,6 +21,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { MultiSelect } from "@/components/ui/multi-select";
+import { getRoleDisplayName } from "@/lib/constants";
 
 interface AddTeacherFormProps {
     schoolId: string;
@@ -61,7 +62,7 @@ export function AddTeacherForm({ schoolId, schoolName, classes = [], onSuccess }
     // Carregar professores ao abrir o modal
     useEffect(() => {
         const fetchTeachers = async () => {
-            if (!isOpen || !user || (user.role !== "admin" && user.role !== "tecadmin")) return;
+            if (!isOpen || !user || (user.role !== "admin" && user.role !== "tecadm")) return;
 
             setIsLoading(true);
             try {
@@ -100,7 +101,7 @@ export function AddTeacherForm({ schoolId, schoolName, classes = [], onSuccess }
     }, [searchTerm, allTeachers]);
 
     // Verificar se o usuário tem permissão
-    if (!user || (user.role !== "admin" && user.role !== "tecadmin")) {
+    if (!user || (user.role !== "admin" && user.role !== "tecadm")) {
         return null;
     }
 
@@ -124,7 +125,12 @@ export function AddTeacherForm({ schoolId, schoolName, classes = [], onSuccess }
             const response = await api.post("/teacher", {
                 ...formData,
                 matricula: formData.registration || undefined,
-                escolas_ids: [schoolId],
+            });
+
+            // Vincular professor à escola
+            await api.post("/school-teacher", {
+                teacher_id: response.data.id,
+                school_id: schoolId
             });
 
             if (selectedClasses.length > 0) {
@@ -155,8 +161,9 @@ export function AddTeacherForm({ schoolId, schoolName, classes = [], onSuccess }
         if (!selectedTeacher) return;
         setIsLoading(true);
         try {
-            await api.post(`/teacher/${selectedTeacher.id}/schools`, {
-                escolas_ids: [schoolId],
+            await api.post("/school-teacher", {
+                teacher_id: selectedTeacher.id,
+                school_id: schoolId
             });
 
             if (selectedClasses.length > 0) {

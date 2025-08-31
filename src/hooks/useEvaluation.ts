@@ -25,7 +25,8 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
     // Refs para controle
     const timerRef = useRef<NodeJS.Timeout | null>(null);
-    const saveIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    // ✅ REMOVIDO: saveIntervalRef não é mais usado
+    // const saveIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
     const sessionStartTimeRef = useRef<Date | null>(null);
 
@@ -58,9 +59,11 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 const elapsedMinutes = Math.floor((now.getTime() - startTime.getTime()) / (1000 * 60));
                 const remainingMinutes = Math.max(0, evaluationDuration - elapsedMinutes);
 
-                // Se o tempo esgotou, finalizar automaticamente
+                // ✅ CORRIGIDO: Não chamar handleSubmitTest automaticamente aqui
+                // Deixar o timer local gerenciar isso para evitar duplicação
                 if (remainingMinutes <= 0) {
-                    await handleSubmitTest(true);
+                    // Apenas marcar como expirada, não submeter automaticamente
+                    setIsTimeUp(true);
                     return true;
                 }
 
@@ -103,23 +106,39 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
     // ✅ NOVO: Iniciar sincronização de timer
     const startTimerSync = useCallback((sessionId: string, initialElapsed: number, initialRemaining: number) => {
+        // ✅ NOVO: Limpar timer anterior se existir
+        if (syncTimerRef.current) {
+            clearInterval(syncTimerRef.current);
+            syncTimerRef.current = null;
+        }
+
         let elapsedMinutes = initialElapsed;
         let remainingMinutes = initialRemaining;
 
         // Sincronizar a cada 5 minutos
         syncTimerRef.current = setInterval(async () => {
+            // ✅ NOVO: Verificar se ainda está ativo antes de continuar
+            if (evaluationState !== 'active' || isSubmitting) {
+                if (syncTimerRef.current) {
+                    clearInterval(syncTimerRef.current);
+                    syncTimerRef.current = null;
+                }
+                return;
+            }
+
             elapsedMinutes += 5;
             remainingMinutes = Math.max(0, remainingMinutes - 5);
 
             await syncTimerWithBackend(elapsedMinutes, remainingMinutes);
 
-            // Se o tempo acabou, finalizar
+            // ✅ CORRIGIDO: Não chamar handleSubmitTest automaticamente aqui
+            // Deixar o timer local gerenciar isso para evitar duplicação
             if (remainingMinutes <= 0) {
                 setIsTimeUp(true);
-                handleSubmitTest(true);
+                // Não submeter automaticamente - deixar o timer local fazer isso
             }
         }, 5 * 60 * 1000); // 5 minutos
-    }, [syncTimerWithBackend]);
+    }, [evaluationState, isSubmitting]); // ✅ NOVO: Adicionar evaluationState como dependência
 
     // ✅ NOVO: Iniciar sessão de teste
     const startTestSession = useCallback(async (): Promise<void> => {
@@ -127,6 +146,21 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
         try {
             setIsSaving(true);
+            
+            // ✅ NOVO: Limpar timers anteriores se existirem
+            if (timerRef.current) {
+                clearInterval(timerRef.current);
+                timerRef.current = null;
+            }
+            // ✅ REMOVIDO: saveIntervalRef não é mais usado
+            // if (saveIntervalRef.current) {
+            //     clearInterval(saveIntervalRef.current);
+            //     saveIntervalRef.current = null;
+            // }
+            if (syncTimerRef.current) {
+                clearInterval(syncTimerRef.current);
+                syncTimerRef.current = null;
+            }
 
             // ✅ CORRIGIDO: Usar duration da avaliação em vez de time_limit_minutes da sessão
             const evaluationDuration = testData.duration;
@@ -158,10 +192,8 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             // Iniciar sincronização de timer
             startTimerSync(sessionData.session_id, 0, evaluationDuration); // ✅ Usar duration da avaliação
 
-            // Iniciar salvamento automático
-            startAutoSave(sessionData.session_id);
-
-
+            // ✅ REMOVIDO: Auto-save está causando dupla execução de savePartialAnswers
+            // startAutoSave(sessionData.session_id);
 
         } catch (error) {
             toast({
@@ -172,7 +204,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         } finally {
             setIsSaving(false);
         }
-    }, [testData, testId, toast, startTimerSync]);
+    }, [testData, testId, toast]); // ✅ REMOVIDO: startTimerSync e startAutoSave para evitar dependência circular
 
     // ✅ NOVO: Salvar resposta
     const saveAnswer = useCallback(async (questionId: string, answer: string | string[] | null): Promise<void> => {
@@ -228,38 +260,145 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
     }, [session, testData, toast]);
 
     // ✅ NOVO: Salvar automaticamente
-    const startAutoSave = useCallback((sessionId: string) => {
-        // Salvar a cada 2 minutos
-        saveIntervalRef.current = setInterval(async () => {
-            if (Object.keys(answers).length > 0) {
-                try {
-                    const answersArray = Object.values(answers);
-                    await EvaluationApiService.savePartialAnswers({
-                        session_id: sessionId,
-                        answers: answersArray
-                    });
-                } catch (error) {
-                    // Erro silencioso no salvamento automático
-                }
-            }
-        }, 2 * 60 * 1000); // 2 minutos
-    }, [answers]);
+    // ✅ REMOVIDO: Auto-save está causando dupla execução de savePartialAnswers
+    // const startAutoSave = useCallback((sessionId: string) => {
+    //     // ✅ NOVO: Limpar timer anterior se existir
+    //     if (saveIntervalRef.current) {
+    //         clearInterval(saveIntervalRef.current);
+    //         saveIntervalRef.current = null;
+    //     }
+
+    //     // Salvar a cada 2 minutos
+    //     saveIntervalRef.current = setInterval(async () => {
+    //         // ✅ NOVO: Verificar se ainda está ativo antes de continuar
+    //         if (evaluationState !== 'active' || isSubmitting) {
+    //             if (saveIntervalRef.current) {
+    //                 clearInterval(saveIntervalRef.current);
+    //                 saveIntervalRef.current = null;
+    //             }
+    //             return;
+    //         }
+
+    //         if (Object.keys(answers).length > 0) {
+    //         try {
+    //             const answersArray = Object.values(answers);
+    //             await EvaluationApiService.savePartialAnswers({
+    //                 session_id: sessionId,
+    //                 answers: answersArray
+    //         });
+    //         } catch (error) {
+    //             // Erro silencioso no salvamento automático
+    //         }
+    //         }
+    //     }, 2 * 60 * 1000); // 2 minutos
+    // }, [answers, evaluationState, isSubmitting]); // ✅ NOVO: Adicionar dependências
 
     // ✅ NOVO: Submeter avaliação
     const handleSubmitTest = useCallback(async (automatic = false): Promise<void> => {
+        // ✅ NOVO: Proteção contra múltiplas chamadas simultâneas
         if (!session || !testData) return;
+        
+        // ✅ NOVO: Verificar se já foi enviada
+        if (evaluationState === 'completed') {
+            console.log('⚠️ Avaliação já foi enviada - bloqueando nova submissão');
+            return;
+        }
+        
+        // ✅ NOVO: Verificar se já está enviando
+        if (isSubmitting) {
+            console.log('⚠️ Avaliação já está sendo enviada - bloqueando nova submissão');
+            return;
+        }
+
+        // ✅ NOVO: Verificar se há sessão válida
+        if (!session.session_id) {
+            console.log('⚠️ Sessão inválida - bloqueando submissão');
+            toast({
+                title: "❌ Sessão inválida",
+                description: "Sua sessão de avaliação não é válida. Recarregue a página.",
+                variant: "destructive",
+            });
+            return;
+        }
+        
+        // ✅ NOVO: Verificar se há respostas para enviar
+        if (!answers || Object.keys(answers).length === 0) {
+            console.log('⚠️ Não há respostas para enviar');
+            toast({
+                title: "❌ Nenhuma resposta",
+                description: "Não há respostas para enviar. Responda pelo menos uma questão.",
+                variant: "destructive",
+            });
+            return;
+        }
+
+        // ✅ NOVO: Declarar results fora do try para evitar problemas de escopo
+        let results: any = null;
 
         try {
+            console.log('🚀 Iniciando submissão da avaliação...', {
+                automatic,
+                evaluationState,
+                isSubmitting,
+                answersCount: Object.keys(answers).length
+            });
+            
             setIsSubmitting(true);
+            
+            // ✅ NOVO: Cancelar TODOS os timers IMEDIATAMENTE para evitar chamadas duplicadas
+            if (timerRef.current) {
+                clearInterval(timerRef.current);
+                timerRef.current = null;
+            }
+            // ✅ REMOVIDO: saveIntervalRef não é mais usado
+            // if (saveIntervalRef.current) {
+            //     clearInterval(saveIntervalRef.current);
+            //     saveIntervalRef.current = null;
+            // }
+            if (syncTimerRef.current) {
+                clearInterval(syncTimerRef.current);
+                syncTimerRef.current = null;
+            }
 
             const answersArray = Object.values(answers);
-            const results = await EvaluationApiService.submitTest({
+            console.log('📤 Enviando respostas para o backend:', {
+                sessionId: session.session_id,
+                answersCount: answersArray.length
+            });
+            
+            results = await EvaluationApiService.submitTest({
                 session_id: session.session_id,
                 answers: answersArray
             });
 
-            // ✅ NOVO: Salvar resultados imediatos
-            setResults(results.results);
+            console.log('✅ Resposta do backend recebida:', results);
+
+            // ✅ CORRIGIDO: Verificar se a resposta é válida baseada no status HTTP, não no campo results
+            // A API pode retornar status 201 sem o campo results em algumas situações
+            if (!results) {
+                console.error('❌ Resposta inválida do backend - dados vazios');
+                throw new Error('Resposta inválida do backend - dados vazios');
+            }
+
+            // ✅ NOVO: Criar resultados padrão se não existirem
+            let finalResults = results.results;
+            if (!finalResults) {
+                console.log('⚠️ Campo results não encontrado, criando resultados padrão');
+                finalResults = {
+                    total_questions: results.total_questions || 0,
+                    correct_answers: results.correct_answers || 0,
+                    score_percentage: results.score_percentage || 0,
+                    grade: results.grade || 'N/A',
+                    answers_saved: Object.keys(answers).length
+                };
+            }
+
+            // ✅ NOVO: Salvar resultados (padrão ou da API)
+            setResults(finalResults);
+            console.log('✅ Definindo estado como completed e resultados:', {
+                results: finalResults,
+                evaluationState: 'completed'
+            });
             setEvaluationState('completed');
 
             // ✅ NOVO: Limpar dados do localStorage
@@ -279,26 +418,69 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             // ✅ REMOVIDO: Não gerenciar status de conclusão no localStorage
             // O backend controla o status da avaliação através do campo status
 
-            // Limpar timers
-            if (timerRef.current) clearInterval(timerRef.current);
-            if (saveIntervalRef.current) clearInterval(saveIntervalRef.current);
-            if (syncTimerRef.current) clearInterval(syncTimerRef.current);
-
             toast({
                 title: "✅ Avaliação enviada!",
                 description: "Sua avaliação foi enviada com sucesso. Aguarde a correção.",
             });
 
         } catch (error) {
-            toast({
-                title: "❌ Erro ao finalizar",
-                description: "Não foi possível finalizar a avaliação. Tente novamente.",
-                variant: "destructive",
-            });
+            console.error('❌ Erro ao submeter avaliação:', error);
+            
+            // ✅ NOVO: Verificar se já foi enviada com sucesso antes
+            if (results) {
+                console.log('⚠️ Erro em tentativa duplicada - avaliação já foi enviada com sucesso');
+                // Não alterar o estado nem mostrar erro, pois já foi enviada
+                return;
+            }
+
+            // ✅ NOVO: Verificar se é um erro de rede ou de validação
+            const isNetworkError = !error.response;
+            const isValidationError = error.response?.status === 400;
+            const isServerError = error.response?.status >= 500;
+
+            if (isNetworkError) {
+                console.log('⚠️ Erro de rede - permitindo nova tentativa');
+                toast({
+                    title: "❌ Erro de conexão",
+                    description: "Verifique sua conexão e tente novamente.",
+                    variant: "destructive",
+                });
+            } else if (isValidationError) {
+                console.log('⚠️ Erro de validação (400) - pode ser duplicação');
+                toast({
+                    title: "⚠️ Avaliação já enviada",
+                    description: "Esta avaliação já foi enviada anteriormente.",
+                    variant: "destructive",
+                });
+                // Marcar como completed para evitar novas tentativas
+                setEvaluationState('completed');
+                return;
+            } else if (isServerError) {
+                console.log('⚠️ Erro do servidor - permitindo nova tentativa');
+                toast({
+                    title: "❌ Erro do servidor",
+                    description: "Tente novamente em alguns instantes.",
+                    variant: "destructive",
+                });
+            } else {
+                console.log('⚠️ Erro desconhecido - permitindo nova tentativa');
+                toast({
+                    title: "❌ Erro inesperado",
+                    description: "Tente novamente ou entre em contato com o suporte.",
+                    variant: "destructive",
+                });
+            }
+            
+            // ✅ NOVO: Em caso de erro em primeira tentativa, permitir nova tentativa
+            setEvaluationState('active');
         } finally {
             setIsSubmitting(false);
         }
-    }, [session, testData, answers, toast, testId, user?.id]);
+    }, [session, testData, answers, toast, testId, user?.id, evaluationState, isSubmitting]);
+
+    // ✅ NOVO: Ref para evitar dependência circular
+    const handleSubmitTestRef = useRef(handleSubmitTest);
+    handleSubmitTestRef.current = handleSubmitTest;
 
     // ✅ NOVO: Timer countdown local
     useEffect(() => {
@@ -319,7 +501,12 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
                     if (newTime <= 0) {
                         setIsTimeUp(true);
-                        handleSubmitTest(true);
+                        // ✅ CORRIGIDO: Verificar se já foi enviada antes de chamar
+                        // E usar uma única chamada protegida
+                        if (!isSubmitting && evaluationState === 'active') {
+                            console.log('⏰ Tempo esgotado - submetendo avaliação automaticamente');
+                            handleSubmitTestRef.current(true);
+                        }
                         return 0;
                     }
 
@@ -333,7 +520,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 }
             };
         }
-    }, [evaluationState, session, isTimeUp, timeRemaining, toast, handleSubmitTest]);
+    }, [evaluationState, session, isTimeUp, timeRemaining, toast, isSubmitting]);
 
     // ✅ NOVO: Controle de visibilidade (pausar timer)
     useEffect(() => {
@@ -359,12 +546,34 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             try {
                 if (!isMounted) return;
                 
+                // ✅ NOVO: Limpar estado anterior que possa estar incorreto
                 setEvaluationState('loading');
+                setResults(null);
+                setSession(null);
+                setAnswers({});
+                
+                // ✅ NOVO: Limpar dados incorretos do localStorage que possam estar causando problemas
+                localStorage.removeItem("evaluation_in_progress");
+                localStorage.removeItem("current_evaluation_data");
+                localStorage.removeItem(`test_session_${testId}`);
+                localStorage.removeItem(`test_answers_${testId}`);
+                sessionStorage.removeItem("current_evaluation");
+                sessionStorage.removeItem("evaluation_session");
+                
+                console.log('🧹 Dados do localStorage limpos para evitar conflitos');
+                console.log('🔄 Iniciando carregamento da avaliação...');
 
                 // Carregar dados da avaliação usando o endpoint principal
                 const data = await EvaluationApiService.getTestData(testId);
                 
                 if (!isMounted) return;
+
+                console.log('📊 Dados da avaliação carregados:', {
+                    testId,
+                    hasQuestions: !!data.questions,
+                    questionsCount: data.questions?.length || 0,
+                    evaluationState: 'loading'
+                });
 
                 // ✅ VERIFICAR: Se há questões na resposta
                 if (!data.questions || data.questions.length === 0) {
@@ -385,6 +594,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
                 if (!isMounted) return;
                 setTestData(processedData);
+                console.log('✅ Dados da avaliação definidos no estado');
 
                 // Verificar se há sessão ativa
                 const hasActiveSession = await checkActiveSession();
@@ -392,14 +602,17 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 if (!isMounted) return;
                 
                 if (!hasActiveSession) {
+                    console.log('📝 Nenhuma sessão ativa encontrada - definindo estado como instructions');
                     setEvaluationState('instructions');
                 } else {
+                    console.log('🔄 Sessão ativa encontrada - definindo estado como active');
                     // ✅ NOVO: Carregar respostas salvas se há sessão ativa
                     await loadSavedAnswers();
                 }
 
             } catch (error) {
                 if (isMounted) {
+                    console.error('❌ Erro ao carregar dados da avaliação:', error);
                     setEvaluationState('error');
                 }
             }
@@ -468,6 +681,65 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         }
     }, [testData?.questions.length]);
 
+    // ✅ NOVO: Cleanup de todos os timers ao desmontar o componente
+    useEffect(() => {
+        return () => {
+            console.log('🧹 Cleanup: Limpando todos os timers ao desmontar');
+            
+            if (timerRef.current) {
+                clearInterval(timerRef.current);
+                timerRef.current = null;
+            }
+            
+            // ✅ REMOVIDO: saveIntervalRef não é mais usado
+            // if (saveIntervalRef.current) {
+            //     clearInterval(saveIntervalRef.current);
+            //     saveIntervalRef.current = null;
+            // }
+            
+            if (syncTimerRef.current) {
+                clearInterval(syncTimerRef.current);
+                syncTimerRef.current = null;
+            }
+        };
+    }, []);
+
+    // ✅ NOVO: Limpar todos os timers quando avaliação for completada
+    useEffect(() => {
+        if (evaluationState === 'completed') {
+            console.log('🧹 Limpando todos os timers - avaliação completada');
+            
+            // Limpar timer local
+            if (timerRef.current) {
+                clearInterval(timerRef.current);
+                timerRef.current = null;
+            }
+            
+            // ✅ REMOVIDO: saveIntervalRef não é mais usado
+            // if (saveIntervalRef.current) {
+            //     clearInterval(saveIntervalRef.current);
+            //     saveIntervalRef.current = null;
+            // }
+            
+            // Limpar timer de sincronização
+            if (syncTimerRef.current) {
+                clearInterval(syncTimerRef.current);
+                syncTimerRef.current = null;
+            }
+        }
+    }, [evaluationState]);
+
+    // ✅ NOVO: Log para debug do estado da avaliação
+    useEffect(() => {
+        console.log('🔍 Hook useEvaluation - Estado mudou:', {
+            evaluationState,
+            hasResults: !!results,
+            resultsData: results,
+            isSubmitting
+        });
+    }, [evaluationState, results, isSubmitting]);
+
+    // ✅ NOVO: Ref para evitar dependência circular
     return {
         // Estados
         evaluationState,

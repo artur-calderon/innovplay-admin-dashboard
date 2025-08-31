@@ -79,7 +79,7 @@ const baseSchema = z.object({
   ).optional(),
   secondStatement: z.string().optional(),
   skills: z.array(z.string()).optional(),
-  questionType: z.enum(['multipleChoice', 'open']),
+  questionType: z.enum(['multipleChoice', 'dissertativa']),
 });
 
 const questionSchema = baseSchema.superRefine((data, ctx) => {
@@ -110,7 +110,7 @@ const questionSchema = baseSchema.superRefine((data, ctx) => {
     }
   }
   // Se for dissertativa, não validar nem exigir alternativas
-  if (data.questionType === 'open') {
+  if (data.questionType === 'dissertativa') {
     // options pode ser undefined ou array vazio
     if (data.options && data.options.length > 0) {
       // Não precisa validar nada, mas pode limpar se quiser
@@ -308,7 +308,7 @@ const QuestionForm = ({
   const [skills, setSkills] = useState<SkillOption[]>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [questionType, setQuestionType] = useState<'multipleChoice' | 'open'>('multipleChoice');
+  const [questionType, setQuestionType] = useState<'multipleChoice' | 'dissertativa'>('multipleChoice');
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -517,11 +517,21 @@ const QuestionForm = ({
       }
     }
 
+    // Mapear o tipo da questão para o formato esperado pela API
+    const questionTypeForAPI = data.questionType === 'multipleChoice' ? 'multipleChoice' : 'dissertativa';
+    
+    // Monta as opções com id baseado na letra (apenas para múltipla escolha)
+    const options = data.questionType === 'multipleChoice' && data.options ? data.options.map((opt, index) => ({
+        id: String.fromCharCode(65 + index), // "A", "B", "C", "D"...
+        text: opt.text,
+        isCorrect: opt.isCorrect,
+    })) : [];
+
     const payload = {
       title: data.title,
       text: htmlToText(data.text),
       formattedText: data.text,
-      type: data.questionType,
+      type: questionTypeForAPI,
       subjectId: data.subjectId,
       educationStageId: data.educationStageId,
       grade: data.grade,
@@ -529,11 +539,7 @@ const QuestionForm = ({
       value: data.value ? parseFloat(data.value) : 0,
       solution,
       formattedSolution: data.solution || "",
-      options: data.questionType === 'multipleChoice' ? data.options.map((opt, index) => ({
-        id: String.fromCharCode(65 + index), // A, B, C, D, etc.
-        text: opt.text,
-        isCorrect: opt.isCorrect
-      })) : [],
+      options: options,
       skills: data.skills || [],
       secondStatement: data.secondStatement || '',
       lastModifiedBy: user.id,
@@ -594,7 +600,7 @@ const QuestionForm = ({
     }
   };
 
-  const handleSetQuestionType = (type: 'multipleChoice' | 'open') => {
+  const handleSetQuestionType = (type: 'multipleChoice' | 'dissertativa') => {
     setQuestionType(type);
     if (type === 'multipleChoice') {
       form.setValue('options', [
@@ -602,7 +608,7 @@ const QuestionForm = ({
         { text: '', isCorrect: false },
       ]);
       form.clearErrors('options');
-    } else if (type === 'open') {
+    } else if (type === 'dissertativa') {
       form.setValue('options', []);
       form.clearErrors('options');
     }
@@ -869,6 +875,7 @@ const QuestionForm = ({
                           onChange={field.onChange}
                           placeholder={selectedSubjectId ? "Clique para abrir o seletor de habilidades" : "Selecione uma disciplina primeiro"}
                           disabled={!selectedSubjectId || skills.length === 0}
+                          gradeId={form.watch('grade')}
                         />
                       </FormControl>
                       <FormMessage />
@@ -924,10 +931,10 @@ const QuestionForm = ({
 
                 <Button
                   type="button"
-                  variant={questionType === 'open' ? 'default' : 'outline'}
+                  variant={questionType === 'dissertativa' ? 'default' : 'outline'}
                   size="lg"
-                  onClick={() => handleSetQuestionType('open')}
-                  className={`w-full h-auto min-h-[4rem] p-4 ${questionType === 'open'
+                  onClick={() => handleSetQuestionType('dissertativa')}
+                  className={`w-full h-auto min-h-[4rem] p-4 ${questionType === 'dissertativa'
                     ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg'
                     : 'hover:bg-purple-50 hover:border-purple-300'
                     }`}

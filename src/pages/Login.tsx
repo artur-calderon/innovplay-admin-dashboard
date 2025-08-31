@@ -131,7 +131,7 @@ export default function Login() {
               </div>
               <Input
                 type="text"
-                placeholder="Matrícula"
+                placeholder="Usuário"
                 className="pl-10"
                 value={matricula}
                 onChange={(e) => setMatricula(e.target.value)}

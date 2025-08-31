@@ -181,14 +181,28 @@ export class EvaluationApiService {
 
     // Finalizar teste
     static async submitTest(data: SubmitTestRequest): Promise<SubmitTestResponse> {
-        console.log('Enviando dados para finalizar teste:', data);
+        console.log('🚀 Enviando dados para finalizar teste:', {
+            sessionId: data.session_id,
+            answersCount: data.answers?.length || 0,
+            endpoint: '/student-answers/submit'
+        });
+        
         try {
             const response = await api.post('/student-answers/submit', data);
-            console.log('Resposta da API submitTest:', response.data);
+            console.log('✅ Resposta da API submitTest recebida:', {
+                status: response.status,
+                statusText: response.statusText,
+                data: response.data,
+                hasResults: !!response.data?.results
+            });
             return response.data;
         } catch (error) {
-            console.error('Erro ao verificar status da sessão:', error);
-            console.error('Detalhes do erro:', error.response?.data);
+            console.error('❌ Erro ao finalizar teste:', {
+                error: error,
+                response: error.response?.data,
+                status: error.response?.status,
+                statusText: error.response?.statusText
+            });
             throw error;
         }
     }

@@ -129,6 +129,15 @@ export function useCache<T>(
     }
   }, [url, customCacheKey]);
 
+  // Função para invalidar cache por padrão (para avaliações)
+  const invalidateCacheByPattern = useCallback((pattern: string) => {
+    for (const key of cache.keys()) {
+      if (key.includes(pattern)) {
+        cache.delete(key);
+      }
+    }
+  }, []);
+
   // Função para refetch
   const refetch = useCallback((params?: any) => {
     return fetchData(params, true);
@@ -162,7 +171,8 @@ export function useCache<T>(
     isValidating,
     refetch,
     mutate,
-    invalidateCache
+    invalidateCache,
+    invalidateCacheByPattern
   };
 }
 
@@ -195,9 +205,71 @@ export function useEvaluations(params: {
     staleTime: 2 * 60 * 1000 // 2 minutos
   });
 
+  // ✅ MELHORADO: Função para invalidar cache de avaliações de forma mais abrangente
+  const invalidateEvaluationsCache = useCallback(() => {
+    console.log("🗑️ Invalidando cache de avaliações...");
+    
+    // Invalidar cache específico desta instância
+    result.invalidateCache();
+    
+    // Invalidar todas as chaves de cache relacionadas a avaliações
+    result.invalidateCacheByPattern('evaluations-');
+    
+    // ✅ NOVO: Invalidar também cache de estatísticas que podem ser afetadas
+    result.invalidateCacheByPattern('evaluation-stats');
+    result.invalidateCacheByPattern('/evaluations/stats');
+    
+    console.log("✅ Cache de avaliações invalidado com sucesso");
+  }, [result]);
+
+  // ✅ NOVO: Função para forçar refresh imediato
+  const forceRefresh = useCallback(async () => {
+    console.log("🔄 Forçando refresh de avaliações...");
+    
+    try {
+      // Invalidar cache primeiro
+      invalidateEvaluationsCache();
+      
+      // Aguardar um pouco para garantir que o cache foi limpo
+      await new Promise(resolve => setTimeout(resolve, 150));
+      
+      // Fazer refetch
+      const newData = await result.refetch();
+      
+      console.log("✅ Refresh forçado concluído");
+      return newData;
+    } catch (error) {
+      console.error("❌ Erro no refresh forçado:", error);
+      throw error;
+    }
+  }, [invalidateEvaluationsCache, result]);
+
+  // ✅ NOVO: Função para invalidar cache após operações CRUD
+  const invalidateAfterCRUD = useCallback(async () => {
+    console.log("🔄 Invalidando cache após operação CRUD...");
+    
+    try {
+      // Invalidar cache de avaliações
+      invalidateEvaluationsCache();
+      
+      // Aguardar um pouco para garantir que o cache foi limpo
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Fazer refetch para garantir dados atualizados
+      await result.refetch();
+      
+      console.log("✅ Cache invalidado e dados atualizados após CRUD");
+    } catch (error) {
+      console.error("❌ Erro ao invalidar cache após CRUD:", error);
+    }
+  }, [invalidateEvaluationsCache, result]);
+
   // Garantir que sempre retornamos um objeto válido
   return {
     ...result,
+    invalidateEvaluationsCache,
+    forceRefresh,
+    invalidateAfterCRUD,
     data: result.data || {
       data: [],
       pagination: {
@@ -214,7 +286,68 @@ export function useEvaluations(params: {
   };
 }
 
+// ✅ NOVO: Hook personalizado para gerenciar atualizações de avaliações
+export function useEvaluationsManager() {
+  const [lastUpdate, setLastUpdate] = useState(Date.now());
+  const [isUpdating, setIsUpdating] = useState(false);
 
+  // Função para forçar atualização de todas as instâncias de avaliações
+  const forceUpdateAllEvaluations = useCallback(async () => {
+    console.log("🔄 Forçando atualização de todas as avaliações...");
+    
+    setIsUpdating(true);
+    try {
+      // Invalidar todas as chaves de cache relacionadas a avaliações
+      for (const key of cache.keys()) {
+        if (key.includes('evaluations-') || key.includes('/test/')) {
+          cache.delete(key);
+        }
+      }
+      
+      // Invalidar cache de estatísticas
+      for (const key of cache.keys()) {
+        if (key.includes('evaluation-stats') || key.includes('/evaluations/stats')) {
+          cache.delete(key);
+        }
+      }
+      
+      // Atualizar timestamp
+      setLastUpdate(Date.now());
+      
+      console.log("✅ Cache de avaliações limpo com sucesso");
+    } catch (error) {
+      console.error("❌ Erro ao limpar cache de avaliações:", error);
+    } finally {
+      setIsUpdating(false);
+    }
+  }, []);
+
+  // Função para atualizar após operações CRUD
+  const updateAfterCRUD = useCallback(async () => {
+    console.log("🔄 Atualizando após operação CRUD...");
+    
+    setIsUpdating(true);
+    try {
+      await forceUpdateAllEvaluations();
+      
+      // Aguardar um pouco para garantir que o cache foi limpo
+      await new Promise(resolve => setTimeout(resolve, 250));
+      
+      console.log("✅ Atualização após CRUD concluída");
+    } catch (error) {
+      console.error("❌ Erro na atualização após CRUD:", error);
+    } finally {
+      setIsUpdating(false);
+    }
+  }, [forceUpdateAllEvaluations]);
+
+  return {
+    lastUpdate,
+    isUpdating,
+    forceUpdateAllEvaluations,
+    updateAfterCRUD
+  };
+}
 
 // Hook específico para estatísticas
 export function useEvaluationStats() {

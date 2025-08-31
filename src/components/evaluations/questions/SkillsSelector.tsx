@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Check, Search, Filter, Grid, List, X, Target, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import './SkillsSelector.css';
+import { useSkillsStore } from '@/stores/useSkillsStore';
 
 interface Skill {
   id: string;
@@ -21,6 +22,7 @@ interface SkillsSelectorProps {
   onChange: (selected: string[]) => void;
   placeholder?: string;
   disabled?: boolean;
+  gradeId?: string; // Opcional: quando presente, filtra por série
 }
 
 const SkillsSelector: React.FC<SkillsSelectorProps> = ({
@@ -28,32 +30,62 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
   selected,
   onChange,
   placeholder = "Selecionar habilidades BNCC",
-  disabled = false
+  disabled = false,
+  gradeId
 }) => {
   const [open, setOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const fetchSkillsByGrade = useSkillsStore(s => s.fetchSkillsByGrade);
+
+  // Lista efetiva de habilidades a exibir (aplica filtro por série quando disponível)
+  const [effectiveSkills, setEffectiveSkills] = useState<Skill[]>(skills);
+
+  useEffect(() => {
+    let isMounted = true;
+    const computeEffectiveSkills = async () => {
+      if (!gradeId) {
+        if (isMounted) setEffectiveSkills(skills);
+        return;
+      }
+      try {
+        const gradeSkills = await fetchSkillsByGrade(gradeId);
+        const allowedCodes = new Set(gradeSkills.map(s => s.code));
+        let intersected = skills.filter(s => allowedCodes.has(s.code));
+        // Fallback: se não encontrou por código, tenta por id
+        if (intersected.length === 0) {
+          const allowedIds = new Set(gradeSkills.map(s => s.id));
+          intersected = skills.filter(s => allowedIds.has(s.id));
+        }
+        if (isMounted) setEffectiveSkills(intersected);
+      } catch {
+        if (isMounted) setEffectiveSkills([]);
+      }
+    };
+    computeEffectiveSkills();
+    return () => { isMounted = false; };
+  }, [skills, gradeId, fetchSkillsByGrade]);
 
   // Agrupar habilidades por categoria (prefixo do código)
   const groupedSkills = useMemo(() => {
     const groups: Record<string, Skill[]> = {};
-    skills.forEach(skill => {
+    effectiveSkills.forEach(skill => {
       const prefix = skill.code.split('.')[0] || 'Outros';
       if (!groups[prefix]) groups[prefix] = [];
       groups[prefix].push(skill);
     });
     return groups;
-  }, [skills]);
+  }, [effectiveSkills]);
 
   // Filtrar habilidades por busca
   const filteredSkills = useMemo(() => {
-    if (!searchTerm) return skills;
-    return skills.filter(skill => 
+    if (!searchTerm) return effectiveSkills;
+    return effectiveSkills.filter(skill => 
       skill.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       skill.description.toLowerCase().includes(searchTerm.toLowerCase())
     );
-  }, [skills, searchTerm]);
+  }, [effectiveSkills, searchTerm]);
 
   // Habilidades filtradas agrupadas
   const filteredGroupedSkills = useMemo(() => {
@@ -73,7 +105,7 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
     onChange(newSelected);
   };
 
-  const selectedSkills = skills.filter(skill => selected.includes(skill.id));
+  const selectedSkills = effectiveSkills.filter(skill => selected.includes(skill.id));
 
   return (
     <>

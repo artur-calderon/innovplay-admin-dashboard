@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Eye, Pencil, Trash2, ChevronLeft, ChevronRight, Filter, RefreshCw, Play } from "lucide-react";
@@ -31,7 +31,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useEvaluations, useCache } from "@/hooks/use-cache";
+import { useEvaluations, useCache, useEvaluationsManager } from "@/hooks/use-cache";
 import { useAuth } from "@/context/authContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ErrorBoundary from "./ErrorBoundary";
@@ -612,10 +612,14 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
   });
   const [startModalOpen, setStartModalOpen] = useState(false);
   const [selectedEvaluationToStart, setSelectedEvaluationToStart] = useState<Evaluation | null>(null);
+  const [forceUpdate, setForceUpdate] = useState(0); // Forçar re-render após exclusão
   const itemsPerPage = 10;
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
+
+  // ✅ NOVO: Hook para gerenciar atualizações de avaliações
+  const { updateAfterCRUD, isUpdating } = useEvaluationsManager();
 
   // ✅ Verificação inicial de segurança
   if (!navigate || !toast) {
@@ -628,7 +632,10 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
     isLoading,
     error: evaluationsError,
     refetch,
-    invalidateCache
+    invalidateCache,
+    invalidateEvaluationsCache,
+    forceRefresh,
+    invalidateAfterCRUD
   } = useEvaluations({
     page: currentPage,
     per_page: itemsPerPage,
@@ -662,6 +669,43 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
     staleTime: 30 * 60 * 1000 // 30 minutos
   });
 
+  // ✅ MELHORADO: Função robusta para atualizar dados
+  const refreshData = useCallback(async () => {
+    console.log("🔄 Iniciando atualização de dados...");
+    
+    try {
+      // Usar a nova função forceRefresh que é mais robusta
+      await forceRefresh();
+      
+      // Atualizar timestamp de última atualização
+      setForceUpdate(prev => prev + 1);
+      
+      console.log("✅ Dados atualizados com sucesso");
+    } catch (error) {
+      console.error("❌ Erro ao atualizar dados:", error);
+    }
+  }, [forceRefresh]);
+
+  // ✅ MELHORADO: Função específica para atualizar após operações CRUD
+  const refreshAfterCRUD = useCallback(async () => {
+    console.log("🔄 Atualizando dados após operação CRUD...");
+    
+    try {
+      // Usar o hook de gerenciamento para uma atualização mais robusta
+      await updateAfterCRUD();
+      
+      // Fazer refetch dos dados atuais
+      await refetch();
+      
+      // Atualizar estado local
+      setForceUpdate(prev => prev + 1);
+      
+      console.log("✅ Dados atualizados após CRUD com sucesso");
+    } catch (error) {
+      console.error("❌ Erro ao atualizar dados após CRUD:", error);
+    }
+  }, [updateAfterCRUD, refetch]);
+
   const handlePageChange = (pageNumber: number) => {
     setCurrentPage(pageNumber);
   };
@@ -670,6 +714,18 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
   useEffect(() => {
     setCurrentPage(1);
   }, [filters]);
+
+  // ✅ NOVO: Forçar atualização quando forceUpdate mudar
+  useEffect(() => {
+    // Este useEffect força a re-renderização da interface
+    // quando uma avaliação é excluída ou aplicada
+  }, [forceUpdate]);
+
+  // ✅ NOVO: Listener para mudanças de avaliações (se implementado no futuro)
+  useEffect(() => {
+    // Aqui poderíamos implementar um listener para mudanças em tempo real
+    // Por exemplo, usando WebSocket ou polling
+  }, []);
 
   const handleView = (evaluationId: string) => {
     navigate(`/app/avaliacao/${evaluationId}`);
@@ -708,10 +764,9 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
         description: SUCCESS_MESSAGES.DATA_DELETED,
       });
 
-      // ✅ NOVO: Invalidar cache e recarregar dados
-      console.log("🔄 Invalidando cache e recarregando dados...");
-      invalidateCache();
-      refetch();
+      // ✅ MELHORADO: Usar função específica para operações CRUD
+      await refreshAfterCRUD();
+      
     } catch (error: any) {
       console.error("❌ Erro detalhado ao excluir avaliação:", {
         error,
@@ -721,7 +776,7 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
         data: error.response?.data
       });
 
-      let errorMessage = ERROR_MESSAGES.SERVER_ERROR;
+      let errorMessage: string = ERROR_MESSAGES.SERVER_ERROR;
 
       if (error.response?.status === 404) {
         errorMessage = ERROR_MESSAGES.DATA_NOT_FOUND;
@@ -757,11 +812,10 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
         description: SUCCESS_MESSAGES.DATA_DELETED,
       });
 
-      // ✅ NOVO: Invalidar cache e recarregar dados
-      console.log("🔄 Invalidando cache e recarregando dados...");
-      invalidateCache();
-      refetch();
+      // ✅ MELHORADO: Usar função específica para operações CRUD
+      await refreshAfterCRUD();
       setSelectedIds([]);
+      
     } catch (error: any) {
       console.error("❌ Erro detalhado ao excluir avaliações em massa:", {
         error,
@@ -832,11 +886,15 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
   const handleConfirmStartEvaluation = async (startDateTime: string, endDateTime: string, classIds: string[]) => {
     if (!selectedEvaluationToStart) return;
 
+    // Capturar timezone do usuário automaticamente
+    const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
     console.log("🚀 Aplicando avaliação:", {
       evaluationId: selectedEvaluationToStart.id,
       classIds,
       startDateTime,
-      endDateTime
+      endDateTime,
+      timezone: userTimezone
     });
 
     try {
@@ -849,23 +907,24 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
 
       console.log("📡 Enviando dados para API:", {
         url: `/test/${selectedEvaluationToStart.id}/apply`,
-        data: { classes: classesData }
+        data: { classes: classesData, timezone: userTimezone }
       });
 
       const response = await api.post(`/test/${selectedEvaluationToStart.id}/apply`, {
-        classes: classesData
+        classes: classesData,
+        timezone: userTimezone
       });
 
       console.log("✅ Resposta da API:", response.data);
 
-      // ✅ NOVO: Invalidar cache e recarregar dados
-      invalidateCache();
-      refetch();
+      // ✅ MELHORADO: Usar função específica para operações CRUD
+      await refreshAfterCRUD();
 
       toast({
         title: "🎉 Avaliação aplicada com sucesso!",
         description: `A avaliação "${selectedEvaluationToStart.title}" foi aplicada para ${classIds.length} turma(s) e ficará disponível no horário configurado.`,
       });
+
     } catch (error: any) {
       console.error("❌ Erro ao aplicar avaliação:", error);
 
@@ -903,7 +962,7 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
           <p className="text-muted-foreground mb-4">
             Erro ao carregar avaliações. Tente novamente.
           </p>
-          <Button onClick={() => refetch()}>
+          <Button onClick={() => refreshData()}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Tentar novamente
           </Button>
@@ -912,15 +971,28 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
     );
   }
 
+  // ✅ NOVO: Indicador de atualização em andamento
+  const isAnyLoading = isLoading || isUpdating;
+
   // Renderizar a tabela de avaliações
   return (
     <ErrorBoundary>
       <TooltipProvider>
         <div className="space-y-6">
+          {/* ✅ NOVO: Indicador de atualização */}
+          {isUpdating && (
+            <div className="flex items-center justify-center p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <RefreshCw className="h-4 w-4 mr-2 animate-spin text-blue-600" />
+              <span className="text-sm text-blue-700">
+                Atualizando lista de avaliações...
+              </span>
+            </div>
+          )}
+
           <EvaluationsTable
             evaluations={evaluations}
             pagination={pagination}
-            isLoading={isLoading}
+            isLoading={isAnyLoading}
             searchTerm={searchTerm}
             filters={filters}
             selectedIds={selectedIds}
@@ -937,7 +1009,7 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
             onEdit={handleEdit}
             onDelete={handleDelete}
             onStartEvaluation={handleStartEvaluation}
-            onRefresh={refetch}
+            onRefresh={refreshData}
             onClearFilters={clearFilters}
             hasActiveFilters={hasActiveFilters}
           />

@@ -56,7 +56,7 @@ interface QuestionApiResponse {
   topics: string[] | string;
   subject?: { id: string; name: string };
   grade?: { id: string; name: string };
-  created_by: string;
+  createdBy: { id: string; name: string }; // Changed from created_by: string to match API response
   solution?: string;
   formattedText?: string;
   formattedSolution?: string;
@@ -84,7 +84,7 @@ interface SortOption {
 const DIFFICULTIES = ['Abaixo do Básico', 'Básico', 'Adequado', 'Avançado'];
 const QUESTION_TYPES = [
   { value: 'multipleChoice', label: 'Múltipla Escolha' },
-  { value: 'open', label: 'Dissertativa' }
+  { value: 'dissertativa', label: 'Dissertativa' }
 ];
 const PAGE_SIZE_OPTIONS = [10, 15, 20, 25];
 
@@ -256,8 +256,8 @@ const QuestionsPage = () => {
     if (!sortOption) return questions;
 
     return [...questions].sort((a, b) => {
-      let aValue: string | number;
-      let bValue: string | number;
+      let aValue: string;
+      let bValue: string;
 
       switch (sortOption.key) {
         case 'title':
@@ -275,19 +275,19 @@ const QuestionsPage = () => {
         case 'difficulty': {
           // Mapear dificuldades para valores numéricos
           const difficultyOrder = { 'Abaixo do Básico': 1, 'Básico': 2, 'Adequado': 3, 'Avançado': 4 };
-          aValue = difficultyOrder[a.difficulty as keyof typeof difficultyOrder] || 0;
-          bValue = difficultyOrder[b.difficulty as keyof typeof difficultyOrder] || 0;
+          aValue = String(difficultyOrder[a.difficulty as keyof typeof difficultyOrder] || 0);
+          bValue = String(difficultyOrder[b.difficulty as keyof typeof difficultyOrder] || 0);
           break;
         }
         case 'value':
-          aValue = parseFloat(a.value) || 0;
-          bValue = parseFloat(b.value) || 0;
+          aValue = String(a.value || 0);
+          bValue = String(b.value || 0);
           break;
         case 'type': {
           // Mapear tipos para valores numéricos
-          const typeOrder = { 'multipleChoice': 1, 'open': 2, 'trueFalse': 3 };
-          aValue = typeOrder[a.type as keyof typeof typeOrder] || 0;
-          bValue = typeOrder[b.type as keyof typeof typeOrder] || 0;
+          const typeOrder = { 'multipleChoice': 1, 'dissertativa': 2, 'trueFalse': 3 };
+          aValue = String(typeOrder[a.type as keyof typeof typeOrder] || 0);
+          bValue = String(typeOrder[b.type as keyof typeof typeOrder] || 0);
           break;
         }
         default:
@@ -454,7 +454,7 @@ const QuestionsPage = () => {
 
       if (filterType === 'my' && user.id) {
         params.created_by = user.id;
-      } else if (filterType === 'all' && user.role === 'professor') {
+      } else if (filterType === 'all' && (user.role === 'professor' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador')) {
         // Tentar diferentes parâmetros para forçar busca de todas as questões
         params.scope = 'global';
         params.all = 'true';
@@ -464,8 +464,8 @@ const QuestionsPage = () => {
 
 
       // Log temporário para testar novos parâmetros
-      if (user.role === 'professor' && filterType === 'all') {
-        // console.log('🧪 TESTE - Professor tentando ver todas as questões:', params);
+      if ((user.role === 'professor' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && filterType === 'all') {
+        // console.log('🧪 TESTE - Usuário tentando ver todas as questões:', params);
       }
 
       if (isDebugMode) {
@@ -868,7 +868,7 @@ const QuestionsPage = () => {
         grade: question.grade?.id,
         gradeId: question.grade?.id,
         difficulty: question.difficulty,
-        value: parseFloat(question.value) || 0,
+        value: question.value || 0,
         solution: question.solution || "",
         formattedSolution: question.formattedSolution || question.solution || "",
         skills: question.skills || [],
@@ -1321,7 +1321,7 @@ const QuestionsPage = () => {
           <Tabs value={filterType} onValueChange={(value) => setFilterType(value as 'my' | 'all')} className="w-full sm:w-auto">
             <TabsList className="h-9 w-full sm:w-auto">
               <TabsTrigger value="my" className="text-sm flex-1 sm:flex-none">Minhas</TabsTrigger>
-              {(user.role === 'admin' || user.role === 'professor') && 
+              {(user.role === 'admin' || user.role === 'professor' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && 
                 <TabsTrigger value="all" className="text-sm flex-1 sm:flex-none">Todas</TabsTrigger>
               }
             </TabsList>

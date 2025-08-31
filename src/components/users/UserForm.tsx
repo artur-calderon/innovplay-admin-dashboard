@@ -23,15 +23,16 @@ import { Eye, EyeOff } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { useDataContext } from "@/context/dataContext";
-import { MultiSelect } from "@/components/ui/multi-select";
 
-// Role mapping object
+import { ROLE_DISPLAY_MAPPING } from "@/lib/constants";
+
+// Role mapping object (inverso para conversão de volta para o backend)
 const roleMapping: { [key: string]: string } = {
   "Administrador": "admin",
   "Professor": "professor",
   "Coordenador": "coordenador",
   "Diretor": "diretor",
-  "Técnico administrativo": "tecadmin",
+  "Técnico Administrador": "tecadm",
   "Aluno": "aluno"
 };
 
@@ -310,14 +311,23 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
           render={({ field }) => (
             <FormItem>
               <FormLabel>Município</FormLabel>
-              <FormControl>
-                <MultiSelect
-                  options={municipioOptions}
-                  selected={field.value ? [field.value] : []}
-                  onChange={(values) => field.onChange(values[0] || null)}
-                  placeholder="Selecione um município"
-                />
-              </FormControl>
+              <Select
+                onValueChange={field.onChange}
+                defaultValue={field.value || undefined}
+              >
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione um município" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {municipioOptions.map((municipio) => (
+                    <SelectItem key={municipio.id} value={municipio.id}>
+                      {municipio.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <FormMessage />
             </FormItem>
           )}
@@ -343,7 +353,7 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
                   <SelectItem value="Professor">Professor</SelectItem>
                   <SelectItem value="Coordenador">Coordenador</SelectItem>
                   <SelectItem value="Diretor">Diretor</SelectItem>
-                  <SelectItem value="Técnico administrativo">Técnico administrativo</SelectItem>
+                  <SelectItem value="Técnico Administrador">Técnico Administrador</SelectItem>
                 </SelectContent>
               </Select>
               <FormMessage />

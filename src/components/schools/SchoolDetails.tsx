@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/authContext";
-import { UserPlus, Eye, Pencil, Trash2, Edit, Loader2, ArrowLeft, Building, Users, GraduationCap, MapPin, Globe, Calendar, Plus, BookOpen, School } from "lucide-react";
+import { UserPlus, Eye, Pencil, Trash2, Edit, Loader2, ArrowLeft, Building, Users, GraduationCap, MapPin, Globe, Calendar, Plus, BookOpen, School, Upload, FileSpreadsheet } from "lucide-react";
 import { AddUserForm } from "./AddUserForm";
 import { CreateClassForm } from "./CreateClassForm";
 import { LinkTeacherModal } from "./LinkTeacherModal";
@@ -11,6 +11,7 @@ import { LinkStudentModal } from "./LinkStudentModal";
 import { ManageClassModal } from "./ManageClassModal";
 import { LinkDirectorCoordinatorModal } from "./LinkDirectorCoordinatorModal";
 import { ManageSchoolLinksModal } from "./ManageSchoolLinksModal";
+import { BulkUploadStudentsModal } from "./BulkUploadStudentsModal";
 import {
   Table,
   TableBody,
@@ -26,6 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getRoleDisplayName } from "@/lib/constants";
 
 interface City {
   id: string;
@@ -98,6 +100,8 @@ export default function SchoolDetails() {
   const [showLinkDirectorModal, setShowLinkDirectorModal] = useState(false);
   const [showLinkCoordinatorModal, setShowLinkCoordinatorModal] = useState(false);
   const [showManageSchoolLinksModal, setShowManageSchoolLinksModal] = useState(false);
+  const [showLinkTeacherModal, setShowLinkTeacherModal] = useState(false);
+  const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
 
   useEffect(() => {
     const fetchSchool = async () => {
@@ -227,17 +231,34 @@ export default function SchoolDetails() {
 
       try {
         console.log('👨‍🏫 Buscando professores da escola:', id);
-        const response = await api.get(`/teacher/school/${id}`);
+        const response = await api.get(`/school-teacher`);
         console.log('👨‍🏫 Response professores:', response);
         console.log('👨‍🏫 Data professores:', response.data);
+        console.log('👨‍🏫 RETORNO COMPLETO DA API /school-teacher:', JSON.stringify(response.data, null, 2));
         
-        const allTeachers = Array.isArray(response.data) ? response.data : [];
-        console.log('👨‍🏫 Todos os professores:', allTeachers);
+        // A API retorna um objeto com 'vinculos', não um array direto
+        const vinculos = response.data?.vinculos || [];
+        console.log('👨‍🏫 Vínculos encontrados:', vinculos);
         
-        // Filtrar apenas professores (não diretores/coordenadores)
-        const teachers = allTeachers.filter(teacher => teacher.role === 'professor');
+        // Mapear os vínculos para o formato esperado pelo componente
+        const allTeachers = vinculos.map(vinculo => ({
+          id: vinculo.professor.id,
+          name: vinculo.professor.name,
+          email: vinculo.professor.email,
+          registration: vinculo.registration,
+          school_id: vinculo.school_id,
+          teacher_id: vinculo.teacher_id,
+          role: 'professor' // Assumindo que todos são professores
+        }));
         
-        console.log('👨‍🏫 Professores filtrados:', teachers);
+        console.log('👨‍🏫 Todos os professores mapeados:', allTeachers);
+        
+        // Filtrar apenas professores da escola específica
+        const teachers = allTeachers.filter(teacher => 
+          teacher.school_id === id
+        );
+        
+        console.log('👨‍🏫 Professores filtrados para a escola:', teachers);
         
         setTeachers(teachers);
       } catch (error) {
@@ -335,7 +356,41 @@ export default function SchoolDetails() {
     fetchStudents();
   }, [id, toast]);
 
+  const handleRemoveTeacher = async (teacherId: string) => {
+    if (!id) return;
 
+    try {
+      await api.delete(`/school-teacher/${teacherId}`);
+      toast({
+        title: "Sucesso",
+        description: "Professor removido com sucesso.",
+      });
+      
+      // Recarregar lista de professores
+      const response = await api.get(`/school-teacher`);
+      const vinculos = response.data?.vinculos || [];
+      const allTeachers = vinculos.map(vinculo => ({
+        id: vinculo.professor.id,
+        name: vinculo.professor.name,
+        email: vinculo.professor.email,
+        registration: vinculo.registration,
+        school_id: vinculo.school_id,
+        teacher_id: vinculo.teacher_id,
+        role: 'professor'
+      }));
+      const teachers = allTeachers.filter(teacher => 
+        teacher.school_id === id
+      );
+      setTeachers(teachers);
+    } catch (error) {
+      console.error("Erro ao remover professor:", error);
+      toast({
+        title: "Erro",
+        description: "Erro ao remover professor",
+        variant: "destructive",
+      });
+    }
+  };
 
   if (isLoadingSchool) {
     return (
@@ -462,7 +517,7 @@ export default function SchoolDetails() {
               <Building className="h-5 w-5 text-orange-600" />
               Informações da Instituição
             </CardTitle>
-            {(user.role === 'admin' || user.role === 'tecadmin') && (
+            {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
               <Button onClick={() => setIsEditDialogOpen(true)} variant="outline" size="sm" className="w-full sm:w-auto">
                 <Edit className="mr-2 h-4 w-4" />
                 Editar
@@ -532,16 +587,28 @@ export default function SchoolDetails() {
                   Diretores e coordenadores responsáveis pela gestão da instituição
                 </CardDescription>
               </div>
-              {(user.role === 'admin' || user.role === 'tecadmin') && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowManageSchoolLinksModal(true)}
-                >
-                  <Users className="h-4 w-4 mr-2" />
-                  Gerenciar
-                </Button>
-              )}
+              <div className="flex gap-2">
+                {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowBulkUploadModal(true)}
+                  >
+                    <Users className="h-4 w-4 mr-2" />
+                    Importar Alunos
+                  </Button>
+                )}
+                {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowManageSchoolLinksModal(true)}
+                  >
+                    <Users className="h-4 w-4 mr-2" />
+                    Gerenciar
+                  </Button>
+                )}
+              </div>
             </div>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -552,14 +619,16 @@ export default function SchoolDetails() {
                     <Users className="h-4 w-4 text-red-600" />
                     Diretores ({directors.length})
                   </h4>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowLinkDirectorModal(true)}
-                  >
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Adicionar
-                  </Button>
+                  {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowLinkDirectorModal(true)}
+                    >
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Adicionar
+                    </Button>
+                  )}
                 </div>
                 {directors.length === 0 ? (
                   <div className="text-center py-4 bg-gray-50 rounded-lg">
@@ -589,14 +658,16 @@ export default function SchoolDetails() {
                     <Users className="h-4 w-4 text-orange-600" />
                     Coordenadores ({coordinators.length})
                   </h4>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowLinkCoordinatorModal(true)}
-                  >
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Adicionar
-                  </Button>
+                  {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowLinkCoordinatorModal(true)}
+                    >
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Adicionar
+                    </Button>
+                  )}
                 </div>
                 {coordinators.length === 0 ? (
                   <div className="text-center py-4 bg-gray-50 rounded-lg">
@@ -641,14 +712,16 @@ export default function SchoolDetails() {
                   <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <h3 className="text-lg font-semibold mb-2">Nenhuma turma cadastrada</h3>
                                      <p className="text-muted-foreground mb-4 text-sm">Crie turmas para organizar professores e alunos</p>
-                   <CreateClassForm
-                     schoolId={school.id}
-                     schoolName={school.name}
-                     onSuccess={() => {
-                       // Recarregar turmas
-                       window.location.reload();
-                     }}
-                   />
+                   {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
+                     <CreateClassForm
+                       schoolId={school.id}
+                       schoolName={school.name}
+                       onSuccess={() => {
+                         // Recarregar turmas
+                         window.location.reload();
+                       }}
+                     />
+                   )}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -696,14 +769,16 @@ export default function SchoolDetails() {
                     Organize professores e alunos por turmas
                   </CardDescription>
                 </div>
-                                 <CreateClassForm
-                   schoolId={school.id}
-                   schoolName={school.name}
-                   onSuccess={() => {
-                     // Recarregar turmas
-                     window.location.reload();
-                   }}
-                 />
+                                 {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
+                                   <CreateClassForm
+                                     schoolId={school.id}
+                                     schoolName={school.name}
+                                     onSuccess={() => {
+                                       // Recarregar turmas
+                                       window.location.reload();
+                                     }}
+                                   />
+                                 )}
               </div>
             </CardHeader>
             <CardContent>
@@ -732,19 +807,21 @@ export default function SchoolDetails() {
                               </p>
                             )}
                           </div>
-                          <div className="flex gap-2">
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => {
-                                setSelectedClass(classItem);
-                                setShowManageClassModal(true);
-                              }}
-                            >
-                              <Pencil className="h-4 w-4 mr-2" />
-                              Gerenciar
-                            </Button>
-                          </div>
+                          {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
+                            <div className="flex gap-2">
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedClass(classItem);
+                                  setShowManageClassModal(true);
+                                }}
+                              >
+                                <Pencil className="h-4 w-4 mr-2" />
+                                Gerenciar
+                              </Button>
+                            </div>
+                          )}
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -886,6 +963,20 @@ export default function SchoolDetails() {
           window.location.reload();
         }}
       />
+
+      {/* Bulk Upload Students Modal */}
+      {showBulkUploadModal && (
+        <BulkUploadStudentsModal
+          isOpen={showBulkUploadModal}
+          onClose={() => setShowBulkUploadModal(false)}
+          schoolId={school.id}
+          schoolName={school.name}
+          onSuccess={() => {
+            // Recarregar dados da escola
+            window.location.reload();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -46,7 +46,7 @@ const questionSchema = z.object({
     secondStatement: z.string().optional(),
     skills: z.array(z.string()).optional(),
     topics: z.string().optional(),
-    questionType: z.enum(['multipleChoice', 'open']),
+    questionType: z.enum(['multipleChoice', 'dissertativa']),
 }).refine((data) => {
     // Se for múltipla escolha, as opções são obrigatórias
     if (data.questionType === 'multipleChoice') {
@@ -59,6 +59,13 @@ const questionSchema = z.object({
 });
 
 type QuestionFormValues = z.infer<typeof questionSchema>;
+
+// Tipagem para resposta de habilidades na API
+interface ApiSkill {
+    id: string;
+    code: string;
+    description: string;
+}
 
 interface QuestionFormReadOnlyProps {
     onSubmit?: (data: QuestionFormValues) => void;
@@ -98,9 +105,9 @@ const QuestionPreview: React.FC<{ data: QuestionFormValues }> = ({ data }) => {
         const fetchSkills = async () => {
             if (data.subjectId) {
                 try {
-                    const response = await api.get(`/skills/subject/${data.subjectId}`);
+                    const response = await api.get<ApiSkill[]>(`/skills/subject/${data.subjectId}`);
                     if (Array.isArray(response.data)) {
-                        setSkillsOptions(response.data.map((skill: any) => ({ id: skill.id, name: `${skill.code} - ${skill.description}` })));
+                        setSkillsOptions(response.data.map((skill) => ({ id: skill.id, name: `${skill.code} - ${skill.description}` })));
                     } else {
                         setSkillsOptions([]);
                     }
@@ -237,7 +244,7 @@ const QuestionFormReadOnly = ({
     const [grades, setGrades] = useState<{ id: string; name: string }[]>([]);
     const [skills, setSkills] = useState<Option[]>([]);
     const [showPreview, setShowPreview] = useState(false);
-    const [questionType, setQuestionType] = useState<'multipleChoice' | 'open'>('multipleChoice');
+    const [questionType, setQuestionType] = useState<'multipleChoice' | 'dissertativa'>('multipleChoice');
     const { toast } = useToast();
     const navigate = useNavigate();
     const { user } = useAuth();
@@ -392,14 +399,14 @@ const QuestionFormReadOnly = ({
                     setSkills([]);
                     toast({
                         title: "Aviso",
-                        description: "Nenhuma habilidade encontrada para esta disciplina.",
+                        description: "Nenhuma habilidade encontrada para esta disciplina/série.",
                         variant: "default",
                     });
                 }
             }
         };
         fetchSkills();
-    }, [evaluationData.subject, toast]);
+    }, [evaluationData.subject, evaluationData.grade, toast]);
 
     useEffect(() => {
         console.log('🔍 QuestionFormReadOnly - Configurando subjectId:', evaluationData.subject);
@@ -423,7 +430,7 @@ const QuestionFormReadOnly = ({
 
             // Monta as opções com id baseado na letra (apenas para múltipla escolha)
             const options = data.questionType === 'multipleChoice' ? (data.options || []).map((opt, index) => ({
-                id: String.fromCharCode(65 + index), // A, B, C, D, etc.
+                id: String.fromCharCode(65 + index), // "A", "B", "C", "D"...
                 text: opt.text,
                 isCorrect: opt.isCorrect,
             })) : [];
@@ -748,10 +755,10 @@ const QuestionFormReadOnly = ({
 
                                 <Button
                                     type="button"
-                                    variant={questionType === 'open' ? 'default' : 'outline'}
+                                    variant={questionType === 'dissertativa' ? 'default' : 'outline'}
                                     size="lg"
-                                    onClick={() => setQuestionType('open')}
-                                    className={`w-full h-auto min-h-[4rem] p-4 ${questionType === 'open'
+                                    onClick={() => setQuestionType('dissertativa')}
+                                    className={`w-full h-auto min-h-[4rem] p-4 ${questionType === 'dissertativa'
                                         ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg'
                                         : 'hover:bg-purple-50 hover:border-purple-300'
                                         }`}

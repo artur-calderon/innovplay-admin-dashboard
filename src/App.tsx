@@ -44,6 +44,9 @@ const Results = React.lazy(() => import("./pages/Results"));
 const EvaluationResults = React.lazy(() => import("./components/evaluations/EvaluationResults"));
 const DetailedResultsView = React.lazy(() => import("./components/evaluations/DetailedResultsView"));
 const StudentDetailedResults = React.lazy(() => import("./components/evaluations/StudentDetailedResults"));
+const AnaliseAvaliacoes = React.lazy(() => import("./pages/AnaliseAvaliacoes"));
+const AcertoNiveis = React.lazy(() => import("./pages/AcertoNiveis"));
+const RelatorioEscolar = React.lazy(() => import("./pages/RelatorioEscolar"));
 
 // Lazy loading para componentes de jogos
 const GamesManagement = React.lazy(() => import("./pages/GamesManagement"));
@@ -60,6 +63,7 @@ const TorneioExecucao = React.lazy(() => import("./pages/TorneioExecucao"));
 
 // Lazy loading para dashboards específicos
 const StudentDashboard = React.lazy(() => import("./pages/StudentDashboard"));
+const StudentResult = React.lazy(() => import("./pages/StudentResult"));
 const ProfessorDashboard = React.lazy(() => import("./pages/ProfessorDashboard"));
 
 // Loading component
@@ -117,6 +121,8 @@ const App = () => {
             <Route path="/aluno" element={<Layout />}>
               <Route index element={<PrivateRoute><StudentDashboard /></PrivateRoute>} />
               <Route path="/aluno/avaliacoes" element={<PrivateRoute><StudentEvaluations /></PrivateRoute>} />
+              {/** Rota removida: página de resultados do aluno foi descontinuada */}
+              <Route path="/aluno/avaliacao/:id/resultado" element={<PrivateRoute><StudentResult /></PrivateRoute>} />
               <Route path="/aluno/agenda" element={<PrivateRoute><StudentAgenda /></PrivateRoute>} />
               <Route path="/aluno/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
               <Route path="/aluno/jogos" element={<PrivateRoute><StudentGames /></PrivateRoute>} />
@@ -182,6 +188,11 @@ const App = () => {
               <Route path="/app/cadastros/curso" element={<PrivateRoute><Curso /></PrivateRoute>} />
               <Route path="/app/cadastros/serie" element={<PrivateRoute><Serie /></PrivateRoute>} />
               <Route path="/app/cadastros/disciplina" element={<PrivateRoute><Disciplina /></PrivateRoute>} />
+
+              {/* Rotas de Relatórios */}
+              <Route path="/app/relatorios/analise-avaliacoes" element={<PrivateRoute><AnaliseAvaliacoes /></PrivateRoute>} />
+              <Route path="/app/relatorios/acerto-niveis" element={<PrivateRoute><AcertoNiveis /></PrivateRoute>} />
+              <Route path="/app/relatorios/relatorio-escolar" element={<PrivateRoute><RelatorioEscolar /></PrivateRoute>} />
             </Route>
 
             {/* Rota de avaliação em tela cheia para admin/professor */}

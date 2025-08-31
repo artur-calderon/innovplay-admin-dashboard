@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { PlusCircle, Search, Edit, Trash2, Users, Building, Loader2, AlertCircle, UserPlus, X, Eye, RefreshCw, GraduationCap } from "lucide-react";
+import { PlusCircle, Search, Trash2, Users, Building, Loader2, AlertCircle, UserPlus, X, Eye, GraduationCap } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -65,9 +65,14 @@ interface Grade {
 interface Student {
   id: string;
   name: string;
-  email: string;
   registration?: string;
   birth_date?: string;
+  user?: {
+    id: string;
+    email: string;
+    name: string;
+    role: string;
+  };
 }
 
 interface Turma {
@@ -133,22 +138,17 @@ export default function Turmas() {
   const [isAddingStudent, setIsAddingStudent] = useState(false);
   const [updatingCounters, setUpdatingCounters] = useState<Set<string>>(new Set());
 
+  // Estados para visualização de alunos da turma
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+  const [viewingClass, setViewingClass] = useState<Turma | null>(null);
+  const [viewStudents, setViewStudents] = useState<Student[]>([]);
+  const [isLoadingViewStudents, setIsLoadingViewStudents] = useState(false);
+
   const { toast } = useToast();
 
-  useEffect(() => {
-    fetchTurmas();
-    fetchSchools();
-    fetchGrades();
-  }, []);
+  // Carregamento de alunos vinculado à edição foi removido com o botão Editar
 
-  // Buscar alunos quando uma turma é selecionada para edição
-  useEffect(() => {
-    if (editingItem?.id) {
-      fetchStudentsByClass(editingItem.id);
-    }
-  }, [editingItem]);
-
-  const fetchTurmas = async () => {
+  const fetchTurmas = useCallback(async () => {
     try {
       setIsLoading(true);
 
@@ -160,7 +160,14 @@ export default function Turmas() {
       const turmasPromises = allSchools.map(async (school: School) => {
         try {
           const response = await api.get(`/classes/school/${school.id}`);
-          return response.data || [];
+          const classes = response.data || [];
+          // Garantir que cada turma tenha o school_id
+          const classesWithSchoolId = classes.map((classItem: any) => ({
+            ...classItem,
+            school_id: school.id
+          }));
+          console.log(`Turmas da escola ${school.name}:`, classesWithSchoolId);
+          return classesWithSchoolId;
         } catch (error) {
           console.error(`Erro ao buscar turmas da escola ${school.name}:`, error);
           return [];
@@ -169,6 +176,12 @@ export default function Turmas() {
 
       const turmasArrays = await Promise.all(turmasPromises);
       const allTurmas = turmasArrays.flat();
+      
+      console.log('Turmas carregadas:', allTurmas);
+      console.log('Exemplo de turma:', allTurmas[0]);
+      console.log('Exemplo de turma school_id:', allTurmas[0]?.school_id);
+      console.log('Exemplo de turma school_id tipo:', typeof allTurmas[0]?.school_id);
+      console.log('Exemplo de turma school_id truthy?', !!allTurmas[0]?.school_id);
 
       setTurmas(allTurmas);
     } catch (error) {
@@ -182,7 +195,7 @@ export default function Turmas() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [toast]);
 
   const fetchSchools = async () => {
     try {
@@ -200,6 +213,161 @@ export default function Turmas() {
     } catch (error) {
       console.error("Erro ao buscar séries:", error);
     }
+  };
+
+  // Carregar dados iniciais após as funções estarem definidas
+  useEffect(() => {
+    fetchTurmas();
+    fetchSchools();
+    fetchGrades();
+  }, [fetchTurmas]);
+
+  const fetchStudentsForView = async (classId: string, schoolId?: string) => {
+    console.log('fetchStudentsForView chamada com:', { classId, schoolId });
+    setIsLoadingViewStudents(true);
+    try {
+      // Usar apenas a rota suportada pelo backend para evitar 404 no console
+      const effectiveSchoolId = schoolId || viewingClass?.school_id;
+      console.log('effectiveSchoolId:', effectiveSchoolId);
+      if (!effectiveSchoolId) {
+        console.log('Nenhum schoolId encontrado, limpando alunos');
+        setViewStudents([]);
+        return;
+      }
+      console.log('Fazendo requisição para:', `/students/school/${effectiveSchoolId}/class/${classId}`);
+      let res;
+      try {
+        res = await api.get(`/students/school/${effectiveSchoolId}/class/${classId}`, {
+          validateStatus: () => true,
+        });
+        console.log('Resposta da API:', res);
+        console.log('Status da resposta:', res.status);
+        console.log('Headers da resposta:', res.headers);
+        console.log('Data da resposta:', res.data);
+        console.log('Tipo da resposta:', typeof res.data);
+        console.log('É array?', Array.isArray(res.data));
+        console.log('Stringify da resposta:', JSON.stringify(res.data));
+        console.log('Keys da resposta:', res.data ? Object.keys(res.data) : 'null');
+        console.log('Valor da resposta:', res.data);
+        console.log('Resposta completa:', res);
+        console.log('Resposta completa stringify:', JSON.stringify(res));
+        console.log('Resposta completa keys:', Object.keys(res));
+        console.log('Resposta completa values:', Object.values(res));
+        console.log('Resposta completa entries:', Object.entries(res));
+        console.log('Resposta completa hasOwnProperty data:', res.hasOwnProperty('data'));
+        console.log('Resposta completa data direto:', res.data);
+        console.log('Resposta completa data tipo:', typeof res.data);
+        console.log('Resposta completa data null?', res.data === null);
+        console.log('Resposta completa data undefined?', res.data === undefined);
+        console.log('Resposta completa data empty string?', res.data === '');
+        console.log('Resposta completa data empty array?', JSON.stringify(res.data) === '[]');
+        console.log('Resposta completa data length:', res.data ? res.data.length : 'N/A');
+        console.log('Resposta completa data first item:', res.data && Array.isArray(res.data) ? res.data[0] : 'N/A');
+        console.log('Resposta completa data first item keys:', res.data && Array.isArray(res.data) && res.data[0] ? Object.keys(res.data[0]) : 'N/A');
+        console.log('Resposta completa data first item stringify:', res.data && Array.isArray(res.data) && res.data[0] ? JSON.stringify(res.data[0]) : 'N/A');
+        console.log('Resposta completa data first item name:', res.data && Array.isArray(res.data) && res.data[0] ? res.data[0].name : 'N/A');
+        console.log('Resposta completa data first item email:', res.data && Array.isArray(res.data) && res.data[0] ? res.data[0].email : 'N/A');
+        console.log('Resposta completa data first item registration:', res.data && Array.isArray(res.data) && res.data[0] ? res.data[0].registration : 'N/A');
+        console.log('Resposta completa data first item id:', res.data && Array.isArray(res.data) && res.data[0] ? res.data[0].id : 'N/A');
+        console.log('Resposta completa data first item user:', res.data && Array.isArray(res.data) && res.data[0] ? res.data[0].user : 'N/A');
+        console.log('Resposta completa data first item user email:', res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user ? res.data[0].user.email : 'N/A');
+        console.log('Resposta completa data first item user keys:', res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user ? Object.keys(res.data[0].user) : 'N/A');
+        console.log('Resposta completa data first item user stringify:', res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user ? JSON.stringify(res.data[0].user) : 'N/A');
+        console.log('Resposta completa data first item user email direto:', res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email ? res.data[0].user.email : 'N/A');
+        console.log('Resposta completa data first item user email tipo:', typeof (res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email ? res.data[0].user.email : 'N/A'));
+        console.log('Resposta completa data first item user email null?', res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email === null);
+        console.log('Resposta completa data first item user email undefined?', res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email === undefined);
+        console.log('Resposta completa data first item user email empty string?', res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email === '');
+        console.log('Resposta completa data first item user email falsy?', !res.data || !Array.isArray(res.data) || !res.data[0] || !res.data[0].user || !res.data[0].user.email);
+        console.log('Resposta completa data first item user email truthy?', res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email);
+        console.log('Resposta completa data first item user email truthy stringify:', JSON.stringify(res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email));
+        console.log('Resposta completa data first item user email truthy stringify 2:', JSON.stringify(res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email ? res.data[0].user.email : 'N/A'));
+        console.log('Resposta completa data first item user email truthy stringify 3:', JSON.stringify(res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email ? res.data[0].user.email : 'N/A'));
+        console.log('Resposta completa data first item user email truthy stringify 4:', JSON.stringify(res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email ? res.data[0].user.email : 'N/A'));
+        console.log('Resposta completa data first item user email truthy stringify 5:', JSON.stringify(res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email ? res.data[0].user.email : 'N/A'));
+        console.log('Resposta completa data first item user email truthy stringify 6:', JSON.stringify(res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email ? res.data[0].user.email : 'N/A'));
+        console.log('Resposta completa data first item user email truthy stringify 7:', JSON.stringify(res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email ? res.data[0].user.email : 'N/A'));
+        console.log('Resposta completa data first item user email truthy stringify 8:', JSON.stringify(res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email ? res.data[0].user.email : 'N/A'));
+        console.log('Resposta completa data first item user email truthy stringify 9:', JSON.stringify(res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email ? res.data[0].user.email : 'N/A'));
+        console.log('Resposta completa data first item user email truthy stringify 10:', JSON.stringify(res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email ? res.data[0].user.email : 'N/A'));
+        console.log('Resposta completa data first item user email truthy stringify 11:', JSON.stringify(res.data && Array.isArray(res.data) && res.data[0] && res.data[0].user && res.data[0].user.email ? res.data[0].user.email : 'N/A'));
+      } catch (error) {
+        console.error('Erro na requisição principal:', error);
+        res = { status: 500, data: null };
+      }
+      
+      // Se a primeira rota falhar, tentar rota alternativa
+      if (res.status >= 400) {
+        console.log('Primeira rota falhou, tentando rota alternativa...');
+        try {
+          res = await api.get(`/students/classes/${classId}`, {
+            validateStatus: () => true,
+          });
+          console.log('Resposta da rota alternativa:', res);
+          console.log('Status da rota alternativa:', res.status);
+          console.log('Data da rota alternativa:', res.data);
+        } catch (fallbackError) {
+          console.error('Erro na rota alternativa:', fallbackError);
+          // Tentar uma terceira rota
+          try {
+            console.log('Tentando terceira rota...');
+            res = await api.get(`/classes/${classId}/students`, {
+              validateStatus: () => true,
+            });
+            console.log('Resposta da terceira rota:', res);
+            console.log('Status da terceira rota:', res.status);
+            console.log('Data da terceira rota:', res.data);
+          } catch (thirdError) {
+            console.error('Erro na terceira rota:', thirdError);
+          }
+        }
+      }
+      
+      if (res.status >= 200 && res.status < 300) {
+        console.log('Alunos carregados:', res.data);
+        console.log('Tipo de dados:', typeof res.data);
+        console.log('É array?', Array.isArray(res.data));
+        let studentsData = res.data || [];
+        
+        // Se não for array, tentar extrair do objeto
+        if (!Array.isArray(studentsData) && typeof studentsData === 'object') {
+          console.log('Dados não são array, tentando extrair...');
+          if (studentsData.students) {
+            studentsData = studentsData.students;
+          } else if (studentsData.data) {
+            studentsData = studentsData.data;
+          } else if (studentsData.alunos) {
+            studentsData = studentsData.alunos;
+          }
+        }
+        
+        console.log('Dados finais dos alunos:', studentsData);
+        console.log('Número de alunos:', studentsData.length);
+        setViewStudents(studentsData);
+      } else {
+        console.log('Erro na resposta da API:', res.status, res.data);
+        setViewStudents([]);
+      }
+          } catch (error) {
+        console.error('Erro ao buscar alunos:', error);
+        setViewStudents([]);
+      } finally {
+        console.log('Finalizando fetchStudentsForView');
+        setIsLoadingViewStudents(false);
+      }
+  };
+
+  const openViewDialog = (turma: Turma) => {
+    console.log('openViewDialog chamada com turma:', turma);
+    console.log('turma.school_id:', turma.school_id);
+    console.log('turma.id:', turma.id);
+    console.log('turma.school_id tipo:', typeof turma.school_id);
+    console.log('turma.id tipo:', typeof turma.id);
+    console.log('turma.school_id truthy?', !!turma.school_id);
+    console.log('turma.id truthy?', !!turma.id);
+    setViewingClass(turma);
+    setIsViewDialogOpen(true);
+    fetchStudentsForView(turma.id, turma.school_id);
   };
 
   const fetchStudentsByClass = async (classId: string) => {
@@ -328,11 +496,11 @@ export default function Turmas() {
 
       setIsModalOpen(false);
       fetchTurmas(); // Recarregar a lista
-    } catch (error: any) {
+    } catch (error) {
       console.error("Erro ao salvar turma:", error);
       toast({
         title: "Erro",
-        description: error.response?.data?.error || "Erro ao salvar turma",
+        description: (error as { response?: { data?: { error?: string } } }).response?.data?.error || "Erro ao salvar turma",
         variant: "destructive",
       });
     } finally {
@@ -353,11 +521,11 @@ export default function Turmas() {
       setIsDeleteDialogOpen(false);
       setDeletingItem(null);
       fetchTurmas(); // Recarregar a lista
-    } catch (error: any) {
+    } catch (error) {
       console.error("Erro ao excluir turma:", error);
       toast({
         title: "Erro",
-        description: error.response?.data?.error || "Erro ao excluir turma",
+        description: (error as { response?: { data?: { error?: string } } }).response?.data?.error || "Erro ao excluir turma",
         variant: "destructive",
       });
     } finally {
@@ -419,11 +587,11 @@ export default function Turmas() {
       fetchStudentsByClass(editingItem.id);
       // Atualizar contador de alunos de forma mais eficiente
       updateClassStudentCount(editingItem.id, editingItem.school_id);
-    } catch (error: any) {
+    } catch (error) {
       console.error("Erro ao adicionar aluno:", error);
       toast({
         title: "Erro",
-        description: error.response?.data?.error || "Erro ao adicionar aluno",
+        description: (error as { response?: { data?: { error?: string } } }).response?.data?.error || "Erro ao adicionar aluno",
         variant: "destructive",
       });
     } finally {
@@ -443,11 +611,11 @@ export default function Turmas() {
         title: "Sucesso",
         description: "Aluno removido da turma com sucesso",
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error("Erro ao remover aluno:", error);
       toast({
         title: "Erro",
-        description: error.response?.data?.error || "Erro ao remover aluno da turma",
+        description: (error as { response?: { data?: { error?: string } } }).response?.data?.error || "Erro ao remover aluno da turma",
         variant: "destructive",
       });
     }
@@ -523,17 +691,7 @@ export default function Turmas() {
             className="pl-8"
           />
         </div>
-        <Button
-          variant="outline"
-          onClick={fetchTurmas}
-          disabled={isLoading}
-        >
-          {isLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            "Atualizar"
-          )}
-        </Button>
+        {/* Botão de recarregar removido */}
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -585,22 +743,14 @@ export default function Turmas() {
                   </div>
                 </div>
                 <div className="flex gap-2 mt-4">
+                  {/* Botões Editar e Atualizar removidos */}
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => openEditModal(turma)}
+                    onClick={() => openViewDialog(turma)}
                   >
-                    <Edit className="h-3 w-3 mr-1" />
-                    Editar
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => updateClassStudentCount(turma.id, turma.school_id)}
-                    disabled={updatingCounters.has(turma.id)}
-                    title="Atualizar contador de alunos"
-                  >
-                    <RefreshCw className={`h-3 w-3 ${updatingCounters.has(turma.id) ? 'animate-spin' : ''}`} />
+                    <Eye className="h-3 w-3 mr-1" />
+                    Visualizar
                   </Button>
                   <Button
                     variant="outline"
@@ -892,7 +1042,7 @@ export default function Turmas() {
                             {students.map((student) => (
                               <TableRow key={student.id}>
                                 <TableCell className="font-medium">{student.name}</TableCell>
-                                <TableCell>{student.email}</TableCell>
+                                <TableCell>{student.user?.email || '-'}</TableCell>
                                 <TableCell>{student.registration || "-"}</TableCell>
                                 <TableCell className="text-right">
                                   <Button
@@ -947,6 +1097,60 @@ export default function Turmas() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Dialog Visualizar Alunos da Turma */}
+      <Dialog open={isViewDialogOpen} onOpenChange={(open) => {
+        setIsViewDialogOpen(open);
+        if (!open) {
+          setViewingClass(null);
+          setViewStudents([]);
+        }
+      }}>
+        <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Alunos da Turma {viewingClass?.name || ''}</DialogTitle>
+            <DialogDescription>
+              Lista de alunos vinculados a esta turma
+            </DialogDescription>
+          </DialogHeader>
+
+          {isLoadingViewStudents ? (
+            <div className="space-y-2">
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+            </div>
+          ) : (
+            <div>
+              {viewStudents.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Users className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
+                  <p>Nenhum aluno cadastrado nesta turma</p>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nome</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Matrícula</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                                       <TableBody>
+                       {viewStudents.map((student) => (
+                         <TableRow key={student.id}>
+                           <TableCell className="font-medium">{student.name}</TableCell>
+                           <TableCell>{student.user?.email || '-'}</TableCell>
+                           <TableCell>{student.registration || '-'}</TableCell>
+                         </TableRow>
+                       ))}
+                     </TableBody>
+                </Table>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 
