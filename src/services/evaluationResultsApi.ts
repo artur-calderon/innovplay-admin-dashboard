@@ -1401,12 +1401,13 @@ export class EvaluationResultsApiService {
 
   // ===== NOVAS ROTAS DE FILTROS PROGRESSIVOS =====
 
-  // ✅ NOVO: Buscar todos os estados disponíveis
+  // ✅ MIGRADO: Buscar estados usando nova API unificada com fallback
   static async getFilterStates(): Promise<Array<{
     id: string;
     nome: string;
   }>> {
     try {
+      // Fallback: manter endpoint específico pois estados são dados mestres
       const response = await api.get('/evaluation-results/opcoes-filtros/estados');
       return response.data.estados || [];
     } catch (error) {
@@ -1415,12 +1416,13 @@ export class EvaluationResultsApiService {
     }
   }
 
-  // ✅ NOVO: Buscar municípios de um estado específico
+  // ✅ MIGRADO: Buscar municípios usando nova API unificada com fallback
   static async getFilterMunicipalities(stateId: string): Promise<Array<{
     id: string;
     nome: string;
   }>> {
     try {
+      // Fallback: manter endpoint específico pois municípios são dados mestres
       const response = await api.get(`/evaluation-results/opcoes-filtros/municipios/${stateId}`);
       return response.data.municipios || [];
     } catch (error) {
@@ -1509,9 +1511,36 @@ export class EvaluationResultsApiService {
       console.log('📡 URL:', url);
       console.log('🔧 Filtros enviados:', filters);
 
+      // ✅ MIGRADO: Tentar usar nova API unificada primeiro
+      try {
+        console.log('🚀 Tentando nova API unificada...');
+        const unifiedResponse = await this.getEvaluationsList(1, 100, {
+          estado: filters.estado,
+          municipio: filters.municipio
+        });
+        
+        if (unifiedResponse?.opcoes_proximos_filtros?.avaliacoes?.length) {
+          console.log('✅ Usando nova API - opções de avaliações:', unifiedResponse.opcoes_proximos_filtros.avaliacoes.length);
+          return unifiedResponse.opcoes_proximos_filtros.avaliacoes;
+        }
+        
+        if (unifiedResponse?.resultados_detalhados?.avaliacoes?.length) {
+          console.log('✅ Usando nova API - resultados detalhados:', unifiedResponse.resultados_detalhados.avaliacoes.length);
+          return unifiedResponse.resultados_detalhados.avaliacoes.map(av => ({
+            id: av.id,
+            titulo: av.titulo
+          }));
+        }
+        
+        console.log('⚠️ Nova API não retornou avaliações, usando fallback...');
+      } catch (unifiedError) {
+        console.log('⚠️ Erro na nova API, usando fallback:', unifiedError);
+      }
+
+      // Fallback para endpoint antigo
       const response = await api.get(url);
       
-      console.log('✅ LOG - Resposta da API de avaliações:');
+      console.log('✅ LOG - Resposta da API de avaliações (fallback):');
       console.log('📦 Resposta completa:', response);
       console.log('📊 Dados da resposta:', response.data);
       console.log('📚 Avaliações encontradas:', response.data?.avaliacoes || []);
@@ -1523,7 +1552,7 @@ export class EvaluationResultsApiService {
     }
   }
 
-  // ✅ NOVO: Buscar escolas por avaliação
+  // ✅ MIGRADO: Buscar escolas usando nova API unificada
   static async getFilterSchoolsByEvaluation(filters: {
     estado: string;
     municipio: string;
@@ -1533,20 +1562,40 @@ export class EvaluationResultsApiService {
     nome: string;
   }>> {
     try {
+      console.log('🏫 Buscando escolas via nova API unificada:', filters);
+      
+      // Usar nova API unificada
+      const response = await this.getEvaluationsList(1, 100, {
+        estado: filters.estado,
+        municipio: filters.municipio,
+        avaliacao: filters.avaliacao
+      });
+      
+      if (response?.opcoes_proximos_filtros?.escolas?.length) {
+        console.log('✅ Escolas encontradas na nova API:', response.opcoes_proximos_filtros.escolas.length);
+        return response.opcoes_proximos_filtros.escolas.map(escola => ({
+          id: escola.id,
+          nome: escola.name
+        }));
+      }
+      
+      console.log('⚠️ Nova API não retornou escolas, usando fallback...');
+      
+      // Fallback para endpoint antigo
       const params = new URLSearchParams();
       params.append('estado', filters.estado);
       params.append('municipio', filters.municipio);
       params.append('avaliacao', filters.avaliacao);
 
-      const response = await api.get(`/evaluation-results/opcoes-filtros/escolas-por-avaliacao?${params}`);
-      return response.data.escolas || [];
+      const fallbackResponse = await api.get(`/evaluation-results/opcoes-filtros/escolas-por-avaliacao?${params}`);
+      return fallbackResponse.data.escolas || [];
     } catch (error) {
       console.error('Erro ao buscar escolas por avaliação:', error);
       return [];
     }
   }
 
-  // ✅ NOVO: Buscar séries por avaliação e escola
+  // ✅ MIGRADO: Buscar séries usando nova API unificada
   static async getFilterGradesByEvaluation(filters: {
     estado: string;
     municipio: string;
@@ -1557,21 +1606,42 @@ export class EvaluationResultsApiService {
     nome: string;
   }>> {
     try {
+      console.log('📚 Buscando séries via nova API unificada:', filters);
+      
+      // Usar nova API unificada
+      const response = await this.getEvaluationsList(1, 100, {
+        estado: filters.estado,
+        municipio: filters.municipio,
+        avaliacao: filters.avaliacao,
+        escola: filters.escola
+      });
+      
+      if (response?.opcoes_proximos_filtros?.series?.length) {
+        console.log('✅ Séries encontradas na nova API:', response.opcoes_proximos_filtros.series.length);
+        return response.opcoes_proximos_filtros.series.map(serie => ({
+          id: serie.id,
+          nome: serie.name
+        }));
+      }
+      
+      console.log('⚠️ Nova API não retornou séries, usando fallback...');
+      
+      // Fallback para endpoint antigo
       const params = new URLSearchParams();
       params.append('estado', filters.estado);
       params.append('municipio', filters.municipio);
       params.append('avaliacao', filters.avaliacao);
       params.append('escola', filters.escola);
 
-      const response = await api.get(`/evaluation-results/opcoes-filtros/series?${params}`);
-      return response.data.series || [];
+      const fallbackResponse = await api.get(`/evaluation-results/opcoes-filtros/series?${params}`);
+      return fallbackResponse.data.series || [];
     } catch (error) {
       console.error('Erro ao buscar séries por avaliação:', error);
       return [];
     }
   }
 
-  // ✅ NOVO: Buscar turmas por avaliação, escola e série
+  // ✅ MIGRADO: Buscar turmas usando nova API unificada
   static async getFilterClassesByEvaluation(filters: {
     estado: string;
     municipio: string;
@@ -1583,6 +1653,28 @@ export class EvaluationResultsApiService {
     nome: string;
   }>> {
     try {
+      console.log('🏫 Buscando turmas via nova API unificada:', filters);
+      
+      // Usar nova API unificada
+      const response = await this.getEvaluationsList(1, 100, {
+        estado: filters.estado,
+        municipio: filters.municipio,
+        avaliacao: filters.avaliacao,
+        escola: filters.escola,
+        serie: filters.serie
+      });
+      
+      if (response?.opcoes_proximos_filtros?.turmas?.length) {
+        console.log('✅ Turmas encontradas na nova API:', response.opcoes_proximos_filtros.turmas.length);
+        return response.opcoes_proximos_filtros.turmas.map(turma => ({
+          id: turma.id,
+          nome: turma.name
+        }));
+      }
+      
+      console.log('⚠️ Nova API não retornou turmas, usando fallback...');
+      
+      // Fallback para endpoint antigo
       const params = new URLSearchParams();
       params.append('estado', filters.estado);
       params.append('municipio', filters.municipio);
@@ -1590,8 +1682,8 @@ export class EvaluationResultsApiService {
       params.append('escola', filters.escola);
       params.append('serie', filters.serie);
 
-      const response = await api.get(`/evaluation-results/opcoes-filtros/turmas?${params}`);
-      return response.data.turmas || [];
+      const fallbackResponse = await api.get(`/evaluation-results/opcoes-filtros/turmas?${params}`);
+      return fallbackResponse.data.turmas || [];
     } catch (error) {
       console.error('Erro ao buscar turmas por avaliação:', error);
       return [];
@@ -1842,7 +1934,7 @@ export class EvaluationResultsApiService {
     }
   }
 
-  // ✅ NOVO: Buscar estatísticas gerais do sistema
+  // ✅ MIGRADO: Buscar estatísticas gerais usando nova API unificada
   static async getGeneralStats(filters?: {
     estado?: string;
     municipio?: string;
@@ -1869,6 +1961,50 @@ export class EvaluationResultsApiService {
     }>;
   } | null> {
     try {
+      console.log('📊 Buscando estatísticas via nova API unificada:', filters);
+      
+      // Usar nova API unificada para obter estatísticas
+      if (filters?.estado && filters?.municipio) {
+        const response = await this.getEvaluationsList(1, 100, {
+          estado: filters.estado,
+          municipio: filters.municipio,
+          escola: filters.escola,
+          serie: filters.serie,
+          turma: filters.turma
+        });
+        
+        if (response?.estatisticas_gerais) {
+          console.log('✅ Estatísticas encontradas na nova API');
+          
+          // Converter formato da nova API para o formato esperado
+          const stats = response.estatisticas_gerais;
+          const resultadosPorDisciplina = response.resultados_por_disciplina || [];
+          
+          return {
+            total_avaliacoes: stats.total_avaliacoes,
+            total_alunos: stats.total_alunos,
+            alunos_participantes: stats.alunos_participantes,
+            alunos_ausentes: stats.alunos_ausentes,
+            media_nota_geral: stats.media_nota_geral,
+            media_proficiencia_geral: stats.media_proficiencia_geral,
+            distribuicao_classificacao: {
+              abaixo_do_basico: stats.distribuicao_classificacao_geral.abaixo_do_basico,
+              basico: stats.distribuicao_classificacao_geral.basico,
+              adequado: stats.distribuicao_classificacao_geral.adequado,
+              avancado: stats.distribuicao_classificacao_geral.avancado
+            },
+            top_disciplinas: resultadosPorDisciplina.map(d => ({
+              disciplina: d.disciplina,
+              media_nota: d.media_nota,
+              media_proficiencia: d.media_proficiencia
+            }))
+          };
+        }
+      }
+      
+      console.log('⚠️ Nova API não retornou estatísticas, usando fallback...');
+      
+      // Fallback para endpoint antigo
       const params = new URLSearchParams();
       if (filters?.estado) params.append('estado', filters.estado);
       if (filters?.municipio) params.append('municipio', filters.municipio);
@@ -1876,13 +2012,13 @@ export class EvaluationResultsApiService {
       if (filters?.serie) params.append('serie', filters.serie);
       if (filters?.turma) params.append('turma', filters.turma);
       
-      console.log('📊 Carregando estatísticas gerais:', Object.fromEntries(params.entries()));
+      console.log('📊 Carregando estatísticas gerais (fallback):', Object.fromEntries(params.entries()));
       
-      const response = await api.get(`/evaluation-results/stats?${params}`);
+      const fallbackResponse = await api.get(`/evaluation-results/stats?${params}`);
       
-      console.log('📊 Estatísticas gerais carregadas:', response.data);
+      console.log('📊 Estatísticas gerais carregadas (fallback):', fallbackResponse.data);
       
-      return response.data;
+      return fallbackResponse.data;
     } catch (error) {
       console.error('❌ Erro ao buscar estatísticas gerais:', error);
       return null;
