@@ -115,6 +115,7 @@ export interface ResultsTableProps {
   visibleFields?: VisibleFields;
   subjectFilter?: string;
   evaluationId?: string;
+  successThreshold?: number; // porcentagem para considerar desempenho bom
 }
 
 export interface SkillCodeGeneratorParams {
