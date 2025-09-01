@@ -473,7 +473,6 @@ const QuestionsPage = () => {
       }
       
       let response = await api.get("/questions/", { params });
-      
     
       
       // Se professor não recebeu questões, tentar abordagem alternativa
@@ -511,27 +510,48 @@ const QuestionsPage = () => {
       }
 
       const normalizedQuestions: Question[] = response.data.map((q: QuestionApiResponse) => {
-      
+        // Normalizar o tipo da questão
+        let normalizedType: "multipleChoice" | "trueFalse" | "dissertativa";
+        
+        if (q.type === "multiple_choice") {
+          normalizedType = "multipleChoice";
+        } else if (q.type === "true_false") {
+          normalizedType = "trueFalse";
+        } else if (q.type === "open" || q.type === "dissertativa") {
+          normalizedType = "dissertativa";
+        } else {
+          // Fallback: se tem opções, é múltipla escolha, senão é dissertativa
+          normalizedType = (q.options && q.options.length > 0) ? "multipleChoice" : "dissertativa";
+        }
         
         return {
           id: q.id,
           title: q.title,
           text: q.text,
           secondStatement: q.secondStatement || '',
-          type: q.type as "multipleChoice" | "open" | "trueFalse",
+          type: normalizedType,
           subjectId: q.subject?.id || '',
           subject: q.subject || { id: '', name: '' },
           grade: q.grade || { id: '', name: '' },
           difficulty: q.difficulty,
-          value: q.value.toString(),
+          value: q.value,
           solution: q.solution || '',
           formattedText: q.formattedText,
           formattedSolution: q.formattedSolution,
           options: q.options || [],
           skills: Array.isArray(q.skills) ? q.skills : (q.skills && typeof q.skills === 'string' ? q.skills.split(',').map(s => s.trim()) : []),
-          created_by: q.created_by || (q as any).createdBy || (q as any).created_by_id || 'unknown',
+          created_by: q.createdBy || (q as any).created_by || (q as any).created_by_id || 'unknown',
           educationStage: null
         };
+      });
+      
+      // Log das questões normalizadas
+      console.log('✅ Questões normalizadas:', {
+        total: normalizedQuestions.length,
+        byType: normalizedQuestions.reduce((acc, q) => {
+          acc[q.type] = (acc[q.type] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>)
       });
       
       // Salvar no cache
@@ -1128,7 +1148,7 @@ const QuestionsPage = () => {
     const handleSelect = useCallback((checked: boolean) => handleSelectOne(question.id, checked), [question.id]);
     
     // Verificar se usuário pode editar/deletar (se é o criador ou admin)
-    const canEditDelete = user?.id === question.created_by?.id || user?.role === 'admin';
+    const canEditDelete = user?.id === question.created_by || user?.role === 'admin';
     
    
 
@@ -1514,7 +1534,7 @@ const QuestionsPage = () => {
                           >
                             <Copy className="h-3 w-3" />
                           </Button>
-                                                     {(user?.id === question.created_by?.id || user?.role === 'admin') && (
+                                                                                                           {(user?.id === question.created_by || user?.role === 'admin') && (
                             <>
                               <Button 
                                 variant="ghost" 

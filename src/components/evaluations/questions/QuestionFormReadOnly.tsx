@@ -428,6 +428,18 @@ const QuestionFormReadOnly = ({
             console.log('🔍 QuestionFormReadOnly - evaluationData:', evaluationData);
             console.log('🔍 QuestionFormReadOnly - user:', user);
 
+            // Corrigir: salvar solution como letra da alternativa correta (seguindo padrão do QuestionForm)
+            let solution = "";
+            if (data.questionType === 'multipleChoice' && data.options) {
+                const correctIndex = data.options.findIndex(opt => opt.isCorrect);
+                if (correctIndex !== -1) {
+                    solution = String.fromCharCode(65 + correctIndex); // "A", "B", ...
+                }
+            } else {
+                // Para questões dissertativas, usar o texto da resolução
+                solution = data.solution ? htmlToText(data.solution) : "";
+            }
+
             // Monta as opções com id baseado na letra (apenas para múltipla escolha)
             const options = data.questionType === 'multipleChoice' ? (data.options || []).map((opt, index) => ({
                 id: String.fromCharCode(65 + index), // "A", "B", "C", "D"...
@@ -463,8 +475,8 @@ const QuestionFormReadOnly = ({
                 grade: data.grade, // UUID da série (string)
                 difficulty: data.difficulty,
                 value: Number(data.value),
-                solution: data.solution || '',
-                formattedSolution: data.solution || '',
+                solution, // Letra da alternativa correta (A, B, C, D...)
+                formattedSolution: data.solution || '', // Texto HTML da resolução
                 options: data.questionType === 'multipleChoice' ? (data.options || []).map((opt, index) => ({
                     id: String.fromCharCode(65 + index), // A, B, C, D, etc.
                     text: opt.text,
@@ -475,6 +487,8 @@ const QuestionFormReadOnly = ({
                 lastModifiedBy: user?.id || '',
                 createdBy: user?.id || '',
             };
+
+
 
             // Criar objeto Question para compatibilidade com a interface
             const question: Question = {
@@ -490,7 +504,7 @@ const QuestionFormReadOnly = ({
                 grade: payload.grade,
                 difficulty: payload.difficulty,
                 value: payload.value,
-                solution: payload.solution,
+                solution: payload.solution, // Garantir que é a letra da alternativa correta
                 formattedSolution: payload.formattedSolution,
                 options: payload.options,
                 skills: payload.skills,
@@ -498,14 +512,19 @@ const QuestionFormReadOnly = ({
                 lastModifiedBy: payload.lastModifiedBy,
             };
 
+
+
             // Debug: verificar payload final
             console.log('📤 QuestionFormReadOnly - Payload sendo enviado:', question);
             console.log('📤 QuestionFormReadOnly - Campos específicos:');
+            console.log('  - solution (letra da alternativa correta):', question.solution);
+            console.log('  - formattedSolution (texto da resolução):', question.formattedSolution);
             console.log('  - secondStatement:', question.secondStatement);
             console.log('  - options:', question.options);
             console.log('  - educationStageId:', question.educationStageId);
             console.log('  - lastModifiedBy:', question.lastModifiedBy);
             console.log('  - createdBy:', question.createdBy);
+
 
             await onQuestionAdded(question);
             console.log('🔍 QuestionFormReadOnly - Formulário será resetado após envio');
