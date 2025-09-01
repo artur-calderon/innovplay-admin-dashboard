@@ -25,7 +25,8 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
     nivel: true
   },
   subjectFilter,
-  evaluationId
+  evaluationId,
+  successThreshold = 60
 }) => {
   return (
     <div className="overflow-x-auto">
@@ -41,6 +42,7 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
           visibleFields={visibleFields}
           evaluationId={evaluationId}
           students={students}
+          successThreshold={successThreshold}
         />
         <tbody>
           {students.map((student, studentIndex) => (
