@@ -305,7 +305,7 @@ export const CreateEvaluationStep2 = ({
              skills: question.skills || [],
              grade: question.grade?.id || data.grade,
              difficulty: question.difficulty,
-             solution: question.options?.find(opt => opt.isCorrect)?.text || "",
+             solution: question.solution || "",
              formattedSolution: question.formattedSolution || question.solution || "",
              type: question.type === 'multipleChoice' ? 'multiple_choice' : 'open',
              value: question.value || 0,

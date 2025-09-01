@@ -368,6 +368,10 @@ export default function Results() {
   // ✅ NOVO: Estado para dados da tabela detalhada
   const [tabelaDetalhada, setTabelaDetalhada] = useState<any>(null);
 
+  // ✅ NOVO: Estados para controle da tabela
+  const [selectedTableDiscipline, setSelectedTableDiscipline] = useState<string>('all');
+  const [showAbsentStudents, setShowAbsentStudents] = useState(false);
+
   // Carregar filtros iniciais
   const loadInitialFilters = useCallback(async () => {
     try {
@@ -936,6 +940,52 @@ export default function Results() {
     setStudentResponses(respostasAlunos);
   }, []);
 
+  // ✅ NOVO: Função para obter disciplinas disponíveis na tabela
+  const getAvailableDisciplines = useCallback(() => {
+    if (!tabelaDetalhada || !tabelaDetalhada.disciplinas) return [];
+    
+    return tabelaDetalhada.disciplinas.map((disciplina: any) => ({
+      id: disciplina.id || disciplina.nome,
+      name: disciplina.nome
+    }));
+  }, [tabelaDetalhada]);
+
+  // ✅ NOVO: Função para filtrar dados da tabela baseado na seleção
+  const getFilteredTableData = useCallback(() => {
+    if (!tabelaDetalhada || !tabelaDetalhada.disciplinas) return [];
+
+    let disciplinasParaMostrar = [...tabelaDetalhada.disciplinas];
+
+    // ✅ Filtrar por disciplina específica se selecionada
+    if (selectedTableDiscipline !== 'all') {
+      disciplinasParaMostrar = disciplinasParaMostrar.filter(
+        (disciplina: any) => disciplina.id === selectedTableDiscipline || disciplina.nome === selectedTableDiscipline
+      );
+    }
+
+    // ✅ Filtrar alunos baseado no checkbox "Mostrar apenas alunos faltosos"
+    if (showAbsentStudents) {
+      // ✅ Se marcado, mostrar apenas alunos que têm pelo menos uma questão não respondida
+      disciplinasParaMostrar = disciplinasParaMostrar.map((disciplina: any) => ({
+        ...disciplina,
+        alunos: disciplina.alunos?.filter((aluno: any) => {
+          return aluno.respostas_por_questao?.some((resposta: any) => !resposta.respondeu);
+        }) || []
+      }));
+    } else {
+      // ✅ Se NÃO marcado, mostrar apenas alunos que responderam TODAS as questões
+      disciplinasParaMostrar = disciplinasParaMostrar.map((disciplina: any) => ({
+        ...disciplina,
+        alunos: disciplina.alunos?.filter((aluno: any) => {
+          // ✅ Verificar se o aluno respondeu TODAS as questões da disciplina
+          return aluno.respostas_por_questao?.every((resposta: any) => resposta.respondeu);
+        }) || []
+      }));
+    }
+
+    return disciplinasParaMostrar;
+  }, [tabelaDetalhada, selectedTableDiscipline, showAbsentStudents]);
+
   // Carregar dados quando filtros obrigatórios mudarem
   useEffect(() => {
     loadData();
@@ -1263,6 +1313,12 @@ export default function Results() {
       setStudentDetailedAnswers({});
     }
   }, [selectedEvaluation, loadStudentsData]);
+
+  // ✅ NOVO: Resetar filtros da tabela quando avaliação mudar
+  useEffect(() => {
+    setSelectedTableDiscipline('all');
+    setShowAbsentStudents(false);
+  }, [selectedEvaluation]);
 
   // ✅ CORRIGIDO: Preparar dados para a tabela de alunos (igual ao DetailedResultsView)
   const prepareTableData = useMemo(() => {
@@ -1827,10 +1883,76 @@ export default function Results() {
                 </Card>
               )}
 
+              {/* ✅ NOVO: Controle da Tabela */}
+              {!isLoadingStudents && tabelaDetalhada && tabelaDetalhada.disciplinas && tabelaDetalhada.disciplinas.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Filter className="h-5 w-5" />
+                      Controle da Tabela
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Seletor de Disciplina */}
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Disciplina</label>
+                        <Select
+                          value={selectedTableDiscipline}
+                          onValueChange={setSelectedTableDiscipline}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione a disciplina" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Todas as Disciplinas</SelectItem>
+                            {getAvailableDisciplines().map(discipline => (
+                              <SelectItem key={discipline.id} value={discipline.id}>
+                                {discipline.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Checkbox para Alunos Faltosos */}
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Filtros</label>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="showAbsentStudents"
+                            checked={showAbsentStudents}
+                            onCheckedChange={(checked) => setShowAbsentStudents(checked as boolean)}
+                          />
+                          <label
+                            htmlFor="showAbsentStudents"
+                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                          >
+                            Mostrar apenas alunos faltosos
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Informação sobre os filtros */}
+                    <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <p className="text-sm text-blue-700">
+                        💡 <strong>Como usar:</strong>
+                      </p>
+                      <ul className="text-sm text-blue-700 mt-1 list-disc list-inside space-y-1">
+                        <li><strong>Disciplina:</strong> Selecione uma disciplina específica ou "Todas as Disciplinas"</li>
+                        <li><strong>Alunos Faltosos:</strong> Marque para ver apenas alunos que não responderam questões</li>
+                        <li><strong>Questões não respondidas:</strong> Aparecem como "-" ao invés de "❌"</li>
+                      </ul>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* ✅ NOVO: Tabelas separadas por disciplina */}
               {!isLoadingStudents && tabelaDetalhada && tabelaDetalhada.disciplinas && tabelaDetalhada.disciplinas.length > 0 && (
                 <>
-                  {tabelaDetalhada.disciplinas.map((disciplina: any, discIndex: number) => {
+                  {getFilteredTableData().map((disciplina: any, discIndex: number) => {
                     // ✅ Calcular % da turma para cada questão desta disciplina
                     const calculateDisciplinaClassPercentage = (questaoNumero: number) => {
                       if (!disciplina.alunos || disciplina.alunos.length === 0) return 0;
@@ -1966,7 +2088,9 @@ export default function Results() {
                                         const result = getStudentDisciplinaQuestionResult(aluno.id, questao.numero);
                                         return (
                                           <td key={questao.numero} className="border border-gray-300 px-2 py-2 text-center">
-                                            {result.isCorrect ? (
+                                            {result.isBlank ? (
+                                              <span className="text-gray-500 text-lg">-</span>
+                                            ) : result.isCorrect ? (
                                               <span className="text-green-600 text-lg">✅</span>
                                             ) : (
                                               <span className="text-red-600 text-lg">❌</span>
@@ -2025,6 +2149,10 @@ export default function Results() {
                               <div className="flex items-center gap-2">
                                 <span className="text-red-600 text-lg">❌</span>
                                 <span>Errou a questão</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-gray-500 text-lg">-</span>
+                                <span>Não respondeu</span>
                               </div>
                             </div>
                           </div>
@@ -2099,7 +2227,7 @@ export default function Results() {
                           </thead>
                           <tbody>
                             {(() => {
-                              // ✅ Consolidar todos os alunos de todas as disciplinas
+                              // ✅ Consolidar todos os alunos de todas as disciplinas (usando filtros)
                               const todosAlunosRanking: Array<{
                                 id: string;
                                 nome: string;
@@ -2113,7 +2241,7 @@ export default function Results() {
                                 nivel_proficiencia: string;
                               }> = [];
 
-                              tabelaDetalhada.disciplinas.forEach((disciplina: any) => {
+                              getFilteredTableData().forEach((disciplina: any) => {
                                 if (disciplina.alunos && Array.isArray(disciplina.alunos)) {
                                   disciplina.alunos.forEach((aluno: any) => {
                                     // ✅ Verificar se o aluno já foi adicionado (evitar duplicatas)
@@ -2168,11 +2296,11 @@ export default function Results() {
 
                       {/* ✅ Informações adicionais do ranking */}
                       {(() => {
-                        const totalAlunos = tabelaDetalhada.disciplinas.reduce((total: number, disciplina: any) => {
+                        const totalAlunos = getFilteredTableData().reduce((total: number, disciplina: any) => {
                           return total + (disciplina.alunos?.length || 0);
                         }, 0);
 
-                        const mediaGeral = tabelaDetalhada.disciplinas.reduce((total: number, disciplina: any) => {
+                        const mediaGeral = getFilteredTableData().reduce((total: number, disciplina: any) => {
                           return total + (disciplina.alunos?.reduce((sum: number, aluno: any) => sum + (aluno.nota || 0), 0) || 0);
                         }, 0) / totalAlunos;
 
@@ -2188,7 +2316,7 @@ export default function Results() {
                             </div>
                             <div className="text-center p-4 bg-purple-50 rounded-lg border border-purple-200">
                               <div className="text-2xl font-bold text-purple-600">
-                                {tabelaDetalhada.disciplinas.length}
+                                {getFilteredTableData().length}
                               </div>
                               <div className="text-sm text-purple-700">Disciplinas Avaliadas</div>
                             </div>
@@ -2199,7 +2327,7 @@ export default function Results() {
                   </Card>
 
                   {/* ✅ Ranking por Disciplina */}
-                  {tabelaDetalhada.disciplinas.map((disciplina: any, discIndex: number) => {
+                  {getFilteredTableData().map((disciplina: any, discIndex: number) => {
                     if (!disciplina.alunos || disciplina.alunos.length === 0) return null;
 
                     // ✅ Ordenar alunos desta disciplina por nota e acertos
