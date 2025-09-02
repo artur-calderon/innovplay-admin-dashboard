@@ -32,7 +32,7 @@ import { ResultsTable } from "@/components/evaluations/results-table/ResultsTabl
 import { SubjectResults } from "@/components/evaluations/SubjectResults";
 import { QuestionData as TableQuestionData, DetailedReport as TableDetailedReport } from "@/types/results-table";
 
-// Interfaces para os dados da API
+// Interfaces para os dados da API - Nova estrutura baseada na implementação real
 interface EvaluationResult {
   id: string;
   titulo: string;
@@ -44,10 +44,11 @@ interface EvaluationResult {
   municipio?: string;
   estado?: string;
   data_aplicacao: string;
+  status: 'finalized' | 'in_progress' | 'pending' | string;
   // Campos agregados
   total_alunos: number;
   alunos_participantes: number;
-  alunos_pendentes?: number;
+  alunos_pendentes: number;
   alunos_ausentes: number;
   media_nota: number;
   media_proficiencia: number;
@@ -57,12 +58,60 @@ interface EvaluationResult {
     adequado: number;
     avancado: number;
   };
-  // Opcional: status pode não vir no novo contrato
-  status?: 'concluida' | 'em_andamento' | 'pendente' | string;
+}
+
+interface TabelaDetalhada {
+  disciplinas: Array<{
+    id: string;
+    nome: string;
+    questoes: Array<{
+      numero: number;
+      habilidade: string;
+      codigo_habilidade: string;
+      question_id: string;
+    }>;
+    alunos: Array<{
+      id: string;
+      nome: string;
+      escola: string;
+      serie: string;
+      turma: string;
+      respostas_por_questao: Array<{
+        questao: number;
+        acertou: boolean;
+        respondeu: boolean;
+        resposta: string;
+      }>;
+      total_acertos: number;
+      total_erros: number;
+      total_respondidas: number;
+      total_questoes_disciplina: number;
+      nivel_proficiencia: string;
+      nota: number;
+      proficiencia: number;
+    }>;
+  }>;
+}
+
+interface RankingItem {
+  posicao: number;
+  descricao: string;
+  aluno: {
+    id: string;
+    nome: string;
+    escola: string;
+    serie: string;
+    turma: string;
+    total_acertos: number;
+    total_respondidas: number;
+    nota: number;
+    proficiencia: number;
+    nivel_proficiencia: string;
+  };
 }
 
 interface NovaRespostaAPI {
-  nivel_granularidade: 'municipio' | 'escola' | 'serie' | 'turma';
+  nivel_granularidade: 'municipio' | 'escola' | 'serie' | 'turma' | 'avaliacao';
   filtros_aplicados: {
     estado: string;
     municipio: string;
@@ -72,7 +121,7 @@ interface NovaRespostaAPI {
     avaliacao: string;
   };
   estatisticas_gerais: {
-    tipo: 'municipio' | 'escola' | 'serie' | 'turma';
+    tipo: 'municipio' | 'escola' | 'serie' | 'turma' | 'avaliacao';
     nome: string;
     estado: string;
     municipio?: string;
@@ -97,8 +146,11 @@ interface NovaRespostaAPI {
   };
   resultados_por_disciplina: Array<{
     disciplina: string;
+    total_avaliacoes: number;
     total_alunos: number;
     alunos_participantes: number;
+    alunos_pendentes: number;
+    alunos_ausentes: number;
     media_nota: number;
     media_proficiencia: number;
     distribuicao_classificacao: {
@@ -117,7 +169,10 @@ interface NovaRespostaAPI {
       total_pages: number;
     };
   };
+  tabela_detalhada?: TabelaDetalhada;
+  ranking?: RankingItem[];
   opcoes_proximos_filtros: {
+    avaliacoes?: Array<{ id: string; titulo: string }>;
     escolas?: Array<{ id: string; name: string }>;
     series?: Array<{ id: string; name: string }>;
     turmas?: Array<{ id: string; name: string }>;
@@ -711,16 +766,10 @@ export default function Results() {
     loadClasses();
   }, [selectedGrade, selectedState, selectedMunicipality, selectedEvaluation, selectedSchool]);
 
-  // ✅ UNIFICADO: ÚNICO CARREGAMENTO PARA TODOS OS DADOS
+  // ✅ NOVA IMPLEMENTAÇÃO: CARREGAMENTO SIMPLIFICADO COM A NOVA API UNIFICADA
   const loadAllData = useCallback(async () => {
-    // Verificar se os 3 filtros obrigatórios estão selecionados
-    const filtrosObrigatorios = [
-      selectedState !== 'all',
-      selectedMunicipality !== 'all',
-      selectedEvaluation !== 'all'
-    ];
-
-    if (filtrosObrigatorios.filter(Boolean).length < 3) {
+    // Verificar se os filtros obrigatórios estão selecionados (Estado e Município)
+    if (selectedState === 'all' || selectedMunicipality === 'all') {
       setApiData(null);
       setStudents([]);
       setDetailedReport(null);
@@ -737,226 +786,80 @@ export default function Results() {
       setIsTableReady(false);
       
       const filters = {
-        estado: selectedState !== 'all' ? selectedState : undefined,
-        municipio: selectedMunicipality !== 'all' ? selectedMunicipality : undefined,
-        avaliacao: selectedEvaluation,
+        estado: selectedState,
+        municipio: selectedMunicipality,
+        avaliacao: selectedEvaluation !== 'all' ? selectedEvaluation : undefined,
         escola: selectedSchool !== 'all' ? selectedSchool : undefined,
         serie: selectedGrade !== 'all' ? selectedGrade : undefined,
         turma: selectedClass !== 'all' ? selectedClass : undefined,
       };
 
-      // 🚀 CARREGAMENTO UNIFICADO: Todos os dados em paralelo
+      // 🚀 CARREGAMENTO UNIFICADO: Uma única chamada para a nova API
+      const evaluationsResponse = await EvaluationResultsApiService.getEvaluationsList(currentPage, perPage, filters);
       
-      const [
-        evaluationsResponse,
-        detailedReportResponse,
-        questionsWithSkillsResponse,
-        evaluationSkillsResponse,
-        generalStatsResponse,
-        filterOptionsResponse,
-        relatorioCompletoResponse
-      ] = await Promise.all([
-        // 1. Dados principais das avaliações
-        EvaluationResultsApiService.getEvaluationsList(currentPage, perPage, filters),
-        
-        // 2. Relatório detalhado (se avaliação específica selecionada)
-        selectedEvaluation !== 'all' 
-          ? EvaluationResultsApiService.getDetailedReport(selectedEvaluation).catch(() => null)
-          : Promise.resolve(null),
-        
-        // 3. Questões com skills (se avaliação específica selecionada)
-        selectedEvaluation !== 'all'
-          ? EvaluationResultsApiService.getEvaluationSkills(selectedEvaluation).catch(() => null)
-          : Promise.resolve(null),
-        
-        // 4. Skills da avaliação (se avaliação específica selecionada)
-        selectedEvaluation !== 'all'
-          ? EvaluationResultsApiService.getSkillsByEvaluation(selectedEvaluation).catch(() => null)
-          : Promise.resolve(null),
-        
-        // 5. Estatísticas gerais
-        EvaluationResultsApiService.getGeneralStats(filters).catch(() => null),
-        
-        // 6. Opções de filtro
-        selectedEvaluation !== 'all'
-          ? EvaluationResultsApiService.getEvaluationById(selectedEvaluation).catch(() => null)
-          : Promise.resolve(null),
-        
-        // 7. Relatório completo (se avaliação específica selecionada)
-        selectedEvaluation !== 'all'
-          ? EvaluationResultsApiService.getRelatorioCompleto(selectedEvaluation).catch(() => null)
-          : Promise.resolve(null)
-      ]);
-      
-      // ✅ PROCESSAR DADOS PRINCIPAIS (API)
       if (evaluationsResponse) {
-        // Garantir que a estrutura seja compatível com a interface NovaRespostaAPI
-        const normalizedResponse: NovaRespostaAPI = {
-          nivel_granularidade: evaluationsResponse.nivel_granularidade || 'municipio',
-          filtros_aplicados: evaluationsResponse.filtros_aplicados || {
-            estado: selectedState,
-            municipio: selectedMunicipality,
-            escola: selectedSchool !== 'all' ? selectedSchool : null,
-            serie: selectedGrade !== 'all' ? selectedGrade : null,
-            turma: selectedClass !== 'all' ? selectedClass : null,
-            avaliacao: selectedEvaluation
-          },
-          estatisticas_gerais: evaluationsResponse.estatisticas_gerais || {
-            tipo: 'municipio',
-            nome: 'Dados gerais',
-            estado: selectedState,
-            total_avaliacoes: 0,
-            total_alunos: 0,
-            alunos_participantes: 0,
-            alunos_pendentes: 0,
-            alunos_ausentes: 0,
-            media_nota_geral: 0,
-            media_proficiencia_geral: 0,
-            distribuicao_classificacao_geral: {
-              abaixo_do_basico: 0,
-              basico: 0,
-              adequado: 0,
-              avancado: 0
-            }
-          },
-          resultados_por_disciplina: evaluationsResponse.resultados_por_disciplina || [],
-          resultados_detalhados: {
-            avaliacoes: evaluationsResponse.resultados_detalhados?.avaliacoes ||
-                       (evaluationsResponse.resultados_detalhados as ResultadosDetalhadosFromAPI)?.data ||
-                       [],
-            paginacao: {
-              page: evaluationsResponse.resultados_detalhados?.paginacao?.page || currentPage,
-              per_page: evaluationsResponse.resultados_detalhados?.paginacao?.per_page || perPage,
-              total: evaluationsResponse.resultados_detalhados?.paginacao?.total || 0,
-              total_pages: evaluationsResponse.resultados_detalhados?.paginacao?.total_pages || 0
-            }
-          },
-          opcoes_proximos_filtros: {
-            escolas: evaluationsResponse.opcoes_proximos_filtros?.escolas?.map((escola: { id: string; name?: string; nome?: string }) => ({
-              id: escola.id,
-              name: escola.name || escola.nome || ''
-            })) || [],
-            series: evaluationsResponse.opcoes_proximos_filtros?.series?.map((serie: { id: string; name?: string; nome?: string }) => ({
-              id: serie.id,
-              name: serie.name || serie.nome || ''
-            })) || [],
-            turmas: evaluationsResponse.opcoes_proximos_filtros?.turmas?.map((turma: { id: string; name?: string; nome?: string }) => ({
-              id: turma.id,
-              name: turma.name || turma.nome || ''
-            })) || []
-          }
-        };
+        setApiData(evaluationsResponse);
 
-        // ✅ NOVO: Definir apiData baseado na disponibilidade do relatório completo
-        if (relatorioCompletoResponse) {
-          
-          // Criar apiData enriquecido diretamente do relatório completo
-          const enrichedApiData = { ...normalizedResponse };
-          
-          // Extrair dados de proficiência e nota do relatório completo
-          const proficienciaData = (relatorioCompletoResponse as { proficiencia?: { media_municipal_por_disciplina?: Record<string, number> } })?.proficiencia?.media_municipal_por_disciplina || {};
-          const notaData = (relatorioCompletoResponse as { nota_geral?: { media_municipal_por_disciplina?: Record<string, number> } })?.nota_geral?.media_municipal_por_disciplina || {};
-          
-          // Processar niveis_aprendizagem para criar resultados_por_disciplina corretos
-          const niveisData = (relatorioCompletoResponse as { niveis_aprendizagem?: Record<string, unknown> }).niveis_aprendizagem || {};
-          const disciplinas = Object.keys(niveisData).filter(key => key !== 'GERAL');
-          
-          if (disciplinas.length > 0) {
-            const processedDisciplinas = disciplinas.map(disciplina => {
-              const nivelDisciplina = niveisData[disciplina] as { geral?: { abaixo_do_basico?: number; basico?: number; adequado?: number; avancado?: number } } | { abaixo_do_basico?: number; basico?: number; adequado?: number; avancado?: number };
-              let distribuicao: { abaixo_do_basico?: number; basico?: number; adequado?: number; avancado?: number } = {};
-              
-              if (nivelDisciplina && typeof nivelDisciplina === 'object' && 'geral' in nivelDisciplina && nivelDisciplina.geral) {
-                distribuicao = (nivelDisciplina as { geral: { abaixo_do_basico?: number; basico?: number; adequado?: number; avancado?: number } }).geral;
-              } else {
-                distribuicao = nivelDisciplina as { abaixo_do_basico?: number; basico?: number; adequado?: number; avancado?: number };
-              }
-              
-              return {
-                disciplina: disciplina,
-                total_alunos: (relatorioCompletoResponse as { total_alunos?: { total_geral?: { total?: number } } }).total_alunos?.total_geral?.total || 0,
-                alunos_participantes: normalizedResponse.estatisticas_gerais?.alunos_participantes || 0,
-                media_nota: parseDecimalString(notaData[disciplina]),
-                media_proficiencia: parseDecimalString(proficienciaData[disciplina]),
-                distribuicao_classificacao: {
-                  abaixo_do_basico: Number((distribuicao as { abaixo_do_basico?: number }).abaixo_do_basico) || 0,
-                  basico: Number((distribuicao as { basico?: number }).basico) || 0,
-                  adequado: Number((distribuicao as { adequado?: number }).adequado) || 0,
-                  avancado: Number((distribuicao as { avancado?: number }).avancado) || 0
-                }
-              };
-            });
-            
-            enrichedApiData.resultados_por_disciplina = processedDisciplinas;
-          }
-          
-          // Adicionar informações da avaliação se disponíveis
-          if ((relatorioCompletoResponse as { avaliacao?: unknown }).avaliacao) {
-            (enrichedApiData as { avaliacao?: unknown }).avaliacao = (relatorioCompletoResponse as { avaliacao?: unknown }).avaliacao;
-          }
-          
-          setApiData(enrichedApiData);
-        } else {
-          setApiData(normalizedResponse);
-        }
-
-        // Construir resumo preciso da avaliação selecionada (se houver)
+        // Construir resumo da avaliação se uma específica estiver selecionada
         if (selectedEvaluation !== 'all') {
-          // Tentar consolidar a partir da primeira avaliação retornada (quando nível >= escola)
-          const firstEval = normalizedResponse.resultados_detalhados?.avaliacoes?.[0];
-          const status = firstEval?.status || (normalizedResponse.estatisticas_gerais ? (normalizedResponse.estatisticas_gerais.tipo ? 'concluida' : 'pendente') : 'pendente');
-
-          // Fallbacks a partir das estatísticas e filtros
-          const resumo: EvaluationInfoSummary = {
-            id: String(firstEval?.id || selectedEvaluation),
-            titulo: String(firstEval?.titulo || 'Avaliação'),
-            disciplina: firstEval?.disciplina,
-            curso: firstEval?.curso,
-            serie: firstEval?.serie || normalizedResponse.estatisticas_gerais?.serie,
-            escola: firstEval?.escola || normalizedResponse.estatisticas_gerais?.escola,
-            municipio: firstEval?.municipio || normalizedResponse.estatisticas_gerais?.municipio,
-            data_aplicacao: firstEval?.data_aplicacao,
-            status: status as EvaluationInfoSummary['status'],
-            total_alunos: firstEval?.total_alunos ?? normalizedResponse.estatisticas_gerais?.total_alunos ?? 0,
-            alunos_participantes: firstEval?.alunos_participantes ?? normalizedResponse.estatisticas_gerais?.alunos_participantes ?? 0,
-            alunos_ausentes: firstEval?.alunos_ausentes ?? 0,
-            media_nota: firstEval?.media_nota ?? normalizedResponse.estatisticas_gerais?.media_nota_geral ?? 0,
-            media_proficiencia: firstEval?.media_proficiencia ?? normalizedResponse.estatisticas_gerais?.media_proficiencia_geral ?? 0,
-          };
-
-          // Consolidar TODAS as disciplinas: resultados_por_disciplina + disciplina da primeira avaliação + opções da avaliação
-          const subjectsFromResults = (normalizedResponse.resultados_por_disciplina || [])
-            .map(d => extractSubjectName(d.disciplina as unknown))
-            .filter(Boolean);
-          const singleSubject = extractSubjectName(firstEval?.disciplina as unknown);
+          const firstEval = evaluationsResponse.resultados_detalhados?.avaliacoes?.[0];
           
-          // Buscar também as disciplinas listadas nas opções de filtros da avaliação
-          // Tipagem segura para subjects_info vindo do endpoint principal (/test/avaliacoes/{id})
-          type SubjectInfo = { id?: string; name?: string } | string;
-          type EvaluationDetailsWithSubjects = { subjects_info?: SubjectInfo[] } | null;
-          const evalDetails = await EvaluationResultsApiService.getEvaluationById(String(selectedEvaluation));
-          const evalWithSubjects = evalDetails as EvaluationDetailsWithSubjects;
-          const subjectsFromOptions = Array.isArray(evalWithSubjects?.subjects_info)
-            ? (evalWithSubjects?.subjects_info || [])
-                .map((s: SubjectInfo) => typeof s === 'string' ? extractSubjectName(s) : extractSubjectName(s?.name))
-                .filter(Boolean)
-            : [];
+          if (firstEval) {
+            const resumo: EvaluationInfoSummary = {
+              id: String(firstEval.id),
+              titulo: String(firstEval.titulo),
+              disciplina: firstEval.disciplina,
+              curso: firstEval.curso,
+              serie: firstEval.serie,
+              escola: firstEval.escola,
+              municipio: firstEval.municipio,
+              data_aplicacao: firstEval.data_aplicacao,
+              status: firstEval.status === 'finalized' ? 'concluida' : 'pendente' as EvaluationInfoSummary['status'],
+              total_alunos: firstEval.total_alunos,
+              alunos_participantes: firstEval.alunos_participantes,
+              alunos_ausentes: firstEval.alunos_ausentes,
+              media_nota: firstEval.media_nota,
+              media_proficiencia: firstEval.media_proficiencia,
+            };
 
-          const allSubjects = Array.from(new Set([
-            ...subjectsFromResults,
-            ...subjectsFromOptions,
-            ...(singleSubject ? [singleSubject] : []),
-          ]));
-          
-          if (allSubjects.length > 0) {
-            resumo.disciplinas = allSubjects;
-            // Garantir que a disciplina principal reflita o primeiro item do subjects_info
-            if (!resumo.disciplina) {
-              resumo.disciplina = allSubjects[0];
+            // Coletar disciplinas dos resultados por disciplina
+            const subjectsFromResults = evaluationsResponse.resultados_por_disciplina
+              .map(d => extractSubjectName(d.disciplina))
+              .filter(Boolean);
+            
+            if (subjectsFromResults.length > 0) {
+              resumo.disciplinas = subjectsFromResults;
             }
+
+            setEvaluationInfo(resumo);
+        } else {
+            // Se não há avaliações mas há estatísticas gerais, criar resumo básico
+            if (evaluationsResponse.estatisticas_gerais) {
+          const resumo: EvaluationInfoSummary = {
+                id: selectedEvaluation,
+                titulo: 'Avaliação',
+                status: 'pendente',
+                total_alunos: evaluationsResponse.estatisticas_gerais.total_alunos,
+                alunos_participantes: evaluationsResponse.estatisticas_gerais.alunos_participantes,
+                alunos_ausentes: evaluationsResponse.estatisticas_gerais.alunos_ausentes,
+                media_nota: evaluationsResponse.estatisticas_gerais.media_nota_geral,
+                media_proficiencia: evaluationsResponse.estatisticas_gerais.media_proficiencia_geral,
+              };
+
+              const subjectsFromResults = evaluationsResponse.resultados_por_disciplina
+                .map(d => extractSubjectName(d.disciplina))
+            .filter(Boolean);
+              
+              if (subjectsFromResults.length > 0) {
+                resumo.disciplinas = subjectsFromResults;
+                resumo.disciplina = subjectsFromResults[0];
           }
 
           setEvaluationInfo(resumo);
+            } else {
+              setEvaluationInfo(null);
+            }
+          }
         } else {
           setEvaluationInfo(null);
         }
@@ -985,7 +888,8 @@ export default function Results() {
     selectedClass,
     toast,
     currentPage,
-    perPage
+    perPage,
+    extractSubjectName
   ]);
 
   // Carregar dados quando filtros mudarem
@@ -1082,15 +986,14 @@ export default function Results() {
     return 'pendente';
   }, []);
 
-  // Contar filtros selecionados
+  // Contar filtros selecionados - agora apenas Estado e Município são obrigatórios
   const selectedFiltersCount = [
     selectedState !== 'all',
-    selectedMunicipality !== 'all',
-    selectedEvaluation !== 'all'
+    selectedMunicipality !== 'all'
   ].filter(Boolean).length;
 
-  // Verificar se todos os filtros obrigatórios estão selecionados
-  const allRequiredFiltersSelected = selectedFiltersCount === 3;
+  // Verificar se todos os filtros obrigatórios estão selecionados (Estado e Município)
+  const allRequiredFiltersSelected = selectedFiltersCount === 2;
 
   // Estados para dados reais dos alunos (como no DetailedResultsView)
   const [students, setStudents] = useState<Array<{
@@ -1158,9 +1061,9 @@ export default function Results() {
     students: false
   });
 
-  // Carregar dados reais dos alunos quando uma avaliação for selecionada
+  // ✅ NOVA IMPLEMENTAÇÃO: Processar dados dos alunos da tabela_detalhada da nova API
   const loadStudentsData = useCallback(async () => {
-    if (!selectedEvaluation || selectedEvaluation === 'all') {
+    if (!selectedEvaluation || selectedEvaluation === 'all' || !apiData) {
       setStudents([]);
       setDetailedReport(null);
       setQuestionsWithSkills([]);
@@ -1181,87 +1084,118 @@ export default function Results() {
     try {
       setIsLoadingStudents(true);
       setIsTableReady(false);
-      setLoadingStep('Iniciando carregamento...');
-      setLoadingProgress(10);
-      setLoadingDetails({
-        detailedReport: false,
-        questionsWithSkills: false,
-        skills: false,
-        students: false
-      });
-
-      // 🚀 OTIMIZAÇÃO: Carregar apenas dados essenciais para a tabela PRIMEIRO
-      setLoadingStep('Buscando dados essenciais da avaliação...');
-      setLoadingProgress(20);
-      setLoadingDetails(prev => ({ ...prev, detailedReport: true }));
-      
-      let detailedReportResponse: SimpleDetailedReport | null = null;
-      
-      try {
-        // ✅ PRIORIDADE 1: Dados essenciais para a tabela
-        const response = await EvaluationResultsApiService.getDetailedReport(selectedEvaluation);
-        detailedReportResponse = response as unknown as SimpleDetailedReport;
-        setDetailedReport(detailedReportResponse);
-        setLoadingDetails(prev => ({ ...prev, detailedReport: false }));
-        setLoadingProgress(60);
-      } catch (error) {
-        console.error('❌ Erro ao carregar dados essenciais:', error);
-        setLoadingDetails(prev => ({ ...prev, detailedReport: false }));
-        // Se falhar nos dados essenciais, não continuar
-        throw error;
-      }
-
-      // 🚀 OTIMIZAÇÃO: Processar dados dos alunos IMEDIATAMENTE
       setLoadingStep('Processando dados dos alunos...');
-      setLoadingProgress(70);
-      setLoadingDetails(prev => ({ ...prev, students: true }));
+      setLoadingProgress(20);
+
+      // ✅ NOVO: Usar dados da tabela_detalhada se disponível
+      if (apiData.tabela_detalhada?.disciplinas?.length) {
+        setLoadingStep('Processando dados da tabela detalhada...');
+        setLoadingProgress(50);
+        
+        const allStudents: Array<{
+          id: string;
+          nome: string;
+          turma: string;
+          nota: number;
+          proficiencia: number;
+          classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+          questoes_respondidas: number;
+          acertos: number;
+          erros: number;
+          em_branco: number;
+          tempo_gasto: number;
+          status: 'concluida' | 'pendente';
+        }> = [];
+
+        // Processar alunos de todas as disciplinas (evitar duplicatas)
+        const processedStudents = new Map<string, typeof allStudents[0]>();
+        
+        apiData.tabela_detalhada.disciplinas.forEach(disciplina => {
+          disciplina.alunos.forEach(aluno => {
+            if (!processedStudents.has(aluno.id)) {
+              processedStudents.set(aluno.id, {
+                id: aluno.id,
+                nome: aluno.nome,
+                turma: aluno.turma,
+                nota: aluno.nota,
+                proficiencia: aluno.proficiencia,
+                classificacao: aluno.nivel_proficiencia as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
+                questoes_respondidas: aluno.total_respondidas,
+                acertos: aluno.total_acertos,
+                erros: aluno.total_erros,
+                em_branco: aluno.total_questoes_disciplina - aluno.total_respondidas,
+                tempo_gasto: 0, // Não disponível na tabela_detalhada
+                status: 'concluida' as const
+              });
+            }
+          });
+        });
+
+        setStudents(Array.from(processedStudents.values()));
+        setLoadingProgress(80);
+      } else {
+        // ✅ FALLBACK: Usar dados do ranking se disponível
+        if (apiData.ranking?.length) {
+          setLoadingStep('Processando dados do ranking...');
+          setLoadingProgress(50);
           
-      if (detailedReportResponse && detailedReportResponse.alunos) {
-        const transformedStudents = detailedReportResponse.alunos.map((aluno: SimpleDetailedReport['alunos'][0]) => {
-          // Converter proficiência da escala 0-1000 para a escala correta
-          let proficienciaCorrigida = aluno.proficiencia;
+          const studentsFromRanking = apiData.ranking.map((item) => ({
+            id: item.aluno.id,
+            nome: item.aluno.nome,
+            turma: item.aluno.turma,
+            nota: item.aluno.nota,
+            proficiencia: item.aluno.proficiencia,
+            classificacao: item.aluno.nivel_proficiencia as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
+            questoes_respondidas: item.aluno.total_respondidas,
+            acertos: item.aluno.total_acertos,
+            erros: item.aluno.total_respondidas - item.aluno.total_acertos,
+            em_branco: 0, // Não disponível no ranking
+            tempo_gasto: 0, // Não disponível no ranking
+            status: 'concluida' as const
+          }));
           
-          if (aluno.proficiencia > 500) {
-            const isMathematics = detailedReportResponse.avaliacao.disciplina.toLowerCase().includes('matemática') || 
-                                 detailedReportResponse.avaliacao.disciplina.toLowerCase().includes('matematica');
-            const maxProficiency = getMaxProficiencyForGroup(isMathematics, inferStageGroup());
-            proficienciaCorrigida = (aluno.proficiencia / 1000) * maxProficiency;
-          }
+          setStudents(studentsFromRanking);
+          setLoadingProgress(80);
+        } else {
+          // ✅ ÚLTIMO FALLBACK: Tentar carregar dados detalhados separadamente
+          setLoadingStep('Buscando dados detalhados...');
+          setLoadingProgress(30);
           
-          return {
+          try {
+            const detailedReportResponse = await EvaluationResultsApiService.getDetailedReport(selectedEvaluation);
+            
+            if (detailedReportResponse && detailedReportResponse.alunos) {
+              const transformedStudents = detailedReportResponse.alunos.map((aluno: any) => ({
             id: aluno.id,
             nome: aluno.nome,
             turma: aluno.turma,
             nota: aluno.nota_final,
-            proficiencia: proficienciaCorrigida,
+                proficiencia: aluno.proficiencia,
             classificacao: aluno.classificacao,
             questoes_respondidas: aluno.total_acertos + aluno.total_erros + aluno.total_em_branco,
             acertos: aluno.total_acertos,
             erros: aluno.total_erros,
             em_branco: aluno.total_em_branco,
-            tempo_gasto: aluno.respostas.reduce((total: number, resp: { tempo_gasto: number }) => total + resp.tempo_gasto, 0),
+                tempo_gasto: aluno.respostas?.reduce((total: number, resp: { tempo_gasto: number }) => total + resp.tempo_gasto, 0) || 0,
             status: (aluno.status === 'concluida' ? 'concluida' : 'pendente') as 'concluida' | 'pendente'
-          };
-        });
+              }));
         
         setStudents(transformedStudents);
         setLoadingProgress(80);
       } else {
-        // Fallback: buscar apenas alunos básicos
-        try {
-          const studentsResponse = await EvaluationResultsApiService.getStudentsByEvaluation(selectedEvaluation);
-          setStudents(studentsResponse as StudentResponse[]);
+              setStudents([]);
+            }
         } catch (error) {
-          console.warn('Dados básicos dos alunos não disponíveis:', error);
+            console.warn('Erro ao carregar relatório detalhado:', error);
           setStudents([]);
+          }
         }
       }
       
-      setLoadingDetails(prev => ({ ...prev, students: false }));
-
-      // 🚀 OTIMIZAÇÃO: Marcar tabela como pronta ANTES de carregar dados extras
+      // Marcar tabela como pronta
       setIsTableReady(true);
-      setLoadingProgress(90);
+      setLoadingProgress(100);
+      setLoadingStep('Dados carregados com sucesso!');
 
       // 🚀 OTIMIZAÇÃO: Carregar dados extras em BACKGROUND (não bloqueiam a tabela)
       setLoadingStep('Carregando dados adicionais em background...');
@@ -1729,11 +1663,7 @@ export default function Results() {
         setLoadingProgress(0);
       }, 1000);
     }
-        }, [
-    selectedEvaluation
-    // ✅ CORREÇÃO: Remover dependências que causam ciclo infinito
-    // extractSubjectName, inferStageGroup, getMaxProficiencyForGroup
-  ]);
+  }, [selectedEvaluation, apiData]);
 
   // Carregar dados dos alunos quando a avaliação mudar
   useEffect(() => {
@@ -2430,7 +2360,7 @@ export default function Results() {
               💡 <strong>Hierarquia dos Filtros:</strong> Estado → Município → Avaliação → Escola → Série → Turma
             </p>
             <p className="text-sm text-blue-700 mt-1">
-              Os três primeiros filtros são obrigatórios. Escola, Série e Turma são opcionais e podem ser "Todos".
+              <strong>Estado</strong> e <strong>Município</strong> são obrigatórios. Avaliação, Escola, Série e Turma são opcionais e podem ser "Todos".
             </p>
           </div>
         </CardContent>
@@ -2444,10 +2374,10 @@ export default function Results() {
               <Filter className="h-8 w-8 text-gray-400" />
             </div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              Selecione os três filtros obrigatórios para continuar
+              Selecione os filtros obrigatórios para continuar
             </h3>
             <p className="text-gray-600 text-center max-w-md">
-              Para visualizar os resultados das avaliações, você precisa selecionar: <strong>Estado</strong>, <strong>Município</strong> e <strong>Avaliação</strong>. Os filtros Escola, Série e Turma são opcionais e podem ser "Todos".
+              Para visualizar os resultados das avaliações, você precisa selecionar: <strong>Estado</strong> e <strong>Município</strong>. Os filtros Avaliação, Escola, Série e Turma são opcionais e podem ser "Todos".
             </p>
           </CardContent>
         </Card>
