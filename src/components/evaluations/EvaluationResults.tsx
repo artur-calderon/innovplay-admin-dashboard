@@ -35,7 +35,41 @@ import {
 
 import { useParams } from "react-router-dom";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
-import { ERROR_MESSAGES, SUCCESS_MESSAGES, PROFICIENCY_MAX_VALUES } from "./results/constants";
+// Constantes movidas do arquivo removido
+const ERROR_MESSAGES = {
+  NETWORK_ERROR: "Erro de conexão. Verifique sua internet e tente novamente.",
+  DATA_NOT_FOUND: "Dados não encontrados.",
+  SERVER_ERROR: "Erro interno do servidor."
+};
+
+const SUCCESS_MESSAGES = {
+  DATA_LOADED: "Dados carregados com sucesso."
+};
+
+const PROFICIENCY_MAX_VALUES = {
+  MATEMATICA: {
+    "1º ano": 500,
+    "2º ano": 525,
+    "3º ano": 550,
+    "4º ano": 575,
+    "5º ano": 600,
+    "6º ano": 625,
+    "7º ano": 650,
+    "8º ano": 675,
+    "9º ano": 700,
+  },
+  PORTUGUES: {
+    "1º ano": 500,
+    "2º ano": 525,
+    "3º ano": 550,
+    "4º ano": 575,
+    "5º ano": 600,
+    "6º ano": 625,
+    "7º ano": 650,
+    "8º ano": 675,
+    "9º ano": 700,
+  },
+};
 
 interface StudentResult {
   id: string;

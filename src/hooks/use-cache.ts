@@ -349,7 +349,7 @@ export function useEvaluationsManager() {
   };
 }
 
-// Hook específico para estatísticas
+// Hook específico para estatísticas de avaliações
 export function useEvaluationStats() {
   return useCache<{
     total: number;
@@ -365,6 +365,167 @@ export function useEvaluationStats() {
   }>('/evaluations/stats', {
     staleTime: 60 * 1000 // 1 minuto
   });
+}
+
+// ===== NOVOS HOOKS PARA ENDPOINTS DE DASHBOARD =====
+
+// Hook para métricas gerais do dashboard
+export function useDashboardStats() {
+  return useCache<{
+    total_evaluations: number;
+    active_evaluations: number;
+    completed_evaluations: number;
+    total_students: number;
+    average_completion_rate: number;
+    pending_evaluations: number;
+    this_month_evaluations: number;
+  }>('/dashboard/stats', {
+    staleTime: 2 * 60 * 1000 // 2 minutos
+  });
+}
+
+// Hook para estatísticas ampliadas do dashboard
+export function useComprehensiveDashboardStats() {
+  return useCache<{
+    evaluations: {
+      total: number;
+      by_status: Record<string, number>;
+      by_type: Record<string, number>;
+      by_subject: Record<string, number>;
+    };
+    students: {
+      total: number;
+      active: number;
+      by_grade: Record<string, number>;
+    };
+    schools: {
+      total: number;
+      with_evaluations: number;
+      by_municipality: Record<string, number>;
+    };
+    performance: {
+      average_score: number;
+      average_proficiency: number;
+      completion_rate: number;
+    };
+  }>('/dashboard/comprehensive-stats', {
+    staleTime: 5 * 60 * 1000 // 5 minutos
+  });
+}
+
+// Hook para estatísticas globais de resultados
+export function useGlobalResultsStats() {
+  return useCache<{
+    total_avaliacoes_concluidas: number;
+    total_avaliacoes_pendentes: number;
+    media_nota_global: number;
+    total_alunos: number;
+    tempo_medio_execucao: number;
+    disciplina_melhor_desempenho: {
+      nome: string;
+      media_nota: number;
+      media_proficiencia: number;
+    };
+  }>('/evaluation-results/stats', {
+    staleTime: 3 * 60 * 1000 // 3 minutos
+  });
+}
+
+// Hook para estatísticas de status das avaliações (para gráficos de pizza/donut)
+export function useEvaluationStatusStats() {
+  return useCache<{
+    total_evaluations: number;
+    by_status: Array<{
+      status: string;
+      count: number;
+      percentage: number;
+      label: string;
+    }>;
+    last_updated: string;
+  }>('/evaluation-results/avaliacoes/estatisticas-status', {
+    staleTime: 2 * 60 * 1000 // 2 minutos
+  });
+}
+
+// Hook para lista de avaliações com agregados (para tabelas/rankings)
+export function useEvaluationsListWithAggregates(
+  page: number = 1,
+  perPage: number = 10,
+  filters?: {
+    status?: string;
+    subject?: string;
+    municipality?: string;
+    school?: string;
+  }
+) {
+  const params = new URLSearchParams({
+    page: page.toString(),
+    per_page: perPage.toString(),
+  });
+
+  if (filters?.status) params.append('status', filters.status);
+  if (filters?.subject) params.append('subject', filters.subject);
+  if (filters?.municipality) params.append('municipality', filters.municipality);
+  if (filters?.school) params.append('school', filters.school);
+
+  return useCache<{
+    data: Array<{
+      id: string;
+      titulo: string;
+      disciplina: string;
+      municipio: string;
+      escola: string;
+      status: string;
+      total_alunos: number;
+      alunos_concluidos: number;
+      media_nota: number;
+      ultima_atualizacao: string;
+      progress_percentage: number;
+    }>;
+    pagination: {
+      current_page: number;
+      per_page: number;
+      total: number;
+      total_pages: number;
+    };
+  }>(`/evaluation-results/list?${params}`, {
+    staleTime: 1 * 60 * 1000, // 1 minuto
+    cacheKey: `evaluations-list-${page}-${perPage}-${JSON.stringify(filters || {})}`
+  });
+}
+
+// ===== HOOKS PARA OPERAÇÕES ESPECÍFICAS DE AVALIAÇÕES =====
+
+// Hook para verificação em lote de status (operação mais pesada, cache maior)
+export function useBulkEvaluationStatusCheck() {
+  const [isChecking, setIsChecking] = useState(false);
+  const [lastCheck, setLastCheck] = useState<Date | null>(null);
+  
+  const checkAllEvaluations = useCallback(async (filters?: {
+    municipio?: string;
+    escola?: string;
+    status?: string;
+  }) => {
+    setIsChecking(true);
+    try {
+      // Importar o serviço dinamicamente para evitar dependência circular
+      const { EvaluationResultsApiService } = await import('@/services/evaluationResultsApi');
+      const result = await EvaluationResultsApiService.verificarTodasAvaliacoes(filters);
+      setLastCheck(new Date());
+      return result;
+    } catch (error) {
+      console.error('Erro ao verificar todas as avaliações:', error);
+      return null;
+    } finally {
+      setIsChecking(false);
+    }
+  }, []);
+
+  return {
+    checkAllEvaluations,
+    isChecking,
+    lastCheck
+  };
 }
 
 // Hook para limpeza de cache

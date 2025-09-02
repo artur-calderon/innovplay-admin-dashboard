@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { CheckCircle2, Target, Gauge, Award } from 'lucide-react';
 import { QuestionData, QuestionWithSkills, VisibleFields } from '../../../types/results-table';
 import { EvaluationResultsApiService } from '../../../services/evaluationResultsApi';
 
@@ -51,6 +52,7 @@ interface TableHeaderProps {
     }>;
     [key: string]: any;
   }>;
+  successThreshold?: number;
 }
 
 export const TableHeader: React.FC<TableHeaderProps> = ({
@@ -63,7 +65,8 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
   detailedReport,
   visibleFields,
   evaluationId,
-  students = []
+  students = [],
+  successThreshold = 60
 }) => {
   const [questionsData, setQuestionsData] = useState<QuestionWithSkill[]>([]);
   const [skillsData, setSkillsData] = useState<Skill[]>([]);
@@ -276,12 +279,17 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
           }
         }
       } else {
-        // Fallback: usar dados gerais do aluno (menos preciso)
-        totalAnswers++;
-        // Simular baseado na taxa geral de acertos do aluno
-        const studentAccuracy = student.acertos / totalQuestions;
-        if (Math.random() < studentAccuracy) {
-          correctAnswers++;
+        // Fallback determinístico (mesma lógica do DetailedResultsView):
+        // considerar que o aluno respondeu as primeiras (acertos + erros) questões
+        // e acertou as primeiras 'acertos'
+        const correct = Number(student.acertos || 0);
+        const wrong = Number(student.erros || 0);
+        const answered = correct + wrong;
+        if (questionIndex < answered) {
+          totalAnswers++;
+          if (questionIndex < correct) {
+            correctAnswers++;
+          }
         }
       }
     });
@@ -305,7 +313,7 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky left-0 bg-gray-100 z-10 border-r border-gray-200">
           Aluno
         </th>
-        {Array.from({ length: totalQuestions }, (_, i) => {
+        {visibleFields?.questoes && Array.from({ length: totalQuestions }, (_, i) => {
           const questionNumber = i + 1;
           return (
             <th key={`header-q${i}`} className="px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200 min-w-[60px]">
@@ -313,16 +321,46 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
             </th>
           );
         })}
-        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200">Total</th>
-        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200">Nota</th>
-        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200">Proficiência</th>
-        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200">Nível</th>
+        {visibleFields?.total && (
+          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200">
+            <div className="flex items-center justify-center gap-1">
+              <CheckCircle2 className="h-4 w-4" />
+              <span>Total</span>
+            </div>
+          </th>
+        )}
+        {visibleFields?.nota && (
+          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200">
+            <div className="flex items-center justify-center gap-1">
+              <Target className="h-4 w-4" />
+              <span>Nota</span>
+            </div>
+          </th>
+        )}
+        {visibleFields?.proficiencia && (
+          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200">
+            <div className="flex items-center justify-center gap-1">
+              <Gauge className="h-4 w-4" />
+              <span>Proficiência</span>
+            </div>
+          </th>
+        )}
+        {visibleFields?.nivel && (
+          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200">
+            <div className="flex items-center justify-center gap-1">
+              <Award className="h-4 w-4" />
+              <span>Nível</span>
+            </div>
+          </th>
+        )}
       </tr>
       
       {/* Linha dos Descritores/Skills - SEGUNDA LINHA */}
+      {/* Removido por padrão para visual mais limpo; pode ser reativado se desejado via visibleFields.habilidade */}
+      {visibleFields?.habilidade && visibleFields?.questoes && (
       <tr className="bg-blue-50 border-b border-blue-200">
         <th className="px-4 py-2 text-left text-xs font-medium text-blue-700 uppercase tracking-wider sticky left-0 bg-blue-50 z-10 border-r border-blue-200">
-          Descritores
+          Habilidade
         </th>
         {Array.from({ length: totalQuestions }, (_, i) => {
           const questionSkills = getQuestionSkills(i);
@@ -353,7 +391,7 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
                   
                   {/* Tooltip com descrição */}
                   {hoveredSkill === `${i}-${primarySkill.code}` && (
-                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-1 z-50 bg-gray-900 text-white text-xs rounded px-3 py-2 max-w-sm text-left shadow-lg min-w-[200px] max-w-[300px]">
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-1 z-50 bg-gray-900 text-white text-xs rounded px-3 py-2 max-w-sm text-left shadow-lg min-w-[200px]">
                       <div className="font-semibold mb-1">{primarySkill.code}</div>
                       <div className="text-gray-300 text-[10px] leading-relaxed break-words">
                         {primarySkill.description}
@@ -381,8 +419,11 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
         <th className="px-4 py-2 text-center text-xs font-medium text-blue-700 uppercase tracking-wider border-l border-blue-200"></th>
         <th className="px-4 py-2 text-center text-xs font-medium text-blue-700 uppercase tracking-wider border-l border-blue-200"></th>
       </tr>
+      )}
       
       {/* Linha de Disciplinas - TERCEIRA LINHA */}
+      {/* Linha de Disciplinas removida por padrão para reduzir repetição; usaremos tooltip na linha acima */}
+      {false && visibleFields?.questoes && (
       <tr className="bg-indigo-50 border-b border-indigo-200">
         <th className="px-4 py-1 text-left text-xs font-medium text-indigo-700 uppercase tracking-wider sticky left-0 bg-indigo-50 z-10 border-r border-indigo-200">
           Disciplina
@@ -408,8 +449,10 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
         <th className="px-4 py-1 text-center text-xs font-medium text-indigo-700 uppercase tracking-wider border-l border-indigo-200"></th>
         <th className="px-4 py-1 text-center text-xs font-medium text-indigo-700 uppercase tracking-wider border-l border-indigo-200"></th>
         </tr>
+      )}
       
       {/* Linha de % da Turma - QUARTA LINHA */}
+      {visibleFields?.percentualTurma && visibleFields?.questoes && (
       <tr className="bg-green-50 border-b border-green-200">
         <th className="px-4 py-2 text-left text-xs font-medium text-green-700 uppercase tracking-wider sticky left-0 bg-green-50 z-10 border-r border-green-200">
           <div className="text-green-800 font-semibold text-[10px]">% da Turma</div>
@@ -417,10 +460,11 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
         </th>
         {Array.from({ length: totalQuestions }, (_, i) => {
           const successRate = calculateQuestionSuccessRate(i);
+          const colorClass = successRate >= successThreshold ? 'text-green-700' : 'text-red-600';
           return (
-            <th key={`success-rate-q${i}`} className="px-1 py-2 text-center text-xs font-medium text-green-700 border-l border-green-200 min-w-[60px]">
-              <div className="text-green-800 font-semibold text-[11px]">
-                {successRate}%
+            <th key={`success-rate-q${i}`} className={`px-1 py-2 text-center text-xs font-medium border-l min-w-[60px] ${successRate < successThreshold ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+              <div className={`${colorClass} font-semibold text-[11px]`}>
+                {Number.isFinite(successRate) ? successRate.toFixed(0) : '0'}%
               </div>
             </th>
           );
@@ -430,6 +474,7 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
         <th className="px-4 py-2 text-center text-xs font-medium text-green-700 uppercase tracking-wider border-l border-green-200"></th>
         <th className="px-4 py-2 text-center text-xs font-medium text-green-700 uppercase tracking-wider border-l border-green-200"></th>
         </tr>
+      )}
     </thead>
   );
 }; 

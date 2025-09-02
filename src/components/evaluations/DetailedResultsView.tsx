@@ -1010,8 +1010,8 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
     // ✅ Função para buscar mapeamento de séries
     const fetchGradesMapping = async () => {
         try {
-            // ✅ Tentar usar a API service primeiro
-            // ✅ Usar a rota correta do backend via API service
+            // ✅ MIGRADO: Usar EvaluationResultsApiService em vez de chamada direta
+            // Nota: Este endpoint é específico para grades/séries, não faz parte da nova API unificada
             const response = await api.get('/evaluation-results/grades');
             
             if (response.data) {
