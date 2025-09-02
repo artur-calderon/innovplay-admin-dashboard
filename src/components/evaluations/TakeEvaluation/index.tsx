@@ -24,6 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import { EvaluationTimer } from "../EvaluationTimer";
 import { useEvaluation } from "@/hooks/useEvaluation";
 import { Question } from "@/types/evaluation-types";
+import { EvaluationApiService } from "@/services/evaluationApi";
 
 export default function TakeEvaluation() {
     const { id: evaluationId } = useParams<{ id: string }>();
@@ -38,51 +39,24 @@ export default function TakeEvaluation() {
     // ✅ NOVO: Manter referência às questões originais para mapeamento correto
     const [originalQuestions, setOriginalQuestions] = useState<Question[]>([]);
 
-    // ✅ NOVO: Função para mapear resposta da interface para ID original
+    // ✅ CORRIGIDO: Função para mapear resposta da interface para ID original
     const mapAnswerToOriginalId = useCallback((questionId: string, selectedText: string | string[]): string => {
         // Se for array, pegar o primeiro elemento
         const textToMap = Array.isArray(selectedText) ? selectedText[0] : selectedText;
         
-        // ✅ SIMPLIFICADO: Buscar pela posição na interface embaralhada
-        const shuffledQuestion = shuffledQuestions.find(q => q.id === questionId);
-        if (shuffledQuestion) {
-            const shuffledOptions = shuffledQuestion.options || shuffledQuestion.alternatives || [];
-            const selectedIndex = shuffledOptions.findIndex(opt => opt.text === textToMap);
-            
-            if (selectedIndex !== -1) {
-                // ✅ NOVO: Usar a posição da interface para mapear para a opção original
-                const originalQuestion = originalQuestions.find(q => q.id === questionId);
-                if (originalQuestion) {
-                    const originalOptions = originalQuestion.options || originalQuestion.alternatives || [];
-                    const originalOption = originalOptions[selectedIndex];
-                    
-                    if (originalOption) {
-                        console.log('✅ Mapeamento de resposta por posição da interface:', {
-                            questionId,
-                            selectedText: textToMap,
-                            selectedIndex,
-                            originalId: originalOption.id,
-                            originalText: originalOption.text,
-                            totalOptions: shuffledOptions.length
-                        });
-                        return originalOption.id;
-                    }
-                }
-            }
-        }
-        
-        // ✅ FALLBACK: Buscar nas opções originais pelo texto selecionado
+        // ✅ CORRIGIDO: Buscar diretamente nas opções originais pelo texto selecionado
         const originalQuestion = originalQuestions.find(q => q.id === questionId);
         if (originalQuestion) {
             const originalOptions = originalQuestion.options || originalQuestion.alternatives || [];
             const originalOption = originalOptions.find(opt => opt.text === textToMap);
             
             if (originalOption) {
-                console.log('✅ Mapeamento de resposta por texto (fallback):', {
+                console.log('✅ Mapeamento de resposta por texto (correto):', {
                     questionId,
                     selectedText: textToMap,
                     originalId: originalOption.id,
-                    originalText: originalOption.text
+                    originalText: originalOption.text,
+                    totalOptions: originalOptions.length
                 });
                 return originalOption.id;
             }
@@ -90,7 +64,7 @@ export default function TakeEvaluation() {
 
         console.warn('⚠️ Opção original não encontrada para texto:', textToMap);
         return textToMap; // Fallback para resposta direta
-    }, [originalQuestions, shuffledQuestions]);
+    }, [originalQuestions]);
 
     const {
         evaluationState,
@@ -109,6 +83,35 @@ export default function TakeEvaluation() {
         submitTest: handleSubmitTest,
         navigateToQuestion
     } = useEvaluation({ testId: evaluationId });
+
+    // ✅ NOVO: Função para salvar resposta com mapeamento correto
+    const saveAnswerWithMapping = useCallback(async (questionId: string, displayAnswer: string, backendAnswer: string): Promise<void> => {
+        if (!session || !testData) return;
+
+        try {
+            // Salvar no estado local com o texto da opção para visualização
+            await saveAnswer(questionId, displayAnswer);
+
+            // Aguardar um pouco para garantir que o estado local foi atualizado
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Salvar no backend com o ID original (sobrescrever a resposta anterior)
+            await EvaluationApiService.savePartialAnswers({
+                session_id: session.session_id,
+                answers: [{
+                    question_id: questionId,
+                    answer: backendAnswer
+                }]
+            });
+
+        } catch (error) {
+            toast({
+                title: "⚠️ Erro ao salvar",
+                description: "Sua resposta pode não ter sido salva. Verifique sua conexão.",
+                variant: "destructive",
+            });
+        }
+    }, [session, testData, toast, saveAnswer]);
 
     // ✅ Verificar se avaliação já foi enviada antes de iniciar
     useEffect(() => {
@@ -939,8 +942,10 @@ export default function TakeEvaluation() {
                                                             currentAnswers: Object.keys(answers)
                                                         });
                                                         
-                                                        // ✅ NOVO: Salvar o ID original, não o da interface
-                                                        saveAnswer(currentQuestion.id, originalAnswerId);
+                                                        // ✅ CORRIGIDO: Salvar o texto da opção no estado local para visualização
+                                                        // mas enviar o ID original para o backend
+                                                        const displayAnswer = Array.isArray(newAnswer) ? newAnswer[0] : newAnswer;
+                                                        saveAnswerWithMapping(currentQuestion.id, displayAnswer, originalAnswerId);
 
                                                         // Avanço automático
                                                         if (
@@ -1235,9 +1240,12 @@ export default function TakeEvaluation() {
                                         question={currentQuestion}
                                         answer={answers[currentQuestion?.id]?.answer}
                                         onAnswerChange={(answer) => {
-                                            // ✅ NOVO: Mapear resposta para ID original antes de salvar
-                                            const originalAnswerId = mapAnswerToOriginalId(currentQuestion?.id, answer);
-                                            saveAnswer(currentQuestion?.id, originalAnswerId);
+                                            if (currentQuestion?.id) {
+                                                // ✅ NOVO: Mapear resposta para ID original antes de salvar
+                                                const originalAnswerId = mapAnswerToOriginalId(currentQuestion.id, answer);
+                                                const displayAnswer = Array.isArray(answer) ? answer[0] : answer;
+                                                saveAnswerWithMapping(currentQuestion.id, displayAnswer, originalAnswerId);
+                                            }
                                         }}
                                         disabled={false}
                                     />
@@ -1278,11 +1286,10 @@ function QuestionOptions({
                 </div>
                 <RadioGroup
                     value={(() => {
-                        // Converter a letra da resposta (A, B, C, D) para o ID da opção
+                        // ✅ CORRIGIDO: Buscar pelo texto da resposta nas opções
                         if (!answer) return "";
-                        const answerIndex = answer.charCodeAt(0) - 65; // A=0, B=1, C=2, D=3
-                        const option = questionOptions[answerIndex];
-                        return option?.id || `option-${answerIndex}`;
+                        const option = questionOptions.find(opt => opt.text === answer);
+                        return option?.id || "";
                     })()}
                     onValueChange={(val) => {
                         console.log('🔄 RadioGroup onValueChange:', val);
@@ -1313,8 +1320,8 @@ function QuestionOptions({
                     {questionOptions.map((option, index) => {
                         const optionId = option.id || `option-${index}`;
                         const optionText = option.text || option;
-                        // Corrigir: marcar como selecionado se answer for a letra
-                        const isSelected = answer === String.fromCharCode(65 + index);
+                        // ✅ CORRIGIDO: Marcar como selecionado se answer for o texto da opção
+                        const isSelected = answer === optionText;
 
                         return (
                             <div
