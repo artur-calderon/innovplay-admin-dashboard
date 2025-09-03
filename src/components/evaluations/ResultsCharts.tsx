@@ -64,25 +64,9 @@ function useChartData(
   getMaxForDiscipline: (disciplina: string, group: StageGroup) => number
 ): ChartData | null {
   return useMemo(() => {
-    // ✅ DEBUG: Log dos dados recebidos no componente
-    console.log('🔍 DEBUG - Dados recebidos no ResultsCharts:');
-    console.log('  - apiData:', apiData);
-    console.log('  - resultados_por_disciplina:', apiData?.resultados_por_disciplina);
-    console.log('  - estatisticas_gerais:', apiData?.estatisticas_gerais);
+ 
     
-    // ✅ DEBUG: Log detalhado de cada disciplina
-    if (apiData?.resultados_por_disciplina) {
-      console.log('🔍 DEBUG - Detalhes de cada disciplina:');
-      apiData.resultados_por_disciplina.forEach((item, index) => {
-        console.log(`  - Disciplina ${index + 1}:`, {
-          nome: item.disciplina,
-          media_nota: item.media_nota,
-          media_proficiencia: item.media_proficiencia,
-          tipo_media_nota: typeof item.media_nota,
-          tipo_media_proficiencia: typeof item.media_proficiencia
-        });
-      });
-    }
+   
     
     if (!apiData?.estatisticas_gerais || !apiData?.resultados_por_disciplina) {
       console.warn('Dados incompletos para gráficos:', apiData);
@@ -91,16 +75,12 @@ function useChartData(
 
     // ✅ FUNÇÕES AUXILIARES
     const createScoreData = () => {
-      console.log('🔍 DEBUG - Criando dados de nota:');
-      console.log('  - media_nota_geral:', apiData.estatisticas_gerais!.media_nota_geral);
+
       
       const scoreData = [
         { name: "Geral", value: typeof apiData.estatisticas_gerais!.media_nota_geral === 'number' ? apiData.estatisticas_gerais!.media_nota_geral : 0 },
         ...apiData.resultados_por_disciplina!.map((item) => {
-          console.log(`  - ${item.disciplina}: media_nota = ${item.media_nota} (tipo: ${typeof item.media_nota})`);
-          // ✅ CORREÇÃO: Usar valor explícito em vez de fallback || 0
           const value = typeof item.media_nota === 'number' ? item.media_nota : 0;
-          console.log(`  - ${item.disciplina}: valor final = ${value}`);
           return {
             name: item.disciplina.toUpperCase(),
             value: value
@@ -108,22 +88,16 @@ function useChartData(
         })
       ];
       
-      console.log('🔍 DEBUG - Dados de nota criados:', scoreData);
       return scoreData;
     };
 
     const createProficiencyData = () => {
-      console.log('🔍 DEBUG - Criando dados de proficiência:');
-      console.log('  - media_proficiencia_geral:', apiData.estatisticas_gerais!.media_proficiencia_geral);
-      console.log('  - resultados_por_disciplina:', apiData.resultados_por_disciplina);
+    
       
       const proficiencyData = [
         { name: "Geral", value: typeof apiData.estatisticas_gerais!.media_proficiencia_geral === 'number' ? apiData.estatisticas_gerais!.media_proficiencia_geral : 0 },
         ...apiData.resultados_por_disciplina!.map((item) => {
-          console.log(`  - ${item.disciplina}: media_proficiencia = ${item.media_proficiencia} (tipo: ${typeof item.media_proficiencia})`);
-          // ✅ CORREÇÃO: Usar valor explícito em vez de fallback || 0
           const value = typeof item.media_proficiencia === 'number' ? item.media_proficiencia : 0;
-          console.log(`  - ${item.disciplina}: valor final = ${value}`);
           return {
             name: item.disciplina.toUpperCase(),
             value: value
@@ -131,18 +105,14 @@ function useChartData(
         })
       ];
       
-      console.log('🔍 DEBUG - Dados de proficiência criados:', proficiencyData);
       return proficiencyData;
     };
 
     const createDistributionData = () => {
-      // ✅ DEBUG: Log dos dados de distribuição
-      console.log('🔍 DEBUG - Criando dados de distribuição:');
-      console.log('  - resultados_por_disciplina:', apiData.resultados_por_disciplina);
+    
       
       return apiData.resultados_por_disciplina!.map((item) => {
-        console.log(`  - Disciplina ${item.disciplina}:`, item);
-        console.log(`    - distribuicao_classificacao:`, item.distribuicao_classificacao);
+        
         
         return {
           disciplina: item.disciplina,
@@ -171,7 +141,6 @@ function useChartData(
       proficiencyMax: calculateProficiencyMax(),
     };
 
-    console.log('Dados dos gráficos preparados:', result);
     return result;
   }, [apiData, inferStageGroup, getMaxForDiscipline]);
 }

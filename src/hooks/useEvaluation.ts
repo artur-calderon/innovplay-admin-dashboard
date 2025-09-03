@@ -241,14 +241,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 }
             }));
 
-            // Salvar no backend
-            await EvaluationApiService.savePartialAnswers({
-                session_id: session.session_id,
-                answers: [{
-                    question_id: questionId,
-                    answer: answerValue
-                }]
-            });
+            // ✅ REMOVIDO: Salvamento parcial - respostas serão enviadas apenas ao final
 
         } catch (error) {
             toast({

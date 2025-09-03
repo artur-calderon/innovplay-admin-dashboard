@@ -133,19 +133,7 @@ export class EvaluationApiService {
         }
     }
 
-    // ✅ MANTIDO: Salvar respostas parciais (para auto-save)
-    static async savePartialAnswers(data: SavePartialRequest): Promise<void> {
-        console.log('Salvando respostas parciais:', data);
 
-        try {
-            await api.post('/student-answers/save-partial', data);
-            console.log('Respostas salvas com sucesso');
-        } catch (error) {
-            console.error('Erro ao salvar respostas parciais:', error);
-            console.error('Detalhes do erro:', error.response?.data);
-            throw error;
-        }
-    }
 
     // ✅ NOVO: Sincronizar timer com backend
     static async syncTimer(sessionId: string, elapsedMinutes: number, remainingMinutes: number): Promise<void> {

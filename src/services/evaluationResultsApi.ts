@@ -81,24 +81,21 @@ interface TabelaDetalhada {
 }
 
 // ✅ NOVO: Interface para ranking
-interface RankingItem {
+export interface RankingItem {
   posicao: number;
-  descricao: string;
-  aluno: {
-    id: string;
-    nome: string;
-    escola: string;
-    serie: string;
-    turma: string;
-    total_acertos: number;
-    total_respondidas: number;
-    nota: number;
-    proficiencia: number;
-    nivel_proficiencia: string;
-  };
+  aluno_id: string;
+  nome: string;
+  escola: string;
+  serie: string;
+  turma: string;
+  nota_geral: number;
+  proficiencia_geral: number;
+  classificacao_geral: string;
+  total_acertos: number;
+  total_questoes: number;
 }
 
-interface NovaRespostaAPI {
+export interface NovaRespostaAPI {
   nivel_granularidade: 'municipio' | 'escola' | 'serie' | 'turma' | 'avaliacao';
   filtros_aplicados: FiltrosAplicados;
   estatisticas_gerais: EstatisticasGerais;
@@ -459,7 +456,7 @@ export class EvaluationResultsApiService {
   //     const response = await api.get(`/students/${studentId}/class`);
   //     return response.data;
   //   } catch (error) {
-  //     console.error('Erro ao buscar turma e série do aluno:', error);
+      //     // Erro ao buscar turma e série do aluno
   //     return null;
   //   }
   // }
@@ -478,7 +475,7 @@ export class EvaluationResultsApiService {
       const response = await api.get(`/evaluation-results/student/${studentId}/evaluations`);
       return response.data || [];
     } catch (error) {
-      console.error('Erro ao buscar avaliações do aluno:', error);
+      // Erro ao buscar avaliações do aluno
       return [];
     }
   }
@@ -498,7 +495,7 @@ export class EvaluationResultsApiService {
       const evaluationsData = response.data.data || response.data;
 
       if (!Array.isArray(evaluationsData)) {
-        console.error('❌ ERRO: evaluationsData não é um array:', evaluationsData);
+        // ERRO: evaluationsData não é um array
         return [];
       }
 
@@ -513,7 +510,7 @@ export class EvaluationResultsApiService {
 
       return mappedEvaluations;
     } catch (error) {
-      console.error('❌ ERRO ao buscar avaliações da escola:', error);
+              // ERRO ao buscar avaliações da escola
       return [];
     }
   }
@@ -562,45 +559,36 @@ export class EvaluationResultsApiService {
       const response = await api.get(`/evaluation-results/avaliacoes?${params}`);
 
       // ✅ LOG: Mostrar o que está sendo retornado do backend
-      console.log('🔍 LOG - Resposta da API /evaluation-results/avaliacoes:');
-      console.log('📋 Parâmetros enviados:', Object.fromEntries(params.entries()));
-      console.log('📦 Resposta completa:', response);
-      console.log('📊 Dados da resposta:', response.data);
-      console.log('🎯 Nível de granularidade:', response.data?.nivel_granularidade);
-      console.log('🔧 Filtros aplicados:', response.data?.filtros_aplicados);
-      console.log('📈 Estatísticas gerais:', response.data?.estatisticas_gerais);
-      console.log('📚 Resultados por disciplina:', response.data?.resultados_por_disciplina);
-      console.log('📝 Resultados detalhados:', response.data?.resultados_detalhados);
-      console.log('🔗 Opções próximos filtros:', response.data?.opcoes_proximos_filtros);
+              // Log removido - resposta da API
 
       return response.data;
     } catch (error: any) {
-      console.error('❌ Erro ao buscar avaliações:', error);
+              // Erro ao buscar avaliações
       
       // ✅ NOVO: Tratamento específico de erros da API
       if (error.response?.status === 400) {
         const errorMessage = error.response.data?.error || 'Erro de validação';
-        console.error('❌ Erro 400 - Validação:', errorMessage);
+                  // Erro 400 - Validação
         
         // Log específico para diferentes tipos de erro 400
         if (errorMessage.includes('Estado')) {
-          console.error('❌ Estado é obrigatório e não pode ser "all"');
+          // Estado é obrigatório e não pode ser "all"
         } else if (errorMessage.includes('Município')) {
-          console.error('❌ Município é obrigatório');
+                      // Município é obrigatório
         } else if (errorMessage.includes('filtros válidos')) {
-          console.error('❌ É necessário aplicar pelo menos 2 filtros válidos (excluindo "all")');
+                      // É necessário aplicar pelo menos 2 filtros válidos (excluindo "all")
         }
       } else if (error.response?.status === 403) {
         const errorMessage = error.response.data?.error || 'Acesso negado';
-        console.error('❌ Erro 403 - Permissão:', errorMessage);
+                  // Erro 403 - Permissão
         
         if (errorMessage.includes('município')) {
-          console.error('❌ Acesso negado a este município');
+                      // Acesso negado a este município
         }
       } else if (error.response?.status === 404) {
-        console.error('❌ Erro 404 - Endpoint não encontrado');
+                  // Erro 404 - Endpoint não encontrado
       } else if (error.response?.status >= 500) {
-        console.error('❌ Erro 500+ - Erro interno do servidor');
+                  // Erro 500+ - Erro interno do servidor
       }
       
       // Retornar null para manter compatibilidade, mas com logs detalhados
@@ -621,24 +609,24 @@ export class EvaluationResultsApiService {
     try {
       // Tentar primeiro o endpoint /test/{id} (CORRIGIDO: endpoint correto)
       const response = await api.get(`/test/${evaluationId}`);
-      console.log('✅ Sucesso com /test/{id}:', response.data);
+              // Sucesso com /test/{id}
       return response.data as T;
     } catch (error) {
-      console.warn('⚠️ Falha ao buscar /test/{id}, tentando /test/{id}/details:', error);
+              // Falha ao buscar /test/{id}, tentando /test/{id}/details
       try {
         // Tentar o endpoint /test/{id}/details como alternativa
         const response = await api.get(`/test/${evaluationId}/details`);
-        console.log('✅ Sucesso com /test/{id}/details:', response.data);
+                  // Sucesso com /test/{id}/details
         return response.data as T;
       } catch (error2) {
-        console.warn('⚠️ Falha ao buscar /test/{id}/details, usando fallback /evaluation-results/avaliacoes:', error2);
+                  // Falha ao buscar /test/{id}/details, usando fallback /evaluation-results/avaliacoes
         try {
           // Fallback para o endpoint antigo
           const fallback = await api.get(`/evaluation-results/avaliacoes/${evaluationId}`);
-          console.log('⚠️ Usando fallback /evaluation-results/avaliacoes:', fallback.data);
+                      // Usando fallback /evaluation-results/avaliacoes
           return fallback.data as T;
         } catch {
-          console.error('❌ Todos os endpoints falharam para buscar subjects_info');
+                      // Todos os endpoints falharam para buscar subjects_info
           return null;
         }
       }
@@ -655,7 +643,7 @@ export class EvaluationResultsApiService {
       const response = await api.post(`/evaluation-results/avaliacoes/${evaluationId}/verificar-status`);
       return response.data;
     } catch (error) {
-      console.error('Erro ao verificar status da avaliação:', error);
+              // Erro ao verificar status da avaliação
       return {
         success: false,
         message: 'Erro ao verificar status da avaliação'
@@ -679,7 +667,7 @@ export class EvaluationResultsApiService {
       const response = await api.get(`/evaluation-results/avaliacoes/${evaluationId}/status-resumo`);
       return response.data;
     } catch (error) {
-      console.error('Erro ao obter resumo de status da avaliação:', error);
+              // Erro ao obter resumo de status da avaliação
       return null;
     }
   }
@@ -695,7 +683,7 @@ export class EvaluationResultsApiService {
       const response = await api.get(`/evaluation-results/opcoes-filtros/${evaluationId}`);
       return response.data;
     } catch (error) {
-      console.error('Erro ao obter opções de filtros da avaliação:', error);
+              // Erro ao obter opções de filtros da avaliação
       return null;
     }
   }
@@ -737,7 +725,7 @@ export class EvaluationResultsApiService {
       // ✅ Usar o endpoint específico que retorna os dados corretos
       const response = await api.get(`/evaluation-results/alunos?avaliacao_id=${evaluationId}`);
 
-      console.log('🔍 Dados corretos recebidos do endpoint:', response.data);
+              // Dados corretos recebidos do endpoint
 
       return response.data;
     }, 25000); // 25s para lista de alunos
@@ -827,7 +815,7 @@ export class EvaluationResultsApiService {
         isBackendConnected: true
       };
     } catch (error) {
-      console.error('Erro ao buscar avaliações:', error);
+              // Erro ao buscar avaliações
       return {
         results: [],
         total: 0,
@@ -977,7 +965,7 @@ export class EvaluationResultsApiService {
         status: student.status === 'completed' ? 'completed' : 'pending'
       }));
     } catch (error) {
-      console.error('Erro ao buscar alunos:', error);
+              // Erro ao buscar alunos
       return [];
     }
   }
@@ -1000,7 +988,7 @@ export class EvaluationResultsApiService {
         dados_atualizados: response.data
       };
     } catch (error: any) {
-      console.error('Erro ao recalcular avaliação:', error);
+              // Erro ao recalcular avaliação
       return {
         success: false,
         message: error.response?.data?.message || 'Erro ao recalcular avaliação',
@@ -1035,7 +1023,7 @@ export class EvaluationResultsApiService {
         message: 'Correção aplicada com sucesso!'
       };
     } catch (error: any) {
-      console.error('Erro ao corrigir submissão:', error);
+              // Erro ao corrigir submissão
       return {
         success: false,
         message: error.response?.data?.message || 'Erro ao aplicar correção'
@@ -1073,7 +1061,7 @@ export class EvaluationResultsApiService {
       const response = await api.get('/city/states');
       return response.data || [];
     } catch (error) {
-      console.error('Erro ao buscar estados:', error);
+              // Erro ao buscar estados
       return [];
     }
   }
@@ -1089,7 +1077,7 @@ export class EvaluationResultsApiService {
       const response = await api.get(`/city/municipalities/state/${state}`);
       return response.data || [];
     } catch (error) {
-      console.error('Erro ao buscar municípios:', error);
+              // Erro ao buscar municípios
       return [];
     }
   }
@@ -1110,7 +1098,7 @@ export class EvaluationResultsApiService {
       const response = await api.get(`/school/city/${cityId}`);
       return response.data || [];
     } catch (error) {
-      console.error('Erro ao buscar escolas:', error);
+              // Erro ao buscar escolas
       return [];
     }
   }
@@ -1129,7 +1117,7 @@ export class EvaluationResultsApiService {
       const response = await api.get('/grades');
       return response.data || [];
     } catch (error) {
-      console.error('Erro ao buscar séries:', error);
+              // Erro ao buscar séries
       return [];
     }
   }
@@ -1151,7 +1139,7 @@ export class EvaluationResultsApiService {
       const response = await api.get(`/classes/school/${schoolId}`);
       return response.data || [];
     } catch (error) {
-      console.error('Erro ao buscar turmas:', error);
+              // Erro ao buscar turmas
       return [];
     }
   }
@@ -1182,7 +1170,7 @@ export class EvaluationResultsApiService {
       const response = await api.get(`/classes/filtered?${params}`);
       return response.data || [];
     } catch (error) {
-      console.error('Erro ao buscar turmas filtradas:', error);
+              // Erro ao buscar turmas filtradas
       return [];
     }
   }
@@ -1196,7 +1184,7 @@ export class EvaluationResultsApiService {
       const response = await api.get('/courses');
       return response.data || [];
     } catch (error) {
-      console.error('Erro ao buscar etapas educacionais:', error);
+              // Erro ao buscar etapas educacionais
       return [];
     }
   }
@@ -1224,7 +1212,7 @@ export class EvaluationResultsApiService {
       };
 
     } catch (error) {
-      console.error('Erro ao buscar opções de filtros:', error);
+              // Erro ao buscar opções de filtros
       return {
         courses: [],
         subjects: [],
@@ -1250,7 +1238,7 @@ export class EvaluationResultsApiService {
         message: 'Avaliação finalizada com sucesso!'
       };
     } catch (error: any) {
-      console.error('Erro ao finalizar avaliação:', error);
+              // Erro ao finalizar avaliação
       return {
         success: false,
         message: error.response?.data?.message || 'Erro ao finalizar avaliação'
@@ -1273,7 +1261,7 @@ export class EvaluationResultsApiService {
         data: response.data
       };
     } catch (error: any) {
-      console.error('Erro ao calcular notas:', error);
+              // Erro ao calcular notas
       return {
         success: false,
         message: error.response?.data?.message || 'Erro ao calcular notas'
@@ -1299,7 +1287,7 @@ export class EvaluationResultsApiService {
         message: 'Correção manual aplicada com sucesso!'
       };
     } catch (error: any) {
-      console.error('Erro ao aplicar correção manual:', error);
+              // Erro ao aplicar correção manual
       return {
         success: false,
         message: error.response?.data?.message || 'Erro ao aplicar correção manual'
@@ -1337,7 +1325,7 @@ export class EvaluationResultsApiService {
         return combinedData;
       }, 45000); // 45s para dados completos
     } catch (error: any) {
-      console.error('❌ Erro ao buscar resultados do aluno:', error);
+              // Erro ao buscar resultados do aluno
       throw error;
     }
   }
@@ -1360,7 +1348,7 @@ export class EvaluationResultsApiService {
         errors: response.data.errors || 0
       };
     } catch (error: any) {
-      console.error('Erro ao aplicar correção em lote:', error);
+              // Erro ao aplicar correção em lote
       return {
         success: false,
         message: error.response?.data?.message || 'Erro ao aplicar correção em lote',
@@ -1388,7 +1376,7 @@ export class EvaluationResultsApiService {
         message: 'Correção finalizada com sucesso!'
       };
     } catch (error: any) {
-      console.error('Erro ao finalizar correção:', error);
+              // Erro ao finalizar correção
       return {
         success: false,
         message: error.response?.data?.message || 'Erro ao finalizar correção'
@@ -1458,11 +1446,11 @@ export class EvaluationResultsApiService {
       );
 
       if (!subject) {
-        console.warn(`⚠️ Disciplina não encontrada: ${subjectName}`);
+        // Disciplina não encontrada
         return [];
       }
 
-      console.log(`🔍 Disciplina encontrada: ${subject.name} (ID: ${subject.id})`);
+              // Disciplina encontrada
 
       // Buscar skills usando o ID da disciplina
       const skillsResponse = await api.get(`/skills/subject/${subject.id}`);
@@ -1497,7 +1485,7 @@ export class EvaluationResultsApiService {
       const response = await api.get('/evaluation-results/opcoes-filtros/estados');
       return response.data.estados || [];
     } catch (error) {
-      console.error('Erro ao buscar estados para filtros:', error);
+              // Erro ao buscar estados para filtros
       return [];
     }
   }
@@ -1512,7 +1500,7 @@ export class EvaluationResultsApiService {
       const response = await api.get(`/evaluation-results/opcoes-filtros/municipios/${stateId}`);
       return response.data.municipios || [];
     } catch (error) {
-      console.error('Erro ao buscar municípios para filtros:', error);
+              // Erro ao buscar municípios para filtros
       return [];
     }
   }
@@ -1526,7 +1514,7 @@ export class EvaluationResultsApiService {
       const response = await api.get(`/evaluation-results/opcoes-filtros/escolas/${municipalityId}`);
       return response.data.escolas || [];
     } catch (error) {
-      console.error('Erro ao buscar escolas para filtros:', error);
+              // Erro ao buscar escolas para filtros
       return [];
     }
   }
@@ -1549,7 +1537,7 @@ export class EvaluationResultsApiService {
       const response = await api.get(`/evaluation-results/opcoes-filtros/series?${params}`);
       return response.data.series || [];
     } catch (error) {
-      console.error('Erro ao buscar séries para filtros:', error);
+              // Erro ao buscar séries para filtros
       return [];
     }
   }
@@ -1574,7 +1562,7 @@ export class EvaluationResultsApiService {
       const response = await api.get(`/evaluation-results/opcoes-filtros/turmas?${params}`);
       return response.data.turmas || [];
     } catch (error) {
-      console.error('Erro ao buscar turmas para filtros:', error);
+              // Erro ao buscar turmas para filtros
       return [];
     }
   }
