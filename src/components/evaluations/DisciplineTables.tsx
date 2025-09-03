@@ -2,6 +2,8 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Check, X, Minus, Eye, CheckCircle2, Target, Gauge, Award } from "lucide-react";
+import { TableHeader } from './results-table/TableHeader';
+import { TableRow } from './results-table/TableRow';
 
 interface TabelaDetalhadaQuestao {
   numero: number;
@@ -105,9 +107,9 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
     <div className="space-y-8">
       {/* Tabela Geral */}
       {tabelaDetalhada.geral && tabelaDetalhada.geral.alunos && (
-        <Card className="shadow-lg border-2 border-blue-200">
-          <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
-            <CardTitle className="flex items-center justify-between">
+        <Card className="shadow-xl border-2 border-blue-200 hover:shadow-2xl transition-shadow duration-300 overflow-hidden">
+          <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg px-0">
+            <CardTitle className="flex items-center justify-between px-6">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
                   <span className="text-lg font-bold">G</span>
@@ -125,119 +127,71 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="min-w-max border border-gray-300 text-center text-sm shadow-md rounded-lg">
-                <thead>
-                  {/* Linha 1: Cabeçalhos principais */}
-                  <tr className="bg-gray-100">
-                    <th rowSpan={3} className="border border-gray-300 p-2 text-center font-semibold">ALUNO</th>
-                    <th rowSpan={3} className="border border-gray-300 p-2 text-center font-semibold">
-                      <div className="flex items-center justify-center gap-1">
-                        <CheckCircle2 className="h-4 w-4" />
-                        TOTAL
-                      </div>
-                    </th>
-                    <th rowSpan={3} className="border border-gray-300 p-2 text-center font-semibold">
-                      <div className="flex items-center justify-center gap-1">
-                        <Target className="h-4 w-4" />
-                        NOTA
-                      </div>
-                    </th>
-                    <th rowSpan={3} className="border border-gray-300 p-2 text-center font-semibold">
-                      <div className="flex items-center justify-center gap-1">
-                        <Gauge className="h-4 w-4" />
-                        PROFICIÊNCIA
-                      </div>
-                    </th>
-                    <th rowSpan={3} className="border border-gray-300 p-2 text-center font-semibold">
-                      <div className="flex items-center justify-center gap-1">
-                        <Award className="h-4 w-4" />
-                        NÍVEL
-                      </div>
-                    </th>
-                  </tr>
-                  
-                  {/* Linha 2: HABILIDADE */}
-                  <tr className="bg-green-50">
-                    <td className="border border-gray-300 p-1 text-center">
-                      <div className="text-xs font-semibold text-blue-600">HABILIDADE</div>
-                    </td>
-                    <td className="border border-gray-300 p-1 text-center">
-                      <div className="text-xs font-semibold text-blue-600">GERAL</div>
-                    </td>
-                    <td className="border border-gray-300 p-1 text-center">
-                      <div className="text-xs font-semibold text-blue-600">GERAL</div>
-                    </td>
-                    <td className="border border-gray-300 p-1 text-center">
-                      <div className="text-xs font-semibold text-blue-600">GERAL</div>
-                    </td>
-                  </tr>
-                  
-                  {/* Linha 3: % DA TURMA */}
-                  <tr className="bg-green-50">
-                    <td className="border border-gray-300 p-1 text-center">
-                      <div className="text-xs font-semibold text-green-600">% DA TURMA</div>
-                      <div className="text-xs text-green-500">(SÓ QUEM FEZ)</div>
-                    </td>
-                    <td className="border border-gray-300 p-1 text-center">
-                      <div className="text-xs font-semibold text-green-600">100%</div>
-                    </td>
-                    <td className="border border-gray-300 p-1 text-center">
-                      <div className="text-xs font-semibold text-green-600">100%</div>
-                    </td>
-                    <td className="border border-gray-300 p-1 text-center">
-                      <div className="text-xs font-semibold text-green-600">100%</div>
-                    </td>
-                  </tr>
-                </thead>
+            <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+              <table className="min-w-max border border-gray-300 text-center text-sm shadow-md rounded-lg border-separate border-spacing-0 bg-white">
+                <TableHeader
+                  totalQuestions={0}
+                  startQuestionNumber={1}
+                  visibleFields={{
+                    turma: false,
+                    habilidade: false, // ✅ CORRIGIDO: Desabilitar para tabela geral
+                    questoes: false,
+                    percentualTurma: false, // ✅ CORRIGIDO: Desabilitar para tabela geral
+                    total: true,
+                    nota: true,
+                    proficiencia: true,
+                    nivel: true
+                  }}
+                  tabelaDetalhada={{
+                    disciplinas: []
+                  }}
+                  students={tabelaDetalhada.geral.alunos.map(aluno => ({
+                    id: aluno.id,
+                    nome: aluno.nome,
+                    acertos: aluno.total_acertos_geral,
+                    erros: aluno.total_questoes_geral - aluno.total_acertos_geral,
+                    em_branco: aluno.total_em_branco_geral,
+                    respostas: []
+                  }))}
+                  successThreshold={60}
+                />
                 <tbody>
-                  {tabelaDetalhada.geral.alunos.map((aluno) => (
-                    <tr 
+                  {tabelaDetalhada.geral.alunos.map((aluno, studentIndex) => (
+                    <TableRow
                       key={aluno.id}
-                      className="border-b hover:bg-gray-50 cursor-pointer group"
-                      onClick={() => onViewStudentDetails?.(aluno.id)}
-                      title="Clique para ver resultados detalhados do aluno"
-                    >
-                      {/* Nome do Aluno */}
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900 whitespace-nowrap border border-gray-300">
-                        <div className="flex items-center gap-2">
-                          <span>{aluno.nome}</span>
-                          <Eye className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </div>
-                      </td>
-
-                      {/* Total de acertos */}
-                      <td className="px-4 py-3 text-sm font-semibold text-center border border-gray-300">
-                        {aluno.total_acertos_geral}
-                      </td>
-
-                      {/* Nota */}
-                      <td className="px-4 py-3 text-sm text-center border border-gray-300">
-                        {aluno.nota_geral.toFixed(1)}
-                      </td>
-
-                      {/* Proficiência */}
-                      <td className="px-4 py-3 text-sm text-center border border-gray-300">
-                        {aluno.proficiencia_geral.toFixed(0)}
-                      </td>
-
-                      {/* Nível */}
-                      <td className="px-4 py-3 text-sm font-medium text-center border border-gray-300">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs text-white ${
-                          aluno.nivel_proficiencia_geral === 'Avançado'
-                            ? 'bg-green-600'
-                            : aluno.nivel_proficiencia_geral === 'Adequado'
-                            ? 'bg-green-400'
-                            : aluno.nivel_proficiencia_geral === 'Básico'
-                            ? 'bg-yellow-500'
-                            : aluno.nivel_proficiencia_geral === 'Abaixo do Básico'
-                            ? 'bg-red-500'
-                            : 'bg-red-500'
-                        }`}>
-                          {aluno.nivel_proficiencia_geral || 'Abaixo do Básico'}
-                        </span>
-                      </td>
-                    </tr>
+                      student={{
+                        id: aluno.id,
+                        nome: aluno.nome,
+                        turma: 'Geral',
+                        nota: aluno.nota_geral,
+                        proficiencia: aluno.proficiencia_geral,
+                        classificacao: aluno.nivel_proficiencia_geral as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
+                        questoes_respondidas: aluno.total_respondidas_geral,
+                        acertos: aluno.total_acertos_geral,
+                        erros: Math.max(0, aluno.total_questoes_geral - aluno.total_acertos_geral),
+                        em_branco: aluno.total_em_branco_geral,
+                        tempo_gasto: 0,
+                        status: 'concluida' as const,
+                        respostas: []
+                      }}
+                      studentIndex={studentIndex}
+                      totalQuestions={0}
+                      visibleFields={{
+                        turma: false,
+                        habilidade: false, // ✅ CORRIGIDO: Desabilitar para tabela geral
+                        questoes: false,
+                        percentualTurma: false, // ✅ CORRIGIDO: Desabilitar para tabela geral
+                        total: true,
+                        nota: true,
+                        proficiencia: true,
+                        nivel: true
+                      }}
+                      onViewStudentDetails={onViewStudentDetails}
+                      evaluationId="geral"
+                      tabelaDetalhada={{
+                        disciplinas: []
+                      }}
+                    />
                   ))}
                 </tbody>
               </table>
@@ -248,9 +202,9 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
 
       {/* Tabelas por Disciplina */}
       {tabelaDetalhada.disciplinas.map((disciplina) => (
-        <Card key={disciplina.id} className="shadow-lg">
-          <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
-            <CardTitle className="flex items-center justify-between">
+        <Card key={disciplina.id} className="shadow-lg hover:shadow-xl transition-shadow duration-300 overflow-hidden">
+          <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg px-0">
+            <CardTitle className="flex items-center justify-between px-6">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
                   <span className="text-lg font-bold">{disciplina.nome.charAt(0)}</span>
@@ -268,154 +222,83 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="min-w-max border border-gray-300 text-center text-sm shadow-md rounded-lg">
-                <thead>
-                  {/* Linha 1: Cabeçalhos principais */}
-                  <tr className="bg-gray-100">
-                    <th rowSpan={3} className="border border-gray-300 p-2 text-center font-semibold">ALUNO</th>
-                    {disciplina.questoes.map((questao) => (
-                      <th key={questao.question_id} className="border border-gray-300 p-1 text-center font-semibold">
-                        <div className="text-xs font-bold">Q{questao.numero}</div>
-                        <div className="text-xs text-gray-600 mt-1">{disciplina.nome}</div>
-                      </th>
-                    ))}
-                    <th rowSpan={3} className="border border-gray-300 p-2 text-center font-semibold">
-                      <div className="flex items-center justify-center gap-1">
-                        <CheckCircle2 className="h-4 w-4" />
-                        TOTAL
-                      </div>
-                    </th>
-                    <th rowSpan={3} className="border border-gray-300 p-2 text-center font-semibold">
-                      <div className="flex items-center justify-center gap-1">
-                        <Target className="h-4 w-4" />
-                        NOTA
-                      </div>
-                    </th>
-                    <th rowSpan={3} className="border border-gray-300 p-2 text-center font-semibold">
-                      <div className="flex items-center justify-center gap-1">
-                        <Gauge className="h-4 w-4" />
-                        PROFICIÊNCIA
-                      </div>
-                    </th>
-                    <th rowSpan={3} className="border border-gray-300 p-2 text-center font-semibold">
-                      <div className="flex items-center justify-center gap-1">
-                        <Award className="h-4 w-4" />
-                        NÍVEL
-                      </div>
-                    </th>
-                  </tr>
-                  
-                  {/* Linha 2: HABILIDADE */}
-                  <tr className="bg-green-50">
-                    <td className="border border-gray-300 p-1 text-center">
-                      <div className="text-xs font-semibold text-blue-600">HABILIDADE</div>
-                    </td>
-                    {disciplina.questoes.map((questao) => (
-                      <td key={`skill-${questao.question_id}`} className="border border-gray-300 p-1 text-center">
-                        <div 
-                          className="text-xs font-semibold text-blue-600 cursor-help"
-                          title={questao.habilidade}
-                        >
-                          {questao.codigo_habilidade}
-                        </div>
-                      </td>
-                    ))}
-                    <td className="border border-gray-300 p-1 text-center"></td>
-                    <td className="border border-gray-300 p-1 text-center"></td>
-                    <td className="border border-gray-300 p-1 text-center"></td>
-                    <td className="border border-gray-300 p-1 text-center"></td>
-                  </tr>
-                  
-                  {/* Linha 3: % DA TURMA */}
-                  <tr className="bg-green-50">
-                    <td className="border border-gray-300 p-1 text-center">
-                      <div className="text-xs font-semibold text-green-600">% DA TURMA</div>
-                      <div className="text-xs text-green-500">(SÓ QUEM FEZ)</div>
-                    </td>
-                    {disciplina.questoes.map((questao) => {
-                      const stats = getQuestionStats(disciplina, questao.numero);
-                      return (
-                        <td key={`stats-${questao.question_id}`} className="border border-gray-300 p-1 text-center">
-                          <div className="text-xs font-semibold text-green-600">{stats.percentage}%</div>
-                        </td>
-                      );
-                    })}
-                    <td className="border border-gray-300 p-1 text-center"></td>
-                    <td className="border border-gray-300 p-1 text-center"></td>
-                    <td className="border border-gray-300 p-1 text-center"></td>
-                    <td className="border border-gray-300 p-1 text-center"></td>
-                  </tr>
-                </thead>
+            <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+              <table className="min-w-max border border-gray-300 text-center text-sm shadow-md rounded-lg border-separate border-spacing-0 bg-white">
+                <TableHeader
+                  totalQuestions={disciplina.questoes.length}
+                  startQuestionNumber={1}
+                  visibleFields={{
+                    turma: false,
+                    habilidade: true,
+                    questoes: true,
+                    percentualTurma: true,
+                    total: true,
+                    nota: true,
+                    proficiencia: true,
+                    nivel: true
+                  }}
+                  tabelaDetalhada={{
+                    disciplinas: [disciplina]
+                  }}
+                  students={disciplina.alunos.map(aluno => ({
+                    id: aluno.id,
+                    nome: aluno.nome,
+                    acertos: aluno.total_acertos,
+                    erros: aluno.total_erros,
+                    em_branco: aluno.total_questoes_disciplina - aluno.total_respondidas,
+                    respostas: aluno.respostas_por_questao.map(resposta => ({
+                      questao_id: `q${resposta.questao}`,
+                      questao_numero: resposta.questao,
+                      resposta_correta: resposta.acertou,
+                      resposta_em_branco: !resposta.respondeu,
+                      tempo_gasto: 0
+                    }))
+                  }))}
+                  successThreshold={60}
+                />
                 <tbody>
-                  {disciplina.alunos.map((aluno) => (
-                    <tr 
+                  {disciplina.alunos.map((aluno, studentIndex) => (
+                    <TableRow
                       key={aluno.id}
-                      className="border-b hover:bg-gray-50 cursor-pointer group"
-                      onClick={() => onViewStudentDetails?.(aluno.id)}
-                      title="Clique para ver resultados detalhados do aluno"
-                    >
-                      {/* Nome do Aluno */}
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900 whitespace-nowrap border border-gray-300">
-                        <div className="flex items-center gap-2">
-                          <span>{aluno.nome}</span>
-                          <Eye className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </div>
-                      </td>
-
-                      {/* Questões individuais */}
-                      {disciplina.questoes.map((questao) => {
-                        const resposta = aluno.respostas_por_questao.find(r => r.questao === questao.numero);
-                        
-                        return (
-                          <td key={`${aluno.id}-q${questao.numero}`} className="px-2 py-3 text-center border border-gray-300">
-                            {resposta ? (
-                              // Aluno respondeu
-                              resposta.acertou ? (
-                                <Check className="w-4 h-4 text-green-700 mx-auto" title={`Q${questao.numero} - ${disciplina.nome}: Acertou`} />
-                              ) : (
-                                <X className="w-4 h-4 text-red-600 mx-auto" title={`Q${questao.numero} - ${disciplina.nome}: Errou`} />
-                              )
-                            ) : (
-                              // Aluno não respondeu
-                              <Minus className="w-4 h-4 text-gray-400 mx-auto" title={`Q${questao.numero} - ${disciplina.nome}: Não respondeu`} />
-                            )}
-                          </td>
-                        );
-                      })}
-
-                      {/* Total de acertos */}
-                      <td className="px-4 py-3 text-sm font-semibold text-center border border-gray-300">
-                        {aluno.total_acertos}
-                      </td>
-
-                      {/* Nota */}
-                      <td className="px-4 py-3 text-sm text-center border border-gray-300">
-                        {aluno.nota.toFixed(1)}
-                      </td>
-
-                      {/* Proficiência */}
-                      <td className="px-4 py-3 text-sm text-center border border-gray-300">
-                        {aluno.proficiencia.toFixed(0)}
-                      </td>
-
-                      {/* Nível */}
-                      <td className="px-4 py-3 text-sm font-medium text-center border border-gray-300">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs text-white ${
-                          aluno.nivel_proficiencia === 'Avançado'
-                            ? 'bg-green-600'
-                            : aluno.nivel_proficiencia === 'Adequado'
-                            ? 'bg-green-400'
-                            : aluno.nivel_proficiencia === 'Básico'
-                            ? 'bg-yellow-500'
-                            : aluno.nivel_proficiencia === 'Abaixo do Básico'
-                            ? 'bg-red-500'
-                            : 'bg-red-500'
-                        }`}>
-                          {aluno.nivel_proficiencia || 'Abaixo do Básico'}
-                        </span>
-                      </td>
-                    </tr>
+                      student={{
+                        id: aluno.id,
+                        nome: aluno.nome,
+                        turma: aluno.turma,
+                        nota: aluno.nota,
+                        proficiencia: aluno.proficiencia,
+                        classificacao: (aluno.nivel_proficiencia || 'Abaixo do Básico') as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
+                        questoes_respondidas: aluno.total_respondidas,
+                        acertos: aluno.total_acertos,
+                        erros: aluno.total_erros,
+                        em_branco: aluno.total_questoes_disciplina - aluno.total_respondidas,
+                        tempo_gasto: 0,
+                        status: 'concluida' as const,
+                        respostas: aluno.respostas_por_questao.map(resposta => ({
+                          questao_id: `q${resposta.questao}`,
+                          questao_numero: resposta.questao,
+                          resposta_correta: resposta.acertou,
+                          resposta_em_branco: !resposta.respondeu,
+                          tempo_gasto: 0
+                        }))
+                      }}
+                      studentIndex={studentIndex}
+                      totalQuestions={disciplina.questoes.length}
+                      visibleFields={{
+                        turma: false,
+                        habilidade: true,
+                        questoes: true,
+                        percentualTurma: true,
+                        total: true,
+                        nota: true,
+                        proficiencia: true,
+                        nivel: true
+                      }}
+                      onViewStudentDetails={onViewStudentDetails}
+                      evaluationId={disciplina.id}
+                      tabelaDetalhada={{
+                        disciplinas: [disciplina]
+                      }}
+                    />
                   ))}
                 </tbody>
               </table>

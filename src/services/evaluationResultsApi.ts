@@ -129,110 +129,15 @@ export interface NovaRespostaAPI {
   opcoes_proximos_filtros: OpcoesProximosFiltros;
 }
 
-// ✅ NOVO: Interfaces para avaliação por disciplina
-interface AvaliacaoPorDisciplina {
-  id: string;
-  titulo: string;
-  disciplina_principal: string;
-  curso: string;
-  tipo_calculo: string;
-}
 
-interface EstatisticasPorDisciplina {
-  disciplina: string;
-  total_alunos: number;
-  alunos_participantes: number;
-  alunos_pendentes: number;
-  alunos_ausentes: number;
-  media_nota: number;
-  media_proficiencia: number;
-  distribuicao_classificacao: {
-    abaixo_do_basico: number;
-    basico: number;
-    adequado: number;
-    avancado: number;
-  };
-}
 
-interface ResultadosGeraisEDisciplinas {
-  avaliacao: AvaliacaoPorDisciplina;
-  resultados: {
-    estatisticas_gerais: {
-      total_alunos: number;
-      alunos_participantes: number;
-      alunos_pendentes: number;
-      alunos_ausentes: number;
-      media_nota_geral: number;
-      media_proficiencia_geral: number;
-      distribuicao_classificacao_geral: {
-        abaixo_do_basico: number;
-        basico: number;
-        adequado: number;
-        avancado: number;
-      };
-    };
-    estatisticas_por_disciplina: Record<string, EstatisticasPorDisciplina>;
-  };
-}
 
-interface ResultadosAlunoPorDisciplina {
-  avaliacao: AvaliacaoPorDisciplina;
-  aluno: {
-    id: string;
-    nome: string;
-    turma: string;
-  };
-  resultados: {
-    resultados_gerais: {
-      proficiencia: number;
-      nota: number;
-      nivel: string;
-      media: number;
-      total_acertos: number;
-      total_questoes: number;
-    };
-    resultados_por_disciplina: Record<string, {
-      proficiencia: number;
-      nota: number;
-      nivel: string;
-      media: number;
-      total_acertos: number;
-      total_questoes: number;
-    }>;
-  };
-}
 
-interface DisciplinasAvaliacao {
-  avaliacao: AvaliacaoPorDisciplina;
-  disciplinas: Array<{
-    nome: string;
-    total_questoes: number;
-    question_ids: string[];
-  }>;
-  total_disciplinas: number;
-}
 
-interface ComparativoDisciplinas {
-  avaliacao: AvaliacaoPorDisciplina;
-  comparativo_disciplinas: Array<{
-    disciplina: string;
-    media_nota: number;
-    media_proficiencia: number;
-    total_alunos: number;
-    alunos_participantes: number;
-    distribuicao_classificacao: {
-      abaixo_do_basico: number;
-      basico: number;
-      adequado: number;
-      avancado: number;
-    };
-  }>;
-  resumo: {
-    melhor_disciplina: string;
-    pior_disciplina: string;
-    diferenca_maior_menor: number;
-  };
-}
+
+
+
+
 
 interface BackendEvaluationResult {
   id: string;
@@ -2099,42 +2004,7 @@ export class EvaluationResultsApiService {
     }
   }
 
-  // ✅ NOVO: Recalcular notas de uma avaliação
-  static async recalculateEvaluationScores(
-    testId: string,
-    options?: {
-      force_recalculation?: boolean;
-      include_pending?: boolean;
-    }
-  ): Promise<{
-    success: boolean;
-    message: string;
-    updated_students: number;
-    updated_scores: Array<{
-      student_id: string;
-      old_score: number;
-      new_score: number;
-      old_proficiency: number;
-      new_proficiency: number;
-    }>;
-  } | null> {
-    try {
-      console.log('🔄 Recalculando notas da avaliação:', testId);
-      
-      const body: any = {};
-      if (options?.force_recalculation) body.force_recalculation = true;
-      if (options?.include_pending) body.include_pending = true;
-      
-      const response = await api.post(`/evaluation-results/${testId}/calculate-scores`, body);
-      
-      console.log('🔄 Recálculo de notas concluído:', response.data);
-      
-      return response.data;
-    } catch (error) {
-      console.error('❌ Erro ao recalcular notas:', error);
-      return null;
-    }
-  }
+
 
   // ✅ NOVO: Buscar respostas detalhadas de um aluno
   static async getStudentDetailedAnswers(
@@ -2313,102 +2183,7 @@ export class EvaluationResultsApiService {
     }
   }
 
-  // ✅ NOVO: Endpoints para avaliação por disciplina
-  
-  /**
-   * Busca resultados gerais e por disciplina de uma avaliação
-   */
-  static async getResultadosGeraisEDisciplinas(
-    evaluationId: string, 
-    classIds?: string[]
-  ): Promise<ResultadosGeraisEDisciplinas | null> {
-    try {
-      const params = new URLSearchParams();
-      if (classIds && classIds.length > 0) {
-        params.append('class_ids', classIds.join(','));
-      }
-      
-      const url = `/evaluation-subject/resultados-gerais-e-disciplinas/${evaluationId}`;
-      const fullUrl = params.toString() ? `${url}?${params}` : url;
-      
-      console.log('📊 Buscando resultados gerais e por disciplina:', fullUrl);
-      
-      const response = await api.get(fullUrl);
-      
-      console.log('✅ Resultados gerais e por disciplina carregados:', response.data);
-      return response.data;
-    } catch (error) {
-      console.error('❌ Erro ao buscar resultados gerais e por disciplina:', error);
-      return null;
-    }
-  }
 
-  /**
-   * Busca resultados de um aluno específico por disciplina
-   */
-  static async getResultadosAlunoPorDisciplina(
-    evaluationId: string, 
-    studentId: string
-  ): Promise<ResultadosAlunoPorDisciplina | null> {
-    try {
-      console.log('👤 Buscando resultados do aluno por disciplina:', { evaluationId, studentId });
-      
-      const response = await api.get(`/evaluation-subject/resultados-aluno/${evaluationId}/${studentId}`);
-      
-      console.log('✅ Resultados do aluno por disciplina carregados:', response.data);
-      return response.data;
-    } catch (error) {
-      console.error('❌ Erro ao buscar resultados do aluno por disciplina:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Lista as disciplinas presentes em uma avaliação
-   */
-  static async getDisciplinasAvaliacao(
-    evaluationId: string
-  ): Promise<DisciplinasAvaliacao | null> {
-    try {
-      console.log('📚 Buscando disciplinas da avaliação:', evaluationId);
-      
-      const response = await api.get(`/evaluation-subject/disciplinas-avaliacao/${evaluationId}`);
-      
-      console.log('✅ Disciplinas da avaliação carregadas:', response.data);
-      return response.data;
-    } catch (error) {
-      console.error('❌ Erro ao buscar disciplinas da avaliação:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Busca comparativo de desempenho entre disciplinas
-   */
-  static async getComparativoDisciplinas(
-    evaluationId: string, 
-    classIds?: string[]
-  ): Promise<ComparativoDisciplinas | null> {
-    try {
-      const params = new URLSearchParams();
-      if (classIds && classIds.length > 0) {
-        params.append('class_ids', classIds.join(','));
-      }
-      
-      const url = `/evaluation-subject/comparativo-disciplinas/${evaluationId}`;
-      const fullUrl = params.toString() ? `${url}?${params}` : url;
-      
-      console.log('📊 Buscando comparativo de disciplinas:', fullUrl);
-      
-      const response = await api.get(fullUrl);
-      
-      console.log('✅ Comparativo de disciplinas carregado:', response.data);
-      return response.data;
-    } catch (error) {
-      console.error('❌ Erro ao buscar comparativo de disciplinas:', error);
-      return null;
-    }
-  }
 
   // ===== NOVOS ENDPOINTS DE DASHBOARD E ESTATÍSTICAS =====
 
