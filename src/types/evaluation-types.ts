@@ -37,6 +37,15 @@ export interface Question {
     }[];
     points: number;
     difficulty: "easy" | "medium" | "hard";
+    // ✅ NOVO: Mapeamento de posições embaralhadas para originais
+    positionMapping?: Array<{
+        shuffledIndex: number;
+        originalIndex: number;
+        originalLetter: string; // A, B, C, D...
+        shuffledLetter: string; // A, B, C, D... (pode ser diferente)
+        originalText: string;
+        shuffledText: string;
+    }>;
 }
 
 export interface TestData {
@@ -95,13 +104,7 @@ export interface SessionStatusResponse {
     grade: string | null;
 }
 
-export interface SavePartialRequest {
-    session_id: string;
-    answers: {
-        question_id: string;
-        answer: string;
-    }[];
-}
+
 
 export interface SubmitTestRequest {
     session_id: string;

@@ -33,7 +33,7 @@ export function StudentRanking({
   // Ordenar alunos por proficiência (maior para menor)
   const rankedStudents = useMemo(() => {
     return completedStudents
-      .sort((a, b) => b.proficiencia - a.proficiencia)
+      .sort((a, b) => (b.proficiencia || 0) - (a.proficiencia || 0))
       .slice(0, maxStudents);
   }, [completedStudents, maxStudents]);
 
@@ -147,7 +147,7 @@ export function StudentRanking({
                           {position <= 3 && (
                             <div className="flex items-center gap-1">
                               {[...Array(position)].map((_, i) => (
-                                <span key={i} className="text-yellow-400">⭐</span>
+                                <span key={`star-${student.id}-${i}`} className="text-yellow-400">⭐</span>
                               ))}
                             </div>
                           )}
@@ -162,11 +162,11 @@ export function StudentRanking({
                       <div className="flex items-center gap-6 text-sm">
                         <div className="flex items-center gap-2 bg-blue-50 px-3 py-1 rounded-full border border-blue-200">
                           <span className="text-blue-600 font-medium">📝 Nota:</span>
-                          <span className="font-bold text-blue-700 text-lg">{student.nota.toFixed(1)}</span>
+                          <span className="font-bold text-blue-700 text-lg">{(student.nota || 0).toFixed(1)}</span>
                         </div>
                         <div className="flex items-center gap-2 bg-purple-50 px-3 py-1 rounded-full border border-purple-200">
                           <span className="text-purple-600 font-medium">🚀 Proficiência:</span>
-                          <span className="font-bold text-purple-700 text-lg">{student.proficiencia.toFixed(1)}</span>
+                          <span className="font-bold text-purple-700 text-lg">{(student.proficiencia || 0).toFixed(1)}</span>
                         </div>
                       </div>
                     </div>

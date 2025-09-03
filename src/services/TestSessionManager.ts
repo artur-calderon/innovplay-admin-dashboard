@@ -299,10 +299,7 @@ export class TestSessionManager {
                 answer: answer.answer
             }));
 
-            await EvaluationApiService.savePartialAnswers({
-                session_id: this.state.sessionInfo.session_id,
-                answers: answersArray
-            });
+            // ✅ REMOVIDO: Salvamento parcial - respostas serão enviadas apenas ao final
 
             // Salvar no localStorage como backup
             this.saveAnswersToStorage();

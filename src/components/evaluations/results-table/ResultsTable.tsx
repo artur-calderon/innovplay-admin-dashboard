@@ -4,18 +4,35 @@ import { TableHeader } from './TableHeader';
 import { TableRow } from './TableRow';
 import { TableLegend } from './TableLegend';
 
-export const ResultsTable: React.FC<ResultsTableProps> = ({
+// Interface para dados da tabela_detalhada
+interface TabelaDetalhadaQuestao {
+  numero: number;
+  habilidade: string;
+  codigo_habilidade: string;
+  question_id: string;
+}
+
+interface TabelaDetalhadaDisciplina {
+  id: string;
+  nome: string;
+  questoes: TabelaDetalhadaQuestao[];
+}
+
+interface ExtendedResultsTableProps extends ResultsTableProps {
+  // ✅ NOVO: Dados da tabela_detalhada
+  tabelaDetalhada?: {
+    disciplinas: TabelaDetalhadaDisciplina[];
+  };
+}
+
+export const ResultsTable: React.FC<ExtendedResultsTableProps> = ({
   students,
   totalQuestions,
   startQuestionNumber = 1,
   onViewStudentDetails,
   questoes,
-  questionsWithSkills,
-  skillsMapping,
-  skillsBySubject,
-  detailedReport,
   visibleFields = {
-    turma: true,
+    turma: false,
     habilidade: true,
     questoes: true,
     percentualTurma: true,
@@ -26,7 +43,8 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
   },
   subjectFilter,
   evaluationId,
-  successThreshold = 60
+  successThreshold = 60,
+  tabelaDetalhada
 }) => {
   return (
     <div className="overflow-x-auto">
@@ -35,12 +53,8 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
           totalQuestions={totalQuestions}
           startQuestionNumber={startQuestionNumber}
           questoes={questoes}
-          questionsWithSkills={questionsWithSkills}
-          skillsMapping={skillsMapping}
-          skillsBySubject={skillsBySubject}
-          detailedReport={detailedReport}
           visibleFields={visibleFields}
-          evaluationId={evaluationId}
+          tabelaDetalhada={tabelaDetalhada}
           students={students}
           successThreshold={successThreshold}
         />
@@ -53,8 +67,8 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
               totalQuestions={totalQuestions}
               visibleFields={visibleFields}
               onViewStudentDetails={onViewStudentDetails}
-              detailedReport={detailedReport}
               evaluationId={evaluationId}
+              tabelaDetalhada={tabelaDetalhada}
             />
           ))}
         </tbody>

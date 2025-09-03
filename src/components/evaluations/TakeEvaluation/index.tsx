@@ -24,7 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import { EvaluationTimer } from "../EvaluationTimer";
 import { useEvaluation } from "@/hooks/useEvaluation";
 import { Question } from "@/types/evaluation-types";
-import { EvaluationApiService } from "@/services/evaluationApi";
+
 
 export default function TakeEvaluation() {
     const { id: evaluationId } = useParams<{ id: string }>();
@@ -39,32 +39,53 @@ export default function TakeEvaluation() {
     // ✅ NOVO: Manter referência às questões originais para mapeamento correto
     const [originalQuestions, setOriginalQuestions] = useState<Question[]>([]);
 
-    // ✅ CORRIGIDO: Função para mapear resposta da interface para ID original
-    const mapAnswerToOriginalId = useCallback((questionId: string, selectedText: string | string[]): string => {
+    // ✅ NOVO: Função para mapear resposta da interface para letra original
+    const mapAnswerToOriginalLetter = useCallback((questionId: string, selectedText: string | string[]): string => {
         // Se for array, pegar o primeiro elemento
         const textToMap = Array.isArray(selectedText) ? selectedText[0] : selectedText;
         
-        // ✅ CORRIGIDO: Buscar diretamente nas opções originais pelo texto selecionado
-        const originalQuestion = originalQuestions.find(q => q.id === questionId);
-        if (originalQuestion) {
-            const originalOptions = originalQuestion.options || originalQuestion.alternatives || [];
-            const originalOption = originalOptions.find(opt => opt.text === textToMap);
-            
-            if (originalOption) {
-                console.log('✅ Mapeamento de resposta por texto (correto):', {
-                    questionId,
-                    selectedText: textToMap,
-                    originalId: originalOption.id,
-                    originalText: originalOption.text,
-                    totalOptions: originalOptions.length
-                });
-                return originalOption.id;
-            }
+        // Buscar a questão embaralhada
+        const shuffledQuestion = shuffledQuestions.find(q => q.id === questionId);
+        if (!shuffledQuestion?.positionMapping) {
+            console.warn('⚠️ Questão não tem mapeamento de posições:', questionId);
+            return textToMap; // Fallback para resposta direta
         }
-
-        console.warn('⚠️ Opção original não encontrada para texto:', textToMap);
-        return textToMap; // Fallback para resposta direta
-    }, [originalQuestions]);
+        
+        // Encontrar a posição embaralhada da opção selecionada
+        const selectedOption = shuffledQuestion.options?.find(opt => opt.text === textToMap);
+        if (!selectedOption) {
+            console.warn('⚠️ Opção selecionada não encontrada:', textToMap);
+            return textToMap; // Fallback para resposta direta
+        }
+        
+        // Encontrar o índice embaralhado da opção selecionada
+        const shuffledIndex = shuffledQuestion.options?.findIndex(opt => opt.id === selectedOption.id);
+        if (shuffledIndex === -1 || shuffledIndex === undefined) {
+            console.warn('⚠️ Índice embaralhado não encontrado para opção:', selectedOption.id);
+            return textToMap; // Fallback para resposta direta
+        }
+        
+        // Buscar o mapeamento para essa posição
+        const mapping = shuffledQuestion.positionMapping[shuffledIndex];
+        if (!mapping) {
+            console.warn('⚠️ Mapeamento não encontrado para índice:', shuffledIndex);
+            return textToMap; // Fallback para resposta direta
+        }
+        
+        console.log('✅ Mapeamento de resposta para letra original:', {
+            questionId,
+            selectedText: textToMap,
+            shuffledIndex,
+            originalIndex: mapping.originalIndex,
+            shuffledLetter: mapping.shuffledLetter, // A, B, C, D... (posição no frontend)
+            originalLetter: mapping.originalLetter, // A, B, C, D... (posição original)
+            originalText: mapping.originalText,
+            shuffledText: mapping.shuffledText
+        });
+        
+        // Retornar a letra da posição original (A, B, C, D...)
+        return mapping.originalLetter;
+    }, [shuffledQuestions]);
 
     const {
         evaluationState,
@@ -84,34 +105,7 @@ export default function TakeEvaluation() {
         navigateToQuestion
     } = useEvaluation({ testId: evaluationId });
 
-    // ✅ NOVO: Função para salvar resposta com mapeamento correto
-    const saveAnswerWithMapping = useCallback(async (questionId: string, displayAnswer: string, backendAnswer: string): Promise<void> => {
-        if (!session || !testData) return;
 
-        try {
-            // Salvar no estado local com o texto da opção para visualização
-            await saveAnswer(questionId, displayAnswer);
-
-            // Aguardar um pouco para garantir que o estado local foi atualizado
-            await new Promise(resolve => setTimeout(resolve, 100));
-
-            // Salvar no backend com o ID original (sobrescrever a resposta anterior)
-            await EvaluationApiService.savePartialAnswers({
-                session_id: session.session_id,
-                answers: [{
-                    question_id: questionId,
-                    answer: backendAnswer
-                }]
-            });
-
-        } catch (error) {
-            toast({
-                title: "⚠️ Erro ao salvar",
-                description: "Sua resposta pode não ter sido salva. Verifique sua conexão.",
-                variant: "destructive",
-            });
-        }
-    }, [session, testData, toast, saveAnswer]);
 
     // ✅ Verificar se avaliação já foi enviada antes de iniciar
     useEffect(() => {
@@ -221,8 +215,7 @@ export default function TakeEvaluation() {
         if (testData?.questions?.length && shuffledQuestions.length === 0) {
             console.log('🔄 Organizando questões por disciplina...', testData.questions.length);
             
-            // ✅ NOVO: Salvar questões originais antes de embaralhar
-            setOriginalQuestions([...testData.questions]);
+
             
             // Agrupar questões por disciplina
             const questionsBySubject = testData.questions.reduce((acc, question) => {
@@ -252,20 +245,36 @@ export default function TakeEvaluation() {
                         (q.options || q.alternatives).length > 0
                     ) {
                         const optionsToShuffle = q.options || q.alternatives || [];
-                        // ✅ SIMPLIFICADO: Apenas embaralhar as opções sem modificar tipos
-                        const shuffledOptions = [...optionsToShuffle].sort(() => Math.random() - 0.5);
-                        
-                        console.log(`✅ Questão ${questionIndex + 1} de ${subject} embaralhada:`, {
-                            original: optionsToShuffle.map((opt, i) => `${String.fromCharCode(65 + i)}: ${opt.text}`),
-                            shuffled: shuffledOptions.map((opt, i) => `${String.fromCharCode(65 + i)}: ${opt.text}`),
-                            totalOptions: shuffledOptions.length
-                        });
+                                    // ✅ NOVO: Embaralhar opções mantendo referência às originais
+            const shuffledOptions = [...optionsToShuffle].sort(() => Math.random() - 0.5);
+            
+            // ✅ NOVO: Criar mapeamento de posições embaralhadas para originais
+            const positionMapping = shuffledOptions.map((shuffledOpt, shuffledIndex) => {
+                const originalIndex = optionsToShuffle.findIndex(originalOpt => originalOpt.id === shuffledOpt.id);
+                return {
+                    shuffledIndex,
+                    originalIndex,
+                    originalLetter: String.fromCharCode(65 + originalIndex), // A, B, C, D...
+                    shuffledLetter: String.fromCharCode(65 + shuffledIndex), // A, B, C, D... (pode ser diferente)
+                    originalText: optionsToShuffle[originalIndex].text,
+                    shuffledText: shuffledOpt.text
+                };
+            });
+            
+            console.log(`✅ Questão ${questionIndex + 1} de ${subject} embaralhada:`, {
+                original: optionsToShuffle.map((opt, i) => `${String.fromCharCode(65 + i)}: ${opt.text}`),
+                shuffled: shuffledOptions.map((opt, i) => `${String.fromCharCode(65 + i)}: ${opt.text}`),
+                positionMapping: positionMapping.map(m => `${m.shuffledLetter}→${m.originalLetter}`),
+                totalOptions: shuffledOptions.length
+            });
 
-                        return {
-                            ...q,
-                            options: shuffledOptions,
-                            alternatives: shuffledOptions, // Manter compatibilidade
-                        } as Question;
+            return {
+                ...q,
+                options: shuffledOptions,
+                alternatives: shuffledOptions, // Manter compatibilidade
+                // ✅ NOVO: Adicionar mapeamento de posições
+                positionMapping: positionMapping
+            } as Question;
                     }
                     return q;
                 });
@@ -931,21 +940,27 @@ export default function TakeEvaluation() {
                                                 answer={answers[currentQuestion?.id]?.answer}
                                                 onAnswerChange={(newAnswer) => {
                                                     if (currentQuestion?.id) {
-                                                        // ✅ NOVO: Mapear resposta para ID original antes de salvar
-                                                        const originalAnswerId = mapAnswerToOriginalId(currentQuestion.id, newAnswer);
-                                                        
                                                         console.log('💾 Salvando resposta:', {
                                                             questionId: currentQuestion.id,
                                                             interfaceAnswer: newAnswer,
-                                                            originalAnswerId: originalAnswerId,
                                                             questionType: currentQuestion.type,
                                                             currentAnswers: Object.keys(answers)
                                                         });
                                                         
-                                                        // ✅ CORRIGIDO: Salvar o texto da opção no estado local para visualização
-                                                        // mas enviar o ID original para o backend
+                                                        // ✅ NOVO: Mapear resposta para letra original antes de salvar
                                                         const displayAnswer = Array.isArray(newAnswer) ? newAnswer[0] : newAnswer;
-                                                        saveAnswerWithMapping(currentQuestion.id, displayAnswer, originalAnswerId);
+                                                        const originalLetter = mapAnswerToOriginalLetter(currentQuestion.id, displayAnswer);
+                                                        
+                                                        console.log('💾 Salvando resposta mapeada:', {
+                                                            questionId: currentQuestion.id,
+                                                            interfaceAnswer: displayAnswer,
+                                                            originalLetter: originalLetter,
+                                                            questionType: currentQuestion.type,
+                                                            currentAnswers: Object.keys(answers)
+                                                        });
+                                                        
+                                                        // Salvar a letra original (A, B, C, D...) no backend
+                                                        saveAnswer(currentQuestion.id, originalLetter);
 
                                                         // Avanço automático
                                                         if (
@@ -1241,10 +1256,18 @@ export default function TakeEvaluation() {
                                         answer={answers[currentQuestion?.id]?.answer}
                                         onAnswerChange={(answer) => {
                                             if (currentQuestion?.id) {
-                                                // ✅ NOVO: Mapear resposta para ID original antes de salvar
-                                                const originalAnswerId = mapAnswerToOriginalId(currentQuestion.id, answer);
+                                                // ✅ NOVO: Mapear resposta para letra original antes de salvar
                                                 const displayAnswer = Array.isArray(answer) ? answer[0] : answer;
-                                                saveAnswerWithMapping(currentQuestion.id, displayAnswer, originalAnswerId);
+                                                const originalLetter = mapAnswerToOriginalLetter(currentQuestion.id, displayAnswer);
+                                                
+                                                console.log('💾 Salvando resposta mapeada (fullscreen):', {
+                                                    questionId: currentQuestion.id,
+                                                    interfaceAnswer: displayAnswer,
+                                                    originalLetter: originalLetter
+                                                });
+                                                
+                                                // Salvar a letra original (A, B, C, D...) no backend
+                                                saveAnswer(currentQuestion.id, originalLetter);
                                             }
                                         }}
                                         disabled={false}
@@ -1330,18 +1353,7 @@ function QuestionOptions({
                                     ? 'border-purple-500 bg-purple-50 ring-4 ring-purple-200 shadow-lg'
                                     : 'border-gray-300 hover:border-gray-400 hover:shadow-md'
                                     } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                onClick={() => {
-                                    if (!disabled) {
-                                        // ✅ NOVO: Enviar o texto da opção selecionada para mapeamento correto
-                                        const selectedOptionText = optionText;
-                                        console.log('🖱️ Click na opção:', {
-                                            index: index,
-                                            selectedText: selectedOptionText,
-                                            optionText: optionText
-                                        });
-                                        onAnswerChange(selectedOptionText);
-                                    }
-                                }}
+
                             >
                                 <RadioGroupItem
                                     value={optionId}
