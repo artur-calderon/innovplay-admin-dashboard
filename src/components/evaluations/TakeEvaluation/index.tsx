@@ -1309,30 +1309,25 @@ function QuestionOptions({
                 </div>
                 <RadioGroup
                     value={(() => {
-                        // ✅ CORRIGIDO: Buscar pelo texto da resposta nas opções
+                        // ✅ CORRIGIDO: Buscar pelo ID da resposta nas opções (answer é a letra A, B, C, D)
                         if (!answer) return "";
-                        const option = questionOptions.find(opt => opt.text === answer);
-                        return option?.id || "";
+                        const option = questionOptions.find(opt => opt.id === answer);
+                        const optionId = option?.id || "";
+                        return optionId;
                     })()}
                     onValueChange={(val) => {
                         console.log('🔄 RadioGroup onValueChange:', val);
-                        // ✅ CORRIGIDO: Encontrar o índice da opção selecionada de forma mais robusta
-                        const index = questionOptions.findIndex(option => {
-                            const optionId = option.id || `option-${questionOptions.indexOf(option)}`;
-                            return optionId === val;
-                        });
-                        
-                        if (index !== -1) {
-                            // ✅ NOVO: Enviar o texto da opção selecionada para mapeamento correto
-                            const selectedOptionText = questionOptions[index].text;
+                        // ✅ CORRIGIDO: Enviar diretamente o ID da opção (letra A, B, C, D)
+                        const option = questionOptions.find(opt => opt.id === val);
+                        if (option) {
                             console.log('📝 Resposta selecionada:', {
                                 selectedValue: val,
-                                index: index,
-                                selectedText: selectedOptionText,
-                                optionText: questionOptions[index].text,
+                                selectedId: option.id,
+                                selectedText: option.text,
                                 totalOptions: questionOptions.length
                             });
-                            onAnswerChange(selectedOptionText);
+                            // Enviar o ID da opção (letra) diretamente
+                            onAnswerChange(option.id);
                         } else {
                             console.log('❌ Opção não encontrada:', val);
                             onAnswerChange("");
@@ -1343,8 +1338,9 @@ function QuestionOptions({
                     {questionOptions.map((option, index) => {
                         const optionId = option.id || `option-${index}`;
                         const optionText = option.text || option;
-                        // ✅ CORRIGIDO: Marcar como selecionado se answer for o texto da opção
-                        const isSelected = answer === optionText;
+                        // ✅ CORRIGIDO: Marcar como selecionado se answer for o ID da opção
+                        const isSelected = answer === optionId;
+                        
 
                         return (
                             <div
@@ -1359,7 +1355,6 @@ function QuestionOptions({
                                     value={optionId}
                                     id={optionId}
                                     className="mt-1 w-5 h-5"
-                                    checked={isSelected}
                                 />
                                 <Label
                                     htmlFor={optionId}
