@@ -108,7 +108,7 @@ export const TableRow: React.FC<TableRowProps> = ({
         const answer = processStudentAnswers[questao.numero];
         
         return (
-          <td key={`${student.id}-q${questao.numero}`} className="px-2 py-3 text-center border border-gray-300">
+          <td key={`${student.id}-${questao.disciplina}-q${questao.numero}`} className="px-2 py-3 text-center border border-gray-300">
             {answer ? (
               // Aluno respondeu
               answer.acertou ? (
