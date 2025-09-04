@@ -18,77 +18,127 @@ interface ClassData {
 }
 
 interface ClassStatisticsProps {
-  apiData: any;
+  apiData: {
+    resultados_detalhados?: {
+      avaliacoes?: Array<{
+        turma?: string;
+        total_alunos?: number;
+        alunos_participantes?: number;
+        media_nota?: number;
+        media_proficiencia?: number;
+        serie?: string;
+      }>;
+    };
+    estatisticas_gerais?: {
+      serie?: string;
+    };
+    tabela_detalhada?: {
+      disciplinas?: Array<{
+        id: string;
+        nome: string;
+        alunos: Array<{
+          id: string;
+          nome: string;
+          turma: string;
+          nivel_proficiencia: string;
+          nota: number;
+          proficiencia: number;
+          total_acertos: number;
+          total_erros: number;
+          total_respondidas: number;
+        }>;
+      }>;
+      geral?: {
+        alunos: Array<{
+          id: string;
+          nome: string;
+          turma: string;
+          nivel_proficiencia_geral: string;
+          nota_geral: number;
+          proficiencia_geral: number;
+          total_acertos_geral: number;
+          total_erros_geral: number;
+          total_respondidas_geral: number;
+        }>;
+      };
+    };
+  } | null;
 }
 
 export function ClassStatistics({ apiData }: ClassStatisticsProps) {
-    // Simular dados por turma baseados nos dados da API
+  // ✅ CORRIGIDO: Usar apenas dados reais da tabela_detalhada.disciplinas
   const generateClassData = (): ClassData[] => {
-    if (!apiData?.resultados_detalhados?.avaliacoes) {
-      // Dados de exemplo quando não há dados reais
-      return [
-        {
-          name: 'A',
-          seriesName: undefined,
-          totalStudents: 2,
-          participatingStudents: 2,
-          averageGrade: 3.8,
-          proficiency: 212.5,
-          distribution: { abaixo_do_basico: 2, basico: 0, adequado: 0, avancado: 0 }
-        }
-      ];
+    // Usar apenas dados reais da tabela_detalhada.disciplinas
+    if (!apiData?.tabela_detalhada?.disciplinas?.length) {
+      return [];
     }
 
-    // Agrupar por turma
-    const turmasMap = new Map<string, any[]>();
-    
-    apiData.resultados_detalhados.avaliacoes.forEach((evaluation: any) => {
-      const turma = evaluation.turma || 'A';
-      if (!turmasMap.has(turma)) {
-        turmasMap.set(turma, []);
-      }
-      turmasMap.get(turma)!.push(evaluation);
+    const turmasMap = new Map<string, {
+      alunos: Array<{
+        id: string;
+        nome: string;
+        turma: string;
+        nivel_proficiencia: string;
+        nota: number;
+        proficiencia: number;
+      }>;
+      serie?: string;
+    }>();
+
+    // Processar dados de todas as disciplinas
+    apiData.tabela_detalhada.disciplinas.forEach(disciplina => {
+      disciplina.alunos.forEach(aluno => {
+        const turma = aluno.turma || 'A';
+        
+        if (!turmasMap.has(turma)) {
+          turmasMap.set(turma, {
+            alunos: [],
+            serie: apiData?.estatisticas_gerais?.serie
+          });
+        }
+        
+        // Evitar duplicatas - verificar se o aluno já existe
+        const existingAluno = turmasMap.get(turma)!.alunos.find(a => a.id === aluno.id);
+        if (!existingAluno) {
+          turmasMap.get(turma)!.alunos.push({
+            id: aluno.id,
+            nome: aluno.nome,
+            turma: aluno.turma,
+            nivel_proficiencia: aluno.nivel_proficiencia,
+            nota: aluno.nota,
+            proficiencia: aluno.proficiencia
+          });
+        }
+      });
     });
 
-    // Se não há turmas específicas, criar dados de exemplo
-    if (turmasMap.size === 0) {
-      return [
-        {
-          name: 'A',
-          seriesName: undefined,
-          totalStudents: 2,
-          participatingStudents: 2,
-          averageGrade: 3.8,
-          proficiency: 212.5,
-          distribution: { abaixo_do_basico: 2, basico: 0, adequado: 0, avancado: 0 }
-        }
-      ];
-    }
+    // Converter para formato esperado
+    return Array.from(turmasMap.entries()).map(([turmaName, turmaData]) => {
+      const alunos = turmaData.alunos;
+      const totalStudents = alunos.length;
+      const participatingStudents = alunos.length; // Todos os alunos na tabela participaram
+      
+      // Calcular médias reais
+      const averageGrade = alunos.length > 0 
+        ? alunos.reduce((sum, aluno) => sum + aluno.nota, 0) / alunos.length 
+        : 0;
+      const proficiency = alunos.length > 0 
+        ? alunos.reduce((sum, aluno) => sum + aluno.proficiencia, 0) / alunos.length 
+        : 0;
 
-    return Array.from(turmasMap.entries()).map(([turmaName, evaluations]) => {
-      const totalStudents = evaluations.reduce((sum, evaluation) => sum + (evaluation.total_alunos || 0), 0);
-      const participatingStudents = evaluations.reduce((sum, evaluation) => sum + (evaluation.alunos_participantes || 0), 0);
-      const averageGrade = evaluations.reduce((sum, evaluation) => sum + (evaluation.media_nota || 0), 0) / evaluations.length;
-      const proficiency = evaluations.reduce((sum, evaluation) => sum + (evaluation.media_proficiencia || 0), 0) / evaluations.length;
-      const seriesName = (evaluations.find((e) => !!e.serie)?.serie) || (apiData?.estatisticas_gerais?.serie) || undefined;
-
-      // Simular distribuição baseada na média da turma
-      let distribution;
-      if (averageGrade >= 8) {
-        distribution = { abaixo_do_basico: 0, basico: 0, adequado: 1, avancado: 1 };
-      } else if (averageGrade >= 6) {
-        distribution = { abaixo_do_basico: 0, basico: 1, adequado: 1, avancado: 0 };
-      } else if (averageGrade >= 4) {
-        distribution = { abaixo_do_basico: 1, basico: 1, adequado: 0, avancado: 0 };
-      } else {
-        distribution = { abaixo_do_basico: 2, basico: 0, adequado: 0, avancado: 0 };
-      }
+      // ✅ CORRIGIDO: Calcular distribuição real baseada nas classificações dos alunos
+      const distribution = {
+        abaixo_do_basico: alunos.filter(a => a.nivel_proficiencia === 'Abaixo do Básico').length,
+        basico: alunos.filter(a => a.nivel_proficiencia === 'Básico').length,
+        adequado: alunos.filter(a => a.nivel_proficiencia === 'Adequado').length,
+        avancado: alunos.filter(a => a.nivel_proficiencia === 'Avançado').length
+      };
 
       return {
         name: turmaName,
-        seriesName,
-        totalStudents: Math.max(totalStudents, 2),
-        participatingStudents: Math.max(participatingStudents, 2),
+        seriesName: turmaData.serie,
+        totalStudents,
+        participatingStudents,
         averageGrade: Number(averageGrade.toFixed(1)),
         proficiency: Number(proficiency.toFixed(1)),
         distribution

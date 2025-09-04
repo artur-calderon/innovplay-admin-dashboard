@@ -29,8 +29,9 @@ import { ResultsCharts } from "@/components/evaluations/ResultsCharts";
 import { ClassStatistics } from "@/components/evaluations/ClassStatistics";
 import { StudentRanking } from "@/components/evaluations/StudentRanking";
 import { ResultsTable } from "@/components/evaluations/results-table/ResultsTable";
-import { SubjectResults } from "@/components/evaluations/SubjectResults";
+
 import { DisciplineTables } from "@/components/evaluations/DisciplineTables";
+import { StudentCard } from "@/components/evaluations/StudentCard";
 import { QuestionData as TableQuestionData, DetailedReport as TableDetailedReport } from "@/types/results-table";
 
 // Interfaces para os dados da API - Nova estrutura baseada na implementação real
@@ -379,57 +380,20 @@ export default function Results() {
   const [evaluationInfo, setEvaluationInfo] = useState<EvaluationInfoSummary | null>(null);
 
   // Estados para controles da tabela
-  const [searchTerm, setSearchTerm] = useState('');
-  const [classificationFilter, setClassificationFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [showOnlyWithScore, setShowOnlyWithScore] = useState(false);
+
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
-  const [visibleFields, setVisibleFields] = useState<{
-    turma: boolean;
-    habilidade: boolean;
-    questoes: boolean;
-    percentualTurma: boolean;
-    total: boolean;
-    nota: boolean;
-    proficiencia: boolean;
-    nivel: boolean;
-  }>({
-    turma: true,
-    habilidade: true,
-    questoes: true,
-    percentualTurma: true,
-    total: true,
-    nota: true,
-    proficiencia: true,
-    nivel: true
-  });
-  const [subjectFilter, setSubjectFilter] = useState<string>('all');
-  const [levelFilter, setLevelFilter] = useState<string>('all');
-  const [turmaFilter, setTurmaFilter] = useState<string>('all');
-  const [orderBy, setOrderBy] = useState<'nota' | 'proficiencia' | 'status' | 'turma' | 'nome'>('nome');
-  const [orderDirection, setOrderDirection] = useState<'asc' | 'desc'>('asc');
-  const [showOnlyCompleted, setShowOnlyCompleted] = useState(true);
+
 
   // Handler para focar em alunos faltosos
   const handleViewAbsent = useCallback(() => {
-    setShowOnlyCompleted(false);
-    setStatusFilter('pendente');
     setViewMode('table');
     const el = document.getElementById('results-tables');
     if (el) el.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
-  // Estados para opções de filtro dinâmicas
-  const [availableSubjects, setAvailableSubjects] = useState<string[]>([]);
-  const [availableTurmas, setAvailableTurmas] = useState<string[]>([]);
+
   
-  // ✅ NOVO: Estados para recálculo de notas e respostas detalhadas
-  const [isRecalculating, setIsRecalculating] = useState(false);
-  const [recalculationResult, setRecalculationResult] = useState<{
-    success: boolean;
-    message: string;
-    updated_students: number;
-  } | null>(null);
+
   const [selectedStudentForDetails, setSelectedStudentForDetails] = useState<string | null>(null);
   const [studentDetailedAnswers, setStudentDetailedAnswers] = useState<{
     student: {
@@ -1414,114 +1378,12 @@ export default function Results() {
 
   // Filtrar estudantes baseado nos filtros
   const filteredStudents = useMemo(() => {
-    return transformedStudents.filter(student => {
-      if (showOnlyCompleted && student.status !== 'concluida') {
-        return false;
-      }
-      
-      const matchesSearch = searchTerm === '' || 
-        student.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        student.turma.toLowerCase().includes(searchTerm.toLowerCase());
-      
-      const matchesClassification = classificationFilter === 'all' || 
-        student.classificacao === classificationFilter;
-      
-      const matchesStatus = statusFilter === 'all' || 
-        student.status === statusFilter;
-      
-      const matchesScore = !showOnlyWithScore || student.nota > 0;
-      
-      const matchesLevel = levelFilter === 'all' || 
-        student.classificacao === levelFilter;
-      
-      const matchesTurma = turmaFilter === 'all' || 
-        student.turma === turmaFilter;
-      
-      return matchesSearch && matchesClassification && matchesStatus && matchesScore && matchesLevel && matchesTurma;
-    }).sort((a, b) => {
-      let comparison = 0;
-      
-      switch (orderBy) {
-        case 'nota':
-          comparison = a.nota - b.nota;
-          break;
-        case 'proficiencia':
-          comparison = a.proficiencia - b.proficiencia;
-          break;
-        case 'status':
-          comparison = a.status.localeCompare(b.status);
-          break;
-        case 'turma':
-          comparison = a.turma.localeCompare(b.turma);
-          break;
-        case 'nome':
-        default:
-          comparison = a.nome.localeCompare(b.nome);
-          break;
-      }
-      
-      return orderDirection === 'asc' ? comparison : -comparison;
-    });
-  }, [transformedStudents, searchTerm, classificationFilter, statusFilter, showOnlyWithScore, levelFilter, turmaFilter, orderBy, orderDirection, showOnlyCompleted]);
-
-  // Obter turmas únicas
-  const uniqueTurmas = useMemo(() => {
-    return [...new Set(transformedStudents.map(s => s.turma))].sort();
+    return transformedStudents.sort((a, b) => a.nome.localeCompare(b.nome));
   }, [transformedStudents]);
 
-  // ✅ NOVO: Função para recalcular notas da avaliação
-  const handleRecalculateScores = useCallback(async () => {
-    if (!selectedEvaluation || selectedEvaluation === 'all') {
-      toast({
-        title: "Erro",
-        description: "Selecione uma avaliação específica para recalcular notas.",
-        variant: "destructive",
-      });
-      return;
-    }
 
-    setIsRecalculating(true);
-    setRecalculationResult(null);
-    
-    try {
-      const result = await EvaluationResultsApiService.recalculateEvaluationScores(
-        selectedEvaluation,
-        {
-          force_recalculation: true,
-          include_pending: false
-        }
-      );
-      
-      if (result) {
-        setRecalculationResult(result);
-        
-        if (result.success) {
-          toast({
-            title: "Recálculo concluído!",
-            description: `${result.updated_students} alunos tiveram suas notas recalculadas.`,
-          });
-          
-          // Recarregar dados para mostrar notas atualizadas
-          await loadStudentsData();
-        } else {
-          toast({
-            title: "Erro no recálculo",
-            description: result.message,
-            variant: "destructive",
-          });
-        }
-      }
-    } catch (error) {
-      console.error('Erro ao recalcular notas:', error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível recalcular as notas. Tente novamente.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsRecalculating(false);
-    }
-  }, [selectedEvaluation, loadStudentsData, toast]);
+
+
 
   // ✅ NOVO: Função para carregar respostas detalhadas de um aluno
   const handleLoadStudentAnswers = useCallback(async (studentId: string) => {
@@ -1724,18 +1586,8 @@ export default function Results() {
             Atualizar
           </Button>
           
-          {/* ✅ NOVO: Botão para recalcular notas */}
-          {selectedEvaluation !== 'all' && (
-            <Button 
-              variant="outline" 
-              onClick={handleRecalculateScores} 
-              disabled={isRecalculating || isLoadingData}
-              className="bg-blue-50 hover:bg-blue-100 border-blue-200"
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${isRecalculating ? 'animate-spin' : ''}`} />
-              {isRecalculating ? 'Recalculando...' : 'Recalcular Notas'}
-            </Button>
-          )}
+
+
           
           {apiData && (
             <Button onClick={() => handleExportResults()}>
@@ -1746,47 +1598,7 @@ export default function Results() {
         </div>
       </div>
 
-      {/* ✅ NOVO: Resultado do recálculo de notas */}
-      {recalculationResult && (
-        <Card className={recalculationResult.success ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                recalculationResult.success ? 'bg-green-500' : 'bg-red-500'
-              }`}>
-                <span className="text-white text-sm font-bold">
-                  {recalculationResult.success ? '✓' : '✗'}
-                </span>
-              </div>
-              <div className="flex-1">
-                <h3 className={`font-semibold ${
-                  recalculationResult.success ? 'text-green-800' : 'text-red-800'
-                }`}>
-                  {recalculationResult.success ? 'Recálculo Concluído' : 'Erro no Recálculo'}
-                </h3>
-                <p className={`text-sm ${
-                  recalculationResult.success ? 'text-green-700' : 'text-red-700'
-                }`}>
-                  {recalculationResult.message}
-                </p>
-                {recalculationResult.success && (
-                  <p className="text-xs text-green-600 mt-1">
-                    {recalculationResult.updated_students} alunos atualizados
-                  </p>
-                )}
-              </div>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => setRecalculationResult(null)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                ✕
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+
 
       {/* Filtros */}
       <Card>
@@ -2089,11 +1901,10 @@ export default function Results() {
             <>
               {/* Abas com diferentes visualizações */}
               <Tabs defaultValue="charts" className="w-full">
-                <TabsList className={`grid w-full ${selectedSchool !== 'all' ? 'grid-cols-5' : 'grid-cols-4'}`}>
+                <TabsList className={`grid w-full ${selectedSchool !== 'all' ? 'grid-cols-4' : 'grid-cols-3'}`}>
                   <TabsTrigger value="charts">Gráficos</TabsTrigger>
                   <TabsTrigger value="tables">Tabelas</TabsTrigger>
                   <TabsTrigger value="statistics">Estatísticas</TabsTrigger>
-                  <TabsTrigger value="subject-results">Por Disciplina</TabsTrigger>
                   {selectedSchool !== 'all' && (
                     <TabsTrigger value="ranking">Ranking</TabsTrigger>
                   )}
@@ -2185,172 +1996,7 @@ export default function Results() {
                   ) : (
                     // Conteúdo normal da tabela quando escola está selecionada
                     <>
-                      {/* Controles Avançados da Tabela */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Controles da Tabela</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-6">
-                        {/* Campos Visíveis */}
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-700 mb-2">Colunas Visíveis</h4>
-                          <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
-                            {[
-                              { key: 'habilidade', label: 'Habilidade' },
-                              { key: 'questoes', label: 'Questões' },
-                              { key: 'percentualTurma', label: '% Turma' },
-                              { key: 'total', label: 'Total' },
-                              { key: 'nota', label: 'Nota' },
-                              { key: 'proficiencia', label: 'Proficiência' },
-                              { key: 'nivel', label: 'Nível' }
-                            ].map(({ key, label }) => (
-                              <div key={key} className="flex items-center space-x-2">
-                                <Checkbox
-                                  id={key}
-                                  checked={visibleFields[key as keyof typeof visibleFields]}
-                                  onCheckedChange={(checked) => 
-                                    setVisibleFields(prev => ({ ...prev, [key]: checked as boolean }))
-                                  }
-                                  className="data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
-                                />
-                                <label htmlFor={key} className="text-xs font-medium text-gray-700">{label}</label>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
 
-                        {/* Separador */}
-                        <div className="border-t border-gray-200 pt-4"></div>
-
-                        {/* Filtros e Ordenação */}
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
-                          <div>
-                            <label className="text-xs font-medium text-gray-700 block mb-1">Disciplina</label>
-                            <Select value={subjectFilter} onValueChange={setSubjectFilter}>
-                              <SelectTrigger className="h-8 text-xs">
-                                <SelectValue placeholder="Todas" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="all">Todas</SelectItem>
-                                {/* ✅ NOVO: Disciplinas dinâmicas da API */}
-                                {availableSubjects.length > 0 ? (
-                                  availableSubjects.map(subject => (
-                                    <SelectItem key={subject} value={subject.toLowerCase()}>
-                                      {subject}
-                                    </SelectItem>
-                                  ))
-                                ) : (
-                                  // Fallback hardcoded se API não disponível
-                                  <>
-                                    <SelectItem value="matematica">Matemática</SelectItem>
-                                    <SelectItem value="portugues">Português</SelectItem>
-                                    <SelectItem value="ciencias">Ciências</SelectItem>
-                                    <SelectItem value="historia">História</SelectItem>
-                                    <SelectItem value="geografia">Geografia</SelectItem>
-                                  </>
-                                )}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <label className="text-xs font-medium text-gray-700 block mb-1">Nível</label>
-                            <Select value={levelFilter} onValueChange={setLevelFilter}>
-                              <SelectTrigger className="h-8 text-xs">
-                                <SelectValue placeholder="Todos" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="all">Todos</SelectItem>
-                                <SelectItem value="Abaixo do Básico">Abaixo do Básico</SelectItem>
-                                <SelectItem value="Básico">Básico</SelectItem>
-                                <SelectItem value="Adequado">Adequado</SelectItem>
-                                <SelectItem value="Avançado">Avançado</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <label className="text-xs font-medium text-gray-700 block mb-1">Turma</label>
-                            <Select value={turmaFilter} onValueChange={setTurmaFilter}>
-                              <SelectTrigger className="h-8 text-xs">
-                                <SelectValue placeholder="Todas" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="all">Todas as Turmas</SelectItem>
-                                {/* ✅ NOVO: Priorizar turmas da API se disponíveis */}
-                                {(availableTurmas.length > 0 ? availableTurmas : uniqueTurmas).map(turma => (
-                                  <SelectItem key={turma} value={turma}>{turma}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <label className="text-xs font-medium text-gray-700 block mb-1">Ordenar</label>
-                            <Select value={orderBy} onValueChange={(value: 'nota' | 'proficiencia' | 'status' | 'turma' | 'nome') => setOrderBy(value)}>
-                              <SelectTrigger className="h-8 text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="nome">Nome</SelectItem>
-                                <SelectItem value="nota">Nota</SelectItem>
-                                <SelectItem value="proficiencia">Proficiência</SelectItem>
-                                <SelectItem value="status">Status</SelectItem>
-                                <SelectItem value="turma">Turma</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <label className="text-xs font-medium text-gray-700 block mb-1">Direção</label>
-                            <Select value={orderDirection} onValueChange={(value: 'asc' | 'desc') => setOrderDirection(value)}>
-                              <SelectTrigger className="h-8 text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="asc">A→Z</SelectItem>
-                                <SelectItem value="desc">Z→A</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                        
-                        {/* Controles de ação */}
-                        <div className="flex items-center gap-4 pt-3 border-t border-gray-200">
-                          <div className="flex items-center space-x-2">
-                            <Checkbox
-                              id="show-only-completed-tables"
-                              checked={showOnlyCompleted}
-                              onCheckedChange={(checked) => setShowOnlyCompleted(checked as boolean)}
-                              className="data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
-                            />
-                            <label htmlFor="show-only-completed-tables" className="text-xs font-medium text-gray-700">
-                              Apenas Concluídos
-                            </label>
-                          </div>
-
-
-                          
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={() => {
-                              setSearchTerm('');
-                              setClassificationFilter('all');
-                              setStatusFilter('all');
-                              setShowOnlyWithScore(false);
-                              setShowOnlyCompleted(true);
-                              setLevelFilter('all');
-                              setTurmaFilter('all');
-                              setSubjectFilter('all');
-                              setOrderBy('nome');
-                              setOrderDirection('asc');
-                            }}
-                            className="h-8 text-xs"
-                          >
-                            Limpar Filtros
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
 
                   {/* Tabela de Resultados */}
                   <Card>
@@ -2476,68 +2122,17 @@ export default function Results() {
                               </div>
                             )
                           ) : (
-                            /* Visão em Cards */
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                              {filteredStudents.map((student, index) => {
-                                const accuracyRate = (student.questoes_respondidas || 0) > 0
-                                  ? ((student.acertos || 0) / (student.questoes_respondidas || 0)) * 100
-                                  : 0;
-
-                                return (
-                                  <Card key={`${student.id}-${index}`} className="hover:shadow-md transition-shadow">
-                                    <CardHeader className="pb-3">
-                                      <div className="flex items-center justify-between">
-                                        <CardTitle className="text-lg">{student.nome}</CardTitle>
-                                        <Badge variant="outline">{student.turma}</Badge>
-                                      </div>
-                                      <div className="flex items-center gap-2">
-                                        <Badge className={student.status === 'concluida' ? 'bg-green-100 text-green-800 border-green-300' : 'bg-gray-100 text-gray-800 border-gray-300'}>
-                                          {student.status === 'concluida' ? 'Concluída' : 'Pendente'}
-                                        </Badge>
-                                        <Badge className={student.classificacao === 'Avançado' ? 'bg-green-600 text-white' : 
-                                                         student.classificacao === 'Adequado' ? 'bg-green-400 text-white' : 
-                                                         student.classificacao === 'Básico' ? 'bg-yellow-400 text-yellow-900' : 
-                                                         'bg-red-500 text-white'}>
-                                          {student.classificacao}
-                                        </Badge>
-                                      </div>
-                                    </CardHeader>
-                                    <CardContent className="space-y-3">
-                                      <div className="grid grid-cols-2 gap-3">
-                                        <div className="text-center">
-                                          <div className="text-2xl font-bold text-blue-600">{Number(student.nota || 0).toFixed(1)}</div>
-                                          <div className="text-xs text-gray-600">Nota</div>
-                                        </div>
-                                        <div className="text-center">
-                                          <div className="text-2xl font-bold text-purple-600">{Number(student.proficiencia || 0).toFixed(0)}</div>
-                                          <div className="text-xs text-gray-600">Proficiência</div>
-                                        </div>
-                                      </div>
-                                      
-                                      <div className="space-y-2">
-                                        <div className="flex justify-between text-sm">
-                                          <span>Acertos:</span>
-                                          <span className="font-medium">{student.acertos || 0}/{student.questoes_respondidas || 0}</span>
-                                        </div>
-                                        <Progress value={accuracyRate} className="h-2" />
-                                        <div className="text-xs text-center text-gray-600">{accuracyRate.toFixed(1)}%</div>
-                                      </div>
-
-                                      <div className="pt-2 border-t">
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          onClick={() => handleViewStudentDetails(student.id)}
-                                          className="w-full"
-                                        >
-                                          <Eye className="h-4 w-4 mr-2" />
-                                          Ver Detalhes
-                                        </Button>
-                                      </div>
-                                    </CardContent>
-                                  </Card>
-                                );
-                              })}
+                            /* Visão em Cards Melhorada */
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                              {filteredStudents.map((student, index) => (
+                                <StudentCard
+                                  key={`${student.id}-${index}`}
+                                  student={student}
+                                  totalQuestions={computedTotalQuestions || student.questoes_respondidas || 0}
+                                  subjects={derivedSubjects}
+                                  onViewDetails={handleViewStudentDetails}
+                                />
+                              ))}
                             </div>
               )}
             </>
@@ -2550,9 +2145,7 @@ export default function Results() {
                             Nenhum dado encontrado
                           </h3>
                           <p className="text-gray-600">
-                            {searchTerm || classificationFilter !== 'all' || statusFilter !== 'all'
-                              ? 'Ajuste os filtros para ver os dados na tabela.'
-                              : 'Não há dados disponíveis para exibir na tabela.'}
+                            Não há dados disponíveis para exibir na tabela.
                           </p>
                         </div>
                       )}
@@ -2566,28 +2159,7 @@ export default function Results() {
                   <ClassStatistics apiData={apiData} />
                 </TabsContent>
 
-                <TabsContent value="subject-results" className="space-y-6">
-                  {selectedEvaluation !== 'all' ? (
-                    <SubjectResults 
-                      evaluationId={selectedEvaluation}
-                      classIds={selectedClass !== 'all' ? [selectedClass] : undefined}
-                    />
-                  ) : (
-                    <Card>
-                      <CardContent className="text-center py-12">
-                        <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                          <BookOpen className="h-8 w-8 text-blue-600" />
-                        </div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                          Selecione uma Avaliação
-                        </h3>
-                        <p className="text-gray-600">
-                          Para visualizar os resultados por disciplina, é necessário selecionar uma avaliação específica nos filtros acima.
-                        </p>
-                      </CardContent>
-                    </Card>
-                  )}
-                </TabsContent>
+
 
                 {selectedSchool !== 'all' && (
                   <TabsContent value="ranking" className="space-y-6">

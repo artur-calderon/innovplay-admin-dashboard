@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CheckCircle2, Target, Gauge, Award } from 'lucide-react';
+import { CheckCircle2, Target, Gauge, Award, Users } from 'lucide-react';
 import { QuestionData, VisibleFields } from '../../../types/results-table';
 
 // Interface para questões da tabela_detalhada
@@ -127,80 +127,74 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
 
   return (
     <thead>
-      {/* Linha 1: Cabeçalhos principais */}
-      <tr className="bg-gray-100">
-        <th rowSpan={3} className="border border-gray-300 p-2 text-center font-semibold">ALUNO</th>
+      {/* Cabeçalho simplificado - uma única linha */}
+      <tr className="bg-gradient-to-r from-gray-100 to-gray-200 border-b-2 border-gray-300">
+        <th className="border border-gray-300 p-2 text-center font-semibold text-gray-700">
+          <div className="flex flex-col items-center gap-1">
+            <div className="flex items-center gap-1">
+              <Users className="h-4 w-4" />
+              ALUNO
+            </div>
+            {visibleFields.habilidade && (
+              <div className="text-xs text-blue-600 font-medium">HABILIDADE</div>
+            )}
+            {visibleFields.percentualTurma && (
+              <div className="text-xs text-green-600 font-medium">% DA TURMA</div>
+            )}
+          </div>
+        </th>
         {processedQuestions.map((questao) => (
-          <th key={questao.question_id} className="border border-gray-300 p-1 text-center font-semibold">
-            <div className="text-xs font-bold">Q{questao.numero}</div>
+          <th key={questao.question_id} className="border border-gray-300 p-1 text-center font-semibold hover:bg-gray-200 transition-colors">
+            <div className="text-xs font-bold text-gray-800">Q{questao.numero}</div>
             <div className="text-xs text-gray-600 mt-1">{questao.disciplina}</div>
+            {visibleFields.habilidade && (
+              <div 
+                className="text-xs font-semibold text-blue-600 cursor-help hover:bg-blue-100 rounded px-1 py-0.5 transition-colors mt-1" 
+                title={questao.habilidade}
+                onMouseEnter={() => setHoveredSkill(questao.habilidade)}
+                onMouseLeave={() => setHoveredSkill(null)}
+              >
+                {questao.codigo_habilidade}
+              </div>
+            )}
+            {visibleFields.percentualTurma && (
+              <div className="mt-1">
+                {(() => {
+                  const stats = getQuestionStats(questao.numero);
+                  return (
+                    <div className={`text-xs font-semibold px-2 py-1 rounded ${getPercentageColor(stats.percentage)}`}>
+                      {stats.percentage}%
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
           </th>
         ))}
-        <th rowSpan={3} className="border border-gray-300 p-2 text-center font-semibold">
+        <th className="border border-gray-300 p-2 text-center font-semibold text-gray-700">
           <div className="flex items-center justify-center gap-1">
             <CheckCircle2 className="h-4 w-4" />
             TOTAL
           </div>
         </th>
-        <th rowSpan={3} className="border border-gray-300 p-2 text-center font-semibold">
+        <th className="border border-gray-300 p-2 text-center font-semibold text-gray-700">
           <div className="flex items-center justify-center gap-1">
             <Target className="h-4 w-4" />
             NOTA
           </div>
         </th>
-        <th rowSpan={3} className="border border-gray-300 p-2 text-center font-semibold">
+        <th className="border border-gray-300 p-2 text-center font-semibold text-gray-700">
           <div className="flex items-center justify-center gap-1">
             <Gauge className="h-4 w-4" />
             PROFICIÊNCIA
           </div>
         </th>
-        <th rowSpan={3} className="border border-gray-300 p-2 text-center font-semibold">
+        <th className="border border-gray-300 p-2 text-center font-semibold text-gray-700">
           <div className="flex items-center justify-center gap-1">
             <Award className="h-4 w-4" />
             NÍVEL
           </div>
         </th>
-      </tr>
-      
-      {/* Linha 2: HABILIDADE */}
-      <tr className="bg-green-50">
-        <td className="border border-gray-300 p-1 text-center">
-          <div className="text-xs font-semibold text-blue-600">HABILIDADE</div>
-        </td>
-        {processedQuestions.map((questao) => (
-          <td key={`skill-${questao.question_id}`} className="border border-gray-300 p-1 text-center">
-            <div 
-              className="text-xs font-semibold text-blue-600 cursor-help"
-              title={questao.habilidade}
-            >
-              {questao.codigo_habilidade}
-            </div>
-          </td>
-        ))}
-        <td className="border border-gray-300 p-1 text-center"></td>
-        <td className="border border-gray-300 p-1 text-center"></td>
-        <td className="border border-gray-300 p-1 text-center"></td>
-        <td className="border border-gray-300 p-1 text-center"></td>
-      </tr>
-      
-      {/* Linha 3: % DA TURMA */}
-      <tr className="bg-green-50">
-        <td className="border border-gray-300 p-1 text-center">
-          <div className="text-xs font-semibold text-green-600">% DA TURMA</div>
-          <div className="text-xs text-green-500">(SÓ QUEM FEZ)</div>
-        </td>
-        {processedQuestions.map((questao) => {
-          const stats = getQuestionStats(questao.numero);
-          return (
-            <td key={`stats-${questao.question_id}`} className="border border-gray-300 p-1 text-center">
-              <div className="text-xs font-semibold text-green-600">{stats.percentage}%</div>
-            </td>
-          );
-        })}
-        <td className="border border-gray-300 p-1 text-center"></td>
-        <td className="border border-gray-300 p-1 text-center"></td>
-        <td className="border border-gray-300 p-1 text-center"></td>
-        <td className="border border-gray-300 p-1 text-center"></td>
       </tr>
     </thead>
   );
