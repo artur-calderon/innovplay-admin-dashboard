@@ -27,6 +27,34 @@ import {
 } from "@/components/ui/breadcrumb";
 import StartEvaluationModal from "@/components/evaluations/StartEvaluationModal";
 
+// Função para processar HTML e adicionar classes CSS para imagens
+const processHtmlWithImages = (html: string): string => {
+  if (!html) return '';
+  
+  // Adiciona classes CSS para imagens
+  return html
+    .replace(/<img([^>]*)>/gi, '<img$1 class="max-w-full h-auto rounded-lg shadow-sm border border-gray-200">')
+    .replace(/<p([^>]*)>/gi, '<p$1 class="mb-4">')
+    .replace(/<h1([^>]*)>/gi, '<h1$1 class="text-2xl font-bold mb-4">')
+    .replace(/<h2([^>]*)>/gi, '<h2$1 class="text-xl font-bold mb-3">')
+    .replace(/<h3([^>]*)>/gi, '<h3$1 class="text-lg font-bold mb-2">')
+    .replace(/<h4([^>]*)>/gi, '<h4$1 class="text-base font-bold mb-2">')
+    .replace(/<h5([^>]*)>/gi, '<h5$1 class="text-sm font-bold mb-2">')
+    .replace(/<h6([^>]*)>/gi, '<h6$1 class="text-xs font-bold mb-2">')
+    .replace(/<ul([^>]*)>/gi, '<ul$1 class="list-disc list-inside mb-4 space-y-1">')
+    .replace(/<ol([^>]*)>/gi, '<ol$1 class="list-decimal list-inside mb-4 space-y-1">')
+    .replace(/<li([^>]*)>/gi, '<li$1 class="mb-1">')
+    .replace(/<blockquote([^>]*)>/gi, '<blockquote$1 class="border-l-4 border-blue-500 pl-4 italic text-gray-600 mb-4">')
+    .replace(/<code([^>]*)>/gi, '<code$1 class="bg-gray-100 px-2 py-1 rounded text-sm font-mono">')
+    .replace(/<pre([^>]*)>/gi, '<pre$1 class="bg-gray-100 p-4 rounded-lg overflow-x-auto text-sm font-mono mb-4">')
+    .replace(/<table([^>]*)>/gi, '<table$1 class="w-full border-collapse border border-gray-300 mb-4">')
+    .replace(/<th([^>]*)>/gi, '<th$1 class="border border-gray-300 px-4 py-2 bg-gray-100 font-bold">')
+    .replace(/<td([^>]*)>/gi, '<td$1 class="border border-gray-300 px-4 py-2">')
+    .replace(/<strong([^>]*)>/gi, '<strong$1 class="font-bold">')
+    .replace(/<em([^>]*)>/gi, '<em$1 class="italic">')
+    .replace(/<u([^>]*)>/gi, '<u$1 class="underline">');
+};
+
 // Interfaces based on the provided JSON structure
 interface Author {
   id: string;
@@ -34,6 +62,7 @@ interface Author {
 }
 
 interface QuestionOption {
+  id: string;
   text: string;
   isCorrect: boolean;
 }
@@ -49,6 +78,7 @@ interface Question {
   difficulty: string;
   skills: string[];
   options?: QuestionOption[];
+  alternatives?: QuestionOption[]; // Campo alternativo da API
   solution: string;
   subjectId?: string; // ID da matéria da questão
   subject?: { id: string; name: string }; // Adicionado para compatibilidade com backend
@@ -882,7 +912,7 @@ export default function ViewEvaluation() {
                         <div className="prose prose-sm max-w-none question-statement">
                           <div
                             className="text-base leading-relaxed text-gray-700 p-4 bg-gray-50 rounded-lg border"
-                            dangerouslySetInnerHTML={{ __html: question.text }}
+                            dangerouslySetInnerHTML={{ __html: processHtmlWithImages(question.formattedText || question.text) }}
                           />
                         </div>
 
@@ -891,7 +921,7 @@ export default function ViewEvaluation() {
                           <div className="prose prose-sm max-w-none question-continuation">
                             <div
                               className="text-base leading-relaxed text-gray-700 p-4 bg-blue-50 rounded-lg border border-blue-200"
-                              dangerouslySetInnerHTML={{ __html: question.secondStatement || question.formattedText }}
+                              dangerouslySetInnerHTML={{ __html: processHtmlWithImages(question.secondStatement || question.formattedText || '') }}
                             />
                           </div>
                         )}
@@ -920,14 +950,14 @@ export default function ViewEvaluation() {
                         )}
 
                         {/* Alternativas para questões de múltipla escolha */}
-                        {question.type === 'multipleChoice' && question.options && question.options.length > 0 && (
+                        {(question.type === 'multipleChoice' || question.type === 'multiple_choice') && (question.options || question.alternatives) && (question.options?.length > 0 || question.alternatives?.length > 0) && (
                           <div className="space-y-4">
                             <h4 className="font-semibold text-lg text-gray-700 flex items-center gap-2">
                               <span className="w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-sm">🔢</span>
                               Alternativas
                             </h4>
                             <div className="space-y-3">
-                              {question.options.map((option, optionIndex) => (
+                              {(question.options || question.alternatives || []).map((option, optionIndex) => (
                                 <div
                                   key={optionIndex}
                                   className={`alternative-item flex items-start gap-4 p-5 rounded-xl border transition-all duration-200 ${
@@ -943,13 +973,13 @@ export default function ViewEvaluation() {
                                         : 'bg-gray-50 border-gray-300 text-gray-600'
                                     }`}
                                   >
-                                    {String.fromCharCode(65 + optionIndex)}
+                                    {option.id || String.fromCharCode(65 + optionIndex)}
                                   </div>
                                   <div className="flex-1 min-w-0">
                                     <div className={`text-base leading-relaxed ${
                                       option.isCorrect ? 'font-medium text-green-800' : 'text-gray-700'
                                     }`}>
-                                      <div dangerouslySetInnerHTML={{ __html: option.text }} />
+                                      <div dangerouslySetInnerHTML={{ __html: processHtmlWithImages(option.text) }} />
                                     </div>
                                     {option.isCorrect && (
                                       <Badge variant="outline" className="mt-3 text-xs bg-green-50 text-green-700 border-green-200">
@@ -998,7 +1028,7 @@ export default function ViewEvaluation() {
                               <div className="prose prose-sm max-w-none">
                                 <div
                                   className="text-base leading-relaxed text-gray-700"
-                                  dangerouslySetInnerHTML={{ __html: question.solution }}
+                                  dangerouslySetInnerHTML={{ __html: processHtmlWithImages(question.solution) }}
                                 />
                               </div>
                             </div>
