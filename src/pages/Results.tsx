@@ -31,6 +31,7 @@ import { StudentRanking } from "@/components/evaluations/StudentRanking";
 import { ResultsTable } from "@/components/evaluations/results-table/ResultsTable";
 
 import { DisciplineTables } from "@/components/evaluations/DisciplineTables";
+import { StudentCard } from "@/components/evaluations/StudentCard";
 import { QuestionData as TableQuestionData, DetailedReport as TableDetailedReport } from "@/types/results-table";
 
 // Interfaces para os dados da API - Nova estrutura baseada na implementação real
@@ -2121,68 +2122,17 @@ export default function Results() {
                               </div>
                             )
                           ) : (
-                            /* Visão em Cards */
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                              {filteredStudents.map((student, index) => {
-                                const accuracyRate = (student.questoes_respondidas || 0) > 0
-                                  ? ((student.acertos || 0) / (student.questoes_respondidas || 0)) * 100
-                                  : 0;
-
-                                return (
-                                  <Card key={`${student.id}-${index}`} className="hover:shadow-md transition-shadow">
-                                    <CardHeader className="pb-3">
-                                      <div className="flex items-center justify-between">
-                                        <CardTitle className="text-lg">{student.nome}</CardTitle>
-                                        <Badge variant="outline">{student.turma}</Badge>
-                                      </div>
-                                      <div className="flex items-center gap-2">
-                                        <Badge className={student.status === 'concluida' ? 'bg-green-100 text-green-800 border-green-300' : 'bg-gray-100 text-gray-800 border-gray-300'}>
-                                          {student.status === 'concluida' ? 'Concluída' : 'Pendente'}
-                                        </Badge>
-                                        <Badge className={student.classificacao === 'Avançado' ? 'bg-green-600 text-white' : 
-                                                         student.classificacao === 'Adequado' ? 'bg-green-400 text-white' : 
-                                                         student.classificacao === 'Básico' ? 'bg-yellow-400 text-yellow-900' : 
-                                                         'bg-red-500 text-white'}>
-                                          {student.classificacao}
-                                        </Badge>
-                                      </div>
-                                    </CardHeader>
-                                    <CardContent className="space-y-3">
-                                      <div className="grid grid-cols-2 gap-3">
-                                        <div className="text-center">
-                                          <div className="text-2xl font-bold text-blue-600">{Number(student.nota || 0).toFixed(1)}</div>
-                                          <div className="text-xs text-gray-600">Nota</div>
-                                        </div>
-                                        <div className="text-center">
-                                          <div className="text-2xl font-bold text-purple-600">{Number(student.proficiencia || 0).toFixed(0)}</div>
-                                          <div className="text-xs text-gray-600">Proficiência</div>
-                                        </div>
-                                      </div>
-                                      
-                                      <div className="space-y-2">
-                                        <div className="flex justify-between text-sm">
-                                          <span>Acertos:</span>
-                                          <span className="font-medium">{student.acertos || 0}/{student.questoes_respondidas || 0}</span>
-                                        </div>
-                                        <Progress value={accuracyRate} className="h-2" />
-                                        <div className="text-xs text-center text-gray-600">{accuracyRate.toFixed(1)}%</div>
-                                      </div>
-
-                                      <div className="pt-2 border-t">
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          onClick={() => handleViewStudentDetails(student.id)}
-                                          className="w-full"
-                                        >
-                                          <Eye className="h-4 w-4 mr-2" />
-                                          Ver Detalhes
-                                        </Button>
-                                      </div>
-                                    </CardContent>
-                                  </Card>
-                                );
-                              })}
+                            /* Visão em Cards Melhorada */
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                              {filteredStudents.map((student, index) => (
+                                <StudentCard
+                                  key={`${student.id}-${index}`}
+                                  student={student}
+                                  totalQuestions={computedTotalQuestions || student.questoes_respondidas || 0}
+                                  subjects={derivedSubjects}
+                                  onViewDetails={handleViewStudentDetails}
+                                />
+                              ))}
                             </div>
               )}
             </>
@@ -2195,9 +2145,7 @@ export default function Results() {
                             Nenhum dado encontrado
                           </h3>
                           <p className="text-gray-600">
-                            {searchTerm || classificationFilter !== 'all' || statusFilter !== 'all'
-                              ? 'Ajuste os filtros para ver os dados na tabela.'
-                              : 'Não há dados disponíveis para exibir na tabela.'}
+                            Não há dados disponíveis para exibir na tabela.
                           </p>
                         </div>
                       )}
