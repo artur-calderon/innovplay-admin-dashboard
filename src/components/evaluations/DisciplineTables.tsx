@@ -188,38 +188,31 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
       const totalErros = totalRespondidas - totalAcertos;
       const totalEmBranco = totalQuestoes - totalRespondidas;
 
-      // Calcular nota e proficiência média
-      const notas = tabelaDetalhada.disciplinas
-        .map(d => d.alunos.find(a => a.id === aluno.id)?.nota || 0)
-        .filter(n => n > 0);
-      const proficiencias = tabelaDetalhada.disciplinas
-        .map(d => d.alunos.find(a => a.id === aluno.id)?.proficiencia || 0)
-        .filter(p => p > 0);
-
-      const notaMedia = notas.length > 0 ? notas.reduce((a, b) => a + b, 0) / notas.length : 0;
-      const proficienciaMedia = proficiencias.length > 0 ? proficiencias.reduce((a, b) => a + b, 0) / proficiencias.length : 0;
-
-      // ✅ CORRIGIDO: Usar APENAS os dados reais do backend, sem recálculos
+      // ✅ CORRIGIDO: Usar APENAS dados da tabelaDetalhada.geral para nota e proficiência
+      let nota = 0;
+      let proficiencia = 0;
       let nivelProficiencia = 'Abaixo do Básico';
       
-      // Prioridade 1: Usar o nível da tabela geral se disponível (dados mais consolidados)
+      // Prioridade 1: Usar dados da tabela geral se disponível (dados consolidados do backend)
       if (tabelaDetalhada.geral?.alunos) {
         const alunoGeral = tabelaDetalhada.geral.alunos.find(a => a.id === aluno.id);
-        if (alunoGeral?.nivel_proficiencia_geral) {
+        if (alunoGeral) {
+          nota = alunoGeral.nota_geral;
+          proficiencia = alunoGeral.proficiencia_geral;
           nivelProficiencia = alunoGeral.nivel_proficiencia_geral;
         }
       }
       
-      // Prioridade 2: Se não encontrou na tabela geral, usar o nível da primeira disciplina (dados originais)
-      if (nivelProficiencia === 'Abaixo do Básico') {
+      // Prioridade 2: Se não encontrou na tabela geral, usar dados da primeira disciplina (fallback)
+      if (nota === 0 && proficiencia === 0) {
         const primeiraDisciplina = tabelaDetalhada.disciplinas[0];
         const alunoPrimeiraDisciplina = primeiraDisciplina?.alunos.find(a => a.id === aluno.id);
-        if (alunoPrimeiraDisciplina?.nivel_proficiencia) {
+        if (alunoPrimeiraDisciplina) {
+          nota = alunoPrimeiraDisciplina.nota;
+          proficiencia = alunoPrimeiraDisciplina.proficiencia;
           nivelProficiencia = alunoPrimeiraDisciplina.nivel_proficiencia;
         }
       }
-      
-      // ✅ REMOVIDO: Não fazer recálculos - usar apenas dados do backend
 
       return {
         id: aluno.id,
@@ -233,8 +226,8 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
         total_respondidas: totalRespondidas,
         total_questoes_disciplina: totalQuestoes,
         nivel_proficiencia: nivelProficiencia,
-        nota: Math.round(notaMedia * 100) / 100,
-        proficiencia: Math.round(proficienciaMedia * 100) / 100
+        nota: nota,
+        proficiencia: proficiencia
       };
     });
   }, [tabelaDetalhada.disciplinas, tabelaDetalhada.geral?.alunos]);
@@ -423,7 +416,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                 <tbody>
                   {consolidatedStudents.map((aluno, studentIndex) => (
                     <TableRow
-                      key={aluno.id}
+                      key={`visao-geral-${aluno.id}`}
                       student={{
                         id: aluno.id,
                         nome: aluno.nome,
@@ -491,100 +484,6 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
         </Card>
       )}
 
-      {/* Tabela Geral */}
-      {tabelaDetalhada.geral && tabelaDetalhada.geral.alunos && (
-        <Card className="shadow-xl border-2 border-blue-200 hover:shadow-2xl transition-shadow duration-300 overflow-hidden w-full">
-          <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg px-0">
-            <CardTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-4 sm:px-6 gap-3 sm:gap-0">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
-                  <span className="text-lg font-bold">G</span>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-lg sm:text-xl font-bold truncate">Resultados Gerais</h2>
-                  <p className="text-blue-100 text-xs sm:text-sm">
-                    {tabelaDetalhada.geral.alunos.length} {tabelaDetalhada.geral.alunos.length === 1 ? 'aluno' : 'alunos'} • Média de todas as disciplinas
-                  </p>
-                </div>
-              </div>
-              <Badge variant="secondary" className="bg-white/90 text-blue-700 font-bold text-xs sm:text-sm flex-shrink-0">
-                GERAL
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 max-w-full">
-              <table className="min-w-full border border-gray-300 text-center text-xs sm:text-sm shadow-md rounded-lg border-separate border-spacing-0 bg-white">
-                <TableHeader
-                  totalQuestions={0}
-                  startQuestionNumber={1}
-                  visibleFields={{
-                    turma: false,
-                    habilidade: false, // ✅ CORRIGIDO: Desabilitar para tabela geral
-                    questoes: false,
-                    percentualTurma: false, // ✅ CORRIGIDO: Desabilitar para tabela geral
-                    total: true,
-                    nota: true,
-                    proficiencia: true,
-                    nivel: true
-                  }}
-                  tabelaDetalhada={{
-                    disciplinas: []
-                  }}
-                  students={tabelaDetalhada.geral.alunos.map(aluno => ({
-                    id: aluno.id,
-                    nome: aluno.nome,
-                    acertos: aluno.total_acertos_geral,
-                    erros: aluno.total_questoes_geral - aluno.total_acertos_geral,
-                    em_branco: aluno.total_em_branco_geral,
-                    respostas: []
-                  }))}
-                  successThreshold={60}
-                />
-                <tbody>
-                  {tabelaDetalhada.geral.alunos.map((aluno, studentIndex) => (
-                    <TableRow
-                      key={aluno.id}
-                      student={{
-                        id: aluno.id,
-                        nome: aluno.nome,
-                        turma: 'Geral',
-                        nota: aluno.nota_geral,
-                        proficiencia: aluno.proficiencia_geral,
-                        classificacao: aluno.nivel_proficiencia_geral as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
-                        questoes_respondidas: aluno.total_respondidas_geral,
-                        acertos: aluno.total_acertos_geral,
-                        erros: Math.max(0, aluno.total_questoes_geral - aluno.total_acertos_geral),
-                        em_branco: aluno.total_em_branco_geral,
-                        tempo_gasto: 0,
-                        status: 'concluida' as const,
-                        respostas: []
-                      }}
-                      studentIndex={studentIndex}
-                      totalQuestions={0}
-                      visibleFields={{
-                        turma: false,
-                        habilidade: false, // ✅ CORRIGIDO: Desabilitar para tabela geral
-                        questoes: false,
-                        percentualTurma: false, // ✅ CORRIGIDO: Desabilitar para tabela geral
-                        total: true,
-                        nota: true,
-                        proficiencia: true,
-                        nivel: true
-                      }}
-                      onViewStudentDetails={onViewStudentDetails}
-                      evaluationId="geral"
-                      tabelaDetalhada={{
-                        disciplinas: []
-                      }}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Tabelas por Disciplina */}
       {tabelaDetalhada.disciplinas.map((disciplina) => (
@@ -672,7 +571,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                 <tbody>
                   {disciplina.alunos.map((aluno, studentIndex) => (
                     <TableRow
-                      key={aluno.id}
+                      key={`${disciplina.id}-${aluno.id}`}
                       student={{
                         id: aluno.id,
                         nome: aluno.nome,

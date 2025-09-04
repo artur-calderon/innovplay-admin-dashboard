@@ -524,16 +524,8 @@ export class EvaluationResultsApiService {
                   // Sucesso com /test/{id}/details
         return response.data as T;
       } catch (error2) {
-                  // Falha ao buscar /test/{id}/details, usando fallback /evaluation-results/avaliacoes
-        try {
-          // Fallback para o endpoint antigo
-          const fallback = await api.get(`/evaluation-results/avaliacoes/${evaluationId}`);
-                      // Usando fallback /evaluation-results/avaliacoes
-          return fallback.data as T;
-        } catch {
-                      // Todos os endpoints falharam para buscar subjects_info
-          return null;
-        }
+                  // Falha ao buscar /test/{id}/details
+        return null;
       }
     }
   }
@@ -1380,7 +1372,7 @@ export class EvaluationResultsApiService {
 
   // ===== NOVAS ROTAS DE FILTROS PROGRESSIVOS =====
 
-  // ✅ MIGRADO: Buscar estados usando nova API unificada com fallback
+  // ✅ MIGRADO: Buscar estados usando nova API unificada
   static async getFilterStates(): Promise<Array<{
     id: string;
     nome: string;
@@ -1395,7 +1387,7 @@ export class EvaluationResultsApiService {
     }
   }
 
-  // ✅ MIGRADO: Buscar municípios usando nova API unificada com fallback
+  // ✅ MIGRADO: Buscar municípios usando nova API unificada
   static async getFilterMunicipalities(stateId: string): Promise<Array<{
     id: string;
     nome: string;
@@ -1511,20 +1503,12 @@ export class EvaluationResultsApiService {
           }));
         }
         
-        console.log('⚠️ Nova API não retornou avaliações, usando fallback...');
+        console.log('ℹ️ Nova API não retornou avaliações para os filtros aplicados');
       } catch (unifiedError) {
-        console.log('⚠️ Erro na nova API, usando fallback:', unifiedError);
+        console.log('ℹ️ Erro na nova API:', unifiedError);
       }
 
-      // Fallback para endpoint antigo
-      const response = await api.get(url);
-      
-      console.log('✅ LOG - Resposta da API de avaliações (fallback):');
-      console.log('📦 Resposta completa:', response);
-      console.log('📊 Dados da resposta:', response.data);
-      console.log('📚 Avaliações encontradas:', response.data?.avaliacoes || []);
-
-      return response.data.avaliacoes || [];
+      return [];
     } catch (error) {
       console.error('❌ LOG - Erro ao buscar avaliações para filtros:', error);
       return [];
@@ -1558,16 +1542,8 @@ export class EvaluationResultsApiService {
         }));
       }
       
-      console.log('⚠️ Nova API não retornou escolas, usando fallback...');
-      
-      // Fallback para endpoint antigo
-      const params = new URLSearchParams();
-      params.append('estado', filters.estado);
-      params.append('municipio', filters.municipio);
-      params.append('avaliacao', filters.avaliacao);
-
-      const fallbackResponse = await api.get(`/evaluation-results/opcoes-filtros/escolas-por-avaliacao?${params}`);
-      return fallbackResponse.data.escolas || [];
+      console.log('ℹ️ Nova API não retornou escolas para os filtros aplicados');
+      return [];
     } catch (error) {
       console.error('Erro ao buscar escolas por avaliação:', error);
       return [];
@@ -1603,17 +1579,8 @@ export class EvaluationResultsApiService {
         }));
       }
       
-      console.log('⚠️ Nova API não retornou séries, usando fallback...');
-      
-      // Fallback para endpoint antigo
-      const params = new URLSearchParams();
-      params.append('estado', filters.estado);
-      params.append('municipio', filters.municipio);
-      params.append('avaliacao', filters.avaliacao);
-      params.append('escola', filters.escola);
-
-      const fallbackResponse = await api.get(`/evaluation-results/opcoes-filtros/series?${params}`);
-      return fallbackResponse.data.series || [];
+      console.log('ℹ️ Nova API não retornou séries para os filtros aplicados');
+      return [];
     } catch (error) {
       console.error('Erro ao buscar séries por avaliação:', error);
       return [];
@@ -1651,18 +1618,8 @@ export class EvaluationResultsApiService {
         }));
       }
       
-      console.log('⚠️ Nova API não retornou turmas, usando fallback...');
-      
-      // Fallback para endpoint antigo
-      const params = new URLSearchParams();
-      params.append('estado', filters.estado);
-      params.append('municipio', filters.municipio);
-      params.append('avaliacao', filters.avaliacao);
-      params.append('escola', filters.escola);
-      params.append('serie', filters.serie);
-
-      const fallbackResponse = await api.get(`/evaluation-results/opcoes-filtros/turmas?${params}`);
-      return fallbackResponse.data.turmas || [];
+      console.log('ℹ️ Nova API não retornou turmas para os filtros aplicados');
+      return [];
     } catch (error) {
       console.error('Erro ao buscar turmas por avaliação:', error);
       return [];
@@ -1981,23 +1938,8 @@ export class EvaluationResultsApiService {
         }
       }
       
-      console.log('⚠️ Nova API não retornou estatísticas, usando fallback...');
-      
-      // Fallback para endpoint antigo
-      const params = new URLSearchParams();
-      if (filters?.estado) params.append('estado', filters.estado);
-      if (filters?.municipio) params.append('municipio', filters.municipio);
-      if (filters?.escola) params.append('escola', filters.escola);
-      if (filters?.serie) params.append('serie', filters.serie);
-      if (filters?.turma) params.append('turma', filters.turma);
-      
-      console.log('📊 Carregando estatísticas gerais (fallback):', Object.fromEntries(params.entries()));
-      
-      const fallbackResponse = await api.get(`/evaluation-results/stats?${params}`);
-      
-      console.log('📊 Estatísticas gerais carregadas (fallback):', fallbackResponse.data);
-      
-      return fallbackResponse.data;
+      console.log('ℹ️ Nova API não retornou estatísticas para os filtros aplicados');
+      return null;
     } catch (error) {
       console.error('❌ Erro ao buscar estatísticas gerais:', error);
       return null;
@@ -2393,13 +2335,10 @@ export class EvaluationResultsApiService {
           };
         }
       } catch (unifiedError) {
-        console.log('⚠️ Nova API não disponível, usando fallback');
+        console.log('ℹ️ Nova API não disponível:', unifiedError);
       }
       
-      // Fallback para endpoint específico
-      const response = await api.get('/evaluation-results/stats');
-      console.log('✅ Estatísticas globais carregadas (fallback):', response.data);
-      return response.data;
+      return null;
     } catch (error) {
       console.error('❌ Erro ao buscar estatísticas globais:', error);
       return null;
