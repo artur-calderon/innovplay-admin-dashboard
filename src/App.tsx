@@ -57,6 +57,12 @@ const GameView = React.lazy(() => import("./components/games/GameView"));
 // Lazy loading para calculadora SAEB
 const IdebCalculatorPage = React.lazy(() => import("./pages/IdebCalculatorPage"));
 
+// Lazy loading para formulários
+const FormRegistration = React.lazy(() => import("./pages/FormRegistration"));
+const FormView = React.lazy(() => import("./pages/FormView"));
+const FormCreate = React.lazy(() => import("./pages/FormCreate"));
+const FormReports = React.lazy(() => import("./pages/FormReports"));
+
 // Lazy loading para competições e torneios
 const Competicoes = React.lazy(() => import("./pages/Competicoes"));
 const TorneioExecucao = React.lazy(() => import("./pages/TorneioExecucao"));
@@ -132,6 +138,7 @@ const App = () => {
               <Route path="/aluno/competicoes" element={<PrivateRoute><Competicoes /></PrivateRoute>} />
               <Route path="/aluno/torneio/:torneioId" element={<PrivateRoute><TorneioExecucao /></PrivateRoute>} />
               <Route path="/aluno/olimpiadas" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/aluno/formulario" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
 
               <Route path="/aluno/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
               <Route path="/aluno/avisos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
@@ -188,6 +195,13 @@ const App = () => {
               <Route path="/app/cadastros/curso" element={<PrivateRoute><Curso /></PrivateRoute>} />
               <Route path="/app/cadastros/serie" element={<PrivateRoute><Serie /></PrivateRoute>} />
               <Route path="/app/cadastros/disciplina" element={<PrivateRoute><Disciplina /></PrivateRoute>} />
+
+              {/* Rotas de Formulários */}
+              <Route path="/app/formularios/cadastro" element={<PrivateRoute><FormRegistration /></PrivateRoute>} />
+              <Route path="/app/formularios/criar/:formType" element={<PrivateRoute><FormCreate /></PrivateRoute>} />
+              <Route path="/app/formularios/:id" element={<PrivateRoute><FormView /></PrivateRoute>} />
+              <Route path="/app/formularios/relatorios-socio-economicos" element={<PrivateRoute><FormReports /></PrivateRoute>} />
+              <Route path="/app/formulario" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
 
               {/* Rotas de Relatórios */}
               <Route path="/app/relatorios/analise-avaliacoes" element={<PrivateRoute><AnaliseAvaliacoes /></PrivateRoute>} />

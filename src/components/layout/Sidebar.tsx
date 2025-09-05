@@ -127,6 +127,12 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           href: `${user.role === 'aluno' ? "/aluno/avaliacoes" : "/app/avaliacoes"}`,
           role: ["aluno"]
         },
+        {
+          icon: FileText,
+          label: "Formulário",
+          href: `${user.role === 'aluno' ? "/aluno/formulario" : "/app/formulario"}`,
+          role: ["professor", "diretor", "aluno"]
+        },
       ]
     },
     {
@@ -213,6 +219,15 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         { icon: Calculator, label: "Calculadora SAEB", href: "/app/calculadora-saeb", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: ClipboardCheck, label: "Correção", href: "/app/avaliacoes/correcao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"], badge: "3" },
         { icon: BarChart3, label: "Resultados", href: "/app/resultados", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+        {
+          icon: FileText,
+          label: "Formulários",
+          role: ["admin", "tecadm"],
+          children: [
+            { icon: FileText, label: "Cadastro de formulários", href: "/app/formularios/cadastro", role: ["admin", "tecadm"] },
+            { icon: BarChart3, label: "Relatórios Socio-Econômicos", href: "/app/formularios/relatorios-socio-economicos", role: ["admin", "tecadm"] },
+          ]
+        },
         {
           icon: FileText,
           label: "Relatórios",
