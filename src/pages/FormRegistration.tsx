@@ -18,12 +18,12 @@ const FormRegistration = () => {
   const navigate = useNavigate();
   const [selectedForm, setSelectedForm] = useState<string | null>(null);
 
-  // Dados mockados dos tipos de formulários
+  // Dados mockados dos tipos de questionários
   const formTypes: FormType[] = [
     {
       id: 'aluno-jovem',
       name: 'Aluno (Anos Iniciais)',
-      description: 'Formulário socioeconômico para estudantes dos anos iniciais do Ensino Fundamental (1° ao 5° ano), EJA 1° ao 5° período e Educação Infantil.',
+      description: 'Questionário socioeconômico para estudantes dos anos iniciais do Ensino Fundamental (1° ao 5° ano), EJA 1° ao 5° período e Educação Infantil.',
       targetAudience: 'Estudantes de 6 a 11 anos',
       educationLevel: 'Anos Iniciais, EJA Inicial, Educação Infantil',
       questions: [], // Será preenchido com questionsAlunoJovem
@@ -36,7 +36,7 @@ const FormRegistration = () => {
     {
       id: 'aluno-velho',
       name: 'Aluno (Anos Finais)',
-      description: 'Formulário socioeconômico para estudantes dos anos finais do Ensino Fundamental (6° ao 9° ano) e EJA 6° ao 9° período.',
+      description: 'Questionário socioeconômico para estudantes dos anos finais do Ensino Fundamental (6° ao 9° ano) e EJA 6° ao 9° período.',
       targetAudience: 'Estudantes de 12 a 17 anos',
       educationLevel: 'Anos Finais, EJA Avançado',
       questions: [], // Será preenchido com questionsAlunoVelho
@@ -49,7 +49,7 @@ const FormRegistration = () => {
     {
       id: 'professor',
       name: 'Professor',
-      description: 'Formulário de caracterização e condições de trabalho para professores da Educação Básica.',
+      description: 'Questionário de caracterização e condições de trabalho para professores da Educação Básica.',
       targetAudience: 'Professores da Educação Básica',
       educationLevel: 'Todos os níveis',
       questions: [], // Será preenchido com professorSections
@@ -59,7 +59,7 @@ const FormRegistration = () => {
     {
       id: 'diretor',
       name: 'Diretor',
-      description: 'Formulário de caracterização da escola e condições de gestão para diretores escolares.',
+      description: 'Questionário de caracterização da escola e condições de gestão para diretores escolares.',
       targetAudience: 'Diretores de escolas',
       educationLevel: 'Todos os níveis',
       questions: [], // Será preenchido com diretorSections
@@ -79,33 +79,33 @@ const FormRegistration = () => {
   };
 
   const handleCreateForm = (formType: FormType) => {
-    navigate(`/app/formularios/criar/${formType.id}`);
+    navigate(`/app/questionarios/criar/${formType.id}`);
   };
 
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Cadastro de Formulários</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Cadastro de Questionários</h1>
           <p className="text-gray-600 mt-2">
-            Gerencie os formulários socioeconômicos e de avaliação da instituição
+            Gerencie os questionários socioeconômicos e de avaliação da instituição
           </p>
         </div>
         <Button className="flex items-center gap-2">
           <Plus className="h-4 w-4" />
-          Novo Formulário
+          Novo Questionário
         </Button>
       </div>
 
-      {/* Tipos de Formulários Disponíveis */}
+      {/* Tipos de Questionários Disponíveis */}
       <div className="space-y-6">
-        <h2 className="text-xl font-semibold text-gray-900">Tipos de Formulários Disponíveis</h2>
+        <h2 className="text-xl font-semibold text-gray-900">Tipos de Questionários Disponíveis</h2>
         
-        {/* Formulários para Alunos */}
+        {/* Questionários para Alunos */}
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <div className="w-1 h-6 bg-gradient-to-b from-blue-500 to-green-500 rounded-full"></div>
-            <h3 className="text-lg font-medium text-gray-800">Formulários para Alunos</h3>
+            <h3 className="text-lg font-medium text-gray-800">Questionários para Alunos</h3>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {formTypes.filter(ft => ft.id.includes('aluno')).map((formType) => {
@@ -179,7 +179,7 @@ const FormRegistration = () => {
                       }}
                     >
                       <Plus className="h-4 w-4 mr-2" />
-                      Criar Formulário
+                      Criar Questionário
                     </Button>
                   </CardContent>
                 </Card>
@@ -188,11 +188,11 @@ const FormRegistration = () => {
           </div>
         </div>
 
-        {/* Formulários para Profissionais */}
+        {/* Questionários para Profissionais */}
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <div className="w-1 h-6 bg-gradient-to-b from-purple-500 to-orange-500 rounded-full"></div>
-            <h3 className="text-lg font-medium text-gray-800">Formulários para Profissionais</h3>
+            <h3 className="text-lg font-medium text-gray-800">Questionários para Profissionais</h3>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {formTypes.filter(ft => !ft.id.includes('aluno')).map((formType) => {
@@ -266,7 +266,7 @@ const FormRegistration = () => {
                       }}
                     >
                       <Plus className="h-4 w-4 mr-2" />
-                      Criar Formulário
+                      Criar Questionário
                     </Button>
                   </CardContent>
                 </Card>

@@ -129,8 +129,8 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         },
         {
           icon: FileText,
-          label: "Formulário",
-          href: `${user.role === 'aluno' ? "/aluno/formulario" : "/app/formulario"}`,
+          label: "Questionário",
+          href: `${user.role === 'aluno' ? "/aluno/questionario" : "/app/questionario"}`,
           role: ["professor", "diretor", "aluno"]
         },
       ]
@@ -221,11 +221,11 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         { icon: BarChart3, label: "Resultados", href: "/app/resultados", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         {
           icon: FileText,
-          label: "Formulários",
+          label: "Questionários",
           role: ["admin", "tecadm"],
           children: [
-            { icon: FileText, label: "Cadastro de formulários", href: "/app/formularios/cadastro", role: ["admin", "tecadm"] },
-            { icon: BarChart3, label: "Relatórios Socio-Econômicos", href: "/app/formularios/relatorios-socio-economicos", role: ["admin", "tecadm"] },
+            { icon: FileText, label: "Cadastro de questionários", href: "/app/questionarios/cadastro", role: ["admin", "tecadm"] },
+            { icon: BarChart3, label: "Relatórios Socio-Econômicos", href: "/app/questionarios/relatorios-socio-economicos", role: ["admin", "tecadm"] },
           ]
         },
         {

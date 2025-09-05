@@ -103,7 +103,7 @@ const FormReports = () => {
     }
   ];
 
-  // Dados mockados para gráficos baseados no tipo de formulário
+  // Dados mockados para gráficos baseados no tipo de questionário
   const getChartDataForForm = (formType: string) => {
     switch (formType) {
       case 'aluno-jovem':
@@ -1460,7 +1460,7 @@ const FormReports = () => {
       case 'diretor':
         return { name: 'Diretor', icon: Building2, color: 'bg-orange-500' };
       default:
-        return { name: 'Formulário', icon: FileText, color: 'bg-gray-500' };
+        return { name: 'Questionário', icon: FileText, color: 'bg-gray-500' };
     }
   };
 
@@ -2006,7 +2006,7 @@ const FormReports = () => {
       );
     }
 
-    // Para outros tipos de formulário, mostrar visualização geral
+    // Para outros tipos de questionário, mostrar visualização geral
     const data = getChartDataForForm(selectedReport.formType);
     const totalResponses = data.reduce((sum, item) => sum + item.value, 0);
 
@@ -2122,7 +2122,7 @@ const FormReports = () => {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Relatórios Socioeconômicos</h1>
           <p className="text-gray-600 mt-2">
-            Visualize e analise os dados dos formulários socioeconômicos
+            Visualize e analise os dados dos questionários socioeconômicos
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -2144,10 +2144,10 @@ const FormReports = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <FileText className="h-5 w-5" />
-                Formulários Disponíveis
+                Questionários Disponíveis
               </CardTitle>
               <CardDescription>
-                Selecione um formulário para visualizar os relatórios
+                Selecione um questionário para visualizar os relatórios
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -2277,7 +2277,7 @@ const FormReports = () => {
                         Análise dos Dados
                       </CardTitle>
                       <CardDescription>
-                        Visualização dos dados coletados no formulário
+                        Visualização dos dados coletados no questionário
                       </CardDescription>
                     </div>
                     {(selectedReport.formType === 'aluno-jovem' || selectedReport.formType === 'aluno-velho' || selectedReport.formType === 'professor' || selectedReport.formType === 'diretor') && (
@@ -2301,7 +2301,7 @@ const FormReports = () => {
                   Selecione um Relatório
                 </h3>
                 <p className="text-sm text-gray-500 text-center">
-                  Escolha um formulário da lista ao lado para visualizar os relatórios e gráficos
+                  Escolha um questionário da lista ao lado para visualizar os relatórios e gráficos
                 </p>
               </CardContent>
             </Card>

@@ -111,7 +111,7 @@ const FormCreate = () => {
       case 'aluno-jovem':
         return {
           name: 'Aluno (Anos Iniciais)',
-          description: 'Formulário socioeconômico para estudantes dos anos iniciais do Ensino Fundamental (1° ao 5° ano), EJA 1° ao 5° período e Educação Infantil.',
+          description: 'Questionário socioeconômico para estudantes dos anos iniciais do Ensino Fundamental (1° ao 5° ano), EJA 1° ao 5° período e Educação Infantil.',
           questions: questionsAlunoJovem,
           icon: Users,
           color: 'bg-blue-500'
@@ -119,7 +119,7 @@ const FormCreate = () => {
       case 'aluno-velho':
         return {
           name: 'Aluno (Anos Finais)',
-          description: 'Formulário socioeconômico para estudantes dos anos finais do Ensino Fundamental (6° ao 9° ano) e EJA 6° ao 9° período.',
+          description: 'Questionário socioeconômico para estudantes dos anos finais do Ensino Fundamental (6° ao 9° ano) e EJA 6° ao 9° período.',
           questions: questionsAlunoVelho,
           icon: GraduationCap,
           color: 'bg-green-500'
@@ -127,7 +127,7 @@ const FormCreate = () => {
       case 'professor':
         return {
           name: 'Professor',
-          description: 'Formulário de caracterização e condições de trabalho para professores da Educação Básica.',
+          description: 'Questionário de caracterização e condições de trabalho para professores da Educação Básica.',
           questions: professorSections,
           icon: UserCheck,
           color: 'bg-purple-500'
@@ -135,7 +135,7 @@ const FormCreate = () => {
       case 'diretor':
         return {
           name: 'Diretor',
-          description: 'Formulário de caracterização da escola e condições de gestão para diretores escolares.',
+          description: 'Questionário de caracterização da escola e condições de gestão para diretores escolares.',
           questions: diretorSections,
           icon: Building2,
           color: 'bg-orange-500'
@@ -360,18 +360,18 @@ const FormCreate = () => {
   };
 
   const handleSendForm = () => {
-    // Aqui seria implementada a lógica para enviar o formulário
-    console.log('Enviando formulário:', formConfig);
-    alert('Formulário enviado com sucesso!');
-    navigate('/app/formularios/cadastro');
+    // Aqui seria implementada a lógica para enviar o questionário
+    console.log('Enviando questionário:', formConfig);
+    alert('Questionário enviado com sucesso!');
+    navigate('/app/questionarios/cadastro');
   };
 
   if (!formData) {
     return (
       <div className="container mx-auto p-6">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">Tipo de formulário não encontrado</h1>
-          <Button onClick={() => navigate('/app/formularios/cadastro')}>
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">Tipo de questionário não encontrado</h1>
+          <Button onClick={() => navigate('/app/questionarios/cadastro')}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Voltar
           </Button>
@@ -387,14 +387,14 @@ const FormCreate = () => {
         <Button 
           variant="outline" 
           size="sm"
-          onClick={() => navigate('/app/formularios/cadastro')}
+          onClick={() => navigate('/app/questionarios/cadastro')}
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
           Voltar
         </Button>
         <div className="flex-1">
-          <h1 className="text-3xl font-bold text-gray-900">Criar Formulário</h1>
-          <p className="text-gray-600 mt-1">Configure e envie um novo formulário</p>
+          <h1 className="text-3xl font-bold text-gray-900">Criar Questionário</h1>
+          <p className="text-gray-600 mt-1">Configure e envie um novo questionário</p>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="flex items-center gap-1">
@@ -440,16 +440,16 @@ const FormCreate = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Settings className="h-5 w-5" />
-              Configuração do Formulário
+              Configuração do Questionário
             </CardTitle>
             <CardDescription>
-              Configure as informações básicas e grupos de destino do formulário
+              Configure as informações básicas e grupos de destino do questionário
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label htmlFor="title">Título do Formulário</Label>
+                <Label htmlFor="title">Título do Questionário</Label>
                 <Input
                   id="title"
                   placeholder="Ex: Questionário Socioeconômico 2024"
@@ -472,7 +472,7 @@ const FormCreate = () => {
               <Label htmlFor="description">Descrição</Label>
               <Textarea
                 id="description"
-                placeholder="Descreva o objetivo e importância deste formulário..."
+                placeholder="Descreva o objetivo e importância deste questionário..."
                 value={formConfig.description}
                 onChange={(e) => setFormConfig(prev => ({ ...prev, description: e.target.value }))}
                 rows={3}
@@ -507,7 +507,7 @@ const FormCreate = () => {
                   </div>
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
-                  O grupo de destino é definido automaticamente baseado no tipo de formulário selecionado.
+                  O grupo de destino é definido automaticamente baseado no tipo de questionário selecionado.
                 </p>
               </div>
             </div>
@@ -685,10 +685,10 @@ const FormCreate = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Eye className="h-5 w-5" />
-                Visualização do Formulário
+                Visualização do Questionário
               </CardTitle>
               <CardDescription>
-                Veja como o formulário será apresentado aos respondentes
+                Veja como o questionário será apresentado aos respondentes
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -787,16 +787,16 @@ const FormCreate = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Send className="h-5 w-5" />
-              Enviar Formulário
+              Enviar Questionário
             </CardTitle>
             <CardDescription>
-              Revise as configurações e envie o formulário para os grupos selecionados
+              Revise as configurações e envie o questionário para os grupos selecionados
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-4">
-                <h3 className="font-semibold text-gray-900">Resumo do Formulário</h3>
+                <h3 className="font-semibold text-gray-900">Resumo do Questionário</h3>
                 <div className="space-y-2 text-sm">
                   <div><strong>Título:</strong> {formConfig.title}</div>
                   <div><strong>Público:</strong> {formConfig.targetGroups.map(id => targetGroups.find(g => g.id === id)?.name).join(', ')}</div>
@@ -814,7 +814,7 @@ const FormCreate = () => {
                 <div className="space-y-2">
                   <Button className="w-full" onClick={handleSendForm}>
                     <Send className="h-4 w-4 mr-2" />
-                    Enviar Formulário
+                    Enviar Questionário
                   </Button>
                   <Button variant="outline" className="w-full">
                     <Eye className="h-4 w-4 mr-2" />
@@ -834,7 +834,7 @@ const FormCreate = () => {
                 <div>
                   <h4 className="font-medium text-green-900">Pronto para Envio</h4>
                   <p className="text-sm text-green-700 mt-1">
-                    O formulário está configurado e pronto para ser enviado. Após o envio, os usuários dos grupos selecionados receberão uma notificação para preenchimento.
+                    O questionário está configurado e pronto para ser enviado. Após o envio, os usuários dos grupos selecionados receberão uma notificação para preenchimento.
                   </p>
                 </div>
               </div>

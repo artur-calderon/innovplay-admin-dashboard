@@ -21,11 +21,11 @@ const FormView = () => {
   const navigate = useNavigate();
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
-  // Dados mockados do formulário selecionado
+  // Dados mockados do questionário selecionado
   const formData = {
     id: '1',
     title: 'Questionário Socioeconômico - Alunos Jovens 2024',
-    description: 'Formulário para coleta de dados socioeconômicos dos estudantes dos anos iniciais',
+    description: 'Questionário para coleta de dados socioeconômicos dos estudantes dos anos iniciais',
     type: 'aluno-jovem',
     isActive: true,
     createdAt: new Date('2024-01-15'),
@@ -165,7 +165,7 @@ const FormView = () => {
         <Button 
           variant="outline" 
           size="sm"
-          onClick={() => navigate('/app/formularios/cadastro')}
+          onClick={() => navigate('/app/questionarios/cadastro')}
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
           Voltar
@@ -192,7 +192,7 @@ const FormView = () => {
               <IconComponent className="h-6 w-6 text-white" />
             </div>
             <div>
-              <CardTitle>Informações do Formulário</CardTitle>
+              <CardTitle>Informações do Questionário</CardTitle>
               <CardDescription>
                 Criado em {formData.createdAt.toLocaleDateString('pt-BR')}
               </CardDescription>
@@ -239,13 +239,13 @@ const FormView = () => {
       {/* Actions */}
       <div className="flex justify-end gap-4">
         <Button variant="outline">
-          Duplicar Formulário
+          Duplicar Questionário
         </Button>
         <Button variant="outline">
           Exportar
         </Button>
         <Button>
-          Enviar Formulário
+          Enviar Questionário
         </Button>
       </div>
     </div>

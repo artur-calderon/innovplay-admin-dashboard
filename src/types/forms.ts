@@ -1,5 +1,5 @@
 /**
- * Tipos para os formulários socioeconômicos
+ * Tipos para os questionários socioeconômicos
  */
 
 export interface SubQuestion {
