@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Eye, Pencil, Trash2, ChevronLeft, ChevronRight, Filter, RefreshCw, Play } from "lucide-react";
+import { Search, Eye, Pencil, Trash2, ChevronLeft, ChevronRight, Filter, RefreshCw, Play, MoreVertical, FileText } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
@@ -36,6 +36,12 @@ import { useAuth } from "@/context/authContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ErrorBoundary from "./ErrorBoundary";
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface Evaluation {
   id: string;
@@ -200,7 +206,8 @@ const EvaluationsTable = ({
   onStartEvaluation,
   onRefresh,
   onClearFilters,
-  hasActiveFilters
+  hasActiveFilters,
+  onNavigateToPhysical
 }: {
   evaluations: Evaluation[];
   pagination: any;
@@ -224,6 +231,7 @@ const EvaluationsTable = ({
   onRefresh: () => void;
   onClearFilters: () => void;
   hasActiveFilters: boolean;
+  onNavigateToPhysical: (evaluationId: string) => void;
 }) => {
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('pt-BR');
@@ -489,41 +497,55 @@ const EvaluationsTable = ({
                           </span>
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => onStartEvaluation(evaluation)}
-                              title="Aplicar Avaliação"
-                              className="text-green-600 hover:text-green-700"
-                            >
-                              <Play className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => onView(evaluation.id)}
-                              title="Visualizar"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => onEdit(evaluation.id)}
-                              title="Editar"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => onDelete(evaluation.id)}
-                              title="Excluir"
-                              className="text-red-500 hover:text-red-700"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                          <div className="flex justify-end">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={() => onStartEvaluation(evaluation)}
+                                  className="text-green-600 focus:text-green-700 cursor-pointer"
+                                >
+                                  <Play className="h-4 w-4 mr-2" />
+                                  Aplicar
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => onView(evaluation.id)}
+                                  className="cursor-pointer"
+                                >
+                                  <Eye className="h-4 w-4 mr-2" />
+                                  Ver
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => onEdit(evaluation.id)}
+                                  className="cursor-pointer"
+                                >
+                                  <Pencil className="h-4 w-4 mr-2" />
+                                  Editar
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => onDelete(evaluation.id)}
+                                  className="text-red-600 focus:text-red-700 cursor-pointer"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Excluir
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => onNavigateToPhysical(evaluation.id)}
+                                  className="text-blue-600 focus:text-blue-700 cursor-pointer"
+                                >
+                                  <FileText className="h-4 w-4 mr-2" />
+                                  Transformar em Física
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -883,6 +905,10 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
     setStartModalOpen(true);
   };
 
+  const handleNavigateToPhysical = (evaluationId: string) => {
+    navigate(`/app/avaliacao/${evaluationId}/fisica`);
+  };
+
   const handleConfirmStartEvaluation = async (startDateTime: string, endDateTime: string, classIds: string[]) => {
     if (!selectedEvaluationToStart) return;
 
@@ -1012,6 +1038,7 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
             onRefresh={refreshData}
             onClearFilters={clearFilters}
             hasActiveFilters={hasActiveFilters}
+            onNavigateToPhysical={handleNavigateToPhysical}
           />
 
           {/* Dialog de confirmação de exclusão */}
