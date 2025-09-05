@@ -41,3 +41,4 @@ Todos os dados seguem as interfaces definidas em `@/types/forms`:
 - `FormSection`: Interface para seções de formulário
 - `FormType`: Interface para tipos de formulário
 - `FormRegistration`: Interface para registros de formulário
+

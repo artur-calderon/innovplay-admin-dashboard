@@ -8,8 +8,6 @@ import {
   UserCheck, 
   Building2, 
   Plus, 
-  Edit, 
-  Eye,
   Calendar,
   Target
 } from 'lucide-react';
@@ -70,32 +68,6 @@ const FormRegistration = () => {
     }
   ];
 
-  // Dados mockados de formulários já cadastrados
-  const mockFormRegistrations = [
-    {
-      id: '1',
-      formType: 'aluno-jovem',
-      title: 'Questionário Socioeconômico - Anos Iniciais 2024',
-      description: 'Formulário para coleta de dados socioeconômicos dos estudantes dos anos iniciais',
-      targetAudience: ['alunos'],
-      isActive: true,
-      createdAt: new Date('2024-01-15'),
-      updatedAt: new Date('2024-01-15'),
-      createdBy: 'Admin'
-    },
-    {
-      id: '2',
-      formType: 'professor',
-      title: 'Avaliação Docente - 1º Semestre 2024',
-      description: 'Formulário de avaliação das condições de trabalho dos professores',
-      targetAudience: ['professores'],
-      isActive: true,
-      createdAt: new Date('2024-02-01'),
-      updatedAt: new Date('2024-02-01'),
-      createdBy: 'Admin'
-    }
-  ];
-
   const getIcon = (iconName: string) => {
     const icons = {
       Users,
@@ -108,14 +80,6 @@ const FormRegistration = () => {
 
   const handleCreateForm = (formType: FormType) => {
     navigate(`/app/formularios/criar/${formType.id}`);
-  };
-
-  const handleEditForm = (formId: string) => {
-    console.log('Editando formulário:', formId);
-  };
-
-  const handleViewForm = (formId: string) => {
-    navigate(`/app/formularios/${formId}`);
   };
 
   return (
@@ -312,88 +276,6 @@ const FormRegistration = () => {
         </div>
       </div>
 
-      {/* Formulários Cadastrados */}
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold text-gray-900">Formulários Cadastrados</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {mockFormRegistrations.map((form) => {
-            const formType = formTypes.find(ft => ft.id === form.formType);
-            const IconComponent = formType ? getIcon(formType.icon) : Users;
-            
-            return (
-              <Card key={form.id} className="hover:shadow-md transition-shadow">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <div className={`p-2 rounded-lg ${formType?.color || 'bg-gray-500'}`}>
-                      <IconComponent className="h-5 w-5 text-white" />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={form.isActive ? "default" : "secondary"}>
-                        {form.isActive ? 'Ativo' : 'Inativo'}
-                      </Badge>
-                    </div>
-                  </div>
-                  <CardTitle className="text-lg">{form.title}</CardTitle>
-                  <CardDescription className="text-sm">
-                    {form.description}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <div className="space-y-2 mb-4">
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <Calendar className="h-4 w-4" />
-                      <span>Criado em {form.createdAt.toLocaleDateString('pt-BR')}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <Users className="h-4 w-4" />
-                      <span>Público: {form.targetAudience.join(', ')}</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="flex-1"
-                      onClick={() => handleViewForm(form.id)}
-                    >
-                      <Eye className="h-4 w-4 mr-2" />
-                      Visualizar
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="flex-1"
-                      onClick={() => handleEditForm(form.id)}
-                    >
-                      <Edit className="h-4 w-4 mr-2" />
-                      Editar
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Mensagem quando não há formulários cadastrados */}
-      {mockFormRegistrations.length === 0 && (
-        <Card className="text-center py-12">
-          <CardContent>
-            <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              Nenhum formulário cadastrado
-            </h3>
-            <p className="text-gray-600 mb-4">
-              Comece criando um novo formulário usando os tipos disponíveis acima.
-            </p>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Criar Primeiro Formulário
-            </Button>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 };
