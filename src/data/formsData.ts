@@ -193,3 +193,240 @@ export const diretorSections: FormSection[] = [
                 { id: 'Q224', text: 'Sugestões de melhoria para o instrumento (inclusão de temas, estrutura do questionário etc.)', type: 'textarea' }
             ]}
         ];
+
+// Questionário para Secretário Municipal de Educação
+export const secretarioQuestions: Question[] = [
+        { id: '001', text: 'Qual é o seu sexo?', type: 'selecao_unica', options: ['Masculino', 'Feminino', 'Não quero declarar'] },
+        { id: '002', text: 'Qual é a sua idade?', type: 'slider', min: 18, max: 70 },
+        { id: '003', text: 'Qual é a sua cor ou raça?', type: 'selecao_unica', options: ['Branca', 'Preta', 'Parda', 'Amarela', 'Indígena', 'Não quero declarar'] },
+        { id: '004', text: 'Você possui deficiência, transtorno do espectro autista ou superdotação?', type: 'selecao_unica', options: ['Não', 'Sim'] },
+        { id: '005', text: 'Indique qual é a sua condição.', type: 'matriz_selecao', dependsOn: { id: '004', value: 'Sim' }, subQuestions: [
+            { id: '005_1', text: 'Deficiência.' },
+            { id: '006_1', text: 'Transtorno do espectro autista.' },
+            { id: '007_1', text: 'Altas habilidades/superdotação.' }
+        ], options: ['Não', 'Sim'] },
+        // Formação e Experiência
+        { id: '008', text: 'Qual é o MAIS ALTO nível de escolaridade que você concluiu?', type: 'selecao_unica', options: ['Ensino Fundamental', 'Ensino Médio', 'Graduação', 'Especialização', 'Mestrado', 'Doutorado'] },
+        { id: '009', text: 'Este mais alto nível de escolaridade é relacionado ao campo educacional?', type: 'selecao_unica', options: ['Não', 'Sim'] },
+        { id: '010', text: 'Além de Secretário(a) Municipal de Educação neste município, você exerceu alguma outra função na área de educação?', type: 'selecao_unica', options: ['Não', 'Sim'] },
+        { id: '011', text: 'Indique as funções que exerceu:', type: 'matriz_selecao', dependsOn: { id: '010', value: 'Sim' }, subQuestions: [
+            { id: '011_1', text: 'Professor(a) da Educação Básica.' },
+            { id: '012_1', text: 'Professor(a) da Educação Superior.' },
+            { id: '013_1', text: 'Diretor(a) ou vice-diretor(a) de escola de Educação Básica.' },
+            { id: '014_1', text: 'Membro de equipe pedagógica de escola de Educação Básica.' },
+            { id: '015_1', text: 'Membro de equipe da Secretaria de Educação ou Órgão Gestor.' },
+            { id: '016_1', text: 'Membro de equipe de Instituição de Educação Superior.' },
+            { id: '017_1', text: 'Secretário(a) Municipal de Educação em outra rede.' }
+        ], options: ['Não', 'Sim'] },
+        { id: '018', text: 'Qual o seu tempo total de experiência, em ano, na área de educação?', type: 'slider', min: 0, max: 40 },
+        { id: '019', text: 'Qual o seu tempo de experiência, em ano, como Secretário(a) Municipal de Educação neste ou em outro município?', type: 'slider', min: 0, max: 40 },
+        { id: '020', text: 'Você ocupa o cargo de Secretário(a) Municipal de Educação desde o início da gestão do atual prefeito?', type: 'selecao_unica', options: ['Não', 'Sim'] },
+        { id: '021', text: 'Além de atividades como Secretário(a) Municipal de Educação, você exerce OUTRA atividade profissional?', type: 'selecao_unica', options: ['Não', 'Sim'] },
+        // Percepções sobre Educação
+        { id: '022', text: 'Indique o quanto você discorda, ou concorda, em relação aos seguintes temas:', type: 'matriz_selecao', subQuestions: [
+            { id: '022_1', text: 'Repetir de ano é bom para o (a) estudante que não apresentou desempenho satisfatório.' },
+            { id: '023_1', text: 'As avaliações externas (municipais, estaduais ou federais) têm direcionado o que deve ser ensinado na rede municipal.' },
+            { id: '024_1', text: 'As avaliações externas (federal, estadual ou municipal) têm ajudado a melhorar o processo de ensino e aprendizagem na rede municipal.' },
+            { id: '025_1', text: 'A maioria dos estudantes da rede municipal apresenta problemas de aprendizagem.' },
+            { id: '026_1', text: 'Eu acredito que a totalidade dos estudantes da rede municipal são capazes de concluir a Educação Básica e prosseguir seus estudos.' }
+        ], options: ['Discordo fortemente', 'Discordo', 'Concordo', 'Concordo fortemente'] },
+        // Estrutura Municipal
+        { id: '027', text: 'O município possui:', type: 'matriz_selecao', subQuestions: [
+            { id: '027_1', text: 'Autonomia em relação ao Conselho Estadual de Educação?' },
+            { id: '028_1', text: 'Sistema Municipal de Ensino?' },
+            { id: '029_1', text: 'Plano Municipal de Educação?' },
+            { id: '030_1', text: 'Fórum Permanente ou Municipal de Educação?' },
+            { id: '031_1', text: 'Conselho Municipal de Educação?' }
+        ], options: ['Não', 'Sim'] },
+        { id: '032', text: 'Quantos servidores/funcionários SEM FUNÇÕES DOCENTES estão lotados na sede da Secretaria de Educação?', type: 'slider', min: 0, max: 500 },
+        { id: '033', text: 'Quantos servidores/funcionários SEM FUNÇÕES DOCENTES lotados na sede desenvolvem atividades de apoio pedagógico às escolas?', type: 'slider', min: 0, max: 400 },
+        { id: '034', text: 'O(A) Secretário(a) de Educação determina quanto, quando e como usar os recursos financeiros disponíveis no orçamento anual da educação?', type: 'selecao_unica', options: ['Nunca', 'Poucas vezes', 'Muitas vezes', 'Sempre'] },
+        { id: '035', text: 'O município repassa recursos municipais diretamente às suas escolas?', type: 'selecao_unica', options: ['Não', 'Sim'] },
+        // Parcerias e Colaborações
+        { id: '036', text: 'A Secretaria de Educação desenvolve REGULARMENTE trabalhos em conjunto com:', type: 'matriz_selecao', subQuestions: [
+            { id: '036_1', text: 'Serviços de saúde (postos de saúde etc.).' },
+            { id: '037_1', text: 'Serviços de assistência social (CRAS etc.).' },
+            { id: '038_1', text: 'Segurança pública (polícia militar, guarda municipal etc.).' },
+            { id: '039_1', text: 'Conselho Tutelar (Ministério Público e outros).' },
+            { id: '040_1', text: 'Instituições de apoio ao público-alvo da educação especial (APAE etc.).' },
+            { id: '041_1', text: 'Instituições de ensino superior (faculdades, universidades etc.).' },
+            { id: '042_1', text: 'Instituições privadas (empresas, ONGs, corporações etc.).' },
+            { id: '043_1', text: 'Outros órgãos da prefeitura ou dos governos estadual ou federal.' }
+        ], options: ['Não', 'Sim'] },
+        // Gestão de Diretores
+        { id: '044', text: 'Qual a forma de provimento ao cargo, ou função, do(a) diretor (a) de escola?', type: 'matriz_selecao', subQuestions: [
+            { id: '044_1', text: 'Livre indicação pelo Executivo.' },
+            { id: '045_1', text: 'Concurso público para o cargo de diretor (a).' },
+            { id: '046_1', text: 'Consulta pública/eleição.' }
+        ], options: ['Não', 'Sim'] },
+        { id: '047', text: 'Quais os critérios utilizados no processo de provimento ao cargo, ou função, do(a) diretor(a) de escola?', type: 'matriz_selecao', subQuestions: [
+            { id: '047_1', text: 'Nenhum critério técnico.' },
+            { id: '048_1', text: 'Titulação acadêmica.' },
+            { id: '049_1', text: 'Participação/aprovação em curso de formação para diretor(a) escolar.' },
+            { id: '050_1', text: 'Tempo de serviço.' },
+            { id: '051_1', text: 'Experiência em gestão.' }
+        ], options: ['Não', 'Sim'] },
+        { id: '052', text: 'Os critérios utilizados para o provimento ao cargo, ou função, de diretor(a) de escola estão definidos em legislação municipal?', type: 'selecao_unica', options: ['Sim, a legislação contempla todos os critérios utilizados.', 'Sim, a legislação contempla uma parte dos critérios utilizados.', 'Não, não há legislação municipal para escolha dos (as) diretores (as).'] },
+        { id: '053', text: 'O Município possui legislação que disciplina a gestão democrática da educação pública?', type: 'selecao_unica', options: ['Não', 'Sim', 'Não sei'] },
+        // Formação Continuada
+        { id: '054', text: 'Neste ano, quais temas foram abordados em cursos de formação continuada para professores da rede?', type: 'matriz_selecao', subQuestions: [
+            { id: '054_1', text: 'Conteúdo e compreensão dos conceitos da(s) área(s) de ensino.' },
+            { id: '055_1', text: 'Avaliação da aprendizagem.' },
+            { id: '056_1', text: 'Avaliação em larga escala.' },
+            { id: '057_1', text: 'Metodologias de ensino.' },
+            { id: '058_1', text: 'Base Nacional Comum Curricular - BNCC.' },
+            { id: '059_1', text: 'Gestão da sala de aula.' },
+            { id: '060_1', text: 'Educação especial.' },
+            { id: '061_1', text: 'Novas tecnologias educacionais.' },
+            { id: '062_1', text: 'Gestão e administração escolar.' },
+            { id: '063_1', text: 'Ensino híbrido.' },
+            { id: '064_1', text: 'Alfabetização e letramento.' },
+            { id: '065_1', text: 'Gestão democrática.' },
+            { id: '066_1', text: 'Outros.' }
+        ], options: ['Não', 'Sim'] },
+        { id: '067', text: 'Descreva outros cursos de formação continuada.', type: 'textarea' },
+        // Prioridades de Investimento
+        { id: '068', text: 'Neste ano, dentre as despesas listadas abaixo, indique os graus de prioridade de cada uma, segundo a Secretaria de Educação.', type: 'matriz_selecao', subQuestions: [
+            { id: '068_1', text: 'Construção de escolas.' },
+            { id: '069_1', text: 'Reforma de escolas.' },
+            { id: '070_1', text: 'Aquisição de mobiliário para as escolas.' },
+            { id: '071_1', text: 'Aquisição de material de higiene, limpeza e equipamento de proteção individual.' },
+            { id: '072_1', text: 'Aquisição de material pedagógico.' },
+            { id: '073_1', text: 'Aquisição de equipamentos para estudantes e/ou professores.' },
+            { id: '074_1', text: 'Produção de material didático audiovisual ou impresso.' },
+            { id: '075_1', text: 'Contratação de profissionais para a educação.' },
+            { id: '076_1', text: 'Distribuição da alimentação para os estudantes.' },
+            { id: '077_1', text: 'Formação continuada dos (as) professores (as) da rede.' }
+        ], options: ['Absolutamente prioritária', 'Prioridade alta', 'Prioridade média', 'Baixa ou nenhuma prioridade'] },
+        // Ações Educacionais
+        { id: '078', text: 'Neste ano, dentre as ações listadas a seguir, indique quais foram executadas, ou não, pela Secretaria de Educação junto às escolas:', type: 'matriz_selecao', subQuestions: [
+            { id: '078_1', text: 'Garantia da liberdade religiosa.' },
+            { id: '079_1', text: 'Inclusão das pessoas público-alvo da educação especial.' },
+            { id: '080_1', text: 'Combate ao abuso e à violência sexual.' },
+            { id: '081_1', text: 'Combate ao preconceito ou à discriminação baseada no sexo ou no gênero.' },
+            { id: '082_1', text: 'Combate ao racismo.' },
+            { id: '083_1', text: 'Mediação de conflitos ou problemas de relacionamento na escola.' },
+            { id: '084_1', text: 'Combate ao bullying e outras formas de violência.' },
+            { id: '085_1', text: 'Promoção da cultura da paz e da não violência.' }
+        ], options: ['Não', 'Sim'] },
+        { id: '086', text: 'Neste ano, indique se a Secretaria de Educação disponibilizou, ou não, orientações para as escolas sobre os seguintes temas:', type: 'matriz_selecao', subQuestions: [
+            { id: '086_1', text: 'Levantamento de conhecimentos prévios dos estudantes.' },
+            { id: '087_1', text: 'Apresentação aos estudantes do currículo e das atividades a serem executadas.' },
+            { id: '088_1', text: 'Incentivo aos estudantes para perguntar, comentar, sugerir e divergir.' },
+            { id: '089_1', text: 'Estímulo aos estudantes para dialogar e tirar dúvidas com colegas.' },
+            { id: '090_1', text: 'Organização de trabalhos em grupo nas aulas.' },
+            { id: '091_1', text: 'Diversificação das metodologias de ensino conforme as dificuldades.' }
+        ], options: ['Não', 'Sim'] },
+        // Educação Infantil
+        { id: '092', text: 'A Secretaria de Educação possui instituições de Educação Infantil sob sua responsabilidade?', type: 'selecao_unica', options: ['Não', 'Sim'] },
+        { id: '093', text: 'Quantos servidores/funcionários SEM FUNÇÕES DOCENTES na sede da Secretaria estão dedicados EXCLUSIVAMENTE à Educação Infantil?', type: 'slider', min: 0, max: 100 },
+        { id: '094', text: 'Para a EDUCAÇÃO INFANTIL, o Município possui:', type: 'matriz_selecao', subQuestions: [
+            { id: '094_1', text: 'Cálculo da demanda por vagas?' },
+            { id: '095_1', text: 'Supervisão escolar?' },
+            { id: '096_1', text: 'Programa de formação de professores?' },
+            { id: '097_1', text: 'Busca ativa de crianças para a pré-escola?' },
+            { id: '098_1', text: 'Comitê Intersetorial de Políticas Públicas para a Primeira Infância?' },
+            { id: '099_1', text: 'Transporte escolar?' },
+            { id: '100_1', text: 'Ações para atingir metas de matrícula (garantia de acesso)?' }
+        ], options: ['Não', 'Sim'] },
+        { id: '101', text: 'O município possui currículo municipal para a Educação Infantil?', type: 'selecao_unica', options: ['Não', 'Sim'] },
+        { id: '102', text: 'O currículo municipal está atualizado conforme a BNCC?', type: 'selecao_unica', options: ['Não', 'Sim'] },
+        { id: '103', text: 'O município firma convênios e/ou parcerias com instituições para o atendimento de:', type: 'matriz_selecao', subQuestions: [
+            { id: '103_1', text: 'Creche - Crianças de 0 a 3 anos?' },
+            { id: '104_1', text: 'Pré-escola - Crianças 4 a 5 anos?' }
+        ], options: ['Não', 'Sim'] },
+        { id: '105', text: 'As instituições conveniadas e/ou que celebram parcerias são selecionadas através de chamada pública?', type: 'selecao_unica', options: ['Não', 'Sim'] },
+        { id: '106', text: 'Existem normas para o funcionamento das conveniadas e/ou que celebram parcerias?', type: 'selecao_unica', options: ['Não', 'Sim'] },
+        { id: '107', text: 'Com relação à maior parte das instituições conveniadas, indique o principal responsável pelas ações abaixo:', type: 'matriz_selecao', subQuestions: [
+            { id: '107_1', text: 'Propriedade das instalações.' },
+            { id: '108_1', text: 'Manutenção das instalações.' },
+            { id: '109_1', text: 'Pagamento dos professores.' },
+            { id: '110_1', text: 'Capacitação dos professores.' },
+            { id: '111_1', text: 'Fornecimento de recursos pedagógicos.' },
+            { id: '112_1', text: 'Oferta de merenda.' },
+            { id: '113_1', text: 'Transporte escolar.' }
+        ], options: ['Município', 'Instituições'] },
+        // Ensino Fundamental
+        { id: '114', text: 'A Secretaria de Educação possui escolas de Ensino Fundamental?', type: 'selecao_unica', options: ['Não', 'Sim'] },
+        { id: '115', text: 'O Ensino Fundamental é oferecido em ciclos?', type: 'selecao_unica', options: ['Não', 'Sim'] },
+        { id: '116', text: 'A rede municipal de ensino utiliza um sistema apostilado desenvolvido por empresa, ONG ou instituição?', type: 'selecao_unica', options: ['Não', 'Sim'] },
+        { id: '117', text: 'Quantos servidores/funcionários SEM FUNÇÕES DOCENTES na sede da Secretaria estão dedicados EXCLUSIVAMENTE ao Ensino Fundamental?', type: 'slider', min: 0, max: 300 },
+        { id: '118', text: 'Para o ENSINO FUNDAMENTAL, o Município possui:', type: 'matriz_selecao', subQuestions: [
+            { id: '118_1', text: 'Cálculo da demanda por vagas?' },
+            { id: '119_1', text: 'Supervisão escolar?' },
+            { id: '120_1', text: 'Programa de formação de professores?' },
+            { id: '121_1', text: 'Busca ativa de crianças e jovens para o Ensino Fundamental?' },
+            { id: '122_1', text: 'Transporte escolar?' },
+            { id: '123_1', text: 'Ações para atingir metas de matrícula (garantia de acesso)?' }
+        ], options: ['Não', 'Sim'] },
+        { id: '124', text: 'O município possui currículo municipal para o Ensino Fundamental?', type: 'selecao_unica', options: ['Não', 'Sim'] },
+        { id: '125', text: 'O currículo municipal está atualizado conforme a BNCC?', type: 'selecao_unica', options: ['Não', 'Sim'] },
+        // Plano de Carreira e Remuneração
+        { id: '126', text: 'Dentre os profissionais listados abaixo, indique quais possuem plano de carreira.', type: 'matriz_selecao', subQuestions: [
+            { id: '126_1', text: 'Auxiliares e assistentes da Educação Infantil.' },
+            { id: '127_1', text: 'Professores(as) da Educação Infantil.' },
+            { id: '128_1', text: 'Professores(as) do Ensino Fundamental.' },
+            { id: '129_1', text: 'Profissionais não docentes.' }
+        ], options: ['Não', 'Sim', 'Não se aplica'] },
+        { id: '130', text: 'Para os (as) professores (as), quais as jornadas de trabalho semanais estipuladas pela legislação municipal?', type: 'matriz_selecao', subQuestions: [
+            { id: '130_1', text: 'Até 20 horas semanais.' },
+            { id: '131_1', text: 'De 21 a 30 horas semanais.' },
+            { id: '132_1', text: 'De 31 a 40 horas semanais.' },
+            { id: '133_1', text: 'Mais de 40 horas semanais.' }
+        ], options: ['Não', 'Sim'] },
+        { id: '134', text: 'Para os (as) professores (as), está previsto o limite máximo de 2/3 da jornada de trabalho semanal em sala de aula?', type: 'selecao_unica', options: ['Não', 'Sim'] },
+        { id: '135', text: 'Quais critérios de progressão ou promoção são utilizados no plano de carreira do magistério?', type: 'matriz_selecao', subQuestions: [
+            { id: '135_1', text: 'Tempo de efetivo exercício no cargo.' },
+            { id: '136_1', text: 'Qualificação.' },
+            { id: '137_1', text: 'Titulação.' },
+            { id: '138_1', text: 'Assiduidade.' },
+            { id: '139_1', text: 'Avaliação de desempenho.' },
+            { id: '140_1', text: 'Prova de conhecimentos para professores.' },
+            { id: '141_1', text: 'Desempenho dos (as) estudantes em avaliações externas.' }
+        ], options: ['Não', 'Sim'] },
+        { id: '142', text: 'Para os (as) professores (as) com jornada de trabalho de 40 HORAS SEMANAIS, o VENCIMENTO INICIAL é igual ou superior a R$ 4.420,55?', type: 'selecao_unica', options: ['Não', 'Sim'] },
+        { id: '143', text: 'O VENCIMENTO INICIAL dos(as) professores(as) de EDUCAÇÃO INFANTIL, comparado com o dos(as) professores(as) do Ensino Fundamental:', type: 'selecao_unica', options: ['É inferior ao dos(as) professores(as) do Ensino Fundamental', 'É equivalente ao dos(as) professores(as) do Ensino Fundamental', 'É superior ao dos(as) professores(as) do Ensino Fundamental', 'Não existe este profissional na rede'] },
+        // Avaliação e Monitoramento
+        { id: '144', text: 'A Secretaria utiliza os resultados do IDEB?', type: 'selecao_unica', options: ['Não', 'Sim'] },
+        { id: '145', text: 'Indique o grau de importância que tem o Ideb para que a Secretaria de Educação possa desenvolver cada uma das seguintes ações:', type: 'matriz_selecao', subQuestions: [
+            { id: '145_1', text: 'Coletar informações para a formação continuada de professores.' },
+            { id: '146_1', text: 'Avaliar programas ou projetos da Secretaria de Educação.' },
+            { id: '147_1', text: 'Produzir materiais didáticos e pedagógicos.' },
+            { id: '148_1', text: 'Adquirir materiais didáticos e pedagógicos de empresas ou instituições.' },
+            { id: '149_1', text: 'Premiar escolas com melhores resultados.' },
+            { id: '150_1', text: 'Desenvolver ações pedagógicas voltadas para unidades escolares com piores resultados.' },
+            { id: '151_1', text: 'Definir pagamento de bonificação para professores.' },
+            { id: '152_1', text: 'Definir remanejamento de diretores.' },
+            { id: '153_1', text: 'Autoavaliação da rede municipal.' }
+        ], options: ['Absolutamente importante', 'Importante', 'Pouco importante', 'Baixa ou nenhuma importância'] },
+        { id: '154', text: 'O município aplica PROVAS EXTERNAS, preparadas pela Secretaria de Educação ou por instituição contratada, aos estudantes da rede municipal?', type: 'selecao_unica', options: ['Não', 'Sim'] },
+        { id: '155', text: 'Para cada etapa da Educação Básica, indique se são aplicadas, ou não, PROVAS EXTERNAS aos estudantes da rede municipal.', type: 'matriz_selecao', subQuestions: [
+            { id: '155_1', text: 'Pré-escola' },
+            { id: '156_1', text: 'Ensino Fundamental - Anos iniciais' },
+            { id: '157_1', text: 'Ensino Fundamental - Anos finais' }
+        ], options: ['Aplicam-se provas externas', 'Não se aplicam provas externas'] },
+        { id: '158', text: 'Quem é responsável por elaborar as PROVAS EXTERNAS aplicadas aos estudantes da pré-escola?', type: 'selecao_unica', options: ['Secretaria de Educação ou Órgão Gestor de Educação', 'Instituição contratada'] },
+        { id: '159', text: 'Quem é responsável por elaborar as PROVAS EXTERNAS aplicadas aos estudantes dos anos iniciais do Ensino Fundamental?', type: 'selecao_unica', options: ['Secretaria de Educação ou Órgão Gestor de Educação', 'Instituição contratada'] },
+        { id: '160', text: 'Quem é responsável por elaborar as PROVAS EXTERNAS aplicadas aos estudantes dos anos finais do Ensino Fundamental?', type: 'selecao_unica', options: ['Secretaria de Educação ou Órgão Gestor de Educação', 'Instituição contratada'] },
+        { id: '161', text: 'Indique a periodicidade da aplicação das PROVAS EXTERNAS:', type: 'matriz_selecao', subQuestions: [
+            { id: '161_1', text: 'Mensal.' },
+            { id: '162_1', text: 'Bimestral.' },
+            { id: '163_1', text: 'Trimestral.' },
+            { id: '164_1', text: 'Semestral.' },
+            { id: '165_1', text: 'Anual.' },
+            { id: '166_1', text: 'Bianual.' }
+        ], options: ['Não', 'Sim'] },
+        { id: '167', text: 'A Secretaria de Educação realiza PERIODICAMENTE monitoramento ou avaliação da sua rede de ensino?', type: 'selecao_unica', options: ['Não', 'Sim'] },
+        { id: '168', text: 'Para cada uma das ações a seguir, indique se são, ou não, PERIODICAMENTE realizadas para monitorar ou avaliar a sua rede:', type: 'matriz_selecao', subQuestions: [
+            { id: '168_1', text: 'Autoavaliação das escolas.' },
+            { id: '169_1', text: 'Avaliação do Projeto Pedagógico das escolas.' },
+            { id: '170_1', text: 'Desempenho dos (as) professores (as).' },
+            { id: '171_1', text: 'Desempenho dos (as) diretores (a) das escolas.' },
+            { id: '172_1', text: 'Infraestrutura das escolas.' },
+            { id: '173_1', text: 'Transporte escolar.' },
+            { id: '174_1', text: 'Merenda escolar.' },
+            { id: '175_1', text: 'Organização administrativa das escolas.' }
+        ], options: ['Não', 'Sim'] },
+        // Avaliação do Questionário
+        { id: '176', text: 'Sugestões de melhoria para o instrumento (inclusão de temas, estrutura do questionário etc.)', type: 'textarea' }
+];

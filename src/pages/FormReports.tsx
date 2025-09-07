@@ -37,7 +37,7 @@ interface FormReport {
   id: string;
   formId: string;
   formTitle: string;
-  formType: 'aluno-jovem' | 'aluno-velho' | 'professor' | 'diretor';
+  formType: 'aluno-jovem' | 'aluno-velho' | 'professor' | 'diretor' | 'secretario';
   totalResponses: number;
   completionRate: number;
   createdAt: Date;
@@ -100,6 +100,18 @@ const FormReports = () => {
       lastResponse: new Date('2024-02-18'),
       status: 'completed',
       schools: ['Escola Municipal João Silva', 'Escola Estadual Maria Santos', 'Escola Municipal Pedro Costa', 'Escola Estadual Ana Oliveira']
+    },
+    {
+      id: '5',
+      formId: 'form-5',
+      formTitle: 'Gestão Educacional Municipal - 2024',
+      formType: 'secretario',
+      totalResponses: 8,
+      completionRate: 88.9,
+      createdAt: new Date('2024-02-10'),
+      lastResponse: new Date('2024-02-20'),
+      status: 'active',
+      schools: ['Secretaria Municipal de Educação']
     }
   ];
 
@@ -136,6 +148,14 @@ const FormReports = () => {
           { name: 'Gestão Financeira', value: 20, color: '#00B894' },
           { name: 'Gestão de Pessoas', value: 10, color: '#FDCB6E' },
           { name: 'Gestão de Infraestrutura', value: 5, color: '#A29BFE' }
+        ];
+      case 'secretario':
+        return [
+          { name: 'Gestão Municipal', value: 35, color: '#6366F1' },
+          { name: 'Políticas Educacionais', value: 25, color: '#8B5CF6' },
+          { name: 'Recursos Financeiros', value: 20, color: '#A855F7' },
+          { name: 'Formação Continuada', value: 15, color: '#C084FC' },
+          { name: 'Avaliação e Monitoramento', value: 5, color: '#DDD6FE' }
         ];
       default:
         return [
@@ -1459,6 +1479,8 @@ const FormReports = () => {
         return { name: 'Professor', icon: UserCheck, color: 'bg-purple-500' };
       case 'diretor':
         return { name: 'Diretor', icon: Building2, color: 'bg-orange-500' };
+      case 'secretario':
+        return { name: 'Secretário Municipal de Educação', icon: Building2, color: 'bg-indigo-500' };
       default:
         return { name: 'Questionário', icon: FileText, color: 'bg-gray-500' };
     }
