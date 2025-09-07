@@ -498,10 +498,10 @@ const FormCreate = () => {
                         type="range"
                         min={question.min || 0}
                         max={question.max || 100}
-                        value={sliderValues[${question.id}_${subQ.id}] ?? Math.floor(((question.min || 0) + (question.max || 100)) / 2)}
+                        value={sliderValues[`${question.id}_${subQ.id}`] ?? Math.floor(((question.min || 0) + (question.max || 100)) / 2)}
                         className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider-input"
                         style={{
-                          background: linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((sliderValues[${question.id}_${subQ.id}] ?? Math.floor(((question.min || 0) + (question.max || 100)) / 2)) - (question.min || 0)) / ((question.max || 100) - (question.min || 0)) * 100}%, #e5e7eb ${((sliderValues[${question.id}_${subQ.id}] ?? Math.floor(((question.min || 0) + (question.max || 100)) / 2)) - (question.min || 0)) / ((question.max || 100) - (question.min || 0)) * 100}%, #e5e7eb 100%),
+                          background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((sliderValues[`${question.id}_${subQ.id}`] ?? Math.floor(((question.min || 0) + (question.max || 100)) / 2)) - (question.min || 0)) / ((question.max || 100) - (question.min || 0)) * 100}%, #e5e7eb ${((sliderValues[`${question.id}_${subQ.id}`] ?? Math.floor(((question.min || 0) + (question.max || 100)) / 2)) - (question.min || 0)) / ((question.max || 100) - (question.min || 0)) * 100}%, #e5e7eb 100%)`,
                           WebkitAppearance: 'none',
                           appearance: 'none'
                         }}
@@ -509,7 +509,7 @@ const FormCreate = () => {
                           const value = parseInt(e.target.value);
                           setSliderValues(prev => ({
                             ...prev,
-                            [${question.id}_${subQ.id}]: value
+                            [`${question.id}_${subQ.id}`]: value
                           }));
                         }}
                       />
@@ -517,7 +517,7 @@ const FormCreate = () => {
                         <span>{question.min || 0}</span>
                         <span className="font-medium text-gray-700">
                           Valor: <span className="text-blue-600 font-semibold">
-                            {sliderValues[${question.id}_${subQ.id}] ?? Math.floor(((question.min || 0) + (question.max || 100)) / 2)}
+                            {sliderValues[`${question.id}_${subQ.id}`] ?? Math.floor(((question.min || 0) + (question.max || 100)) / 2)}
                           </span>
                         </span>
                         <span>{question.max || 100}</span>
@@ -538,7 +538,7 @@ const FormCreate = () => {
                     value={sliderValue}
                     className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider-input"
                     style={{
-                      background: linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb 100%),
+                      background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb 100%)`,
                       WebkitAppearance: 'none',
                       appearance: 'none'
                     }}
@@ -578,7 +578,7 @@ const FormCreate = () => {
                     value={sliderValue}
                     className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider-input"
                     style={{
-                      background: linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb 100%),
+                      background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb 100%)`,
                       WebkitAppearance: 'none',
                       appearance: 'none'
                     }}
@@ -711,7 +711,7 @@ const FormCreate = () => {
 
       {/* Progress Steps */}
       <div className="flex items-center justify-center space-x-8">
-        <div className={flex items-center gap-2 ${currentStep === 'config' ? 'text-blue-600' : 'text-gray-400'}}>
+        <div className={`flex items-center gap-2 ${currentStep === 'config' ? 'text-blue-600' : 'text-gray-400'}`}>
           <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
             currentStep === 'config' ? 'bg-blue-600 text-white' : 'bg-gray-200'
           }`}>
@@ -719,8 +719,8 @@ const FormCreate = () => {
           </div>
           <span className="font-medium">Configuração</span>
         </div>
-        <div className={w-16 h-0.5 ${currentStep === 'preview' || currentStep === 'send' ? 'bg-blue-600' : 'bg-gray-200'}}></div>
-        <div className={flex items-center gap-2 ${currentStep === 'preview' ? 'text-blue-600' : 'text-gray-400'}}>
+        <div className={`w-16 h-0.5 ${currentStep === 'preview' || currentStep === 'send' ? 'bg-blue-600' : 'bg-gray-200'}`}></div>
+        <div className={`flex items-center gap-2 ${currentStep === 'preview' ? 'text-blue-600' : 'text-gray-400'}`}>
           <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
             currentStep === 'preview' ? 'bg-blue-600 text-white' : 'bg-gray-200'
           }`}>
@@ -728,8 +728,8 @@ const FormCreate = () => {
           </div>
           <span className="font-medium">Visualização</span>
         </div>
-        <div className={w-16 h-0.5 ${currentStep === 'send' ? 'bg-blue-600' : 'bg-gray-200'}}></div>
-        <div className={flex items-center gap-2 ${currentStep === 'send' ? 'text-blue-600' : 'text-gray-400'}}>
+        <div className={`w-16 h-0.5 ${currentStep === 'send' ? 'bg-blue-600' : 'bg-gray-200'}`}></div>
+        <div className={`flex items-center gap-2 ${currentStep === 'send' ? 'text-blue-600' : 'text-gray-400'}`}>
           <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
             currentStep === 'send' ? 'bg-blue-600 text-white' : 'bg-gray-200'
           }`}>
@@ -970,7 +970,7 @@ const FormCreate = () => {
                           <UserCheck className="h-8 w-8 mx-auto mb-2 text-gray-400" />
                           <p>
                             {searchTermUsers 
-                              ? Nenhum usuário encontrado para "${searchTermUsers}"
+                              ? `Nenhum usuário encontrado para "${searchTermUsers}"`
                               : 'Nenhum usuário TecAdmin encontrado'
                             }
                           </p>
@@ -991,8 +991,8 @@ const FormCreate = () => {
                 </div>
                 <p className="text-xs text-gray-500">
                   {formConfig.selectAllTecAdminUsers 
-                    ? Todos os ${filteredTecAdminUsers.length} usuários selecionados
-                    : ${formConfig.selectedTecAdminUsers.length} de ${filteredTecAdminUsers.length} usuários selecionados
+                    ? `Todos os ${filteredTecAdminUsers.length} usuários selecionados`
+                    : `${formConfig.selectedTecAdminUsers.length} de ${filteredTecAdminUsers.length} usuários selecionados`
                   }
                   {searchTermUsers && tecAdminUsers.length !== filteredTecAdminUsers.length && (
                     <span className="ml-2 text-blue-600">
@@ -1097,7 +1097,7 @@ const FormCreate = () => {
                               <h4 className="font-medium text-gray-900">{school.name}</h4>
                               <div className="flex items-center gap-4 text-sm text-gray-600">
                                 <span>
-                                  {school.city ? ${school.city.name}, ${school.city.state} : 'Localização não informada'}
+                                  {school.city ? `${school.city.name}, ${school.city.state}` : 'Localização não informada'}
                                 </span>
                                 {school.address && (
                                   <span className="text-xs text-gray-500">
@@ -1124,7 +1124,7 @@ const FormCreate = () => {
                           <Building2 className="h-8 w-8 mx-auto mb-2 text-gray-400" />
                           <p>
                             {searchTerm 
-                              ? Nenhuma escola encontrada para "${searchTerm}"
+                              ? `Nenhuma escola encontrada para "${searchTerm}"`
                               : 'Nenhuma escola encontrada'
                             }
                           </p>
@@ -1145,8 +1145,8 @@ const FormCreate = () => {
                 </div>
                 <p className="text-xs text-gray-500">
                   {formConfig.selectAllSchools 
-                    ? Todas as ${filteredSchools.length} escolas selecionadas
-                    : ${formConfig.selectedSchools.length} de ${filteredSchools.length} escolas selecionadas
+                    ? `Todas as ${filteredSchools.length} escolas selecionadas`
+                    : `${formConfig.selectedSchools.length} de ${filteredSchools.length} escolas selecionadas`
                   }
                   {searchTerm && schools.length !== filteredSchools.length && (
                     <span className="ml-2 text-blue-600">
@@ -1221,8 +1221,8 @@ const FormCreate = () => {
                           <UserCheck className="h-4 w-4" />
                           <span className="font-medium">
                             {formConfig.selectAllTecAdminUsers 
-                              ? Todos os ${tecAdminUsers.length} usuários TecAdmin
-                              : ${formConfig.selectedTecAdminUsers.length} usuário(s) TecAdmin selecionado(s)
+                              ? `Todos os ${tecAdminUsers.length} usuários TecAdmin`
+                              : `${formConfig.selectedTecAdminUsers.length} usuário(s) TecAdmin selecionado(s)`
                             }
                           </span>
                         </div>
@@ -1242,8 +1242,8 @@ const FormCreate = () => {
                           <Building2 className="h-4 w-4" />
                           <span className="font-medium">
                             {formConfig.selectAllSchools 
-                              ? Todas as ${schools.length} escolas
-                              : ${formConfig.selectedSchools.length} escola(s) selecionada(s)
+                              ? `Todas as ${schools.length} escolas`
+                              : `${formConfig.selectedSchools.length} escola(s) selecionada(s)`
                             }
                           </span>
                         </div>
@@ -1276,7 +1276,7 @@ const FormCreate = () => {
                       });
                     } else {
                       console.log('Rendering section questions');
-                      const allQuestions = formData.questions.flatMap((section, sectionIndex) => {
+                      const allQuestions = (formData.questions as { title: string; questions: Question[] }[]).flatMap((section, sectionIndex) => {
                         console.log('Section:', section.title, 'Questions:', section.questions.length);
                         return section.questions.map((question, questionIndex) => {
                           console.log('Rendering question from section:', question);
@@ -1324,12 +1324,12 @@ const FormCreate = () => {
                   <div><strong>Público:</strong> {formConfig.targetGroups.map(id => targetGroups.find(g => g.id === id)?.name).join(', ')}</div>
                   <div><strong>{formType === 'secretario' ? 'Usuários TecAdmin:' : 'Escolas:'}</strong> {formType === 'secretario' 
                     ? (formConfig.selectAllTecAdminUsers 
-                        ? Todos os ${tecAdminUsers.length} usuários TecAdmin
-                        : ${formConfig.selectedTecAdminUsers.length} usuário(s) TecAdmin selecionado(s)
+                        ? `Todos os ${tecAdminUsers.length} usuários TecAdmin`
+                        : `${formConfig.selectedTecAdminUsers.length} usuário(s) TecAdmin selecionado(s)`
                       )
                     : (formConfig.selectAllSchools 
-                        ? Todas as ${schools.length} escolas
-                        : ${formConfig.selectedSchools.length} escola(s) selecionada(s)
+                        ? `Todas as ${schools.length} escolas`
+                        : `${formConfig.selectedSchools.length} escola(s) selecionada(s)`
                       )
                   }</div>
                   <div><strong>Prazo:</strong> {formConfig.deadline ? new Date(formConfig.deadline).toLocaleDateString('pt-BR') : 'Não definido'}</div>
