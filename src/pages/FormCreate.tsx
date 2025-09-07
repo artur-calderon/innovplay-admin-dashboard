@@ -23,7 +23,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { questionsAlunoJovem, questionsAlunoVelho, professorSections, diretorSections, secretarioQuestions } from '../data';
+import { questionsAlunoJovem, questionsAlunoVelho, professorQuestions, diretorQuestions, secretarioQuestions } from '../data';
 import { Question, SubQuestion } from '@/types/forms';
 import { api } from '@/lib/api';
 
@@ -149,8 +149,10 @@ const FormCreate = () => {
 
   // Dados do formulário baseado no tipo
   const getFormData = () => {
+    console.log('getFormData called with formType:', formType);
     switch (formType) {
       case 'aluno-jovem':
+        console.log('Returning aluno-jovem data with', questionsAlunoJovem.length, 'questions');
         return {
           name: 'Aluno (Anos Iniciais)',
           description: 'Questionário socioeconômico para estudantes dos anos iniciais do Ensino Fundamental (1° ao 5° ano), EJA 1° ao 5° período e Educação Infantil.',
@@ -159,6 +161,7 @@ const FormCreate = () => {
           color: 'bg-blue-500'
         };
       case 'aluno-velho':
+        console.log('Returning aluno-velho data with', questionsAlunoVelho.length, 'questions');
         return {
           name: 'Aluno (Anos Finais)',
           description: 'Questionário socioeconômico para estudantes dos anos finais do Ensino Fundamental (6° ao 9° ano) e EJA 6° ao 9° período.',
@@ -167,22 +170,25 @@ const FormCreate = () => {
           color: 'bg-green-500'
         };
       case 'professor':
+        console.log('Returning professor data with', professorQuestions.length, 'questions');
         return {
           name: 'Professor',
           description: 'Questionário de caracterização e condições de trabalho para professores da Educação Básica.',
-          questions: professorSections,
+          questions: professorQuestions,
           icon: UserCheck,
           color: 'bg-purple-500'
         };
       case 'diretor':
+        console.log('Returning diretor data with', diretorQuestions.length, 'questions');
         return {
           name: 'Diretor',
           description: 'Questionário de caracterização da escola e condições de gestão para diretores escolares.',
-          questions: diretorSections,
+          questions: diretorQuestions,
           icon: Building2,
           color: 'bg-orange-500'
         };
       case 'secretario':
+        console.log('Returning secretario data with', secretarioQuestions.length, 'questions');
         return {
           name: 'Secretário Municipal de Educação',
           description: 'Questionário de caracterização e gestão educacional para secretários municipais de educação.',
@@ -191,6 +197,7 @@ const FormCreate = () => {
           color: 'bg-indigo-500'
         };
       default:
+        console.log('No form type matched, returning null');
         return null;
     }
   };
@@ -340,6 +347,7 @@ const FormCreate = () => {
     setExpandedSections(newExpanded);
   };
 
+
   const handleSchoolToggle = (schoolId: string) => {
     setFormConfig(prev => ({
       ...prev,
@@ -377,6 +385,7 @@ const FormCreate = () => {
   };
 
   const renderQuestion = (question: Question, index: number) => {
+    console.log('renderQuestion called with:', question, 'index:', index);
     // Inicializar valor do slider se não existir
     const sliderValue = sliderValues[question.id] ?? Math.floor(((question.min || 0) + (question.max || 100)) / 2);
 
@@ -452,6 +461,110 @@ const FormCreate = () => {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {(question.tipo === 'matriz_selecao_complexa' || question.type === 'matriz_selecao_complexa') && (
+              <div className="space-y-3">
+                {(question.subPerguntas || question.subQuestions)?.map((subQ: SubQuestion, subIndex: number) => (
+                  <div key={subQ.id} className="ml-4">
+                    <p className="text-sm font-medium text-gray-700 mb-2">
+                      {subQ.texto || subQ.text}
+                    </p>
+                    <div className="grid grid-cols-1 gap-2">
+                      {(question.opcoes || question.options)?.map((option: string, optIndex: number) => (
+                        <label key={optIndex} className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200">
+                          <span className="flex items-center justify-center w-6 h-6 bg-gray-100 rounded-full text-xs font-medium text-gray-600">
+                            {String.fromCharCode(65 + optIndex)}
+                          </span>
+                          <span className="text-sm text-gray-600">{option}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {(question.tipo === 'matriz_slider' || question.type === 'matriz_slider') && (
+              <div className="space-y-3">
+                {(question.subPerguntas || question.subQuestions)?.map((subQ: SubQuestion, subIndex: number) => (
+                  <div key={subQ.id} className="ml-4">
+                    <p className="text-sm font-medium text-gray-700 mb-2">
+                      {subQ.texto || subQ.text}
+                    </p>
+                    <div className="relative">
+                      <input
+                        type="range"
+                        min={question.min || 0}
+                        max={question.max || 100}
+                        value={sliderValues[`${question.id}_${subQ.id}`] ?? Math.floor(((question.min || 0) + (question.max || 100)) / 2)}
+                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider-input"
+                        style={{
+                          background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((sliderValues[`${question.id}_${subQ.id}`] ?? Math.floor(((question.min || 0) + (question.max || 100)) / 2)) - (question.min || 0)) / ((question.max || 100) - (question.min || 0)) * 100}%, #e5e7eb ${((sliderValues[`${question.id}_${subQ.id}`] ?? Math.floor(((question.min || 0) + (question.max || 100)) / 2)) - (question.min || 0)) / ((question.max || 100) - (question.min || 0)) * 100}%, #e5e7eb 100%)`,
+                          WebkitAppearance: 'none',
+                          appearance: 'none'
+                        }}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value);
+                          setSliderValues(prev => ({
+                            ...prev,
+                            [`${question.id}_${subQ.id}`]: value
+                          }));
+                        }}
+                      />
+                      <div className="flex justify-between text-xs text-gray-500 mt-2">
+                        <span>{question.min || 0}</span>
+                        <span className="font-medium text-gray-700">
+                          Valor: <span className="text-blue-600 font-semibold">
+                            {sliderValues[`${question.id}_${subQ.id}`] ?? Math.floor(((question.min || 0) + (question.max || 100)) / 2)}
+                          </span>
+                        </span>
+                        <span>{question.max || 100}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {(question.tipo === 'slider_com_opcao' || question.type === 'slider_com_opcao') && (
+              <div className="space-y-3">
+                <div className="relative">
+                  <input
+                    type="range"
+                    min={question.min || 0}
+                    max={question.max || 100}
+                    value={sliderValue}
+                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider-input"
+                    style={{
+                      background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb 100%)`,
+                      WebkitAppearance: 'none',
+                      appearance: 'none'
+                    }}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value);
+                      handleSliderChange(question.id, value);
+                    }}
+                  />
+                  <div className="flex justify-between text-xs text-gray-500 mt-2">
+                    <span>{question.min || 0}</span>
+                    <span className="font-medium text-gray-700">
+                      Valor: <span className="text-blue-600 font-semibold">
+                        {sliderValue}
+                      </span>
+                    </span>
+                    <span>{question.max || 100}</span>
+                  </div>
+                </div>
+                {question.optionText && (
+                  <div className="mt-2">
+                    <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200">
+                      <input type="checkbox" className="w-4 h-4 text-blue-600 rounded" />
+                      <span className="text-sm text-gray-600">{question.optionText}</span>
+                    </label>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1149,33 +1262,31 @@ const FormCreate = () => {
                 </div>
 
                 <div className="space-y-4">
-                  {Array.isArray(formData.questions) ? (
-                    formData.questions.map((question, index) => 
-                      renderQuestion(question, index)
-                    )
-                  ) : (
-                    formData.questions.map((section, sectionIndex) => (
-                      <div key={section.title} className="border rounded-lg">
-                        <div 
-                          className="p-4 bg-gray-50 border-b cursor-pointer flex items-center justify-between"
-                          onClick={() => toggleSection(section.title)}
-                        >
-                          <h3 className="font-medium text-gray-900">{section.title}</h3>
-                          {expandedSections.has(section.title) ? 
-                            <ChevronDown className="h-4 w-4" /> : 
-                            <ChevronRight className="h-4 w-4" />
-                          }
-                        </div>
-                        {expandedSections.has(section.title) && (
-                          <div className="p-4 space-y-4">
-                            {section.questions.map((question, index) => 
-                              renderQuestion(question, index)
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  )}
+                  {(() => {
+                    console.log('FormData:', formData);
+                    console.log('FormType:', formType);
+                    console.log('Questions type:', Array.isArray(formData?.questions) ? 'Array' : 'Sections');
+                    console.log('Questions data:', formData?.questions);
+                    
+                    if (Array.isArray(formData.questions)) {
+                      console.log('Rendering array questions:', formData.questions.length);
+                      return formData.questions.map((question, index) => {
+                        console.log('Rendering question:', question);
+                        return renderQuestion(question, index);
+                      });
+                    } else {
+                      console.log('Rendering section questions');
+                      const allQuestions = formData.questions.flatMap((section, sectionIndex) => {
+                        console.log('Section:', section.title, 'Questions:', section.questions.length);
+                        return section.questions.map((question, questionIndex) => {
+                          console.log('Rendering question from section:', question);
+                          return renderQuestion(question, sectionIndex * 1000 + questionIndex);
+                        });
+                      });
+                      console.log('Total questions to render:', allQuestions.length);
+                      return allQuestions;
+                    }
+                  })()}
                 </div>
               </div>
             </CardContent>

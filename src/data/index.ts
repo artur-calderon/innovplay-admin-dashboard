@@ -5,8 +5,8 @@
 export {
   questionsAlunoJovem,
   questionsAlunoVelho,
-  professorSections,
-  diretorSections,
+  professorQuestions,
+  diretorQuestions,
   secretarioQuestions
 } from './formsData';
 
