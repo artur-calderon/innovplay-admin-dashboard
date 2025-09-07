@@ -47,6 +47,7 @@ const StudentDetailedResults = React.lazy(() => import("./components/evaluations
 const AnaliseAvaliacoes = React.lazy(() => import("./pages/AnaliseAvaliacoes"));
 const AcertoNiveis = React.lazy(() => import("./pages/AcertoNiveis"));
 const RelatorioEscolar = React.lazy(() => import("./pages/RelatorioEscolar"));
+const PhysicalTestPage = React.lazy(() => import("./pages/PhysicalTestPage"));
 
 // Lazy loading para componentes de jogos
 const GamesManagement = React.lazy(() => import("./pages/GamesManagement"));
@@ -160,6 +161,7 @@ const App = () => {
               <Route path="/app/avaliacao/:id/aluno/:studentId/resultados" element={<PrivateRoute><StudentDetailedResults onBack={() => window.history.back()} /></PrivateRoute>} />
               <Route path="/app/avaliacao/:id" element={<PrivateRoute><ViewEvaluation /></PrivateRoute>} />
               <Route path="/app/avaliacao/:id/editar" element={<PrivateRoute><EditEvaluation /></PrivateRoute>} />
+              <Route path="/app/avaliacao/:id/fisica" element={<PrivateRoute><PhysicalTestPage /></PrivateRoute>} />
               <Route path="/app/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
               <Route path="/app/criar-avaliacao" element={<PrivateRoute><CreateEvaluation /></PrivateRoute>} />
               <Route path="/app/calculadora-saeb" element={<PrivateRoute><IdebCalculatorPage /></PrivateRoute>} />
