@@ -9,7 +9,8 @@ import {
   Building2, 
   Plus, 
   Calendar,
-  Target
+  Target,
+  Shield
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { FormType } from '@/types/forms';
@@ -65,6 +66,16 @@ const FormRegistration = () => {
       questions: [], // Será preenchido com diretorSections
       icon: 'Building2',
       color: 'bg-orange-500'
+    },
+    {
+      id: 'secretario',
+      name: 'Secretário Municipal de Educação',
+      description: 'Questionário de caracterização e gestão educacional para secretários municipais de educação.',
+      targetAudience: 'Secretários Municipais de Educação',
+      educationLevel: 'Gestão Municipal',
+      questions: [], // Será preenchido com secretarioSections
+      icon: 'Shield',
+      color: 'bg-indigo-500'
     }
   ];
 
@@ -73,7 +84,8 @@ const FormRegistration = () => {
       Users,
       GraduationCap,
       UserCheck,
-      Building2
+      Building2,
+      Shield
     };
     return icons[iconName as keyof typeof icons] || Users;
   };

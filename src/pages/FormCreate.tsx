@@ -23,7 +23,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { questionsAlunoJovem, questionsAlunoVelho, professorSections, diretorSections } from '../data';
+import { questionsAlunoJovem, questionsAlunoVelho, professorSections, diretorSections, secretarioQuestions } from '../data';
 import { Question, SubQuestion } from '@/types/forms';
 import { api } from '@/lib/api';
 
@@ -45,6 +45,17 @@ interface School {
   };
 }
 
+// Tipos para usuários TecAdmin
+interface TecAdminUser {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  created_at?: string;
+  last_login?: string;
+  status?: string;
+}
+
 const FormCreate = () => {
   const navigate = useNavigate();
   const { formType } = useParams<{ formType: string }>();
@@ -54,6 +65,11 @@ const FormCreate = () => {
   const [loadingSchools, setLoadingSchools] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
+  // Estados para usuários TecAdmin (apenas para questionário do secretário)
+  const [tecAdminUsers, setTecAdminUsers] = useState<TecAdminUser[]>([]);
+  const [loadingTecAdminUsers, setLoadingTecAdminUsers] = useState(false);
+  const [searchTermUsers, setSearchTermUsers] = useState('');
+  
   // Configurações do formulário
   const [formConfig, setFormConfig] = useState({
     title: '',
@@ -61,10 +77,21 @@ const FormCreate = () => {
     targetGroups: [] as string[],
     selectedSchools: [] as string[],
     selectAllSchools: false,
+    selectedTecAdminUsers: [] as string[],
+    selectAllTecAdminUsers: false,
     isActive: true,
     deadline: '',
     instructions: ''
   });
+
+  // Estado para armazenar valores dos sliders
+  const [sliderValues, setSliderValues] = useState<Record<string, number>>({});
+  
+  // Estado para armazenar respostas das textareas
+  const [textareaValues, setTextareaValues] = useState<Record<string, string>>({});
+  
+  // Estado para controlar erros de validação
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   // Mapeamento de tipos de formulário para grupos de destino
   const getTargetGroupsForFormType = (formType: string) => {
@@ -76,6 +103,8 @@ const FormCreate = () => {
         return ['professores'];
       case 'diretor':
         return ['diretores'];
+      case 'secretario':
+        return ['secretarios'];
       default:
         return [];
     }
@@ -97,12 +126,25 @@ const FormCreate = () => {
     fetchSchools();
   }, []);
 
+  // Buscar usuários TecAdmin quando o tipo for 'secretario'
+  useEffect(() => {
+    if (formType === 'secretario') {
+      fetchTecAdminUsers();
+    }
+  }, [formType]);
+
   // Filtrar escolas baseado no termo de busca
   const filteredSchools = schools.filter(school => 
     school.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (school.city && school.city.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (school.city && school.city.state.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (school.address && school.address.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
+  // Filtrar usuários TecAdmin baseado no termo de busca
+  const filteredTecAdminUsers = tecAdminUsers.filter(user => 
+    user.name.toLowerCase().includes(searchTermUsers.toLowerCase()) ||
+    user.email.toLowerCase().includes(searchTermUsers.toLowerCase())
   );
 
   // Dados do formulário baseado no tipo
@@ -140,6 +182,14 @@ const FormCreate = () => {
           icon: Building2,
           color: 'bg-orange-500'
         };
+      case 'secretario':
+        return {
+          name: 'Secretário Municipal de Educação',
+          description: 'Questionário de caracterização e gestão educacional para secretários municipais de educação.',
+          questions: secretarioQuestions,
+          icon: Building2,
+          color: 'bg-indigo-500'
+        };
       default:
         return null;
     }
@@ -166,6 +216,10 @@ const FormCreate = () => {
       case 'diretor':
         return [
           { id: 'diretores', name: 'Diretores', description: 'Gestores escolares e coordenadores' }
+        ];
+      case 'secretario':
+        return [
+          { id: 'secretarios', name: 'Secretários Municipais de Educação', description: 'Gestores da educação municipal' }
         ];
       default:
         return [
@@ -228,6 +282,54 @@ const FormCreate = () => {
     }
   };
 
+  // Função para buscar usuários TecAdmin (apenas para questionário do secretário)
+  const fetchTecAdminUsers = async () => {
+    setLoadingTecAdminUsers(true);
+    try {
+      const response = await api.get('/professores/tecadm');
+      setTecAdminUsers(response.data || []);
+    } catch (error) {
+      console.error('Erro ao buscar usuários TecAdmin:', error);
+      // Em caso de erro, usar dados mockados como fallback
+      setTecAdminUsers([
+        { 
+          id: '1', 
+          name: 'João Silva', 
+          email: 'joao.silva@educacao.gov.br',
+          role: 'tecadm',
+          status: 'ativo',
+          last_login: '2024-01-15'
+        },
+        { 
+          id: '2', 
+          name: 'Maria Santos', 
+          email: 'maria.santos@educacao.gov.br',
+          role: 'tecadm',
+          status: 'ativo',
+          last_login: '2024-01-14'
+        },
+        { 
+          id: '3', 
+          name: 'Pedro Costa', 
+          email: 'pedro.costa@educacao.gov.br',
+          role: 'tecadm',
+          status: 'ativo',
+          last_login: '2024-01-13'
+        },
+        { 
+          id: '4', 
+          name: 'Ana Oliveira', 
+          email: 'ana.oliveira@educacao.gov.br',
+          role: 'tecadm',
+          status: 'ativo',
+          last_login: '2024-01-12'
+        }
+      ]);
+    } finally {
+      setLoadingTecAdminUsers(false);
+    }
+  };
+
   const toggleSection = (sectionId: string) => {
     const newExpanded = new Set(expandedSections);
     if (newExpanded.has(sectionId)) {
@@ -256,7 +358,42 @@ const FormCreate = () => {
     }));
   };
 
+  const handleTecAdminUserToggle = (userId: string) => {
+    setFormConfig(prev => ({
+      ...prev,
+      selectedTecAdminUsers: prev.selectedTecAdminUsers.includes(userId)
+        ? prev.selectedTecAdminUsers.filter(id => id !== userId)
+        : [...prev.selectedTecAdminUsers, userId],
+      selectAllTecAdminUsers: false
+    }));
+  };
+
+  const handleSelectAllTecAdminUsers = () => {
+    setFormConfig(prev => ({
+      ...prev,
+      selectAllTecAdminUsers: !prev.selectAllTecAdminUsers,
+      selectedTecAdminUsers: !prev.selectAllTecAdminUsers ? filteredTecAdminUsers.map(user => user.id) : []
+    }));
+  };
+
   const renderQuestion = (question: Question, index: number) => {
+    // Inicializar valor do slider se não existir
+    const sliderValue = sliderValues[question.id] ?? Math.floor(((question.min || 0) + (question.max || 100)) / 2);
+
+    const handleSliderChange = (questionId: string, value: number) => {
+      setSliderValues(prev => ({
+        ...prev,
+        [questionId]: value
+      }));
+    };
+
+    const handleTextareaChange = (questionId: string, value: string) => {
+      setTextareaValues(prev => ({
+        ...prev,
+        [questionId]: value
+      }));
+    };
+
     return (
       <div key={question.id} className="p-4 border rounded-lg bg-gray-50">
         <div className="flex items-start gap-3">
@@ -268,9 +405,9 @@ const FormCreate = () => {
               {question.texto || question.text}
             </h4>
             
-            {question.tipo === 'selecao_unica' && (
+            {(question.tipo === 'selecao_unica' || question.type === 'selecao_unica') && (
               <div className="space-y-2">
-                {question.opcoes?.map((option: string, optIndex: number) => (
+                {(question.opcoes || question.options)?.map((option: string, optIndex: number) => (
                   <label key={optIndex} className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200">
                     <span className="flex items-center justify-center w-6 h-6 bg-gray-100 rounded-full text-xs font-medium text-gray-600">
                       {String.fromCharCode(65 + optIndex)}
@@ -281,9 +418,9 @@ const FormCreate = () => {
               </div>
             )}
 
-            {question.tipo === 'multipla_escolha' && (
+            {(question.tipo === 'multipla_escolha' || question.type === 'multipla_escolha') && (
               <div className="space-y-2">
-                {question.subPerguntas?.map((subQ: SubQuestion, subIndex: number) => (
+                {(question.subPerguntas || question.subQuestions)?.map((subQ: SubQuestion, subIndex: number) => (
                   <div key={subQ.id} className="ml-4">
                     <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200">
                       <span className="flex items-center justify-center w-6 h-6 bg-gray-100 rounded-full text-xs font-medium text-gray-600">
@@ -296,15 +433,15 @@ const FormCreate = () => {
               </div>
             )}
 
-            {question.tipo === 'matriz_selecao' && (
+            {(question.tipo === 'matriz_selecao' || question.type === 'matriz_selecao') && (
               <div className="space-y-3">
-                {question.subPerguntas?.map((subQ: SubQuestion, subIndex: number) => (
+                {(question.subPerguntas || question.subQuestions)?.map((subQ: SubQuestion, subIndex: number) => (
                   <div key={subQ.id} className="ml-4">
                     <p className="text-sm font-medium text-gray-700 mb-2">
                       {subQ.texto || subQ.text}
                     </p>
                     <div className="grid grid-cols-2 gap-2">
-                      {question.opcoes?.map((option: string, optIndex: number) => (
+                      {(question.opcoes || question.options)?.map((option: string, optIndex: number) => (
                         <label key={optIndex} className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200">
                           <span className="flex items-center justify-center w-6 h-6 bg-gray-100 rounded-full text-xs font-medium text-gray-600">
                             {String.fromCharCode(65 + optIndex)}
@@ -318,25 +455,52 @@ const FormCreate = () => {
               </div>
             )}
 
-            {question.tipo === 'slider' && (
-              <div className="space-y-2">
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div className="bg-blue-600 h-2 rounded-full" style={{ width: '50%' }}></div>
-                </div>
-                <div className="flex justify-between text-xs text-gray-500">
-                  <span>{question.min || 0}</span>
-                  <span>{question.max || 100}</span>
+            {(question.tipo === 'slider' || question.type === 'slider') && (
+              <div className="space-y-3">
+                <div className="relative">
+                  <input
+                    type="range"
+                    min={question.min || 0}
+                    max={question.max || 100}
+                    value={sliderValue}
+                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider-input"
+                    style={{
+                      background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb 100%)`,
+                      WebkitAppearance: 'none',
+                      appearance: 'none'
+                    }}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value);
+                      handleSliderChange(question.id, value);
+                    }}
+                  />
+                  <div className="flex justify-between text-xs text-gray-500 mt-2">
+                    <span>{question.min || 0}</span>
+                    <span className="font-medium text-gray-700">
+                      Valor: <span className="text-blue-600 font-semibold">
+                        {sliderValue}
+                      </span>
+                    </span>
+                    <span>{question.max || 100}</span>
+                  </div>
                 </div>
               </div>
             )}
 
-            {question.tipo === 'textarea' && (
-              <textarea 
-                className="w-full p-3 border rounded-lg resize-none" 
-                rows={3}
-                placeholder="Digite sua resposta aqui..."
-                disabled
-              />
+            {(question.tipo === 'textarea' || question.type === 'textarea') && (
+              <div className="space-y-2">
+                <textarea 
+                  className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200" 
+                  rows={4}
+                  placeholder="Digite sua resposta aqui..."
+                  value={textareaValues[question.id] || ''}
+                  onChange={(e) => handleTextareaChange(question.id, e.target.value)}
+                />
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>Resposta livre</span>
+                  <span>{textareaValues[question.id]?.length || 0} caracteres</span>
+                </div>
+              </div>
             )}
 
             {question.obrigatoria && (
@@ -351,9 +515,37 @@ const FormCreate = () => {
   };
 
 
+  const validateForm = () => {
+    const errors: Record<string, string> = {};
+    
+    // Validar título
+    if (!formConfig.title.trim()) {
+      errors.title = 'Título é obrigatório';
+    }
+    
+    // Validar prazo de resposta
+    if (!formConfig.deadline) {
+      errors.deadline = 'Prazo de resposta é obrigatório';
+    } else {
+      // Validar se a data não é no passado
+      const selectedDate = new Date(formConfig.deadline);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Zerar horas para comparar apenas a data
+      
+      if (selectedDate < today) {
+        errors.deadline = 'O prazo não pode ser uma data passada';
+      }
+    }
+    
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleNextStep = () => {
     if (currentStep === 'config') {
-      setCurrentStep('preview');
+      if (validateForm()) {
+        setCurrentStep('preview');
+      }
     } else if (currentStep === 'preview') {
       setCurrentStep('send');
     }
@@ -449,22 +641,60 @@ const FormCreate = () => {
           <CardContent className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label htmlFor="title">Título do Questionário</Label>
+                <Label htmlFor="title">
+                  Título do Questionário <span className="text-red-500">*</span>
+                </Label>
                 <Input
                   id="title"
                   placeholder="Ex: Questionário Socioeconômico 2024"
                   value={formConfig.title}
-                  onChange={(e) => setFormConfig(prev => ({ ...prev, title: e.target.value }))}
+                  onChange={(e) => {
+                    setFormConfig(prev => ({ ...prev, title: e.target.value }));
+                    // Limpar erro quando o usuário começar a digitar
+                    if (validationErrors.title) {
+                      setValidationErrors(prev => {
+                        const newErrors = { ...prev };
+                        delete newErrors.title;
+                        return newErrors;
+                      });
+                    }
+                  }}
+                  className={validationErrors.title ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}
                 />
+                {validationErrors.title && (
+                  <p className="text-sm text-red-600 flex items-center gap-1">
+                    <span className="text-red-500">⚠</span>
+                    {validationErrors.title}
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="deadline">Prazo de Resposta</Label>
+                <Label htmlFor="deadline">
+                  Prazo de Resposta <span className="text-red-500">*</span>
+                </Label>
                 <Input
                   id="deadline"
                   type="date"
                   value={formConfig.deadline}
-                  onChange={(e) => setFormConfig(prev => ({ ...prev, deadline: e.target.value }))}
+                  onChange={(e) => {
+                    setFormConfig(prev => ({ ...prev, deadline: e.target.value }));
+                    // Limpar erro quando o usuário começar a digitar
+                    if (validationErrors.deadline) {
+                      setValidationErrors(prev => {
+                        const newErrors = { ...prev };
+                        delete newErrors.deadline;
+                        return newErrors;
+                      });
+                    }
+                  }}
+                  className={validationErrors.deadline ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}
                 />
+                {validationErrors.deadline && (
+                  <p className="text-sm text-red-600 flex items-center gap-1">
+                    <span className="text-red-500">⚠</span>
+                    {validationErrors.deadline}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -512,40 +742,57 @@ const FormCreate = () => {
               </div>
             </div>
 
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Label>Escolas de Destino</Label>
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleSelectAllSchools}
-                    className="text-xs"
-                    disabled={filteredSchools.length === 0}
-                  >
-                    {formConfig.selectAllSchools ? 'Desmarcar Todas' : 'Selecionar Todas'}
-                  </Button>
-                </div>
-              </div>
-              
-              {/* Campo de busca */}
-              <div className="relative">
-                <Input
-                  placeholder="Buscar escolas por nome, cidade, estado ou endereço..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pr-10"
-                />
-                <div className="absolute inset-y-0 right-0 flex items-center pr-3">
-                  {searchTerm ? (
-                    <button
+            {/* Seção de seleção - Escolas para outros tipos, Usuários TecAdmin para secretário */}
+            {formType === 'secretario' ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label>Escolha o Secretário Municipal de destino</Label>
+                  <div className="flex items-center gap-2">
+                    <Button
                       type="button"
-                      onClick={() => setSearchTerm('')}
-                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleSelectAllTecAdminUsers}
+                      className="text-xs"
+                      disabled={filteredTecAdminUsers.length === 0}
                     >
+                      {formConfig.selectAllTecAdminUsers ? 'Desmarcar Todos' : 'Selecionar Todos'}
+                    </Button>
+                  </div>
+                </div>
+                
+                {/* Campo de busca */}
+                <div className="relative">
+                  <Input
+                    placeholder="Buscar usuários por nome ou email..."
+                    value={searchTermUsers}
+                    onChange={(e) => setSearchTermUsers(e.target.value)}
+                    className="pr-10"
+                  />
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                    {searchTermUsers ? (
+                      <button
+                        type="button"
+                        onClick={() => setSearchTermUsers('')}
+                        className="text-gray-400 hover:text-gray-600 transition-colors"
+                      >
+                        <svg
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    ) : (
                       <svg
-                        className="h-4 w-4"
+                        className="h-4 w-4 text-gray-400"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -554,124 +801,263 @@ const FormCreate = () => {
                           strokeLinecap="round"
                           strokeLinejoin="round"
                           strokeWidth={2}
-                          d="M6 18L18 6M6 6l12 12"
+                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
                         />
                       </svg>
-                    </button>
-                  ) : (
-                    <svg
-                      className="h-4 w-4 text-gray-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                      />
-                    </svg>
-                  )}
-                </div>
-              </div>
-              <div className="max-h-60 overflow-y-auto border rounded-lg">
-                {loadingSchools ? (
-                  <div className="flex items-center justify-center p-8">
-                    <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
-                    <span className="ml-2 text-sm text-gray-600">Carregando escolas...</span>
+                    )}
                   </div>
-                ) : (
-                  <div className="divide-y">
-                    {filteredSchools.map((school) => (
-                      <div
-                        key={school.id}
-                        className={`p-3 cursor-pointer transition-colors ${
-                          formConfig.selectedSchools.includes(school.id) || formConfig.selectAllSchools
-                            ? 'bg-blue-50 border-l-4 border-blue-500'
-                            : 'hover:bg-gray-50'
-                        }`}
-                        onClick={() => handleSchoolToggle(school.id)}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                            formConfig.selectedSchools.includes(school.id) || formConfig.selectAllSchools
-                              ? 'border-blue-500 bg-blue-500'
-                              : 'border-gray-300'
-                          }`}>
-                            {(formConfig.selectedSchools.includes(school.id) || formConfig.selectAllSchools) && (
-                              <CheckCircle className="h-3 w-3 text-white" />
-                            )}
-                          </div>
-                          <div className="flex-1">
-                            <h4 className="font-medium text-gray-900">{school.name}</h4>
-                            <div className="flex items-center gap-4 text-sm text-gray-600">
-                              <span>
-                                {school.city ? `${school.city.name}, ${school.city.state}` : 'Localização não informada'}
-                              </span>
-                              {school.address && (
-                                <span className="text-xs text-gray-500">
-                                  {school.address}
-                                </span>
+                </div>
+                <div className="max-h-60 overflow-y-auto border rounded-lg">
+                  {loadingTecAdminUsers ? (
+                    <div className="flex items-center justify-center p-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                      <span className="ml-2 text-sm text-gray-600">Carregando usuários TecAdmin...</span>
+                    </div>
+                  ) : (
+                    <div className="divide-y">
+                      {filteredTecAdminUsers.map((user) => (
+                        <div
+                          key={user.id}
+                          className={`p-3 cursor-pointer transition-colors ${
+                            formConfig.selectedTecAdminUsers.includes(user.id) || formConfig.selectAllTecAdminUsers
+                              ? 'bg-blue-50 border-l-4 border-blue-500'
+                              : 'hover:bg-gray-50'
+                          }`}
+                          onClick={() => handleTecAdminUserToggle(user.id)}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                              formConfig.selectedTecAdminUsers.includes(user.id) || formConfig.selectAllTecAdminUsers
+                                ? 'border-blue-500 bg-blue-500'
+                                : 'border-gray-300'
+                            }`}>
+                              {(formConfig.selectedTecAdminUsers.includes(user.id) || formConfig.selectAllTecAdminUsers) && (
+                                <CheckCircle className="h-3 w-3 text-white" />
                               )}
-                              {school.students_count && (
+                            </div>
+                            <div className="flex-1">
+                              <h4 className="font-medium text-gray-900">{user.name}</h4>
+                              <div className="flex items-center gap-4 text-sm text-gray-600">
+                                <span>{user.email}</span>
                                 <span className="text-xs text-gray-500">
-                                  {school.students_count} alunos
+                                  {user.status || 'ativo'}
                                 </span>
-                              )}
-                              {school.classes_count && (
-                                <span className="text-xs text-gray-500">
-                                  {school.classes_count} turmas
-                                </span>
-                              )}
+                                {user.last_login && (
+                                  <span className="text-xs text-gray-500">
+                                    Último acesso: {new Date(user.last_login).toLocaleDateString('pt-BR')}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                    {filteredSchools.length === 0 && !loadingSchools && (
-                      <div className="p-8 text-center text-gray-500">
-                        <Building2 className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                        <p>
-                          {searchTerm 
-                            ? `Nenhuma escola encontrada para "${searchTerm}"`
-                            : 'Nenhuma escola encontrada'
-                          }
-                        </p>
-                        {searchTerm && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setSearchTerm('')}
-                            className="mt-2"
-                          >
-                            Limpar busca
-                          </Button>
-                        )}
-                      </div>
+                      ))}
+                      {filteredTecAdminUsers.length === 0 && !loadingTecAdminUsers && (
+                        <div className="p-8 text-center text-gray-500">
+                          <UserCheck className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                          <p>
+                            {searchTermUsers 
+                              ? `Nenhum usuário encontrado para "${searchTermUsers}"`
+                              : 'Nenhum usuário TecAdmin encontrado'
+                            }
+                          </p>
+                          {searchTermUsers && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setSearchTermUsers('')}
+                              className="mt-2"
+                            >
+                              Limpar busca
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500">
+                  {formConfig.selectAllTecAdminUsers 
+                    ? `Todos os ${filteredTecAdminUsers.length} usuários selecionados`
+                    : `${formConfig.selectedTecAdminUsers.length} de ${filteredTecAdminUsers.length} usuários selecionados`
+                  }
+                  {searchTermUsers && tecAdminUsers.length !== filteredTecAdminUsers.length && (
+                    <span className="ml-2 text-blue-600">
+                      (filtrados de {tecAdminUsers.length} total)
+                    </span>
+                  )}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label>Escolas de Destino</Label>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleSelectAllSchools}
+                      className="text-xs"
+                      disabled={filteredSchools.length === 0}
+                    >
+                      {formConfig.selectAllSchools ? 'Desmarcar Todas' : 'Selecionar Todas'}
+                    </Button>
+                  </div>
+                </div>
+                
+                {/* Campo de busca */}
+                <div className="relative">
+                  <Input
+                    placeholder="Buscar escolas por nome, cidade, estado ou endereço..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pr-10"
+                  />
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                    {searchTerm ? (
+                      <button
+                        type="button"
+                        onClick={() => setSearchTerm('')}
+                        className="text-gray-400 hover:text-gray-600 transition-colors"
+                      >
+                        <svg
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    ) : (
+                      <svg
+                        className="h-4 w-4 text-gray-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                        />
+                      </svg>
                     )}
                   </div>
-                )}
+                </div>
+                <div className="max-h-60 overflow-y-auto border rounded-lg">
+                  {loadingSchools ? (
+                    <div className="flex items-center justify-center p-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                      <span className="ml-2 text-sm text-gray-600">Carregando escolas...</span>
+                    </div>
+                  ) : (
+                    <div className="divide-y">
+                      {filteredSchools.map((school) => (
+                        <div
+                          key={school.id}
+                          className={`p-3 cursor-pointer transition-colors ${
+                            formConfig.selectedSchools.includes(school.id) || formConfig.selectAllSchools
+                              ? 'bg-blue-50 border-l-4 border-blue-500'
+                              : 'hover:bg-gray-50'
+                          }`}
+                          onClick={() => handleSchoolToggle(school.id)}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                              formConfig.selectedSchools.includes(school.id) || formConfig.selectAllSchools
+                                ? 'border-blue-500 bg-blue-500'
+                                : 'border-gray-300'
+                            }`}>
+                              {(formConfig.selectedSchools.includes(school.id) || formConfig.selectAllSchools) && (
+                                <CheckCircle className="h-3 w-3 text-white" />
+                              )}
+                            </div>
+                            <div className="flex-1">
+                              <h4 className="font-medium text-gray-900">{school.name}</h4>
+                              <div className="flex items-center gap-4 text-sm text-gray-600">
+                                <span>
+                                  {school.city ? `${school.city.name}, ${school.city.state}` : 'Localização não informada'}
+                                </span>
+                                {school.address && (
+                                  <span className="text-xs text-gray-500">
+                                    {school.address}
+                                  </span>
+                                )}
+                                {school.students_count && (
+                                  <span className="text-xs text-gray-500">
+                                    {school.students_count} alunos
+                                  </span>
+                                )}
+                                {school.classes_count && (
+                                  <span className="text-xs text-gray-500">
+                                    {school.classes_count} turmas
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {filteredSchools.length === 0 && !loadingSchools && (
+                        <div className="p-8 text-center text-gray-500">
+                          <Building2 className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                          <p>
+                            {searchTerm 
+                              ? `Nenhuma escola encontrada para "${searchTerm}"`
+                              : 'Nenhuma escola encontrada'
+                            }
+                          </p>
+                          {searchTerm && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setSearchTerm('')}
+                              className="mt-2"
+                            >
+                              Limpar busca
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500">
+                  {formConfig.selectAllSchools 
+                    ? `Todas as ${filteredSchools.length} escolas selecionadas`
+                    : `${formConfig.selectedSchools.length} de ${filteredSchools.length} escolas selecionadas`
+                  }
+                  {searchTerm && schools.length !== filteredSchools.length && (
+                    <span className="ml-2 text-blue-600">
+                      (filtradas de {schools.length} total)
+                    </span>
+                  )}
+                </p>
               </div>
-              <p className="text-xs text-gray-500">
-                {formConfig.selectAllSchools 
-                  ? `Todas as ${filteredSchools.length} escolas selecionadas`
-                  : `${formConfig.selectedSchools.length} de ${filteredSchools.length} escolas selecionadas`
-                }
-                {searchTerm && schools.length !== filteredSchools.length && (
-                  <span className="ml-2 text-blue-600">
-                    (filtradas de {schools.length} total)
-                  </span>
-                )}
-              </p>
-            </div>
+            )}
 
             <div className="flex justify-end">
               <Button 
                 onClick={handleNextStep} 
-                disabled={!formConfig.title || (formConfig.selectedSchools.length === 0 && !formConfig.selectAllSchools)}
+                disabled={
+                  !formConfig.title || 
+                  !formConfig.deadline || 
+                  (formType === 'secretario' 
+                    ? (formConfig.selectedTecAdminUsers.length === 0 && !formConfig.selectAllTecAdminUsers)
+                    : (formConfig.selectedSchools.length === 0 && !formConfig.selectAllSchools)
+                  )
+                }
+                className={Object.keys(validationErrors).length > 0 ? 'bg-red-500 hover:bg-red-600' : ''}
               >
-                Próximo: Visualização
+                {Object.keys(validationErrors).length > 0 ? 'Corrija os erros acima' : 'Próximo: Visualização'}
               </Button>
             </div>
           </CardContent>
@@ -716,23 +1102,48 @@ const FormCreate = () => {
                     )}
                   </div>
                   <div className="mt-3 p-3 bg-blue-50 rounded-lg">
-                    <div className="flex items-center gap-2 text-sm text-blue-800">
-                      <Building2 className="h-4 w-4" />
-                      <span className="font-medium">
-                        {formConfig.selectAllSchools 
-                          ? `Todas as ${schools.length} escolas`
-                          : `${formConfig.selectedSchools.length} escola(s) selecionada(s)`
-                        }
-                      </span>
-                    </div>
-                    {!formConfig.selectAllSchools && formConfig.selectedSchools.length > 0 && (
-                      <div className="mt-2 text-xs text-blue-700">
-                        {formConfig.selectedSchools.slice(0, 3).map(id => {
-                          const school = schools.find(s => s.id === id);
-                          return school?.name;
-                        }).join(', ')}
-                        {formConfig.selectedSchools.length > 3 && ` e mais ${formConfig.selectedSchools.length - 3} escola(s)`}
-                      </div>
+                    {formType === 'secretario' ? (
+                      <>
+                        <div className="flex items-center gap-2 text-sm text-blue-800">
+                          <UserCheck className="h-4 w-4" />
+                          <span className="font-medium">
+                            {formConfig.selectAllTecAdminUsers 
+                              ? `Todos os ${tecAdminUsers.length} usuários TecAdmin`
+                              : `${formConfig.selectedTecAdminUsers.length} usuário(s) TecAdmin selecionado(s)`
+                            }
+                          </span>
+                        </div>
+                        {!formConfig.selectAllTecAdminUsers && formConfig.selectedTecAdminUsers.length > 0 && (
+                          <div className="mt-2 text-xs text-blue-700">
+                            {formConfig.selectedTecAdminUsers.slice(0, 3).map(id => {
+                              const user = tecAdminUsers.find(u => u.id === id);
+                              return user?.name;
+                            }).join(', ')}
+                            {formConfig.selectedTecAdminUsers.length > 3 && ` e mais ${formConfig.selectedTecAdminUsers.length - 3} usuário(s)`}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2 text-sm text-blue-800">
+                          <Building2 className="h-4 w-4" />
+                          <span className="font-medium">
+                            {formConfig.selectAllSchools 
+                              ? `Todas as ${schools.length} escolas`
+                              : `${formConfig.selectedSchools.length} escola(s) selecionada(s)`
+                            }
+                          </span>
+                        </div>
+                        {!formConfig.selectAllSchools && formConfig.selectedSchools.length > 0 && (
+                          <div className="mt-2 text-xs text-blue-700">
+                            {formConfig.selectedSchools.slice(0, 3).map(id => {
+                              const school = schools.find(s => s.id === id);
+                              return school?.name;
+                            }).join(', ')}
+                            {formConfig.selectedSchools.length > 3 && ` e mais ${formConfig.selectedSchools.length - 3} escola(s)`}
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -800,9 +1211,15 @@ const FormCreate = () => {
                 <div className="space-y-2 text-sm">
                   <div><strong>Título:</strong> {formConfig.title}</div>
                   <div><strong>Público:</strong> {formConfig.targetGroups.map(id => targetGroups.find(g => g.id === id)?.name).join(', ')}</div>
-                  <div><strong>Escolas:</strong> {formConfig.selectAllSchools 
-                    ? `Todas as ${schools.length} escolas`
-                    : `${formConfig.selectedSchools.length} escola(s) selecionada(s)`
+                  <div><strong>{formType === 'secretario' ? 'Usuários TecAdmin:' : 'Escolas:'}</strong> {formType === 'secretario' 
+                    ? (formConfig.selectAllTecAdminUsers 
+                        ? `Todos os ${tecAdminUsers.length} usuários TecAdmin`
+                        : `${formConfig.selectedTecAdminUsers.length} usuário(s) TecAdmin selecionado(s)`
+                      )
+                    : (formConfig.selectAllSchools 
+                        ? `Todas as ${schools.length} escolas`
+                        : `${formConfig.selectedSchools.length} escola(s) selecionada(s)`
+                      )
                   }</div>
                   <div><strong>Prazo:</strong> {formConfig.deadline ? new Date(formConfig.deadline).toLocaleDateString('pt-BR') : 'Não definido'}</div>
                   <div><strong>Status:</strong> {formConfig.isActive ? 'Ativo' : 'Inativo'}</div>
