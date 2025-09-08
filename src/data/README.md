@@ -18,10 +18,10 @@ src/data/
 - **questionsAlunoVelho**: Questionário para estudantes dos anos finais (6° ao 9° ano) e EJA 6° ao 9° período
 
 ### Professores
-- **professorSections**: Questionário de caracterização e condições de trabalho para professores da Educação Básica
+- **professorQuestions**: Questionário de caracterização e condições de trabalho para professores da Educação Básica
 
 ### Diretores
-- **diretorSections**: Questionário de caracterização da escola e condições de gestão para diretores escolares
+- **diretorQuestions**: Questionário de caracterização da escola e condições de gestão para diretores escolares
 
 ## Uso
 
@@ -29,8 +29,8 @@ src/data/
 import { 
   questionsAlunoJovem, 
   questionsAlunoVelho, 
-  professorSections, 
-  diretorSections 
+  professorQuestions, 
+  diretorQuestions 
 } from '@/data';
 ```
 

@@ -14,7 +14,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { questionsAlunoJovem, questionsAlunoVelho, professorSections, diretorSections } from '../data';
+import { questionsAlunoJovem, questionsAlunoVelho, professorQuestions, diretorQuestions } from '../data';
 import { Question, SubQuestion } from '@/types/forms';
 
 const FormView = () => {

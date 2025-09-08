@@ -53,7 +53,7 @@ const FormRegistration = () => {
       description: 'Questionário de caracterização e condições de trabalho para professores da Educação Básica.',
       targetAudience: 'Professores da Educação Básica',
       educationLevel: 'Todos os níveis',
-      questions: [], // Será preenchido com professorSections
+      questions: [], // Será preenchido com professorQuestions
       icon: 'UserCheck',
       color: 'bg-purple-500'
     },
@@ -63,7 +63,7 @@ const FormRegistration = () => {
       description: 'Questionário de caracterização da escola e condições de gestão para diretores escolares.',
       targetAudience: 'Diretores de escolas',
       educationLevel: 'Todos os níveis',
-      questions: [], // Será preenchido com diretorSections
+      questions: [], // Será preenchido com diretorQuestions
       icon: 'Building2',
       color: 'bg-orange-500'
     },
