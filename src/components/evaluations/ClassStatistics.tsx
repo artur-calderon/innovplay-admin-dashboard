@@ -31,6 +31,8 @@ interface ClassStatisticsProps {
     };
     estatisticas_gerais?: {
       serie?: string;
+      media_nota_geral?: number;
+      media_proficiencia_geral?: number;
     };
     tabela_detalhada?: {
       disciplinas?: Array<{
@@ -118,13 +120,34 @@ export function ClassStatistics({ apiData }: ClassStatisticsProps) {
       const totalStudents = alunos.length;
       const participatingStudents = alunos.length; // Todos os alunos na tabela participaram
       
-      // Calcular médias reais
-      const averageGrade = alunos.length > 0 
-        ? alunos.reduce((sum, aluno) => sum + aluno.nota, 0) / alunos.length 
-        : 0;
-      const proficiency = alunos.length > 0 
-        ? alunos.reduce((sum, aluno) => sum + aluno.proficiencia, 0) / alunos.length 
-        : 0;
+      // ✅ NOVO: Usar dados das estatísticas gerais do backend para nota e proficiência
+      const averageGrade = apiData?.estatisticas_gerais?.media_nota_geral !== undefined 
+        ? apiData.estatisticas_gerais.media_nota_geral
+        : (alunos.length > 0 
+            ? alunos.reduce((sum, aluno) => sum + aluno.nota, 0) / alunos.length 
+            : 0);
+      
+      const proficiency = apiData?.estatisticas_gerais?.media_proficiencia_geral !== undefined 
+        ? apiData.estatisticas_gerais.media_proficiencia_geral
+        : (alunos.length > 0 
+            ? alunos.reduce((sum, aluno) => sum + aluno.proficiencia, 0) / alunos.length 
+            : 0);
+
+      // ✅ LOG: Verificar valores sendo usados
+      console.log('🎯 LOG - ClassStatistics - Turma:', turmaName, {
+        estatisticasGerais: {
+          media_nota_geral: apiData?.estatisticas_gerais?.media_nota_geral,
+          media_proficiencia_geral: apiData?.estatisticas_gerais?.media_proficiencia_geral
+        },
+        calculadoLocal: {
+          averageGrade: alunos.length > 0 ? alunos.reduce((sum, aluno) => sum + aluno.nota, 0) / alunos.length : 0,
+          proficiency: alunos.length > 0 ? alunos.reduce((sum, aluno) => sum + aluno.proficiencia, 0) / alunos.length : 0
+        },
+        finalValues: {
+          averageGrade,
+          proficiency
+        }
+      });
 
       // ✅ CORRIGIDO: Calcular distribuição real baseada nas classificações dos alunos
       const distribution = {

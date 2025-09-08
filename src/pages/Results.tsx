@@ -697,9 +697,7 @@ export default function Results() {
       // 🚀 CARREGAMENTO UNIFICADO: Uma única chamada para a nova API
       const evaluationsResponse = await EvaluationResultsApiService.getEvaluationsList(currentPage, perPage, filters);
       
-      // ✅ LOG DA RESPOSTA BRUTA DA API - ROTA /evaluation-results/avaliacao
-      console.log('🔍 RESPOSTA BACKEND /evaluation-results/avaliacao:',evaluationsResponse);
-      
+   
       if (evaluationsResponse) {
         setApiData(evaluationsResponse);
 
@@ -1035,14 +1033,11 @@ export default function Results() {
   // ✅ NOVA FUNÇÃO: Processar dados do ranking para formato do componente
   const processRankingData = useCallback(() => {
     if (!apiData?.ranking?.length) {
-      console.log('🔍 processRankingData: No ranking data available');
       return [];
     }
 
-    console.log('🔍 processRankingData: Raw ranking data:', apiData.ranking);
 
     const processedData = apiData.ranking.map(item => {
-      console.log('🔍 processRankingData: Processing item:', item);
       
       // Usar apenas a estrutura nova com propriedade aluno aninhada
       const itemAny = item as any;
@@ -1064,7 +1059,6 @@ export default function Results() {
       };
     });
 
-    console.log('🔍 processRankingData: Processed data:', processedData);
     return processedData;
   }, [apiData]);
 
