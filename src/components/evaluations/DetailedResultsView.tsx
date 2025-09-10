@@ -739,6 +739,10 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
     const [students, setStudents] = useState<StudentResult[]>([]);
     const [detailedReport, setDetailedReport] = useState<DetailedReport | null>(null);
     const [stats, setStats] = useState<Stats | null>(null);
+    const [generalStats, setGeneralStats] = useState<{
+        media_nota_geral: number;
+        media_proficiencia_geral: number;
+    } | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isDataLoading, setIsDataLoading] = useState(false);
     const [loadingStep, setLoadingStep] = useState('');
@@ -1255,6 +1259,26 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
             // ✅ 2. Buscar informações básicas da avaliação
             updateLoadingProgress(2, 'Carregando informações da avaliação...');
             const evaluationResponse = await EvaluationResultsApiService.getEvaluationById(evaluationId);
+            
+            // ✅ 2.1. Buscar estatísticas gerais da avaliação (para média nota e proficiência)
+            updateLoadingProgress(2.5, 'Carregando estatísticas gerais...');
+            const generalStatsResponse = await EvaluationResultsApiService.getEvaluationGeneralStats(evaluationId);
+            
+            console.log('🔍 LOG - Resposta das estatísticas gerais:', generalStatsResponse);
+            
+            if (generalStatsResponse?.estatisticas_gerais) {
+                console.log('📊 LOG - Estatísticas gerais encontradas:', {
+                    media_nota_geral: generalStatsResponse.estatisticas_gerais.media_nota_geral,
+                    media_proficiencia_geral: generalStatsResponse.estatisticas_gerais.media_proficiencia_geral
+                });
+                
+                setGeneralStats({
+                    media_nota_geral: generalStatsResponse.estatisticas_gerais.media_nota_geral,
+                    media_proficiencia_geral: generalStatsResponse.estatisticas_gerais.media_proficiencia_geral
+                });
+            } else {
+                console.log('⚠️ LOG - Estatísticas gerais não encontradas na resposta');
+            }
             
             if (evaluationResponse) {
                 consolidateEvaluationInfo(evaluationResponse);
@@ -2568,12 +2592,36 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                                         
                                         <div className="flex items-center justify-between text-sm">
                                             <span className="text-muted-foreground">Média Nota:</span>
-                                            <span className="font-medium">{averageScore.toFixed(1)}</span>
+                                            <span className="font-medium">
+                                                {(() => {
+                                                    const value = generalStats?.media_nota_geral !== undefined 
+                                                        ? generalStats.media_nota_geral.toFixed(1)
+                                                        : averageScore.toFixed(1);
+                                                    console.log('🎯 LOG - Média Nota renderizada:', {
+                                                        generalStats: generalStats?.media_nota_geral,
+                                                        averageScore,
+                                                        finalValue: value
+                                                    });
+                                                    return value;
+                                                })()}
+                                            </span>
                                         </div>
                                         
                                         <div className="flex items-center justify-between text-sm">
                                             <span className="text-muted-foreground">Proficiência:</span>
-                                            <span className="font-medium">{averageProficiency.toFixed(1)}</span>
+                                            <span className="font-medium">
+                                                {(() => {
+                                                    const value = generalStats?.media_proficiencia_geral !== undefined 
+                                                        ? generalStats.media_proficiencia_geral.toFixed(1)
+                                                        : averageProficiency.toFixed(1);
+                                                    console.log('🎯 LOG - Proficiência renderizada:', {
+                                                        generalStats: generalStats?.media_proficiencia_geral,
+                                                        averageProficiency,
+                                                        finalValue: value
+                                                    });
+                                                    return value;
+                                                })()}
+                                            </span>
                                         </div>
                                         
                                         {/* Distribuição de classificação */}
