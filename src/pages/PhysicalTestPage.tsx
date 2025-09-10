@@ -33,6 +33,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -43,21 +50,18 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Download,
-  Upload,
   FileText,
+  Download,
+  Trash2,
+  Users,
+  Plus,
+  Search,
+  Filter,
+  RefreshCw,
   CheckCircle,
   XCircle,
   Clock,
-  Users,
-  FileImage,
-  Settings,
-  RefreshCw,
   Eye,
-  AlertCircle,
-  QrCode,
-  Printer,
-  Trash2,
   MoreVertical
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -71,40 +75,48 @@ interface PhysicalTestStatus {
   total_students: number;
   generated_forms: number;
   corrected_forms: number;
-  pending_forms: number;
-  last_generation?: string;
-  class_tests?: Array<{
-    id: string;
-    class_id: string;
-    application: string;
-    expiration: string;
-    status: string;
-  }>;
 }
 
 interface GeneratedForm {
   id: string;
   test_id: string;
-  student_id: string | null;
+  student_id: string;
   student_name: string;
-  qr_code_data: string;
-  status: string;
+  class_test_id: string;
+  form_pdf_url: string | null;
+  answer_sheet_url: string | null;
+  correction_image_url: string | null;
   has_pdf_data: boolean;
+  has_answer_sheet_data: boolean;
+  has_correction_data: boolean;
+  qr_code_data: string;
+  qr_code_coordinates: any;
+  status: string;
+  is_corrected: boolean;
+  generated_at: string;
+  corrected_at: string | null;
+  processed_at: string | null;
   created_at: string;
-  is_corrected?: boolean;
-  correction_score?: number;
 }
 
 interface CorrectionResult {
+  message: string;
   student_id: string;
-  student_name: string;
+  test_id: string;
+  class_test_id: string;
   correct_answers: number;
-  incorrect_answers: number;
-  unanswered: number;
   total_questions: number;
-  score: number;
-  corrected_image: string;
-  processed_at: string;
+  score_percentage: number;
+  grade: number;
+  proficiency: number;
+  classification: string;
+  answers_detected: number;
+  qr_data: {
+    student_id: string;
+    test_id: string;
+    class_test_id: string;
+    timestamp: string;
+  };
 }
 
 export default function PhysicalTestPage() {
@@ -114,21 +126,27 @@ export default function PhysicalTestPage() {
   const { user } = useAuth();
 
   // Estados principais
+  const [isLoading, setIsLoading] = useState(true);
   const [testStatus, setTestStatus] = useState<PhysicalTestStatus | null>(null);
   const [generatedForms, setGeneratedForms] = useState<GeneratedForm[]>([]);
-  const [correctionResults, setCorrectionResults] = useState<CorrectionResult[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [correctionResult, setCorrectionResult] = useState<CorrectionResult | null>(null);
+
+  // Estados para geração de formulários
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [correctionProgress, setCorrectionProgress] = useState(0);
+
+  // Estados para correção
+  const [showCorrectionDialog, setShowCorrectionDialog] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<File | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [showCorrectionDialog, setShowCorrectionDialog] = useState(false);
-  const [correctionProgress, setCorrectionProgress] = useState(0);
-  const [selectedForms, setSelectedForms] = useState<string[]>([]);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  // Estados para gerenciamento de formulários
   const [formToDelete, setFormToDelete] = useState<string | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [showStudentModal, setShowStudentModal] = useState(false);
+
+  // Estados para alunos
   const [students, setStudents] = useState<any[]>([]);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
   const [isGeneratingIndividual, setIsGeneratingIndividual] = useState(false);
@@ -149,45 +167,16 @@ export default function PhysicalTestPage() {
       setIsLoading(true);
       
       // Carregar status da prova
-      console.log("🔍 Carregando status da prova física...");
       const statusResponse = await api.get(`/physical-tests/test/${id}/status`);
-      console.log("📊 Status da prova:", statusResponse.data);
       setTestStatus(statusResponse.data);
 
-      // Carregar turmas da avaliação
-      console.log("🏫 Carregando turmas da avaliação...");
-      const classesResponse = await api.get(`/test/${id}/classes`);
-      console.log("🏫 Turmas encontradas:", classesResponse.data);
-      setClasses(classesResponse.data || []);
-
-      // Calcular total de alunos
-      const totalStudentsCount = classesResponse.data?.reduce((total, classTest) => {
-        return total + (classTest.students_count || 0);
-      }, 0) || 0;
-      console.log("👥 Total de alunos calculado:", totalStudentsCount);
-      setTotalStudents(totalStudentsCount);
-
-      // Carregar avaliações geradas
-      console.log("📋 Carregando avaliações geradas...");
+      // Carregar formulários gerados
       const formsResponse = await api.get(`/physical-tests/test/${id}/forms`);
-      console.log("📄 Avaliações geradas:", formsResponse.data);
-      
-      // Separar formulários combinados e individuais
-      const forms = formsResponse.data.forms || [];
-      const combinedForms = forms.filter(form => !form.student_id);
-      const individualForms = forms.filter(form => form.student_id);
-      
-      console.log("📄 Formulários combinados:", combinedForms.length);
-      console.log("👤 Formulários individuais:", individualForms.length);
-      console.log("📊 Total de formulários:", forms.length);
-      
-      setGeneratedForms(forms);
+      console.log("📋 Resposta da API de formulários:", formsResponse.data);
+      setGeneratedForms(formsResponse.data.forms || []);
 
-      // Carregar resultados de correção (se houver)
-      // TODO: Implementar endpoint para buscar resultados
-      
     } catch (error) {
-      console.error("Erro ao carregar dados da prova física:", error);
+      console.error("Erro ao carregar dados:", error);
       toast({
         title: "Erro",
         description: "Não foi possível carregar os dados da prova física.",
@@ -211,32 +200,28 @@ export default function PhysicalTestPage() {
       }, 200);
 
       const response = await api.post(`/physical-tests/test/${id}/generate-forms`);
-      
+
       clearInterval(progressInterval);
       setCorrectionProgress(100);
 
-      console.log("✅ Resposta da geração de formulários:", response.data);
-      console.log("📝 Formulários gerados:", response.data.forms);
-      console.log("📊 Total de formulários:", response.data.generated_forms);
-
-      setTestStatus(prev => prev ? {
-        ...prev,
-        generated_forms: response.data.generated_forms,
-        last_generation: new Date().toISOString()
-      } : null);
-
-      setGeneratedForms(response.data.forms || []);
+      // Mapear form_id para id para compatibilidade
+      const mappedForms = (response.data.generated_forms || []).map((form: any) => ({
+        ...form,
+        id: form.form_id, // Mapear form_id para id
+        created_at: new Date().toISOString() // Adicionar timestamp se não existir
+      }));
+      setGeneratedForms(mappedForms);
 
       toast({
-        title: "Sucesso!",
-        description: `${response.data.generated_forms} avaliações foram geradas com sucesso.`,
+        title: "Avaliações geradas!",
+        description: `${response.data.generated_forms?.length || 0} avaliações foram geradas com sucesso.`,
       });
 
     } catch (error: any) {
-      console.error("Erro ao gerar avaliações:", error);
+      console.error("Erro ao gerar formulários:", error);
       toast({
         title: "Erro",
-        description: error.response?.data?.error || "Não foi possível gerar as avaliações.",
+        description: error.response?.data?.error || "Erro ao gerar avaliações",
         variant: "destructive",
       });
     } finally {
@@ -245,15 +230,19 @@ export default function PhysicalTestPage() {
     }
   };
 
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       setUploadedImage(file);
+      setCorrectionResult(null); // Limpar resultado anterior
+      
       const reader = new FileReader();
       reader.onload = (e) => {
         setPreviewImage(e.target?.result as string);
       };
       reader.readAsDataURL(file);
+      
+      console.log("📸 Imagem selecionada:", file.name);
     }
   };
 
@@ -264,41 +253,36 @@ export default function PhysicalTestPage() {
       setIsProcessing(true);
       setCorrectionProgress(0);
 
-      const formData = new FormData();
-      formData.append('image', uploadedImage);
+      // Converter imagem para base64
+      const base64Image = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(uploadedImage);
+      });
 
       // Simular progresso
       const progressInterval = setInterval(() => {
         setCorrectionProgress(prev => Math.min(prev + 15, 90));
       }, 300);
 
-      const response = await api.post(`/physical-tests/test/${id}/process-correction`, formData, {
+      const response = await api.post(`/physical-tests/test/${id}/process-correction`, {
+        image: base64Image
+      }, {
         headers: {
-          'Content-Type': 'multipart/form-data',
+          'Content-Type': 'application/json',
         },
       });
 
       clearInterval(progressInterval);
       setCorrectionProgress(100);
 
-      // Adicionar resultado à lista
-      const newResult: CorrectionResult = {
-        student_id: response.data.student_id,
-        student_name: response.data.student_name || "Aluno não identificado",
-        correct_answers: response.data.correction_results.correct_answers,
-        incorrect_answers: response.data.correction_results.incorrect_answers,
-        unanswered: response.data.correction_results.unanswered,
-        total_questions: response.data.correction_results.total_questions,
-        score: Math.round((response.data.correction_results.correct_answers / response.data.correction_results.total_questions) * 100),
-        corrected_image: response.data.corrected_image,
-        processed_at: new Date().toISOString()
-      };
-
-      setCorrectionResults(prev => [newResult, ...prev]);
+      // Armazenar resultado da correção
+      setCorrectionResult(response.data);
 
       toast({
         title: "Correção processada!",
-        description: `Prova corrigida com sucesso. Nota: ${newResult.score}%`,
+        description: `Prova corrigida com sucesso. Nota: ${response.data.grade}`,
       });
 
       setShowCorrectionDialog(false);
@@ -324,23 +308,62 @@ export default function PhysicalTestPage() {
         responseType: 'blob'
       });
 
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      const fileName = form.student_id 
-        ? `Avaliacao_${form.student_name.replace(/\s+/g, '_')}.pdf`
-        : `Avaliacao_Combinada_${form.student_name.replace(/\s+/g, '_')}.pdf`;
-      link.setAttribute('download', fileName);
+      link.download = `Avaliacao_${form.student_name.replace(/\s+/g, '_')}.pdf`;
       document.body.appendChild(link);
       link.click();
-      link.remove();
+      document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
 
+      toast({
+        title: "Download iniciado",
+        description: "O arquivo PDF está sendo baixado.",
+      });
     } catch (error) {
-      console.error("Erro ao baixar avaliação:", error);
+      console.error("Erro ao baixar formulário:", error);
       toast({
         title: "Erro",
-        description: "Não foi possível baixar a avaliação.",
+        description: "Não foi possível baixar o formulário.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDownloadAll = async () => {
+    if (!id) return;
+
+    try {
+      const response = await api.get(`/physical-tests/test/${id}/download-all`, {
+        responseType: 'blob'
+      });
+
+      const blob = new Blob([response.data], { type: 'application/zip' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Nome do arquivo com timestamp
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+      const testTitle = testStatus?.test_title?.replace(/\s+/g, '_') || 'Avaliacao';
+      link.download = `Avaliacoes_${testTitle}_${timestamp}.zip`;
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "Download iniciado",
+        description: "O arquivo ZIP está sendo baixado.",
+      });
+    } catch (error) {
+      console.error("Erro ao baixar todos os formulários:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível baixar os formulários.",
         variant: "destructive",
       });
     }
@@ -348,13 +371,7 @@ export default function PhysicalTestPage() {
 
   const handleDeleteForm = (formId: string) => {
     setFormToDelete(formId);
-    setDeleteDialogOpen(true);
-  };
-
-  const handleBulkDelete = () => {
-    if (selectedForms.length === 0) return;
-    setFormToDelete('bulk');
-    setDeleteDialogOpen(true);
+    setShowDeleteDialog(true);
   };
 
   const handleConfirmDelete = async () => {
@@ -362,91 +379,51 @@ export default function PhysicalTestPage() {
 
     try {
       setIsDeleting(true);
-      console.log("🗑️ Iniciando exclusão:", { formToDelete, id, selectedForms });
-
-      if (formToDelete === 'bulk') {
-        // Exclusão em massa
-        console.log("📦 Exclusão em massa - IDs selecionados:", selectedForms);
-        const response = await api.delete(`/physical-tests/test/${id}/forms`);
-        console.log("✅ Resposta da exclusão em massa:", response.data);
-        
-        toast({
-          title: "Sucesso!",
-          description: `${response.data.deleted_forms || selectedForms.length} avaliações foram excluídas com sucesso.`,
-        });
-
-        // Atualizar lista
-        setGeneratedForms([]);
-        setSelectedForms([]);
-        
-        // Atualizar status
-        setTestStatus(prev => prev ? {
-          ...prev,
-          generated_forms: 0,
-          corrected_forms: 0
-        } : null);
-
-      } else {
-        // Exclusão individual
-        console.log("🔍 Exclusão individual - Form ID:", formToDelete);
-        const response = await api.delete(`/physical-tests/form/${formToDelete}`);
-        console.log("✅ Resposta da exclusão individual:", response.data);
-        
-        toast({
-          title: "Sucesso!",
-          description: "Avaliação excluída com sucesso.",
-        });
-
-        // Remover da lista
-        setGeneratedForms(prev => prev.filter(form => form.id !== formToDelete));
-        setSelectedForms(prev => prev.filter(id => id !== formToDelete));
-        
-        // Atualizar status
-        setTestStatus(prev => prev ? {
-          ...prev,
-          generated_forms: prev.generated_forms - 1,
-          corrected_forms: Math.max(0, prev.corrected_forms - 1)
-        } : null);
-      }
-
-    } catch (error: any) {
-      console.error("Erro ao excluir avaliação(ões):", error);
+      await api.delete(`/physical-tests/form/${formToDelete}`);
       
-      let errorMessage = "Não foi possível excluir a(s) avaliação(ões).";
+      setGeneratedForms(prev => prev.filter(form => form.id !== formToDelete));
       
-      if (error.response?.status === 404) {
-        errorMessage = "Avaliação(ões) não encontrada(s).";
-      } else if (error.response?.status === 403) {
-        errorMessage = "Sem permissão para excluir esta(s) avaliação(ões).";
-      } else if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      }
-
+      toast({
+        title: "Avaliação excluída",
+        description: "A avaliação foi excluída com sucesso.",
+      });
+    } catch (error) {
+      console.error("Erro ao excluir formulário:", error);
       toast({
         title: "Erro",
-        description: errorMessage,
+        description: "Não foi possível excluir a avaliação.",
         variant: "destructive",
       });
     } finally {
       setIsDeleting(false);
-      setDeleteDialogOpen(false);
+      setShowDeleteDialog(false);
       setFormToDelete(null);
     }
   };
 
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedForms(generatedForms.map(form => form.id));
-    } else {
-      setSelectedForms([]);
-    }
-  };
+  const handleDeleteAllForms = async () => {
+    if (!id) return;
 
-  const handleSelectOne = (formId: string, checked: boolean) => {
-    if (checked) {
-      setSelectedForms(prev => [...prev, formId]);
-    } else {
-      setSelectedForms(prev => prev.filter(id => id !== formId));
+    try {
+      setIsDeleting(true);
+      await api.delete(`/physical-tests/test/${id}/forms`);
+      
+      setGeneratedForms([]);
+      
+      toast({
+        title: "Avaliações excluídas",
+        description: "Todas as avaliações foram excluídas com sucesso.",
+      });
+    } catch (error) {
+      console.error("Erro ao excluir formulários:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível excluir as avaliações.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteDialog(false);
     }
   };
 
@@ -455,44 +432,15 @@ export default function PhysicalTestPage() {
 
     try {
       setIsLoadingStudents(true);
-      console.log("👥 Carregando alunos das turmas...");
-      
-      // Usar as turmas já carregadas
-      if (!classes || classes.length === 0) {
-        console.log("⚠️ Nenhuma turma disponível");
-        setStudents([]);
-        return;
-      }
-
-      // Buscar alunos de todas as turmas
-      const allStudents = [];
-      for (const classTest of classes) {
-        console.log(`👥 Carregando alunos da turma: ${classTest.class.name}`);
-        const studentsResponse = await api.get(`/students/classes/${classTest.class.id}`);
-        console.log(`👥 Alunos da turma ${classTest.class.name}:`, studentsResponse.data);
-        
-        // Adicionar informações da turma e class_test aos alunos
-        const studentsWithClassInfo = studentsResponse.data.map(student => ({
-          ...student,
-          class_name: classTest.class.name,
-          class_test_id: classTest.class_test_id,
-          school_name: classTest.class.school.name,
-          grade_name: classTest.class.grade.name,
-          application: classTest.application,
-          expiration: classTest.expiration,
-          status: classTest.status
-        }));
-        
-        allStudents.push(...studentsWithClassInfo);
-      }
-      
-      console.log("👥 Total de alunos encontrados:", allStudents.length);
-      setStudents(allStudents);
+      const response = await api.get(`/test/${id}/classes`);
+      setStudents(response.data.students || []);
+      setTotalStudents(response.data.total_students || 0);
+      setClasses(response.data.classes || []);
     } catch (error) {
       console.error("Erro ao carregar alunos:", error);
       toast({
         title: "Erro",
-        description: "Não foi possível carregar a lista de alunos.",
+        description: "Não foi possível carregar os alunos.",
         variant: "destructive",
       });
     } finally {
@@ -500,66 +448,30 @@ export default function PhysicalTestPage() {
     }
   };
 
-  const handleOpenStudentModal = () => {
-    setShowStudentModal(true);
-    setStudentSearchTerm("");
-    setSelectedClassFilter("all");
-    loadStudents();
-  };
-
-  // Filtrar alunos baseado na busca e turma
-  const filteredStudents = students.filter(student => {
-    const matchesSearch = student.name.toLowerCase().includes(studentSearchTerm.toLowerCase()) ||
-                         student.registration?.toLowerCase().includes(studentSearchTerm.toLowerCase());
-    const matchesClass = selectedClassFilter === "all" || student.class_name === selectedClassFilter;
-    return matchesSearch && matchesClass;
-  });
-
-  // Obter lista única de turmas para o filtro
-  const uniqueClasses = [...new Set(students.map(student => student.class_name))].filter(Boolean);
-
-  const handleGenerateIndividual = async (studentId: string, studentName: string) => {
+  const handleGenerateIndividual = async (studentId: string) => {
     if (!id) return;
 
     try {
       setIsGeneratingIndividual(true);
-      console.log("🎯 Gerando prova individual para:", { studentId, studentName, testId: id });
-
       const response = await api.post(`/physical-tests/test/${id}/student/${studentId}/generate`);
-      console.log("✅ Resposta da geração individual:", response.data);
+
+      // Mapear form_id para id para compatibilidade
+      const mappedForms = (response.data.forms || []).map((form: any) => ({
+        ...form,
+        id: form.form_id, // Mapear form_id para id
+        created_at: new Date().toISOString() // Adicionar timestamp se não existir
+      }));
+      setGeneratedForms(prev => [...prev, ...mappedForms]);
 
       toast({
-        title: "Sucesso!",
-        description: `Prova individual gerada com sucesso para ${studentName}.`,
+        title: "Avaliação gerada!",
+        description: "Avaliação individual gerada com sucesso.",
       });
-
-      // Atualizar lista de formulários
-      setGeneratedForms(prev => [...prev, ...response.data.forms]);
-      
-      // Atualizar status
-      setTestStatus(prev => prev ? {
-        ...prev,
-        generated_forms: prev.generated_forms + response.data.generated_forms
-      } : null);
-
-      setShowStudentModal(false);
-
     } catch (error: any) {
-      console.error("Erro ao gerar prova individual:", error);
-      
-      let errorMessage = "Não foi possível gerar a prova individual.";
-      
-      if (error.response?.status === 404) {
-        errorMessage = "Aluno ou avaliação não encontrado.";
-      } else if (error.response?.status === 403) {
-        errorMessage = "Sem permissão para gerar prova para este aluno.";
-      } else if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      }
-
+      console.error("Erro ao gerar formulário individual:", error);
       toast({
         title: "Erro",
-        description: errorMessage,
+        description: error.response?.data?.error || "Erro ao gerar avaliação individual",
         variant: "destructive",
       });
     } finally {
@@ -567,54 +479,30 @@ export default function PhysicalTestPage() {
     }
   };
 
-  const getStatusBadge = (status: PhysicalTestStatus) => {
-    // Verificar se tem aplicações (independente do campo is_applied)
-    const hasApplications = status.class_tests && status.class_tests.length > 0;
-    
-    if (!hasApplications) {
-      return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Não Aplicada</Badge>;
-    }
-    
-    // Verificar status das aplicações
-    const hasAgendada = status.class_tests?.some(ct => ct.status === 'agendada');
-    const hasAtiva = status.class_tests?.some(ct => ct.status === 'ativa');
-    const hasFinalizada = status.class_tests?.some(ct => ct.status === 'finalizada');
-    
-    if (hasAgendada && !hasAtiva && !hasFinalizada) {
-      return <Badge variant="secondary" className="bg-blue-100 text-blue-800">Agendada</Badge>;
-    }
-    
-    if (hasAtiva) {
-      return <Badge variant="secondary" className="bg-green-100 text-green-800">Ativa</Badge>;
-    }
-    
-    if (hasFinalizada) {
-      return <Badge variant="secondary" className="bg-purple-100 text-purple-800">Finalizada</Badge>;
-    }
-    
-    if (status.generated_forms === 0) {
-      return <Badge variant="secondary" className="bg-blue-100 text-blue-800">Aplicada - Sem Avaliações</Badge>;
-    }
-    
-    if (status.corrected_forms === status.generated_forms) {
-      return <Badge variant="secondary" className="bg-green-100 text-green-800">Totalmente Corrigida</Badge>;
-    }
-    
-    return <Badge variant="secondary" className="bg-orange-100 text-orange-800">Parcialmente Corrigida</Badge>;
-  };
-
-  // Verificar se pode gerar formulários baseado no status das aplicações
-  const canGenerateForms = testStatus?.class_tests?.some((classTest: any) => 
-    classTest.status === 'agendada' || classTest.status === 'ativa' || classTest.status === 'finalizada'
-  ) || false;
+  const filteredStudents = students.filter(student => {
+    const matchesSearch = student.name.toLowerCase().includes(studentSearchTerm.toLowerCase());
+    const matchesClass = selectedClassFilter === "all" || student.class_id === selectedClassFilter;
+    return matchesSearch && matchesClass;
+  });
 
   if (isLoading) {
     return (
       <div className="container mx-auto p-6 space-y-6">
-        <div className="space-y-4">
+        <div className="flex items-center justify-between">
           <Skeleton className="h-8 w-64" />
-          <Skeleton className="h-32 w-full" />
-          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-10 w-32" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[1, 2, 3].map((i) => (
+            <Card key={i}>
+              <CardHeader>
+                <Skeleton className="h-6 w-32" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-8 w-16" />
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </div>
     );
@@ -624,9 +512,9 @@ export default function PhysicalTestPage() {
     return (
       <div className="container mx-auto p-6">
         <Alert>
-          <AlertCircle className="h-4 w-4" />
+          <XCircle className="h-4 w-4" />
           <AlertDescription>
-            Prova não encontrada ou não foi aplicada ainda.
+            Não foi possível carregar os dados da prova física.
           </AlertDescription>
         </Alert>
       </div>
@@ -638,107 +526,118 @@ export default function PhysicalTestPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Prova Física</h1>
-          <p className="text-muted-foreground">{testStatus.test_title}</p>
+          <h1 className="text-3xl font-bold">{testStatus.test_title}</h1>
+          <p className="text-muted-foreground">Gerenciamento de Prova Física</p>
         </div>
-        <Button
-          variant="outline"
-          onClick={() => navigate(-1)}
-        >
+        <Button onClick={() => navigate(-1)} variant="outline">
           Voltar
         </Button>
       </div>
 
-      {/* Status Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Status da Prova
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">Status:</span>
-                {getStatusBadge(testStatus)}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Users className="h-4 w-4 text-blue-600" />
-                <span className="text-sm font-medium">Total de Alunos:</span>
-                <span className="text-sm">{totalStudents}</span>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-green-600" />
-                <span className="text-sm font-medium">Avaliações Geradas:</span>
-                <span className="text-sm">{generatedForms.length}</span>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-purple-600" />
-                <span className="text-sm font-medium">Corrigidas:</span>
-                <span className="text-sm">{testStatus.corrected_forms}</span>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Cards de Status */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total de Alunos</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{testStatus.total_students}</div>
+          </CardContent>
+        </Card>
 
-      {/* Indicador de loading durante exclusão */}
-      {isDeleting && (
-        <div className="flex items-center justify-center p-4 bg-red-50 border border-red-200 rounded-lg">
-          <RefreshCw className="h-4 w-4 mr-2 animate-spin text-red-600" />
-          <span className="text-sm text-red-700">
-            Excluindo avaliação(ões)...
-          </span>
-        </div>
-      )}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Formulários Gerados</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{testStatus.generated_forms}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Formulários Corrigidos</CardTitle>
+            <CheckCircle className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{testStatus.corrected_forms}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Status</CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <Badge variant={testStatus.is_applied ? "default" : "secondary"}>
+              {testStatus.is_applied ? "Aplicada" : "Não Aplicada"}
+            </Badge>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="forms" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="forms">Avaliações</TabsTrigger>
+      <Tabs defaultValue="forms" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="forms">Avaliações Geradas</TabsTrigger>
           <TabsTrigger value="correction">Correção</TabsTrigger>
-          <TabsTrigger value="results">Resultados</TabsTrigger>
-          <TabsTrigger value="settings">Configurações</TabsTrigger>
+          <TabsTrigger value="students">Alunos</TabsTrigger>
         </TabsList>
 
-        {/* Tab: Avaliações */}
-        <TabsContent value="forms" className="space-y-4">
+        {/* Tab: Avaliações Geradas */}
+        <TabsContent value="forms" className="space-y-6">
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>Avaliações Geradas</CardTitle>
                 <div className="flex gap-2">
-                  <Button
-                    onClick={handleOpenStudentModal}
-                    disabled={!canGenerateForms}
-                    variant="outline"
-                    className="border-blue-600 text-blue-600 hover:bg-blue-50"
-                  >
-                    <Users className="h-4 w-4 mr-2" />
-                    Gerar Individual
-                  </Button>
+                  {generatedForms.length > 0 && (
+                    <>
+                      <Button
+                        onClick={handleDownloadAll}
+                        variant="outline"
+                        className="border-purple-600 text-purple-600 hover:bg-purple-50"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Baixar Todos ({generatedForms.length})
+                      </Button>
+                      <Button
+                        onClick={handleDeleteAllForms}
+                        variant="outline"
+                        disabled={isDeleting}
+                        className="border-red-600 text-red-600 hover:bg-red-50"
+                      >
+                        {isDeleting ? (
+                          <>
+                            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                            Excluindo...
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Excluir Todas
+                          </>
+                        )}
+                      </Button>
+                    </>
+                  )}
                   <Button
                     onClick={handleGenerateForms}
-                    disabled={isGenerating || !canGenerateForms}
-                    className="bg-green-600 hover:bg-green-700"
+                    disabled={isGenerating}
+                    className="bg-blue-600 hover:bg-blue-700"
                   >
                     {isGenerating ? (
                       <>
                         <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                        Gerando...
+                        Gerando... {correctionProgress}%
                       </>
                     ) : (
                       <>
-                        <FileText className="h-4 w-4 mr-2" />
-                        Gerar Prova Física
+                        <Plus className="h-4 w-4 mr-2" />
+                        Gerar Avaliações
                       </>
                     )}
                   </Button>
@@ -747,188 +646,85 @@ export default function PhysicalTestPage() {
             </CardHeader>
             <CardContent>
               {isGenerating && (
-                <div className="space-y-2 mb-4">
-                  <div className="flex items-center justify-between text-sm">
-                    <span>Gerando avaliações...</span>
-                    <span>{correctionProgress}%</span>
-                  </div>
+                <div className="mb-4">
                   <Progress value={correctionProgress} className="w-full" />
-                </div>
-              )}
-
-              {/* Ações em lote */}
-              {selectedForms.length > 0 && (
-                <div className="flex items-center justify-between bg-red-50 p-3 rounded-lg">
-                  <span className="text-sm text-red-800">
-                    {selectedForms.length} avaliação(ões) selecionada(s)
-                  </span>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={handleBulkDelete}
-                    disabled={isDeleting}
-                  >
-                    {isDeleting ? (
-                      <>
-                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                        Excluindo...
-                      </>
-                    ) : (
-                      <>
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Excluir ({selectedForms.length})
-                      </>
-                    )}
-                  </Button>
                 </div>
               )}
 
               {generatedForms.length === 0 ? (
                 <div className="text-center py-8">
-                  <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">
-                    {canGenerateForms 
-                      ? "Nenhuma avaliação foi gerada ainda. Clique em 'Gerar Prova Física' para começar."
-                      : "A prova precisa ser aplicada antes de gerar as avaliações físicas."
-                    }
+                  <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">Nenhuma avaliação gerada</h3>
+                  <p className="text-muted-foreground mb-4">
+                    Clique em "Gerar Avaliações" para criar os formulários para todos os alunos.
                   </p>
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[50px]">
-                        <Checkbox
-                          checked={
-                            generatedForms.length > 0 &&
-                            selectedForms.length === generatedForms.length
-                          }
-                          onCheckedChange={handleSelectAll}
-                          aria-label="Selecionar todos"
-                        />
-                      </TableHead>
-                      <TableHead>Avaliação</TableHead>
-                      <TableHead>QR Code</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Gerado em</TableHead>
-                      <TableHead className="text-right">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {generatedForms.map((form) => (
-                      <TableRow key={form.id} data-state={selectedForms.includes(form.id) && "selected"}>
-                        <TableCell>
-                          <Checkbox
-                            checked={selectedForms.includes(form.id)}
-                            onCheckedChange={(checked) => handleSelectOne(form.id, !!checked)}
-                            aria-label={`Selecionar ${form.student_name}`}
-                          />
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            {form.student_id ? (
-                              <>
-                                <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
-                                  <span className="text-xs font-medium text-blue-600">
-                                    {form.student_name.charAt(0).toUpperCase()}
-                                  </span>
-                                </div>
-                                <span>{form.student_name}</span>
-                              </>
-                            ) : (
-                              <>
-                                <FileText className="h-4 w-4 text-green-600" />
-                                <span className="text-green-700 font-medium">{form.student_name}</span>
-                              </>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <QrCode className="h-4 w-4" />
-                            <span className="text-xs font-mono">
-                              {form.qr_code_data === "combined" ? "Combinado" : form.qr_code_data}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col gap-1">
-                            {form.student_id ? (
-                              <Badge variant="secondary" className="bg-blue-100 text-blue-800 w-fit">
-                                Individual
-                              </Badge>
-                            ) : (
-                              <Badge variant="secondary" className="bg-green-100 text-green-800 w-fit">
-                                Combinado
-                              </Badge>
-                            )}
-                            {form.is_corrected ? (
-                              <Badge variant="secondary" className="bg-green-100 text-green-800 w-fit">
-                                Corrigido
-                              </Badge>
-                            ) : (
-                              <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 w-fit">
-                                Pendente
-                              </Badge>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {new Date(form.created_at).toLocaleDateString('pt-BR')}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDownloadForm(form)}
-                              title="Baixar"
-                            >
-                              <Download className="h-4 w-4" />
-                            </Button>
+                <div className="space-y-4">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Aluno</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Gerado em</TableHead>
+                        <TableHead>Corrigido em</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {generatedForms.map((form) => (
+                        <TableRow key={form.id}>
+                          <TableCell className="font-medium">
+                            {form.student_name}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={form.is_corrected ? "default" : "secondary"}>
+                              {form.is_corrected ? "Corrigido" : "Pendente"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {new Date(form.generated_at).toLocaleDateString('pt-BR')}
+                          </TableCell>
+                          <TableCell>
+                            {form.corrected_at 
+                              ? new Date(form.corrected_at).toLocaleDateString('pt-BR')
+                              : '-'
+                            }
+                          </TableCell>
+                          <TableCell className="text-right">
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-8 w-8 p-0"
-                                >
+                                <Button variant="ghost" size="sm">
                                   <MoreVertical className="h-4 w-4" />
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem
+                                <DropdownMenuItem onClick={() => handleDownloadForm(form)}>
+                                  <Download className="h-4 w-4 mr-2" />
+                                  Baixar PDF
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
                                   onClick={() => handleDeleteForm(form.id)}
-                                  className="text-red-600 focus:text-red-700 cursor-pointer"
-                                  disabled={isDeleting}
+                                  className="text-red-600"
                                 >
-                                  {isDeleting ? (
-                                    <>
-                                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                                      Excluindo...
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Trash2 className="h-4 w-4 mr-2" />
-                                      Excluir
-                                    </>
-                                  )}
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Excluir
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
             </CardContent>
           </Card>
         </TabsContent>
 
         {/* Tab: Correção */}
-        <TabsContent value="correction" className="space-y-4">
+        <TabsContent value="correction" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>Processar Correção</CardTitle>
@@ -961,6 +757,92 @@ export default function PhysicalTestPage() {
                     </div>
                   </div>
 
+                  {/* Resultado da Correção */}
+                  {correctionResult && (
+                    <div className="space-y-4">
+                      <Label>Resultado da Correção</Label>
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-4">
+                        {/* Informações do Aluno */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="flex items-center gap-2">
+                            <Users className="h-4 w-4 text-green-600" />
+                            <span className="text-sm font-medium">Aluno ID:</span>
+                            <span className="text-sm bg-white px-2 py-1 rounded">
+                              {correctionResult.student_id}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <FileText className="h-4 w-4 text-green-600" />
+                            <span className="text-sm font-medium">Teste ID:</span>
+                            <span className="text-sm bg-white px-2 py-1 rounded">
+                              {correctionResult.test_id}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Estatísticas da Prova */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="bg-white p-3 rounded border">
+                            <div className="text-center">
+                              <div className="text-2xl font-bold text-green-600">
+                                {correctionResult.correct_answers}/{correctionResult.total_questions}
+                              </div>
+                              <div className="text-sm text-gray-600">Acertos</div>
+                            </div>
+                          </div>
+                          <div className="bg-white p-3 rounded border">
+                            <div className="text-center">
+                              <div className="text-2xl font-bold text-blue-600">
+                                {correctionResult.score_percentage.toFixed(1)}%
+                              </div>
+                              <div className="text-sm text-gray-600">Percentual</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Nota e Classificação */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="bg-white p-3 rounded border">
+                            <div className="text-center">
+                              <div className="text-2xl font-bold text-purple-600">
+                                {correctionResult.grade}
+                              </div>
+                              <div className="text-sm text-gray-600">Nota</div>
+                            </div>
+                          </div>
+                          <div className="bg-white p-3 rounded border">
+                            <div className="text-center">
+                              <div className="text-lg font-bold text-orange-600">
+                                {correctionResult.classification}
+                              </div>
+                              <div className="text-sm text-gray-600">Classificação</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Proficiência */}
+                        <div className="bg-white p-3 rounded border">
+                          <div className="text-center">
+                            <div className="text-xl font-bold text-indigo-600">
+                              {correctionResult.proficiency}
+                            </div>
+                            <div className="text-sm text-gray-600">Proficiência</div>
+                          </div>
+                        </div>
+
+                        {/* Respostas Detectadas */}
+                        <div className="bg-white p-3 rounded border">
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-gray-700">
+                              {correctionResult.answers_detected} respostas detectadas
+                            </div>
+                            <div className="text-sm text-gray-600">de {correctionResult.total_questions} questões</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <Button
                     onClick={handleProcessCorrection}
                     disabled={isProcessing}
@@ -969,11 +851,11 @@ export default function PhysicalTestPage() {
                     {isProcessing ? (
                       <>
                         <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                        Processando...
+                        Processando... {correctionProgress}%
                       </>
                     ) : (
                       <>
-                        <Upload className="h-4 w-4 mr-2" />
+                        <CheckCircle className="h-4 w-4 mr-2" />
                         Processar Correção
                       </>
                     )}
@@ -981,11 +863,10 @@ export default function PhysicalTestPage() {
 
                   {isProcessing && (
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <span>Processando correção...</span>
-                        <span>{correctionProgress}%</span>
-                      </div>
                       <Progress value={correctionProgress} className="w-full" />
+                      <p className="text-sm text-muted-foreground text-center">
+                        Analisando imagem e processando correção...
+                      </p>
                     </div>
                   )}
                 </div>
@@ -994,332 +875,127 @@ export default function PhysicalTestPage() {
           </Card>
         </TabsContent>
 
-        {/* Tab: Resultados */}
-        <TabsContent value="results" className="space-y-4">
+        {/* Tab: Alunos */}
+        <TabsContent value="students" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Resultados Processados</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle>Alunos da Prova</CardTitle>
+                <Button onClick={loadStudents} variant="outline">
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Carregar Alunos
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
-              {correctionResults.length === 0 ? (
-                <div className="text-center py-8">
-                  <CheckCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">
-                    Nenhum resultado de correção foi processado ainda.
-                  </p>
+              {isLoadingStudents ? (
+                <div className="space-y-4">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-16 w-full" />
+                  ))}
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Avaliação</TableHead>
-                      <TableHead>Acertos</TableHead>
-                      <TableHead>Erros</TableHead>
-                      <TableHead>Sem Resposta</TableHead>
-                      <TableHead>Nota</TableHead>
-                      <TableHead>Processado em</TableHead>
-                      <TableHead className="text-right">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {correctionResults.map((result, index) => (
-                      <TableRow key={index}>
-                        <TableCell className="font-medium">{result.student_name}</TableCell>
-                        <TableCell>
-                          <Badge variant="secondary" className="bg-green-100 text-green-800">
-                            {result.correct_answers}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="secondary" className="bg-red-100 text-red-800">
-                            {result.incorrect_answers}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="secondary" className="bg-gray-100 text-gray-800">
-                            {result.unanswered}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge 
-                            variant="secondary" 
-                            className={
-                              result.score >= 70 
-                                ? "bg-green-100 text-green-800" 
-                                : result.score >= 50 
-                                ? "bg-yellow-100 text-yellow-800"
-                                : "bg-red-100 text-red-800"
-                            }
-                          >
-                            {result.score}%
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {new Date(result.processed_at).toLocaleDateString('pt-BR')}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button variant="ghost" size="sm">
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent className="max-w-4xl">
-                              <DialogHeader>
-                                <DialogTitle>Imagem Corrigida - {result.student_name}</DialogTitle>
-                                <DialogDescription>
-                                  Visualização da imagem processada com as marcações detectadas.
-                                </DialogDescription>
-                              </DialogHeader>
-                              <div className="flex justify-center">
-                                <img
-                                  src={result.corrected_image}
-                                  alt="Imagem corrigida"
-                                  className="max-w-full h-auto"
-                                />
-                              </div>
-                            </DialogContent>
-                          </Dialog>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Tab: Configurações */}
-        <TabsContent value="settings" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Settings className="h-5 w-5" />
-                Configurações de Layout
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
-                  <h3 className="text-lg font-medium">Parâmetros de Layout</h3>
-                  <div className="space-y-2">
-                    <Label>Tamanho do Formulário</Label>
-                    <div className="flex gap-2">
-                      <Input value="720" disabled className="w-20" />
-                      <span className="flex items-center">x</span>
-                      <Input value="320" disabled className="w-20" />
-                      <span className="flex items-center text-sm text-muted-foreground">pixels</span>
+                  {/* Filtros */}
+                  <div className="flex gap-4">
+                    <div className="flex-1">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Buscar aluno..."
+                          value={studentSearchTerm}
+                          onChange={(e) => setStudentSearchTerm(e.target.value)}
+                          className="pl-10"
+                        />
+                      </div>
                     </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Tamanho do QR Code</Label>
-                    <div className="flex gap-2">
-                      <Input value="100" disabled className="w-20" />
-                      <span className="flex items-center">x</span>
-                      <Input value="100" disabled className="w-20" />
-                      <span className="flex items-center text-sm text-muted-foreground">pixels</span>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Tamanho dos Círculos</Label>
-                    <div className="flex gap-2">
-                      <Input value="18" disabled className="w-20" />
-                      <span className="flex items-center">x</span>
-                      <Input value="18" disabled className="w-20" />
-                      <span className="flex items-center text-sm text-muted-foreground">pixels</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h3 className="text-lg font-medium">Detecção de Marcações</h3>
-                  <div className="space-y-2">
-                    <Label>Threshold Adaptativo</Label>
-                    <div className="flex gap-2">
-                      <Input value="70" disabled className="w-20" />
-                      <span className="flex items-center text-sm text-muted-foreground">% de pixels brancos</span>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Confiança Mínima</Label>
-                    <div className="flex gap-2">
-                      <Input value="70" disabled className="w-20" />
-                      <span className="flex items-center text-sm text-muted-foreground">%</span>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Máscara Circular</Label>
-                    <Badge variant="outline">Ativada</Badge>
-                  </div>
-                </div>
-              </div>
-
-              <Alert>
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  Estas configurações são definidas pelo sistema e não podem ser alteradas pelo usuário.
-                  Elas garantem a precisão na detecção das marcações dos gabaritos.
-                </AlertDescription>
-              </Alert>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-
-      {/* Dialog de confirmação de exclusão */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
-            <AlertDialogDescription>
-              {formToDelete === 'bulk'
-                ? `Tem certeza que deseja excluir ${selectedForms.length} avaliação(ões)? Esta ação não pode ser desfeita.`
-                : "Tem certeza que deseja excluir esta avaliação? Esta ação não pode ser desfeita."
-              }
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleConfirmDelete}
-              disabled={isDeleting}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              {isDeleting ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Excluindo...
-                </>
-              ) : (
-                "Confirmar Exclusão"
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Modal de seleção de alunos */}
-      <Dialog open={showStudentModal} onOpenChange={setShowStudentModal}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Selecionar Aluno</DialogTitle>
-            <DialogDescription>
-              Escolha um aluno para gerar uma prova física individual.
-              {students.length > 0 && (
-                <span className="block mt-1 text-sm font-medium">
-                  {filteredStudents.length} de {students.length} aluno(s) encontrado(s)
-                </span>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            {isLoadingStudents ? (
-              <div className="flex items-center justify-center py-8">
-                <RefreshCw className="h-6 w-6 animate-spin mr-2" />
-                <span>Carregando alunos...</span>
-              </div>
-            ) : students.length === 0 ? (
-              <div className="text-center py-8">
-                <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">
-                  Nenhum aluno encontrado para esta avaliação.
-                </p>
-              </div>
-            ) : (
-              <>
-                {/* Filtros */}
-                <div className="flex gap-4">
-                  <div className="flex-1">
-                    <Input
-                      placeholder="Buscar por nome ou matrícula..."
-                      value={studentSearchTerm}
-                      onChange={(e) => setStudentSearchTerm(e.target.value)}
-                    />
-                  </div>
-                  {uniqueClasses.length > 1 && (
                     <Select value={selectedClassFilter} onValueChange={setSelectedClassFilter}>
                       <SelectTrigger className="w-48">
                         <SelectValue placeholder="Filtrar por turma" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">Todas as turmas</SelectItem>
-                        {uniqueClasses.map((className) => (
-                          <SelectItem key={className} value={className}>
-                            {className}
+                        {classes.map((cls) => (
+                          <SelectItem key={cls.id} value={cls.id}>
+                            {cls.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+
+                  {/* Lista de Alunos */}
+                  <div className="space-y-2">
+                    {filteredStudents.map((student) => (
+                      <div
+                        key={student.id}
+                        className="flex items-center justify-between p-4 border rounded-lg"
+                      >
+                        <div>
+                          <h4 className="font-medium">{student.name}</h4>
+                          <p className="text-sm text-muted-foreground">
+                            {student.class_name} • {student.email}
+                          </p>
+                        </div>
+                        <Button
+                          onClick={() => handleGenerateIndividual(student.id)}
+                          disabled={isGeneratingIndividual}
+                          size="sm"
+                        >
+                          {isGeneratingIndividual ? (
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Plus className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {filteredStudents.length === 0 && (
+                    <div className="text-center py-8">
+                      <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold mb-2">Nenhum aluno encontrado</h3>
+                      <p className="text-muted-foreground">
+                        {studentSearchTerm || selectedClassFilter !== "all"
+                          ? "Tente ajustar os filtros de busca."
+                          : "Clique em 'Carregar Alunos' para ver a lista de alunos."}
+                      </p>
+                    </div>
                   )}
                 </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
-                {/* Lista de alunos */}
-                <div className="max-h-96 overflow-y-auto">
-                  <div className="grid gap-2">
-                    {filteredStudents.length === 0 ? (
-                      <div className="text-center py-8">
-                        <Users className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                        <p className="text-muted-foreground">
-                          Nenhum aluno encontrado com os filtros aplicados.
-                        </p>
-                      </div>
-                    ) : (
-                      filteredStudents.map((student) => (
-                    <div
-                      key={student.id}
-                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 cursor-pointer"
-                      onClick={() => handleGenerateIndividual(student.id, student.name)}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                          <span className="text-sm font-medium text-blue-600">
-                            {student.name.charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                        <div>
-                          <p className="font-medium">{student.name}</p>
-                          <div className="text-sm text-muted-foreground space-y-1">
-                            {student.class_name && (
-                              <p>Turma: {student.class_name}</p>
-                            )}
-                            {student.school_name && (
-                              <p>Escola: {student.school_name}</p>
-                            )}
-                            {student.registration && (
-                              <p>Matrícula: {student.registration}</p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <Button
-                        size="sm"
-                        disabled={isGeneratingIndividual}
-                        className="bg-blue-600 hover:bg-blue-700"
-                      >
-                        {isGeneratingIndividual ? (
-                          <>
-                            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                            Gerando...
-                          </>
-                        ) : (
-                          <>
-                            <FileText className="h-4 w-4 mr-2" />
-                            Gerar
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Dialog de Confirmação de Exclusão */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir esta avaliação? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isDeleting ? (
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
