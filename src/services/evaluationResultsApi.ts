@@ -463,9 +463,6 @@ export class EvaluationResultsApiService {
 
       const response = await api.get(`/evaluation-results/avaliacoes?${params}`);
 
-      // ✅ LOG: Mostrar o que está sendo retornado do backend
-              // Log removido - resposta da API
-
       return response.data;
     } catch (error: any) {
               // Erro ao buscar avaliações
@@ -1881,7 +1878,7 @@ export class EvaluationResultsApiService {
       
       const response = await api.get(`/evaluation-results/avaliacao?avaliacao_id=${evaluationId}`);
       
-    
+    console.log(response.data); 
       
      
       

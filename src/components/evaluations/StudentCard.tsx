@@ -79,7 +79,7 @@ export function StudentCard({ student, totalQuestions, subjects, onViewDetails }
           </div>
           <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-200">
             <div className="text-3xl font-bold text-purple-600 mb-1">
-              {Number(student.proficiencia || 0).toFixed(0)}
+              {student.proficiencia || 0}
             </div>
             <div className="text-xs font-medium text-purple-700">Proficiência</div>
           </div>
