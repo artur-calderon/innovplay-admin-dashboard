@@ -314,41 +314,6 @@ interface SimpleDetailedReport {
 export default function Results() {
   const { autoLogin } = useAuth();
 
-  // ✅ FUNÇÃO UTILITÁRIA: Converter strings com vírgula decimal para número
-  const parseDecimalString = (value: unknown): number => {
-    if (value === null || value === undefined) return 0;
-    
-    const str = String(value).trim();
-    if (str === '') return 0;
-    
-    // Substituir vírgula por ponto para conversão correta
-    const normalizedStr = str.replace(',', '.');
-    const parsed = parseFloat(normalizedStr);
-    
-    return isNaN(parsed) ? 0 : parsed;
-  };
-
-  // ✅ FUNÇÃO UTILITÁRIA: Determinar proficiência máxima baseada no grupo e disciplina
-  const getMaxProficiencyForGroup = (isMathematics: boolean, group: StageGroup): number => {
-    if (group === "group1") {
-      return isMathematics ? 375 : 350; // EI/AI/EJA/Especial
-    } else {
-      return isMathematics ? 425 : 400; // AF/EM
-    }
-  };
-
-  // ✅ FUNÇÃO UTILITÁRIA: Determinar classificação baseada na proficiência
-  const getClassificationByProficiency = (proficiencia: number, isMathematics: boolean, group: StageGroup): 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado' => {
-    const maxProficiency = getMaxProficiencyForGroup(isMathematics, group);
-    
-    // Percentuais baseados na proficiência máxima
-    const percentual = (proficiencia / maxProficiency) * 100;
-    
-    if (percentual >= 85) return 'Avançado';
-    if (percentual >= 70) return 'Adequado';
-    if (percentual >= 50) return 'Básico';
-    return 'Abaixo do Básico';
-  };
   const [apiData, setApiData] = useState<NovaRespostaAPI | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingFilters, setIsLoadingFilters] = useState(false);
@@ -1291,7 +1256,7 @@ export default function Results() {
               const subjects = Array.isArray(list)
                 ? list.map((s: SubjectInfo) => typeof s === 'string' ? extractSubjectName(s) : extractSubjectName(s?.name)).filter(Boolean)
                 : [];
-              setAvailableSubjects(subjects);
+              // setAvailableSubjects(subjects); // Removido - variável não definida
             })
             .catch(() => {
               // silêncio: se falhar, mantém availableSubjects atual
@@ -1335,7 +1300,7 @@ export default function Results() {
       // Carregar turmas dinâmicas a partir dos dados da API
       if (apiData?.opcoes_proximos_filtros?.turmas) {
         const turmas = apiData?.opcoes_proximos_filtros?.turmas?.map(t => t.name).filter(Boolean) || [];
-        setAvailableTurmas(turmas);
+        // setAvailableTurmas(turmas); // Removido - variável não definida
       }
     } catch (error) {
       // Silenciar erros de dados extras

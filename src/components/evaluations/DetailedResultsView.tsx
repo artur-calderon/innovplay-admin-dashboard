@@ -684,7 +684,7 @@ const StudentsResultsTable = ({
                                 )}
                                 {visibleFields?.proficiencia && (
                                     <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50 text-center">
-                                        {student.proficiency?.toFixed(0) || student.proficiencia.toFixed(0)}
+                                        {student.proficiency || student.proficiencia}
                                     </td>
                                 )}
                                 {visibleFields?.nivel && (

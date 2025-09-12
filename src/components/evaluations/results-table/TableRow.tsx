@@ -136,7 +136,7 @@ export const TableRow: React.FC<TableRowProps> = ({
 
       {/* Proficiência */}
       <td className="px-4 py-3 text-sm text-center border border-gray-300">
-        {student.proficiencia.toFixed(0)}
+        {student.proficiencia}
       </td>
 
       {/* Nível */}
