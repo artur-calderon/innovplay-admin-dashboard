@@ -39,15 +39,14 @@ export default defineConfig(({ mode }) => {
     //   key: fs.readFileSync('./certs/localhost-key.pem'),
     //   cert: fs.readFileSync('./certs/localhost.pem'),
     // },
-  },
-  plugins: [
-    react(),
-  ],
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
+    plugins: [
+      react(),
+    ],
+    resolve: {
+      alias: {
+        "@": path.resolve(__dirname, "./src"),
+      },
     },
-  },
     define: {
       // Definir variáveis de ambiente se não estiverem definidas
       __VITE_API_BASE_URL__: JSON.stringify(apiUrl),
