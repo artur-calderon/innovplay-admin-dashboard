@@ -36,7 +36,6 @@ import { useState, useEffect } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/context/authContext";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { useGamesCount } from "@/hooks/useGamesCount";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getRoleDisplayName } from "@/lib/constants";
@@ -379,14 +378,6 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         </div>
         {!isCollapsed && (
           <div className="flex items-center gap-2">
-            {link.badge && (
-              <Badge
-                variant="secondary"
-                className="bg-white/20 text-white text-xs px-1.5 py-0.5 h-5"
-              >
-                {link.badge}
-              </Badge>
-            )}
             {hasSubmenu && (
               <ChevronDown
                 size={14}
