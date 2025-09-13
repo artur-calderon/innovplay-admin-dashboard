@@ -2,7 +2,7 @@ import axios from 'axios'
 
 // Configuração da base URL da API
 // Em desenvolvimento, use o proxy do Vite (\"/api\") para evitar CORS
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 
 export const api = axios.create({
     baseURL: BASE_URL,
