@@ -138,7 +138,7 @@ export function StudentRanking({
                         <div className="flex items-center gap-2">
                           <Star className="h-4 w-4 text-purple-600" />
                           <span className="font-medium">Proficiência:</span>
-                          <span className="font-semibold text-gray-900">{(student.proficiencia || 0).toFixed(1)}</span>
+                          <span className="font-semibold text-gray-900">{student.proficiencia || 0}</span>
                         </div>
                       </div>
                     </div>

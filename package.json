@@ -82,6 +82,7 @@
     "katex": "^0.16.22",
     "lucide-react": "^0.462.0",
     "next-themes": "^0.3.0",
+    "qr-scanner": "^1.4.2",
     "quill": "^2.0.3",
     "quill-image-resize-module-react": "^3.0.0",
     "react": "^18.3.1",

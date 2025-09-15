@@ -463,9 +463,6 @@ export class EvaluationResultsApiService {
 
       const response = await api.get(`/evaluation-results/avaliacoes?${params}`);
 
-      // ✅ LOG: Mostrar o que está sendo retornado do backend
-              // Log removido - resposta da API
-
       return response.data;
     } catch (error: any) {
               // Erro ao buscar avaliações
@@ -1478,25 +1475,20 @@ export class EvaluationResultsApiService {
       params.append('municipio', filters.municipio);
 
       const url = `/evaluation-results/opcoes-filtros/avaliacoes?${params}`;
-      console.log('🔍 LOG - Requisição para avaliações:');
-      console.log('📡 URL:', url);
-      console.log('🔧 Filtros enviados:', filters);
+    
 
       // ✅ MIGRADO: Tentar usar nova API unificada primeiro
       try {
-        console.log('🚀 Tentando nova API unificada...');
         const unifiedResponse = await this.getEvaluationsList(1, 100, {
           estado: filters.estado,
           municipio: filters.municipio
         });
         
         if (unifiedResponse?.opcoes_proximos_filtros?.avaliacoes?.length) {
-          console.log('✅ Usando nova API - opções de avaliações:', unifiedResponse.opcoes_proximos_filtros.avaliacoes.length);
           return unifiedResponse.opcoes_proximos_filtros.avaliacoes;
         }
         
         if (unifiedResponse?.resultados_detalhados?.avaliacoes?.length) {
-          console.log('✅ Usando nova API - resultados detalhados:', unifiedResponse.resultados_detalhados.avaliacoes.length);
           return unifiedResponse.resultados_detalhados.avaliacoes.map(av => ({
             id: av.id,
             titulo: av.titulo
@@ -1525,7 +1517,6 @@ export class EvaluationResultsApiService {
     nome: string;
   }>> {
     try {
-      console.log('🏫 Buscando escolas via nova API unificada:', filters);
       
       // Usar nova API unificada
       const response = await this.getEvaluationsList(1, 100, {
@@ -1535,7 +1526,6 @@ export class EvaluationResultsApiService {
       });
       
       if (response?.opcoes_proximos_filtros?.escolas?.length) {
-        console.log('✅ Escolas encontradas na nova API:', response.opcoes_proximos_filtros.escolas.length);
         return response.opcoes_proximos_filtros.escolas.map(escola => ({
           id: escola.id,
           nome: escola.name
@@ -1561,7 +1551,6 @@ export class EvaluationResultsApiService {
     nome: string;
   }>> {
     try {
-      console.log('📚 Buscando séries via nova API unificada:', filters);
       
       // Usar nova API unificada
       const response = await this.getEvaluationsList(1, 100, {
@@ -1572,7 +1561,6 @@ export class EvaluationResultsApiService {
       });
       
       if (response?.opcoes_proximos_filtros?.series?.length) {
-        console.log('✅ Séries encontradas na nova API:', response.opcoes_proximos_filtros.series.length);
         return response.opcoes_proximos_filtros.series.map(serie => ({
           id: serie.id,
           nome: serie.name
@@ -1599,8 +1587,6 @@ export class EvaluationResultsApiService {
     nome: string;
   }>> {
     try {
-      console.log('🏫 Buscando turmas via nova API unificada:', filters);
-      
       // Usar nova API unificada
       const response = await this.getEvaluationsList(1, 100, {
         estado: filters.estado,
@@ -1611,14 +1597,12 @@ export class EvaluationResultsApiService {
       });
       
       if (response?.opcoes_proximos_filtros?.turmas?.length) {
-        console.log('✅ Turmas encontradas na nova API:', response.opcoes_proximos_filtros.turmas.length);
         return response.opcoes_proximos_filtros.turmas.map(turma => ({
           id: turma.id,
           nome: turma.name
         }));
       }
       
-      console.log('ℹ️ Nova API não retornou turmas para os filtros aplicados');
       return [];
     } catch (error) {
       console.error('Erro ao buscar turmas por avaliação:', error);
@@ -1685,11 +1669,9 @@ export class EvaluationResultsApiService {
         order_direction: orderDirection
       });
 
-      console.log('🔍 Chamando endpoint relatório filtrado:', `/evaluation-results/relatorio-detalhado-filtrado/${evaluationId}?${params}`);
 
       const response = await api.get(`/evaluation-results/relatorio-detalhado-filtrado/${evaluationId}?${params}`);
       
-      console.log('✅ Relatório detalhado filtrado recebido:', response.data);
       
       // Normalizar a resposta para garantir compatibilidade
       if (response.data && response.data.alunos) {
@@ -1757,11 +1739,7 @@ export class EvaluationResultsApiService {
       if (options.schoolId) params.append('escola', options.schoolId);
       if (options.classId) params.append('turma', options.classId);
       
-      console.log('🏆 Carregando ranking otimizado:', {
-        evaluationId,
-        options,
-        params: Object.fromEntries(params.entries())
-      });
+     
       
       // Tentar usar endpoint otimizado específico para ranking
       let response;
@@ -1769,7 +1747,6 @@ export class EvaluationResultsApiService {
         response = await api.get(`/evaluation-results/relatorio-detalhado-filtrado/${evaluationId}/ranking?${params}`);
       } catch (rankingError) {
         // Fallback para endpoint filtrado normal
-        console.log('🔄 Endpoint de ranking não disponível, usando filtrado normal');
         response = await api.get(`/evaluation-results/relatorio-detalhado-filtrado/${evaluationId}?${params}`);
       }
       
@@ -1792,11 +1769,7 @@ export class EvaluationResultsApiService {
           status: 'concluida' as const
         }));
         
-        console.log('🏆 Ranking carregado:', {
-          ranked: rankedStudents.length,
-          absent: absent.length,
-          total: students.length
-        });
+       
         
         return {
           ranked: rankedStudents,
@@ -1857,15 +1830,61 @@ export class EvaluationResultsApiService {
     }>;
   } | null> {
     try {
-      console.log('🎯 Carregando dados específicos da avaliação:', evaluationId);
       
       const response = await api.get(`/evaluation-results/avaliacoes/${evaluationId}`);
       
-      console.log('🎯 Dados específicos da avaliação carregados:', response.data);
       
       return response.data;
     } catch (error) {
       console.error('❌ Erro ao buscar dados específicos da avaliação:', error);
+      return null;
+    }
+  }
+
+  // ✅ NOVO: Buscar estatísticas gerais da avaliação (rota /evaluation-results/avaliacao)
+  static async getEvaluationGeneralStats(evaluationId: string): Promise<{
+    estatisticas_gerais: {
+      media_nota_geral: number;
+      media_proficiencia_geral: number;
+      total_alunos: number;
+      alunos_participantes: number;
+      alunos_ausentes: number;
+      alunos_pendentes: number;
+      distribuicao_classificacao_geral: {
+        abaixo_do_basico: number;
+        basico: number;
+        adequado: number;
+        avancado: number;
+      };
+      nome: string;
+      tipo: string;
+      estado: string;
+      municipio: string;
+      escola: string;
+      serie: string | null;
+      total_avaliacoes: number;
+      total_escolas: number;
+      total_series: number;
+      total_turmas: number;
+    };
+    filtros_aplicados: any;
+    nivel_granularidade: string;
+    opcoes_proximos_filtros: any;
+    ranking: any[];
+  } | null> {
+    try {
+     
+    
+      
+      const response = await api.get(`/evaluation-results/avaliacao?avaliacao_id=${evaluationId}`);
+      
+    console.log(response.data); 
+      
+     
+      
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao buscar estatísticas gerais da avaliação:', error);
       return null;
     }
   }
@@ -1897,7 +1916,6 @@ export class EvaluationResultsApiService {
     }>;
   } | null> {
     try {
-      console.log('📊 Buscando estatísticas via nova API unificada:', filters);
       
       // Usar nova API unificada para obter estatísticas
       if (filters?.estado && filters?.municipio) {
@@ -1910,7 +1928,6 @@ export class EvaluationResultsApiService {
         });
         
         if (response?.estatisticas_gerais) {
-          console.log('✅ Estatísticas encontradas na nova API');
           
           // Converter formato da nova API para o formato esperado
           const stats = response.estatisticas_gerais;
@@ -1938,7 +1955,6 @@ export class EvaluationResultsApiService {
         }
       }
       
-      console.log('ℹ️ Nova API não retornou estatísticas para os filtros aplicados');
       return null;
     } catch (error) {
       console.error('❌ Erro ao buscar estatísticas gerais:', error);
@@ -1986,11 +2002,9 @@ export class EvaluationResultsApiService {
     };
   } | null> {
     try {
-      console.log('📝 Carregando respostas detalhadas:', { testId, studentId });
       
       const response = await api.get(`/evaluation-results/${testId}/student/${studentId}/answers`);
       
-      console.log('📝 Respostas detalhadas carregadas:', response.data);
       
       return response.data;
     } catch (error) {
@@ -2045,11 +2059,9 @@ export class EvaluationResultsApiService {
       if (baseFilters?.municipio) params.append('municipio', baseFilters.municipio);
       if (baseFilters?.avaliacao) params.append('avaliacao', baseFilters.avaliacao);
       
-      console.log('🎛️ Carregando opções de filtros otimizadas:', Object.fromEntries(params.entries()));
       
       const response = await api.get(`/evaluation-results/opcoes-filtros?${params}`);
       
-      console.log('🎛️ Opções de filtros carregadas:', response.data);
       
       return response.data;
     } catch (error) {
@@ -2061,49 +2073,12 @@ export class EvaluationResultsApiService {
   // ✅ NOVO: Buscar relatório completo de uma avaliação
   static async getRelatorioCompleto(evaluationId: string): Promise<RelatorioCompleto> {
     try {
-      console.log('🔍 LOG - Iniciando busca do relatório completo');
-      console.log('📋 ID da avaliação:', evaluationId);
-      console.log('📡 URL da requisição:', `/reports/relatorio-completo/${evaluationId}`);
+ 
       
       const response = await api.get(`/reports/relatorio-completo/${evaluationId}`);
+    
       
-      console.log('✅ LOG - Resposta recebida com sucesso');
-      console.log('📦 Resposta completa:', response);
-      console.log('📊 Status da resposta:', response.status);
-      console.log('📋 Headers da resposta:', response.headers);
-      console.log('📄 Dados da resposta (response.data):', response.data);
-      
-      // Log detalhado da estrutura dos dados
-      if (response.data) {
-        console.log('🏗️ Estrutura dos dados:');
-        console.log('  - Tipo de response.data:', typeof response.data);
-        console.log('  - É um array?', Array.isArray(response.data));
-        console.log('  - É um objeto?', typeof response.data === 'object' && response.data !== null);
-        
-        if (typeof response.data === 'object' && response.data !== null) {
-          console.log('  - Chaves do objeto:', Object.keys(response.data));
-          
-          // Log de cada seção principal
-          if (response.data.avaliacao) {
-            console.log('  📚 Seção "avaliacao":', response.data.avaliacao);
-          }
-          if (response.data.total_alunos) {
-            console.log('  👥 Seção "total_alunos":', response.data.total_alunos);
-          }
-          if (response.data.niveis_aprendizagem) {
-            console.log('  🎯 Seção "niveis_aprendizagem":', response.data.niveis_aprendizagem);
-          }
-          if (response.data.proficiencia) {
-            console.log('  📈 Seção "proficiencia":', response.data.proficiencia);
-          }
-          if (response.data.nota_geral) {
-            console.log('  🏆 Seção "nota_geral":', response.data.nota_geral);
-          }
-          if (response.data.acertos_por_habilidade) {
-            console.log('  🎓 Seção "acertos_por_habilidade":', response.data.acertos_por_habilidade);
-          }
-        }
-      }
+     
       
       return response.data;
     } catch (error) {
@@ -2140,9 +2115,8 @@ export class EvaluationResultsApiService {
     this_month_evaluations: number;
   } | null> {
     try {
-      console.log('📊 Carregando métricas gerais do dashboard...');
+     
       const response = await api.get('/dashboard/stats');
-      console.log('✅ Métricas do dashboard carregadas:', response.data);
       return response.data;
     } catch (error) {
       console.error('❌ Erro ao buscar métricas do dashboard:', error);
@@ -2175,9 +2149,7 @@ export class EvaluationResultsApiService {
     };
   } | null> {
     try {
-      console.log('📈 Carregando estatísticas ampliadas do dashboard...');
       const response = await api.get('/dashboard/comprehensive-stats');
-      console.log('✅ Estatísticas ampliadas carregadas:', response.data);
       return response.data;
     } catch (error) {
       console.error('❌ Erro ao buscar estatísticas ampliadas:', error);
@@ -2227,9 +2199,7 @@ export class EvaluationResultsApiService {
       if (filters?.municipality) params.append('municipality', filters.municipality);
       if (filters?.school) params.append('school', filters.school);
 
-      console.log('📋 Carregando lista de avaliações com agregados:', Object.fromEntries(params.entries()));
       const response = await api.get(`/evaluation-results/list?${params}`);
-      console.log('✅ Lista de avaliações carregada:', response.data);
       return response.data;
     } catch (error) {
       console.error('❌ Erro ao buscar lista de avaliações:', error);
@@ -2257,9 +2227,7 @@ export class EvaluationResultsApiService {
     taxa_conclusao: number;
   } | null> {
     try {
-      console.log('🎯 Carregando estatísticas específicas da avaliação:', evaluationId);
       const response = await api.get(`/evaluation-results/avaliacoes/${evaluationId}`);
-      console.log('✅ Estatísticas específicas carregadas:', response.data);
       return response.data;
     } catch (error) {
       console.error('❌ Erro ao buscar estatísticas específicas:', error);
@@ -2279,9 +2247,7 @@ export class EvaluationResultsApiService {
     last_updated: string;
   } | null> {
     try {
-      console.log('📊 Carregando estatísticas de status das avaliações...');
       const response = await api.get('/evaluation-results/avaliacoes/estatisticas-status');
-      console.log('✅ Estatísticas de status carregadas:', response.data);
       return response.data;
     } catch (error) {
       console.error('❌ Erro ao buscar estatísticas de status:', error);
@@ -2303,7 +2269,6 @@ export class EvaluationResultsApiService {
     };
   } | null> {
     try {
-      console.log('🌍 Carregando estatísticas globais dos resultados...');
       
       // Tentar usar nova API unificada primeiro
       try {
@@ -2311,7 +2276,6 @@ export class EvaluationResultsApiService {
         const unifiedResponse = await this.getEvaluationsList(1, 1, {});
         
         if (unifiedResponse?.estatisticas_gerais && unifiedResponse?.resultados_por_disciplina) {
-          console.log('✅ Usando nova API unificada para estatísticas globais');
           
           const stats = unifiedResponse.estatisticas_gerais;
           const disciplinas = unifiedResponse.resultados_por_disciplina;
@@ -2366,7 +2330,6 @@ export class EvaluationResultsApiService {
     }>;
   } | null> {
     try {
-      console.log('🔍 Verificando status de todas as avaliações...', filters);
       
       const body: any = {};
       if (filters?.municipio) body.municipio = filters.municipio;
@@ -2375,7 +2338,6 @@ export class EvaluationResultsApiService {
       
       const response = await api.post('/evaluation-results/avaliacoes/verificar-todas', body);
       
-      console.log('✅ Verificação de todas as avaliações concluída:', response.data);
       
       return response.data;
     } catch (error) {
