@@ -31,6 +31,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import QuestionPreview from "@/components/evaluations/questions/QuestionPreview";
+import PhysicalEvaluationTab from "@/components/evaluations/PhysicalEvaluationTab";
 
 interface SubmittedEvaluation {
   id: string;
@@ -81,18 +82,10 @@ interface FilterOptions {
 export default function EvaluationCorrection() {
   const [activeTab, setActiveTab] = useState("virtual");
   const [evaluations, setEvaluations] = useState<SubmittedEvaluation[]>([]);
-  const [physicalEvaluations, setPhysicalEvaluations] = useState<any[]>([]);
   const [selectedEvaluation, setSelectedEvaluation] = useState<SubmittedEvaluation | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingPhysical, setIsLoadingPhysical] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [filters, setFilters] = useState<FilterOptions>({
-    status: "all",
-    subject: "all", 
-    grade: "all",
-    search: ""
-  });
-  const [physicalFilters, setPhysicalFilters] = useState<FilterOptions>({
     status: "all",
     subject: "all", 
     grade: "all",
@@ -104,10 +97,6 @@ export default function EvaluationCorrection() {
   useEffect(() => {
     fetchSubmittedEvaluations();
   }, [filters]);
-
-  useEffect(() => {
-    fetchPhysicalEvaluations();
-  }, [physicalFilters]);
 
   const fetchSubmittedEvaluations = async () => {
     try {
@@ -148,42 +137,6 @@ export default function EvaluationCorrection() {
     }
   };
 
-  const fetchPhysicalEvaluations = async () => {
-    try {
-      setIsLoadingPhysical(true);
-      
-      // Construir parâmetros de filtro para provas físicas
-      const params = new URLSearchParams();
-      if (physicalFilters.status !== "all") params.append('status', physicalFilters.status);
-      if (physicalFilters.subject !== "all") params.append('subject', physicalFilters.subject);
-      if (physicalFilters.grade !== "all") params.append('grade', physicalFilters.grade);
-      if (physicalFilters.search) params.append('search', physicalFilters.search);
-      
-      // Buscar avaliações físicas da API
-      const response = await api.get(`/physical-tests/tests?${params.toString()}`);
-      
-      if (response.data && Array.isArray(response.data)) {
-        setPhysicalEvaluations(response.data);
-      } else {
-        setPhysicalEvaluations([]);
-        toast({
-          title: "Nenhuma avaliação física encontrada",
-          description: "Ainda não há avaliações físicas disponíveis para correção.",
-        });
-      }
-      
-    } catch (error) {
-      console.error("Erro ao buscar avaliações físicas:", error);
-      setPhysicalEvaluations([]);
-      toast({
-        title: "Erro ao carregar avaliações físicas",
-        description: "Não foi possível carregar as avaliações físicas. Verifique a conexão com o servidor.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoadingPhysical(false);
-    }
-  };
 
   // Transformar dados da API para o formato esperado
   const transformSessionToEvaluation = async (session: any): Promise<SubmittedEvaluation> => {
@@ -1086,12 +1039,12 @@ export default function EvaluationCorrection() {
         <div>
           <h1 className="text-3xl font-bold">Correção de Avaliações</h1>
           <p className="text-muted-foreground">
-            Gerencie e corrija as avaliações virtuais e físicas
+            Gerencie avaliações virtuais e visualize avaliações aplicadas
           </p>
         </div>
         
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={activeTab === "virtual" ? fetchSubmittedEvaluations : fetchPhysicalEvaluations}>
+          <Button variant="outline" onClick={fetchSubmittedEvaluations}>
             <Download className="h-4 w-4 mr-2" />
             Atualizar Lista
           </Button>
@@ -1107,7 +1060,7 @@ export default function EvaluationCorrection() {
           </TabsTrigger>
           <TabsTrigger value="physical" className="flex items-center gap-2">
             <ClipboardList className="h-4 w-4" />
-            Provas Físicas
+            Avaliações Aplicadas
           </TabsTrigger>
         </TabsList>
 
@@ -1287,195 +1240,7 @@ export default function EvaluationCorrection() {
         </TabsContent>
 
         <TabsContent value="physical" className="space-y-4">
-          {/* Filtros para Provas Físicas */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Filtros</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="space-y-2">
-                  <Label>Status</Label>
-                  <Select value={physicalFilters.status} onValueChange={(value) => setPhysicalFilters(prev => ({ ...prev, status: value }))}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      <SelectItem value="pending">Pendentes</SelectItem>
-                      <SelectItem value="in_progress">Em Progresso</SelectItem>
-                      <SelectItem value="completed">Concluídas</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Disciplina</Label>
-                  <Select value={physicalFilters.subject} onValueChange={(value) => setPhysicalFilters(prev => ({ ...prev, subject: value }))}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todas</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Série</Label>
-                  <Select value={physicalFilters.grade} onValueChange={(value) => setPhysicalFilters(prev => ({ ...prev, grade: value }))}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todas</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Buscar</Label>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
-                    <Input
-                      placeholder="Título da prova..."
-                      value={physicalFilters.search}
-                      onChange={(e) => setPhysicalFilters(prev => ({ ...prev, search: e.target.value }))}
-                      className="pl-9"
-                    />
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Resumo das Provas Físicas */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Card>
-              <CardContent className="p-4">
-                <div className="text-2xl font-bold text-orange-600">
-                  {physicalEvaluations.filter(e => e.status === 'pending').length}
-                </div>
-                <p className="text-sm text-muted-foreground">Aguardando Aplicação</p>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="p-4">
-                <div className="text-2xl font-bold text-blue-600">
-                  {physicalEvaluations.filter(e => e.status === 'in_progress').length}
-                </div>
-                <p className="text-sm text-muted-foreground">Em Aplicação</p>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="p-4">
-                <div className="text-2xl font-bold text-yellow-600">
-                  {physicalEvaluations.filter(e => e.status === 'applied' || e.status === 'correcting').length}
-                </div>
-                <p className="text-sm text-muted-foreground">Aguardando Correção</p>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="p-4">
-                <div className="text-2xl font-bold text-green-600">
-                  {physicalEvaluations.filter(e => e.status === 'completed').length}
-                </div>
-                <p className="text-sm text-muted-foreground">Concluídas</p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Lista de Provas Físicas */}
-          {isLoadingPhysical ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[1, 2, 3].map((i) => (
-                <Card key={i} className="animate-pulse">
-                  <CardHeader>
-                    <div className="h-6 bg-gray-200 rounded w-3/4"></div>
-                    <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      <div className="h-4 bg-gray-200 rounded"></div>
-                      <div className="h-4 bg-gray-200 rounded w-2/3"></div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {physicalEvaluations.map((evaluation) => (
-                <Card key={evaluation.id} className="cursor-pointer hover:shadow-lg transition-shadow">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-base truncate">{evaluation.title}</CardTitle>
-                      <Badge variant={
-                        evaluation.status === 'completed' ? 'default' :
-                        evaluation.status === 'applied' || evaluation.status === 'correcting' ? 'secondary' :
-                        evaluation.status === 'in_progress' ? 'destructive' : 'outline'
-                      }>
-                        {evaluation.status === 'pending' ? 'Pendente' :
-                         evaluation.status === 'in_progress' ? 'Em Aplicação' :
-                         evaluation.status === 'applied' ? 'Aplicada' :
-                         evaluation.status === 'correcting' ? 'Corrigindo' :
-                         evaluation.status === 'completed' ? 'Concluída' : evaluation.status}
-                      </Badge>
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {evaluation.subject_name} • {evaluation.grade_name}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm">{evaluation.total_questions || 0} questões</span>
-                    </div>
-                    
-                    <div className="text-sm text-muted-foreground">
-                      Aplicada em: {evaluation.applied_at ? new Date(evaluation.applied_at).toLocaleDateString('pt-BR') : 'Não aplicada'}
-                    </div>
-                    
-                    <div className="flex justify-between text-sm">
-                      <span>Alunos: {evaluation.total_students || 0}</span>
-                      <span>Corrigidas: {evaluation.corrected_students || 0}</span>
-                    </div>
-                    
-                    <Button 
-                      className="w-full"
-                      onClick={() => window.open(`/app/provas-fisicas/${evaluation.id}`, '_blank')}
-                      variant={evaluation.status === 'applied' || evaluation.status === 'correcting' ? "default" : "outline"}
-                    >
-                      {evaluation.status === 'pending' ? "Configurar" : 
-                       evaluation.status === 'in_progress' ? "Gerenciar" :
-                       evaluation.status === 'applied' || evaluation.status === 'correcting' ? "Corrigir Provas" :
-                       "Ver Resultados"}
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-
-          {physicalEvaluations.length === 0 && !isLoadingPhysical && (
-            <Card>
-              <CardContent className="text-center py-12">
-                <ClipboardList className="h-16 w-16 mx-auto text-gray-400 mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  Nenhuma prova física encontrada
-                </h3>
-                <p className="text-gray-600">
-                  {physicalFilters.status !== "all" || physicalFilters.search ? 
-                    "Tente ajustar os filtros para ver mais resultados." :
-                    "Ainda não há provas físicas criadas no sistema."
-                  }
-                </p>
-              </CardContent>
-            </Card>
-          )}
+          <PhysicalEvaluationTab />
         </TabsContent>
       </Tabs>
     </div>
