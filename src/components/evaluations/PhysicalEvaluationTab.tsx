@@ -5,16 +5,23 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
 import {
   Search,
   ClipboardList,
   Filter,
   RefreshCw,
   MapPin,
-  School
+  School,
+  Upload,
+  X,
+  CheckCircle,
+  AlertCircle
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
+import { api } from "@/lib/api";
 
 // Interfaces reutilizadas da página Results.tsx
 interface State {
@@ -69,6 +76,14 @@ export default function PhysicalEvaluationTab() {
   const [isLoadingPhysical, setIsLoadingPhysical] = useState(true);
   const [isLoadingFilters, setIsLoadingFilters] = useState(false);
   const { toast } = useToast();
+
+  // Estados para o modal de upload
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [selectedEvaluationForUpload, setSelectedEvaluationForUpload] = useState<AppliedEvaluation | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadResult, setUploadResult] = useState<any>(null);
 
   // Estados dos filtros - mesma estrutura da página Results.tsx
   const [selectedState, setSelectedState] = useState<string>('all');
@@ -360,6 +375,112 @@ export default function PhysicalEvaluationTab() {
 
   const handleRefresh = () => {
     fetchAppliedEvaluations();
+  };
+
+  // Funções para o modal de upload
+  const openUploadModal = (evaluation: AppliedEvaluation) => {
+    setSelectedEvaluationForUpload(evaluation);
+    setSelectedFile(null);
+    setUploadResult(null);
+    setUploadProgress(0);
+    setShowUploadModal(true);
+  };
+
+  const closeUploadModal = () => {
+    setShowUploadModal(false);
+    setSelectedEvaluationForUpload(null);
+    setSelectedFile(null);
+    setUploadResult(null);
+    setUploadProgress(0);
+    setIsUploading(false);
+  };
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Validar tipo de arquivo
+      const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+      if (!validTypes.includes(file.type)) {
+        toast({
+          title: "Tipo de arquivo inválido",
+          description: "Por favor, selecione uma imagem (JPG, PNG ou GIF).",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Validar tamanho do arquivo (máximo 10MB)
+      const maxSize = 10 * 1024 * 1024; // 10MB
+      if (file.size > maxSize) {
+        toast({
+          title: "Arquivo muito grande",
+          description: "O arquivo deve ter no máximo 10MB.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setSelectedFile(file);
+    }
+  };
+
+  const convertToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Remove o prefixo "data:image/...;base64," para obter apenas o base64
+        const base64 = result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = error => reject(error);
+    });
+  };
+
+  const handleUpload = async () => {
+    if (!selectedFile || !selectedEvaluationForUpload) {
+      toast({
+        title: "Erro",
+        description: "Selecione um arquivo para fazer upload.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsUploading(true);
+      setUploadProgress(20);
+
+      // Converter para base64
+      const base64Image = await convertToBase64(selectedFile);
+      setUploadProgress(50);
+
+      // Fazer a requisição para a API
+      const response = await api.post(`/physical-tests/test/${selectedEvaluationForUpload.id}/process-correction`, {
+        image: base64Image
+      });
+
+      setUploadProgress(100);
+
+      if (response.data) {
+        setUploadResult(response.data);
+        toast({
+          title: "Upload realizado com sucesso!",
+          description: `Correção processada. Nota: ${response.data.grade}/${response.data.total_questions}`,
+        });
+      }
+
+    } catch (error: any) {
+      console.error("Erro no upload:", error);
+      toast({
+        title: "Erro no upload",
+        description: error.response?.data?.error || "Erro ao processar a correção da avaliação física.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   // Verificar se todos os filtros obrigatórios estão selecionados (Estado e Município)
@@ -708,24 +829,226 @@ export default function PhysicalEvaluationTab() {
                         </div>
                       </div>
                       
-                      <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <span className="text-muted-foreground">Nota Média:</span>
-                          <span className="ml-1 font-medium">{(evaluation.media_nota || 0).toFixed(1)}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Proficiência:</span>
-                          <span className="ml-1 font-medium">{(evaluation.media_proficiencia || 0).toFixed(1)}</span>
-                        </div>
-                      </div>
+                       <div className="grid grid-cols-2 gap-4 text-sm">
+                         <div>
+                           <span className="text-muted-foreground">Nota Média:</span>
+                           <span className="ml-1 font-medium">{(evaluation.media_nota || 0).toFixed(1)}</span>
+                         </div>
+                         <div>
+                           <span className="text-muted-foreground">Proficiência:</span>
+                           <span className="ml-1 font-medium">{(evaluation.media_proficiencia || 0).toFixed(1)}</span>
+                         </div>
+                       </div>
+                       
+                       <Button 
+                         className="w-full mt-4"
+                         variant="outline"
+                         onClick={() => openUploadModal(evaluation)}
+                       >
+                         <ClipboardList className="h-4 w-4 mr-2" />
+                         Gerar Resultado de Avaliação Física
+                       </Button>
                     </CardContent>
                   </Card>
                 ))}
               </div>
             )}
           </CardContent>
-        </Card>
-      )}
-    </div>
-  );
-}
+         </Card>
+       )}
+
+       {/* Modal de Upload de Gabarito Físico */}
+       <Dialog open={showUploadModal} onOpenChange={setShowUploadModal}>
+         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+           <DialogHeader>
+             <DialogTitle className="flex items-center gap-2">
+               <Upload className="h-5 w-5 text-blue-600" />
+               Processar Correção de Avaliação Física
+             </DialogTitle>
+             <div className="text-sm text-muted-foreground">
+               {selectedEvaluationForUpload && (
+                 <span>
+                   <strong>Avaliação:</strong> {selectedEvaluationForUpload.titulo} • 
+                   <strong> Escola:</strong> {selectedEvaluationForUpload.escola}
+                 </span>
+               )}
+             </div>
+           </DialogHeader>
+
+           <div className="space-y-6">
+             {!uploadResult && (
+               <>
+                 {/* Instruções */}
+                 <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                   <h4 className="font-medium text-blue-800 mb-2">Como usar:</h4>
+                   <ol className="text-sm text-blue-700 space-y-1 list-decimal list-inside">
+                     <li>Tire uma foto ou escaneie o gabarito preenchido pelo aluno</li>
+                     <li>Certifique-se de que a imagem está clara e bem iluminada</li>
+                     <li>O gabarito deve estar completamente visível na imagem</li>
+                     <li>Clique em "Selecionar Imagem" e escolha o arquivo</li>
+                     <li>Clique em "Processar Correção" para obter o resultado</li>
+                   </ol>
+                 </div>
+
+                 {/* Upload de Arquivo */}
+                 <div className="space-y-4">
+                   <Label className="text-sm font-medium">Imagem do Gabarito Preenchido</Label>
+                   <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
+                     <input
+                       type="file"
+                       accept="image/*"
+                       onChange={handleFileSelect}
+                       className="hidden"
+                       id="gabarito-upload"
+                     />
+                     <label htmlFor="gabarito-upload" className="cursor-pointer">
+                       <Upload className="h-12 w-12 mx-auto text-gray-400 mb-3" />
+                       <p className="text-lg font-medium text-gray-700 mb-1">
+                         {selectedFile ? selectedFile.name : "Clique para selecionar a imagem do gabarito"}
+                       </p>
+                       <p className="text-sm text-gray-500">
+                         JPG, PNG ou GIF até 10MB
+                       </p>
+                     </label>
+                   </div>
+                   
+                   {selectedFile && (
+                     <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+                       <div className="flex items-center gap-2">
+                         <CheckCircle className="h-5 w-5 text-green-600" />
+                         <span className="text-sm font-medium text-green-800">
+                           Arquivo selecionado: {selectedFile.name}
+                         </span>
+                       </div>
+                       <Button
+                         variant="ghost"
+                         size="sm"
+                         onClick={() => setSelectedFile(null)}
+                       >
+                         <X className="h-4 w-4" />
+                       </Button>
+                     </div>
+                   )}
+                 </div>
+
+                 {/* Progress Bar durante upload */}
+                 {isUploading && (
+                   <div className="space-y-2">
+                     <div className="flex items-center justify-between">
+                       <span className="text-sm font-medium">Processando correção...</span>
+                       <span className="text-sm text-muted-foreground">{uploadProgress}%</span>
+                     </div>
+                     <Progress value={uploadProgress} className="w-full" />
+                   </div>
+                 )}
+               </>
+             )}
+
+             {/* Resultado da Correção */}
+             {uploadResult && (
+               <div className="space-y-4">
+                 <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                   <div className="flex items-center gap-2 mb-3">
+                     <CheckCircle className="h-6 w-6 text-green-600" />
+                     <h4 className="font-medium text-green-800">Correção Processada com Sucesso!</h4>
+                   </div>
+                   
+                   <div className="grid grid-cols-2 gap-4 text-sm">
+                     <div>
+                       <span className="font-medium text-gray-600">Acertos:</span>
+                       <span className="ml-2 text-lg font-bold text-green-600">
+                         {uploadResult.correct_answers}/{uploadResult.total_questions}
+                       </span>
+                     </div>
+                     <div>
+                       <span className="font-medium text-gray-600">Nota:</span>
+                       <span className="ml-2 text-lg font-bold text-blue-600">
+                         {uploadResult.grade}
+                       </span>
+                     </div>
+                     <div>
+                       <span className="font-medium text-gray-600">Percentual:</span>
+                       <span className="ml-2 text-lg font-bold text-purple-600">
+                         {uploadResult.score_percentage}%
+                       </span>
+                     </div>
+                     <div>
+                       <span className="font-medium text-gray-600">Proficiência:</span>
+                       <span className="ml-2 text-lg font-bold text-orange-600">
+                         {uploadResult.proficiency}
+                       </span>
+                     </div>
+                   </div>
+
+                   {uploadResult.classification && (
+                     <div className="mt-3 p-2 bg-white rounded border">
+                       <span className="font-medium text-gray-600">Classificação:</span>
+                       <span className="ml-2 font-medium text-gray-800">
+                         {uploadResult.classification}
+                       </span>
+                     </div>
+                   )}
+
+                   {uploadResult.answers_detected && uploadResult.answers_detected.length > 0 && (
+                     <div className="mt-3">
+                       <span className="font-medium text-gray-600 block mb-2">Respostas Detectadas:</span>
+                       <div className="flex flex-wrap gap-1">
+                         {uploadResult.answers_detected.map((answer: string, index: number) => (
+                           <Badge
+                             key={index}
+                             variant={
+                               uploadResult.student_answers && 
+                               uploadResult.student_answers[index] === answer 
+                                 ? "default" 
+                                 : "destructive"
+                             }
+                             className="text-xs"
+                           >
+                             Q{index + 1}: {answer}
+                           </Badge>
+                         ))}
+                       </div>
+                     </div>
+                   )}
+                 </div>
+               </div>
+             )}
+           </div>
+
+           <DialogFooter className="gap-2">
+             {!uploadResult && (
+               <>
+                 <Button variant="outline" onClick={closeUploadModal}>
+                   Cancelar
+                 </Button>
+                 <Button 
+                   onClick={handleUpload} 
+                   disabled={!selectedFile || isUploading}
+                   className="bg-blue-600 hover:bg-blue-700"
+                 >
+                   {isUploading ? (
+                     <>
+                       <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                       Processando...
+                     </>
+                   ) : (
+                     <>
+                       <Upload className="h-4 w-4 mr-2" />
+                       Processar Correção
+                     </>
+                   )}
+                 </Button>
+               </>
+             )}
+             
+             {uploadResult && (
+               <Button onClick={closeUploadModal} className="w-full">
+                 Fechar
+               </Button>
+             )}
+           </DialogFooter>
+         </DialogContent>
+       </Dialog>
+     </div>
+   );
+ }
