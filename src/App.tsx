@@ -162,6 +162,7 @@ const App = () => {
               <Route path="/app/avaliacao/:id" element={<PrivateRoute><ViewEvaluation /></PrivateRoute>} />
               <Route path="/app/avaliacao/:id/editar" element={<PrivateRoute><EditEvaluation /></PrivateRoute>} />
               <Route path="/app/avaliacao/:id/fisica" element={<PrivateRoute><PhysicalTestPage /></PrivateRoute>} />
+              <Route path="/app/provas-fisicas/:id" element={<PrivateRoute><PhysicalTestPage /></PrivateRoute>} />
               <Route path="/app/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
               <Route path="/app/criar-avaliacao" element={<PrivateRoute><CreateEvaluation /></PrivateRoute>} />
               <Route path="/app/calculadora-saeb" element={<PrivateRoute><IdebCalculatorPage /></PrivateRoute>} />
