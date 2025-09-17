@@ -1,12 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Superscript from '@tiptap/extension-superscript';
-import Placeholder from '@tiptap/extension-placeholder';
-import Underline from '@tiptap/extension-underline';
-import TextAlign from '@tiptap/extension-text-align';
-import Image from '@tiptap/extension-image';
-import { ResizableImage } from 'tiptap-extension-resizable-image';
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,156 +11,43 @@ import './QuestionPreview.css';
 
 interface QuestionPreviewProps {
     question: Question;
+    onClose?: () => void;
 }
 
-const ReadOnlyEditor = ({ content }: { content: string | null | undefined }) => {
-    const [useHtmlFallback, setUseHtmlFallback] = useState(false);
-    const [editorReady, setEditorReady] = useState(false);
-
-    const editor = useEditor({
-        extensions: [
-            StarterKit,
-            ResizableImage.configure({
-                allowBase64: true,
-                HTMLAttributes: {
-                    class: 'max-w-full h-auto',
-                    style: 'object-fit: contain;',
-                },
-            }),
-            Image.configure({
-                inline: true,
-                allowBase64: true,
-                HTMLAttributes: {
-                    class: 'max-w-full h-auto',
-                    style: 'object-fit: contain;',
-                },
-            }),
-            Superscript,
-            Underline,
-            TextAlign.configure({
-                types: ['heading', 'paragraph', 'image'],
-                alignments: ['left', 'center', 'right'],
-                defaultAlignment: 'left',
-            }),
-            Placeholder.configure({ placeholder: '' }),
-        ],
-        content: content || '',
-        editable: false,
-        parseOptions: {
-            preserveWhitespace: 'full',
-        },
-    });
-
-    // Verificar se o editor foi criado e se tem imagens para verificar
-    useEffect(() => {
-        if (editor && content && content.includes('data:image')) {
-            // ✅ FIX: Usar setTimeout em vez de queueMicrotask para evitar flushSync warning
-            const timeoutId = setTimeout(() => {
-                setEditorReady(true);
-                
-                // Aplicar estilos adicionais às imagens quando o editor carregar
-                const editorElement = editor.view.dom;
-                const images = editorElement.querySelectorAll('img');
-                
-                images.forEach((img) => {
-                    // Garantir object-fit para todas as imagens
-                    if (!img.style.objectFit) {
-                        img.style.objectFit = 'contain';
-                    }
-                    
-                    // Detectar se é uma imagem inline (provável elemento matemático)
-                    const parent = img.parentElement;
-                    if (parent && parent.tagName === 'P') {
-                        const textContent = parent.textContent?.trim() || '';
-                        const hasTextAround = textContent.length > 0 && !textContent.match(/^\s*$/);
-                        
-                        if (hasTextAround && img.naturalWidth && img.naturalHeight && 
-                            (img.naturalWidth < 150 || img.naturalHeight < 100)) {
-                            img.style.display = 'inline-block';
-                            img.style.verticalAlign = 'middle';
-                            img.style.maxHeight = '2.5em';
-                            img.style.maxWidth = '4em';
-                            img.style.margin = '0 0.2rem';
-                        }
-                    }
-                });
-            }, 0);
-            
-            // Verificar renderização de imagens após um tempo
-            const checkImages = setTimeout(() => {
-                const editorElement = document.querySelector('.ProseMirror');
-                const images = editorElement?.querySelectorAll('img');
-                const hasImages = images && images.length > 0;
-                
-                // Se não renderizou imagens quando deveria, usar fallback HTML
-                if (!hasImages && content.includes('data:image')) {
-                    setUseHtmlFallback(true);
-                }
-            }, 1000);
-
-            return () => {
-                clearTimeout(timeoutId);
-                clearTimeout(checkImages);
-            };
-        } else if (editor) {
-            // ✅ FIX: Usar setTimeout em vez de queueMicrotask
-            setTimeout(() => {
-                setEditorReady(true);
-            }, 0);
-        }
-    }, [editor, content]);
-
+// Componente simples para renderizar HTML sem TipTap
+const SimpleHtmlRenderer = ({ content }: { content: string | null | undefined }) => {
     if (!content || content.trim() === '') {
         return null;
     }
 
-    if (!editor && !useHtmlFallback) {
-        return <div className="text-muted-foreground text-sm">Carregando conteúdo...</div>;
-    }
-
-    // Usar fallback HTML se Tiptap não conseguir renderizar imagens
-    if (useHtmlFallback || (content.includes('data:image') && !editorReady)) {
-        // Detectar e melhorar imagens inline (especialmente elementos matemáticos)
-        const cleanHtml = content
-            // Preservar classes existentes e adicionar responsividade
-            .replace(/<img([^>]*?)class="([^"]*)"([^>]*)>/g, '<img$1class="$2 max-w-full h-auto"$3>')
-            // Adicionar classe para imagens sem classe
-            .replace(/<img(?![^>]*class=)([^>]*)>/g, '<img$1 class="max-w-full h-auto">')
-            // Detectar imagens pequenas (prováveis elementos matemáticos) e adicionar vertical-align
-            .replace(/<img([^>]*?)(data:image\/[^;]+;base64,[A-Za-z0-9+/=]{50,500})([^>]*?)>/g, (match, before, dataUrl, after) => {
-                // Se a imagem parece ser pequena (base64 relativamente curto), tratar como inline
-                if (dataUrl.length < 800) {
-                    return `<img${before}${dataUrl}${after} style="vertical-align: middle; display: inline-block; max-width: 4em; max-height: 2.5em; object-fit: contain;">`;
-                }
-                return match;
-            })
-            // Garantir que imagens maiores tenham object-fit: contain
-            .replace(/<img([^>]*?)style="([^"]*?)"([^>]*?)>/g, (match, before, style, after) => {
-                if (!style.includes('object-fit')) {
-                    const newStyle = `${style}; object-fit: contain;`;
-                    return `<img${before}style="${newStyle}"${after}>`;
-                }
-                return match;
-            })
-            // Para imagens sem style, adicionar object-fit
-            .replace(/<img(?![^>]*style=)([^>]*?)>/g, '<img$1 style="object-fit: contain;">');
-        
-        return (
-            <div 
-                className="prose prose-sm max-w-none question-content-html"
-                dangerouslySetInnerHTML={{ __html: cleanHtml }}
-            />
-        );
-    }
-
+    // Limpar e processar HTML
+    const cleanHtml = content
+        .replace(/<img([^>]*?)class="([^"]*)"([^>]*)>/g, '<img$1class="$2 max-w-full h-auto"$3>')
+        .replace(/<img(?![^>]*class=)([^>]*)>/g, '<img$1 class="max-w-full h-auto">')
+        .replace(/<img([^>]*?)(data:image\/[^;]+;base64,[A-Za-z0-9+/=]{50,500})([^>]*?)>/g, (match, before, dataUrl, after) => {
+            if (dataUrl.length < 800) {
+                return `<img${before}${dataUrl}${after} style="vertical-align: middle; display: inline-block; max-width: 4em; max-height: 2.5em; object-fit: contain;">`;
+            }
+            return match;
+        })
+        .replace(/<img([^>]*?)style="([^"]*?)"([^>]*?)>/g, (match, before, style, after) => {
+            if (!style.includes('object-fit')) {
+                const newStyle = `${style}; object-fit: contain;`;
+                return `<img${before}style="${newStyle}"${after}>`;
+            }
+            return match;
+        })
+        .replace(/<img(?![^>]*style=)([^>]*?)>/g, '<img$1 style="object-fit: contain;">');
+    
     return (
-        <div className="prose prose-sm max-w-none">
-            <EditorContent editor={editor} />
-        </div>
+        <div 
+            className="prose prose-sm max-w-none question-content-html"
+            dangerouslySetInnerHTML={{ __html: cleanHtml }}
+        />
     );
 };
 
-const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQuestion }) => {
+const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQuestion, onClose }) => {
     const { fetchSkills, getSkillsByIds, isLoading } = useSkillsStore();
     const [question, setQuestion] = useState<Question>(initialQuestion);
     const [isLoadingDetails, setIsLoadingDetails] = useState(false);
@@ -197,7 +76,12 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
                     const normalizedQuestion: Question = {
                         ...fullQuestion,
                         skills: normalizeSkills(fullQuestion.skills),
-                        options: fullQuestion.options || [],
+                        // Verificar múltiplos campos possíveis para alternativas
+                        options: fullQuestion.options || 
+                                (fullQuestion as any).alternatives || 
+                                (fullQuestion as any).opcoes || 
+                                (fullQuestion as any).alternativas || 
+                                [],
                         secondStatement: fullQuestion.secondStatement || '',
                         solution: fullQuestion.solution || '',
                     };
@@ -233,6 +117,13 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
     if (!question) {
         return <div className="p-4 text-center text-muted-foreground">Nenhuma questão para visualizar.</div>;
     }
+
+    // Verificar múltiplos campos possíveis para alternativas
+    const questionOptions = question.options || 
+                           (question as any).alternatives || 
+                           (question as any).opcoes || 
+                           (question as any).alternativas || 
+                           [];
 
     return (
         <div className="question-preview-content">
@@ -302,12 +193,12 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
                     </div>
                 ) : (
                     <div className="question-statement">
-                        <ReadOnlyEditor content={question.formattedText || question.text} />
+                        <SimpleHtmlRenderer content={question.formattedText || question.text} />
                         
                         {/* Segundo Enunciado - integrado naturalmente */}
                         {question.secondStatement && question.secondStatement.trim() !== '' && (
                             <div className="question-continuation">
-                                <ReadOnlyEditor content={question.secondStatement} />
+                                <SimpleHtmlRenderer content={question.secondStatement} />
                             </div>
                         )}
                     </div>
@@ -315,7 +206,7 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
             </div>
 
             {/* Alternativas para questões de múltipla escolha */}
-            {question.type === 'multipleChoice' && (
+            {(question.type === 'multipleChoice' || question.type === 'multiple_choice') && (
                 <div className="space-y-4 mb-8">
                     <h4 className="font-semibold text-lg text-gray-700 mb-4">Alternativas</h4>
                     {isLoadingDetails ? (
@@ -327,9 +218,9 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
                                 </div>
                             ))}
                         </div>
-                    ) : question.options && question.options.length > 0 ? (
+                    ) : questionOptions && questionOptions.length > 0 ? (
                         <div className="space-y-3">
-                            {question.options.map((option, index) => (
+                            {questionOptions.map((option, index) => (
                                 <div key={option.id || index} className="alternative-item flex items-start space-x-4 p-5 rounded-xl border bg-white hover:shadow-md transition-all duration-200">
                                     <div
                                         className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm font-semibold shrink-0 transition-all duration-200 ${
@@ -365,7 +256,7 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
             )}
 
             {/* Área de resposta para questões dissertativas */}
-            {question.type === 'open' && (
+            {(question.type === 'dissertativa' || question.type === 'open') && (
                 <div className="space-y-4 mb-8">
                     <h4 className="font-semibold text-lg text-gray-700 mb-4">Área de Resposta</h4>
                     <div className="answer-area rounded-xl p-6 bg-gray-50 border-2 border-dashed border-gray-300">
@@ -394,7 +285,7 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
                     </h4>
                     <div className="resolution-content bg-blue-50 border border-blue-200 rounded-xl p-6">
                         <div className="text-base leading-relaxed text-gray-700">
-                            <ReadOnlyEditor content={question.formattedSolution || question.solution} />
+                            <SimpleHtmlRenderer content={question.formattedSolution || question.solution} />
                         </div>
                     </div>
                 </div>
@@ -403,4 +294,4 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
     );
 };
 
-export default QuestionPreview; 
+export default QuestionPreview;

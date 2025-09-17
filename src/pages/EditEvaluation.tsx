@@ -10,6 +10,7 @@ import { useAuth } from "@/context/authContext";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
+import { useQuestionActions } from "@/stores/useEvaluationStore";
 
 interface Evaluation {
     id: string;
@@ -24,6 +25,7 @@ interface Evaluation {
         id: string;
         name: string;
     };
+    subjects?: Array<{ id: string; name: string }>;
     subjects_info?: Array<{ id: string; name: string }>;
     grade: {
         id: string;
@@ -37,6 +39,12 @@ interface Evaluation {
     time_limit?: string;
     duration?: number;
     classes?: string[];
+    applied_classes?: Array<{
+        class: {
+            id: string;
+            name: string;
+        };
+    }>;
 }
 
 const EditEvaluation = () => {
@@ -49,6 +57,14 @@ const EditEvaluation = () => {
     const { toast } = useToast();
     const navigate = useNavigate();
     const { user } = useAuth();
+    const { clearQuestions } = useQuestionActions();
+
+    // Limpar questões do store ao sair da página
+    useEffect(() => {
+        return () => {
+            clearQuestions();
+        };
+    }, [clearQuestions]);
 
     // Carregar dados da avaliação existente
     useEffect(() => {
@@ -61,26 +77,42 @@ const EditEvaluation = () => {
                 const evaluation: Evaluation = response.data;
                 setOriginalEvaluation(evaluation);
 
-                                 // Converter dados da avaliação para o formato do formulário
-                 const formData: EvaluationFormData = {
-                     title: evaluation.title || "",
-                     description: evaluation.description || "",
-                     municipalities: evaluation.municipalities?.map((m: any) => m.id || m) || [],
-                     schools: evaluation.schools?.map((s: any) => s.id || s) || [],
-                     course: evaluation.course?.id || "",
-                     grade: evaluation.grade?.id || "",
-                     classId: "", // não usado no novo fluxo
-                     type: evaluation.type || "AVALIACAO",
-                     model: (evaluation.model === "SAEB" || evaluation.model === "PROVA" || evaluation.model === "AVALIE") 
-                         ? evaluation.model 
-                         : "SAEB",
-                     subjects: evaluation.subjects_info || (evaluation.subject ? [evaluation.subject] : []),
-                     subject: evaluation.subject?.id || "",
-                     questions: evaluation.questions || [],
-                     startDateTime: evaluation.time_limit || "",
-                     duration: evaluation.duration?.toString() || "",
-                     classes: evaluation.classes || [],
-                 };
+                // Buscar estado baseado no primeiro município
+                let stateName = "";
+                if (evaluation.municipalities && evaluation.municipalities.length > 0) {
+                    try {
+                        const municipalityId = evaluation.municipalities[0].id || evaluation.municipalities[0];
+                        const municipalityResponse = await api.get(`/city/${municipalityId}`);
+                        stateName = municipalityResponse.data?.state || "";
+                    } catch (error) {
+                        console.error("Erro ao buscar estado do município:", error);
+                    }
+                }
+
+                // Converter dados da avaliação para o formato do formulário
+                const formData: EvaluationFormData = {
+                    title: evaluation.title || "",
+                    description: evaluation.description || "",
+                    municipalities: evaluation.municipalities?.map((m: any) => m.id || m) || [],
+                    schools: evaluation.schools?.map((s: any) => s.id || s) || [],
+                    course: evaluation.course?.id || "",
+                    grade: evaluation.grade?.id || "",
+                    classId: "",
+                    type: evaluation.type || "AVALIACAO",
+                    model: (evaluation.model === "SAEB" || evaluation.model === "PROVA" || evaluation.model === "AVALIE") 
+                        ? evaluation.model 
+                        : "SAEB",
+                    subjects: evaluation.subjects || evaluation.subjects_info || (evaluation.subject ? [evaluation.subject] : []),
+                    subject: evaluation.subject?.id || "",
+                    questions: evaluation.questions || [],
+                    startDateTime: evaluation.time_limit || "",
+                    duration: evaluation.duration?.toString() || "",
+                    classes: evaluation.classes || [],
+                    state: stateName,
+                    municipality: evaluation.municipalities?.[0]?.id || evaluation.municipalities?.[0] || "",
+                    selectedSchools: evaluation.schools || [],
+                    selectedClasses: evaluation.applied_classes?.map((ac: any) => ac.class) || [],
+                };
 
                 setEvaluationData(formData);
             } catch (error) {
@@ -100,7 +132,12 @@ const EditEvaluation = () => {
     }, [id, toast, navigate]);
 
     const handleNext = (data: EvaluationFormData) => {
-        setEvaluationData(data);
+        // Preservar questões originais ao ir para Step2
+        const updatedData = {
+            ...data,
+            questions: evaluationData?.questions || [],
+        };
+        setEvaluationData(updatedData);
         setCurrentStep(2);
     };
 
@@ -114,7 +151,7 @@ const EditEvaluation = () => {
         try {
             setIsSaving(true);
 
-            // Atualizar avaliação no backend
+            // Atualizar dados básicos via PUT
             await api.put(`/test/${id}`, {
                 title: evaluationData.title,
                 description: evaluationData.description,
@@ -129,8 +166,52 @@ const EditEvaluation = () => {
                 time_limit: evaluationData.startDateTime,
                 duration: evaluationData.duration ? parseInt(evaluationData.duration) : undefined,
                 classes: evaluationData.classes,
-                questions: evaluationData.questions,
             });
+
+            // Se há questões para atualizar, usar estratégia de recriação
+            if (evaluationData.questions && evaluationData.questions.length > 0) {
+                const questionsChanged = JSON.stringify(originalEvaluation?.questions || []) !== 
+                                       JSON.stringify(evaluationData.questions);
+                
+                if (questionsChanged) {
+                    const currentEvalResponse = await api.get(`/test/${id}`);
+                    const currentEval = currentEvalResponse.data;
+                    
+                    const completePayload = {
+                        title: evaluationData.title,
+                        description: evaluationData.description,
+                        municipalities: evaluationData.municipalities,
+                        schools: evaluationData.schools,
+                        course: evaluationData.course,
+                        grade: evaluationData.grade,
+                        type: evaluationData.type,
+                        model: evaluationData.model,
+                        subjects: evaluationData.subjects,
+                        subject: evaluationData.subject,
+                        time_limit: evaluationData.startDateTime,
+                        duration: evaluationData.duration ? parseInt(evaluationData.duration) : undefined,
+                        classes: evaluationData.classes,
+                        questions: evaluationData.questions,
+                        created_by: currentEval.created_by || user.id,
+                        max_score: currentEval.max_score,
+                        evaluation_mode: currentEval.evaluation_mode,
+                        intructions: currentEval.intructions
+                    };
+
+                    await api.delete(`/test/${id}`);
+                    
+                    const newEvalResponse = await api.post('/test', completePayload);
+                    const newEvalId = newEvalResponse.data.test_id || newEvalResponse.data.id;
+                    
+                    toast({
+                        title: "Sucesso",
+                        description: "Avaliação atualizada com sucesso! Questões foram atualizadas.",
+                    });
+
+                    navigate(`/app/avaliacao/${newEvalId}`);
+                    return;
+                }
+            }
 
             toast({
                 title: "Sucesso",
@@ -263,20 +344,20 @@ const EditEvaluation = () => {
 
             <Card>
                 <CardContent className="pt-6">
-                                         {currentStep === 1 && (
-                         <CreateEvaluationStep1 
-                             onNext={handleNext}
-                             initialData={evaluationData}
-                         />
-                     )}
+                    {currentStep === 1 && (
+                        <CreateEvaluationStep1 
+                            onNext={handleNext}
+                            initialData={evaluationData}
+                        />
+                    )}
 
-                     {currentStep === 2 && evaluationData && (
-                         <CreateEvaluationStep2
-                             data={evaluationData}
-                             onBack={handleBack}
-                             onComplete={handleEvaluationComplete}
-                         />
-                     )}
+                    {currentStep === 2 && evaluationData && (
+                        <CreateEvaluationStep2
+                            data={evaluationData}
+                            onBack={handleBack}
+                            onComplete={handleEvaluationComplete}
+                        />
+                    )}
                 </CardContent>
             </Card>
 
@@ -310,4 +391,4 @@ const EditEvaluation = () => {
     );
 };
 
-export default EditEvaluation; 
+export default EditEvaluation;
