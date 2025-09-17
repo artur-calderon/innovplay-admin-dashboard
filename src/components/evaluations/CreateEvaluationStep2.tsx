@@ -189,15 +189,15 @@ export const CreateEvaluationStep2 = ({
 
       // Validar se todas as questões têm alternativas válidas
       const invalidQuestions = allQuestions.filter(q => {
-        if (!q.options || q.options.length === 0) return true;
-        const hasCorrectAnswer = q.options.some(opt => opt.isCorrect);
-        return !hasCorrectAnswer;
+        if (q.type === 'multipleChoice' && (!q.options || q.options.length === 0)) return true;
+        if (q.type === 'multipleChoice' && !q.options.some(opt => opt.isCorrect)) return true;
+        return false;
       });
 
       if (invalidQuestions.length > 0) {
         toast({
           title: "Erro de Validação",
-          description: `${invalidQuestions.length} questão(ões) não têm resposta correta definida`,
+          description: `${invalidQuestions.length} questão(ões) não têm alternativas ou resposta correta definida`,
           variant: "destructive",
         });
         return;
@@ -222,6 +222,7 @@ export const CreateEvaluationStep2 = ({
           subject: subject.id,
           weight: Math.round(100 / data.subjects.length)
         })),
+        created_by: user?.id || "",
         questions: allQuestions.map((question, index) => {
           if (question.id && question.id !== 'preview') {
             return {
@@ -270,11 +271,8 @@ export const CreateEvaluationStep2 = ({
 
         clearQuestions();
 
-        if (onComplete) {
-          onComplete();
-        } else {
-          navigate("/app/avaliacoes");
-        }
+        // 🔧 CORREÇÃO: Sempre redirecionar para página inicial
+        navigate("/app/avaliacoes");
       }
     } catch (error: any) {
       console.error("Erro ao criar avaliação:", error);
@@ -282,6 +280,8 @@ export const CreateEvaluationStep2 = ({
       let errorMessage = ERROR_MESSAGES.EVALUATION_CREATE_FAILED;
       if (error?.response?.data?.message) {
         errorMessage = error.response.data.message;
+      } else if (error?.response?.data?.error) {
+        errorMessage = error.response.data.error;
       } else if (error?.message) {
         errorMessage = error.message;
       }
@@ -469,9 +469,15 @@ export const CreateEvaluationStep2 = ({
             </DialogDescription>
           </DialogHeader>
           <QuestionFormReadOnly
-            subjectId={selectedSubjectForQuestion}
-            onQuestionCreated={handleQuestionCreated}
-            onCancel={() => setShowCreateQuestion(false)}
+            open={showCreateQuestion}
+            onClose={() => setShowCreateQuestion(false)}
+            onQuestionAdded={handleQuestionCreated}
+            questionNumber={getTotalQuestions() + 1}
+            evaluationData={{
+              course: data.course,
+              grade: data.grade,
+              subject: selectedSubjectForQuestion
+            }}
           />
         </DialogContent>
       </Dialog>
