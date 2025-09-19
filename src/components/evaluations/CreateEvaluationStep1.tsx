@@ -1,31 +1,22 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import {
-  Form,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormControl,
-  FormMessage,
-  FormDescription,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
-import { Loader2, Plus, X, Calendar, Clock, Info, AlertTriangle, Users, MapPin } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { Loader2, Plus, X, MapPin, School, Users, BookOpen, Clock, AlertCircle, CheckCircle2 } from "lucide-react";
 import { api } from "@/lib/api";
-import { useToast } from "@/hooks/use-toast";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { EvaluationFormData, Subject, ClassInfo } from "./types";
-// Removido import de mockData - usando dados reais da API
 import { useAuth } from "@/context/authContext";
+import { useToast } from "@/hooks/use-toast";
+import { EvaluationFormData } from "./types";
+
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
 
 // Schema de validação simplificado e mais robusto
@@ -54,7 +45,7 @@ const step1Schema = z.object({
     id: z.string(),
     name: z.string(),
   })).min(1, "Selecione pelo menos uma turma"),
-  duration: z.string().min(1, "Informe a duração em minutos").regex(/^\d+$/, "Duração deve ser um número"),
+  duration: z.string().min(1, "Informe a duração em minutos").regex(/^\d+$/, "Duração deve ser um número")
 });
 
 type Step1FormValues = z.infer<typeof step1Schema>;
@@ -74,22 +65,34 @@ interface Grade {
   name: string;
 }
 
+interface Subject {
+  id: string;
+  name: string;
+}
+
+interface ClassInfo {
+  id: string;
+  name: string;
+  school?: {
+    id: string;
+    name: string;
+  };
+}
+
 interface State {
   id: string;
   name: string;
-  uf: string;
 }
 
 interface Municipality {
   id: string;
   name: string;
-  state_id: string;
+  state_id?: string;
 }
 
 interface School {
   id: string;
   name: string;
-  municipality_id: string;
   address?: string;
 }
 
@@ -128,9 +131,9 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
       model: initialData?.model || "SAEB",
       course: initialData?.course || "",
       grade: initialData?.grade || "",
-      state: "",
-      municipality: "",
-      selectedSchools: [],
+      state: initialData?.state || "",
+      municipality: initialData?.municipality || "",
+      selectedSchools: initialData?.selectedSchools || [],
       subjects: initialData?.subjects || [],
       selectedClasses: initialData?.selectedClasses || [],
       duration: initialData?.duration || "60",
@@ -178,6 +181,103 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
     loadInitialData();
   }, [toast]);
 
+  // Processar dados iniciais após carregamento
+  useEffect(() => {
+    if (!loadingData && initialData) {
+      if (initialData.state) {
+        form.setValue("state", initialData.state);
+      }
+      if (initialData.municipality) {
+        form.setValue("municipality", initialData.municipality);
+      }
+      if (initialData.selectedSchools && initialData.selectedSchools.length > 0) {
+        form.setValue("selectedSchools", initialData.selectedSchools);
+      }
+      if (initialData.subjects && initialData.subjects.length > 0) {
+        form.setValue("subjects", initialData.subjects);
+      }
+      if (initialData.selectedClasses && initialData.selectedClasses.length > 0) {
+        form.setValue("selectedClasses", initialData.selectedClasses);
+      }
+    }
+  }, [loadingData, initialData, form]);
+
+  // Carregar municípios quando estado inicial for definido
+  useEffect(() => {
+    if (!loadingData && initialData?.state && states.length > 0) {
+      const loadMunicipalitiesForInitialState = async () => {
+        try {
+          const response = await api.get(`/city/municipalities/state/${initialData.state}`);
+          setMunicipalities(response.data || []);
+          setFilteredMunicipalities(response.data || []);
+        } catch (error) {
+          console.error("Erro ao carregar municípios do estado inicial:", error);
+        }
+      };
+
+      loadMunicipalitiesForInitialState();
+    }
+  }, [loadingData, initialData?.state, states]);
+
+  // Carregar escolas quando município inicial for definido
+  useEffect(() => {
+    if (!loadingData && initialData?.municipality && municipalities.length > 0) {
+      const loadSchoolsForInitialMunicipality = async () => {
+        try {
+          const response = await api.get(`/school/city/${initialData.municipality}`);
+          const schoolsData = response.data || [];
+          setSchools(schoolsData);
+          setFilteredSchools(schoolsData);
+        } catch (error) {
+          console.error("Erro ao carregar escolas do município inicial:", error);
+          // Fallback: usar escolas dos dados iniciais
+          if (initialData.selectedSchools && initialData.selectedSchools.length > 0) {
+            setSchools(initialData.selectedSchools);
+            setFilteredSchools(initialData.selectedSchools);
+          }
+        }
+      };
+
+      loadSchoolsForInitialMunicipality();
+    }
+  }, [loadingData, initialData?.municipality, municipalities, initialData?.selectedSchools]);
+
+  // Carregar turmas quando escolas iniciais forem definidas
+  useEffect(() => {
+    if (!loadingData && initialData?.selectedSchools && initialData.selectedSchools.length > 0 && initialData?.grade) {
+      const loadClassesForInitialSchools = async () => {
+        try {
+          const allClasses: any[] = [];
+
+          for (const school of initialData.selectedSchools) {
+            try {
+              const response = await api.get(`/classes/school/${school.id}`);
+              const schoolClasses = response.data || [];
+              const classesWithSchool = schoolClasses.map((classItem: any) => ({
+                ...classItem,
+                school: { id: school.id, name: school.name }
+              }));
+              allClasses.push(...classesWithSchool);
+            } catch (err) {
+              console.error(`Erro ao buscar turmas da escola ${school.name}:`, err);
+            }
+          }
+
+          // Filtrar turmas por série
+          const filteredClasses = allClasses.filter((classItem: any) =>
+            String(classItem.grade_id) === String(initialData.grade)
+          );
+
+          setClasses(filteredClasses);
+        } catch (error) {
+          console.error("Erro ao carregar turmas das escolas iniciais:", error);
+        }
+      };
+
+      loadClassesForInitialSchools();
+    }
+  }, [loadingData, initialData?.selectedSchools, initialData?.grade]);
+
   // Carregar séries quando curso mudar
   useEffect(() => {
     if (selectedCourse) {
@@ -186,7 +286,6 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
           const response = await api.get(`/grades/education-stage/${selectedCourse}`);
           setGrades(response.data || []);
 
-          // Limpar série selecionada se não estiver na nova lista
           const currentGrade = form.getValues("grade");
           if (currentGrade && !response.data.find((g: Grade) => g.id === currentGrade)) {
             form.setValue("grade", "");
@@ -214,19 +313,16 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
       }
 
       try {
-        // Usar o endpoint existente /classes/school/{schoolId} para buscar todas as turmas da escola
         const schoolId = selectedSchools[0].id;
         const response = await api.get(`/classes/school/${schoolId}`);
         const allClasses = response.data || [];
 
-        // Filtrar turmas por série no frontend (comparação por string, sem espaços)
         const filteredClasses = allClasses.filter((classItem: any) =>
           String(classItem.grade_id).trim() === String(selectedGrade).trim()
         );
 
         setClasses(filteredClasses);
 
-        // Limpar turmas selecionadas se não estiverem na nova lista
         const currentClasses = form.getValues("selectedClasses");
         if (currentClasses.length > 0) {
           const validClasses = currentClasses.filter(c =>
@@ -238,19 +334,19 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
         setClasses([]);
         form.setValue("selectedClasses", []);
         console.error("Erro ao buscar turmas da escola:", error);
-
-        // Fallback: usar dados vazios se a API falhar
         setClasses([]);
       }
     };
 
-    fetchFilteredClasses();
-  }, [selectedGrade, selectedSchools, selectedMunicipality, form]);
+    if (!loadingData && !initialData?.selectedClasses) {
+      fetchFilteredClasses();
+    }
+  }, [selectedGrade, selectedSchools, selectedMunicipality, form, loadingData, initialData]);
 
   // Carregar municípios quando estado mudar
   useEffect(() => {
     if (selectedState === 'all') {
-      setMunicipalities([]); // só mostra opção 'Todos os municípios'
+      setMunicipalities([]);
       setFilteredMunicipalities([]);
       form.setValue("municipality", "all");
       setSchools([]);
@@ -260,14 +356,14 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
       setNoClassesMessage("");
       form.setValue("selectedSchools", []);
       form.setValue("selectedClasses", []);
-    } else if (selectedState) {
-      // Buscar municípios do estado selecionado
+    } else if (selectedState && selectedState !== initialData?.state) {
       api.get(`/city/municipalities/state/${selectedState}`)
         .then(res => {
           setMunicipalities(res.data || []);
           setFilteredMunicipalities(res.data || []);
         })
-        .catch(() => {
+        .catch(err => {
+          console.error("Erro ao carregar municípios:", err);
           setMunicipalities([]);
           setFilteredMunicipalities([]);
         });
@@ -279,7 +375,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
       setNoClassesMessage("");
       form.setValue("selectedSchools", []);
       form.setValue("selectedClasses", []);
-    } else {
+    } else if (!selectedState) {
       setMunicipalities([]);
       setFilteredMunicipalities([]);
       form.setValue("municipality", "");
@@ -291,114 +387,61 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
       form.setValue("selectedSchools", []);
       form.setValue("selectedClasses", []);
     }
-  }, [selectedState]);
+  }, [selectedState, form, initialData?.state]);
 
   // Carregar escolas quando município mudar
   useEffect(() => {
-    if (!selectedMunicipality) {
-      setSchools([]);
-      setFilteredSchools([]);
-      setClasses([]);
-      setNoSchoolsMessage("");
-      setNoClassesMessage("");
-      form.setValue("selectedSchools", []);
-      form.setValue("selectedClasses", []);
-      return;
-    }
-
-    if (selectedMunicipality === 'all') {
+    if (user?.role === "admin" && selectedMunicipality && selectedMunicipality !== 'all' && selectedMunicipality !== initialData?.municipality) {
       setSchoolsLoading(true);
       setNoSchoolsMessage("");
-      setFilteredSchools([]);
-      setClasses([]);
-      setNoClassesMessage("");
-      form.setValue("selectedSchools", []);
-      form.setValue("selectedClasses", []);
 
-      if (user?.role === "admin" && selectedCourse && selectedGrade) {
-        // Buscar todas as escolas de todos os municípios e filtrar por curso e série
-        api.get(`/school`).then(async (res) => {
-          const allSchools = res.data || [];
-          const validSchools: School[] = [];
-          for (const school of allSchools) {
-            try {
-              const turmasRes = await api.get(`/classes/school/${school.id}`);
-              const turmas = turmasRes.data || [];
-              const hasValidClass = turmas.some((t: any) => String(t.grade_id) === String(selectedGrade));
-              if (hasValidClass) {
-                validSchools.push(school);
-              }
-            } catch (err) { }
+      const loadSchoolsForAdmin = async () => {
+        try {
+          const response = await api.get(`/school/city/${selectedMunicipality}`);
+          const schoolsData = response.data || [];
+          
+          setSchools(schoolsData);
+          setFilteredSchools(schoolsData);
+          
+          if (schoolsData.length === 0) {
+            setNoSchoolsMessage("Não existem escolas cadastradas neste município.");
           }
-          setFilteredSchools(validSchools);
-          if (validSchools.length === 0) {
-            setNoSchoolsMessage("Nenhuma escola encontrada com turma para o curso e série selecionados.");
+
+          const currentSchools = form.getValues("selectedSchools");
+          if (currentSchools.length > 0) {
+            const validSchools = currentSchools.filter(s =>
+              schoolsData.find((school: School) => school.id === s.id)
+            );
+            form.setValue("selectedSchools", validSchools);
           }
-        }).catch(() => {
-          setFilteredSchools([]);
-          setNoSchoolsMessage("Erro ao buscar escolas.");
-        }).finally(() => setSchoolsLoading(false));
-      } else {
-        // Para não-admin, buscar todas as escolas
-        api.get(`/school`).then((res) => {
-          setSchools(res.data || []);
-        }).catch(() => {
+        } catch (error) {
+          console.error("Erro ao carregar escolas:", error);
           setSchools([]);
-          setNoSchoolsMessage("Erro ao buscar escolas.");
-        }).finally(() => setSchoolsLoading(false));
-      }
-    } else if (selectedMunicipality) {
-      setSchools([]);
-      setFilteredSchools([]);
-      setClasses([]);
-      setNoSchoolsMessage("");
-      setNoClassesMessage("");
-      form.setValue("selectedSchools", []);
-      form.setValue("selectedClasses", []);
+          setFilteredSchools([]);
+        } finally {
+          setSchoolsLoading(false);
+        }
+      };
 
-      if (user?.role === "admin" && selectedCourse && selectedGrade) {
-        // Fluxo para admin: filtrar escolas por curso e série
-        setSchoolsLoading(true);
-        api.get(`/school/city/${selectedMunicipality}`)
-          .then(async (response) => {
-            const allSchools = response.data || [];
-            const validSchools: School[] = [];
-
-            for (const school of allSchools) {
-              try {
-                const turmasRes = await api.get(`/classes/school/${school.id}`);
-                const turmas = turmasRes.data || [];
-                // Verifica se tem turma com a série selecionada
-                const hasValidClass = turmas.some((t: any) => String(t.grade_id) === String(selectedGrade));
-                if (hasValidClass) {
-                  validSchools.push(school);
-                }
-              } catch (err) {
-                // Ignorar erro de escola específica
-              }
-            }
-
-            setFilteredSchools(validSchools);
-            if (validSchools.length === 0) {
-              setNoSchoolsMessage("Nenhuma escola encontrada com turma para o curso e série selecionados.");
-            }
-          })
-          .catch(() => {
-            setFilteredSchools([]);
-            setNoSchoolsMessage("Erro ao buscar escolas.");
-          })
-          .finally(() => setSchoolsLoading(false));
-      } else {
-        // Fluxo para outros usuários: buscar todas as escolas do município
+      loadSchoolsForAdmin();
+    } else if (user?.role !== "admin") {
+      if (selectedMunicipality && selectedMunicipality !== 'all' && selectedMunicipality !== initialData?.municipality) {
         const loadSchoolsForNonAdmin = async () => {
           try {
             const response = await api.get(`/school/city/${selectedMunicipality}`);
-            setSchools(response.data || []);
-            // Limpar escolas selecionadas se não estiverem na nova lista
+            const schoolsData = response.data || [];
+            
+            setSchools(schoolsData);
+            setFilteredSchools(schoolsData);
+            
+            if (schoolsData.length === 0) {
+              setNoSchoolsMessage("Não existem escolas cadastradas neste município.");
+            }
+
             const currentSchools = form.getValues("selectedSchools");
             if (currentSchools.length > 0) {
               const validSchools = currentSchools.filter(s =>
-                response.data.find((school: School) => school.id === s.id)
+                schoolsData.find((school: School) => school.id === s.id)
               );
               form.setValue("selectedSchools", validSchools);
             }
@@ -410,20 +453,20 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
         loadSchoolsForNonAdmin();
       }
     }
-  }, [selectedMunicipality, selectedGrade, selectedCourse, user?.role, form]);
+  }, [selectedMunicipality, selectedGrade, selectedCourse, user?.role, form, initialData?.municipality]);
 
-  // Novo fluxo: Buscar turmas válidas para admin
+  // Buscar turmas válidas para admin
   useEffect(() => {
     if (
       user?.role === "admin" &&
       selectedSchools.length > 0 &&
       selectedGrade &&
-      selectedMunicipality
+      selectedMunicipality &&
+      !initialData?.selectedClasses
     ) {
       setClassesLoading(true);
       setNoClassesMessage("");
 
-      // Buscar turmas de todas as escolas selecionadas
       const fetchAllClasses = async () => {
         try {
           const allClasses: any[] = [];
@@ -432,7 +475,6 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
             try {
               const response = await api.get(`/classes/school/${school.id}`);
               const schoolClasses = response.data || [];
-              // Adicionar informação da escola em cada turma
               const classesWithSchool = schoolClasses.map((classItem: any) => ({
                 ...classItem,
                 school: { id: school.id, name: school.name }
@@ -443,7 +485,6 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
             }
           }
 
-          // Filtrar turmas por série
           const filteredClasses = allClasses.filter((classItem: any) =>
             String(classItem.grade_id) === String(selectedGrade)
           );
@@ -462,18 +503,16 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
 
       fetchAllClasses();
     }
-  }, [user?.role, selectedSchools, selectedGrade, selectedMunicipality]);
+  }, [user?.role, selectedSchools, selectedGrade, selectedMunicipality, initialData?.selectedClasses]);
 
   const handleSubjectToggle = (subject: Subject) => {
     const current = selectedSubjects;
     const exists = current.find(s => s.id === subject.id);
 
     if (exists) {
-      // Remover disciplina
       const updated = current.filter(s => s.id !== subject.id);
       form.setValue("subjects", updated);
     } else {
-      // Adicionar disciplina
       const updated = [...current, subject];
       form.setValue("subjects", updated);
     }
@@ -489,11 +528,9 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
     const exists = current.find(c => c.id === classItem.id);
 
     if (exists) {
-      // Remover turma
       const updated = current.filter(c => c.id !== classItem.id);
       form.setValue("selectedClasses", updated);
     } else {
-      // Adicionar turma
       const updated = [...current, classItem];
       form.setValue("selectedClasses", updated);
     }
@@ -504,32 +541,14 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
     form.setValue("selectedClasses", updated);
   };
 
-  const handleSelectAllSubjects = () => {
-    form.setValue("subjects", subjects);
-    toast({
-      title: "Todas as disciplinas selecionadas",
-      description: `${subjects.length} disciplinas foram selecionadas`,
-    });
-  };
-
-  const handleSelectAllClasses = () => {
-    form.setValue("selectedClasses", classes);
-    toast({
-      title: "Todas as turmas selecionadas",
-      description: `${classes.length} turmas foram selecionadas`,
-    });
-  };
-
   const handleSchoolToggle = (school: School) => {
     const current = selectedSchools;
     const exists = current.find(s => s.id === school.id);
 
     if (exists) {
-      // Remover escola
       const updated = current.filter(s => s.id !== school.id);
       form.setValue("selectedSchools", updated);
     } else {
-      // Adicionar escola
       const updated = [...current, { id: school.id, name: school.name }];
       form.setValue("selectedSchools", updated);
     }
@@ -541,8 +560,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
   };
 
   const handleSelectAllSchools = () => {
-    // Para admin, usar filteredSchools; para outros, usar schools
-    const schoolsToSelect = user?.role === "admin"
+    const schoolsToSelect = filteredSchools.length > 0
       ? filteredSchools.map(s => ({ id: s.id, name: s.name }))
       : schools.map(s => ({ id: s.id, name: s.name }));
 
@@ -553,11 +571,18 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
     });
   };
 
+  const handleSelectAllClasses = () => {
+    form.setValue("selectedClasses", classes);
+    toast({
+      title: "Todas as turmas selecionadas",
+      description: `${classes.length} turmas foram selecionadas`,
+    });
+  };
+
   const onSubmit = async (values: Step1FormValues) => {
     try {
       setIsLoading(true);
 
-      // Converter para o formato esperado pelo stepper
       const evaluationData: EvaluationFormData = {
         title: values.title,
         description: values.description || "",
@@ -566,23 +591,19 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
         course: values.course,
         grade: values.grade,
         subjects: values.subjects as Subject[],
-        subject: values.subjects[0]?.id || "", // Para compatibilidade
+        subject: values.subjects[0]?.id || "",
         duration: values.duration,
-        // Tratar estado e município "all"
         state: values.state === "all" ? undefined : values.state,
         municipality: values.municipality === "all" ? undefined : values.municipality,
-        // Usar apenas os arrays de IDs para a API
         municipalities: values.municipality === "all"
-          ? [] // Se "all", enviar array vazio ou todos os municípios
+          ? []
           : [values.municipality],
         schools: values.selectedSchools.map(s => s.id),
         classes: values.selectedClasses.map(c => c.id),
-        // Manter objetos completos para uso no frontend
         selectedSchools: values.selectedSchools as { id: string; name: string; }[],
         selectedClasses: values.selectedClasses as ClassInfo[],
-        // Para compatibilidade (primeiro item)
         classId: values.selectedClasses[0]?.id || "",
-        questions: [],
+        questions: initialData?.questions || [],
       };
 
       onNext(evaluationData);
@@ -602,683 +623,484 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
     return (
       <div className="space-y-6">
         <div className="animate-pulse space-y-4">
-          {[...Array(6)].map((_, i) => (
-            <div key={i} className="space-y-2">
-              <div className="h-4 bg-gray-200 rounded w-1/4"></div>
-              <div className="h-10 bg-gray-200 rounded"></div>
-            </div>
-          ))}
+          <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+          <div className="h-10 bg-gray-200 rounded"></div>
+          <div className="h-4 bg-gray-200 rounded w-1/3"></div>
+          <div className="h-10 bg-gray-200 rounded"></div>
         </div>
       </div>
     );
   }
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        {/* Informações Básicas */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Info className="h-5 w-5 text-blue-500" />
-              Informações Básicas
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <FormField
-              control={form.control}
-              name="title"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Título da Avaliação *</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="Ex: Avaliação de Matemática - 1º Bimestre"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    Este título será exibido para os alunos
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
+    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      {/* Informações Básicas */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BookOpen className="h-5 w-5" />
+            Informações Básicas
+          </CardTitle>
+          <CardDescription>
+            Defina o título, descrição e configurações gerais da avaliação
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="title">Título da Avaliação *</Label>
+              <Input
+                id="title"
+                placeholder="Ex: Prova de Matemática - 5º Ano"
+                {...form.register("title")}
+              />
+              {form.formState.errors.title && (
+                <p className="text-sm text-red-500">{form.formState.errors.title.message}</p>
               )}
-            />
+            </div>
 
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Descrição (opcional)</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="Breve descrição sobre a avaliação..."
-                      className="resize-none"
-                      rows={3}
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+            <div className="space-y-2">
+              <Label htmlFor="duration">Duração (minutos) *</Label>
+              <Input
+                id="duration"
+                type="number"
+                placeholder="60"
+                {...form.register("duration")}
+              />
+              {form.formState.errors.duration && (
+                <p className="text-sm text-red-500">{form.formState.errors.duration.message}</p>
               )}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="description">Descrição (opcional)</Label>
+            <Textarea
+              id="description"
+              placeholder="Descreva o objetivo da avaliação..."
+              {...form.register("description")}
             />
-          </CardContent>
-        </Card>
+          </div>
 
-        {/* Configurações da Avaliação */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-green-500" />
-              Configurações
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="type"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Tipo *</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione o tipo" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="AVALIACAO">Avaliação</SelectItem>
-                        <SelectItem value="SIMULADO">Simulado</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="model"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Modelo *</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione o modelo" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="SAEB">SAEB</SelectItem>
-                        <SelectItem value="PROVA">Prova Tradicional</SelectItem>
-                        <SelectItem value="AVALIE">Avalie</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="type">Tipo de Avaliação *</Label>
+              <Select
+                value={form.watch("type")}
+                onValueChange={(value) => form.setValue("type", value as "AVALIACAO" | "SIMULADO")}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="AVALIACAO">Avaliação</SelectItem>
+                  <SelectItem value="SIMULADO">Simulado</SelectItem>
+                </SelectContent>
+              </Select>
+              {form.formState.errors.type && (
+                <p className="text-sm text-red-500">{form.formState.errors.type.message}</p>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="course"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Curso *</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione o curso" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {courses.map((course) => (
-                          <SelectItem key={course.id} value={course.id}>
-                            {course.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            <div className="space-y-2">
+              <Label htmlFor="model">Modelo da Avaliação *</Label>
+              <Select
+                value={form.watch("model")}
+                onValueChange={(value) => form.setValue("model", value as "SAEB" | "PROVA" | "AVALIE")}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o modelo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="SAEB">SAEB</SelectItem>
+                  <SelectItem value="PROVA">Prova</SelectItem>
+                  <SelectItem value="AVALIE">Avalie</SelectItem>
+                </SelectContent>
+              </Select>
+              {form.formState.errors.model && (
+                <p className="text-sm text-red-500">{form.formState.errors.model.message}</p>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
-              <FormField
-                control={form.control}
-                name="grade"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Série *</FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
-                      disabled={!selectedCourse}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder={!selectedCourse ? "Selecione um curso primeiro" : "Selecione a série"} />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {grades.map((grade) => (
-                          <SelectItem key={grade.id} value={grade.id}>
-                            {grade.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+      {/* Curso e Série */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BookOpen className="h-5 w-5" />
+            Curso e Série
+          </CardTitle>
+          <CardDescription>
+            Selecione o curso e a série para a avaliação
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="course">Curso *</Label>
+              <Select
+                value={form.watch("course")}
+                onValueChange={(value) => form.setValue("course", value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o curso" />
+                </SelectTrigger>
+                <SelectContent>
+                  {courses.map((course) => (
+                    <SelectItem key={course.id} value={course.id}>
+                      {course.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {form.formState.errors.course && (
+                <p className="text-sm text-red-500">{form.formState.errors.course.message}</p>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
-              <FormField
-                control={form.control}
-                name="duration"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Duração (minutos) *</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min="1"
-                        max="300"
-                        placeholder="60"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      Tempo limite para realização
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            <div className="space-y-2">
+              <Label htmlFor="grade">Série *</Label>
+              <Select
+                value={form.watch("grade")}
+                onValueChange={(value) => form.setValue("grade", value)}
+                disabled={!selectedCourse}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a série" />
+                </SelectTrigger>
+                <SelectContent>
+                  {grades.map((grade) => (
+                    <SelectItem key={grade.id} value={grade.id}>
+                      {grade.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {form.formState.errors.grade && (
+                <p className="text-sm text-red-500">{form.formState.errors.grade.message}</p>
+              )}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </CardContent>
+      </Card>
 
-        {/* Localização */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <MapPin className="h-5 w-5 text-red-500" />
-              Localização
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="state"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Estado *</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione o estado" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="all">Todos os estados</SelectItem>
-                        {states.map((state) => (
-                          <SelectItem key={state.id} value={state.id}>
-                            {state.name} ({state.uf})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="municipality"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Município *</FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
-                      disabled={!selectedState}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder={!selectedState ? "Selecione um estado primeiro" : "Selecione o município"} />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="all">Todos os municípios</SelectItem>
-                        {filteredMunicipalities.map((municipality) => (
-                          <SelectItem key={municipality.id} value={municipality.id}>
-                            {municipality.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+      {/* Localização */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MapPin className="h-5 w-5" />
+            Localização
+          </CardTitle>
+          <CardDescription>
+            Selecione o estado, município e escolas para a avaliação
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="state">Estado *</Label>
+              <Select
+                value={form.watch("state")}
+                onValueChange={(value) => form.setValue("state", value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os estados</SelectItem>
+                  {states.map((state) => (
+                    <SelectItem key={state.name} value={state.name}>
+                      {state.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {form.formState.errors.state && (
+                <p className="text-sm text-red-500">{form.formState.errors.state.message}</p>
+              )}
             </div>
 
-            {/* Escolas */}
-            <FormField
-              control={form.control}
-              name="selectedSchools"
-              render={() => (
-                <FormItem>
-                  <FormLabel>Selecione as escolas *</FormLabel>
-                  <FormDescription>
-                    Escolha as escolas onde a avaliação será aplicada
-                  </FormDescription>
-
-                  {/* Escolas Selecionadas */}
-                  {selectedSchools.length > 0 && (
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">Escolas selecionadas:</Label>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedSchools.map((school) => (
-                          <Badge
-                            key={school.id}
-                            variant="secondary"
-                            className="flex items-center gap-1"
-                          >
-                            {school.name}
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-4 w-4 p-0 hover:bg-transparent"
-                              onClick={() => handleRemoveSchool(school.id)}
-                            >
-                              <X className="h-3 w-3" />
-                            </Button>
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Botão Selecionar Todas */}
-                  {(user?.role === "admin" ? filteredSchools.length > 0 : schools.length > 0) && (
-                    <div className="flex justify-end">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={handleSelectAllSchools}
-                        disabled={selectedSchools.length === (user?.role === "admin" ? filteredSchools.length : schools.length) || !selectedMunicipality}
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Selecionar Todas ({user?.role === "admin" ? filteredSchools.length : schools.length})
-                      </Button>
-                    </div>
-                  )}
-
-                  {/* Lista de Escolas Disponíveis */}
-                  {selectedMunicipality ? (
-                    <>
-                      {user?.role === "admin" ? (
-                        schoolsLoading ? (
-                          <div className="text-center py-4">Carregando escolas...</div>
-                        ) : filteredSchools.length > 0 ? (
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto border rounded-md p-3">
-                            {filteredSchools.map((school) => {
-                              const isSelected = selectedSchools.find(s => s.id === school.id);
-                              return (
-                                <div key={school.id} className="flex items-center space-x-2">
-                                  <Checkbox
-                                    id={school.id}
-                                    checked={!!isSelected}
-                                    onCheckedChange={() => handleSchoolToggle(school)}
-                                  />
-                                  <Label
-                                    htmlFor={school.id}
-                                    className="text-sm cursor-pointer flex-1"
-                                  >
-                                    <div className="flex flex-col">
-                                      <span>{school.name}</span>
-                                      {school.address && (
-                                        <span className="text-xs text-muted-foreground">
-                                          {school.address}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </Label>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div className="col-span-full text-center text-muted-foreground py-4">
-                            {noSchoolsMessage || "Nenhuma escola encontrada neste município"}
-                          </div>
-                        )
-                      ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto border rounded-md p-3">
-                          {schools.length > 0 ? (
-                            schools.map((school) => {
-                              const isSelected = selectedSchools.find(s => s.id === school.id);
-                              return (
-                                <div key={school.id} className="flex items-center space-x-2">
-                                  <Checkbox
-                                    id={school.id}
-                                    checked={!!isSelected}
-                                    onCheckedChange={() => handleSchoolToggle(school)}
-                                  />
-                                  <Label
-                                    htmlFor={school.id}
-                                    className="text-sm cursor-pointer flex-1"
-                                  >
-                                    <div className="flex flex-col">
-                                      <span>{school.name}</span>
-                                      {school.address && (
-                                        <span className="text-xs text-muted-foreground">
-                                          {school.address}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </Label>
-                                </div>
-                              );
-                            })
-                          ) : (
-                            <div className="col-span-full text-center text-muted-foreground py-4">
-                              Nenhuma escola encontrada neste município
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </>
+            <div className="space-y-2">
+              <Label htmlFor="municipality">Município *</Label>
+              <Select
+                value={form.watch("municipality")}
+                onValueChange={(value) => form.setValue("municipality", value)}
+                disabled={!selectedState}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o município" />
+                </SelectTrigger>
+                <SelectContent>
+                  {selectedState === 'all' ? (
+                    <SelectItem value="all">Todos os municípios</SelectItem>
                   ) : (
-                    <div className="border rounded-md p-6 text-center text-muted-foreground">
-                      Selecione um município para carregar as escolas disponíveis
-                    </div>
+                    filteredMunicipalities.map((municipality) => (
+                      <SelectItem key={municipality.id} value={municipality.id}>
+                        {municipality.name}
+                      </SelectItem>
+                    ))
                   )}
-                  <FormMessage />
-                </FormItem>
+                </SelectContent>
+              </Select>
+              {form.formState.errors.municipality && (
+                <p className="text-sm text-red-500">{form.formState.errors.municipality.message}</p>
               )}
-            />
-          </CardContent>
-        </Card>
+            </div>
+          </div>
 
-        {/* Disciplinas */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Plus className="h-5 w-5 text-purple-500" />
-              Disciplinas
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <FormField
-              control={form.control}
-              name="subjects"
-              render={() => (
-                <FormItem>
-                  <FormLabel>Selecione as disciplinas *</FormLabel>
-                  <FormDescription>
-                    Escolha as disciplinas que farão parte desta avaliação
-                  </FormDescription>
-
-                  {/* Disciplinas Selecionadas */}
-                  {selectedSubjects.length > 0 && (
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">Disciplinas selecionadas:</Label>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedSubjects.map((subject) => (
-                          <Badge
-                            key={subject.id}
-                            variant="secondary"
-                            className="flex items-center gap-1"
-                          >
-                            {subject.name}
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-4 w-4 p-0 hover:bg-transparent"
-                              onClick={() => handleRemoveSubject(subject.id)}
-                            >
-                              <X className="h-3 w-3" />
-                            </Button>
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Botão Selecionar Todas */}
-                  {subjects.length > 0 && (
-                    <div className="flex justify-end">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={handleSelectAllSubjects}
-                        disabled={selectedSubjects.length === subjects.length}
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Selecionar Todas ({subjects.length})
-                      </Button>
-                    </div>
-                  )}
-
-                  {/* Lista de Disciplinas Disponíveis */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto border rounded-md p-3">
-                    {subjects.map((subject) => {
-                      const isSelected = selectedSubjects.find(s => s.id === subject.id);
-                      return (
-                        <div key={subject.id} className="flex items-center space-x-2">
-                          <Checkbox
-                            id={subject.id}
-                            checked={!!isSelected}
-                            onCheckedChange={() => handleSubjectToggle(subject)}
-                          />
-                          <Label
-                            htmlFor={subject.id}
-                            className="text-sm cursor-pointer flex-1"
-                          >
-                            {subject.name}
-                          </Label>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <FormMessage />
-                </FormItem>
+          {/* Escolas */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Escolas *</Label>
+              {schools.length > 0 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSelectAllSchools}
+                >
+                  Selecionar Todas
+                </Button>
               )}
-            />
-          </CardContent>
-        </Card>
-
-        {/* Turmas */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-orange-500" />
-              Turmas
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <FormField
-              control={form.control}
-              name="selectedClasses"
-              render={() => (
-                <FormItem>
-                  <FormLabel>Selecione as turmas *</FormLabel>
-                  <FormDescription>
-                    Escolha as turmas que participarão desta avaliação
-                  </FormDescription>
-
-                  {/* Turmas Selecionadas */}
-                  {selectedClasses.length > 0 && (
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">Turmas selecionadas:</Label>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedClasses.map((classItem: ClassInfo) => (
-                          <Badge
-                            key={classItem.id}
-                            variant="secondary"
-                            className="flex items-center gap-1"
-                          >
-                            {classItem.grade?.name ? `${classItem.grade.name} ${classItem.name}` : classItem.name}
-                            {classItem.students_count !== undefined && (
-                              <span className="text-xs ml-1">({classItem.students_count} alunos)</span>
-                            )}
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-4 w-4 p-0 hover:bg-transparent"
-                              onClick={() => handleRemoveClass(classItem.id)}
-                            >
-                              <X className="h-3 w-3" />
-                            </Button>
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Botão Selecionar Todas */}
-                  {classes.length > 0 && (
-                    <div className="flex justify-end">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={handleSelectAllClasses}
-                        disabled={selectedClasses.length === classes.length || !selectedGrade}
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Selecionar Todas ({classes.length})
-                      </Button>
-                    </div>
-                  )}
-
-                  {/* Lista de Turmas Disponíveis */}
-                  {selectedGrade ? (
-                    <>
-                      {classesLoading ? (
-                        <div className="text-center py-4">
-                          <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
-                          <span className="text-sm text-muted-foreground">Carregando turmas...</span>
-                        </div>
-                      ) : noClassesMessage ? (
-                        <div className="col-span-full text-center text-muted-foreground py-4">
-                          {noClassesMessage}
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto border rounded-md p-3">
-                          {classes.length > 0 ? (
-                            classes.map((classItem: ClassInfo) => {
-                              const isSelected = selectedClasses.find(c => c.id === classItem.id);
-                              return (
-                                <div key={classItem.id} className="flex items-center space-x-2">
-                                  <Checkbox
-                                    id={classItem.id}
-                                    checked={!!isSelected}
-                                    onCheckedChange={() => handleClassToggle(classItem)}
-                                  />
-                                  <Label
-                                    htmlFor={classItem.id}
-                                    className="text-sm cursor-pointer flex-1"
-                                  >
-                                    <div className="flex flex-col">
-                                      <span className="font-medium">
-                                        {classItem.grade?.name ? `${classItem.grade.name} ${classItem.name}` : classItem.name}
-                                      </span>
-                                      <span className="text-xs text-muted-foreground">
-                                        {classItem.school?.name || "Escola não definida"}
-                                      </span>
-                                      {classItem.students_count !== undefined && (
-                                        <span className="text-xs text-muted-foreground">
-                                          {classItem.students_count} alunos
-                                        </span>
-                                      )}
-                                    </div>
-                                  </Label>
-                                </div>
-                              );
-                            })
-                          ) : (
-                            <div className="col-span-full text-center text-muted-foreground py-4">
-                              Nenhuma turma encontrada para esta série
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="border rounded-md p-6 text-center text-muted-foreground">
-                      Selecione uma série para carregar as turmas disponíveis
-                    </div>
-                  )}
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </CardContent>
-        </Card>
-
-        {/* Validações Finais */}
-        {selectedSubjects.length === 0 && (
-          <Alert>
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              Você precisa selecionar pelo menos uma disciplina antes de continuar.
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {selectedClasses.length === 0 && (
-          <Alert>
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              Você precisa selecionar pelo menos uma turma antes de continuar.
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {selectedSchools.length === 0 && (
-          <Alert>
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              Você precisa selecionar pelo menos uma escola antes de continuar.
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Botão de Submit */}
-        <div className="flex justify-end pt-4">
-          <Button
-            type="submit"
-            disabled={isLoading || selectedSubjects.length === 0 || selectedClasses.length === 0 || selectedSchools.length === 0}
-            className="min-w-32"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Validando...
-              </>
+            </div>
+            
+            {schoolsLoading ? (
+              <div className="flex items-center justify-center p-4">
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <span>Carregando escolas...</span>
+              </div>
+            ) : noSchoolsMessage ? (
+              <div className="flex items-center gap-2 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <AlertCircle className="h-4 w-4 text-yellow-600" />
+                <span className="text-yellow-800">{noSchoolsMessage}</span>
+              </div>
             ) : (
-              "Continuar"
+              <div className="grid gap-2 max-h-40 overflow-y-auto">
+                {schools.map((school) => (
+                  <div key={school.id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`school-${school.id}`}
+                      checked={selectedSchools.some(s => s.id === school.id)}
+                      onCheckedChange={() => handleSchoolToggle(school)}
+                    />
+                    <Label
+                      htmlFor={`school-${school.id}`}
+                      className="flex-1 cursor-pointer"
+                    >
+                      {school.name}
+                    </Label>
+                  </div>
+                ))}
+              </div>
             )}
-          </Button>
-        </div>
-      </form>
-    </Form>
+
+            {form.formState.errors.selectedSchools && (
+              <p className="text-sm text-red-500">{form.formState.errors.selectedSchools.message}</p>
+            )}
+          </div>
+
+          {/* Escolas Selecionadas */}
+          {selectedSchools.length > 0 && (
+            <div className="space-y-2">
+              <Label>Escolas Selecionadas ({selectedSchools.length})</Label>
+              <div className="flex flex-wrap gap-2">
+                {selectedSchools.map((school) => (
+                  <Badge key={school.id} variant="secondary" className="flex items-center gap-1">
+                    <School className="h-3 w-3" />
+                    {school.name}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-4 w-4 p-0 hover:bg-transparent"
+                      onClick={() => handleRemoveSchool(school.id)}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Disciplinas */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BookOpen className="h-5 w-5" />
+            Disciplinas
+          </CardTitle>
+          <CardDescription>
+            Selecione as disciplinas que serão avaliadas
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2 max-h-40 overflow-y-auto">
+            {subjects.map((subject) => (
+              <div key={subject.id} className="flex items-center space-x-2">
+                <Checkbox
+                  id={`subject-${subject.id}`}
+                  checked={selectedSubjects.some(s => s.id === subject.id)}
+                  onCheckedChange={() => handleSubjectToggle(subject)}
+                />
+                <Label
+                  htmlFor={`subject-${subject.id}`}
+                  className="flex-1 cursor-pointer"
+                >
+                  {subject.name}
+                </Label>
+              </div>
+            ))}
+          </div>
+
+          {form.formState.errors.subjects && (
+            <p className="text-sm text-red-500">{form.formState.errors.subjects.message}</p>
+          )}
+
+          {/* Disciplinas Selecionadas */}
+          {selectedSubjects.length > 0 && (
+            <div className="space-y-2">
+              <Label>Disciplinas Selecionadas ({selectedSubjects.length})</Label>
+              <div className="flex flex-wrap gap-2">
+                {selectedSubjects.map((subject) => (
+                  <Badge key={subject.id} variant="secondary" className="flex items-center gap-1">
+                    <BookOpen className="h-3 w-3" />
+                    {subject.name}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-4 w-4 p-0 hover:bg-transparent"
+                      onClick={() => handleRemoveSubject(subject.id)}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Turmas */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            Turmas
+          </CardTitle>
+          <CardDescription>
+            Selecione as turmas que participarão da avaliação
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {classesLoading ? (
+            <div className="flex items-center justify-center p-4">
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              <span>Carregando turmas...</span>
+            </div>
+          ) : noClassesMessage ? (
+            <div className="flex items-center gap-2 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <AlertCircle className="h-4 w-4 text-yellow-600" />
+              <span className="text-yellow-800">{noClassesMessage}</span>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <Label>Turmas Disponíveis</Label>
+                {classes.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSelectAllClasses}
+                  >
+                    Selecionar Todas
+                  </Button>
+                )}
+              </div>
+              
+              <div className="grid gap-2 max-h-40 overflow-y-auto">
+                {classes.map((classItem) => (
+                  <div key={classItem.id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`class-${classItem.id}`}
+                      checked={selectedClasses.some(c => c.id === classItem.id)}
+                      onCheckedChange={() => handleClassToggle(classItem)}
+                    />
+                    <Label
+                      htmlFor={`class-${classItem.id}`}
+                      className="flex-1 cursor-pointer"
+                    >
+                      {classItem.name}
+                      {classItem.school && (
+                        <span className="text-sm text-muted-foreground ml-2">
+                          - {classItem.school.name}
+                        </span>
+                      )}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {form.formState.errors.selectedClasses && (
+            <p className="text-sm text-red-500">{form.formState.errors.selectedClasses.message}</p>
+          )}
+
+          {/* Turmas Selecionadas */}
+          {selectedClasses.length > 0 && (
+            <div className="space-y-2">
+              <Label>Turmas Selecionadas ({selectedClasses.length})</Label>
+              <div className="flex flex-wrap gap-2">
+                {selectedClasses.map((classItem) => (
+                  <Badge key={classItem.id} variant="secondary" className="flex items-center gap-1">
+                    <Users className="h-3 w-3" />
+                    {classItem.name}
+                    {classItem.school && (
+                      <span className="text-xs text-muted-foreground">
+                        - {classItem.school.name}
+                      </span>
+                    )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-4 w-4 p-0 hover:bg-transparent"
+                      onClick={() => handleRemoveClass(classItem.id)}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Botões de Ação */}
+      <div className="flex justify-end">
+        <Button type="submit" disabled={isLoading}>
+          {isLoading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Processando...
+            </>
+          ) : (
+            <>
+              Continuar
+              <Plus className="ml-2 h-4 w-4" />
+            </>
+          )}
+        </Button>
+      </div>
+    </form>
   );
-} 
+}

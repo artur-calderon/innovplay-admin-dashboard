@@ -283,6 +283,28 @@ interface EvaluationStore {
    */
   getResults: (evaluationId: string) => Evaluation['results'] | null;
   
+  // ===== ACTIONS DE QUESTÕES =====
+  
+  /**
+   * Definir questões no store
+   */
+  setQuestions: (questions: Question[]) => void;
+  
+  /**
+   * Adicionar uma questão
+   */
+  addQuestion: (question: Question) => void;
+  
+  /**
+   * Remover uma questão
+   */
+  removeQuestion: (questionId: string) => void;
+  
+  /**
+   * Limpar todas as questões
+   */
+  clearQuestions: () => void;
+  
   // ===== UTILITÁRIOS =====
   
   getQuestionsBySubject: (subjectId: string) => Question[];
@@ -540,6 +562,36 @@ export const useEvaluationStore = create<EvaluationStore>()(
         return evaluation?.results || null;
       },
 
+      // ===== IMPLEMENTAÇÃO DAS ACTIONS DE QUESTÕES =====
+
+      setQuestions: (questions: Question[]) => {
+        set(state => ({
+          ...state,
+          questions: questions,
+        }));
+      },
+
+      addQuestion: (question: Question) => {
+        set(state => ({
+          ...state,
+          questions: [...state.questions, question],
+        }));
+      },
+
+      removeQuestion: (questionId: string) => {
+        set(state => ({
+          ...state,
+          questions: state.questions.filter(q => q.id !== questionId),
+        }));
+      },
+
+      clearQuestions: () => {
+        set(state => ({
+          ...state,
+          questions: [],
+        }));
+      },
+
       // ===== UTILITÁRIOS =====
 
       getQuestionsBySubject: (subjectId: string) => {
@@ -691,9 +743,24 @@ export const useQuestions = () => {
   const loading = useEvaluationStore(state => state.loading.questions);
   const getQuestionsBySubject = useEvaluationStore(state => state.getQuestionsBySubject);
 
+  return questions; // Retornar apenas o array para compatibilidade
+};
+
+/**
+ * Hook para actions de questões
+ */
+export const useQuestionActions = () => {
+  const setQuestions = useEvaluationStore(state => state.setQuestions);
+  const addQuestion = useEvaluationStore(state => state.addQuestion);
+  const removeQuestion = useEvaluationStore(state => state.removeQuestion);
+  const clearQuestions = useEvaluationStore(state => state.clearQuestions);
+  const getQuestionsBySubject = useEvaluationStore(state => state.getQuestionsBySubject);
+
   return {
-    questions,
-    loading,
+    setQuestions,
+    addQuestion,
+    removeQuestion,
+    clearQuestions,
     getQuestionsBySubject,
   };
 };
