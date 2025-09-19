@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { 
   ArrowLeft, 
@@ -23,11 +24,14 @@ import {
   Search,
   Download,
   MessageSquare,
-  RefreshCw
+  RefreshCw,
+  ClipboardList,
+  Monitor
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import QuestionPreview from "@/components/evaluations/questions/QuestionPreview";
+import PhysicalEvaluationTab from "@/components/evaluations/PhysicalEvaluationTab";
 
 interface SubmittedEvaluation {
   id: string;
@@ -76,6 +80,7 @@ interface FilterOptions {
 }
 
 export default function EvaluationCorrection() {
+  const [activeTab, setActiveTab] = useState("virtual");
   const [evaluations, setEvaluations] = useState<SubmittedEvaluation[]>([]);
   const [selectedEvaluation, setSelectedEvaluation] = useState<SubmittedEvaluation | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -131,6 +136,7 @@ export default function EvaluationCorrection() {
       setIsLoading(false);
     }
   };
+
 
   // Transformar dados da API para o formato esperado
   const transformSessionToEvaluation = async (session: any): Promise<SubmittedEvaluation> => {
@@ -1033,7 +1039,7 @@ export default function EvaluationCorrection() {
         <div>
           <h1 className="text-3xl font-bold">Correção de Avaliações</h1>
           <p className="text-muted-foreground">
-            Gerencie e corrija as avaliações enviadas pelos alunos
+            Gerencie avaliações virtuais e visualize avaliações aplicadas
           </p>
         </div>
         
@@ -1045,8 +1051,22 @@ export default function EvaluationCorrection() {
         </div>
       </div>
 
-      {/* Filtros */}
-      <Card>
+      {/* Abas */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="virtual" className="flex items-center gap-2">
+            <Monitor className="h-4 w-4" />
+            Avaliações Virtuais
+          </TabsTrigger>
+          <TabsTrigger value="physical" className="flex items-center gap-2">
+            <ClipboardList className="h-4 w-4" />
+            Avaliações Aplicadas
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="virtual" className="space-y-4">
+          {/* Filtros */}
+          <Card>
         <CardHeader>
           <CardTitle className="text-base">Filtros</CardTitle>
         </CardHeader>
@@ -1217,6 +1237,12 @@ export default function EvaluationCorrection() {
           </CardContent>
         </Card>
       )}
+        </TabsContent>
+
+        <TabsContent value="physical" className="space-y-4">
+          <PhysicalEvaluationTab />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 } 

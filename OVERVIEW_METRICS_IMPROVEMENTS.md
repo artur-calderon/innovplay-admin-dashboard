@@ -217,3 +217,10 @@ if (isLoading) {
 *Implementação concluída com endpoints corretos e cálculos precisos*
 *Visão Geral agora mostra dados reais da API InnovPlay*
 
+
+
+
+
+
+
+
