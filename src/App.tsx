@@ -37,7 +37,8 @@ const Instituicao = React.lazy(() => import("./pages/Instituicao"));
 const Curso = React.lazy(() => import("./pages/Curso"));
 const Serie = React.lazy(() => import("./pages/Serie"));
 const Disciplina = React.lazy(() => import("./pages/Disciplina"));
-const StudentAgenda = React.lazy(() => import("./pages/StudentAgenda"));
+const StudentAgenda = React.lazy(() => import("./pages/StudentAgendaOptimized"));
+const AdminAgenda = React.lazy(() => import("./pages/AdminAgendaOptimized"));
 const TakeEvaluation = React.lazy(() => import("./components/evaluations/TakeEvaluation/index"));
 const EvaluationCorrection = React.lazy(() => import("./pages/EvaluationCorrection"));
 const Results = React.lazy(() => import("./pages/Results"));
@@ -166,7 +167,7 @@ const App = () => {
               <Route path="/app/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
               <Route path="/app/criar-avaliacao" element={<PrivateRoute><CreateEvaluation /></PrivateRoute>} />
               <Route path="/app/calculadora-saeb" element={<PrivateRoute><IdebCalculatorPage /></PrivateRoute>} />
-              <Route path="/app/agenda" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/app/agenda" element={<PrivateRoute><AdminAgenda /></PrivateRoute>} />
               <Route path="/app/jogos" element={<PrivateRoute><GamesManagement /></PrivateRoute>} />
               <Route path="/app/jogos/adicionar" element={<PrivateRoute><AddGame /></PrivateRoute>} />
               <Route path="/app/jogos/:id" element={<PrivateRoute><GameView /></PrivateRoute>} />
