@@ -677,7 +677,9 @@ export default function Results() {
             alunos_ausentes: evaluationsResponse.estatisticas_gerais.alunos_ausentes,
             media_nota: evaluationsResponse.estatisticas_gerais.media_nota_geral,
             media_proficiencia: evaluationsResponse.estatisticas_gerais.media_proficiencia_geral,
-            escola: evaluationsResponse.estatisticas_gerais.escola,
+            escola: selectedSchool === 'all' 
+              ? 'Todas as Escolas' 
+              : evaluationsResponse.estatisticas_gerais.escola,
             municipio: evaluationsResponse.estatisticas_gerais.municipio,
             serie: evaluationsResponse.estatisticas_gerais.serie,
           };
@@ -1748,11 +1750,8 @@ export default function Results() {
           {evaluationInfo && (
             <Card className="mb-4">
               <CardHeader>
-                <CardTitle className="flex items-center justify-between">
+                <CardTitle>
                   <span>Informações da Avaliação</span>
-                  <Badge className={getStatusConfig(normalizeStatus(evaluationInfo?.status || 'pendente')).color}>
-                    {evaluationInfo?.status === 'concluida' ? 'Concluída' : evaluationInfo?.status === 'em_andamento' ? 'Em Andamento' : 'Pendente'}
-                  </Badge>
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -1784,7 +1783,9 @@ export default function Results() {
                   </div>
                   <div className="space-y-2">
                     <div className="text-sm font-medium text-muted-foreground">Escola</div>
-                    <div className="font-semibold">{evaluationInfo?.escola || 'Escola não informada'}</div>
+                    <div className="font-semibold">
+                      {evaluationInfo?.escola || (selectedSchool === 'all' ? 'Todas as Escolas' : 'Escola não informada')}
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <div className="text-sm font-medium text-muted-foreground">Município</div>
