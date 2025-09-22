@@ -1,6 +1,6 @@
 "use client"
 
-import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, PieChart, Pie, Cell, Tooltip, Legend } from "recharts"
+import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, PieChart, Pie, Cell, Tooltip, Legend, LabelList } from "recharts"
 
 interface BarChartProps {
     data: Array<{
@@ -12,6 +12,7 @@ interface BarChartProps {
     color?: string
     yAxisDomain?: [number, number]
     yAxisLabel?: string
+    showValues?: boolean // Nova prop para controlar exibição dos valores
 }
 
 interface PieChartProps {
@@ -22,6 +23,7 @@ interface PieChartProps {
     title: string
     subtitle?: string
     colors?: string[]
+    showValues?: boolean // Nova prop para controlar exibição dos valores
 }
 
 const defaultColors = [
@@ -31,13 +33,33 @@ const defaultColors = [
     "#16a34a", // green-600 - Avançado (verde escuro)
 ]
 
+// Componente para renderizar valores nas barras
+const renderCustomBarLabel = (props: { x: number; y: number; width: number; height: number; value: number }) => {
+    const { x, y, width, height, value } = props;
+    if (value === 0) return null; // Não mostrar 0
+    
+    return (
+        <text
+            x={x + width / 2}
+            y={y - 5}
+            textAnchor="middle"
+            fill="#374151"
+            fontSize={12}
+            fontWeight={500}
+        >
+            {typeof value === 'number' ? value.toFixed(1) : value}
+        </text>
+    );
+};
+
 export function BarChartComponent({
     data,
     title,
     subtitle,
     color = "#22c55e",
     yAxisDomain = [0, 10],
-    yAxisLabel = "Valor"
+    yAxisLabel = "Valor",
+    showValues = true // Valor padrão true
 }: BarChartProps) {
     return (
         <div className="space-y-4">
@@ -46,7 +68,7 @@ export function BarChartComponent({
                 {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
             </div>
             <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={data}>
+                <BarChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                     <XAxis
                         dataKey="name"
                         stroke="#888888"
@@ -87,21 +109,30 @@ export function BarChartComponent({
                         dataKey="value"
                         fill={color}
                         radius={[4, 4, 0, 0]}
-                    />
+                    >
+                        {showValues && <LabelList content={renderCustomBarLabel} />}
+                    </Bar>
                 </BarChart>
             </ResponsiveContainer>
         </div>
     )
 }
 
+// Componente para renderizar valores nos gráficos de pizza/donut
+const renderCustomPieLabel = (entry: { name: string; value: number }) => {
+    if (entry.value === 0) return null; // Não mostrar 0
+    return `${entry.value}`;
+};
+
 export function PieChartComponent({
     data,
     title,
     subtitle,
-    colors = defaultColors
+    colors = defaultColors,
+    showValues = true // Valor padrão true
 }: PieChartProps) {
     // Calcular total uma vez para usar no tooltip
-    const total = data.reduce((sum: number, item: any) => sum + item.value, 0)
+    const total = data.reduce((sum: number, item: { value: number }) => sum + item.value, 0)
 
     return (
         <div className="space-y-4">
@@ -119,6 +150,8 @@ export function PieChartComponent({
                         outerRadius={100}
                         paddingAngle={5}
                         dataKey="value"
+                        label={showValues ? renderCustomPieLabel : false}
+                        labelLine={false}
                     >
                         {data.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
@@ -165,10 +198,11 @@ export function DonutChartComponent({
     data,
     title,
     subtitle,
-    colors = defaultColors
+    colors = defaultColors,
+    showValues = true // Valor padrão true
 }: PieChartProps) {
     // Calcular total uma vez para usar no tooltip
-    const total = data.reduce((sum: number, item: any) => sum + item.value, 0)
+    const total = data.reduce((sum: number, item: { value: number }) => sum + item.value, 0)
 
     return (
         <div className="space-y-4">
@@ -186,6 +220,8 @@ export function DonutChartComponent({
                         outerRadius={100}
                         paddingAngle={5}
                         dataKey="value"
+                        label={showValues ? renderCustomPieLabel : false}
+                        labelLine={false}
                     >
                         {data.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
