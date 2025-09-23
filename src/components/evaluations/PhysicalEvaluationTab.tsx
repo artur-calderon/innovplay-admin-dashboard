@@ -17,11 +17,17 @@ import {
   Upload,
   X,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Users,
+  RotateCcw,
+  FileImage,
+  Trash2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
 import { api } from "@/lib/api";
+import { useBatchCorrection } from "@/hooks/useBatchCorrection";
+import { BatchCorrectionImage } from "@/services/batchCorrectionService";
 
 // Interfaces reutilizadas da página Results.tsx
 interface State {
@@ -107,6 +113,9 @@ export default function PhysicalEvaluationTab() {
   const [schools, setSchools] = useState<School[]>([]);
   const [grades, setGrades] = useState<Grade[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
+
+  // Hook para correção em lote
+  const batchCorrection = useBatchCorrection();
 
   // Carregar filtros iniciais
   useEffect(() => {
@@ -393,35 +402,67 @@ export default function PhysicalEvaluationTab() {
     setUploadResult(null);
     setUploadProgress(0);
     setIsUploading(false);
+    
+    // Limpar estado da correção em lote
+    batchCorrection.reset();
   };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      // Validar tipo de arquivo
-      const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
-      if (!validTypes.includes(file.type)) {
-        toast({
-          title: "Tipo de arquivo inválido",
-          description: "Por favor, selecione uma imagem (JPG, PNG ou GIF).",
-          variant: "destructive",
-        });
-        return;
-      }
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0) return;
 
-      // Validar tamanho do arquivo (máximo 10MB)
-      const maxSize = 10 * 1024 * 1024; // 10MB
-      if (file.size > maxSize) {
-        toast({
-          title: "Arquivo muito grande",
-          description: "O arquivo deve ter no máximo 10MB.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      setSelectedFile(file);
+    // Validar tipos de arquivo
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+    const invalidFiles = files.filter(file => !validTypes.includes(file.type));
+    
+    if (invalidFiles.length > 0) {
+      toast({
+        title: "Tipo de arquivo inválido",
+        description: "Por favor, selecione apenas imagens (JPG, PNG ou GIF).",
+        variant: "destructive",
+      });
+      return;
     }
+
+    // Validar tamanho dos arquivos (máximo 10MB cada)
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    const oversizedFiles = files.filter(file => file.size > maxSize);
+    
+    if (oversizedFiles.length > 0) {
+      toast({
+        title: "Arquivo muito grande",
+        description: "Alguns arquivos excedem o limite de 10MB.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Converter para base64 e adicionar ao lote
+    const convertFiles = async () => {
+      const batchImages: BatchCorrectionImage[] = [];
+      
+      for (const file of files) {
+        try {
+          const base64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+          });
+          
+          batchImages.push({
+            image: base64,
+            studentName: file.name.replace(/\.[^/.]+$/, ""), // Remove extensão
+          });
+        } catch (error) {
+          console.error("Erro ao converter arquivo:", error);
+        }
+      }
+      
+      batchCorrection.addImages(batchImages);
+    };
+
+    convertFiles();
   };
 
   const convertToBase64 = (file: File): Promise<string> => {
@@ -430,56 +471,31 @@ export default function PhysicalEvaluationTab() {
       reader.readAsDataURL(file);
       reader.onload = () => {
         const result = reader.result as string;
-        // Remove o prefixo "data:image/...;base64," para obter apenas o base64
-        const base64 = result.split(',')[1];
-        resolve(base64);
+        resolve(result);
       };
       reader.onerror = error => reject(error);
     });
   };
 
   const handleUpload = async () => {
-    if (!selectedFile || !selectedEvaluationForUpload) {
+    if (batchCorrection.selectedImages.length === 0 || !selectedEvaluationForUpload) {
       toast({
         title: "Erro",
-        description: "Selecione um arquivo para fazer upload.",
+        description: "Selecione pelo menos uma imagem para processar.",
         variant: "destructive",
       });
       return;
     }
 
     try {
-      setIsUploading(true);
-      setUploadProgress(20);
-
-      // Converter para base64
-      const base64Image = await convertToBase64(selectedFile);
-      setUploadProgress(50);
-
-      // Fazer a requisição para a API
-      const response = await api.post(`/physical-tests/test/${selectedEvaluationForUpload.id}/process-correction`, {
-        image: base64Image
-      });
-
-      setUploadProgress(100);
-
-      if (response.data) {
-        setUploadResult(response.data);
-        toast({
-          title: "Upload realizado com sucesso!",
-          description: `Correção processada. Nota: ${response.data.grade}/${response.data.total_questions}`,
-        });
-      }
-
+      await batchCorrection.startBatchCorrection(selectedEvaluationForUpload.id);
     } catch (error: any) {
-      console.error("Erro no upload:", error);
+      console.error("Erro no upload em lote:", error);
       toast({
         title: "Erro no upload",
-        description: error.response?.data?.error || "Erro ao processar a correção da avaliação física.",
+        description: error.message || "Erro ao processar a correção em lote.",
         variant: "destructive",
       });
-    } finally {
-      setIsUploading(false);
     }
   };
 
@@ -857,13 +873,13 @@ export default function PhysicalEvaluationTab() {
          </Card>
        )}
 
-       {/* Modal de Upload de Gabarito Físico */}
+       {/* Modal de Upload de Gabarito Físico - Correção em Lote */}
        <Dialog open={showUploadModal} onOpenChange={setShowUploadModal}>
-         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
            <DialogHeader>
              <DialogTitle className="flex items-center gap-2">
-               <Upload className="h-5 w-5 text-blue-600" />
-               Processar Correção de Avaliação Física
+               <Users className="h-5 w-5 text-blue-600" />
+               Correção em Lote de Avaliações Físicas
              </DialogTitle>
              <div className="text-sm text-muted-foreground">
                {selectedEvaluationForUpload && (
@@ -876,175 +892,227 @@ export default function PhysicalEvaluationTab() {
            </DialogHeader>
 
            <div className="space-y-6">
-             {!uploadResult && (
-               <>
-                 {/* Instruções */}
-                 <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                   <h4 className="font-medium text-blue-800 mb-2">Como usar:</h4>
-                   <ol className="text-sm text-blue-700 space-y-1 list-decimal list-inside">
-                     <li>Tire uma foto ou escaneie o gabarito preenchido pelo aluno</li>
-                     <li>Certifique-se de que a imagem está clara e bem iluminada</li>
-                     <li>O gabarito deve estar completamente visível na imagem</li>
-                     <li>Clique em "Selecionar Imagem" e escolha o arquivo</li>
-                     <li>Clique em "Processar Correção" para obter o resultado</li>
-                   </ol>
-                 </div>
+             {/* Instruções */}
+             <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+               <h4 className="font-medium text-blue-800 mb-2">Como usar:</h4>
+               <ol className="text-sm text-blue-700 space-y-1 list-decimal list-inside">
+                 <li>Selecione múltiplas imagens de gabaritos preenchidos (máximo 10)</li>
+                 <li><strong>Envie fotos cortadas exatamente na borda grossa do formulário para melhor detecção</strong></li>
+                 <li><strong>A borda deve estar visível em todas as fotos</strong></li>
+                 <li>Certifique-se de que as imagens estão claras e bem iluminadas</li>
+                 <li>O processamento será feito em lote (muito mais rápido!)</li>
+                 <li>Acompanhe o progresso em tempo real</li>
+               </ol>
+             </div>
 
-                 {/* Upload de Arquivo */}
-                 <div className="space-y-4">
-                   <Label className="text-sm font-medium">Imagem do Gabarito Preenchido</Label>
-                   <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
-                     <input
-                       type="file"
-                       accept="image/*"
-                       onChange={handleFileSelect}
-                       className="hidden"
-                       id="gabarito-upload"
-                     />
-                     <label htmlFor="gabarito-upload" className="cursor-pointer">
-                       <Upload className="h-12 w-12 mx-auto text-gray-400 mb-3" />
-                       <p className="text-lg font-medium text-gray-700 mb-1">
-                         {selectedFile ? selectedFile.name : "Clique para selecionar a imagem do gabarito"}
-                       </p>
-                       <p className="text-sm text-gray-500">
-                         JPG, PNG ou GIF até 10MB
-                       </p>
-                     </label>
-                   </div>
-                   
-                   {selectedFile && (
-                     <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
-                       <div className="flex items-center gap-2">
-                         <CheckCircle className="h-5 w-5 text-green-600" />
-                         <span className="text-sm font-medium text-green-800">
-                           Arquivo selecionado: {selectedFile.name}
-                         </span>
+             {/* Upload Múltiplo */}
+             <div className="space-y-4">
+               <Label className="text-sm font-medium">
+                 Imagens dos Gabaritos Preenchidos ({batchCorrection.selectedImages.length}/10)
+               </Label>
+               <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
+                 <input
+                   type="file"
+                   accept="image/*"
+                   multiple
+                   onChange={handleFileSelect}
+                   className="hidden"
+                   id="gabarito-upload-batch"
+                 />
+                 <label htmlFor="gabarito-upload-batch" className="cursor-pointer">
+                   <Upload className="h-12 w-12 mx-auto text-gray-400 mb-3" />
+                   <p className="text-lg font-medium text-gray-700 mb-1">
+                     Clique para selecionar múltiplas imagens
+                   </p>
+                   <p className="text-sm text-gray-500">
+                     JPG, PNG ou GIF até 10MB cada • Máximo 10 imagens
+                   </p>
+                 </label>
+               </div>
+               
+               {/* Lista de Imagens Selecionadas */}
+               {batchCorrection.selectedImages.length > 0 && (
+                 <div className="space-y-2">
+                   <h4 className="font-medium text-sm">Imagens Selecionadas:</h4>
+                   <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto">
+                     {batchCorrection.selectedImages.map((img, index) => (
+                       <div key={index} className="flex items-center justify-between p-2 bg-green-50 border border-green-200 rounded">
+                         <div className="flex items-center gap-2">
+                           <FileImage className="h-4 w-4 text-green-600" />
+                           <span className="text-sm font-medium text-green-800 truncate">
+                             {img.studentName || `Imagem ${index + 1}`}
+                           </span>
+                         </div>
+                         <Button
+                           variant="ghost"
+                           size="sm"
+                           onClick={() => batchCorrection.removeImage(index)}
+                           className="h-6 w-6 p-0"
+                         >
+                           <X className="h-3 w-3" />
+                         </Button>
                        </div>
-                       <Button
-                         variant="ghost"
-                         size="sm"
-                         onClick={() => setSelectedFile(null)}
-                       >
-                         <X className="h-4 w-4" />
-                       </Button>
-                     </div>
-                   )}
+                     ))}
+                   </div>
                  </div>
+               )}
+             </div>
 
-                 {/* Progress Bar durante upload */}
-                 {isUploading && (
-                   <div className="space-y-2">
-                     <div className="flex items-center justify-between">
-                       <span className="text-sm font-medium">Processando correção...</span>
-                       <span className="text-sm text-muted-foreground">{uploadProgress}%</span>
-                     </div>
-                     <Progress value={uploadProgress} className="w-full" />
+             {/* Barra de Progresso */}
+             {batchCorrection.isProcessing && (
+               <div className="space-y-4">
+                 <div className="flex items-center justify-between">
+                   <span className="text-sm font-medium">Processando correção em lote...</span>
+                   <span className="text-sm text-muted-foreground">
+                     {batchCorrection.progressPercentage}%
+                   </span>
+                 </div>
+                 <Progress value={batchCorrection.progressPercentage} className="w-full" />
+                 
+                 {batchCorrection.currentStudentName && (
+                   <div className="text-sm text-muted-foreground">
+                     Processando: <strong>{batchCorrection.currentStudentName}</strong>
                    </div>
                  )}
-               </>
+                 
+                 <div className="grid grid-cols-3 gap-4 text-sm">
+                   <div className="text-center">
+                     <div className="text-lg font-bold text-blue-600">{batchCorrection.processedImages}</div>
+                     <div className="text-muted-foreground">Processadas</div>
+                   </div>
+                   <div className="text-center">
+                     <div className="text-lg font-bold text-red-600">{batchCorrection.failedImages}</div>
+                     <div className="text-muted-foreground">Com Erro</div>
+                   </div>
+                   <div className="text-center">
+                     <div className="text-lg font-bold text-gray-600">{batchCorrection.totalImages}</div>
+                     <div className="text-muted-foreground">Total</div>
+                   </div>
+                 </div>
+               </div>
              )}
 
-             {/* Resultado da Correção */}
-             {uploadResult && (
+             {/* Resultados */}
+             {batchCorrection.isCompleted && batchCorrection.results.length > 0 && (
                <div className="space-y-4">
                  <div className="p-4 bg-green-50 rounded-lg border border-green-200">
                    <div className="flex items-center gap-2 mb-3">
                      <CheckCircle className="h-6 w-6 text-green-600" />
-                     <h4 className="font-medium text-green-800">Correção Processada com Sucesso!</h4>
+                     <h4 className="font-medium text-green-800">
+                       Correção em Lote Concluída! ({batchCorrection.results.length} imagens processadas)
+                     </h4>
                    </div>
                    
-                   <div className="grid grid-cols-2 gap-4 text-sm">
+                   {/* Resumo dos Resultados */}
+                   <div className="grid grid-cols-2 gap-4 text-sm mb-4">
                      <div>
-                       <span className="font-medium text-gray-600">Acertos:</span>
+                       <span className="font-medium text-gray-600">Média de Acertos:</span>
                        <span className="ml-2 text-lg font-bold text-green-600">
-                         {uploadResult.correct_answers}/{uploadResult.total_questions}
+                         {(batchCorrection.results.reduce((sum, r) => sum + r.correct_answers, 0) / batchCorrection.results.length).toFixed(1)}
                        </span>
                      </div>
                      <div>
-                       <span className="font-medium text-gray-600">Nota:</span>
+                       <span className="font-medium text-gray-600">Média de Notas:</span>
                        <span className="ml-2 text-lg font-bold text-blue-600">
-                         {uploadResult.grade}
-                       </span>
-                     </div>
-                     <div>
-                       <span className="font-medium text-gray-600">Percentual:</span>
-                       <span className="ml-2 text-lg font-bold text-purple-600">
-                         {uploadResult.score_percentage}%
-                       </span>
-                     </div>
-                     <div>
-                       <span className="font-medium text-gray-600">Proficiência:</span>
-                       <span className="ml-2 text-lg font-bold text-orange-600">
-                         {uploadResult.proficiency}
+                         {(batchCorrection.results.reduce((sum, r) => sum + r.grade, 0) / batchCorrection.results.length).toFixed(1)}
                        </span>
                      </div>
                    </div>
 
-                   {uploadResult.classification && (
-                     <div className="mt-3 p-2 bg-white rounded border">
-                       <span className="font-medium text-gray-600">Classificação:</span>
-                       <span className="ml-2 font-medium text-gray-800">
-                         {uploadResult.classification}
-                       </span>
-                     </div>
-                   )}
-
-                   {uploadResult.answers_detected && uploadResult.answers_detected.length > 0 && (
-                     <div className="mt-3">
-                       <span className="font-medium text-gray-600 block mb-2">Respostas Detectadas:</span>
-                       <div className="flex flex-wrap gap-1">
-                         {uploadResult.answers_detected.map((answer: string, index: number) => (
-                           <Badge
-                             key={index}
-                             variant={
-                               uploadResult.student_answers && 
-                               uploadResult.student_answers[index] === answer 
-                                 ? "default" 
-                                 : "destructive"
-                             }
-                             className="text-xs"
-                           >
-                             Q{index + 1}: {answer}
-                           </Badge>
-                         ))}
+                   {/* Lista de Resultados por Aluno */}
+                   <div className="space-y-2 max-h-40 overflow-y-auto">
+                     {batchCorrection.results.map((result, index) => (
+                       <div key={index} className="flex items-center justify-between p-2 bg-white rounded border">
+                         <div className="flex items-center gap-2">
+                           <CheckCircle className="h-4 w-4 text-green-600" />
+                           <span className="text-sm font-medium">{result.student_name}</span>
+                         </div>
+                         <div className="flex items-center gap-4 text-sm">
+                           <span className="text-green-600 font-bold">
+                             {result.correct_answers}/{result.total_questions}
+                           </span>
+                           <span className="text-blue-600 font-bold">
+                             {result.grade}
+                           </span>
+                           <span className="text-purple-600 font-bold">
+                             {result.score_percentage}%
+                           </span>
+                         </div>
                        </div>
+                     ))}
+                   </div>
+                 </div>
+               </div>
+             )}
+
+             {/* Erros */}
+             {batchCorrection.errors.length > 0 && (
+               <div className="space-y-2">
+                 <h4 className="font-medium text-red-800">Imagens com Erro:</h4>
+                 <div className="space-y-1 max-h-32 overflow-y-auto">
+                   {batchCorrection.errors.map((error, index) => (
+                     <div key={index} className="flex items-center justify-between p-2 bg-red-50 border border-red-200 rounded">
+                       <div className="flex items-center gap-2">
+                         <AlertCircle className="h-4 w-4 text-red-600" />
+                         <span className="text-sm text-red-800">
+                           {error.student_name || `Imagem ${error.image_index + 1}`}: {error.error_message}
+                         </span>
+                       </div>
+                       <Button
+                         variant="outline"
+                         size="sm"
+                         onClick={() => {
+                           // Implementar retry
+                           const image = batchCorrection.selectedImages[error.image_index];
+                           if (image) {
+                             batchCorrection.retryImage(error.image_index, image);
+                           }
+                         }}
+                         className="h-6 text-xs"
+                       >
+                         <RotateCcw className="h-3 w-3 mr-1" />
+                         Retry
+                       </Button>
                      </div>
-                   )}
+                   ))}
                  </div>
                </div>
              )}
            </div>
 
            <DialogFooter className="gap-2">
-             {!uploadResult && (
+             {!batchCorrection.isProcessing && !batchCorrection.isCompleted && (
                <>
                  <Button variant="outline" onClick={closeUploadModal}>
                    Cancelar
                  </Button>
                  <Button 
                    onClick={handleUpload} 
-                   disabled={!selectedFile || isUploading}
+                   disabled={batchCorrection.selectedImages.length === 0}
                    className="bg-blue-600 hover:bg-blue-700"
                  >
-                   {isUploading ? (
-                     <>
-                       <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                       Processando...
-                     </>
-                   ) : (
-                     <>
-                       <Upload className="h-4 w-4 mr-2" />
-                       Processar Correção
-                     </>
-                   )}
+                   <Users className="h-4 w-4 mr-2" />
+                   Processar Lote ({batchCorrection.selectedImages.length})
                  </Button>
                </>
              )}
              
-             {uploadResult && (
-               <Button onClick={closeUploadModal} className="w-full">
-                 Fechar
+             {batchCorrection.isProcessing && (
+               <Button 
+                 onClick={batchCorrection.cancelBatchCorrection}
+                 variant="destructive"
+               >
+                 <X className="h-4 w-4 mr-2" />
+                 Cancelar Processamento
                </Button>
+             )}
+             
+             {batchCorrection.isCompleted && (
+               <div className="flex gap-2 w-full">
+                 <Button onClick={closeUploadModal} className="flex-1">
+                   Fechar
+                 </Button>
+               </div>
              )}
            </DialogFooter>
          </DialogContent>

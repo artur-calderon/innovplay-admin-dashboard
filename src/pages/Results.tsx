@@ -587,7 +587,8 @@ export default function Results() {
   // Carregar avaliações quando município for selecionado
   useEffect(() => {
     const loadEvaluations = async () => {
-      if (selectedMunicipality !== 'all') {
+      // Só carregar avaliações se Estado e Município estiverem selecionados
+      if (selectedState !== 'all' && selectedMunicipality !== 'all') {
         try {
           setIsLoadingFilters(true);
 
@@ -623,7 +624,8 @@ export default function Results() {
   // Carregar escolas quando avaliação for selecionada
   useEffect(() => {
     const loadSchools = async () => {
-      if (selectedEvaluation !== 'all') {
+      // Só carregar escolas se os 3 filtros obrigatórios estiverem selecionados
+      if (selectedState !== 'all' && selectedMunicipality !== 'all' && selectedEvaluation !== 'all') {
         try {
           setIsLoadingFilters(true);
           const schoolsData = await EvaluationResultsApiService.getFilterSchoolsByEvaluation({
@@ -656,7 +658,8 @@ export default function Results() {
   // Carregar séries quando escola for selecionada
   useEffect(() => {
     const loadGrades = async () => {
-      if (selectedSchool !== 'all') {
+      // Só carregar séries se os 3 filtros obrigatórios estiverem selecionados
+      if (selectedState !== 'all' && selectedMunicipality !== 'all' && selectedEvaluation !== 'all' && selectedSchool !== 'all') {
         try {
           setIsLoadingFilters(true);
           const gradesData = await EvaluationResultsApiService.getFilterGradesByEvaluation({
@@ -690,7 +693,8 @@ export default function Results() {
   // Carregar turmas quando série for selecionada
   useEffect(() => {
     const loadClasses = async () => {
-      if (selectedGrade !== 'all') {
+      // Só carregar turmas se os 3 filtros obrigatórios estiverem selecionados
+      if (selectedState !== 'all' && selectedMunicipality !== 'all' && selectedEvaluation !== 'all' && selectedSchool !== 'all' && selectedGrade !== 'all') {
         try {
           setIsLoadingFilters(true);
           const classesData = await EvaluationResultsApiService.getFilterClassesByEvaluation({
@@ -728,18 +732,6 @@ export default function Results() {
 
   // ✅ NOVA IMPLEMENTAÇÃO: CARREGAMENTO SIMPLIFICADO COM A NOVA API UNIFICADA
   const loadAllData = useCallback(async () => {
-    // Verificar se os filtros obrigatórios estão selecionados (Estado e Município)
-    if (selectedState === 'all' || selectedMunicipality === 'all') {
-      setApiData(null);
-      setStudents([]);
-      setDetailedReport(null);
-      setQuestionsWithSkills([]);
-      setSkillsMapping({});
-      setSkillsBySubject({});
-      setIsTableReady(false);
-      setEvaluationInfo(null);
-      return;
-    }
 
     try {
       setIsLoadingData(true);
@@ -772,7 +764,9 @@ export default function Results() {
             alunos_ausentes: evaluationsResponse.estatisticas_gerais.alunos_ausentes,
             media_nota: evaluationsResponse.estatisticas_gerais.media_nota_geral,
             media_proficiencia: evaluationsResponse.estatisticas_gerais.media_proficiencia_geral,
-            escola: evaluationsResponse.estatisticas_gerais.escola,
+            escola: selectedSchool === 'all' 
+              ? 'Todas as Escolas' 
+              : evaluationsResponse.estatisticas_gerais.escola,
             municipio: evaluationsResponse.estatisticas_gerais.municipio,
             serie: evaluationsResponse.estatisticas_gerais.serie,
           };
@@ -936,14 +930,15 @@ export default function Results() {
     return 'pendente';
   }, []);
 
-  // Contar filtros selecionados - agora apenas Estado e Município são obrigatórios
+  // Contar filtros selecionados - Estado, Município e Avaliação são obrigatórios
   const selectedFiltersCount = [
     selectedState !== 'all',
-    selectedMunicipality !== 'all'
+    selectedMunicipality !== 'all',
+    selectedEvaluation !== 'all'
   ].filter(Boolean).length;
 
-  // Verificar se todos os filtros obrigatórios estão selecionados (Estado e Município)
-  const allRequiredFiltersSelected = selectedFiltersCount === 2;
+  // Verificar se todos os filtros obrigatórios estão selecionados (Estado, Município e Avaliação)
+  const allRequiredFiltersSelected = selectedFiltersCount === 3;
 
   // Estados para dados reais dos alunos (como no DetailedResultsView)
   const [students, setStudents] = useState<Array<{
@@ -1690,7 +1685,7 @@ export default function Results() {
               💡 <strong>Hierarquia dos Filtros:</strong> Estado → Município → Avaliação → Escola → Série → Turma
             </p>
             <p className="text-sm text-blue-700 mt-1">
-              <strong>Estado</strong> e <strong>Município</strong> são obrigatórios. Avaliação, Escola, Série e Turma são opcionais e podem ser "Todos".
+              <strong>Estado</strong>, <strong>Município</strong> e <strong>Avaliação</strong> são obrigatórios. Escola, Série e Turma são opcionais e podem ser "Todos".
             </p>
           </div>
         </CardContent>
@@ -1707,7 +1702,7 @@ export default function Results() {
               Selecione os filtros obrigatórios para continuar
             </h3>
             <p className="text-gray-600 text-center max-w-md">
-              Para visualizar os resultados das avaliações, você precisa selecionar: <strong>Estado</strong> e <strong>Município</strong>. Os filtros Avaliação, Escola, Série e Turma são opcionais e podem ser "Todos".
+              Para visualizar os resultados das avaliações, você precisa selecionar: <strong>Estado</strong>, <strong>Município</strong> e <strong>Avaliação</strong>. Os filtros Escola, Série e Turma são opcionais e podem ser "Todos".
             </p>
           </CardContent>
         </Card>
@@ -1730,11 +1725,8 @@ export default function Results() {
           {evaluationInfo && (
             <Card className="mb-4">
               <CardHeader>
-                <CardTitle className="flex items-center justify-between">
+                <CardTitle>
                   <span>Informações da Avaliação</span>
-                  <Badge className={getStatusConfig(normalizeStatus(evaluationInfo?.status || 'pendente')).color}>
-                    {evaluationInfo?.status === 'concluida' ? 'Concluída' : evaluationInfo?.status === 'em_andamento' ? 'Em Andamento' : 'Pendente'}
-                  </Badge>
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -1766,7 +1758,9 @@ export default function Results() {
                   </div>
                   <div className="space-y-2">
                     <div className="text-sm font-medium text-muted-foreground">Escola</div>
-                    <div className="font-semibold">{evaluationInfo?.escola || 'Escola não informada'}</div>
+                    <div className="font-semibold">
+                      {evaluationInfo?.escola || (selectedSchool === 'all' ? 'Todas as Escolas' : 'Escola não informada')}
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <div className="text-sm font-medium text-muted-foreground">Município</div>
