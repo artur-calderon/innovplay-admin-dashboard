@@ -994,14 +994,15 @@ export function DetailedEvaluationReport({ evaluationId, onBack }: DetailedEvalu
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {reportData.questions.map((question) => {
+                        {reportData.questions.map((question, index) => {
                           const isProblematic = question.successRate < 50;
                           const isExcellent = question.successRate > 80;
+                          const questionDisplayNumber = index + 1; // ✅ CORRIGIDO: Sempre mostrar Q1, Q2, Q3, Q4...
                           
                           return (
                             <TableRow key={question.id}>
                               <TableCell className="font-medium">
-                                Q{question.number}
+                                Q{questionDisplayNumber}
                               </TableCell>
                               <TableCell>
                                 <Badge variant="outline" className={getDifficultyColor(question.difficulty)}>

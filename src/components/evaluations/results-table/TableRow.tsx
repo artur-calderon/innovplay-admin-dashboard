@@ -106,6 +106,7 @@ export const TableRow: React.FC<TableRowProps> = ({
       {/* Questões individuais */}
       {allQuestions.map((questao, index) => {
         const answer = processStudentAnswers[questao.numero];
+        const questionDisplayNumber = index + 1; // ✅ CORRIGIDO: Sempre mostrar Q1, Q2, Q3, Q4...
         const uniqueKey = `${student.id}-${questao.disciplina}-q${questao.numero}-${questao.question_id}-${index}`;
         
         return (
@@ -113,13 +114,13 @@ export const TableRow: React.FC<TableRowProps> = ({
             {answer ? (
               // Aluno respondeu
               answer.acertou ? (
-                <Check className="w-4 h-4 text-green-700 mx-auto" title={`Q${questao.numero} - ${questao.disciplina}: Acertou`} />
+                <Check className="w-4 h-4 text-green-700 mx-auto" title={`Q${questionDisplayNumber} - ${questao.disciplina}: Acertou`} />
               ) : (
-                <X className="w-4 h-4 text-red-600 mx-auto" title={`Q${questao.numero} - ${questao.disciplina}: Errou`} />
+                <X className="w-4 h-4 text-red-600 mx-auto" title={`Q${questionDisplayNumber} - ${questao.disciplina}: Errou`} />
               )
             ) : (
               // Aluno não respondeu
-              <Minus className="w-4 h-4 text-gray-400 mx-auto" title={`Q${questao.numero} - ${questao.disciplina}: Não respondeu`} />
+              <Minus className="w-4 h-4 text-gray-400 mx-auto" title={`Q${questionDisplayNumber} - ${questao.disciplina}: Não respondeu`} />
             )}
           </td>
         );
