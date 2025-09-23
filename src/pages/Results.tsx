@@ -1126,27 +1126,43 @@ export default function Results() {
       return [];
     }
 
+    // ✅ CORRIGIDO: Filtrar apenas alunos que responderam pelo menos uma questão
+    const processedData = apiData.ranking
+      .filter((item: RankingItemWithAluno) => {
+        // Verificar se o aluno respondeu pelo menos uma questão usando dados da tabela_detalhada
+        if (!apiData?.tabela_detalhada?.disciplinas?.length) {
+          // Se não temos dados detalhados, assumir que todos responderam (fallback)
+          return true;
+        }
 
-    const processedData = apiData.ranking.map((item: RankingItemWithAluno) => {
-      
-      // Usar apenas a estrutura nova com propriedade aluno aninhada
-      const aluno = item;
-      
-      return {
-        id: aluno.aluno_id,
-        nome: aluno.nome,
-        turma: aluno.turma || 'N/A',
-        nota: aluno.nota_geral || 0,
-        proficiencia: aluno.proficiencia_geral || 0,
-        classificacao: aluno.classificacao_geral as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
-        questoes_respondidas: aluno.total_questoes || 0,
-        acertos: aluno.total_acertos || 0,
-        erros: (aluno.total_questoes || 0) - (aluno.total_acertos || 0),
-        em_branco: 0, // Não disponível no ranking
-        tempo_gasto: 0, // Não disponível no ranking
-        status: 'concluida' as const
-      };
-    });
+        // Verificar se o aluno respondeu pelo menos uma questão em qualquer disciplina
+        return apiData.tabela_detalhada.disciplinas.some(disciplina => {
+          const disciplinaAluno = disciplina.alunos.find(a => a.id === item.aluno_id);
+          if (!disciplinaAluno) return false;
+          
+          // Verificar se respondeu pelo menos uma questão nesta disciplina
+          return disciplinaAluno.respostas_por_questao.some(resposta => resposta.respondeu);
+        });
+      })
+      .map((item: RankingItemWithAluno) => {
+        // Usar apenas a estrutura nova com propriedade aluno aninhada
+        const aluno = item;
+        
+        return {
+          id: aluno.aluno_id,
+          nome: aluno.nome,
+          turma: aluno.turma || 'N/A',
+          nota: aluno.nota_geral || 0,
+          proficiencia: aluno.proficiencia_geral || 0,
+          classificacao: aluno.classificacao_geral as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
+          questoes_respondidas: aluno.total_questoes || 0,
+          acertos: aluno.total_acertos || 0,
+          erros: (aluno.total_questoes || 0) - (aluno.total_acertos || 0),
+          em_branco: 0, // Não disponível no ranking
+          tempo_gasto: 0, // Não disponível no ranking
+          status: 'concluida' as const
+        };
+      });
 
     return processedData;
   }, [apiData]);
@@ -1187,25 +1203,13 @@ export default function Results() {
         setStudents(tableData.students);
         setLoadingProgress(80);
       } else {
-        // ✅ FALLBACK: Usar dados do ranking se disponível
+        // ✅ FALLBACK: Usar dados do ranking se disponível (já filtrados)
         if (apiData.ranking?.length) {
           setLoadingStep('Processando dados do ranking...');
           setLoadingProgress(50);
           
-          const studentsFromRanking = apiData.ranking.map((item: RankingItemWithAluno) => ({
-            id: item.aluno_id,
-            nome: item.nome,
-            turma: item.turma,
-            nota: item.nota_geral,
-            proficiencia: item.proficiencia_geral,
-            classificacao: item.classificacao_geral as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
-            questoes_respondidas: item.total_questoes,
-            acertos: item.total_acertos,
-            erros: item.total_questoes - item.total_acertos,
-            em_branco: 0, // Não disponível no ranking
-            tempo_gasto: 0, // Não disponível no ranking
-            status: 'concluida' as const
-          }));
+          // ✅ CORRIGIDO: Usar a função processRankingData que já filtra alunos que responderam
+          const studentsFromRanking = processRankingData();
           
           setStudents(studentsFromRanking);
           setLoadingProgress(80);
@@ -1265,7 +1269,7 @@ export default function Results() {
         setLoadingProgress(0);
       }, 1000);
     }
-  }, [selectedEvaluation, apiData, processTableData]);
+  }, [selectedEvaluation, apiData, processTableData, processRankingData]);
 
   // ✅ OTIMIZADO: Carregar dados dos alunos quando a avaliação mudar com debounce
   useEffect(() => {
