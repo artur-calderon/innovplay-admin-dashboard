@@ -1169,7 +1169,8 @@ export default function Results() {
 
   // ✅ NOVA IMPLEMENTAÇÃO: Processar dados dos alunos da tabela_detalhada da nova API
   const loadStudentsData = useCallback(async () => {
-    if (!selectedEvaluation || selectedEvaluation === 'all' || !apiData) {
+    // ✅ MODIFICADO: Permitir carregamento quando avaliação específica estiver selecionada
+    if (selectedEvaluation === 'all' || !apiData) {
       setStudents([]);
       setDetailedReport(null);
       setQuestionsWithSkills([]);
@@ -1841,11 +1842,11 @@ export default function Results() {
             <>
               {/* Abas com diferentes visualizações */}
               <Tabs defaultValue="charts" className="w-full">
-                <TabsList className={`grid w-full ${selectedSchool !== 'all' ? 'grid-cols-4' : 'grid-cols-3'}`}>
+                <TabsList className={`grid w-full ${selectedEvaluation !== 'all' ? 'grid-cols-4' : 'grid-cols-3'}`}>
                   <TabsTrigger value="charts">Gráficos</TabsTrigger>
                   <TabsTrigger value="tables">Tabelas</TabsTrigger>
                   <TabsTrigger value="statistics">Estatísticas</TabsTrigger>
-                  {selectedSchool !== 'all' && (
+                  {selectedEvaluation !== 'all' && (
                     <TabsTrigger value="ranking">Ranking</TabsTrigger>
                   )}
                 </TabsList>
@@ -1907,18 +1908,18 @@ export default function Results() {
                 </TabsContent>
 
                 <TabsContent value="tables" className="space-y-6" id="results-tables">
-                  {selectedSchool === 'all' ? (
-                    // Estado inicial: Nenhuma escola selecionada
+                  {selectedEvaluation === 'all' ? (
+                    // Estado inicial: Nenhuma avaliação selecionada
                     <Card>
                       <CardContent className="flex flex-col items-center justify-center py-16">
                         <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mb-6">
-                          <School className="h-10 w-10 text-blue-600" />
+                          <BookOpen className="h-10 w-10 text-blue-600" />
                         </div>
                         <h3 className="text-xl font-semibold text-gray-900 mb-3">
-                          Selecione uma Escola
+                          Selecione uma Avaliação
                         </h3>
                         <p className="text-gray-600 text-center max-w-md mb-6">
-                          Para visualizar os resultados detalhados dos alunos, é necessário selecionar uma escola específica nos filtros acima.
+                          Para visualizar os resultados detalhados dos alunos, é necessário selecionar uma avaliação específica nos filtros acima.
                         </p>
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-md">
                           <div className="flex items-start gap-3">
@@ -1934,7 +1935,7 @@ export default function Results() {
                       </CardContent>
                     </Card>
                   ) : (
-                    // Conteúdo normal da tabela quando escola está selecionada
+                    // Conteúdo normal da tabela quando avaliação está selecionada
                     <>
 
 
@@ -2101,7 +2102,7 @@ export default function Results() {
 
 
 
-                {selectedSchool !== 'all' && (
+                {selectedEvaluation !== 'all' && (
                   <TabsContent value="ranking" className="space-y-6">
                     {(() => {
                       // ✅ NOVO: Usar dados do ranking diretamente do backend
