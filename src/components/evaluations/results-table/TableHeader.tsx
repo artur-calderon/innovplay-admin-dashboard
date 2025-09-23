@@ -143,9 +143,9 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
             )}
           </div>
         </th>
-        {processedQuestions.map((questao) => (
+        {processedQuestions.map((questao, index) => (
           <th key={questao.question_id} className="border border-gray-300 p-1 text-center font-semibold hover:bg-gray-200 transition-colors">
-            <div className="text-xs font-bold text-gray-800">Q{questao.numero}</div>
+            <div className="text-xs font-bold text-gray-800">Q{index + 1}</div>
             <div className="text-xs text-gray-600 mt-1">{questao.disciplina}</div>
             {visibleFields.habilidade && (
               <div 

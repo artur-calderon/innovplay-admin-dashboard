@@ -502,23 +502,12 @@ const StudentsResultsTable = ({
                     <tr className="bg-gray-100">
                         <th className="p-2 min-w-[150px] text-left border-r border-gray-300">Aluno</th>
                         {visibleFields?.questoes && Array.from({ length: totalQuestions }, (_, i) => {
-                            let questionNumber = i + 1;
-                            
-                            if (questoes && questoes.length > 0) {
-                                const questao = questoes[i];
-                                if (questao) {
-                                    questionNumber = questao.numero;
-                                }
-                            } else if (questionsWithSkills && questionsWithSkills.length > 0) {
-                                const questao = questionsWithSkills[i];
-                                if (questao) {
-                                    questionNumber = questao.number;
-                                }
-                            }
+                            // ✅ CORRIGIDO: Sempre mostrar Q1, Q2, Q3, Q4... independente do número do backend
+                            const questionDisplayNumber = i + 1;
                             
                             return (
                                 <th key={`header-q${i}`} className="p-2 min-w-[80px] border-r border-gray-300">
-                                    Q{questionNumber}
+                                    Q{questionDisplayNumber}
                                 </th>
                             );
                         })}
