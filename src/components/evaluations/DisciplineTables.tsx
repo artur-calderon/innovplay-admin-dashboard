@@ -386,8 +386,8 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                   tabelaDetalhada={{
                     disciplinas: (allQuestions.length > MAX_QUESTIONS_FOR_FULL_VIEW 
                       ? getQuestionWindow(allQuestions, currentQuestionWindow) 
-                      : allQuestions).map(q => ({
-                      id: `disciplina-${q.numero}`,
+                      : allQuestions).map((q, index) => ({
+                      id: `disciplina-${q.numero}-${index}`,
                       nome: (q as QuestaoConsolidada).disciplina,
                       questoes: [{
                         numero: q.numero,
@@ -457,8 +457,8 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                       tabelaDetalhada={{
                         disciplinas: (allQuestions.length > MAX_QUESTIONS_FOR_FULL_VIEW 
                           ? getQuestionWindow(allQuestions, currentQuestionWindow) 
-                          : allQuestions).map(q => ({
-                          id: `disciplina-${q.numero}`,
+                          : allQuestions).map((q, index) => ({
+                          id: `disciplina-${q.numero}-${index}`,
                           nome: (q as QuestaoConsolidada).disciplina,
                           questoes: [{
                             numero: q.numero,

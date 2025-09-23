@@ -104,11 +104,12 @@ export const TableRow: React.FC<TableRowProps> = ({
       </td>
 
       {/* Questões individuais */}
-      {allQuestions.map((questao) => {
+      {allQuestions.map((questao, index) => {
         const answer = processStudentAnswers[questao.numero];
+        const uniqueKey = `${student.id}-${questao.disciplina}-q${questao.numero}-${questao.question_id}-${index}`;
         
         return (
-          <td key={`${student.id}-${questao.disciplina}-q${questao.numero}`} className="px-2 py-3 text-center border border-gray-300">
+          <td key={uniqueKey} className="px-2 py-3 text-center border border-gray-300">
             {answer ? (
               // Aluno respondeu
               answer.acertou ? (
