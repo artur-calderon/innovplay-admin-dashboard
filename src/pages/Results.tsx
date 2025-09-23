@@ -376,9 +376,9 @@ export default function Results() {
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
 
 
-  // ✅ NOVO: Função para carregar alunos faltosos
+  // ✅ CORRIGIDO: Função para carregar alunos faltosos baseada em alunos selecionados para a avaliação
   const loadAbsentStudents = useCallback(async () => {
-    if (!apiData?.tabela_detalhada?.disciplinas?.length) {
+    if (!selectedEvaluation || selectedEvaluation === 'all') {
       setAbsentStudents([]);
       return;
     }
@@ -386,40 +386,39 @@ export default function Results() {
     try {
       setIsLoadingAbsentStudents(true);
       
-      // Coletar todos os alunos únicos de todas as disciplinas
-      const allStudents = new Map<string, {
-        id: string;
-        nome: string;
-        turma: string;
-        escola: string;
-        serie: string;
-      }>();
+      // ✅ NOVO: Obter lista completa de alunos selecionados para a avaliação
+      const selectedStudentsResponse = await EvaluationResultsApiService.getStudentsByEvaluation(selectedEvaluation);
+      
+      if (!selectedStudentsResponse || selectedStudentsResponse.length === 0) {
+        setAbsentStudents([]);
+        return;
+      }
 
-      apiData.tabela_detalhada.disciplinas.forEach(disciplina => {
-        disciplina.alunos.forEach(aluno => {
-          if (!allStudents.has(aluno.id)) {
-            allStudents.set(aluno.id, {
-              id: aluno.id,
-              nome: aluno.nome,
-              turma: aluno.turma,
-              escola: aluno.escola,
-              serie: aluno.serie
-            });
-          }
+      // ✅ NOVO: Obter lista de alunos que participaram (responderam pelo menos uma questão)
+      const participatingStudents = new Set<string>();
+      
+      if (apiData?.tabela_detalhada?.disciplinas?.length) {
+        apiData.tabela_detalhada.disciplinas.forEach(disciplina => {
+          disciplina.alunos.forEach(aluno => {
+            // Verificar se o aluno respondeu pelo menos uma questão nesta disciplina
+            const hasAnsweredAnyQuestion = aluno.respostas_por_questao.some(resposta => resposta.respondeu);
+            if (hasAnsweredAnyQuestion) {
+              participatingStudents.add(aluno.id);
+            }
+          });
         });
-      });
+      }
 
-      // Filtrar apenas alunos que não responderam nenhuma questão
-      const absentStudentsList = Array.from(allStudents.values()).filter(aluno => {
-        // Verificar se o aluno não respondeu nenhuma questão em nenhuma disciplina
-        return apiData.tabela_detalhada.disciplinas.every(disciplina => {
-          const disciplinaAluno = disciplina.alunos.find(a => a.id === aluno.id);
-          if (!disciplinaAluno) return true; // Aluno não está nesta disciplina
-          
-          // Verificar se não respondeu nenhuma questão nesta disciplina
-          return !disciplinaAluno.respostas_por_questao.some(resposta => resposta.respondeu);
-        });
-      });
+      // ✅ NOVO: Calcular alunos faltosos = selecionados - participantes
+      const absentStudentsList = selectedStudentsResponse
+        .filter(selectedStudent => !participatingStudents.has(selectedStudent.id))
+        .map(selectedStudent => ({
+          id: selectedStudent.id,
+          nome: selectedStudent.nome,
+          turma: selectedStudent.turma,
+          escola: 'Escola não informada', // Propriedade não disponível na interface StudentResult
+          serie: 'Série não informada' // Propriedade não disponível na interface StudentResult
+        }));
 
       setAbsentStudents(absentStudentsList);
     } catch (error) {
@@ -428,7 +427,7 @@ export default function Results() {
     } finally {
       setIsLoadingAbsentStudents(false);
     }
-  }, [apiData]);
+  }, [selectedEvaluation, apiData]);
 
   // Handler para mostrar modal de alunos faltosos
   const handleViewAbsent = useCallback(async () => {
@@ -2124,6 +2123,11 @@ export default function Results() {
             <DialogTitle className="flex items-center gap-2">
               <Users className="h-5 w-5 text-red-600" />
               Alunos Faltosos
+              {evaluationInfo && (
+                <span className="text-sm font-normal text-gray-600 ml-2">
+                  - {evaluationInfo.titulo}
+                </span>
+              )}
             </DialogTitle>
           </DialogHeader>
           
@@ -2145,7 +2149,7 @@ export default function Results() {
                     </span>
                   </div>
                   <p className="text-sm text-red-700">
-                    Estes alunos não realizaram a avaliação.
+                    Estes alunos foram selecionados para a avaliação mas não a realizaram.
                   </p>
                 </div>
                 
