@@ -1357,6 +1357,14 @@ export default function Results() {
     }
   };
 
+  // ✅ NOVO: Função para abrir página detalhada em nova guia
+  const handleOpenInNewTab = (studentId: string) => {
+    if (selectedEvaluation && selectedEvaluation !== 'all') {
+      const url = `/app/avaliacao/${selectedEvaluation}/aluno/${studentId}/resultados`;
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   // Total de questões calculado a partir das fontes disponíveis
   const computedTotalQuestions = useMemo(() => {
     // 1) Valor explícito na avaliação, se existir
@@ -2041,6 +2049,7 @@ export default function Results() {
                               <DisciplineTables
                                 tabelaDetalhada={apiData.tabela_detalhada}
                                 onViewStudentDetails={handleViewStudentDetails}
+                                onOpenInNewTab={handleOpenInNewTab}
                               />
                             ) : (
                               <div className="text-center py-12">
