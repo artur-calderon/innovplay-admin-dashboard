@@ -106,7 +106,16 @@ export const TableRow: React.FC<TableRowProps> = ({
           onOpenInNewTab={() => onOpenInNewTab?.(student.id)}
           studentName={student.nome}
         >
-          <div className="flex items-center gap-2 cursor-pointer">
+          <div 
+            className="flex items-center gap-2 cursor-pointer"
+            onClick={(e) => {
+              // ✅ NOVO: Clique esquerdo navega para página detalhada
+              if (e.button === 0 || e.type === 'click') {
+                e.stopPropagation(); // Evitar que o evento borbulhe para a linha
+                onViewStudentDetails(student.id);
+              }
+            }}
+          >
             <span className="hover:text-blue-600 transition-colors">{student.nome}</span>
             <Eye className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
