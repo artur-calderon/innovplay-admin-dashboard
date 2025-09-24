@@ -70,11 +70,14 @@ interface DisciplineTablesProps {
     };
   };
   onViewStudentDetails?: (studentId: string) => void;
+  // ✅ NOVO: Função para abrir em nova guia
+  onOpenInNewTab?: (studentId: string) => void;
 }
 
 export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
   tabelaDetalhada,
-  onViewStudentDetails
+  onViewStudentDetails,
+  onOpenInNewTab
 }) => {
   // ✅ NOVO: Estado para gerenciar visualização de muitas questões
   const [currentQuestionWindow, setCurrentQuestionWindow] = useState(0);
@@ -462,6 +465,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                         nivel: true
                       }}
                       onViewStudentDetails={onViewStudentDetails}
+                      onOpenInNewTab={onOpenInNewTab}
                       evaluationId="visao-geral"
                       tabelaDetalhada={{
                         disciplinas: (allQuestions.length > MAX_QUESTIONS_FOR_FULL_VIEW 
@@ -620,6 +624,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                         nivel: true
                       }}
                       onViewStudentDetails={onViewStudentDetails}
+                      onOpenInNewTab={onOpenInNewTab}
                       evaluationId={disciplina.id}
                       tabelaDetalhada={{
                         disciplinas: [{
