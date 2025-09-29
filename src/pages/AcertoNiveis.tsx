@@ -111,6 +111,42 @@ export default function AcertoNiveis() {
     return /^(LP\d+L\d+\.\d+|\d+N\d\.\d+|[A-Z]{2}\d+L\d+\.\d+|\d+[LMSN]\d+\.\d+|\d+\s+[LMSN]\s+\d+\.\d+)$/.test(v);
   };
 
+  // Função para calcular proficiência baseada nos acertos por disciplina
+  const calculateDisciplineProficiency = (acertos: number, totalQuestoes: number): number => {
+    if (totalQuestoes === 0) return 0;
+    const percentualAcertos = (acertos / totalQuestoes) * 100;
+    
+    // Fórmula de proficiência baseada no percentual de acertos
+    // Escala de 0-1000, onde 50% de acertos = 500 pontos
+    const proficiencia = Math.max(0, Math.min(1000, (percentualAcertos - 20) * 12.5));
+    return Math.round(proficiencia * 10) / 10; // Arredondar para 1 casa decimal
+  };
+
+  // Função para obter proficiência correta por disciplina
+  const getDisciplineProficiency = (student: StudentResult, discipline: 'LP' | 'MAT' | 'GERAL'): number => {
+    if (discipline === 'GERAL') {
+      return student.proficiencia; // Proficiência geral
+    }
+    
+    if (discipline === 'LP' && student.acertos_lp !== undefined) {
+      const questoesLP = detailedReport?.questoes?.filter(q => {
+        const code = generateHabilidadeCode(q, skillsMapping);
+        return code.startsWith('LP') || /L\s*\d+\.\d+/.test(code) || /^.*L\s*\d+\.\d+.*$/.test(code);
+      }).length || 0;
+      return calculateDisciplineProficiency(student.acertos_lp, questoesLP);
+    }
+    
+    if (discipline === 'MAT' && student.acertos_mat !== undefined) {
+      const questoesMAT = detailedReport?.questoes?.filter(q => {
+        const code = generateHabilidadeCode(q, skillsMapping);
+        return !code.startsWith('LP') && !/L\s*\d+\.\d+/.test(code) && !/^.*L\s*\d+\.\d+.*$/.test(code);
+      }).length || 0;
+      return calculateDisciplineProficiency(student.acertos_mat, questoesMAT);
+    }
+    
+    return student.proficiencia; // Fallback para proficiência geral
+  };
+
   useEffect(() => {
     // Carregar lista de estados
     const loadStates = async () => {
@@ -188,6 +224,8 @@ export default function AcertoNiveis() {
     if (!selectedState || !selectedMunicipality || !selectedEvaluationId || !schoolId) return;
     try {
       setIsLoading(true);
+      
+      // Carregar séries para a escola selecionada
       const series = await EvaluationResultsApiService.getFilterGradesByEvaluation({
         estado: selectedState,
         municipio: selectedMunicipality,
@@ -195,8 +233,83 @@ export default function AcertoNiveis() {
         escola: schoolId
       });
       setGrades(series);
+      
+      // Recarregar dados dos alunos filtrados por escola
+      const { studentsResp, report } = await loadFilteredData(selectedEvaluationId, schoolId);
+      
+      // Atualizar dados dos alunos
+      if (report && report.alunos) {
+        const processedStudents = report.alunos.map((aluno: {
+          id: string;
+          nome: string;
+          turma: string;
+          serie?: string;
+          respostas?: Array<{ questao_numero: number; resposta_correta: boolean }>;
+          total_acertos: number;
+          total_erros: number;
+          total_em_branco: number;
+          nota_final: number;
+          proficiencia: number;
+          classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+          status: string;
+        }) => {
+          const respostasMap: Record<string, boolean | null> = {};
+          aluno.respostas?.forEach((resp) => {
+            respostasMap[`q${resp.questao_numero}`] = resp.resposta_correta;
+          });
+
+          return {
+            id: aluno.id,
+            nome: aluno.nome,
+            turma: aluno.turma,
+            nota: aluno.nota_final,
+            proficiencia: aluno.proficiencia,
+            classificacao: aluno.classificacao,
+            acertos: aluno.total_acertos,
+            erros: aluno.total_erros,
+            questoes_respondidas: aluno.total_acertos + aluno.total_erros + aluno.total_em_branco,
+            status: aluno.status === 'concluida' ? 'concluida' : 'pendente',
+            respostas: respostasMap,
+            acertos_lp: report.questoes?.filter((q) => 
+              q.codigo_habilidade?.startsWith('LP') && respostasMap[`q${q.numero}`] === true
+            ).length || 0,
+            acertos_mat: report.questoes?.filter((q) => 
+              !q.codigo_habilidade?.startsWith('LP') && respostasMap[`q${q.numero}`] === true
+            ).length || 0,
+            // Calcular proficiências específicas por disciplina
+            proficiencia_lp: (() => {
+              const questoesLP = report.questoes?.filter(q => {
+                const code = generateHabilidadeCode(q, skillsMapping);
+                return code.startsWith('LP') || /L\s*\d+\.\d+/.test(code) || /^.*L\s*\d+\.\d+.*$/.test(code);
+              }).length || 0;
+              const acertosLP = report.questoes?.filter((q) => {
+                const code = generateHabilidadeCode(q, skillsMapping);
+                return (code.startsWith('LP') || /L\s*\d+\.\d+/.test(code) || /^.*L\s*\d+\.\d+.*$/.test(code)) && respostasMap[`q${q.numero}`] === true;
+              }).length || 0;
+              return calculateDisciplineProficiency(acertosLP, questoesLP);
+            })(),
+            proficiencia_mat: (() => {
+              const questoesMAT = report.questoes?.filter(q => {
+                const code = generateHabilidadeCode(q, skillsMapping);
+                return !code.startsWith('LP') && !/L\s*\d+\.\d+/.test(code) && !/^.*L\s*\d+\.\d+.*$/.test(code);
+              }).length || 0;
+              const acertosMAT = report.questoes?.filter((q) => {
+                const code = generateHabilidadeCode(q, skillsMapping);
+                return (!code.startsWith('LP') && !/L\s*\d+\.\d+/.test(code) && !/^.*L\s*\d+\.\d+.*$/.test(code)) && respostasMap[`q${q.numero}`] === true;
+              }).length || 0;
+              return calculateDisciplineProficiency(acertosMAT, questoesMAT);
+            })()
+          } as StudentResult;
+        });
+        setStudents(processedStudents);
+      } else if (studentsResp) {
+        setStudents(studentsResp as unknown as StudentResult[]);
+      }
+      
+      setDetailedReport(report || null);
+      
     } catch (e) {
-      toast({ title: "Erro", description: "Não foi possível carregar séries", variant: "destructive" });
+      toast({ title: "Erro", description: "Não foi possível carregar dados da escola", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -224,6 +337,66 @@ export default function AcertoNiveis() {
     }
   };
 
+  // Função para carregar dados filtrados por escola
+  const loadFilteredData = async (evaluationId: string, schoolId?: string, gradeId?: string, classId?: string) => {
+    try {
+      let report, studentsResp;
+      
+      if (schoolId) {
+        // Carregar relatório completo primeiro para obter as questões
+        const [fullReport, filteredReport] = await Promise.all([
+          EvaluationResultsApiService.getDetailedReport(evaluationId),
+          EvaluationResultsApiService.getDetailedReportFiltered(
+            evaluationId,
+            ['alunos', 'nota', 'proficiencia', 'classificacao', 'respostas'],
+            'proficiencia',
+            'desc'
+          )
+        ]);
+        
+        // Combinar dados: questões do relatório completo + alunos filtrados
+        if (fullReport && filteredReport) {
+          report = {
+            ...fullReport,
+            alunos: filteredReport.alunos.map(aluno => ({
+              id: aluno.id,
+              nome: aluno.nome,
+              turma: aluno.turma,
+              respostas: [], // Será preenchido se necessário
+              total_acertos: 0,
+              total_erros: 0,
+              total_em_branco: 0,
+              nota_final: aluno.nota,
+              proficiencia: aluno.proficiencia,
+              classificacao: aluno.classificacao,
+              status: aluno.status
+            }))
+          };
+        } else {
+          report = fullReport;
+        }
+        
+        studentsResp = filteredReport?.alunos || [];
+      } else {
+        // Carregar dados de todas as escolas quando nenhuma escola específica for selecionada
+        [studentsResp, report] = await Promise.all([
+          EvaluationResultsApiService.getStudentsByEvaluation(evaluationId),
+          EvaluationResultsApiService.getDetailedReport(evaluationId)
+        ]);
+      }
+      
+      return { studentsResp, report };
+    } catch (error) {
+      console.error('Erro ao carregar dados filtrados:', error);
+      // Fallback para dados não filtrados
+      const [studentsResp, report] = await Promise.all([
+        EvaluationResultsApiService.getStudentsByEvaluation(evaluationId),
+        EvaluationResultsApiService.getDetailedReport(evaluationId)
+      ]);
+      return { studentsResp, report };
+    }
+  };
+
   const handleSelectEvaluation = async (evaluationId: string) => {
     setSelectedEvaluationId(evaluationId);
     setSelectedSchoolId("");
@@ -237,12 +410,13 @@ export default function AcertoNiveis() {
       setIsLoading(true);
       
       // Buscar dados da avaliação em paralelo
-      const [info, studentsResp, report, skills] = await Promise.all([
+      const [info, skills] = await Promise.all([
         EvaluationResultsApiService.getEvaluationById(evaluationId),
-        EvaluationResultsApiService.getStudentsByEvaluation(evaluationId),
-        EvaluationResultsApiService.getDetailedReport(evaluationId),
         EvaluationResultsApiService.getSkillsByEvaluation(evaluationId).catch(() => [])
       ]);
+
+      // Carregar dados de todas as escolas (sem filtro)
+      const { studentsResp, report } = await loadFilteredData(evaluationId);
 
       if (!info) throw new Error("Avaliação não encontrada");
 
@@ -376,7 +550,30 @@ export default function AcertoNiveis() {
             ).length || 0,
             acertos_mat: report.questoes?.filter((q) => 
               !q.codigo_habilidade?.startsWith('LP') && respostasMap[`q${q.numero}`] === true
-            ).length || 0
+            ).length || 0,
+            // Calcular proficiências específicas por disciplina
+            proficiencia_lp: (() => {
+              const questoesLP = report.questoes?.filter(q => {
+                const code = generateHabilidadeCode(q, skillsMapping);
+                return code.startsWith('LP') || /L\s*\d+\.\d+/.test(code) || /^.*L\s*\d+\.\d+.*$/.test(code);
+              }).length || 0;
+              const acertosLP = report.questoes?.filter((q) => {
+                const code = generateHabilidadeCode(q, skillsMapping);
+                return (code.startsWith('LP') || /L\s*\d+\.\d+/.test(code) || /^.*L\s*\d+\.\d+.*$/.test(code)) && respostasMap[`q${q.numero}`] === true;
+              }).length || 0;
+              return calculateDisciplineProficiency(acertosLP, questoesLP);
+            })(),
+            proficiencia_mat: (() => {
+              const questoesMAT = report.questoes?.filter(q => {
+                const code = generateHabilidadeCode(q, skillsMapping);
+                return !code.startsWith('LP') && !/L\s*\d+\.\d+/.test(code) && !/^.*L\s*\d+\.\d+.*$/.test(code);
+              }).length || 0;
+              const acertosMAT = report.questoes?.filter((q) => {
+                const code = generateHabilidadeCode(q, skillsMapping);
+                return (!code.startsWith('LP') && !/L\s*\d+\.\d+/.test(code) && !/^.*L\s*\d+\.\d+.*$/.test(code)) && respostasMap[`q${q.numero}`] === true;
+              }).length || 0;
+              return calculateDisciplineProficiency(acertosMAT, questoesMAT);
+            })()
           } as StudentResult;
         });
         setStudents(processedStudents);
@@ -455,6 +652,21 @@ export default function AcertoNiveis() {
       toast({ title: "Atenção", description: "Selecione uma avaliação com alunos.", variant: "destructive" });
       return;
     }
+    
+    // Se não há detailedReport, tentar carregar dados básicos para o PDF
+    if (!detailedReport) {
+      try {
+        setIsLoading(true);
+        const fallbackReport = await EvaluationResultsApiService.getDetailedReport(evaluationInfo.id);
+        if (fallbackReport) {
+          setDetailedReport(fallbackReport);
+        }
+      } catch (error) {
+        console.warn('Não foi possível carregar relatório detalhado, continuando com dados básicos');
+      } finally {
+        setIsLoading(false);
+      }
+    }
     try {
       const jsPDF = (await import('jspdf')).default;
       const autoTable = (await import('jspdf-autotable')).default;
@@ -493,9 +705,11 @@ export default function AcertoNiveis() {
         // Informações da escola
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(10);
-        doc.text(`Escola: ${evaluationInfo.escola}`, centerX, y, { align: 'center' });
+        const escolaText = selectedSchoolId ? schools.find(s => s.id === selectedSchoolId)?.nome || 'Escola Selecionada' : 'Todas as Escolas';
+        doc.text(`Escola: ${escolaText}`, centerX, y, { align: 'center' });
         y += 5;
-        doc.text(`Série: ${evaluationInfo.serie}`, centerX, y, { align: 'center' });
+        const serieText = selectedGradeId ? grades.find(g => g.id === selectedGradeId)?.nome || evaluationInfo.serie : evaluationInfo.serie;
+        doc.text(`Série: ${serieText}`, centerX, y, { align: 'center' });
         y += 5;
         doc.text(`Turma: ${students[0]?.turma || 'N/A'}`, centerX, y, { align: 'center' });
         y += 8;
@@ -689,10 +903,13 @@ export default function AcertoNiveis() {
           const acertos = countCorrectFor(s, subset);
           const total = subset.length;
           
+          // Usar proficiência específica da disciplina
+          const proficienciaDisciplina = getDisciplineProficiency(s, discipline);
+          
           const row = [
             `${i + 1}. ${s.nome}`,
             `${acertos}/${total}`,
-            s.proficiencia.toFixed(1),
+            proficienciaDisciplina.toFixed(1),
             s.classificacao
           ];
           bodyRows.push(row);
@@ -811,7 +1028,24 @@ export default function AcertoNiveis() {
           
           // Adicionar totais
           row.push(`${acertos}/${questoes.length}`);
-          row.push(s.proficiencia.toFixed(1));
+          
+          // Usar proficiência específica da disciplina baseada nas questões desta disciplina
+          let proficienciaDisciplina = s.proficiencia;
+          if (questoes.length > 0) {
+            // Determinar se é LP ou MAT baseado nas questões
+            const isLP = questoes.some(q => {
+              const code = generateHabilidadeCode(q, skillsMapping);
+              return code.startsWith('LP') || /L\s*\d+\.\d+/.test(code) || /^.*L\s*\d+\.\d+.*$/.test(code);
+            });
+            
+            if (isLP && s.acertos_lp !== undefined) {
+              proficienciaDisciplina = calculateDisciplineProficiency(s.acertos_lp, questoes.length);
+            } else if (!isLP && s.acertos_mat !== undefined) {
+              proficienciaDisciplina = calculateDisciplineProficiency(s.acertos_mat, questoes.length);
+            }
+          }
+          
+          row.push(proficienciaDisciplina.toFixed(1));
           row.push(s.classificacao);
           
           bodyRows.push(row);
@@ -1114,10 +1348,93 @@ export default function AcertoNiveis() {
                      <Button
                        variant="outline"
                        size="sm"
-                       onClick={() => {
+                       onClick={async () => {
                          setSelectedSchoolId("");
                          setSelectedGradeId("");
                          setSelectedClassId("");
+                         
+                         // Recarregar dados de todas as escolas
+                         if (selectedEvaluationId) {
+                           try {
+                             setIsLoading(true);
+                             const { studentsResp, report } = await loadFilteredData(selectedEvaluationId);
+                             
+                             // Atualizar dados dos alunos
+                             if (report && report.alunos) {
+                               const processedStudents = report.alunos.map((aluno: {
+                                 id: string;
+                                 nome: string;
+                                 turma: string;
+                                 serie?: string;
+                                 respostas?: Array<{ questao_numero: number; resposta_correta: boolean }>;
+                                 total_acertos: number;
+                                 total_erros: number;
+                                 total_em_branco: number;
+                                 nota_final: number;
+                                 proficiencia: number;
+                                 classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
+                                 status: string;
+                               }) => {
+                                 const respostasMap: Record<string, boolean | null> = {};
+                                 aluno.respostas?.forEach((resp) => {
+                                   respostasMap[`q${resp.questao_numero}`] = resp.resposta_correta;
+                                 });
+
+                                 return {
+                                   id: aluno.id,
+                                   nome: aluno.nome,
+                                   turma: aluno.turma,
+                                   nota: aluno.nota_final,
+                                   proficiencia: aluno.proficiencia,
+                                   classificacao: aluno.classificacao,
+                                   acertos: aluno.total_acertos,
+                                   erros: aluno.total_erros,
+                                   questoes_respondidas: aluno.total_acertos + aluno.total_erros + aluno.total_em_branco,
+                                   status: aluno.status === 'concluida' ? 'concluida' : 'pendente',
+                                   respostas: respostasMap,
+                                   acertos_lp: report.questoes?.filter((q) => 
+                                     q.codigo_habilidade?.startsWith('LP') && respostasMap[`q${q.numero}`] === true
+                                   ).length || 0,
+                                   acertos_mat: report.questoes?.filter((q) => 
+                                     !q.codigo_habilidade?.startsWith('LP') && respostasMap[`q${q.numero}`] === true
+                                   ).length || 0,
+                                   // Calcular proficiências específicas por disciplina
+                                   proficiencia_lp: (() => {
+                                     const questoesLP = report.questoes?.filter(q => {
+                                       const code = generateHabilidadeCode(q, skillsMapping);
+                                       return code.startsWith('LP') || /L\s*\d+\.\d+/.test(code) || /^.*L\s*\d+\.\d+.*$/.test(code);
+                                     }).length || 0;
+                                     const acertosLP = report.questoes?.filter((q) => {
+                                       const code = generateHabilidadeCode(q, skillsMapping);
+                                       return (code.startsWith('LP') || /L\s*\d+\.\d+/.test(code) || /^.*L\s*\d+\.\d+.*$/.test(code)) && respostasMap[`q${q.numero}`] === true;
+                                     }).length || 0;
+                                     return calculateDisciplineProficiency(acertosLP, questoesLP);
+                                   })(),
+                                   proficiencia_mat: (() => {
+                                     const questoesMAT = report.questoes?.filter(q => {
+                                       const code = generateHabilidadeCode(q, skillsMapping);
+                                       return !code.startsWith('LP') && !/L\s*\d+\.\d+/.test(code) && !/^.*L\s*\d+\.\d+.*$/.test(code);
+                                     }).length || 0;
+                                     const acertosMAT = report.questoes?.filter((q) => {
+                                       const code = generateHabilidadeCode(q, skillsMapping);
+                                       return (!code.startsWith('LP') && !/L\s*\d+\.\d+/.test(code) && !/^.*L\s*\d+\.\d+.*$/.test(code)) && respostasMap[`q${q.numero}`] === true;
+                                     }).length || 0;
+                                     return calculateDisciplineProficiency(acertosMAT, questoesMAT);
+                                   })()
+                                 } as StudentResult;
+                               });
+                               setStudents(processedStudents);
+                             } else if (studentsResp) {
+                               setStudents(studentsResp as unknown as StudentResult[]);
+                             }
+                             
+                             setDetailedReport(report || null);
+                           } catch (error) {
+                             toast({ title: "Erro", description: "Não foi possível recarregar os dados", variant: "destructive" });
+                           } finally {
+                             setIsLoading(false);
+                           }
+                         }
                        }}
                        className="text-xs"
                      >
@@ -1185,7 +1502,7 @@ export default function AcertoNiveis() {
            <div className="mt-6 flex justify-end">
              <Button 
                onClick={handleGeneratePDF} 
-               disabled={!selectedEvaluationId || isLoading || !detailedReport} 
+               disabled={!selectedEvaluationId || isLoading || (!detailedReport && students.length === 0)} 
                className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
              >
                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
@@ -1212,7 +1529,9 @@ export default function AcertoNiveis() {
                </div>
                <div className="p-3 bg-gray-50 rounded-lg">
                  <span className="text-gray-500 text-xs uppercase tracking-wide">Escola</span>
-                 <div className="font-semibold text-gray-900 mt-1">{evaluationInfo.escola}</div>
+                 <div className="font-semibold text-gray-900 mt-1">
+                   {selectedSchoolId ? schools.find(s => s.id === selectedSchoolId)?.nome || 'Escola Selecionada' : 'Todas as Escolas'}
+                 </div>
                </div>
                <div className="p-3 bg-gray-50 rounded-lg">
                  <span className="text-gray-500 text-xs uppercase tracking-wide">Município</span>
@@ -1220,7 +1539,9 @@ export default function AcertoNiveis() {
                </div>
                <div className="p-3 bg-gray-50 rounded-lg">
                  <span className="text-gray-500 text-xs uppercase tracking-wide">Série</span>
-                 <div className="font-semibold text-gray-900 mt-1">{evaluationInfo.serie}</div>
+                 <div className="font-semibold text-gray-900 mt-1">
+                   {selectedGradeId ? grades.find(g => g.id === selectedGradeId)?.nome || 'Série Selecionada' : evaluationInfo.serie}
+                 </div>
                </div>
              </div>
 
