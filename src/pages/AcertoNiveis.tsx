@@ -111,41 +111,9 @@ export default function AcertoNiveis() {
     return /^(LP\d+L\d+\.\d+|\d+N\d\.\d+|[A-Z]{2}\d+L\d+\.\d+|\d+[LMSN]\d+\.\d+|\d+\s+[LMSN]\s+\d+\.\d+)$/.test(v);
   };
 
-  // Função para calcular proficiência baseada nos acertos por disciplina
-  const calculateDisciplineProficiency = (acertos: number, totalQuestoes: number): number => {
-    if (totalQuestoes === 0) return 0;
-    const percentualAcertos = (acertos / totalQuestoes) * 100;
-    
-    // Fórmula de proficiência baseada no percentual de acertos
-    // Escala de 0-1000, onde 50% de acertos = 500 pontos
-    const proficiencia = Math.max(0, Math.min(1000, (percentualAcertos - 20) * 12.5));
-    return Math.round(proficiencia * 10) / 10; // Arredondar para 1 casa decimal
-  };
-
-  // Função para obter proficiência correta por disciplina
-  const getDisciplineProficiency = (student: StudentResult, discipline: 'LP' | 'MAT' | 'GERAL'): number => {
-    if (discipline === 'GERAL') {
-      return student.proficiencia; // Proficiência geral
-    }
-    
-    if (discipline === 'LP' && student.acertos_lp !== undefined) {
-      const questoesLP = detailedReport?.questoes?.filter(q => {
-        const code = generateHabilidadeCode(q, skillsMapping);
-        return code.startsWith('LP') || /L\s*\d+\.\d+/.test(code) || /^.*L\s*\d+\.\d+.*$/.test(code);
-      }).length || 0;
-      return calculateDisciplineProficiency(student.acertos_lp, questoesLP);
-    }
-    
-    if (discipline === 'MAT' && student.acertos_mat !== undefined) {
-      const questoesMAT = detailedReport?.questoes?.filter(q => {
-        const code = generateHabilidadeCode(q, skillsMapping);
-        return !code.startsWith('LP') && !/L\s*\d+\.\d+/.test(code) && !/^.*L\s*\d+\.\d+.*$/.test(code);
-      }).length || 0;
-      return calculateDisciplineProficiency(student.acertos_mat, questoesMAT);
-    }
-    
-    return student.proficiencia; // Fallback para proficiência geral
-  };
+  // ✅ MODIFICADO: Usar apenas a proficiência do backend (tabela evaluation_results)
+  // Removidas as funções de cálculo de proficiência por disciplina do frontend
+  // Agora todas as tabelas usam a mesma proficiência calculada pelo backend
 
   useEffect(() => {
     // Carregar lista de estados
@@ -276,29 +244,17 @@ export default function AcertoNiveis() {
             acertos_mat: report.questoes?.filter((q) => 
               !q.codigo_habilidade?.startsWith('LP') && respostasMap[`q${q.numero}`] === true
             ).length || 0,
-            // Calcular proficiências específicas por disciplina
-            proficiencia_lp: (() => {
-              const questoesLP = report.questoes?.filter(q => {
-                const code = generateHabilidadeCode(q, skillsMapping);
-                return code.startsWith('LP') || /L\s*\d+\.\d+/.test(code) || /^.*L\s*\d+\.\d+.*$/.test(code);
-              }).length || 0;
-              const acertosLP = report.questoes?.filter((q) => {
-                const code = generateHabilidadeCode(q, skillsMapping);
-                return (code.startsWith('LP') || /L\s*\d+\.\d+/.test(code) || /^.*L\s*\d+\.\d+.*$/.test(code)) && respostasMap[`q${q.numero}`] === true;
-              }).length || 0;
-              return calculateDisciplineProficiency(acertosLP, questoesLP);
-            })(),
-            proficiencia_mat: (() => {
-              const questoesMAT = report.questoes?.filter(q => {
-                const code = generateHabilidadeCode(q, skillsMapping);
-                return !code.startsWith('LP') && !/L\s*\d+\.\d+/.test(code) && !/^.*L\s*\d+\.\d+.*$/.test(code);
-              }).length || 0;
-              const acertosMAT = report.questoes?.filter((q) => {
-                const code = generateHabilidadeCode(q, skillsMapping);
-                return (!code.startsWith('LP') && !/L\s*\d+\.\d+/.test(code) && !/^.*L\s*\d+\.\d+.*$/.test(code)) && respostasMap[`q${q.numero}`] === true;
-              }).length || 0;
-              return calculateDisciplineProficiency(acertosMAT, questoesMAT);
-            })()
+            // ✅ CORREÇÃO: Calcular proficiências específicas por disciplina baseadas nos acertos
+            ...calculateDisciplineProficiencies(
+              report.questoes?.filter((q) => 
+                q.codigo_habilidade?.startsWith('LP') && respostasMap[`q${q.numero}`] === true
+              ).length || 0,
+              report.questoes?.filter((q) => q.codigo_habilidade?.startsWith('LP')).length || 0,
+              report.questoes?.filter((q) => 
+                !q.codigo_habilidade?.startsWith('LP') && respostasMap[`q${q.numero}`] === true
+              ).length || 0,
+              report.questoes?.filter((q) => !q.codigo_habilidade?.startsWith('LP')).length || 0
+            )
           } as StudentResult;
         });
         setStudents(processedStudents);
@@ -335,6 +291,20 @@ export default function AcertoNiveis() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // ✅ NOVA FUNÇÃO: Calcular proficiências específicas por disciplina baseadas nos acertos
+  const calculateDisciplineProficiencies = (
+    acertos_lp: number, 
+    questoes_lp: number, 
+    acertos_mat: number, 
+    questoes_mat: number
+  ) => {
+    // Fórmula baseada no backend: (acertos / total_questoes) * 1000
+    const proficiencia_lp = questoes_lp > 0 ? Math.round((acertos_lp / questoes_lp) * 1000 * 10) / 10 : 0;
+    const proficiencia_mat = questoes_mat > 0 ? Math.round((acertos_mat / questoes_mat) * 1000 * 10) / 10 : 0;
+    
+    return { proficiencia_lp, proficiencia_mat };
   };
 
   // Função para carregar dados filtrados por escola
@@ -551,29 +521,17 @@ export default function AcertoNiveis() {
             acertos_mat: report.questoes?.filter((q) => 
               !q.codigo_habilidade?.startsWith('LP') && respostasMap[`q${q.numero}`] === true
             ).length || 0,
-            // Calcular proficiências específicas por disciplina
-            proficiencia_lp: (() => {
-              const questoesLP = report.questoes?.filter(q => {
-                const code = generateHabilidadeCode(q, skillsMapping);
-                return code.startsWith('LP') || /L\s*\d+\.\d+/.test(code) || /^.*L\s*\d+\.\d+.*$/.test(code);
-              }).length || 0;
-              const acertosLP = report.questoes?.filter((q) => {
-                const code = generateHabilidadeCode(q, skillsMapping);
-                return (code.startsWith('LP') || /L\s*\d+\.\d+/.test(code) || /^.*L\s*\d+\.\d+.*$/.test(code)) && respostasMap[`q${q.numero}`] === true;
-              }).length || 0;
-              return calculateDisciplineProficiency(acertosLP, questoesLP);
-            })(),
-            proficiencia_mat: (() => {
-              const questoesMAT = report.questoes?.filter(q => {
-                const code = generateHabilidadeCode(q, skillsMapping);
-                return !code.startsWith('LP') && !/L\s*\d+\.\d+/.test(code) && !/^.*L\s*\d+\.\d+.*$/.test(code);
-              }).length || 0;
-              const acertosMAT = report.questoes?.filter((q) => {
-                const code = generateHabilidadeCode(q, skillsMapping);
-                return (!code.startsWith('LP') && !/L\s*\d+\.\d+/.test(code) && !/^.*L\s*\d+\.\d+.*$/.test(code)) && respostasMap[`q${q.numero}`] === true;
-              }).length || 0;
-              return calculateDisciplineProficiency(acertosMAT, questoesMAT);
-            })()
+            // ✅ CORREÇÃO: Calcular proficiências específicas por disciplina baseadas nos acertos
+            ...calculateDisciplineProficiencies(
+              report.questoes?.filter((q) => 
+                q.codigo_habilidade?.startsWith('LP') && respostasMap[`q${q.numero}`] === true
+              ).length || 0,
+              report.questoes?.filter((q) => q.codigo_habilidade?.startsWith('LP')).length || 0,
+              report.questoes?.filter((q) => 
+                !q.codigo_habilidade?.startsWith('LP') && respostasMap[`q${q.numero}`] === true
+              ).length || 0,
+              report.questoes?.filter((q) => !q.codigo_habilidade?.startsWith('LP')).length || 0
+            )
           } as StudentResult;
         });
         setStudents(processedStudents);
@@ -903,8 +861,8 @@ export default function AcertoNiveis() {
           const acertos = countCorrectFor(s, subset);
           const total = subset.length;
           
-          // Usar proficiência específica da disciplina
-          const proficienciaDisciplina = getDisciplineProficiency(s, discipline);
+          // ✅ MODIFICADO: Usar apenas a proficiência do backend (mesma para todas as disciplinas)
+          const proficienciaDisciplina = s.proficiencia;
           
           const row = [
             `${i + 1}. ${s.nome}`,
@@ -1029,21 +987,8 @@ export default function AcertoNiveis() {
           // Adicionar totais
           row.push(`${acertos}/${questoes.length}`);
           
-          // Usar proficiência específica da disciplina baseada nas questões desta disciplina
-          let proficienciaDisciplina = s.proficiencia;
-          if (questoes.length > 0) {
-            // Determinar se é LP ou MAT baseado nas questões
-            const isLP = questoes.some(q => {
-              const code = generateHabilidadeCode(q, skillsMapping);
-              return code.startsWith('LP') || /L\s*\d+\.\d+/.test(code) || /^.*L\s*\d+\.\d+.*$/.test(code);
-            });
-            
-            if (isLP && s.acertos_lp !== undefined) {
-              proficienciaDisciplina = calculateDisciplineProficiency(s.acertos_lp, questoes.length);
-            } else if (!isLP && s.acertos_mat !== undefined) {
-              proficienciaDisciplina = calculateDisciplineProficiency(s.acertos_mat, questoes.length);
-            }
-          }
+          // ✅ MODIFICADO: Usar apenas a proficiência do backend (mesma para todas as disciplinas)
+          const proficienciaDisciplina = s.proficiencia;
           
           row.push(proficienciaDisciplina.toFixed(1));
           row.push(s.classificacao);
@@ -1399,28 +1344,9 @@ export default function AcertoNiveis() {
                                      !q.codigo_habilidade?.startsWith('LP') && respostasMap[`q${q.numero}`] === true
                                    ).length || 0,
                                    // Calcular proficiências específicas por disciplina
-                                   proficiencia_lp: (() => {
-                                     const questoesLP = report.questoes?.filter(q => {
-                                       const code = generateHabilidadeCode(q, skillsMapping);
-                                       return code.startsWith('LP') || /L\s*\d+\.\d+/.test(code) || /^.*L\s*\d+\.\d+.*$/.test(code);
-                                     }).length || 0;
-                                     const acertosLP = report.questoes?.filter((q) => {
-                                       const code = generateHabilidadeCode(q, skillsMapping);
-                                       return (code.startsWith('LP') || /L\s*\d+\.\d+/.test(code) || /^.*L\s*\d+\.\d+.*$/.test(code)) && respostasMap[`q${q.numero}`] === true;
-                                     }).length || 0;
-                                     return calculateDisciplineProficiency(acertosLP, questoesLP);
-                                   })(),
-                                   proficiencia_mat: (() => {
-                                     const questoesMAT = report.questoes?.filter(q => {
-                                       const code = generateHabilidadeCode(q, skillsMapping);
-                                       return !code.startsWith('LP') && !/L\s*\d+\.\d+/.test(code) && !/^.*L\s*\d+\.\d+.*$/.test(code);
-                                     }).length || 0;
-                                     const acertosMAT = report.questoes?.filter((q) => {
-                                       const code = generateHabilidadeCode(q, skillsMapping);
-                                       return (!code.startsWith('LP') && !/L\s*\d+\.\d+/.test(code) && !/^.*L\s*\d+\.\d+.*$/.test(code)) && respostasMap[`q${q.numero}`] === true;
-                                     }).length || 0;
-                                     return calculateDisciplineProficiency(acertosMAT, questoesMAT);
-                                   })()
+                                   // ✅ MODIFICADO: Usar apenas a proficiência do backend para todas as disciplinas
+                                   proficiencia_lp: aluno.proficiencia, // Mesma proficiência do backend
+                                   proficiencia_mat: aluno.proficiencia // Mesma proficiência do backend
                                  } as StudentResult;
                                });
                                setStudents(processedStudents);
