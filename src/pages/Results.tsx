@@ -1785,7 +1785,28 @@ export default function Results() {
                   </div>
                   <div className="space-y-2">
                     <div className="text-sm font-medium text-muted-foreground">Série</div>
-                    <div className="font-semibold">{evaluationInfo?.serie || 'Série não informada'}</div>
+                    <div className="font-semibold">
+                      {selectedGrade === 'all' ? (
+                        apiData?.opcoes_proximos_filtros?.series?.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {apiData.opcoes_proximos_filtros.series.slice(0, 3).map((serie, index) => (
+                              <Badge key={serie.id} variant="outline" className="text-xs">
+                                {serie.name}
+                              </Badge>
+                            ))}
+                            {apiData.opcoes_proximos_filtros.series.length > 3 && (
+                              <Badge variant="outline" className="text-xs">
+                                +{apiData.opcoes_proximos_filtros.series.length - 3}
+                              </Badge>
+                            )}
+                          </div>
+                        ) : (
+                          'Série não informada'
+                        )
+                      ) : (
+                        evaluationInfo?.serie || 'Série não informada'
+                      )}
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <div className="text-sm font-medium text-muted-foreground">Escola</div>

@@ -25,12 +25,12 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
 import { RelatorioCompleto } from "@/types/evaluation-results";
 import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
 import { BarChartComponent, DonutChartComponent } from "@/components/ui/charts";
+import { FilterComponentAnalise } from "@/components/filters";
 
 // Interfaces para os dados da API
 interface EvaluationResult {
@@ -59,18 +59,7 @@ interface EvaluationResult {
   status?: 'concluida' | 'em_andamento' | 'pendente' | string;
 }
 
-// Interfaces para os filtros
-interface State {
-  id: string;
-  name: string;
-  uf: string;
-}
-
-interface Municipality { 
-  id: string; 
-  name: string; 
-  state: string; 
-}
+// Interfaces para os filtros (movidas para FilterComponentAnalise)
 
 // Mapa de status estático
 const getStatusConfig = (status: 'concluida' | 'em_andamento' | 'pendente' | string) => {
@@ -134,12 +123,10 @@ export default function AnaliseAvaliacoes() {
   // Estados dos filtros
   const [selectedState, setSelectedState] = useState<string>('all');
   const [selectedMunicipality, setSelectedMunicipality] = useState<string>('all');
+  const [selectedSchool, setSelectedSchool] = useState<string>('all');
   const [selectedEvaluation, setSelectedEvaluation] = useState<string>('all');
 
-  // Estados dos dados dos filtros
-  const [states, setStates] = useState<State[]>([]);
-  const [municipalities, setMunicipalities] = useState<Municipality[]>([]);
-  const [evaluationsByMunicipality, setEvaluationsByMunicipality] = useState<Array<{ id: string; titulo: string; disciplina: string; status: string; data_aplicacao: string }>>([]);
+  // Estados dos dados dos filtros (movidos para FilterComponentAnalise)
 
   // Verificar se o usuário tem permissão
   useEffect(() => {
@@ -154,29 +141,7 @@ export default function AnaliseAvaliacoes() {
     }
   }, [user, navigate, toast]);
 
-  // Carregar filtros iniciais
-  const loadInitialFilters = useCallback(async () => {
-    try {
-      setIsLoadingFilters(true);
-      const statesData = await EvaluationResultsApiService.getFilterStates();
-      setStates(statesData.map(state => ({
-        id: state.id,
-        name: state.nome,
-        uf: state.id
-      })));
-    } catch (error) {
-      console.error("Erro ao carregar filtros iniciais:", error);
-      toast({
-        title: "Erro ao carregar filtros",
-        description: "Não foi possível carregar os filtros. Tente novamente.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoadingFilters(false);
-      setIsLoading(false);
-    }
-  }, [toast]);
-
+  // Inicialização e carregamento de filtros movido para FilterComponentAnalise
   useEffect(() => {
     const initializeData = async () => {
       const token = localStorage.getItem('token');
@@ -193,106 +158,55 @@ export default function AnaliseAvaliacoes() {
           return;
         }
       }
-      await loadInitialFilters();
+      setIsLoading(false);
     };
 
     initializeData();
-  }, [autoLogin, loadInitialFilters, toast]);
-
-  // Carregar municípios quando estado for selecionado
-  useEffect(() => {
-    const loadMunicipalities = async () => {
-      if (selectedState !== 'all') {
-        try {
-          setIsLoadingFilters(true);
-          const municipalitiesData = await EvaluationResultsApiService.getFilterMunicipalities(selectedState);
-          setMunicipalities(municipalitiesData.map(municipality => ({
-            id: municipality.id,
-            name: municipality.nome,
-            state: selectedState
-          })));
-          setEvaluationsByMunicipality([]);
-          setSelectedMunicipality('all');
-          setSelectedEvaluation('all');
-        } catch (error) {
-          console.error("Erro ao carregar municípios:", error);
-        } finally {
-          setIsLoadingFilters(false);
-        }
-      } else {
-        setMunicipalities([]);
-        setEvaluationsByMunicipality([]);
-        setSelectedMunicipality('all');
-        setSelectedEvaluation('all');
-      }
-    };
-
-    loadMunicipalities();
-  }, [selectedState]);
-
-  // Carregar avaliações quando município for selecionado
-  useEffect(() => {
-    const loadEvaluations = async () => {
-      if (selectedMunicipality !== 'all') {
-        try {
-          setIsLoadingFilters(true);
-          const evaluationsData = await EvaluationResultsApiService.getFilterEvaluations({
-            estado: selectedState,
-            municipio: selectedMunicipality
-          });
-          setEvaluationsByMunicipality(evaluationsData.map(evaluation => ({
-            id: evaluation.id,
-            titulo: evaluation.titulo,
-            disciplina: '',
-            status: 'concluida',
-            data_aplicacao: new Date().toISOString()
-          })));
-          setSelectedEvaluation('all');
-        } catch (error) {
-          console.error("Erro ao carregar avaliações:", error);
-          setEvaluationsByMunicipality([]);
-        } finally {
-          setIsLoadingFilters(false);
-        }
-      } else {
-        setEvaluationsByMunicipality([]);
-        setSelectedEvaluation('all');
-      }
-    };
-
-    loadEvaluations();
-  }, [selectedMunicipality, selectedState]);
+  }, [autoLogin, toast]);
 
   // Verificar se todos os filtros obrigatórios estão selecionados
+  // Estado e Município são obrigatórios, Escola pode ser "Todas", Avaliação é obrigatória
   const allRequiredFiltersSelected = selectedState !== 'all' && selectedMunicipality !== 'all' && selectedEvaluation !== 'all';
 
 
 
-  // Função para baixar relatório DOCX
+  // Função para baixar relatório PDF
   const downloadReport = async () => {
     if (!selectedEvaluation || !apiData) return;
     
     try {
       setIsGeneratingReport(true);
       
-      // Buscar o relatório DOCX diretamente do backend
-      const response = await api.get(`/reports/relatorio-pdf/${selectedEvaluation}`, {
+      // Determinar qual tipo de relatório gerar baseado na seleção da escola
+      let apiUrl: string;
+      if (selectedSchool === 'all') {
+        // Relatório para município inteiro (todas as escolas)
+        apiUrl = `/reports/relatorio-pdf/${selectedEvaluation}?city_id=${selectedMunicipality}`;
+      } else {
+        // Relatório para escola específica
+        apiUrl = `/reports/relatorio-pdf/${selectedEvaluation}?school_id=${selectedSchool}`;
+      }
+      
+      // Buscar o relatório PDF diretamente do backend
+      const response = await api.get(apiUrl, {
         responseType: 'blob' // Importante: receber como blob
       });
       
       // Criar URL do blob
-      const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-      const url = window.URL.createObjectURL(blob);
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const blobUrl = window.URL.createObjectURL(blob);
       
       // Criar link de download
       const link = document.createElement('a');
-      link.href = url;
+      link.href = blobUrl;
       
       // Definir nome do arquivo
-      const selectedEvaluationData = evaluationsByMunicipality.find(evaluation => evaluation.id === selectedEvaluation);
-      const evaluationName = selectedEvaluationData?.titulo || 'avaliacao';
+      const evaluationName = apiData?.avaliacao?.titulo || 'avaliacao';
       const sanitizedName = evaluationName.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_').toLowerCase();
-      const fileName = `relatorio_${sanitizedName}_${new Date().toISOString().split('T')[0]}.docx`;
+      
+      // Determinar o tipo de relatório para o nome do arquivo
+      const reportType = selectedSchool === 'all' ? 'municipio' : 'escola';
+      const fileName = `relatorio_${reportType}_${sanitizedName}_${new Date().toISOString().split('T')[0]}.pdf`;
       link.download = fileName;
       
       // Simular clique para download
@@ -301,11 +215,12 @@ export default function AnaliseAvaliacoes() {
       document.body.removeChild(link);
       
       // Limpar URL do blob
-      window.URL.revokeObjectURL(url);
+      window.URL.revokeObjectURL(blobUrl);
       
+      const reportTypeLabel = selectedSchool === 'all' ? 'municipal' : 'da escola';
       toast({
         title: "Relatório Baixado com Sucesso",
-        description: "O relatório DOCX foi salvo no seu dispositivo.",
+        description: `O relatório PDF ${reportTypeLabel} foi salvo no seu dispositivo.`,
       });
       
     } catch (error) {
@@ -328,6 +243,8 @@ export default function AnaliseAvaliacoes() {
           setIsLoadingData(true);
           // Buscar relatório completo da avaliação selecionada
           const relatorio = await EvaluationResultsApiService.getRelatorioCompleto(selectedEvaluation);
+          console.log("📊 Estrutura completa da resposta da API:", relatorio);
+          console.log("📊 Estrutura de acertos_por_habilidade:", relatorio.acertos_por_habilidade);
           setApiData(relatorio);
         } catch (error) {
           console.error("Erro ao carregar dados:", error);
@@ -372,93 +289,18 @@ export default function AnaliseAvaliacoes() {
       </div>
 
       {/* Filtros */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="h-5 w-5" />
-            Filtros
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Estado */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Estado</label>
-              <Select
-                value={selectedState}
-                onValueChange={setSelectedState}
-                disabled={isLoadingFilters}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o estado" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  {states.map(state => (
-                    <SelectItem key={state.id} value={state.id}>
-                      {state.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Município */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Município</label>
-              <Select
-                value={selectedMunicipality}
-                onValueChange={setSelectedMunicipality}
-                disabled={isLoadingFilters || selectedState === 'all'}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o município" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  {municipalities.map(municipality => (
-                    <SelectItem key={municipality.id} value={municipality.id}>
-                      {municipality.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Avaliações */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Avaliações</label>
-              <Select
-                value={selectedEvaluation}
-                onValueChange={setSelectedEvaluation}
-                disabled={isLoadingFilters || selectedMunicipality === 'all'}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a avaliação" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
-                  {evaluationsByMunicipality.map(evaluation => (
-                    <SelectItem key={evaluation.id} value={evaluation.id}>
-                      {evaluation.titulo}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Informação sobre filtros */}
-          <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-            <p className="text-sm text-blue-700">
-              💡 <strong>Hierarquia dos Filtros:</strong> Estado → Município → Avaliação
-            </p>
-            <p className="text-sm text-blue-700 mt-1">
-              Todos os filtros são obrigatórios para visualizar a análise.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      <FilterComponentAnalise
+        selectedState={selectedState}
+        selectedMunicipality={selectedMunicipality}
+        selectedSchool={selectedSchool}
+        selectedEvaluation={selectedEvaluation}
+        onStateChange={setSelectedState}
+        onMunicipalityChange={setSelectedMunicipality}
+        onSchoolChange={setSelectedSchool}
+        onEvaluationChange={setSelectedEvaluation}
+        isLoadingFilters={isLoadingFilters}
+        onLoadingChange={setIsLoadingFilters}
+      />
 
       {/* Mensagem quando não há filtros suficientes */}
       {!allRequiredFiltersSelected && !isLoading && (
@@ -471,7 +313,7 @@ export default function AnaliseAvaliacoes() {
               Selecione todos os filtros para continuar
             </h3>
             <p className="text-gray-600 text-center max-w-md">
-              Para visualizar a análise das avaliações, você precisa selecionar: <strong>Estado</strong>, <strong>Município</strong> e <strong>Avaliação</strong>.
+              Para visualizar a análise das avaliações, você precisa selecionar: <strong>Estado</strong>, <strong>Município</strong> e <strong>Avaliação</strong>. A <strong>Escola</strong> pode ser "Todas" para ver todas as escolas do município.
             </p>
           </CardContent>
         </Card>
@@ -527,7 +369,7 @@ export default function AnaliseAvaliacoes() {
                 <div>
                   <h5 className="font-medium mb-2">Disciplinas:</h5>
                   <div className="flex flex-wrap gap-2">
-                    {apiData.avaliacao.disciplinas.map((disciplina: string, index: number) => (
+                    {apiData.avaliacao.disciplinas?.map((disciplina: string, index: number) => (
                       <Badge key={index} variant="secondary">
                         {disciplina}
                       </Badge>
@@ -559,7 +401,7 @@ export default function AnaliseAvaliacoes() {
                     </tr>
                   </thead>
                   <tbody>
-                    {apiData.total_alunos.por_turma.map((turma, index: number) => (
+                    {apiData.total_alunos.por_turma?.map((turma, index: number) => (
                       <tr key={index} className="hover:bg-gray-50">
                         <td className="border border-gray-300 px-4 py-2">{turma.turma}</td>
                         <td className="border border-gray-300 px-4 py-2 text-center">{turma.matriculados}</td>
@@ -609,7 +451,7 @@ export default function AnaliseAvaliacoes() {
                            </tr>
                          </thead>
                          <tbody>
-                           {dadosDisciplina.por_turma.map((turma, index: number) => (
+                           {dadosDisciplina.por_turma?.map((turma, index: number) => (
                              <tr key={index} className="hover:bg-gray-50">
                                <td className="border border-gray-300 px-4 py-2 font-medium">{turma.turma}</td>
                                <td className="border border-gray-300 px-4 py-2 text-center bg-red-50">{turma.abaixo_do_basico}</td>
@@ -660,7 +502,7 @@ export default function AnaliseAvaliacoes() {
                            </tr>
                          </thead>
                          <tbody>
-                           {dadosDisciplina.por_turma.map((turma, index: number) => (
+                           {dadosDisciplina.por_turma?.map((turma, index: number) => (
                              <tr key={index} className="hover:bg-gray-50">
                                <td className="border border-gray-300 px-4 py-2 font-medium">{turma.turma}</td>
                                <td className="border border-gray-300 px-4 py-2 text-center">{turma.proficiencia.toFixed(2)}</td>
@@ -709,7 +551,7 @@ export default function AnaliseAvaliacoes() {
                            </tr>
                          </thead>
                          <tbody>
-                           {dadosDisciplina.por_turma.map((turma, index: number) => (
+                           {dadosDisciplina.por_turma?.map((turma, index: number) => (
                              <tr key={index} className="hover:bg-gray-50">
                                <td className="border border-gray-300 px-4 py-2 font-medium">{turma.turma}</td>
                                <td className="border border-gray-300 px-4 py-2 text-center">{turma.nota.toFixed(2)}</td>
@@ -750,32 +592,36 @@ export default function AnaliseAvaliacoes() {
                         {disciplina}
                       </h4>
                       
-                      {/* Grid de habilidades */}
+                      {/* Grid de questões */}
                       <div className="grid grid-cols-13 gap-0 border border-gray-300">
-                        {dadosDisciplina.habilidades.map((habilidade, index: number) => (
+                        {dadosDisciplina.questoes && dadosDisciplina.questoes.length > 0 ? dadosDisciplina.questoes.map((questao, index: number) => (
                           <div key={index} className="flex flex-col">
                             {/* Header da questão */}
                             <div className="bg-blue-600 text-white text-center py-2 px-1 text-sm font-medium border-r border-gray-300 last:border-r-0">
-                              {index + 1}ª Q
+                              {questao.numero_questao}ª Q
                             </div>
                             
                             {/* Código da habilidade */}
                             <div className="bg-yellow-400 text-black text-center py-2 px-1 text-sm font-medium border-r border-gray-300 last:border-r-0 border-t border-gray-300">
-                              {habilidade.codigo}
+                              {questao.codigo}
                             </div>
                             
                             {/* Percentual com cor baseada no valor */}
                             <div 
                               className={`text-center py-2 px-1 text-sm font-medium border-r border-gray-300 last:border-r-0 border-t border-gray-300 ${
-                                habilidade.percentual >= 70 
+                                questao.percentual >= 70 
                                   ? 'bg-green-500 text-white' 
                                   : 'bg-white text-black'
                               }`}
                             >
-                              {habilidade.percentual}%
+                              {questao.percentual}%
                             </div>
                           </div>
-                        ))}
+                        )) : (
+                          <div className="col-span-13 text-center py-8 text-gray-500">
+                            Nenhuma questão encontrada para esta disciplina.
+                          </div>
+                        )}
                       </div>
                       
                       {/* Legenda */}
@@ -799,3 +645,4 @@ export default function AnaliseAvaliacoes() {
     </div>
   );
 }
+
