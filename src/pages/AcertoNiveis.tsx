@@ -575,6 +575,21 @@ export default function AcertoNiveis() {
         setIsLoading(false);
       }
     }
+    
+    // Se não há detailedReport, tentar carregar dados básicos para o PDF
+    if (!detailedReport) {
+      try {
+        setIsLoading(true);
+        const fallbackReport = await EvaluationResultsApiService.getDetailedReport(evaluationInfo.id);
+        if (fallbackReport) {
+          setDetailedReport(fallbackReport);
+        }
+      } catch (error) {
+        console.warn('Não foi possível carregar relatório detalhado, continuando com dados básicos');
+      } finally {
+        setIsLoading(false);
+      }
+    }
     try {
       const jsPDF = (await import('jspdf')).default;
       const autoTable = (await import('jspdf-autotable')).default;
@@ -819,7 +834,7 @@ export default function AcertoNiveis() {
           const row = [
             `${i + 1}. ${s.nome}`,
             `${acertos}/${total}`,
-            s.proficiencia.toFixed(1),
+             s.proficiencia.toFixed(1),
             s.classificacao
           ];
           bodyRows.push(row);
@@ -1146,7 +1161,7 @@ export default function AcertoNiveis() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Acerto e Níveis</h1>
-          <p className="text-gray-600 mt-2">Selecione uma avaliação e exporte o PDF consolidado por disciplina.</p>
+          <p className="text-gray-600 mt-2">Selecione uma avaliação e exporte o PDF consolidado.</p>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="text-sm">
@@ -1218,10 +1233,10 @@ export default function AcertoNiveis() {
                  <div className="flex items-center justify-between mb-4">
                    <h3 className="text-lg font-semibold">Filtros Específicos</h3>
                    {(selectedSchoolId || selectedGradeId || selectedClassId) && (
-                     <Button
-                       variant="outline"
-                       size="sm"
-                       onClick={async () => {
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
                          setSelectedSchoolId("");
                          setSelectedGradeId("");
                          setSelectedClassId("");
@@ -1372,22 +1387,22 @@ export default function AcertoNiveis() {
                  <span className="text-gray-500 text-xs uppercase tracking-wide">Avaliação</span>
                  <div className="font-semibold text-gray-900 mt-1">{evaluationInfo.titulo}</div>
                </div>
-               <div className="p-3 bg-gray-50 rounded-lg">
-                 <span className="text-gray-500 text-xs uppercase tracking-wide">Escola</span>
-                 <div className="font-semibold text-gray-900 mt-1">
-                   {selectedSchoolId ? schools.find(s => s.id === selectedSchoolId)?.nome || 'Escola Selecionada' : 'Todas as Escolas'}
-                 </div>
-               </div>
+                  <div className="p-3 bg-gray-50 rounded-lg">
+                  <span className="text-gray-500 text-xs uppercase tracking-wide">Escola</span>
+                  <div className="font-semibold text-gray-900 mt-1">
+                    {selectedSchoolId ? schools.find(s => s.id === selectedSchoolId)?.nome || 'Escola Selecionada' : 'Todas as Escolas'}
+                  </div>
+                </div>
                <div className="p-3 bg-gray-50 rounded-lg">
                  <span className="text-gray-500 text-xs uppercase tracking-wide">Município</span>
                  <div className="font-semibold text-gray-900 mt-1">{evaluationInfo.municipio}</div>
                </div>
-               <div className="p-3 bg-gray-50 rounded-lg">
-                 <span className="text-gray-500 text-xs uppercase tracking-wide">Série</span>
-                 <div className="font-semibold text-gray-900 mt-1">
-                   {selectedGradeId ? grades.find(g => g.id === selectedGradeId)?.nome || 'Série Selecionada' : evaluationInfo.serie}
-                 </div>
-               </div>
+                <div className="p-3 bg-gray-50 rounded-lg">
+                  <span className="text-gray-500 text-xs uppercase tracking-wide">Série</span>
+                  <div className="font-semibold text-gray-900 mt-1">
+                    {selectedGradeId ? grades.find(g => g.id === selectedGradeId)?.nome || 'Série Selecionada' : evaluationInfo.serie}
+                  </div>
+                </div>
              </div>
 
              {/* Estatísticas Detalhadas */}
