@@ -376,9 +376,9 @@ export default function Results() {
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
 
 
-  // ✅ NOVO: Função para carregar alunos faltosos
+  // ✅ CORRIGIDO: Função para carregar alunos faltosos baseada em alunos selecionados para a avaliação
   const loadAbsentStudents = useCallback(async () => {
-    if (!apiData?.tabela_detalhada?.disciplinas?.length) {
+    if (!selectedEvaluation || selectedEvaluation === 'all') {
       setAbsentStudents([]);
       return;
     }
@@ -386,40 +386,39 @@ export default function Results() {
     try {
       setIsLoadingAbsentStudents(true);
       
-      // Coletar todos os alunos únicos de todas as disciplinas
-      const allStudents = new Map<string, {
-        id: string;
-        nome: string;
-        turma: string;
-        escola: string;
-        serie: string;
-      }>();
+      // ✅ NOVO: Obter lista completa de alunos selecionados para a avaliação
+      const selectedStudentsResponse = await EvaluationResultsApiService.getStudentsByEvaluation(selectedEvaluation);
+      
+      if (!selectedStudentsResponse || selectedStudentsResponse.length === 0) {
+        setAbsentStudents([]);
+        return;
+      }
 
-      apiData.tabela_detalhada.disciplinas.forEach(disciplina => {
-        disciplina.alunos.forEach(aluno => {
-          if (!allStudents.has(aluno.id)) {
-            allStudents.set(aluno.id, {
-              id: aluno.id,
-              nome: aluno.nome,
-              turma: aluno.turma,
-              escola: aluno.escola,
-              serie: aluno.serie
-            });
-          }
+      // ✅ NOVO: Obter lista de alunos que participaram (responderam pelo menos uma questão)
+      const participatingStudents = new Set<string>();
+      
+      if (apiData?.tabela_detalhada?.disciplinas?.length) {
+        apiData.tabela_detalhada.disciplinas.forEach(disciplina => {
+          disciplina.alunos.forEach(aluno => {
+            // Verificar se o aluno respondeu pelo menos uma questão nesta disciplina
+            const hasAnsweredAnyQuestion = aluno.respostas_por_questao.some(resposta => resposta.respondeu);
+            if (hasAnsweredAnyQuestion) {
+              participatingStudents.add(aluno.id);
+            }
+          });
         });
-      });
+      }
 
-      // Filtrar apenas alunos que não responderam nenhuma questão
-      const absentStudentsList = Array.from(allStudents.values()).filter(aluno => {
-        // Verificar se o aluno não respondeu nenhuma questão em nenhuma disciplina
-        return apiData.tabela_detalhada.disciplinas.every(disciplina => {
-          const disciplinaAluno = disciplina.alunos.find(a => a.id === aluno.id);
-          if (!disciplinaAluno) return true; // Aluno não está nesta disciplina
-          
-          // Verificar se não respondeu nenhuma questão nesta disciplina
-          return !disciplinaAluno.respostas_por_questao.some(resposta => resposta.respondeu);
-        });
-      });
+      // ✅ NOVO: Calcular alunos faltosos = selecionados - participantes
+      const absentStudentsList = selectedStudentsResponse
+        .filter(selectedStudent => !participatingStudents.has(selectedStudent.id))
+        .map(selectedStudent => ({
+          id: selectedStudent.id,
+          nome: selectedStudent.nome,
+          turma: selectedStudent.turma,
+          escola: 'Escola não informada', // Propriedade não disponível na interface StudentResult
+          serie: 'Série não informada' // Propriedade não disponível na interface StudentResult
+        }));
 
       setAbsentStudents(absentStudentsList);
     } catch (error) {
@@ -428,7 +427,7 @@ export default function Results() {
     } finally {
       setIsLoadingAbsentStudents(false);
     }
-  }, [apiData]);
+  }, [selectedEvaluation, apiData]);
 
   // Handler para mostrar modal de alunos faltosos
   const handleViewAbsent = useCallback(async () => {
@@ -1164,7 +1163,8 @@ export default function Results() {
 
   // ✅ NOVA IMPLEMENTAÇÃO: Processar dados dos alunos da tabela_detalhada da nova API
   const loadStudentsData = useCallback(async () => {
-    if (!selectedEvaluation || selectedEvaluation === 'all' || !apiData) {
+    // ✅ MODIFICADO: Permitir carregamento quando avaliação específica estiver selecionada
+    if (selectedEvaluation === 'all' || !apiData) {
       setStudents([]);
       setDetailedReport(null);
       setQuestionsWithSkills([]);
@@ -1354,6 +1354,14 @@ export default function Results() {
       // Carregar respostas detalhadas antes de navegar
       handleLoadStudentAnswers(studentId);
       navigate(`/app/avaliacao/${selectedEvaluation}/aluno/${studentId}/resultados`);
+    }
+  };
+
+  // ✅ NOVO: Função para abrir página detalhada em nova guia
+  const handleOpenInNewTab = (studentId: string) => {
+    if (selectedEvaluation && selectedEvaluation !== 'all') {
+      const url = `/app/avaliacao/${selectedEvaluation}/aluno/${studentId}/resultados`;
+      window.open(url, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -1835,11 +1843,11 @@ export default function Results() {
             <>
               {/* Abas com diferentes visualizações */}
               <Tabs defaultValue="charts" className="w-full">
-                <TabsList className={`grid w-full ${selectedSchool !== 'all' ? 'grid-cols-4' : 'grid-cols-3'}`}>
+                <TabsList className={`grid w-full ${selectedEvaluation !== 'all' ? 'grid-cols-4' : 'grid-cols-3'}`}>
                   <TabsTrigger value="charts">Gráficos</TabsTrigger>
                   <TabsTrigger value="tables">Tabelas</TabsTrigger>
                   <TabsTrigger value="statistics">Estatísticas</TabsTrigger>
-                  {selectedSchool !== 'all' && (
+                  {selectedEvaluation !== 'all' && (
                     <TabsTrigger value="ranking">Ranking</TabsTrigger>
                   )}
                 </TabsList>
@@ -1901,18 +1909,18 @@ export default function Results() {
                 </TabsContent>
 
                 <TabsContent value="tables" className="space-y-6" id="results-tables">
-                  {selectedSchool === 'all' ? (
-                    // Estado inicial: Nenhuma escola selecionada
+                  {selectedEvaluation === 'all' ? (
+                    // Estado inicial: Nenhuma avaliação selecionada
                     <Card>
                       <CardContent className="flex flex-col items-center justify-center py-16">
                         <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mb-6">
-                          <School className="h-10 w-10 text-blue-600" />
+                          <BookOpen className="h-10 w-10 text-blue-600" />
                         </div>
                         <h3 className="text-xl font-semibold text-gray-900 mb-3">
-                          Selecione uma Escola
+                          Selecione uma Avaliação
                         </h3>
                         <p className="text-gray-600 text-center max-w-md mb-6">
-                          Para visualizar os resultados detalhados dos alunos, é necessário selecionar uma escola específica nos filtros acima.
+                          Para visualizar os resultados detalhados dos alunos, é necessário selecionar uma avaliação específica nos filtros acima.
                         </p>
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-md">
                           <div className="flex items-start gap-3">
@@ -1928,7 +1936,7 @@ export default function Results() {
                       </CardContent>
                     </Card>
                   ) : (
-                    // Conteúdo normal da tabela quando escola está selecionada
+                    // Conteúdo normal da tabela quando avaliação está selecionada
                     <>
 
 
@@ -2041,6 +2049,7 @@ export default function Results() {
                               <DisciplineTables
                                 tabelaDetalhada={apiData.tabela_detalhada}
                                 onViewStudentDetails={handleViewStudentDetails}
+                                onOpenInNewTab={handleOpenInNewTab}
                               />
                             ) : (
                               <div className="text-center py-12">
@@ -2095,7 +2104,7 @@ export default function Results() {
 
 
 
-                {selectedSchool !== 'all' && (
+                {selectedEvaluation !== 'all' && (
                   <TabsContent value="ranking" className="space-y-6">
                     {(() => {
                       // ✅ NOVO: Usar dados do ranking diretamente do backend
@@ -2123,6 +2132,11 @@ export default function Results() {
             <DialogTitle className="flex items-center gap-2">
               <Users className="h-5 w-5 text-red-600" />
               Alunos Faltosos
+              {evaluationInfo && (
+                <span className="text-sm font-normal text-gray-600 ml-2">
+                  - {evaluationInfo.titulo}
+                </span>
+              )}
             </DialogTitle>
           </DialogHeader>
           
@@ -2144,7 +2158,7 @@ export default function Results() {
                     </span>
                   </div>
                   <p className="text-sm text-red-700">
-                    Estes alunos não realizaram a avaliação.
+                    Estes alunos foram selecionados para a avaliação mas não a realizaram.
                   </p>
                 </div>
                 

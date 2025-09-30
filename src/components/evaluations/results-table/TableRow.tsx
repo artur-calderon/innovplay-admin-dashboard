@@ -1,6 +1,7 @@
 import React from 'react';
 import { Eye, Check, X, Minus } from 'lucide-react';
 import { StudentResult, VisibleFields } from '../../../types/results-table';
+import { ContextMenu } from '../../ui/context-menu';
 
 // Interface para questões da tabela_detalhada
 interface TabelaDetalhadaQuestao {
@@ -28,6 +29,8 @@ interface TableRowProps {
   tabelaDetalhada?: {
     disciplinas: TabelaDetalhadaDisciplina[];
   };
+  // ✅ NOVO: Função para abrir em nova guia
+  onOpenInNewTab?: (studentId: string) => void;
 }
 
 export const TableRow: React.FC<TableRowProps> = ({
@@ -38,7 +41,8 @@ export const TableRow: React.FC<TableRowProps> = ({
   onViewStudentDetails,
   detailedReport,
   evaluationId,
-  tabelaDetalhada
+  tabelaDetalhada,
+  onOpenInNewTab
 }) => {
   
   // ✅ NOVO: Processar respostas reais da tabela_detalhada
@@ -97,10 +101,25 @@ export const TableRow: React.FC<TableRowProps> = ({
     >
       {/* Nome do Aluno */}
       <td className="px-4 py-3 text-sm font-medium text-gray-900 whitespace-nowrap border border-gray-300">
-        <div className="flex items-center gap-2">
-          <span>{student.nome}</span>
-          <Eye className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-        </div>
+        <ContextMenu
+          onViewDetails={() => onViewStudentDetails(student.id)}
+          onOpenInNewTab={() => onOpenInNewTab?.(student.id)}
+          studentName={student.nome}
+        >
+          <div 
+            className="flex items-center gap-2 cursor-pointer"
+            onClick={(e) => {
+              // ✅ NOVO: Clique esquerdo navega para página detalhada
+              if (e.button === 0 || e.type === 'click') {
+                e.stopPropagation(); // Evitar que o evento borbulhe para a linha
+                onViewStudentDetails(student.id);
+              }
+            }}
+          >
+            <span className="hover:text-blue-600 transition-colors">{student.nome}</span>
+            <Eye className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+          </div>
+        </ContextMenu>
       </td>
 
       {/* Questões individuais */}
