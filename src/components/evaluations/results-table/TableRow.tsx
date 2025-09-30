@@ -78,8 +78,15 @@ export const TableRow: React.FC<TableRowProps> = ({
       disciplina: string;
     }> = [];
 
-    tabelaDetalhada.disciplinas.forEach(disciplina => {
-      disciplina.questoes.forEach(questao => {
+    // ✅ NOVO: Log detalhado do processamento no TableRow
+    console.log('🔍 [DEBUG] TableRow - Processando questões para aluno:', student.nome);
+    console.log('📊 Dados da tabela_detalhada:', tabelaDetalhada);
+
+    tabelaDetalhada.disciplinas.forEach((disciplina, disciplinaIndex) => {
+      console.log(`📚 Disciplina ${disciplinaIndex + 1}: ${disciplina.nome}`);
+      disciplina.questoes.forEach((questao, questaoIndex) => {
+        console.log(`    Q${questao.numero} (índice ${questaoIndex}): ${questao.habilidade} [${questao.codigo_habilidade}]`);
+        
         questions.push({
           numero: questao.numero,
           habilidade: questao.habilidade,
@@ -90,8 +97,15 @@ export const TableRow: React.FC<TableRowProps> = ({
       });
     });
 
-    return questions.sort((a, b) => a.numero - b.numero);
-  }, [tabelaDetalhada]);
+    const sortedQuestions = questions.sort((a, b) => a.numero - b.numero);
+    
+    console.log('📝 TableRow - Questões ordenadas para renderização:');
+    sortedQuestions.forEach((questao, index) => {
+      console.log(`  ${index + 1}. Q${questao.numero} - ${questao.disciplina}: ${questao.habilidade}`);
+    });
+
+    return sortedQuestions;
+  }, [tabelaDetalhada, student.nome]);
 
   return (
     <tr 
@@ -125,7 +139,7 @@ export const TableRow: React.FC<TableRowProps> = ({
       {/* Questões individuais */}
       {allQuestions.map((questao, index) => {
         const answer = processStudentAnswers[questao.numero];
-        const questionDisplayNumber = index + 1; // ✅ CORRIGIDO: Sempre mostrar Q1, Q2, Q3, Q4...
+        const questionDisplayNumber = questao.numero; // ✅ CORRIGIDO: Usar o número real da questão
         const uniqueKey = `${student.id}-${questao.disciplina}-q${questao.numero}-${questao.question_id}-${index}`;
         
         return (

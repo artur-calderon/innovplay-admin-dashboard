@@ -145,8 +145,17 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
   const getAllQuestions = useMemo(() => {
     const allQuestions: QuestaoConsolidada[] = [];
 
-    tabelaDetalhada.disciplinas.forEach(disciplina => {
-      disciplina.questoes.forEach(questao => {
+    // ✅ NOVO: Log detalhado do processamento das questões
+    console.log('🔍 [DEBUG] Processando questões no DisciplineTables:');
+    console.log('📊 Dados da tabela_detalhada:', tabelaDetalhada);
+
+    tabelaDetalhada.disciplinas.forEach((disciplina, disciplinaIndex) => {
+      console.log(`📚 Disciplina ${disciplinaIndex + 1}: ${disciplina.nome}`);
+      console.log(`  🎯 Total de questões: ${disciplina.questoes?.length || 0}`);
+      
+      disciplina.questoes.forEach((questao, questaoIndex) => {
+        console.log(`    Q${questao.numero} (índice ${questaoIndex}): ${questao.habilidade} [${questao.codigo_habilidade}]`);
+        
         allQuestions.push({
           numero: questao.numero,
           habilidade: questao.habilidade,
@@ -157,7 +166,14 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
       });
     });
 
-    return allQuestions.sort((a, b) => a.numero - b.numero);
+    const sortedQuestions = allQuestions.sort((a, b) => a.numero - b.numero);
+    
+    console.log('📝 Questões consolidadas e ordenadas:');
+    sortedQuestions.forEach((questao, index) => {
+      console.log(`  ${index + 1}. Q${questao.numero} - ${questao.disciplina}: ${questao.habilidade}`);
+    });
+
+    return sortedQuestions;
   }, [tabelaDetalhada.disciplinas]);
 
   // ✅ NOVO: Consolidar dados dos alunos de todas as disciplinas (com memoização para performance)
