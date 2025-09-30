@@ -546,13 +546,9 @@ export default function AcertoNiveis() {
     const match = fromText.match(/(LP\d+L\d+\.\d+|\d+N\d\.\d+|[A-Z]{2}\d+L\d+\.\d+|\d+[LMSN]\d+\.\d+|\d+\s+[LMSN]\s+\d+\.\d+)/);
     if (match && match[1]) return match[1].toUpperCase();
 
-    // 4) Heurística por disciplina
+    // 4) Fallback neutro (sem inferir disciplina)
     const numero = questao.numero || 1;
-    const qtdPorBloco = 5; // heurística de agrupamento
-    const serie = Math.min(9, Math.floor((numero - 1) / qtdPorBloco) + 1);
-    // Se o mapping tiver muitos códigos LP, assumir LP; caso contrário, MAT
-    const isLPByMapping = Object.values(mapping).some(code => code?.toUpperCase().startsWith('LP'));
-    return isLPByMapping ? `LP${serie}L1.${numero}` : `${serie}N1.${numero}`;
+    return `Q${numero}`;
   };
 
   const handleGeneratePDF = async () => {
