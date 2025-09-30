@@ -478,8 +478,12 @@ export interface NotaGeral {
 
 export interface QuestaoHabilidade {
   numero: number;
+  numero_questao: number;
   acertos: number;
   total: number;
+  percentual: number;
+  codigo: string;
+  descricao: string;
 }
 
 export interface Habilidade {
@@ -493,7 +497,7 @@ export interface Habilidade {
 }
 
 export interface AcertosPorHabilidadeDisciplina {
-  habilidades: Habilidade[];
+  questoes: QuestaoHabilidade[];
 }
 
 export interface AcertosPorHabilidade {

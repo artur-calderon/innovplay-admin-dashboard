@@ -1465,6 +1465,7 @@ export class EvaluationResultsApiService {
   static async getFilterEvaluations(filters: {
     estado: string;
     municipio: string;
+    escola?: string;
   }): Promise<Array<{
     id: string;
     titulo: string;
@@ -1473,6 +1474,9 @@ export class EvaluationResultsApiService {
       const params = new URLSearchParams();
       params.append('estado', filters.estado);
       params.append('municipio', filters.municipio);
+      if (filters.escola) {
+        params.append('escola', filters.escola);
+      }
 
       const url = `/evaluation-results/opcoes-filtros/avaliacoes?${params}`;
     
