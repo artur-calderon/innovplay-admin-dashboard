@@ -70,11 +70,14 @@ interface DisciplineTablesProps {
     };
   };
   onViewStudentDetails?: (studentId: string) => void;
+  // ✅ NOVO: Função para abrir em nova guia
+  onOpenInNewTab?: (studentId: string) => void;
 }
 
 export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
   tabelaDetalhada,
-  onViewStudentDetails
+  onViewStudentDetails,
+  onOpenInNewTab
 }) => {
   // ✅ NOVO: Estado para gerenciar visualização de muitas questões
   const [currentQuestionWindow, setCurrentQuestionWindow] = useState(0);
@@ -164,7 +167,16 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
     // Pegar alunos da primeira disciplina como base (todos devem ter os mesmos alunos)
     const baseStudents = tabelaDetalhada.disciplinas[0].alunos;
     
-    return baseStudents.map(aluno => {
+    // ✅ CORRIGIDO: Filtrar apenas alunos que responderam pelo menos uma questão
+    const studentsWithAnswers = baseStudents.filter(aluno => {
+      // Verificar se o aluno respondeu pelo menos uma questão em qualquer disciplina
+      return tabelaDetalhada.disciplinas.some(disciplina => {
+        const disciplinaAluno = disciplina.alunos.find(a => a.id === aluno.id);
+        return disciplinaAluno && disciplinaAluno.respostas_por_questao.some(resposta => resposta.respondeu);
+      });
+    });
+    
+    return studentsWithAnswers.map(aluno => {
       // Consolidar todas as respostas do aluno de todas as disciplinas
       const allResponses: Array<{
         questao: number;
@@ -386,8 +398,8 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                   tabelaDetalhada={{
                     disciplinas: (allQuestions.length > MAX_QUESTIONS_FOR_FULL_VIEW 
                       ? getQuestionWindow(allQuestions, currentQuestionWindow) 
-                      : allQuestions).map(q => ({
-                      id: `disciplina-${q.numero}`,
+                      : allQuestions).map((q, index) => ({
+                      id: `disciplina-${q.numero}-${index}`,
                       nome: (q as QuestaoConsolidada).disciplina,
                       questoes: [{
                         numero: q.numero,
@@ -453,12 +465,13 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                         nivel: true
                       }}
                       onViewStudentDetails={onViewStudentDetails}
+                      onOpenInNewTab={onOpenInNewTab}
                       evaluationId="visao-geral"
                       tabelaDetalhada={{
                         disciplinas: (allQuestions.length > MAX_QUESTIONS_FOR_FULL_VIEW 
                           ? getQuestionWindow(allQuestions, currentQuestionWindow) 
-                          : allQuestions).map(q => ({
-                          id: `disciplina-${q.numero}`,
+                          : allQuestions).map((q, index) => ({
+                          id: `disciplina-${q.numero}-${index}`,
                           nome: (q as QuestaoConsolidada).disciplina,
                           questoes: [{
                             numero: q.numero,
@@ -569,7 +582,10 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                   successThreshold={60}
                 />
                 <tbody>
-                  {disciplina.alunos.map((aluno, studentIndex) => (
+                  {disciplina.alunos.filter(aluno => {
+                    // ✅ CORRIGIDO: Filtrar apenas alunos que responderam pelo menos uma questão
+                    return aluno.respostas_por_questao.some(resposta => resposta.respondeu);
+                  }).map((aluno, studentIndex) => (
                     <TableRow
                       key={`${disciplina.id}-${aluno.id}`}
                       student={{
@@ -608,6 +624,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                         nivel: true
                       }}
                       onViewStudentDetails={onViewStudentDetails}
+                      onOpenInNewTab={onOpenInNewTab}
                       evaluationId={disciplina.id}
                       tabelaDetalhada={{
                         disciplinas: [{

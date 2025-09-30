@@ -444,7 +444,7 @@ function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) 
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold text-orange-600">
-                            {proficiencia ? proficiencia.toFixed(0) : 'N/A'}
+                            {proficiencia ? proficiencia.toString() : 'N/A'}
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
                             Nível: {classificacao}
@@ -475,11 +475,11 @@ function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) 
                                 <div className="flex justify-between text-sm">
                                     <span>Nível de Proficiência Alcançado</span>
                                     <span className="font-bold">
-                                        {proficiencia ? proficiencia.toFixed(0) : 0} pontos
+                                        {proficiencia ? proficiencia.toString() : 0} pontos
                                     </span>
                                 </div>
                                 <Progress 
-                                    value={Math.min((proficiencia / 500) * 100, 100)} 
+                                    value={Math.min((proficiencia / 412.5) * 100, 100)} 
                                     className="h-3" 
                                 />
                             </div>

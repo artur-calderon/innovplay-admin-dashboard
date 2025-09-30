@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +16,8 @@ import {
   Filter,
   Search,
   BarChart3,
-  BookOpen
+  BookOpen,
+  Check
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -115,6 +116,32 @@ interface TabelaDetalhada {
 
 // Importar tipos do serviço
 import type { NovaRespostaAPI, RankingItem } from '@/services/evaluationResultsApi';
+
+// ✅ NOVO: Interfaces para tipagem correta
+interface RankingItemWithAluno {
+  aluno_id: string;
+  nome: string;
+  turma: string;
+  nota_geral: number;
+  proficiencia_geral: number;
+  classificacao_geral: string;
+  total_questoes: number;
+  total_acertos: number;
+}
+
+interface DetailedReportAluno {
+  id: string;
+  nome: string;
+  turma: string;
+  nota_final: number;
+  proficiencia: number;
+  classificacao: string;
+  total_acertos: number;
+  total_erros: number;
+  total_em_branco: number;
+  respostas?: Array<{ tempo_gasto: number }>;
+  status: string;
+}
 
 // Interfaces para os filtros
 interface State {
@@ -349,12 +376,64 @@ export default function Results() {
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
 
 
-  // Handler para focar em alunos faltosos
-  const handleViewAbsent = useCallback(() => {
-    setViewMode('table');
-    const el = document.getElementById('results-tables');
-    if (el) el.scrollIntoView({ behavior: 'smooth' });
-  }, []);
+  // ✅ CORRIGIDO: Função para carregar alunos faltosos baseada em alunos selecionados para a avaliação
+  const loadAbsentStudents = useCallback(async () => {
+    if (!selectedEvaluation || selectedEvaluation === 'all') {
+      setAbsentStudents([]);
+      return;
+    }
+
+    try {
+      setIsLoadingAbsentStudents(true);
+      
+      // ✅ NOVO: Obter lista completa de alunos selecionados para a avaliação
+      const selectedStudentsResponse = await EvaluationResultsApiService.getStudentsByEvaluation(selectedEvaluation);
+      
+      if (!selectedStudentsResponse || selectedStudentsResponse.length === 0) {
+        setAbsentStudents([]);
+        return;
+      }
+
+      // ✅ NOVO: Obter lista de alunos que participaram (responderam pelo menos uma questão)
+      const participatingStudents = new Set<string>();
+      
+      if (apiData?.tabela_detalhada?.disciplinas?.length) {
+        apiData.tabela_detalhada.disciplinas.forEach(disciplina => {
+          disciplina.alunos.forEach(aluno => {
+            // Verificar se o aluno respondeu pelo menos uma questão nesta disciplina
+            const hasAnsweredAnyQuestion = aluno.respostas_por_questao.some(resposta => resposta.respondeu);
+            if (hasAnsweredAnyQuestion) {
+              participatingStudents.add(aluno.id);
+            }
+          });
+        });
+      }
+
+      // ✅ NOVO: Calcular alunos faltosos = selecionados - participantes
+      const absentStudentsList = selectedStudentsResponse
+        .filter(selectedStudent => !participatingStudents.has(selectedStudent.id))
+        .map(selectedStudent => ({
+          id: selectedStudent.id,
+          nome: selectedStudent.nome,
+          turma: selectedStudent.turma,
+          escola: 'Escola não informada', // Propriedade não disponível na interface StudentResult
+          serie: 'Série não informada' // Propriedade não disponível na interface StudentResult
+        }));
+
+      setAbsentStudents(absentStudentsList);
+    } catch (error) {
+      console.error('Erro ao carregar alunos faltosos:', error);
+      setAbsentStudents([]);
+    } finally {
+      setIsLoadingAbsentStudents(false);
+    }
+  }, [selectedEvaluation, apiData]);
+
+  // Handler para mostrar modal de alunos faltosos
+  const handleViewAbsent = useCallback(async () => {
+    await loadAbsentStudents();
+    setShowAbsentStudentsModal(true);
+  }, [loadAbsentStudents]);
 
 
   
@@ -378,6 +457,17 @@ export default function Results() {
     }>;
   } | null>(null);
   const [isLoadingStudentAnswers, setIsLoadingStudentAnswers] = useState(false);
+
+  // ✅ NOVO: Estados para modal de alunos faltosos
+  const [showAbsentStudentsModal, setShowAbsentStudentsModal] = useState(false);
+  const [absentStudents, setAbsentStudents] = useState<Array<{
+    id: string;
+    nome: string;
+    turma: string;
+    escola: string;
+    serie: string;
+  }>>([]);
+  const [isLoadingAbsentStudents, setIsLoadingAbsentStudents] = useState(false);
 
   // Estados de paginação
   const currentPage = 1;
@@ -635,6 +725,10 @@ export default function Results() {
     loadClasses();
   }, [selectedGrade, selectedState, selectedMunicipality, selectedEvaluation, selectedSchool]);
 
+  // ✅ NOVO: Refs para debounce
+  const loadAllDataTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const loadStudentsDataTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // ✅ NOVA IMPLEMENTAÇÃO: CARREGAMENTO SIMPLIFICADO COM A NOVA API UNIFICADA
   const loadAllData = useCallback(async () => {
 
@@ -676,10 +770,18 @@ export default function Results() {
             serie: evaluationsResponse.estatisticas_gerais.serie,
           };
 
-          // Coletar disciplinas dos resultados por disciplina
-          const subjectsFromResults = evaluationsResponse.resultados_por_disciplina
-            .map(d => extractSubjectName(d.disciplina))
-            .filter(Boolean);
+        // Coletar disciplinas dos resultados por disciplina
+        const subjectsFromResults = evaluationsResponse.resultados_por_disciplina
+          .map(d => {
+            const subject = d.disciplina;
+            if (typeof subject === 'string') return subject;
+            if (subject && typeof subject === 'object') {
+              const possible = subject as { name?: string; nome?: string };
+              return possible.name || possible.nome || '';
+            }
+            return '';
+          })
+          .filter(Boolean);
           
           if (subjectsFromResults.length > 0) {
             resumo.disciplinas = subjectsFromResults;
@@ -715,27 +817,28 @@ export default function Results() {
     selectedClass,
     toast,
     currentPage,
-    perPage,
-    extractSubjectName
+    perPage
   ]);
 
-  // Carregar dados quando filtros mudarem
+  // ✅ OTIMIZADO: Carregar dados quando filtros mudarem com debounce
   useEffect(() => {
-    // Só carregar dados se os 3 filtros obrigatórios estiverem selecionados
-    if (selectedState !== 'all' && selectedMunicipality !== 'all' && selectedEvaluation !== 'all') {
-      loadAllData();
-    } else {
-      // Limpar dados se filtros obrigatórios não estiverem preenchidos
-      setApiData(null);
-      setStudents([]);
-      setDetailedReport(null);
-      setQuestionsWithSkills([]);
-      setSkillsMapping({});
-      setSkillsBySubject({});
-      setIsTableReady(false);
-      setEvaluationInfo(null);
+    // Limpar timeout anterior
+    if (loadAllDataTimeoutRef.current) {
+      clearTimeout(loadAllDataTimeoutRef.current);
     }
-  }, [selectedState, selectedMunicipality, selectedEvaluation]);
+    
+    // Criar novo timeout com debounce de 500ms
+    loadAllDataTimeoutRef.current = setTimeout(() => {
+      loadAllData();
+    }, 500);
+    
+    // Cleanup function
+    return () => {
+      if (loadAllDataTimeoutRef.current) {
+        clearTimeout(loadAllDataTimeoutRef.current);
+      }
+    };
+  }, [loadAllData]);
 
   const handleExportResults = async () => {
     try {
@@ -938,6 +1041,14 @@ export default function Results() {
     // ✅ Processar cada disciplina e consolidar dados por aluno
     apiData.tabela_detalhada.disciplinas.forEach(disciplina => {
       disciplina.alunos.forEach(aluno => {
+        // ✅ CORRIGIDO: Verificar se o aluno respondeu pelo menos uma questão
+        const hasAnsweredAnyQuestion = aluno.respostas_por_questao.some(resposta => resposta.respondeu);
+        
+        // ✅ NOVO: Só incluir alunos que responderam pelo menos uma questão
+        if (!hasAnsweredAnyQuestion) {
+          return; // Pular alunos que não responderam nenhuma questão
+        }
+
         if (!studentsMap.has(aluno.id)) {
           // Primeira vez vendo este aluno - criar entrada
           studentsMap.set(aluno.id, {
@@ -1009,35 +1120,51 @@ export default function Results() {
       return [];
     }
 
+    // ✅ CORRIGIDO: Filtrar apenas alunos que responderam pelo menos uma questão
+    const processedData = apiData.ranking
+      .filter((item: RankingItemWithAluno) => {
+        // Verificar se o aluno respondeu pelo menos uma questão usando dados da tabela_detalhada
+        if (!apiData?.tabela_detalhada?.disciplinas?.length) {
+          // Se não temos dados detalhados, assumir que todos responderam (fallback)
+          return true;
+        }
 
-    const processedData = apiData.ranking.map(item => {
-      
-      // Usar apenas a estrutura nova com propriedade aluno aninhada
-      const itemAny = item as any;
-      const aluno = itemAny.aluno;
-      
-      return {
-        id: aluno.id,
-        nome: aluno.nome,
-        turma: aluno.turma || 'N/A',
-        nota: aluno.nota || 0,
-        proficiencia: aluno.proficiencia || 0,
-        classificacao: aluno.nivel_proficiencia as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
-        questoes_respondidas: aluno.total_questoes || 0,
-        acertos: aluno.total_acertos || 0,
-        erros: (aluno.total_questoes || 0) - (aluno.total_acertos || 0),
-        em_branco: aluno.total_em_branco || 0,
-        tempo_gasto: aluno.tempo_gasto || 0,
-        status: 'concluida' as const
-      };
-    });
+        // Verificar se o aluno respondeu pelo menos uma questão em qualquer disciplina
+        return apiData.tabela_detalhada.disciplinas.some(disciplina => {
+          const disciplinaAluno = disciplina.alunos.find(a => a.id === item.aluno_id);
+          if (!disciplinaAluno) return false;
+          
+          // Verificar se respondeu pelo menos uma questão nesta disciplina
+          return disciplinaAluno.respostas_por_questao.some(resposta => resposta.respondeu);
+        });
+      })
+      .map((item: RankingItemWithAluno) => {
+        // Usar apenas a estrutura nova com propriedade aluno aninhada
+        const aluno = item;
+        
+        return {
+          id: aluno.aluno_id,
+          nome: aluno.nome,
+          turma: aluno.turma || 'N/A',
+          nota: aluno.nota_geral || 0,
+          proficiencia: aluno.proficiencia_geral || 0,
+          classificacao: aluno.classificacao_geral as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
+          questoes_respondidas: aluno.total_questoes || 0,
+          acertos: aluno.total_acertos || 0,
+          erros: (aluno.total_questoes || 0) - (aluno.total_acertos || 0),
+          em_branco: 0, // Não disponível no ranking
+          tempo_gasto: 0, // Não disponível no ranking
+          status: 'concluida' as const
+        };
+      });
 
     return processedData;
   }, [apiData]);
 
   // ✅ NOVA IMPLEMENTAÇÃO: Processar dados dos alunos da tabela_detalhada da nova API
   const loadStudentsData = useCallback(async () => {
-    if (!selectedEvaluation || selectedEvaluation === 'all' || !apiData) {
+    // ✅ MODIFICADO: Permitir carregamento quando avaliação específica estiver selecionada
+    if (selectedEvaluation === 'all' || !apiData) {
       setStudents([]);
       setDetailedReport(null);
       setQuestionsWithSkills([]);
@@ -1071,25 +1198,13 @@ export default function Results() {
         setStudents(tableData.students);
         setLoadingProgress(80);
       } else {
-        // ✅ FALLBACK: Usar dados do ranking se disponível
+        // ✅ FALLBACK: Usar dados do ranking se disponível (já filtrados)
         if (apiData.ranking?.length) {
           setLoadingStep('Processando dados do ranking...');
           setLoadingProgress(50);
           
-          const studentsFromRanking = apiData.ranking.map((item) => ({
-            id: item.aluno_id,
-            nome: item.nome,
-            turma: item.turma,
-            nota: item.nota_geral,
-            proficiencia: item.proficiencia_geral,
-            classificacao: item.classificacao_geral as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
-            questoes_respondidas: item.total_questoes,
-            acertos: item.total_acertos,
-            erros: item.total_questoes - item.total_acertos,
-            em_branco: 0, // Não disponível no ranking
-            tempo_gasto: 0, // Não disponível no ranking
-            status: 'concluida' as const
-          }));
+          // ✅ CORRIGIDO: Usar a função processRankingData que já filtra alunos que responderam
+          const studentsFromRanking = processRankingData();
           
           setStudents(studentsFromRanking);
           setLoadingProgress(80);
@@ -1102,13 +1217,13 @@ export default function Results() {
             const detailedReportResponse = await EvaluationResultsApiService.getDetailedReport(selectedEvaluation);
             
             if (detailedReportResponse && detailedReportResponse.alunos) {
-              const transformedStudents = detailedReportResponse.alunos.map((aluno: any) => ({
+              const transformedStudents = detailedReportResponse.alunos.map((aluno: DetailedReportAluno) => ({
             id: aluno.id,
             nome: aluno.nome,
             turma: aluno.turma,
             nota: aluno.nota_final,
                 proficiencia: aluno.proficiencia,
-            classificacao: aluno.classificacao,
+            classificacao: aluno.classificacao as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
             questoes_respondidas: aluno.total_acertos + aluno.total_erros + aluno.total_em_branco,
             acertos: aluno.total_acertos,
             erros: aluno.total_erros,
@@ -1133,151 +1248,7 @@ export default function Results() {
       setLoadingProgress(100);
       setLoadingStep('Dados carregados com sucesso!');
 
-      // 🚀 OTIMIZAÇÃO: Carregar dados extras em BACKGROUND (não bloqueiam a tabela)
-      setLoadingStep('Carregando dados adicionais em background...');
-      
-      // Carregar skills em background (não essencial para tabela básica)
-      Promise.all([
-        // Skills da avaliação (opcional)
-        EvaluationResultsApiService.getSkillsByEvaluation(selectedEvaluation).catch(() => null),
-        // Estatísticas gerais (opcional)
-        EvaluationResultsApiService.getGeneralStats({
-          estado: selectedState !== 'all' ? selectedState : undefined,
-          municipio: selectedMunicipality !== 'all' ? selectedMunicipality : undefined,
-          escola: selectedSchool !== 'all' ? selectedSchool : undefined,
-          serie: selectedGrade !== 'all' ? selectedGrade : undefined,
-          turma: selectedClass !== 'all' ? selectedClass : undefined,
-        }).catch(() => null),
-        // Opções de filtro (opcional)
-        EvaluationResultsApiService.getEvaluationById(selectedEvaluation).catch(() => null)
-      ]).then(([evaluationSkills, generalStats, filterOptions]) => {
-        
-        // ✅ REMOVIDO: Não precisamos mais processar skills das questões separadamente
-        
-        // Processar skills da avaliação
-        if (evaluationSkills && evaluationSkills.length > 0) {
-          const newSkillsMapping: Record<string, string> = {};
-          const skillsBySubject: Record<string, Array<{
-            id: string | null;
-            code: string;
-            description: string;
-            source: 'database' | 'question';
-          }>> = {};
-          
-          evaluationSkills.forEach(skill => {
-            if (skill.id && skill.code) {
-              newSkillsMapping[skill.id] = skill.code;
-            }
-            
-            const subjectId = skill.subject_id;
-            if (!skillsBySubject[subjectId]) {
-              skillsBySubject[subjectId] = [];
-            }
-            skillsBySubject[subjectId].push({
-              id: skill.id,
-              code: skill.code,
-              description: skill.description,
-              source: skill.source
-            });
-          });
-          
-          setSkillsMapping(newSkillsMapping);
-          setSkillsBySubject(skillsBySubject);
-        }
-        
-        // Processar estatísticas gerais (sem sobrescrever com undefined)
-        if (generalStats && evaluationInfo) {
-          setEvaluationInfo(prev => {
-            const next = { ...(prev as typeof prev)! };
-
-            // Helper para pegar o primeiro valor definido
-            const firstDefined = <T,>(...vals: Array<T | undefined | null>): T | undefined => {
-              for (const v of vals) if (v !== undefined && v !== null) return v as T;
-              return undefined;
-            };
-
-            // total de alunos
-            const totalAlunos = firstDefined<number>(
-              // novo contrato
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (generalStats as any).total_alunos,
-              // respostas alternativas
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (generalStats as any).total_geral?.total,
-              // nomenclaturas genéricas
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (generalStats as any).total_students,
-            );
-            if (totalAlunos !== undefined) next.total_alunos = totalAlunos;
-
-            // participantes
-            const participantes = firstDefined<number>(
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (generalStats as any).alunos_participantes,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (generalStats as any).participantes,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (generalStats as any).completed_students,
-            );
-            if (participantes !== undefined) next.alunos_participantes = participantes;
-
-            // ausentes
-            const ausentes = firstDefined<number>(
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (generalStats as any).alunos_ausentes,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (generalStats as any).absent_students,
-            );
-            if (ausentes !== undefined) next.alunos_ausentes = ausentes;
-
-            // média de nota
-            const mediaNota = firstDefined<number>(
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (generalStats as any).media_nota_geral,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (generalStats as any).average_score,
-            );
-            if (mediaNota !== undefined) next.media_nota = mediaNota;
-
-            // média de proficiência
-            const mediaProficiencia = firstDefined<number>(
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (generalStats as any).media_proficiencia_geral,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (generalStats as any).average_proficiency,
-            );
-            if (mediaProficiencia !== undefined) next.media_proficiencia = mediaProficiencia;
-
-            return next;
-          });
-        }
-        
-        // Processar opções de filtro (carregar subjects_info sem await direto)
-        if (filterOptions) {
-          type SubjectInfo = { id?: string; name?: string } | string;
-          type EvaluationDetailsWithSubjects = { subjects_info?: SubjectInfo[] } | null;
-          EvaluationResultsApiService
-            .getEvaluationById(selectedEvaluation)
-            .then((details) => {
-              const evalWithSubjects = details as EvaluationDetailsWithSubjects;
-              const list = evalWithSubjects?.subjects_info || [];
-              const subjects = Array.isArray(list)
-                ? list.map((s: SubjectInfo) => typeof s === 'string' ? extractSubjectName(s) : extractSubjectName(s?.name)).filter(Boolean)
-                : [];
-              // setAvailableSubjects(subjects); // Removido - variável não definida
-            })
-            .catch(() => {
-              // silêncio: se falhar, mantém availableSubjects atual
-            });
-        }
-        
-
-      }).catch(error => {
-        // Silenciar erros de dados adicionais em background
-      });
-
-      setLoadingStep('Tabela pronta! Carregando dados extras...');
-      setLoadingProgress(100);
+      // ✅ OTIMIZADO: Removidas chamadas em background desnecessárias
       
     } catch (error) {
       console.error('Erro ao carregar dados dos alunos:', error);
@@ -1293,32 +1264,29 @@ export default function Results() {
         setLoadingProgress(0);
       }, 1000);
     }
-  }, [selectedEvaluation, apiData, processTableData]);
+  }, [selectedEvaluation, apiData, processTableData, processRankingData]);
 
-  // Carregar dados dos alunos quando a avaliação mudar
+  // ✅ OTIMIZADO: Carregar dados dos alunos quando a avaliação mudar com debounce
   useEffect(() => {
-    loadStudentsData();
+    // Limpar timeout anterior
+    if (loadStudentsDataTimeoutRef.current) {
+      clearTimeout(loadStudentsDataTimeoutRef.current);
+    }
+    
+    // Criar novo timeout com debounce de 300ms
+    loadStudentsDataTimeoutRef.current = setTimeout(() => {
+      loadStudentsData();
+    }, 300);
+    
+    // Cleanup function
+    return () => {
+      if (loadStudentsDataTimeoutRef.current) {
+        clearTimeout(loadStudentsDataTimeoutRef.current);
+      }
+    };
   }, [loadStudentsData]);
 
-  // 🚀 NOVO: Função para carregar dados extras quando necessário
-  const loadExtraData = useCallback(async () => {
-    if (!selectedEvaluation || selectedEvaluation === 'all') return;
-    
-    try {
-      // Carregar turmas dinâmicas a partir dos dados da API
-      if (apiData?.opcoes_proximos_filtros?.turmas) {
-        const turmas = apiData?.opcoes_proximos_filtros?.turmas?.map(t => t.name).filter(Boolean) || [];
-        // setAvailableTurmas(turmas); // Removido - variável não definida
-      }
-    } catch (error) {
-      // Silenciar erros de dados extras
-    }
-  }, [selectedEvaluation, apiData]);
-
-  // 🚀 NOVO: Carregar dados extras quando apiData mudar
-  useEffect(() => {
-    loadExtraData();
-  }, [loadExtraData]);
+  // ✅ REMOVIDO: loadExtraData que estava causando chamadas desnecessárias
 
     // ✅ CORRIGIDO: Usar APENAS dados do backend sem geração de dados simulados
   const transformedStudents = useMemo(() => {
@@ -1341,7 +1309,7 @@ export default function Results() {
     
     // ✅ REMOVIDO: Geração de dados simulados - usar apenas dados do backend
     return [];
-  }, [apiData, students, processTableData, processRankingData]);
+  }, [students, processTableData, processRankingData]);
 
   // Filtrar estudantes baseado nos filtros
   const filteredStudents = useMemo(() => {
@@ -1386,6 +1354,14 @@ export default function Results() {
       // Carregar respostas detalhadas antes de navegar
       handleLoadStudentAnswers(studentId);
       navigate(`/app/avaliacao/${selectedEvaluation}/aluno/${studentId}/resultados`);
+    }
+  };
+
+  // ✅ NOVO: Função para abrir página detalhada em nova guia
+  const handleOpenInNewTab = (studentId: string) => {
+    if (selectedEvaluation && selectedEvaluation !== 'all') {
+      const url = `/app/avaliacao/${selectedEvaluation}/aluno/${studentId}/resultados`;
+      window.open(url, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -1888,11 +1864,11 @@ export default function Results() {
             <>
               {/* Abas com diferentes visualizações */}
               <Tabs defaultValue="charts" className="w-full">
-                <TabsList className={`grid w-full ${selectedSchool !== 'all' ? 'grid-cols-4' : 'grid-cols-3'}`}>
+                <TabsList className={`grid w-full ${selectedEvaluation !== 'all' ? 'grid-cols-4' : 'grid-cols-3'}`}>
                   <TabsTrigger value="charts">Gráficos</TabsTrigger>
                   <TabsTrigger value="tables">Tabelas</TabsTrigger>
                   <TabsTrigger value="statistics">Estatísticas</TabsTrigger>
-                  {selectedSchool !== 'all' && (
+                  {selectedEvaluation !== 'all' && (
                     <TabsTrigger value="ranking">Ranking</TabsTrigger>
                   )}
                 </TabsList>
@@ -1954,18 +1930,18 @@ export default function Results() {
                 </TabsContent>
 
                 <TabsContent value="tables" className="space-y-6" id="results-tables">
-                  {selectedSchool === 'all' ? (
-                    // Estado inicial: Nenhuma escola selecionada
+                  {selectedEvaluation === 'all' ? (
+                    // Estado inicial: Nenhuma avaliação selecionada
                     <Card>
                       <CardContent className="flex flex-col items-center justify-center py-16">
                         <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mb-6">
-                          <School className="h-10 w-10 text-blue-600" />
+                          <BookOpen className="h-10 w-10 text-blue-600" />
                         </div>
                         <h3 className="text-xl font-semibold text-gray-900 mb-3">
-                          Selecione uma Escola
+                          Selecione uma Avaliação
                         </h3>
                         <p className="text-gray-600 text-center max-w-md mb-6">
-                          Para visualizar os resultados detalhados dos alunos, é necessário selecionar uma escola específica nos filtros acima.
+                          Para visualizar os resultados detalhados dos alunos, é necessário selecionar uma avaliação específica nos filtros acima.
                         </p>
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-md">
                           <div className="flex items-start gap-3">
@@ -1981,7 +1957,7 @@ export default function Results() {
                       </CardContent>
                     </Card>
                   ) : (
-                    // Conteúdo normal da tabela quando escola está selecionada
+                    // Conteúdo normal da tabela quando avaliação está selecionada
                     <>
 
 
@@ -2092,8 +2068,9 @@ export default function Results() {
                           {viewMode === 'table' ? (
                             isTableReady && !isLoadingStudents && apiData?.tabela_detalhada ? (
                               <DisciplineTables
-                                tabelaDetalhada={apiData.tabela_detalhada as any}
+                                tabelaDetalhada={apiData.tabela_detalhada}
                                 onViewStudentDetails={handleViewStudentDetails}
+                                onOpenInNewTab={handleOpenInNewTab}
                               />
                             ) : (
                               <div className="text-center py-12">
@@ -2148,7 +2125,7 @@ export default function Results() {
 
 
 
-                {selectedSchool !== 'all' && (
+                {selectedEvaluation !== 'all' && (
                   <TabsContent value="ranking" className="space-y-6">
                     {(() => {
                       // ✅ NOVO: Usar dados do ranking diretamente do backend
@@ -2168,6 +2145,92 @@ export default function Results() {
           )}
         </>
       )}
+
+      {/* ✅ NOVO: Modal de Alunos Faltosos */}
+      <Dialog open={showAbsentStudentsModal} onOpenChange={setShowAbsentStudentsModal}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-red-600" />
+              Alunos Faltosos
+              {evaluationInfo && (
+                <span className="text-sm font-normal text-gray-600 ml-2">
+                  - {evaluationInfo.titulo}
+                </span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="overflow-y-auto max-h-[60vh]">
+            {isLoadingAbsentStudents ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="flex items-center gap-3">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600"></div>
+                  <span className="text-gray-600">Carregando lista de alunos faltosos...</span>
+                </div>
+              </div>
+            ) : absentStudents.length > 0 ? (
+              <div className="space-y-4">
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                    <span className="font-semibold text-red-800">
+                      {absentStudents.length} {absentStudents.length === 1 ? 'aluno faltoso' : 'alunos faltosos'}
+                    </span>
+                  </div>
+                  <p className="text-sm text-red-700">
+                    Estes alunos foram selecionados para a avaliação mas não a realizaram.
+                  </p>
+                </div>
+                
+                <div className="grid gap-3">
+                  {absentStudents.map((aluno) => (
+                    <div key={aluno.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
+                          <span className="text-red-600 font-semibold text-sm">
+                            {aluno.nome.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <div>
+                          <div className="font-medium text-gray-900">{aluno.nome}</div>
+                          <div className="text-sm text-gray-600">
+                            {aluno.turma} • {aluno.escola} • {aluno.serie}
+                          </div>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="text-red-600 border-red-300">
+                        Faltoso
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Check className="h-8 w-8 text-green-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  Nenhum aluno faltoso
+                </h3>
+                <p className="text-gray-600">
+                  Todos os alunos realizaram a avaliação.
+                </p>
+              </div>
+            )}
+          </div>
+          
+          <div className="flex justify-end pt-4 border-t">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowAbsentStudentsModal(false)}
+            >
+              Fechar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 

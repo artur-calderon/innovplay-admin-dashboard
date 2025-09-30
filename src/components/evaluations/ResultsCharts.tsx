@@ -156,6 +156,7 @@ const ScoreChart = ({ data }: { data: ChartData }) => (
         color="#22c55e"
         yAxisDomain={[0, 10]}
         yAxisLabel="Nota"
+        showValues={true} // Mostrar valores nas barras
       />
     </CardContent>
   </Card>
@@ -171,6 +172,7 @@ const ProficiencyChart = ({ data }: { data: ChartData }) => (
         color="#15803d"
         yAxisDomain={[0, data.proficiencyMax]}
         yAxisLabel="Proficiência"
+        showValues={true} // Mostrar valores nas barras
       />
     </CardContent>
   </Card>
@@ -185,6 +187,7 @@ const DistributionCharts = ({ data }: { data: ChartData }) => (
             data={item.data}
             title={item.disciplina.toUpperCase()}
             subtitle="Distribuição de Desempenho"
+            showValues={true} // Mostrar valores nos gráficos de donut
           />
         </CardContent>
       </Card>
