@@ -76,6 +76,40 @@ type DetailedReport = {
   }>;
 };
 
+// Tabela detalhada por disciplina (shape compatível com Results.tsx)
+type TabelaDetalhadaPorDisciplina = {
+  disciplinas: Array<{
+    id: string;
+    nome: string;
+    questoes: Array<{
+      numero: number;
+      habilidade: string;
+      codigo_habilidade: string;
+      question_id: string;
+    }>;
+    alunos: Array<{
+      id: string;
+      nome: string;
+      escola: string;
+      serie: string;
+      turma: string;
+      respostas_por_questao: Array<{
+        questao: number;
+        acertou: boolean;
+        respondeu: boolean;
+        resposta: string;
+      }>;
+      total_acertos: number;
+      total_erros: number;
+      total_respondidas: number;
+      total_questoes_disciplina: number;
+      nivel_proficiencia: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado' | string;
+      nota: number;
+      proficiencia: number;
+    }>;
+  }>;
+} | null;
+
 export default function AcertoNiveis() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -99,6 +133,8 @@ export default function AcertoNiveis() {
   const [detailedReport, setDetailedReport] = useState<DetailedReport | null>(null);
   const [skillsMapping, setSkillsMapping] = useState<Record<string, string>>({});
   const fallbackAnswersCache = React.useRef<Map<string, Map<number, boolean>>>(new Map());
+  // Nova: tabela detalhada por disciplina do backend
+  const [tabelaDetalhada, setTabelaDetalhada] = useState<TabelaDetalhadaPorDisciplina>(null);
   // Utilitários para tratar habilidades
   const normalizeUUID = (value?: string) => (value || '').replace(/[{}]/g, '').trim().toLowerCase();
   const looksLikeRealSkillCode = (value?: string) => {
@@ -507,6 +543,23 @@ export default function AcertoNiveis() {
       }
 
       setDetailedReport(report || null);
+
+      // Carregar tabela detalhada por disciplina da API unificada (sem recálculo)
+      try {
+        const resp = await EvaluationResultsApiService.getEvaluationsList(1, 10, {
+          estado: selectedState,
+          municipio: selectedMunicipality,
+          avaliacao: evaluationId
+        });
+        // Alguns backends retornam {} quando não há disciplinas; normalizar para null
+        const tdResp = resp as unknown as { tabela_detalhada?: TabelaDetalhadaPorDisciplina };
+        const td = (tdResp && tdResp.tabela_detalhada && Array.isArray(tdResp.tabela_detalhada.disciplinas))
+          ? tdResp.tabela_detalhada
+          : null;
+        setTabelaDetalhada(td);
+      } catch (_) {
+        setTabelaDetalhada(null);
+      }
     } catch (e) {
       console.error('Erro ao carregar dados:', e);
       toast({ title: "Erro", description: "Falha ao carregar dados da avaliação", variant: "destructive" });
@@ -587,6 +640,27 @@ export default function AcertoNiveis() {
       }
     }
     try {
+      // Garantir que a tabela detalhada foi carregada quando possível
+      if (!tabelaDetalhada && selectedState && selectedMunicipality && selectedEvaluationId) {
+        try {
+          setIsLoading(true);
+          const resp = await EvaluationResultsApiService.getEvaluationsList(1, 10, {
+            estado: selectedState,
+            municipio: selectedMunicipality,
+            avaliacao: selectedEvaluationId
+          });
+          const tdResp = resp as unknown as { tabela_detalhada?: TabelaDetalhadaPorDisciplina };
+          const td = (tdResp && tdResp.tabela_detalhada && Array.isArray(tdResp.tabela_detalhada.disciplinas))
+            ? tdResp.tabela_detalhada
+            : null;
+          setTabelaDetalhada(td);
+        } catch (_) {
+          // silencioso
+        } finally {
+          setIsLoading(false);
+        }
+      }
+
       const jsPDF = (await import('jspdf')).default;
       const autoTable = (await import('jspdf-autotable')).default;
 
@@ -760,11 +834,13 @@ export default function AcertoNiveis() {
         // Recalcular % de acerto usando a mesma regra dos ícones (getAnswer)
         const completed = students.filter(s => s.status === 'concluida');
         const denom = Math.max(1, completed.length);
-        const values = qs.map(q => {
+        // counts: número absoluto de acertos por questão; values: percentual
+        const counts = qs.map(q => {
           let correct = 0;
           completed.forEach(s => { if (getAnswer(s, q.numero)) correct++; });
-          return Math.round((correct / denom) * 100);
+          return correct;
         });
+        const values = counts.map(c => Math.round((c / denom) * 100));
         const maxBarsPerRow = Math.max(8, Math.floor((w - 20) / 10));
         const chunks: number[][] = [];
         for (let i = 0; i < values.length; i += maxBarsPerRow) {
@@ -802,6 +878,12 @@ export default function AcertoNiveis() {
             doc.setFontSize(7);
             doc.setTextColor(60);
             doc.text(`Q${qNum}`, barX + barW / 2, chartBottom + 4, { align: 'center' });
+            // Quantidade de acertos acima da barra
+            const globalIndex = rowIndex * maxBarsPerRow + idx;
+            const absoluteCorrect = counts[globalIndex] ?? 0;
+            doc.setFontSize(7);
+            doc.setTextColor(30);
+            doc.text(String(absoluteCorrect), barX + barW / 2, Math.max(y + 6, yy - 1), { align: 'center' });
           });
         });
       };
@@ -1139,6 +1221,235 @@ export default function AcertoNiveis() {
       // Página detalhada geral
       if ((detailedReport?.questoes?.length || 0) > 0) {
         renderDetailedPage('GERAL', detailedReport?.questoes || []);
+      }
+
+      // ====== Páginas por disciplina (consumindo diretamente tabela_detalhada) ======
+      const renderDisciplineTablesPages = () => {
+        if (!tabelaDetalhada || !Array.isArray(tabelaDetalhada.disciplinas)) return;
+        const disciplinas = tabelaDetalhada.disciplinas;
+
+        disciplinas.forEach((disc) => {
+          if (!Array.isArray(disc.questoes) || disc.questoes.length === 0) return;
+
+          // Ordenar questões por número
+          const qs = [...disc.questoes].sort((a, b) => (a?.numero || 0) - (b?.numero || 0));
+
+          // Nova página em landscape
+          doc.addPage('landscape');
+          pageCount++;
+
+          const landscapeWidth = 297;
+          const landscapeHeight = 210;
+          const landscapeMargin = 10;
+
+          // Título
+          let y = 15;
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(12);
+          const headerDisc = `DISCIPLINA: ${disc.nome || 'N/A'}`;
+          doc.text(`${evaluationInfo?.titulo || 'Avaliação'} - ${headerDisc}`, landscapeWidth / 2, y, { align: 'center' });
+          y += 5;
+          doc.setFontSize(10);
+          const escolaText = selectedSchoolId ? (schools.find(s => s.id === selectedSchoolId)?.nome || '') : 'Todas as Escolas';
+          // Participantes (para série e % por questão)
+          const alunosParticipantes = (disc.alunos || []).filter(al => Array.isArray(al.respostas_por_questao) && al.respostas_por_questao.some(r => r.respondeu));
+          // Série: priorizar seleção atual; depois heurística global; depois inferir pelas turmas dos participantes; por fim evaluationInfo
+          const serieHeuristicaGlobal = getHeaderSerieText();
+          let serieText = selectedGradeId ? (grades.find(g => g.id === selectedGradeId)?.nome || '') : (serieHeuristicaGlobal || '');
+          if (!serieText) {
+            const setSeries = new Set<string>();
+            (alunosParticipantes || []).forEach(a => {
+              const ser = extractSerieFromTurma(a.turma);
+              if (ser) setSeries.add(ser);
+            });
+            if (setSeries.size === 1) {
+              serieText = Array.from(setSeries)[0];
+            } else if (evaluationInfo?.serie && evaluationInfo.serie !== 'N/A') {
+              serieText = evaluationInfo.serie;
+            }
+          }
+          doc.text(`Escola: ${escolaText}  •  Série: ${serieText || 'N/A'}  •  Turma: ${students[0]?.turma || 'N/A'}`, landscapeWidth / 2, y, { align: 'center' });
+          y += 8;
+
+          // Cabeçalhos múltiplos
+          const headerRow1 = ['Aluno'];
+          const headerRow2 = ['Habilidade'];
+          const headerRow3 = ['% Turma'];
+          // Participantes já calculados acima
+          const denomLocal = Math.max(1, alunosParticipantes.length);
+          qs.forEach(q => {
+            headerRow1.push(`Q${q.numero}`);
+            const hab = (q.codigo_habilidade || q.habilidade || '').toString();
+            headerRow2.push(hab);
+            // % Turma por questão (entre participantes)
+            let correct = 0;
+            alunosParticipantes.forEach(s => {
+              const r = (s.respostas_por_questao || []).find(rr => rr.questao === q.numero);
+              if (r && r.respondeu && r.acertou) correct++;
+            });
+            const pct = Math.round((correct / denomLocal) * 100);
+            headerRow3.push(`${pct}%`);
+          });
+          headerRow1.push('Total', 'Nota', 'Proficiência', 'Nível');
+          headerRow2.push('', '', '', '');
+          headerRow3.push('', '', '', '');
+
+          // Linhas de alunos (usar somente dados do backend)
+          const bodyRows: (string | number)[][] = [];
+          (disc.alunos || []).forEach(al => {
+            // Ignorar alunos faltosos: manter apenas quem respondeu ao menos uma questão
+            const hasAnsweredAny = Array.isArray(al.respostas_por_questao)
+              ? al.respostas_por_questao.some(r => r.respondeu)
+              : false;
+            if (!hasAnsweredAny) return;
+            const row: (string | number)[] = [al.nome];
+            let acertos = 0;
+
+            qs.forEach(q => {
+              const resp = (al.respostas_por_questao || []).find(r => r.questao === q.numero);
+              if (!resp) {
+                row.push('');
+                return;
+              }
+              if (resp.respondeu) {
+                if (resp.acertou) {
+                  row.push('\u2713');
+                  acertos++;
+                } else {
+                  row.push('\u2717');
+                }
+              } else {
+                row.push(''); // em branco
+              }
+            });
+
+            row.push(`${al.total_acertos ?? acertos}/${qs.length}`);
+            row.push(Number(al.nota ?? 0).toFixed(1));
+            row.push(Number(al.proficiencia ?? 0).toFixed(1));
+            row.push(String(al.nivel_proficiencia || ''));
+            bodyRows.push(row);
+          });
+
+          // Larguras
+          const availableWidth = landscapeWidth - (2 * landscapeMargin);
+          const nameColWidth = Math.min(45, availableWidth * 0.2);
+          const finalColsWidth = 20 + 20 + 25 + 30; // Total, Nota, Prof, Nível
+          const questionColWidth = Math.max(8, Math.min(12, (availableWidth - nameColWidth - finalColsWidth) / qs.length));
+
+          const columnStyles: Record<number, { cellWidth: number; halign?: 'left' | 'center' | 'right' }> = {
+            0: { cellWidth: nameColWidth, halign: 'left' }
+          };
+          for (let i = 1; i <= qs.length; i++) columnStyles[i] = { cellWidth: questionColWidth, halign: 'center' };
+          columnStyles[qs.length + 1] = { cellWidth: 20, halign: 'center' }; // Total
+          columnStyles[qs.length + 2] = { cellWidth: 20, halign: 'center' }; // Nota
+          columnStyles[qs.length + 3] = { cellWidth: 25, halign: 'center' }; // Prof
+          columnStyles[qs.length + 4] = { cellWidth: 30, halign: 'center' }; // Nível
+
+          // Tabela
+          autoTable(doc, {
+            startY: y,
+            head: [headerRow1, headerRow2, headerRow3],
+            body: bodyRows,
+            theme: 'grid',
+            margin: { left: landscapeMargin, right: landscapeMargin },
+            tableWidth: 'auto',
+            showHead: 'everyPage',
+            styles: {
+              fontSize: 6,
+              cellPadding: 0.5,
+              lineColor: [200, 200, 200],
+              lineWidth: 0.05,
+              overflow: 'linebreak',
+              valign: 'middle',
+              halign: 'center'
+            },
+            headStyles: {
+              fillColor: [240, 240, 240],
+              textColor: [0, 0, 0],
+              fontStyle: 'bold',
+              halign: 'center',
+              fontSize: 6
+            },
+            columnStyles: columnStyles,
+            bodyStyles: { textColor: [33, 33, 33] },
+            alternateRowStyles: { fillColor: [252, 252, 252] },
+            didDrawCell: (data) => {
+              const { doc, cell, column, section, row } = data;
+              const val = Array.isArray(cell.text) ? cell.text[0] : cell.text;
+              // Desenhar ✓/✗ como vetores e restaurar bordas
+              if (section === 'body' && column.index > 0 && column.index <= qs.length) {
+                if (val === '\u2713' || val === '\u2717') {
+                  const centerX = cell.x + cell.width / 2;
+                  const centerY = cell.y + cell.height / 2;
+                  const iconSize = Math.min(cell.width, cell.height) / 4.5;
+                  const fillColor = row.index % 2 === 0 ? [255, 255, 255] : [252, 252, 252];
+                  doc.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
+                  doc.rect(cell.x, cell.y, cell.width, cell.height, 'F');
+                  if (val === '\u2713') {
+                    doc.setDrawColor(22, 163, 74);
+                    doc.setLineWidth(0.8);
+                    doc.line(centerX - iconSize, centerY, centerX - iconSize / 2, centerY + iconSize);
+                    doc.line(centerX - iconSize / 2, centerY + iconSize, centerX + iconSize, centerY - iconSize);
+                  } else {
+                    doc.setDrawColor(239, 68, 68);
+                    doc.setLineWidth(0.8);
+                    doc.line(centerX - iconSize, centerY - iconSize, centerX + iconSize, centerY + iconSize);
+                    doc.line(centerX + iconSize, centerY - iconSize, centerX - iconSize, centerY + iconSize);
+                  }
+                  doc.setDrawColor(200, 200, 200);
+                  doc.setLineWidth(0.05);
+                  doc.rect(cell.x, cell.y, cell.width, cell.height);
+                }
+              }
+
+              // Colorir coluna de nível
+              if (section === 'body' && column.index === qs.length + 4) {
+                const textValue = Array.isArray(cell.text) ? cell.text[0] : cell.text;
+                const color = generateClassificationColor(textValue);
+                cell.styles.fillColor = color;
+                cell.styles.textColor = [255, 255, 255];
+                cell.styles.fontStyle = 'bold';
+                cell.styles.fontSize = 5;
+              }
+
+              // Linha de habilidades (segunda linha do head)
+              if (section === 'head' && row.index === 1) {
+                cell.styles.fillColor = [219, 234, 254];
+                cell.styles.fontSize = 5;
+                cell.styles.fontStyle = 'normal';
+                cell.styles.font = 'courier';
+              }
+              // Linha de % Turma (terceira linha do head)
+              if (section === 'head' && row.index === 2 && column.index > 0 && column.index <= qs.length) {
+                const textValue = Array.isArray(cell.text) ? cell.text[0] || '' : cell.text || '';
+                const pct = parseInt((textValue as string).replace(/[^0-9]/g, ''));
+                if (!isNaN(pct)) {
+                  if (pct >= 60) {
+                    cell.styles.fillColor = [220, 252, 231];
+                    cell.styles.textColor = [22, 163, 74];
+                  } else {
+                    cell.styles.fillColor = [254, 226, 226];
+                    cell.styles.textColor = [239, 68, 68];
+                  }
+                  cell.styles.fontStyle = 'bold';
+                  cell.styles.fontSize = 5;
+                }
+              }
+            },
+          });
+
+          // Rodapé
+          doc.setFontSize(8);
+          doc.setTextColor(100, 100, 100);
+          doc.text('InnovPlay Soluções Educativas', landscapeMargin, landscapeHeight - 8);
+          doc.text(`Página ${pageCount}`, landscapeWidth / 2, landscapeHeight - 8, { align: 'center' });
+          doc.text(new Date().toLocaleString('pt-BR'), landscapeWidth - landscapeMargin, landscapeHeight - 8, { align: 'right' });
+        });
+      };
+
+      // Renderizar páginas por disciplina, se disponíveis
+      if (tabelaDetalhada && Array.isArray(tabelaDetalhada.disciplinas) && tabelaDetalhada.disciplinas.length > 0) {
+        renderDisciplineTablesPages();
       }
 
       // Salvar PDF
