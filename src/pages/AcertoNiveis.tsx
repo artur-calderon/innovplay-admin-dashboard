@@ -21,10 +21,7 @@ type StudentResult = {
   erros: number;
   questoes_respondidas: number;
   status: 'concluida' | 'pendente';
-  acertos_lp?: number;
-  acertos_mat?: number;
-  proficiencia_lp?: number;
-  proficiencia_mat?: number;
+  // Removidos campos específicos de disciplinas (LP/MAT)
   respostas?: Record<string, boolean | null>;
 };
 
@@ -237,24 +234,7 @@ export default function AcertoNiveis() {
             erros: aluno.total_erros,
             questoes_respondidas: aluno.total_acertos + aluno.total_erros + aluno.total_em_branco,
             status: aluno.status === 'concluida' ? 'concluida' : 'pendente',
-            respostas: respostasMap,
-            acertos_lp: report.questoes?.filter((q) => 
-              q.codigo_habilidade?.startsWith('LP') && respostasMap[`q${q.numero}`] === true
-            ).length || 0,
-            acertos_mat: report.questoes?.filter((q) => 
-              !q.codigo_habilidade?.startsWith('LP') && respostasMap[`q${q.numero}`] === true
-            ).length || 0,
-            // ✅ CORREÇÃO: Calcular proficiências específicas por disciplina baseadas nos acertos
-            ...calculateDisciplineProficiencies(
-              report.questoes?.filter((q) => 
-                q.codigo_habilidade?.startsWith('LP') && respostasMap[`q${q.numero}`] === true
-              ).length || 0,
-              report.questoes?.filter((q) => q.codigo_habilidade?.startsWith('LP')).length || 0,
-              report.questoes?.filter((q) => 
-                !q.codigo_habilidade?.startsWith('LP') && respostasMap[`q${q.numero}`] === true
-              ).length || 0,
-              report.questoes?.filter((q) => !q.codigo_habilidade?.startsWith('LP')).length || 0
-            )
+            respostas: respostasMap
           } as StudentResult;
         });
         setStudents(processedStudents);
@@ -293,19 +273,7 @@ export default function AcertoNiveis() {
     }
   };
 
-  // ✅ NOVA FUNÇÃO: Calcular proficiências específicas por disciplina baseadas nos acertos
-  const calculateDisciplineProficiencies = (
-    acertos_lp: number, 
-    questoes_lp: number, 
-    acertos_mat: number, 
-    questoes_mat: number
-  ) => {
-    // Fórmula baseada no backend: (acertos / total_questoes) * 1000
-    const proficiencia_lp = questoes_lp > 0 ? Math.round((acertos_lp / questoes_lp) * 1000 * 10) / 10 : 0;
-    const proficiencia_mat = questoes_mat > 0 ? Math.round((acertos_mat / questoes_mat) * 1000 * 10) / 10 : 0;
-    
-    return { proficiencia_lp, proficiencia_mat };
-  };
+  // Removida lógica de proficiência por disciplina (manter apenas proficiência geral do backend)
 
   // Função para carregar dados filtrados por escola
   const loadFilteredData = async (evaluationId: string, schoolId?: string, gradeId?: string, classId?: string) => {
@@ -513,25 +481,7 @@ export default function AcertoNiveis() {
             erros: aluno.total_erros,
             questoes_respondidas: aluno.total_acertos + aluno.total_erros + aluno.total_em_branco,
             status: aluno.status === 'concluida' ? 'concluida' : 'pendente',
-            respostas: respostasMap,
-            // Calcular acertos por disciplina baseado nas questões
-            acertos_lp: report.questoes?.filter((q) => 
-              q.codigo_habilidade?.startsWith('LP') && respostasMap[`q${q.numero}`] === true
-            ).length || 0,
-            acertos_mat: report.questoes?.filter((q) => 
-              !q.codigo_habilidade?.startsWith('LP') && respostasMap[`q${q.numero}`] === true
-            ).length || 0,
-            // ✅ CORREÇÃO: Calcular proficiências específicas por disciplina baseadas nos acertos
-            ...calculateDisciplineProficiencies(
-              report.questoes?.filter((q) => 
-                q.codigo_habilidade?.startsWith('LP') && respostasMap[`q${q.numero}`] === true
-              ).length || 0,
-              report.questoes?.filter((q) => q.codigo_habilidade?.startsWith('LP')).length || 0,
-              report.questoes?.filter((q) => 
-                !q.codigo_habilidade?.startsWith('LP') && respostasMap[`q${q.numero}`] === true
-              ).length || 0,
-              report.questoes?.filter((q) => !q.codigo_habilidade?.startsWith('LP')).length || 0
-            )
+            respostas: respostasMap
           } as StudentResult;
         });
         setStudents(processedStudents);
@@ -648,6 +598,31 @@ export default function AcertoNiveis() {
         doc.text(new Date().toLocaleString('pt-BR'), pageWidth - margin, pageHeight - 10, { align: 'right' });
       };
 
+      // Utilitário: extrair série a partir do nome da turma
+      const extractSerieFromTurma = (turma?: string): string | null => {
+        if (!turma) return null;
+        const match = turma.match(/(\d+º(?:\s*ano)?)/i);
+        return match ? match[1] : null;
+      };
+
+      // Utilitário: obter texto de série confiável
+      const getHeaderSerieText = (): string | null => {
+        // 1) Se o usuário selecionou explicitamente uma série, priorizar
+        if (selectedGradeId) {
+          const g = grades.find(gr => gr.id === selectedGradeId)?.nome;
+          if (g) return g;
+        }
+        // 2) Tentar inferir a partir das turmas dos alunos
+        const inferred = new Set<string>();
+        students.forEach(s => {
+          const ser = extractSerieFromTurma(s.turma);
+          if (ser) inferred.add(ser);
+        });
+        if (inferred.size === 1) return Array.from(inferred)[0];
+        // 3) Caso múltiplas ou nenhuma, omitir para evitar séries não aplicadas
+        return null;
+      };
+
       // Função para adicionar cabeçalho
       const addHeader = (title: string): number => {
         const centerX = pageWidth / 2;
@@ -666,9 +641,11 @@ export default function AcertoNiveis() {
         const escolaText = selectedSchoolId ? schools.find(s => s.id === selectedSchoolId)?.nome || 'Escola Selecionada' : 'Todas as Escolas';
         doc.text(`Escola: ${escolaText}`, centerX, y, { align: 'center' });
         y += 5;
-        const serieText = selectedGradeId ? grades.find(g => g.id === selectedGradeId)?.nome || evaluationInfo.serie : evaluationInfo.serie;
-        doc.text(`Série: ${serieText}`, centerX, y, { align: 'center' });
-        y += 5;
+        const serieText = getHeaderSerieText();
+        if (serieText) {
+          doc.text(`Série: ${serieText}`, centerX, y, { align: 'center' });
+          y += 5;
+        }
         doc.text(`Turma: ${students[0]?.turma || 'N/A'}`, centerX, y, { align: 'center' });
         y += 8;
         
@@ -687,18 +664,7 @@ export default function AcertoNiveis() {
       const sortQuestoes = (qs: typeof detailedReport.questoes) =>
         [...(qs || [])].sort((a, b) => (a?.numero || 0) - (b?.numero || 0));
 
-      // Filtrar questões por disciplina
-      const questoesLP = sortQuestoes((detailedReport?.questoes || []).filter(q => {
-        const code = generateHabilidadeCode(q, skillsMapping);
-        // Língua Portuguesa: LP, códigos com L (ex: 9L1.1, 9 L 1.1), ou códigos que contêm "L" seguido de número
-        return code.startsWith('LP') || /L\s*\d+\.\d+/.test(code) || /^.*L\s*\d+\.\d+.*$/.test(code);
-      })) || [];
-      
-      const questoesMAT = sortQuestoes((detailedReport?.questoes || []).filter(q => {
-        const code = generateHabilidadeCode(q, skillsMapping);
-        // Matemática: códigos com N (ex: 9N1.1), S (ex: 9S1.2), M (ex: 9M1.1), ou outros que não são LP
-        return !code.startsWith('LP') && !/L\s*\d+\.\d+/.test(code) && !/^.*L\s*\d+\.\d+.*$/.test(code);
-      })) || [];
+      // Sem separação por disciplina: usaremos apenas a visão geral
 
       // Total de questões para fallback determinístico
       const totalQuestionsAll = (detailedReport?.questoes?.length || 0);
@@ -830,22 +796,11 @@ export default function AcertoNiveis() {
       };
 
       // Função para gerar página de resumo
-      const renderSummaryPage = (discipline: 'LP' | 'MAT' | 'GERAL') => {
+      const renderSummaryPage = () => {
         pageCount++;
         
-        let title = '';
-        let questoes: typeof detailedReport.questoes = [];
-        
-        if (discipline === 'LP') {
-          title = `RELATÓRIO DE DESEMPENHO - LÍNGUA PORTUGUESA`;
-          questoes = questoesLP;
-        } else if (discipline === 'MAT') {
-          title = `RELATÓRIO DE DESEMPENHO - MATEMÁTICA`;
-          questoes = questoesMAT;
-        } else {
-          title = `RELATÓRIO DE DESEMPENHO GERAL`;
-          questoes = detailedReport?.questoes || [];
-        }
+        const title = `RELATÓRIO DE DESEMPENHO GERAL`;
+        const questoes: typeof detailedReport.questoes = detailedReport?.questoes || [];
         
         const startY = addHeader(title);
         const availableWidth = pageWidth - (2 * margin);
@@ -857,17 +812,14 @@ export default function AcertoNiveis() {
         const completedStudents = students.filter(s => s.status === 'concluida');
         
         completedStudents.forEach((s, i) => {
-          const subset = (discipline === 'GERAL') ? (detailedReport?.questoes || []) : questoes;
+          const subset = questoes;
           const acertos = countCorrectFor(s, subset);
           const total = subset.length;
-          
-          // ✅ MODIFICADO: Usar apenas a proficiência do backend (mesma para todas as disciplinas)
-          const proficienciaDisciplina = s.proficiencia;
           
           const row = [
             `${i + 1}. ${s.nome}`,
             `${acertos}/${total}`,
-            proficienciaDisciplina.toFixed(1),
+            s.proficiencia.toFixed(1),
             s.classificacao
           ];
           bodyRows.push(row);
@@ -987,10 +939,8 @@ export default function AcertoNiveis() {
           // Adicionar totais
           row.push(`${acertos}/${questoes.length}`);
           
-          // ✅ MODIFICADO: Usar apenas a proficiência do backend (mesma para todas as disciplinas)
-          const proficienciaDisciplina = s.proficiencia;
-          
-          row.push(proficienciaDisciplina.toFixed(1));
+          // Usar sempre a proficiência geral do backend
+          row.push(s.proficiencia.toFixed(1));
           row.push(s.classificacao);
           
           bodyRows.push(row);
@@ -1153,25 +1103,12 @@ export default function AcertoNiveis() {
       };
 
       // Gerar páginas do PDF
-      
-      // 1. Página de Língua Portuguesa (se houver questões)
-      if (questoesLP.length > 0) {
-        renderSummaryPage('LP');
-      }
-      
-      // 2. Página de Matemática (se houver questões)
-      if (questoesMAT.length > 0) {
-        if (pageCount > 0) doc.addPage();
-        renderSummaryPage('MAT');
-      }
-      
-      // 3. Página Geral (se houver múltiplas disciplinas)
-      if (questoesLP.length > 0 && questoesMAT.length > 0) {
-        if (pageCount > 0) doc.addPage();
-        renderSummaryPage('GERAL');
+      // Página Geral (única)
+      if ((detailedReport?.questoes?.length || 0) > 0) {
+        renderSummaryPage();
       }
 
-      // 3.1 Página de Gráficos (sempre que houver dados)
+      // Página de Gráficos (sempre que houver dados)
       if ((students?.length || 0) > 0) {
         if (pageCount > 0) doc.addPage();
         pageCount++;
@@ -1188,17 +1125,8 @@ export default function AcertoNiveis() {
         addFooter(pageCount);
       }
       
-      // 4. Páginas detalhadas por disciplina
-      if (questoesLP.length > 0) {
-        renderDetailedPage('LÍNGUA PORTUGUESA', questoesLP);
-      }
-      
-      if (questoesMAT.length > 0) {
-        renderDetailedPage('MATEMÁTICA', questoesMAT);
-      }
-      
-      // 5. Página detalhada geral (apenas se houver múltiplas disciplinas)
-      if (questoesLP.length > 0 && questoesMAT.length > 0) {
+      // Página detalhada geral
+      if ((detailedReport?.questoes?.length || 0) > 0) {
         renderDetailedPage('GERAL', detailedReport?.questoes || []);
       }
 
@@ -1337,16 +1265,7 @@ export default function AcertoNiveis() {
                                    questoes_respondidas: aluno.total_acertos + aluno.total_erros + aluno.total_em_branco,
                                    status: aluno.status === 'concluida' ? 'concluida' : 'pendente',
                                    respostas: respostasMap,
-                                   acertos_lp: report.questoes?.filter((q) => 
-                                     q.codigo_habilidade?.startsWith('LP') && respostasMap[`q${q.numero}`] === true
-                                   ).length || 0,
-                                   acertos_mat: report.questoes?.filter((q) => 
-                                     !q.codigo_habilidade?.startsWith('LP') && respostasMap[`q${q.numero}`] === true
-                                   ).length || 0,
-                                   // Calcular proficiências específicas por disciplina
-                                   // ✅ MODIFICADO: Usar apenas a proficiência do backend para todas as disciplinas
-                                   proficiencia_lp: aluno.proficiencia, // Mesma proficiência do backend
-                                   proficiencia_mat: aluno.proficiencia // Mesma proficiência do backend
+                                   
                                  } as StudentResult;
                                });
                                setStudents(processedStudents);
