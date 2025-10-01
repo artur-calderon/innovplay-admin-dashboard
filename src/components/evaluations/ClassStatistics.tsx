@@ -19,17 +19,30 @@ interface ClassData {
 
 interface ClassStatisticsProps {
   apiData: {
+    nivel_granularidade?: 'municipio' | 'escola' | 'serie' | 'turma' | 'avaliacao';
     resultados_detalhados?: {
       avaliacoes?: Array<{
+        id: string;
+        titulo: string;
+        serie?: string;
         turma?: string;
+        escola?: string;
         total_alunos?: number;
         alunos_participantes?: number;
+        alunos_pendentes?: number;
+        alunos_ausentes?: number;
         media_nota?: number;
         media_proficiencia?: number;
-        serie?: string;
+        distribuicao_classificacao?: {
+          abaixo_do_basico: number;
+          basico: number;
+          adequado: number;
+          avancado: number;
+        };
       }>;
     };
     estatisticas_gerais?: {
+      tipo?: string;
       serie?: string;
       media_nota_geral?: number;
       media_proficiencia_geral?: number;
@@ -68,98 +81,57 @@ interface ClassStatisticsProps {
 }
 
 export function ClassStatistics({ apiData }: ClassStatisticsProps) {
-  // ✅ CORRIGIDO: Usar apenas dados reais da tabela_detalhada.disciplinas
-  const generateClassData = (): ClassData[] => {
-    // Usar apenas dados reais da tabela_detalhada.disciplinas
-    if (!apiData?.tabela_detalhada?.disciplinas?.length) {
+  // ✅ NOVA IMPLEMENTAÇÃO: Usar dados agrupados do backend baseado na granularidade
+  const generateStatisticsData = (): ClassData[] => {
+    // Verificar se temos dados agrupados do backend
+    if (!apiData?.resultados_detalhados?.avaliacoes?.length) {
       return [];
     }
 
-    const turmasMap = new Map<string, {
-      alunos: Array<{
-        id: string;
-        nome: string;
-        turma: string;
-        nivel_proficiencia: string;
-        nota: number;
-        proficiencia: number;
-      }>;
-      serie?: string;
-    }>();
+    const granularidade = apiData.nivel_granularidade || apiData.estatisticas_gerais?.tipo || 'turma';
 
-    // Processar dados de todas as disciplinas
-    apiData.tabela_detalhada.disciplinas.forEach(disciplina => {
-      disciplina.alunos.forEach(aluno => {
-        const turma = aluno.turma || 'A';
-        
-        if (!turmasMap.has(turma)) {
-          turmasMap.set(turma, {
-            alunos: [],
-            serie: apiData?.estatisticas_gerais?.serie
-          });
-        }
-        
-        // Evitar duplicatas - verificar se o aluno já existe
-        const existingAluno = turmasMap.get(turma)!.alunos.find(a => a.id === aluno.id);
-        if (!existingAluno) {
-          turmasMap.get(turma)!.alunos.push({
-            id: aluno.id,
-            nome: aluno.nome,
-            turma: aluno.turma,
-            nivel_proficiencia: aluno.nivel_proficiencia,
-            nota: aluno.nota,
-            proficiencia: aluno.proficiencia
-          });
-        }
-      });
-    });
-
-    // Converter para formato esperado
-    return Array.from(turmasMap.entries()).map(([turmaName, turmaData]) => {
-      const alunos = turmaData.alunos;
-      const totalStudents = alunos.length;
-      const participatingStudents = alunos.length; // Todos os alunos na tabela participaram
+    // Processar dados agrupados do backend
+    return apiData.resultados_detalhados.avaliacoes.map((avaliacao, index) => {
+      const totalStudents = avaliacao.total_alunos || 0;
+      const participatingStudents = avaliacao.alunos_participantes || 0;
+      const averageGrade = avaliacao.media_nota || 0;
+      const proficiency = avaliacao.media_proficiencia || 0;
       
-      // ✅ NOVO: Usar dados das estatísticas gerais do backend para nota e proficiência
-      const averageGrade = apiData?.estatisticas_gerais?.media_nota_geral !== undefined 
-        ? apiData.estatisticas_gerais.media_nota_geral
-        : (alunos.length > 0 
-            ? alunos.reduce((sum, aluno) => sum + aluno.nota, 0) / alunos.length 
-            : 0);
-      
-      const proficiency = apiData?.estatisticas_gerais?.media_proficiencia_geral !== undefined 
-        ? apiData.estatisticas_gerais.media_proficiencia_geral
-        : (alunos.length > 0 
-            ? alunos.reduce((sum, aluno) => sum + aluno.proficiencia, 0) / alunos.length 
-            : 0);
-
-      // ✅ LOG: Verificar valores sendo usados
-      console.log('🎯 LOG - ClassStatistics - Turma:', turmaName, {
-        estatisticasGerais: {
-          media_nota_geral: apiData?.estatisticas_gerais?.media_nota_geral,
-          media_proficiencia_geral: apiData?.estatisticas_gerais?.media_proficiencia_geral
-        },
-        calculadoLocal: {
-          averageGrade: alunos.length > 0 ? alunos.reduce((sum, aluno) => sum + aluno.nota, 0) / alunos.length : 0,
-          proficiency: alunos.length > 0 ? alunos.reduce((sum, aluno) => sum + aluno.proficiencia, 0) / alunos.length : 0
-        },
-        finalValues: {
-          averageGrade,
-          proficiency
-        }
-      });
-
-      // ✅ CORRIGIDO: Calcular distribuição real baseada nas classificações dos alunos
-      const distribution = {
-        abaixo_do_basico: alunos.filter(a => a.nivel_proficiencia === 'Abaixo do Básico').length,
-        basico: alunos.filter(a => a.nivel_proficiencia === 'Básico').length,
-        adequado: alunos.filter(a => a.nivel_proficiencia === 'Adequado').length,
-        avancado: alunos.filter(a => a.nivel_proficiencia === 'Avançado').length
+      // Usar distribuição do backend se disponível, senão usar valores padrão
+      const distribution = avaliacao.distribuicao_classificacao || {
+        abaixo_do_basico: 0,
+        basico: 0,
+        adequado: 0,
+        avancado: 0
       };
 
+      // Determinar nome e série baseado na granularidade
+      let name: string;
+      let seriesName: string | undefined;
+
+      switch (granularidade) {
+        case 'municipio':
+          name = avaliacao.escola || `Escola ${index + 1}`;
+          seriesName = avaliacao.serie === 'Todas as séries' ? undefined : avaliacao.serie;
+          break;
+        case 'escola':
+          name = avaliacao.turma === 'Todas as turmas' ? avaliacao.serie || `Série ${index + 1}` : `${avaliacao.serie} - ${avaliacao.turma}`;
+          seriesName = avaliacao.serie;
+          break;
+        case 'serie':
+          name = avaliacao.turma || `Turma ${index + 1}`;
+          seriesName = avaliacao.serie;
+          break;
+        case 'turma':
+        default:
+          name = avaliacao.turma || `Turma ${index + 1}`;
+          seriesName = avaliacao.serie;
+          break;
+      }
+
       return {
-        name: turmaName,
-        seriesName: turmaData.serie,
+        name,
+        seriesName,
         totalStudents,
         participatingStudents,
         averageGrade: Number(averageGrade.toFixed(1)),
@@ -169,13 +141,30 @@ export function ClassStatistics({ apiData }: ClassStatisticsProps) {
     });
   };
 
-  const classesData = generateClassData();
+  const statisticsData = generateStatisticsData();
+  
+  // Determinar título baseado na granularidade
+  const getTitle = (): string => {
+    const granularidade = apiData?.nivel_granularidade || apiData?.estatisticas_gerais?.tipo || 'turma';
+    
+    switch (granularidade) {
+      case 'municipio':
+        return 'Estatísticas por Escola';
+      case 'escola':
+        return 'Estatísticas por Série';
+      case 'serie':
+        return 'Estatísticas por Turma';
+      case 'turma':
+      default:
+        return 'Estatísticas da Turma';
+    }
+  };
 
-  if (classesData.length === 0) {
+  if (statisticsData.length === 0) {
     return (
       <Card>
         <CardContent className="text-center py-12">
-          <p className="text-gray-600">Não há dados de turmas disponíveis para os filtros selecionados.</p>
+          <p className="text-gray-600">Não há dados disponíveis para os filtros selecionados.</p>
         </CardContent>
       </Card>
     );
@@ -184,20 +173,20 @@ export function ClassStatistics({ apiData }: ClassStatisticsProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg">Estatísticas por Turma</CardTitle>
+        <CardTitle className="text-lg">{getTitle()}</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {classesData.map((classData) => {
-            const participationRate = classData.totalStudents > 0 
-              ? (classData.participatingStudents / classData.totalStudents) * 100 
+          {statisticsData.map((statisticsItem) => {
+            const participationRate = statisticsItem.totalStudents > 0 
+              ? (statisticsItem.participatingStudents / statisticsItem.totalStudents) * 100 
               : 0;
 
             return (
-              <div key={classData.name} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+              <div key={statisticsItem.name} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-semibold text-lg">{classData.seriesName ? `${classData.seriesName} - ${classData.name}` : classData.name}</h3>
-                  <Badge variant="outline">{classData.totalStudents} alunos</Badge>
+                  <h3 className="font-semibold text-lg">{statisticsItem.seriesName ? `${statisticsItem.seriesName} - ${statisticsItem.name}` : statisticsItem.name}</h3>
+                  <Badge variant="outline">{statisticsItem.totalStudents} alunos</Badge>
                 </div>
                 
                 <div className="space-y-3">
@@ -205,7 +194,7 @@ export function ClassStatistics({ apiData }: ClassStatisticsProps) {
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Participação:</span>
                       <span className="font-medium">
-                        {classData.participatingStudents}/{classData.totalStudents} alunos
+                        {statisticsItem.participatingStudents}/{statisticsItem.totalStudents} alunos
                       </span>
                     </div>
                     <Progress value={participationRate} className="h-2" />
@@ -213,12 +202,12 @@ export function ClassStatistics({ apiData }: ClassStatisticsProps) {
                   
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Média Nota:</span>
-                    <span className="font-medium">{classData.averageGrade.toFixed(1)}</span>
+                    <span className="font-medium">{statisticsItem.averageGrade.toFixed(1)}</span>
                   </div>
                   
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Proficiência:</span>
-                    <span className="font-medium">{classData.proficiency.toFixed(1)}</span>
+                    <span className="font-medium">{statisticsItem.proficiency.toFixed(1)}</span>
                   </div>
                   
                   {/* Distribuição de classificação */}
@@ -227,38 +216,38 @@ export function ClassStatistics({ apiData }: ClassStatisticsProps) {
                     <div className="flex gap-1">
                       <div 
                         className="flex-1 bg-red-500 rounded-sm h-2" 
-                        title={`Abaixo do Básico: ${classData.distribution.abaixo_do_basico}`}
+                        title={`Abaixo do Básico: ${statisticsItem.distribution.abaixo_do_basico}`}
                         style={{ 
-                          width: `${classData.totalStudents > 0 ? (classData.distribution.abaixo_do_basico / classData.totalStudents) * 100 : 0}%` 
+                          width: `${statisticsItem.totalStudents > 0 ? (statisticsItem.distribution.abaixo_do_basico / statisticsItem.totalStudents) * 100 : 0}%` 
                         }}
                       ></div>
                       <div 
                         className="flex-1 bg-yellow-500 rounded-sm h-2" 
-                        title={`Básico: ${classData.distribution.basico}`}
+                        title={`Básico: ${statisticsItem.distribution.basico}`}
                         style={{ 
-                          width: `${classData.totalStudents > 0 ? (classData.distribution.basico / classData.totalStudents) * 100 : 0}%` 
+                          width: `${statisticsItem.totalStudents > 0 ? (statisticsItem.distribution.basico / statisticsItem.totalStudents) * 100 : 0}%` 
                         }}
                       ></div>
                       <div 
                         className="flex-1 bg-green-400 rounded-sm h-2" 
-                        title={`Adequado: ${classData.distribution.adequado}`}
+                        title={`Adequado: ${statisticsItem.distribution.adequado}`}
                         style={{ 
-                          width: `${classData.totalStudents > 0 ? (classData.distribution.adequado / classData.totalStudents) * 100 : 0}%` 
+                          width: `${statisticsItem.totalStudents > 0 ? (statisticsItem.distribution.adequado / statisticsItem.totalStudents) * 100 : 0}%` 
                         }}
                       ></div>
                       <div 
                         className="flex-1 bg-green-600 rounded-sm h-2" 
-                        title={`Avançado: ${classData.distribution.avancado}`}
+                        title={`Avançado: ${statisticsItem.distribution.avancado}`}
                         style={{ 
-                          width: `${classData.totalStudents > 0 ? (classData.distribution.avancado / classData.totalStudents) * 100 : 0}%` 
+                          width: `${statisticsItem.totalStudents > 0 ? (statisticsItem.distribution.avancado / statisticsItem.totalStudents) * 100 : 0}%` 
                         }}
                       ></div>
                     </div>
                     <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>{classData.distribution.abaixo_do_basico}</span>
-                      <span>{classData.distribution.basico}</span>
-                      <span>{classData.distribution.adequado}</span>
-                      <span>{classData.distribution.avancado}</span>
+                      <span>{statisticsItem.distribution.abaixo_do_basico}</span>
+                      <span>{statisticsItem.distribution.basico}</span>
+                      <span>{statisticsItem.distribution.adequado}</span>
+                      <span>{statisticsItem.distribution.avancado}</span>
                     </div>
                   </div>
                 </div>

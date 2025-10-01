@@ -69,15 +69,9 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
       disciplina_id: string;
     }> = [];
 
-    // ✅ NOVO: Log detalhado do processamento no TableHeader
-    console.log('🔍 [DEBUG] TableHeader - Processando questões:');
-    console.log('📊 Dados da tabela_detalhada:', tabelaDetalhada);
-
     // Coletar todas as questões de todas as disciplinas
     tabelaDetalhada.disciplinas.forEach((disciplina, disciplinaIndex) => {
-      console.log(`📚 Disciplina ${disciplinaIndex + 1}: ${disciplina.nome}`);
       disciplina.questoes.forEach((questao, questaoIndex) => {
-        console.log(`    Q${questao.numero} (índice ${questaoIndex}): ${questao.habilidade} [${questao.codigo_habilidade}]`);
         
         allQuestions.push({
           numero: questao.numero,
@@ -92,11 +86,6 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
 
     // Ordenar por número da questão
     const sortedQuestions = allQuestions.sort((a, b) => a.numero - b.numero);
-    
-    console.log('📝 TableHeader - Questões ordenadas para renderização:');
-    sortedQuestions.forEach((questao, index) => {
-      console.log(`  ${index + 1}. Q${questao.numero} - ${questao.disciplina}: ${questao.habilidade}`);
-    });
 
     return sortedQuestions;
   };

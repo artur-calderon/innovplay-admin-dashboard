@@ -78,14 +78,8 @@ export const TableRow: React.FC<TableRowProps> = ({
       disciplina: string;
     }> = [];
 
-    // ✅ NOVO: Log detalhado do processamento no TableRow
-    console.log('🔍 [DEBUG] TableRow - Processando questões para aluno:', student.nome);
-    console.log('📊 Dados da tabela_detalhada:', tabelaDetalhada);
-
     tabelaDetalhada.disciplinas.forEach((disciplina, disciplinaIndex) => {
-      console.log(`📚 Disciplina ${disciplinaIndex + 1}: ${disciplina.nome}`);
       disciplina.questoes.forEach((questao, questaoIndex) => {
-        console.log(`    Q${questao.numero} (índice ${questaoIndex}): ${questao.habilidade} [${questao.codigo_habilidade}]`);
         
         questions.push({
           numero: questao.numero,
@@ -98,11 +92,6 @@ export const TableRow: React.FC<TableRowProps> = ({
     });
 
     const sortedQuestions = questions.sort((a, b) => a.numero - b.numero);
-    
-    console.log('📝 TableRow - Questões ordenadas para renderização:');
-    sortedQuestions.forEach((questao, index) => {
-      console.log(`  ${index + 1}. Q${questao.numero} - ${questao.disciplina}: ${questao.habilidade}`);
-    });
 
     return sortedQuestions;
   }, [tabelaDetalhada, student.nome]);
