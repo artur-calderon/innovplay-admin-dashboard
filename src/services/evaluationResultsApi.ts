@@ -463,27 +463,6 @@ export class EvaluationResultsApiService {
 
       const response = await api.get(`/evaluation-results/avaliacoes?${params}`);
 
-      // ✅ NOVO: Log detalhado da resposta para debug das questões
-      console.log('🔍 [DEBUG] Resposta completa da API getEvaluationsList:', response.data);
-      
-      // Log específico da tabela_detalhada se existir
-      if (response.data?.tabela_detalhada?.disciplinas) {
-        console.log('📊 [DEBUG] Tabela detalhada encontrada:');
-        response.data.tabela_detalhada.disciplinas.forEach((disciplina: any, disciplinaIndex: number) => {
-          console.log(`  📚 Disciplina ${disciplinaIndex + 1}: ${disciplina.nome}`);
-          console.log(`    🎯 Total de questões: ${disciplina.questoes?.length || 0}`);
-          
-          if (disciplina.questoes && disciplina.questoes.length > 0) {
-            console.log('    📝 Questões:');
-            disciplina.questoes.forEach((questao: any, questaoIndex: number) => {
-              console.log(`      Q${questao.numero} (índice ${questaoIndex}): ${questao.habilidade} [${questao.codigo_habilidade}]`);
-            });
-          }
-        });
-      } else {
-        console.log('⚠️ [DEBUG] Tabela detalhada não encontrada na resposta');
-      }
-
       return response.data;
     } catch (error: any) {
               // Erro ao buscar avaliações

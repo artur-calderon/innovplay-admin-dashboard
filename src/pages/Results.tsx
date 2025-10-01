@@ -820,8 +820,20 @@ export default function Results() {
     perPage
   ]);
 
-  // ✅ OTIMIZADO: Carregar dados quando filtros mudarem com debounce
+  // ✅ CORRIGIDO: Carregar dados APENAS quando os 3 filtros obrigatórios estiverem preenchidos
   useEffect(() => {
+    // Verificar se os 3 filtros obrigatórios estão preenchidos (Estado, Município e Avaliação)
+    const requiredFiltersFilled = selectedState !== 'all' && 
+                                 selectedMunicipality !== 'all' && 
+                                 selectedEvaluation !== 'all';
+    
+    if (!requiredFiltersFilled) {
+      // Se não estão preenchidos, limpar dados e não fazer chamada
+      setApiData(null);
+      setEvaluationInfo(null);
+      return;
+    }
+    
     // Limpar timeout anterior
     if (loadAllDataTimeoutRef.current) {
       clearTimeout(loadAllDataTimeoutRef.current);
@@ -838,7 +850,7 @@ export default function Results() {
         clearTimeout(loadAllDataTimeoutRef.current);
       }
     };
-  }, [loadAllData]);
+  }, [loadAllData, selectedState, selectedMunicipality, selectedEvaluation]);
 
   const handleExportResults = async () => {
     try {
