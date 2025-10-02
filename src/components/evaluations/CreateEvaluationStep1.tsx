@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -120,6 +120,9 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
   // Novo estado para loading das turmas
   const [classesLoading, setClassesLoading] = useState(false);
 
+  // Flag para controlar carregamento inicial de escolas
+  const didInitSchools = useRef(false);
+
   const { toast } = useToast();
 
   const form = useForm<Step1FormValues>({
@@ -204,7 +207,8 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
 
   // Carregar municípios quando estado inicial for definido
   useEffect(() => {
-    if (!loadingData && initialData?.state && states.length > 0) {
+    // ✅ CORRIGIDO: Só carregar municípios se há estado válido e não é 'all'
+    if (!loadingData && initialData?.state && initialData.state !== 'all' && states.length > 0) {
       const loadMunicipalitiesForInitialState = async () => {
         try {
           const response = await api.get(`/city/municipalities/state/${initialData.state}`);
@@ -216,12 +220,27 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
       };
 
       loadMunicipalitiesForInitialState();
+    } else if (!loadingData && (!initialData?.state || initialData.state === 'all')) {
+      // ✅ CORRIGIDO: Limpar municípios quando não há estado válido
+      console.log("🗑️ Sem estado válido, limpando municípios");
+      setMunicipalities([]);
+      setFilteredMunicipalities([]);
+      form.setValue("municipality", "", { shouldValidate: true, shouldDirty: true });
     }
-  }, [loadingData, initialData?.state, states]);
+  }, [loadingData, initialData?.state, states, form]);
 
   // Carregar escolas quando município inicial for definido
   useEffect(() => {
-    if (!loadingData && initialData?.municipality && municipalities.length > 0) {
+    // ✅ CORRIGIDO: Só carregar escolas UMA VEZ se há município válido, não é 'all', 
+    // estado atual é o mesmo do initialData e ainda não foi inicializado
+    if (
+      !didInitSchools.current &&
+      !loadingData && 
+      initialData?.municipality && 
+      initialData.municipality !== 'all' && 
+      municipalities.length > 0 &&
+      selectedState === initialData?.state
+    ) {
       const loadSchoolsForInitialMunicipality = async () => {
         try {
           const response = await api.get(`/school/city/${initialData.municipality}`);
@@ -230,21 +249,33 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
           setFilteredSchools(schoolsData);
         } catch (error) {
           console.error("Erro ao carregar escolas do município inicial:", error);
-          // Fallback: usar escolas dos dados iniciais
-          if (initialData.selectedSchools && initialData.selectedSchools.length > 0) {
-            setSchools(initialData.selectedSchools);
-            setFilteredSchools(initialData.selectedSchools);
-          }
+          // ✅ CORRIGIDO: Não usar fallback de escolas se não há município válido
+          setSchools([]);
+          setFilteredSchools([]);
+          console.log("⚠️ Município inválido ou sem escolas, limpando lista");
         }
       };
 
       loadSchoolsForInitialMunicipality();
+      didInitSchools.current = true;
+    } else if (!loadingData && (!initialData?.municipality || initialData.municipality === 'all')) {
+      // ✅ CORRIGIDO: Limpar escolas quando não há município selecionado
+      console.log("🗑️ Sem município válido, limpando escolas");
+      setSchools([]);
+      setFilteredSchools([]);
+      form.setValue("selectedSchools", [], { shouldValidate: true, shouldDirty: true });
     }
-  }, [loadingData, initialData?.municipality, municipalities, initialData?.selectedSchools]);
+  }, [loadingData, initialData?.municipality, municipalities, initialData?.selectedSchools, form, selectedState, initialData?.state]);
 
   // Carregar turmas quando escolas iniciais forem definidas
   useEffect(() => {
-    if (!loadingData && initialData?.selectedSchools && initialData.selectedSchools.length > 0 && initialData?.grade) {
+    // ✅ CORRIGIDO: Só carregar turmas se há escolas válidas e município válido
+    if (!loadingData && 
+        initialData?.selectedSchools && 
+        initialData.selectedSchools.length > 0 && 
+        initialData?.grade &&
+        initialData?.municipality &&
+        initialData.municipality !== 'all') {
       const loadClassesForInitialSchools = async () => {
         try {
           const allClasses: any[] = [];
@@ -323,12 +354,21 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
 
         setClasses(filteredClasses);
 
+        // ✅ CORRIGIDO: Validar e limpar turmas inválidas após fetch
         const currentClasses = form.getValues("selectedClasses");
         if (currentClasses.length > 0) {
           const validClasses = currentClasses.filter(c =>
             filteredClasses.find((cl: { id: string }) => cl.id === c.id)
           );
-          form.setValue("selectedClasses", validClasses);
+          console.log("🔍 Validando turmas (professor):", { 
+            atuais: currentClasses.length, 
+            válidas: validClasses.length,
+            filtradas: filteredClasses.length 
+          });
+          form.setValue("selectedClasses", validClasses, { shouldValidate: true, shouldDirty: true });
+        } else {
+          // Se não há turmas selecionadas, garantir que está vazio
+          form.setValue("selectedClasses", [], { shouldValidate: true, shouldDirty: true });
         }
       } catch (error) {
         setClasses([]);
@@ -338,14 +378,21 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
       }
     };
 
-    if (!loadingData && !initialData?.selectedClasses) {
+    // ✅ CORRIGIDO: Sempre buscar turmas quando filtros mudam, mesmo no modo de edição
+    if (!loadingData) {
       fetchFilteredClasses();
     }
   }, [selectedGrade, selectedSchools, selectedMunicipality, form, loadingData, initialData]);
 
   // Carregar municípios quando estado mudar
   useEffect(() => {
+    console.log("🔄 Estado mudou:", { selectedState, initialDataState: initialData?.state });
+    
+    // Reset da flag de inicialização quando estado muda
+    didInitSchools.current = false;
+    
     if (selectedState === 'all') {
+      console.log("🗑️ Limpando dados para estado 'all'");
       setMunicipalities([]);
       setFilteredMunicipalities([]);
       form.setValue("municipality", "all");
@@ -354,28 +401,36 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
       setClasses([]);
       setNoSchoolsMessage("");
       setNoClassesMessage("");
-      form.setValue("selectedSchools", []);
-      form.setValue("selectedClasses", []);
-    } else if (selectedState && selectedState !== initialData?.state) {
-      api.get(`/city/municipalities/state/${selectedState}`)
-        .then(res => {
-          setMunicipalities(res.data || []);
-          setFilteredMunicipalities(res.data || []);
-        })
-        .catch(err => {
-          console.error("Erro ao carregar municípios:", err);
-          setMunicipalities([]);
-          setFilteredMunicipalities([]);
-        });
+      form.setValue("selectedSchools", [], { shouldValidate: true, shouldDirty: true });
+      form.setValue("selectedClasses", [], { shouldValidate: true, shouldDirty: true });
+    } else if (selectedState) {
+      // ✅ CORRIGIDO: Sempre limpar e recarregar quando estado muda, mesmo no modo de edição
+      console.log("🔄 Carregando municípios para estado:", selectedState);
+      
+      // Limpar dados imediatamente
       form.setValue("municipality", "");
       setSchools([]);
       setFilteredSchools([]);
       setClasses([]);
       setNoSchoolsMessage("");
       setNoClassesMessage("");
-      form.setValue("selectedSchools", []);
-      form.setValue("selectedClasses", []);
+      form.setValue("selectedSchools", [], { shouldValidate: true, shouldDirty: true });
+      form.setValue("selectedClasses", [], { shouldValidate: true, shouldDirty: true });
+      
+      // Carregar municípios do novo estado
+      api.get(`/city/municipalities/state/${selectedState}`)
+        .then(res => {
+          console.log("✅ Municípios carregados:", res.data?.length || 0);
+          setMunicipalities(res.data || []);
+          setFilteredMunicipalities(res.data || []);
+        })
+        .catch(err => {
+          console.error("❌ Erro ao carregar municípios:", err);
+          setMunicipalities([]);
+          setFilteredMunicipalities([]);
+        });
     } else if (!selectedState) {
+      console.log("🗑️ Limpando dados - sem estado selecionado");
       setMunicipalities([]);
       setFilteredMunicipalities([]);
       form.setValue("municipality", "");
@@ -384,14 +439,17 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
       setClasses([]);
       setNoSchoolsMessage("");
       setNoClassesMessage("");
-      form.setValue("selectedSchools", []);
-      form.setValue("selectedClasses", []);
+      form.setValue("selectedSchools", [], { shouldValidate: true, shouldDirty: true });
+      form.setValue("selectedClasses", [], { shouldValidate: true, shouldDirty: true });
     }
   }, [selectedState, form, initialData?.state]);
 
   // Carregar escolas quando município mudar
   useEffect(() => {
-    if (user?.role === "admin" && selectedMunicipality && selectedMunicipality !== 'all' && selectedMunicipality !== initialData?.municipality) {
+    console.log("🔄 Município mudou:", { selectedMunicipality, initialDataMunicipality: initialData?.municipality });
+    
+    // ✅ CORRIGIDO: Sempre carregar escolas quando município muda, mesmo no modo de edição
+    if (user?.role === "admin" && selectedMunicipality && selectedMunicipality !== 'all') {
       setSchoolsLoading(true);
       setNoSchoolsMessage("");
 
@@ -407,12 +465,20 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
             setNoSchoolsMessage("Não existem escolas cadastradas neste município.");
           }
 
+          // ✅ CORRIGIDO: Validar e limpar escolas inválidas após fetch
           const currentSchools = form.getValues("selectedSchools");
           if (currentSchools.length > 0) {
             const validSchools = currentSchools.filter(s =>
               schoolsData.find((school: School) => school.id === s.id)
             );
-            form.setValue("selectedSchools", validSchools);
+            console.log("🔍 Validando escolas:", { 
+              atuais: currentSchools.length, 
+              válidas: validSchools.length,
+              carregadas: schoolsData.length 
+            });
+            form.setValue("selectedSchools", validSchools, { shouldValidate: true, shouldDirty: true });
+          } else {
+            form.setValue("selectedSchools", [], { shouldValidate: true, shouldDirty: true });
           }
         } catch (error) {
           console.error("Erro ao carregar escolas:", error);
@@ -425,7 +491,8 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
 
       loadSchoolsForAdmin();
     } else if (user?.role !== "admin") {
-      if (selectedMunicipality && selectedMunicipality !== 'all' && selectedMunicipality !== initialData?.municipality) {
+      // ✅ CORRIGIDO: Sempre carregar escolas quando município muda, mesmo no modo de edição
+      if (selectedMunicipality && selectedMunicipality !== 'all') {
         const loadSchoolsForNonAdmin = async () => {
           try {
             const response = await api.get(`/school/city/${selectedMunicipality}`);
@@ -438,12 +505,20 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
               setNoSchoolsMessage("Não existem escolas cadastradas neste município.");
             }
 
+            // ✅ CORRIGIDO: Validar e limpar escolas inválidas após fetch (professor)
             const currentSchools = form.getValues("selectedSchools");
             if (currentSchools.length > 0) {
               const validSchools = currentSchools.filter(s =>
                 schoolsData.find((school: School) => school.id === s.id)
               );
-              form.setValue("selectedSchools", validSchools);
+              console.log("🔍 Validando escolas (professor):", { 
+                atuais: currentSchools.length, 
+                válidas: validSchools.length,
+                carregadas: schoolsData.length 
+              });
+              form.setValue("selectedSchools", validSchools, { shouldValidate: true, shouldDirty: true });
+            } else {
+              form.setValue("selectedSchools", [], { shouldValidate: true, shouldDirty: true });
             }
           } catch (error) {
             console.error("Erro ao carregar escolas:", error);
@@ -457,12 +532,12 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
 
   // Buscar turmas válidas para admin
   useEffect(() => {
+    // ✅ CORRIGIDO: Sempre buscar turmas quando filtros mudam, mesmo no modo de edição
     if (
       user?.role === "admin" &&
       selectedSchools.length > 0 &&
       selectedGrade &&
-      selectedMunicipality &&
-      !initialData?.selectedClasses
+      selectedMunicipality
     ) {
       setClassesLoading(true);
       setNoClassesMessage("");
@@ -490,6 +565,23 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
           );
 
           setClasses(filteredClasses);
+          
+          // ✅ CORRIGIDO: Validar e limpar turmas inválidas após fetch
+          const currentClasses = form.getValues("selectedClasses");
+          if (currentClasses.length > 0) {
+            const validClasses = currentClasses.filter(c =>
+              filteredClasses.find((cl: { id: string }) => cl.id === c.id)
+            );
+            console.log("🔍 Validando turmas:", { 
+              atuais: currentClasses.length, 
+              válidas: validClasses.length,
+              filtradas: filteredClasses.length 
+            });
+            form.setValue("selectedClasses", validClasses, { shouldValidate: true, shouldDirty: true });
+          } else {
+            form.setValue("selectedClasses", [], { shouldValidate: true, shouldDirty: true });
+          }
+          
           if (filteredClasses.length === 0) {
             setNoClassesMessage("Não existe turma cadastrada para essas escolas, curso e série.");
           }
@@ -504,6 +596,33 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
       fetchAllClasses();
     }
   }, [user?.role, selectedSchools, selectedGrade, selectedMunicipality, initialData?.selectedClasses]);
+
+  // ✅ NOVO: Limpar turmas quando série muda (para ambos professor e admin)
+  useEffect(() => {
+    // ✅ CORRIGIDO: Sempre limpar turmas quando série muda, mesmo no modo de edição
+    if (!loadingData) {
+      console.log("🔄 Série mudou, limpando turmas selecionadas");
+      form.setValue("selectedClasses", [], { shouldValidate: true, shouldDirty: true });
+    }
+  }, [selectedGrade, loadingData, initialData?.selectedClasses, form]);
+
+  // ✅ NOVO: Limpar turmas quando escolas mudam
+  useEffect(() => {
+    // ✅ CORRIGIDO: Sempre limpar turmas quando escolas mudam, mesmo no modo de edição
+    if (!loadingData) {
+      console.log("🔄 Escolas mudaram, limpando turmas selecionadas");
+      form.setValue("selectedClasses", [], { shouldValidate: true, shouldDirty: true });
+    }
+  }, [selectedSchools, loadingData, form]);
+
+  // ✅ NOVO: Limpar turmas quando município muda
+  useEffect(() => {
+    // ✅ CORRIGIDO: Sempre limpar turmas quando município muda, mesmo no modo de edição
+    if (!loadingData) {
+      console.log("🔄 Município mudou, limpando turmas selecionadas");
+      form.setValue("selectedClasses", [], { shouldValidate: true, shouldDirty: true });
+    }
+  }, [selectedMunicipality, loadingData, form]);
 
   const handleSubjectToggle = (subject: Subject) => {
     const current = selectedSubjects;

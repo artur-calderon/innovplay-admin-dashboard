@@ -82,7 +82,13 @@ export default function EnhancedQuickActions() {
 
         // Processar avaliações
         if (evaluationsRes.status === 'fulfilled') {
-          const evaluations = evaluationsRes.value.data?.data || evaluationsRes.value.data || [];
+          const allEvaluations = evaluationsRes.value.data?.data || evaluationsRes.value.data || [];
+          // Filtrar avaliações ativas (não deletadas/arquivadas)
+          const evaluations = allEvaluations.filter((evaluation: any) => 
+            !evaluation.deleted_at && 
+            !evaluation.archived && 
+            evaluation.is_active !== false
+          );
           totalEvaluations = evaluations.length;
           
           // Contar avaliações pendentes de correção

@@ -5,12 +5,44 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ArrowLeft, Save, Loader2 } from "lucide-react";
 import { CreateEvaluationStep1 } from "@/components/evaluations/CreateEvaluationStep1";
 import { CreateEvaluationStep2 } from "@/components/evaluations/CreateEvaluationStep2";
-import { EvaluationFormData } from "@/components/evaluations/types";
+import { EvaluationFormData, Question as FormQuestion, Question } from "@/components/evaluations/types";
 import { useAuth } from "@/context/authContext";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { useQuestionActions } from "@/stores/useEvaluationStore";
+import { useEvaluations } from "@/hooks/use-cache";
+
+interface Municipality {
+    id: string;
+    name: string;
+}
+
+interface School {
+    id: string;
+    name: string;
+}
+
+interface ApiQuestion {
+    id: string;
+    text: string;
+    formattedText?: string;
+    secondStatement?: string;
+    [key: string]: unknown;
+}
+
+interface AppliedClass {
+    class: {
+        id: string;
+        name: string;
+    };
+}
+
+interface ApiError {
+    response?: {
+        status: number;
+    };
+}
 
 interface Evaluation {
     id: string;
@@ -31,20 +63,15 @@ interface Evaluation {
         id: string;
         name: string;
     } | null;
-    municipalities: any[];
-    schools: any[];
+    municipalities: Municipality[];
+    schools: School[];
     type: "AVALIACAO" | "SIMULADO";
     createdAt: string;
-    questions: any[];
+    questions: ApiQuestion[];
     time_limit?: string;
     duration?: number;
     classes?: string[];
-    applied_classes?: Array<{
-        class: {
-            id: string;
-            name: string;
-        };
-    }>;
+    applied_classes?: AppliedClass[];
 }
 
 const EditEvaluation = () => {
@@ -58,6 +85,7 @@ const EditEvaluation = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
     const { clearQuestions } = useQuestionActions();
+    const { invalidateAfterCRUD } = useEvaluations();
 
     // Limpar questões do store ao sair da página
     useEffect(() => {
@@ -93,8 +121,10 @@ const EditEvaluation = () => {
                 const formData: EvaluationFormData = {
                     title: evaluation.title || "",
                     description: evaluation.description || "",
-                    municipalities: evaluation.municipalities?.map((m: any) => m.id || m) || [],
-                    schools: evaluation.schools?.map((s: any) => s.id || s) || [],
+                    municipalities: evaluation.municipalities?.map((m: Municipality | string) => 
+                        typeof m === 'string' ? m : m.id) || [],
+                    schools: evaluation.schools?.map((s: School | string) => 
+                        typeof s === 'string' ? s : s.id) || [],
                     course: evaluation.course?.id || "",
                     grade: evaluation.grade?.id || "",
                     classId: "",
@@ -104,15 +134,40 @@ const EditEvaluation = () => {
                         : "SAEB",
                     subjects: evaluation.subjects || evaluation.subjects_info || (evaluation.subject ? [evaluation.subject] : []),
                     subject: evaluation.subject?.id || "",
-                    questions: evaluation.questions || [],
+                    questions: (evaluation.questions || []) as unknown as FormQuestion[],
                     startDateTime: evaluation.time_limit || "",
                     duration: evaluation.duration?.toString() || "",
                     classes: evaluation.classes || [],
                     state: stateName,
-                    municipality: evaluation.municipalities?.[0]?.id || evaluation.municipalities?.[0] || "",
+                    municipality: typeof evaluation.municipalities?.[0] === 'string' 
+                        ? evaluation.municipalities[0] 
+                        : evaluation.municipalities?.[0]?.id || "",
                     selectedSchools: evaluation.schools || [],
-                    selectedClasses: evaluation.applied_classes?.map((ac: any) => ac.class) || [],
+                    selectedClasses: evaluation.applied_classes?.map((ac: AppliedClass) => ac.class) || [],
                 };
+
+                // ✅ DEBUG: Log dos dados carregados para edição
+                console.log("📋 Dados carregados para edição:", {
+                    title: formData.title,
+                    grade: formData.grade,
+                    selectedSchools: formData.selectedSchools,
+                    selectedClasses: formData.selectedClasses,
+                    state: formData.state,
+                    municipality: formData.municipality
+                });
+
+                // ✅ VALIDAÇÃO: Verificar se dados são consistentes
+                if (formData.state && formData.state !== 'all' && (!formData.municipality || formData.municipality === 'all')) {
+                    console.warn("⚠️ Estado selecionado mas sem município válido, limpando escolas");
+                    formData.selectedSchools = [];
+                    formData.selectedClasses = [];
+                }
+                
+                if (formData.municipality && formData.municipality !== 'all' && (!formData.state || formData.state === 'all')) {
+                    console.warn("⚠️ Município selecionado mas sem estado válido, limpando escolas");
+                    formData.selectedSchools = [];
+                    formData.selectedClasses = [];
+                }
 
                 setEvaluationData(formData);
             } catch (error) {
@@ -145,11 +200,40 @@ const EditEvaluation = () => {
         setCurrentStep(1);
     };
 
-    const handleEvaluationComplete = async () => {
+    // Função para confirmar exclusão antes de recriar
+    const confirmDeletion = async (testId: string, maxAttempts = 10, delayMs = 500): Promise<boolean> => {
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                await api.get(`/test/${testId}`);
+                // Se chegou aqui, a avaliação ainda existe
+                if (attempt === maxAttempts) {
+                    console.warn(`Avaliação ${testId} ainda existe após ${maxAttempts} tentativas`);
+                    return false;
+                }
+                // Aguardar antes da próxima tentativa
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+            } catch (error: unknown) {
+                // Se for 404/410, a exclusão foi bem-sucedida
+                if ((error as ApiError)?.response?.status === 404 || (error as ApiError)?.response?.status === 410) {
+                    console.log(`Avaliação ${testId} confirmada como excluída na tentativa ${attempt}`);
+                    return true;
+                }
+                // Outros erros são tratados como falha
+                console.error(`Erro ao verificar exclusão da avaliação ${testId}:`, error);
+                return false;
+            }
+        }
+        return false;
+    };
+
+    const handleEvaluationComplete = async (updatedQuestions?: Question[]) => {
         if (!evaluationData || !id) return;
 
         try {
             setIsSaving(true);
+
+            // Usar questões atualizadas se fornecidas, senão usar as do evaluationData
+            const finalQuestions = updatedQuestions || evaluationData.questions || [];
 
             // Atualizar dados básicos via PUT
             await api.put(`/test/${id}`, {
@@ -168,12 +252,14 @@ const EditEvaluation = () => {
                 classes: evaluationData.classes,
             });
 
-            // Se há questões para atualizar, usar estratégia de recriação
-            if (evaluationData.questions && evaluationData.questions.length > 0) {
-                const questionsChanged = JSON.stringify(originalEvaluation?.questions || []) !== 
-                                       JSON.stringify(evaluationData.questions);
+            // Verificar se questões mudaram para decidir entre PUT ou delete+recreate
+            if (finalQuestions && finalQuestions.length > 0) {
+                const originalQuestions = originalEvaluation?.questions || [];
+                const questionsChanged = JSON.stringify(originalQuestions) !== JSON.stringify(finalQuestions);
                 
                 if (questionsChanged) {
+                    console.log("🔄 Questões alteradas detectadas, iniciando recriação segura...");
+                    
                     const currentEvalResponse = await api.get(`/test/${id}`);
                     const currentEval = currentEvalResponse.data;
                     
@@ -191,17 +277,38 @@ const EditEvaluation = () => {
                         time_limit: evaluationData.startDateTime,
                         duration: evaluationData.duration ? parseInt(evaluationData.duration) : undefined,
                         classes: evaluationData.classes,
-                        questions: evaluationData.questions,
+                        questions: finalQuestions,
                         created_by: currentEval.created_by || user.id,
                         max_score: currentEval.max_score,
                         evaluation_mode: currentEval.evaluation_mode,
                         intructions: currentEval.intructions
                     };
 
+                    // 1. Excluir avaliação existente
+                    console.log(`🗑️ Excluindo avaliação ${id}...`);
                     await api.delete(`/test/${id}`);
                     
+                    // 2. Confirmar exclusão antes de recriar
+                    console.log("⏳ Confirmando exclusão...");
+                    const deletionConfirmed = await confirmDeletion(id);
+                    
+                    if (!deletionConfirmed) {
+                        toast({
+                            title: "Erro",
+                            description: "Não foi possível confirmar a exclusão da avaliação. Operação cancelada para evitar duplicação.",
+                            variant: "destructive",
+                        });
+                        return;
+                    }
+                    
+                    // 3. Recriar avaliação
+                    console.log("🔄 Recriando avaliação...");
                     const newEvalResponse = await api.post('/test', completePayload);
                     const newEvalId = newEvalResponse.data.test_id || newEvalResponse.data.id;
+                    
+                    // 4. Invalidar caches
+                    console.log("🗑️ Invalidando caches...");
+                    await invalidateAfterCRUD();
                     
                     toast({
                         title: "Sucesso",
@@ -213,6 +320,9 @@ const EditEvaluation = () => {
                 }
             }
 
+            // Invalidar caches após atualização
+            await invalidateAfterCRUD();
+            
             toast({
                 title: "Sucesso",
                 description: "Avaliação atualizada com sucesso!",
@@ -356,6 +466,8 @@ const EditEvaluation = () => {
                             data={evaluationData}
                             onBack={handleBack}
                             onComplete={handleEvaluationComplete}
+                            editMode={true}
+                            evaluationId={id}
                         />
                     )}
                 </CardContent>
