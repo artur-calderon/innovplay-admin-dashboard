@@ -43,7 +43,14 @@ export default function RecentEvaluationsTable() {
         const data = response.data;
         
         if (data?.data && Array.isArray(data.data)) {
-          const recentEvaluations = data.data.map((evaluation: any) => ({
+          // Filtrar avaliações ativas (não deletadas/arquivadas)
+          const activeEvaluations = data.data.filter((evaluation: any) => 
+            !evaluation.deleted_at && 
+            !evaluation.archived && 
+            evaluation.is_active !== false
+          );
+          
+          const recentEvaluations = activeEvaluations.map((evaluation: any) => ({
             id: evaluation.id,
             title: evaluation.title || 'Avaliação sem título',
             subject: evaluation.subject_rel?.name || evaluation.subject?.name || 'Disciplina não informada',
@@ -62,8 +69,15 @@ export default function RecentEvaluationsTable() {
           
           setEvaluations(recentEvaluations);
         } else if (data?.tests && Array.isArray(data.tests)) {
+          // Filtrar avaliações ativas (não deletadas/arquivadas) - estrutura alternativa
+          const activeTests = data.tests.filter((evaluation: any) => 
+            !evaluation.deleted_at && 
+            !evaluation.archived && 
+            evaluation.is_active !== false
+          );
+          
           // Tratar estrutura alternativa da API
-          const recentEvaluations = data.tests.map((evaluation: any) => ({
+          const recentEvaluations = activeTests.map((evaluation: any) => ({
             id: evaluation.id,
             title: evaluation.title || 'Avaliação sem título',
             subject: evaluation.subject_rel?.name || evaluation.subject?.name || 'Disciplina não informada',

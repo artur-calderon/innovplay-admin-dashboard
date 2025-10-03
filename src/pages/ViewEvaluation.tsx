@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -170,6 +171,15 @@ export default function ViewEvaluation() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showStartEvaluationModal, setShowStartEvaluationModal] = useState(false);
+  
+  // Estados para mapeamento de habilidades
+  const [skillsMapping, setSkillsMapping] = useState<Record<string, string>>({});
+  const [skillsBySubject, setSkillsBySubject] = useState<Record<string, Array<{
+    id: string | null;
+    code: string;
+    description: string;
+    source: 'database' | 'question';
+  }>>>({});
 
   useEffect(() => {
     const fetchEvaluation = async () => {
@@ -184,6 +194,48 @@ export default function ViewEvaluation() {
           formattedText: q.formattedText
         })));
         setEvaluation(response.data);
+        
+        // Buscar skills da avaliação para mapeamento
+        try {
+          const evaluationSkills = await EvaluationResultsApiService.getSkillsByEvaluation(id);
+          
+          if (evaluationSkills && evaluationSkills.length > 0) {
+            // Criar mapeamento UUID -> Código real organizado por disciplina
+            const newSkillsMapping: Record<string, string> = {};
+            const skillsBySubject: Record<string, Array<{
+              id: string | null;
+              code: string;
+              description: string;
+              source: 'database' | 'question';
+            }>> = {};
+            
+            evaluationSkills.forEach(skill => {
+              // Mapear UUID para código real
+              if (skill.id && skill.code) {
+                newSkillsMapping[skill.id] = skill.code;
+              }
+              
+              // Organizar skills por disciplina
+              const subjectId = skill.subject_id;
+              if (!skillsBySubject[subjectId]) {
+                skillsBySubject[subjectId] = [];
+              }
+              skillsBySubject[subjectId].push({
+                id: skill.id,
+                code: skill.code,
+                description: skill.description,
+                source: skill.source
+              });
+            });
+            
+            setSkillsMapping(newSkillsMapping);
+            setSkillsBySubject(skillsBySubject);
+            
+          }
+        } catch (error) {
+          console.error("Erro ao carregar skills da avaliação:", error);
+          // Continuar sem skills se houver erro
+        }
       } catch (error) {
         console.error("Erro ao buscar avaliação:", error);
         toast({
@@ -275,6 +327,60 @@ export default function ViewEvaluation() {
         variant: "destructive",
       });
     }
+  };
+
+  // Função para buscar descrição da habilidade
+  const getSkillDescription = (skillId: string) => {
+    // Limpar o skillId removendo chaves se existirem
+    const cleanSkillId = skillId.replace(/[{}]/g, '');
+    
+    // Primeiro, tentar mapear UUID para código se necessário
+    const skillCode = skillsMapping[cleanSkillId] || cleanSkillId;
+    
+    // Buscar em todas as disciplinas - tentar tanto por ID quanto por código
+    for (const [subjectId, skills] of Object.entries(skillsBySubject)) {
+      // Tentar encontrar por ID limpo primeiro
+      let skill = skills.find(s => s.id === cleanSkillId);
+      if (skill) {
+        return skill.description;
+      }
+      
+      // Tentar encontrar por ID original (com chaves)
+      skill = skills.find(s => s.id === skillId);
+      if (skill) {
+        return skill.description;
+      }
+      
+      // Tentar encontrar por código
+      skill = skills.find(s => s.code === skillCode);
+      if (skill) {
+        return skill.description;
+      }
+    }
+    
+    return null;
+  };
+
+  // Função para obter o código da habilidade (para exibição)
+  const getSkillCode = (skillId: string) => {
+    // Limpar o skillId removendo chaves se existirem
+    const cleanSkillId = skillId.replace(/[{}]/g, '');
+    
+    const mappedCode = skillsMapping[cleanSkillId];
+    if (mappedCode) {
+      return mappedCode;
+    }
+    
+    // Se não encontrou no mapeamento, tentar buscar diretamente nas skills
+    for (const [subjectId, skills] of Object.entries(skillsBySubject)) {
+      const skill = skills.find(s => s.id === cleanSkillId);
+      if (skill) {
+        return skill.code;
+      }
+    }
+    
+    // Fallback: retornar o ID limpo se não encontrar
+    return cleanSkillId;
   };
 
   // Função para agrupar questões por matéria
@@ -809,6 +915,96 @@ export default function ViewEvaluation() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Turmas Selecionadas */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Turmas Selecionadas
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {(() => {
+              // Mapear e deduplicar turmas de applied_classes
+              const selectedClasses = (evaluation.applied_classes || [])
+                .map(appliedClass => appliedClass.class)
+                .filter((classItem, index, self) => 
+                  self.findIndex(c => c.id === classItem.id) === index
+                );
+
+              if (selectedClasses.length > 0) {
+                return (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                        {selectedClasses.length} turma{selectedClasses.length > 1 ? 's' : ''} selecionada{selectedClasses.length > 1 ? 's' : ''}
+                      </Badge>
+                    </div>
+                    
+                    <div className="max-h-64 overflow-y-auto space-y-3">
+                      {selectedClasses.map((classItem, idx) => (
+                        <div key={classItem.id || idx} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-medium text-gray-800">
+                              {classItem.name}
+                            </span>
+                            <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                              {classItem.students_count} alunos
+                            </Badge>
+                          </div>
+                          <div className="text-sm text-gray-600 space-y-1">
+                            <div className="flex items-center gap-2">
+                              <School className="h-4 w-4" />
+                              <span>{classItem.school.name}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <BookOpen className="h-4 w-4" />
+                              <span>{classItem.grade.name}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              } else if (evaluation.classes && evaluation.classes.length > 0) {
+                // Fallback: mostrar contagem de turmas pelos IDs
+                return (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Users className="h-5 w-5 text-yellow-600" />
+                      <span className="font-semibold text-yellow-800">
+                        {evaluation.classes.length} turma{evaluation.classes.length > 1 ? 's' : ''} selecionada{evaluation.classes.length > 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    <p className="text-sm text-yellow-700">
+                      IDs das turmas: {evaluation.classes.join(', ')}
+                    </p>
+                    <p className="text-xs text-yellow-600 mt-2">
+                      Detalhes completos das turmas serão exibidos após a aplicação da avaliação.
+                    </p>
+                  </div>
+                );
+              } else {
+                // Nenhuma turma selecionada
+                return (
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Users className="h-5 w-5 text-gray-500" />
+                      <span className="font-semibold text-gray-700">
+                        Nenhuma turma selecionada
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Esta avaliação ainda não foi associada a nenhuma turma.
+                    </p>
+                  </div>
+                );
+              }
+            })()}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Questions by Subject */}
@@ -885,21 +1081,32 @@ export default function ViewEvaluation() {
                               Questão {index + 1}
                             </h3>
                             <div className="flex flex-wrap gap-2">
-                              <Badge variant="outline" className="text-xs bg-white">
-                                {question.type === 'open' ? 'Dissertativa' : 
-                                 question.type === 'multipleChoice' ? 'Múltipla Escolha' :
-                                 question.type}
-                              </Badge>
-                              <Badge variant="outline" className="text-xs bg-white">
-                                {question.value} pontos
-                              </Badge>
-                              <Badge variant="outline" className="text-xs bg-white">
-                                {question.difficulty}
-                              </Badge>
                               {Array.isArray(question.skills) && question.skills.length > 0 && (
-                                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
-                                  {question.skills.length} habilidade{question.skills.length > 1 ? 's' : ''}
-                                </Badge>
+                                question.skills.map((skill, skillIndex) => {
+                                  const skillCode = getSkillCode(skill);
+                                  const skillDescription = getSkillDescription(skill);
+                                  return (
+                                    <div key={skillIndex} className="group relative">
+                                      <Badge 
+                                        variant="outline" 
+                                        className="text-xs bg-blue-50 text-blue-700 font-medium cursor-help hover:bg-blue-100 transition-colors"
+                                        title={skillDescription || skillCode}
+                                      >
+                                        {skillCode}
+                                        {skillDescription && (
+                                          <span className="ml-1 text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity">ℹ️</span>
+                                        )}
+                                      </Badge>
+                                      {skillDescription && (
+                                        <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-10 bg-gray-900 text-white text-xs rounded-lg p-3 max-w-xs shadow-lg">
+                                          <div className="font-bold text-blue-200 mb-1">{skillCode}</div>
+                                          <div className="leading-relaxed">{skillDescription}</div>
+                                          <div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })
                               )}
                             </div>
                           </div>
@@ -926,28 +1133,6 @@ export default function ViewEvaluation() {
                           </div>
                         )}
 
-                        {/* Habilidades (se houver) */}
-                        {Array.isArray(question.skills) && question.skills.length > 0 && (
-                          <div className="space-y-3">
-                            <h4 className="font-semibold text-lg text-gray-700 flex items-center gap-2">
-                              <span className="w-6 h-6 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-sm">🎯</span>
-                              Habilidades Avaliadas
-                            </h4>
-                            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                              <div className="flex flex-wrap gap-2">
-                                {question.skills.map((skill, skillIndex) => (
-                                  <Badge 
-                                    key={skillIndex} 
-                                    variant="outline" 
-                                    className="text-xs bg-white border-purple-300 text-purple-700 font-medium"
-                                  >
-                                    {skill}
-                                  </Badge>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        )}
 
                         {/* Alternativas para questões de múltipla escolha */}
                         {(question.type === 'multipleChoice' || question.type === 'multiple_choice') && (question.options || question.alternatives) && (question.options?.length > 0 || question.alternatives?.length > 0) && (

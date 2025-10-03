@@ -44,7 +44,9 @@ interface CreateEvaluationStep2Props {
     questions?: Question[];
   };
   onBack: () => void;
-  onComplete?: () => void;
+  onComplete?: (updatedQuestions?: Question[]) => void;
+  editMode?: boolean;
+  evaluationId?: string;
 }
 
 interface QuestionsBySubject {
@@ -55,6 +57,8 @@ export const CreateEvaluationStep2 = ({
   data,
   onBack,
   onComplete,
+  editMode = false,
+  evaluationId,
 }: CreateEvaluationStep2Props) => {
   const [loading, setLoading] = useState(false);
   const [questionsBySubject, setQuestionsBySubject] = useState<QuestionsBySubject>({});
@@ -203,6 +207,14 @@ export const CreateEvaluationStep2 = ({
         return;
       }
 
+      // ✅ CORREÇÃO: Se estiver em modo de edição, delegar para o EditEvaluation
+      if (editMode && onComplete) {
+        console.log("📝 Modo de edição: delegando questões para EditEvaluation");
+        onComplete(allQuestions);
+        return;
+      }
+
+      // ✅ CORREÇÃO: Fluxo de criação (apenas quando não estiver editando)
       const backendEvaluationData = {
         title: data.title,
         description: data.description || "",
@@ -421,7 +433,7 @@ export const CreateEvaluationStep2 = ({
           onClick={handleSubmit} 
           disabled={loading || getTotalQuestions() === 0}
         >
-          {loading ? "Criando..." : "Finalizar Avaliação"}
+          {loading ? (editMode ? "Salvando..." : "Criando...") : (editMode ? "Salvar Alterações" : "Finalizar Avaliação")}
         </Button>
       </div>
 

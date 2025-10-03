@@ -668,7 +668,15 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
   });
 
   // ✅ Preparar dados das avaliações com verificações de segurança
-  const allEvaluations = Array.isArray(evaluationsData?.data) ? evaluationsData.data : [];
+  const rawEvaluations = Array.isArray(evaluationsData?.data) ? evaluationsData.data : [];
+  
+  // ✅ Filtrar avaliações ativas (não deletadas/arquivadas)
+  const allEvaluations = rawEvaluations.filter((evaluation: any) => 
+    !evaluation.deleted_at && 
+    !evaluation.archived && 
+    evaluation.is_active !== false
+  );
+  
   const pagination = evaluationsData?.pagination;
 
   // ✅ Filtrar avaliações baseado na prop showMyEvaluations
