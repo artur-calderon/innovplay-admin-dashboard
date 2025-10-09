@@ -218,6 +218,7 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
     };
 
     generatePreview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedGrade, selectedLetters, selectedNumbers, customName, nameType, grades, shift, capacity, room]);
 
   const handleLetterToggle = (letter: string) => {
@@ -287,11 +288,12 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
       form.reset();
       setOpen(false);
       onSuccess?.();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error creating classes:", error);
+      const errorMessage = (error as { response?: { data?: { error?: string } } })?.response?.data?.error || "Erro ao criar turma(s)";
       toast({
         title: "Erro",
-        description: error.response?.data?.error || "Erro ao criar turma(s)",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -576,7 +578,7 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="grid grid-cols-6 md:grid-cols-13 gap-2">
+                      <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-13 gap-2">
                         {letters.map((letter) => (
                           <Button
                             key={letter}
@@ -584,7 +586,7 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
                             variant={selectedLetters.includes(letter) ? "default" : "outline"}
                             size="sm"
                             onClick={() => handleLetterToggle(letter)}
-                            className={`h-10 w-10 ${selectedLetters.includes(letter) ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
+                            className={`h-9 w-9 sm:h-10 sm:w-10 ${selectedLetters.includes(letter) ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
                           >
                             {letter}
                           </Button>
@@ -639,7 +641,7 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="grid grid-cols-5 md:grid-cols-10 gap-2">
+                      <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2">
                         {numbers.map((number) => (
                           <Button
                             key={number}
@@ -647,7 +649,7 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
                             variant={selectedNumbers.includes(number) ? "default" : "outline"}
                             size="sm"
                             onClick={() => handleNumberToggle(number)}
-                            className={`h-10 w-10 ${selectedNumbers.includes(number) ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
+                            className={`h-9 w-9 sm:h-10 sm:w-10 ${selectedNumbers.includes(number) ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
                           >
                             {number}
                           </Button>
@@ -725,40 +727,40 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
                         </p>
                       </div>
                     ) : (
-                      <div className="grid gap-3">
+                      <div className="grid gap-3 sm:gap-4">
                         {classesToCreate.map((classPreview, index) => (
                           <div 
                             key={index}
-                            className="flex items-center justify-between p-4 border rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50"
+                            className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 sm:p-4 border rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 hover:shadow-md transition-shadow"
                           >
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center font-semibold">
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <div className="w-9 h-9 sm:w-10 sm:h-10 bg-blue-600 text-white rounded-full flex items-center justify-center font-semibold flex-shrink-0">
                                 {classPreview.name.split(' ').pop()}
                               </div>
-                              <div>
-                                <h4 className="font-semibold text-gray-900">
+                              <div className="min-w-0 flex-1">
+                                <h4 className="font-semibold text-sm sm:text-base text-gray-900 truncate">
                                   {classPreview.name}
                                 </h4>
-                                <div className="flex items-center gap-4 text-sm text-gray-600">
+                                <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm text-gray-600 mt-1">
                                   <span className="flex items-center gap-1">
                                     {getShiftIcon(shift)} {classPreview.shift}
                                   </span>
                                   {classPreview.capacity && (
                                     <span className="flex items-center gap-1">
-                                      <Users className="h-4 w-4" />
+                                      <Users className="h-3 w-3 sm:h-4 sm:w-4" />
                                       {classPreview.capacity} alunos
                                     </span>
                                   )}
                                   {classPreview.room && (
-                                    <span className="flex items-center gap-1">
-                                      <School className="h-4 w-4" />
-                                      {classPreview.room}
+                                    <span className="flex items-center gap-1 truncate">
+                                      <School className="h-3 w-3 sm:h-4 sm:w-4" />
+                                      <span className="truncate">{classPreview.room}</span>
                                     </span>
                                   )}
                                 </div>
                               </div>
                             </div>
-                            <Check className="h-5 w-5 text-green-600" />
+                            <Check className="h-5 w-5 text-green-600 flex-shrink-0 self-end sm:self-center" />
                           </div>
                         ))}
                       </div>

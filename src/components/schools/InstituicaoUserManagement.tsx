@@ -76,6 +76,11 @@ import { ROLE_DISPLAY_MAPPING } from "@/lib/constants";
 
 const roleDisplayMapping = ROLE_DISPLAY_MAPPING;
 
+// Helper para obter nome de exibição da role
+const getRoleDisplayName = (role: string): string => {
+  return ROLE_DISPLAY_MAPPING[role as keyof typeof ROLE_DISPLAY_MAPPING] || role;
+};
+
 // Mapeamento de roles para criação
 const roleMapping: { [key: string]: string } = {
   "Administrador": "admin",
@@ -333,101 +338,136 @@ export function InstituicaoUserManagement({ schoolId, schoolName, onSuccess }: I
               Adicionar Usuário
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle>Adicionar Novo Usuário - {schoolName}</DialogTitle>
+          <DialogContent className="w-full max-w-[95vw] sm:max-w-2xl lg:max-w-3xl max-h-[95vh] overflow-hidden flex flex-col">
+            <DialogHeader className="pb-3 border-b">
+              <DialogTitle className="text-lg sm:text-xl">Adicionar Novo Usuário - {schoolName}</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Nome Completo *</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={handleNameChange}
-                  placeholder="Digite o nome completo"
-                  disabled={isSubmitting}
-                />
+            <form onSubmit={handleSubmit} className="space-y-6 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 py-4">
+              {/* Info Box */}
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
+                <p className="font-semibold text-blue-800 text-sm mb-2">ℹ️ Geração Automática</p>
+                <p className="text-xs text-blue-700">
+                  O email e senha serão gerados automaticamente com base no nome completo do usuário.
+                </p>
+              </div>
+
+              {/* Nome e Função */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name" className="flex items-center gap-1">
+                    Nome Completo
+                    <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="name"
+                    value={formData.name}
+                    onChange={handleNameChange}
+                    placeholder="Digite o nome completo"
+                    disabled={isSubmitting}
+                    className="h-11"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="role" className="flex items-center gap-1">
+                    Função
+                    <span className="text-red-500">*</span>
+                  </Label>
+                  <Select value={formData.role} onValueChange={(value) => setFormData({...formData, role: value})}>
+                    <SelectTrigger className="h-11">
+                      <SelectValue placeholder="Selecione uma função" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ROLES.filter(role => role !== "Administrador" && role !== "Aluno").map((role) => (
+                        <SelectItem key={role} value={role}>
+                          {role}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  value={formData.email}
-                  readOnly
-                  className="bg-muted"
-                  placeholder="Email será gerado automaticamente"
-                  disabled={isSubmitting}
-                />
+              {/* Email e Senha Gerados */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email" className="text-sm text-gray-600">Email (Gerado automaticamente)</Label>
+                  <Input
+                    id="email"
+                    value={formData.email}
+                    readOnly
+                    className="bg-gray-50 border-gray-200 font-mono h-11 cursor-not-allowed"
+                    placeholder="Email será gerado"
+                    disabled={isSubmitting}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="password" className="text-sm text-gray-600">Senha (Gerada automaticamente)</Label>
+                  <Input
+                    id="password"
+                    value={formData.password}
+                    readOnly
+                    className="bg-gray-50 border-gray-200 font-mono h-11 cursor-not-allowed"
+                    placeholder="Senha será gerada"
+                    disabled={isSubmitting}
+                  />
+                </div>
               </div>
               
-              <div className="space-y-2">
-                <Label htmlFor="password">Senha</Label>
-                <Input
-                  id="password"
-                  value={formData.password}
-                  readOnly
-                  className="bg-muted"
-                  placeholder="Senha será gerada automaticamente"
-                  disabled={isSubmitting}
-                />
+              {/* Matrícula e Data */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="registration">Matrícula (opcional)</Label>
+                  <Input
+                    id="registration"
+                    value={formData.registration}
+                    onChange={(e) => setFormData({...formData, registration: e.target.value})}
+                    placeholder="Número de matrícula"
+                    disabled={isSubmitting}
+                    className="h-11"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="birthDate">Data de Nascimento</Label>
+                  <Input
+                    id="birthDate"
+                    type="date"
+                    value={formData.birthDate}
+                    onChange={(e) => setFormData({...formData, birthDate: e.target.value})}
+                    disabled={isSubmitting}
+                    className="h-11"
+                  />
+                </div>
               </div>
               
-              <div className="space-y-2">
-                <Label htmlFor="role">Função *</Label>
-                <Select value={formData.role} onValueChange={(value) => setFormData({...formData, role: value})}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione uma função" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ROLES.filter(role => role !== "Administrador" && role !== "Aluno").map((role) => (
-                      <SelectItem key={role} value={role}>
-                        {role}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="registration">Matrícula</Label>
-                <Input
-                  id="registration"
-                  value={formData.registration}
-                  onChange={(e) => setFormData({...formData, registration: e.target.value})}
-                  placeholder="Número de matrícula"
-                  disabled={isSubmitting}
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="birthDate">Data de Nascimento</Label>
-                <Input
-                  id="birthDate"
-                  type="date"
-                  value={formData.birthDate}
-                  onChange={(e) => setFormData({...formData, birthDate: e.target.value})}
-                  disabled={isSubmitting}
-                />
-              </div>
-              
-              <div className="flex justify-end space-x-2 pt-4">
+              {/* Botões */}
+              <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
                 <Button 
                   type="button" 
                   variant="outline" 
                   onClick={() => setIsModalOpen(false)}
                   disabled={isSubmitting}
+                  className="order-2 sm:order-1 h-11"
                 >
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={isSubmitting}>
+                <Button 
+                  type="submit" 
+                  disabled={isSubmitting}
+                  className="order-1 sm:order-2 h-11"
+                >
                   {isSubmitting ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Criando...
                     </>
                   ) : (
-                    "Criar Usuário"
+                    <>
+                      <UserPlus className="mr-2 h-4 w-4" />
+                      Criar Usuário
+                    </>
                   )}
                 </Button>
               </div>
@@ -436,19 +476,19 @@ export function InstituicaoUserManagement({ schoolId, schoolName, onSuccess }: I
         </Dialog>
       </div>
 
-      <div className="flex items-center space-x-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+        <div className="relative flex-1 min-w-0">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar usuários..."
+            placeholder="Buscar usuários por nome, email ou matrícula..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-8"
+            className="pl-10 h-11"
           />
         </div>
         
         <Select value={selectedRole} onValueChange={setSelectedRole}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-full sm:w-[200px] h-11">
             <SelectValue placeholder="Filtrar por função" />
           </SelectTrigger>
           <SelectContent>
@@ -484,62 +524,71 @@ export function InstituicaoUserManagement({ schoolId, schoolName, onSuccess }: I
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {filteredUsers.map((user) => (
-                <Card key={user.id} className="hover:shadow-md transition-shadow">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                      {getRoleIcon(user.role)}
-                      {user.name}
-                    </CardTitle>
-                    <Badge className={getRoleColor(user.role)}>
+                <Card key={user.id} className="hover:shadow-lg transition-all duration-200 hover:scale-[1.02]">
+                  <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-3">
+                    <div className="flex items-start gap-2 min-w-0 flex-1">
+                      <div className="flex-shrink-0 mt-0.5">
+                        {getRoleIcon(user.role)}
+                      </div>
+                      <CardTitle className="text-base sm:text-lg font-semibold truncate">
+                        {user.name}
+                      </CardTitle>
+                    </div>
+                    <Badge className={`${getRoleColor(user.role)} text-xs flex-shrink-0 ml-2`}>
                       {getRoleDisplayName(user.role)}
                     </Badge>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-2">
-                      <p className="text-sm text-muted-foreground">
+                    <div className="space-y-2 mb-4">
+                      <p className="text-sm text-muted-foreground truncate" title={user.email}>
                         {user.email}
                       </p>
                       {user.registration && (
                         <p className="text-sm text-muted-foreground">
-                          Matrícula: {user.registration}
+                          <span className="font-medium">Matrícula:</span> {user.registration}
                         </p>
                       )}
                       {user.birth_date && (
                         <p className="text-sm text-muted-foreground">
-                          Nascimento: {new Date(user.birth_date).toLocaleDateString('pt-BR')}
+                          <span className="font-medium">Nascimento:</span> {new Date(user.birth_date).toLocaleDateString('pt-BR')}
                         </p>
                       )}
                     </div>
-                    <div className="flex gap-2 mt-4">
+                    <div className="flex flex-col gap-2">
                       <Button 
                         variant="outline" 
                         size="sm"
                         onClick={() => handleViewUser(user.id)}
+                        className="w-full justify-start h-9"
                       >
-                        <Eye className="h-3 w-3 mr-1" />
+                        <Eye className="h-3 w-3 mr-2" />
                         Visualizar
                       </Button>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => handleEditUser(user.id)}
-                      >
-                        <Edit className="h-3 w-3 mr-1" />
-                        Editar
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => {
-                          setUserToDelete(user);
-                          setIsDeleteDialogOpen(true);
-                        }}
-                      >
-                        <Trash2 className="h-3 w-3 mr-1" />
-                        Excluir
-                      </Button>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleEditUser(user.id)}
+                          className="h-9"
+                        >
+                          <Edit className="h-3 w-3 mr-1" />
+                          <span className="hidden sm:inline">Editar</span>
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => {
+                            setUserToDelete(user);
+                            setIsDeleteDialogOpen(true);
+                          }}
+                          className="text-red-600 hover:text-red-700 h-9"
+                        >
+                          <Trash2 className="h-3 w-3 mr-1" />
+                          <span className="hidden sm:inline">Excluir</span>
+                        </Button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>

@@ -281,19 +281,19 @@ Patricia Souza,patricia.souza@email.com,123456,08/08/2009,2024010,${schoolName},
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Upload className="h-5 w-5" />
+      <DialogContent className="w-full max-w-[95vw] sm:max-w-3xl lg:max-w-4xl max-h-[95vh] overflow-hidden flex flex-col">
+        <DialogHeader className="pb-3 border-b">
+          <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl">
+            <Upload className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600" />
             Importar Alunos em Massa
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-sm sm:text-base">
             Importe uma lista de alunos através de um arquivo CSV ou Excel. 
-            O arquivo deve conter as colunas: nome, email, senha, data_nascimento, matricula, escola, endereco_escola, estado_escola, municipio_escola, curso, serie e turma.
+            O arquivo deve conter as colunas: <strong>nome, email, senha, data_nascimento, matricula, escola, endereco_escola, estado_escola, municipio_escola, curso, serie e turma</strong>.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className="space-y-6 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 py-4">
           {/* Template Download */}
           <Card>
             <CardHeader>
