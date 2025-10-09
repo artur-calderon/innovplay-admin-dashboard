@@ -193,77 +193,115 @@ export function AddStudentForm({ schoolId, schoolName, onSuccess }: AddStudentFo
           Adicionar Aluno
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[500px]">
-        <DialogHeader>
-          <DialogTitle>Adicionar Aluno</DialogTitle>
+      <DialogContent className="w-full max-w-[95vw] sm:max-w-2xl lg:max-w-3xl max-h-[95vh] overflow-hidden flex flex-col">
+        <DialogHeader className="pb-3 border-b">
+          <DialogTitle className="text-lg sm:text-xl">Adicionar Aluno - {schoolName}</DialogTitle>
         </DialogHeader>
-        <Tabs defaultValue="manual" className="w-full">
+        <Tabs defaultValue="manual" className="w-full flex-1 flex flex-col overflow-hidden">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="manual">Manual</TabsTrigger>
             <TabsTrigger value="csv">CSV</TabsTrigger>
           </TabsList>
-          <TabsContent value="manual" className="space-y-4">
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="name">Nome Completo *</Label>
+          <TabsContent value="manual" className="flex-1 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+            <div className="space-y-6 py-4">
+              {/* Info Box */}
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
+                <p className="font-semibold text-blue-800 text-sm mb-2">📧 Credenciais Automáticas</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                  <div className="bg-white/70 p-2 rounded">
+                    <p><strong>Email:</strong> Iniciais + "@innovplay.com"</p>
+                    <p className="text-blue-600 font-mono">Ex: "João Silva" → js@innovplay.com</p>
+                  </div>
+                  <div className="bg-white/70 p-2 rounded">
+                    <p><strong>Senha:</strong> Primeiro nome + "@innovplay"</p>
+                    <p className="text-blue-600 font-mono">Ex: "João Silva" → joão@innovplay</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Nome - Principal */}
+              <div className="space-y-2">
+                <Label htmlFor="name" className="text-base font-semibold flex items-center gap-1">
+                  Nome Completo
+                  <span className="text-red-500">*</span>
+                </Label>
                 <Input
                   id="name"
                   value={name}
                   onChange={handleNameChange}
-                  placeholder="Digite o nome completo"
+                  placeholder="Digite o nome completo do aluno"
                   disabled={isLoading}
+                  className="h-11 text-lg"
                 />
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  value={name ? generateEmail(name) : ""}
-                  readOnly
-                  className="bg-muted"
-                  placeholder="Email será gerado automaticamente"
-                  disabled={isLoading}
-                />
+
+              {/* Email e Senha gerados */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email" className="text-sm text-gray-600">Email (Gerado automaticamente)</Label>
+                  <Input
+                    id="email"
+                    value={name ? generateEmail(name) : ""}
+                    readOnly
+                    className="bg-gray-50 border-gray-200 font-mono h-11 cursor-not-allowed"
+                    placeholder="Email será gerado"
+                    disabled={isLoading}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password" className="text-sm text-gray-600">Senha (Gerada automaticamente)</Label>
+                  <Input
+                    id="password"
+                    value={generatePassword()}
+                    readOnly
+                    className="bg-gray-50 border-gray-200 font-mono h-11 cursor-not-allowed"
+                    placeholder="Senha será gerada"
+                    disabled={isLoading}
+                  />
+                </div>
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="password">Senha</Label>
-                <Input
-                  id="password"
-                  value={generatePassword()}
-                  readOnly
-                  className="bg-muted"
-                  placeholder="Senha será gerada automaticamente"
-                  disabled={isLoading}
-                />
+
+              {/* Matrícula e Data */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="registration">Matrícula (opcional)</Label>
+                  <Input
+                    id="registration"
+                    value={registration}
+                    onChange={(e) => setRegistration(e.target.value)}
+                    placeholder="Número de matrícula"
+                    disabled={isLoading}
+                    className="h-11"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="birthDate" className="flex items-center gap-1">
+                    Data de Nascimento
+                    <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="birthDate"
+                    type="date"
+                    value={birthDate}
+                    onChange={(e) => setBirthDate(e.target.value)}
+                    disabled={isLoading}
+                    className="h-11"
+                  />
+                </div>
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="registration">Matrícula (opcional)</Label>
-                <Input
-                  id="registration"
-                  value={registration}
-                  onChange={(e) => setRegistration(e.target.value)}
-                  placeholder="Digite a matrícula"
-                  disabled={isLoading}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="birthDate">Data de Nascimento *</Label>
-                <Input
-                  id="birthDate"
-                  type="date"
-                  value={birthDate}
-                  onChange={(e) => setBirthDate(e.target.value)}
-                  disabled={isLoading}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="class">Turma *</Label>
+
+              {/* Turma */}
+              <div className="space-y-2">
+                <Label htmlFor="class" className="flex items-center gap-1">
+                  Turma
+                  <span className="text-red-500">*</span>
+                </Label>
                 <Select 
                   value={selectedClass} 
                   onValueChange={setSelectedClass}
                   disabled={isLoading}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="h-11">
                     <SelectValue placeholder="Selecione a turma" />
                   </SelectTrigger>
                   <SelectContent>
@@ -275,51 +313,88 @@ export function AddStudentForm({ schoolId, schoolName, onSuccess }: AddStudentFo
                   </SelectContent>
                 </Select>
               </div>
-              <Button 
-                onClick={handleSubmit} 
-                className="mt-4"
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processando...
-                  </>
-                ) : (
-                  "Adicionar Aluno"
-                )}
-              </Button>
+
+              {/* Botões */}
+              <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
+                <Button 
+                  variant="outline"
+                  onClick={() => setOpen(false)}
+                  disabled={isLoading}
+                  className="order-2 sm:order-1 h-11"
+                >
+                  Cancelar
+                </Button>
+                <Button 
+                  onClick={handleSubmit} 
+                  disabled={isLoading}
+                  className="order-1 sm:order-2 flex-1 h-11 bg-green-600 hover:bg-green-700"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Processando...
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="mr-2 h-4 w-4" />
+                      Adicionar Aluno
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </TabsContent>
-          <TabsContent value="csv" className="space-y-4">
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="csv">Arquivo CSV</Label>
+          <TabsContent value="csv" className="flex-1 overflow-y-auto pr-2">
+            <div className="space-y-6 py-4">
+              <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border border-green-200">
+                <p className="font-semibold text-green-800 text-sm mb-2">📄 Importação em Massa</p>
+                <p className="text-xs text-green-700">
+                  Faça upload de um arquivo CSV contendo dados de múltiplos alunos para importação rápida.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <Label htmlFor="csv" className="text-base font-semibold">Arquivo CSV</Label>
                 <Input
                   id="csv"
                   type="file"
                   accept=".csv"
                   onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
                   disabled={isLoading}
+                  className="h-11 cursor-pointer file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
                 />
+                <p className="text-xs text-gray-500">
+                  Formato aceito: .csv
+                </p>
               </div>
-              <Button 
-                onClick={handleCsvUpload} 
-                className="mt-4"
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processando...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="mr-2 h-4 w-4" />
-                    Importar CSV
-                  </>
-                )}
-              </Button>
+
+              <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
+                <Button 
+                  variant="outline"
+                  onClick={() => setOpen(false)}
+                  disabled={isLoading}
+                  className="order-2 sm:order-1 h-11"
+                >
+                  Cancelar
+                </Button>
+                <Button 
+                  onClick={handleCsvUpload} 
+                  disabled={isLoading || !csvFile}
+                  className="order-1 sm:order-2 flex-1 h-11 bg-green-600 hover:bg-green-700"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Processando...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="mr-2 h-4 w-4" />
+                      Importar CSV
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </TabsContent>
         </Tabs>
