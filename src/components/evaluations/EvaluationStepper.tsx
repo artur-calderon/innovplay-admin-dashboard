@@ -209,7 +209,7 @@ export default function EvaluationStepper({ mode = "virtual", editMode = false, 
         classes: evaluationData.classes,
         questions: selectedQuestions.map(q => q.id),
         startDateTime: evaluationData.startDateTime,
-        duration: evaluationData.duration,
+        duration: evaluationData.duration ? parseInt(evaluationData.duration, 10) : 60,
         evaluation_mode: mode,
         created_by: user.id,
       };
