@@ -1,37 +1,14 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, Book, Check, List as ListIcon, Minus, Plus, Save, Eye, Heading1, Heading2, Heading3, List, Code, Type, Trash } from "lucide-react";
+import { Book, Check, List as ListIcon, Plus, Save, Eye, Type, Trash } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import {
-  Remirror,
-  useRemirror,
-  EditorComponent,
-  RemirrorProps,
-  useActive,
-  useCommands,
-} from '@remirror/react';
-import { DocExtension } from '@remirror/extension-doc';
-import { ParagraphExtension } from '@remirror/extension-paragraph';
-import { TextExtension } from '@remirror/extension-text';
-import { HeadingExtension } from '@remirror/extension-heading';
-import { BulletListExtension, ListItemExtension } from '@remirror/extension-list';
-import { ImageExtension } from '@remirror/extension-image';
-import { CodeBlockExtension } from '@remirror/extension-code-block';
-import { CodeExtension } from '@remirror/extension-code';
-import { PlaceholderExtension } from '@remirror/extension-placeholder';
-import { SupExtension } from '@remirror/extension-sup';
-import 'remirror/styles/all.css';
 
 import './QuestionForm.css';
 import MyEditor from './MyEditor';
@@ -42,24 +19,14 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 import { Question, Subject } from "../types";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { MultiSelect, Option } from "@/components/ui/multi-select";
+import { Option } from "@/components/ui/multi-select";
 import { useAuth } from "@/context/authContext";
 import QuestionPreview from "./QuestionPreview";
 import SkillsSelector from "./SkillsSelector";
-
-// Import Tiptap components and extensions for preview
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Superscript from '@tiptap/extension-superscript';
-import Placeholder from '@tiptap/extension-placeholder';
-import Underline from '@tiptap/extension-underline';
-import TextAlign from '@tiptap/extension-text-align';
-import { ResizableImage } from 'tiptap-extension-resizable-image';
 
 // Form schema
 const baseSchema = z.object({
@@ -78,7 +45,7 @@ const baseSchema = z.object({
     })
   ).optional(),
   secondStatement: z.string().optional(),
-  skills: z.array(z.string()).optional(),
+  skills: z.array(z.string()).min(1, "Selecione pelo menos uma habilidade"),
   questionType: z.enum(['multipleChoice', 'dissertativa']),
 });
 
@@ -137,164 +104,6 @@ interface SkillOption {
   description: string;
 }
 
-interface EditorContent {
-  type: string;
-  content?: EditorContent[];
-  text?: string;
-  attrs?: Record<string, unknown>;
-}
-
-const EditorToolbar = () => {
-  const { toggleHeading, toggleBulletList, toggleCode, toggleCodeBlock, insertImage, toggleSup } = useCommands();
-  const active = useActive();
-
-  const isHeadingActive = (level: number) => {
-    try {
-      return active.heading({ level });
-    } catch {
-      return false;
-    }
-  };
-
-  const isBulletListActive = () => {
-    try {
-      return active.bulletList();
-    } catch {
-      return false;
-    }
-  };
-
-  const isCodeActive = () => {
-    try {
-      return active.code();
-    } catch {
-      return false;
-    }
-  };
-
-  const isCodeBlockActive = () => {
-    try {
-      return active.codeBlock();
-    } catch {
-      return false;
-    }
-  };
-
-  const isSupActive = () => {
-    try {
-      return active.sup();
-    } catch {
-      return false;
-    }
-  };
-
-  const handleImageUpload = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const url = event.target?.result as string;
-          if (url) {
-            insertImage({ src: url, alt: file.name });
-          }
-        };
-        reader.readAsDataURL(file);
-      }
-    };
-
-    input.click();
-  };
-
-  return (
-    <div className="border-b p-2 flex flex-wrap gap-2">
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={() => toggleHeading({ level: 1 })}
-        className={isHeadingActive(1) ? 'bg-muted' : ''}
-        title="Heading 1"
-      >
-        <Heading1 className="h-4 w-4" />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={() => toggleHeading({ level: 2 })}
-        className={isHeadingActive(2) ? 'bg-muted' : ''}
-        title="Heading 2"
-      >
-        <Heading2 className="h-4 w-4" />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={() => toggleHeading({ level: 3 })}
-        className={isHeadingActive(3) ? 'bg-muted' : ''}
-        title="Heading 3"
-      >
-        <Heading3 className="h-4 w-4" />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={() => toggleBulletList()}
-        className={isBulletListActive() ? 'bg-muted' : ''}
-        title="Bullet List"
-      >
-        <List className="h-4 w-4" />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={() => toggleCode()}
-        className={isCodeActive() ? 'bg-muted' : ''}
-        title="Inline Code"
-      >
-        <Type className="h-4 w-4" />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={() => toggleCodeBlock()}
-        className={isCodeBlockActive() ? 'bg-muted' : ''}
-        title="Code Block"
-      >
-        <Code className="h-4 w-4" />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={() => toggleSup()}
-        className={isSupActive() ? 'bg-muted' : ''}
-        title="Superscript"
-      >
-        <span className="text-xs font-bold">x²</span>
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={handleImageUpload}
-        title="Insert Image"
-      >
-        🖼️
-      </Button>
-    </div>
-  );
-};
-
 const QuestionForm = ({
   onSubmit: externalOnSubmit,
   open,
@@ -308,7 +117,15 @@ const QuestionForm = ({
   const [skills, setSkills] = useState<SkillOption[]>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingQuestion, setIsLoadingQuestion] = useState(false);
   const [questionType, setQuestionType] = useState<'multipleChoice' | 'dissertativa'>('multipleChoice');
+  const hasLoadedInitialData = useRef(false);
+  const preservedValues = useRef<{
+    educationStageId?: string;
+    subjectId?: string;
+    grade?: string;
+    skills?: string[];
+  }>({});
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -342,17 +159,51 @@ const QuestionForm = ({
     name: "options",
   });
 
-  const selectedEducationStageId = form.watch("educationStageId");
-  const selectedSubjectId = form.watch("subjectId");
+
+  // Usar useWatch ao invés de form.watch() para melhor performance e menos re-renders
+  // MAS bloquear durante carregamento inicial para evitar timing issues
+  const selectedEducationStageId = useWatch({
+    control: form.control,
+    name: "educationStageId",
+    disabled: isLoadingQuestion, // Bloquear durante carregamento inicial
+    defaultValue: "" // Prevenir valores undefined/vazios
+  });
+  const selectedSubjectId = useWatch({
+    control: form.control,
+    name: "subjectId", 
+    disabled: isLoadingQuestion, // Bloquear durante carregamento inicial
+    defaultValue: "" // Prevenir valores undefined/vazios
+  });
+
+  // Fallback: usar valores do form diretamente durante carregamento
+  let currentEducationStageId = isLoadingQuestion 
+    ? form.getValues("educationStageId")
+    : selectedEducationStageId;
+  let currentSubjectId = isLoadingQuestion
+    ? form.getValues("subjectId")
+    : selectedSubjectId;
+
+  // PROTEÇÃO EXTRA: Se valores estão vazios mas temos valores preservados, usar os preservados
+  if (!isLoadingQuestion && hasLoadedInitialData.current && preservedValues.current.educationStageId) {
+    if (!currentEducationStageId && preservedValues.current.educationStageId) {
+      currentEducationStageId = preservedValues.current.educationStageId;
+    }
+    if (!currentSubjectId && preservedValues.current.subjectId) {
+      currentSubjectId = preservedValues.current.subjectId;
+    }
+  }
+
 
   useEffect(() => {
     const fetchQuestionData = async () => {
       if (questionId) {
+        setIsLoadingQuestion(true);
         try {
           const response = await api.get<Question>(`/questions/${questionId}`);
           const questionData = response.data;
 
-          const normalizeSkills = (skills: string[] | { id: string }[]): string[] => {
+
+          const normalizeSkills = (skills: string[] | { id: string }[] | any): string[] => {
             if (!skills) return [];
 
             if (Array.isArray(skills)) {
@@ -360,7 +211,20 @@ const QuestionForm = ({
 
               // Se é array de strings
               if (typeof skills[0] === 'string') {
-                return skills as string[];
+                // Limpar strings que podem estar com chaves ou JSON
+                return (skills as string[]).map(skill => {
+                  // Se é uma string JSON como "{id}", extrair o ID
+                  if (skill.startsWith('{') && skill.endsWith('}')) {
+                    try {
+                      const parsed = JSON.parse(skill);
+                      return typeof parsed === 'string' ? parsed : parsed.id || skill;
+                    } catch {
+                      // Se não é JSON válido, remover as chaves manualmente
+                      return skill.replace(/[{}]/g, '').trim();
+                    }
+                  }
+                  return skill;
+                });
               }
 
               // Se é array de objetos com id
@@ -369,6 +233,8 @@ const QuestionForm = ({
 
             return [];
           };
+
+          const normalizedSkills = normalizeSkills(questionData.skills);
 
                      const formData: QuestionFormValues = { // Keep the explicit type here for clarity
              title: questionData.title || "",
@@ -381,14 +247,35 @@ const QuestionForm = ({
              solution: questionData.formattedSolution || questionData.solution || "",
              options: questionData.options || [],
              secondStatement: questionData.secondStatement || "",
-             skills: normalizeSkills(questionData.skills),
-             // Corrigir o mapeamento do tipo da questão
-             questionType: questionData.type === 'multiple_choice' ? 'multipleChoice' : 'open',
-           };
+            skills: normalizedSkills,
+            // Corrigir o mapeamento do tipo da questão
+            questionType: (questionData.type === 'multipleChoice' || (questionData.type as any) === 'multiple_choice') 
+              ? 'multipleChoice' 
+              : 'dissertativa',
+          };
 
-                     // Map API data to form values
-           form.reset(formData);
-           setQuestionType(questionData.type === 'multiple_choice' ? 'multipleChoice' : 'open');
+
+                    // Map API data to form values
+          hasLoadedInitialData.current = true; // Marcar ANTES do reset para que useEffects saibam
+          
+          form.reset(formData, { keepDefaultValues: false });
+          
+          // Forçar re-sincronização do form após reset
+          await form.trigger();
+          
+          // PRESERVAR valores críticos para evitar que sejam perdidos
+          preservedValues.current = {
+            educationStageId: form.getValues("educationStageId"),
+            subjectId: form.getValues("subjectId"),
+            grade: form.getValues("grade"),
+            skills: form.getValues("skills")
+          };
+          
+          setQuestionType((questionData.type === 'multipleChoice' || (questionData.type as any) === 'multiple_choice') 
+            ? 'multipleChoice' 
+            : 'dissertativa');
+          
+          
         } catch (error) {
           console.error("Erro ao buscar dados da questão:", error);
           toast({
@@ -396,7 +283,15 @@ const QuestionForm = ({
             description: "Não foi possível carregar os dados da questão para edição.",
             variant: "destructive",
           });
+        } finally {
+          // Aguardar um tick antes de finalizar o carregamento para garantir que valores estejam preservados
+          setTimeout(() => {
+            setIsLoadingQuestion(false);
+          }, 100);
         }
+      } else {
+        // Reset ao criar nova questão
+        hasLoadedInitialData.current = false;
       }
     };
     fetchQuestionData();
@@ -425,17 +320,24 @@ const QuestionForm = ({
 
   useEffect(() => {
     const fetchGrades = async () => {
-      if (selectedEducationStageId) {
+      // NÃO executar se estiver carregando a questão inicial OU se não tem questionId mas ainda não carregou dados iniciais
+      if (isLoadingQuestion || (!questionId && !hasLoadedInitialData.current)) {
+        return;
+      }
+      
+      if (currentEducationStageId) {
         try {
-          const response = await api.get(`/grades/education-stage/${selectedEducationStageId}`);
+          const response = await api.get(`/grades/education-stage/${currentEducationStageId}`);
           setGrades(response.data);
 
-          // Só reseta a série se não estivermos carregando uma questão existente
-          // ou se o usuário mudou o curso manualmente
-          const currentGradeValue = form.getValues("grade");
-          const isEditingExistingQuestion = questionId && currentGradeValue;
+          // Aguardar um tick para garantir que setGrades foi aplicado
+          await new Promise(resolve => setTimeout(resolve, 0));
 
-          if (!isEditingExistingQuestion) {
+          // Usar a mesma lógica que funcionou para skills
+          const shouldResetGrade = !questionId || !hasLoadedInitialData.current;
+          const currentGradeValue = form.getValues("grade");
+
+          if (shouldResetGrade) {
             form.setValue("grade", ""); // Reseta a série apenas quando necessário
           }
         } catch (error) {
@@ -451,14 +353,26 @@ const QuestionForm = ({
       }
     };
     fetchGrades();
-  }, [selectedEducationStageId, questionId]); // Removido 'form' e 'toast' das dependências para evitar loops
+  }, [currentEducationStageId, questionId, isLoadingQuestion]); // Usar currentEducationStageId
 
   useEffect(() => {
     const fetchSkills = async () => {
-      if (selectedSubjectId) {
-        form.setValue("skills", []); // Reseta as habilidades ao mudar de disciplina
+      // NÃO executar se estiver carregando a questão inicial OU se não tem questionId mas ainda não carregou dados iniciais
+      if (isLoadingQuestion || (!questionId && !hasLoadedInitialData.current)) {
+        return;
+      }
+      
+      if (currentSubjectId) {
+        // Só reseta skills se:
+        // 1. Não estiver editando (sem questionId), OU
+        // 2. Estiver editando mas ainda não carregou os dados iniciais
+        const shouldResetSkills = !questionId || !hasLoadedInitialData.current;
+        if (shouldResetSkills) {
+          form.setValue("skills", []); // Reseta apenas ao criar ou antes do primeiro load
+        }
+        
         try {
-          const response = await api.get(`/skills/subject/${selectedSubjectId}`);
+          const response = await api.get(`/skills/subject/${currentSubjectId}`);
           if (Array.isArray(response.data)) {
             const formattedSkills: SkillOption[] = response.data.map(skill => ({
               id: skill.id,
@@ -486,11 +400,46 @@ const QuestionForm = ({
       }
     };
     fetchSkills();
-  }, [selectedSubjectId, selectedEducationStageId]); // Removido 'form' e 'toast' das dependências para evitar loops
+  }, [currentSubjectId, currentEducationStageId, isLoadingQuestion]); // Usar currentSubjectId e currentEducationStageId
 
+  // REMOVIDO: useEffect problemático que estava resetando o form
+  // O questionType já é definido no form.reset() durante o carregamento inicial
+
+  // PROTETOR: Restaurar valores se eles forem perdidos após carregamento inicial
   useEffect(() => {
-    form.setValue('questionType', questionType);
-  }, [questionType]); // Removido 'form' das dependências para evitar loops
+    if (questionId && !isLoadingQuestion && hasLoadedInitialData.current && preservedValues.current.educationStageId) {
+      const currentValues = {
+        educationStageId: form.getValues("educationStageId"),
+        subjectId: form.getValues("subjectId"),
+        grade: form.getValues("grade"),
+        skills: form.getValues("skills")
+      };
+
+      // Verificar se algum campo foi perdido
+      const lostFields: string[] = [];
+      if (!currentValues.educationStageId && preservedValues.current.educationStageId) lostFields.push('educationStageId');
+      if (!currentValues.subjectId && preservedValues.current.subjectId) lostFields.push('subjectId');
+      if (!currentValues.grade && preservedValues.current.grade) lostFields.push('grade');
+      if (!currentValues.skills?.length && preservedValues.current.skills?.length) lostFields.push('skills');
+
+      if (lostFields.length > 0) {
+        // Restaurar valores perdidos
+        if (!currentValues.educationStageId && preservedValues.current.educationStageId) {
+          form.setValue("educationStageId", preservedValues.current.educationStageId);
+        }
+        if (!currentValues.subjectId && preservedValues.current.subjectId) {
+          form.setValue("subjectId", preservedValues.current.subjectId);
+        }
+        if (!currentValues.grade && preservedValues.current.grade) {
+          form.setValue("grade", preservedValues.current.grade);
+        }
+        if (!currentValues.skills?.length && preservedValues.current.skills?.length) {
+          form.setValue("skills", preservedValues.current.skills);
+        }
+      }
+    }
+  }, [questionId, isLoadingQuestion, currentEducationStageId, currentSubjectId]);
+
 
   const htmlToText = (html: string) => {
     const tempDiv = document.createElement('div');
@@ -540,15 +489,12 @@ const QuestionForm = ({
       solution,
       formattedSolution: data.solution || "",
       options: options,
-      skills: data.skills || [],
+      skills: data.skills, // Agora é obrigatório, não precisa de fallback
       secondStatement: data.secondStatement || '',
       lastModifiedBy: user.id,
       createdBy: user.id,
     };
 
-    // Debug: verificar se os campos obrigatórios estão presentes
-    console.log('🔍 Debug - Dados do formulário:', data);
-    console.log('📤 Debug - Payload sendo enviado:', payload);
 
     try {
       setIsSubmitting(true);
@@ -602,35 +548,21 @@ const QuestionForm = ({
 
   const handleSetQuestionType = (type: 'multipleChoice' | 'dissertativa') => {
     setQuestionType(type);
-    if (type === 'multipleChoice') {
-      form.setValue('options', [
-        { text: '', isCorrect: false },
-        { text: '', isCorrect: false },
-      ]);
-      form.clearErrors('options');
-    } else if (type === 'dissertativa') {
-      form.setValue('options', []);
-      form.clearErrors('options');
-    }
-  };
-
-  // Encontrar a skill que corresponde ao select
-  useEffect(() => {
-    if (selectedEducationStageId && selectedSubjectId) {
-      const matchingSkill = skills.find(skill =>
-        skill.educationStageId === selectedEducationStageId &&
-        skill.subjectId === selectedSubjectId
-      );
-
-      if (matchingSkill) {
-        // Resetar a seleção anterior
-        form.setValue('skills', []);
-
-        // Configurar nova skill
-        form.setValue('skills', [matchingSkill.id]);
+    
+    // Só resetar opções se não estiver carregando dados iniciais
+    if (!isLoadingQuestion) {
+      if (type === 'multipleChoice') {
+        form.setValue('options', [
+          { text: '', isCorrect: false },
+          { text: '', isCorrect: false },
+        ]);
+        form.clearErrors('options');
+      } else if (type === 'dissertativa') {
+        form.setValue('options', []);
+        form.clearErrors('options');
       }
     }
-  }, [selectedEducationStageId, selectedSubjectId, skills]); // Removido 'form' das dependências para evitar loops
+  };
 
   return (
     <div className="space-y-6">
@@ -767,17 +699,21 @@ const QuestionForm = ({
                 <FormField
                   control={form.control}
                   name="grade"
-                  render={({ field }) => (
+                  render={({ field }) => {
+                    const isDisabled = !currentEducationStageId || (grades.length === 0 && !questionId);
+                    
+                    return (
                     <FormItem>
                       <FormLabel className="text-sm font-semibold text-gray-700">Série *</FormLabel>
                       <FormControl>
                         <Select
+                          key={`grade-select-${currentEducationStageId}-${grades.length}`} // Force re-mount when dependencies change
                           onValueChange={field.onChange}
                           value={field.value}
-                          disabled={!selectedEducationStageId || grades.length === 0}
+                          disabled={!currentEducationStageId || (grades.length === 0 && !questionId)}
                         >
                           <SelectTrigger className="h-11">
-                            <SelectValue placeholder={selectedEducationStageId ? "Selecione a série" : "Selecione um curso primeiro"} />
+                            <SelectValue placeholder={currentEducationStageId ? "Selecione a série" : "Selecione um curso primeiro"} />
                           </SelectTrigger>
                           <SelectContent>
                             {grades.map((grade) => (
@@ -790,7 +726,8 @@ const QuestionForm = ({
                       </FormControl>
                       <FormMessage />
                     </FormItem>
-                  )}
+                    );
+                  }}
                 />
 
                 <FormField
@@ -873,8 +810,8 @@ const QuestionForm = ({
                           skills={skills}
                           selected={field.value || []}
                           onChange={field.onChange}
-                          placeholder={selectedSubjectId ? "Clique para abrir o seletor de habilidades" : "Selecione uma disciplina primeiro"}
-                          disabled={!selectedSubjectId || skills.length === 0}
+                          placeholder={currentSubjectId ? "Clique para abrir o seletor de habilidades" : "Selecione uma disciplina primeiro"}
+                          disabled={!currentSubjectId || skills.length === 0}
                           gradeId={form.watch('grade')}
                         />
                       </FormControl>
@@ -1029,13 +966,13 @@ const QuestionForm = ({
                             form.setValue(`options.${i}.isCorrect`, i === index);
                           });
                         }}
-                        className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${form.watch("options")[index].isCorrect
+                        className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${form.watch("options")?.[index]?.isCorrect
                             ? 'bg-green-500 border-green-500 text-white shadow-lg'
                             : 'bg-white border-gray-300 hover:border-gray-400'
                           }`}
                         aria-label={`Marcar alternativa ${String.fromCharCode(65 + index)} como correta`}
                       >
-                        {form.watch("options")[index].isCorrect ? <Check className="w-4 h-4" /> : null}
+                        {form.watch("options")?.[index]?.isCorrect ? <Check className="w-4 h-4" /> : null}
                       </button>
 
                       <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center font-semibold text-gray-600">
