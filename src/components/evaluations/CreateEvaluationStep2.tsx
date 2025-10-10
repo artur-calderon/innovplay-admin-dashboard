@@ -225,6 +225,7 @@ export const CreateEvaluationStep2 = ({
         subject: data.subject,
         time_limit: data.startDateTime || new Date().toISOString(),
         end_time: data.endDateTime || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+        duration: data.duration ? parseInt(data.duration, 10) : 60,
         evaluation_mode: "virtual",
         municipalities: data.municipalities || [],
         schools: data.selectedSchools?.map(s => s.id) || data.schools || [],
