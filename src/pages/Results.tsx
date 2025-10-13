@@ -1126,51 +1126,69 @@ export default function Results() {
     };
   }, [apiData]);
 
-  // ✅ NOVA FUNÇÃO: Processar dados do ranking para formato do componente
+  // ✅ NOVO: Processar dados do ranking usando tabela_detalhada.geral
   const processRankingData = useCallback(() => {
-    if (!apiData?.ranking?.length) {
-      return [];
-    }
-
-    // ✅ CORRIGIDO: Filtrar apenas alunos que responderam pelo menos uma questão
-    const processedData = apiData.ranking
-      .filter((item: RankingItemWithAluno) => {
-        // Verificar se o aluno respondeu pelo menos uma questão usando dados da tabela_detalhada
-        if (!apiData?.tabela_detalhada?.disciplinas?.length) {
-          // Se não temos dados detalhados, assumir que todos responderam (fallback)
-          return true;
-        }
-
-        // Verificar se o aluno respondeu pelo menos uma questão em qualquer disciplina
-        return apiData.tabela_detalhada.disciplinas.some(disciplina => {
-          const disciplinaAluno = disciplina.alunos.find(a => a.id === item.aluno_id);
-          if (!disciplinaAluno) return false;
+    // Prioridade 1: Usar dados da tabela_detalhada.geral (mesma fonte da visão geral)
+    if (apiData?.tabela_detalhada?.geral?.alunos?.length) {
+      return apiData.tabela_detalhada.geral.alunos
+        .filter(aluno => {
+          // Verificar se o aluno respondeu pelo menos uma questão
+          if (!apiData?.tabela_detalhada?.disciplinas?.length) {
+            return true; // Fallback: incluir todos se não temos dados de disciplinas
+          }
           
-          // Verificar se respondeu pelo menos uma questão nesta disciplina
-          return disciplinaAluno.respostas_por_questao.some(resposta => resposta.respondeu);
-        });
-      })
-      .map((item: RankingItemWithAluno) => {
-        // Usar apenas a estrutura nova com propriedade aluno aninhada
-        const aluno = item;
-        
-        return {
-          id: aluno.aluno_id,
+          return apiData.tabela_detalhada.disciplinas.some(disciplina => {
+            const disciplinaAluno = disciplina.alunos.find(a => a.id === aluno.id);
+            if (!disciplinaAluno) return false;
+            return disciplinaAluno.respostas_por_questao.some(resposta => resposta.respondeu);
+          });
+        })
+        .map(aluno => ({
+          id: aluno.id,
           nome: aluno.nome,
           turma: aluno.turma || 'N/A',
-          nota: aluno.nota_geral || 0,
-          proficiencia: aluno.proficiencia_geral || 0,
-          classificacao: aluno.classificacao_geral as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
-          questoes_respondidas: aluno.total_questoes || 0,
-          acertos: aluno.total_acertos || 0,
-          erros: (aluno.total_questoes || 0) - (aluno.total_acertos || 0),
-          em_branco: 0, // Não disponível no ranking
-          tempo_gasto: 0, // Não disponível no ranking
+          nota: aluno.nota_geral,
+          proficiencia: aluno.proficiencia_geral,
+          classificacao: aluno.nivel_proficiencia_geral as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
+          questoes_respondidas: aluno.total_respondidas_geral,
+          acertos: aluno.total_acertos_geral,
+          erros: aluno.total_questoes_geral - aluno.total_acertos_geral,
+          em_branco: aluno.total_em_branco_geral,
+          tempo_gasto: 0,
           status: 'concluida' as const
-        };
-      });
+        }));
+    }
+    
+    // Prioridade 2: Fallback para apiData.ranking se tabela_detalhada.geral não disponível
+    if (apiData?.ranking?.length) {
+      return apiData.ranking
+        .filter((item: RankingItemWithAluno) => {
+          if (!apiData?.tabela_detalhada?.disciplinas?.length) {
+            return true;
+          }
+          return apiData.tabela_detalhada.disciplinas.some(disciplina => {
+            const disciplinaAluno = disciplina.alunos.find(a => a.id === item.aluno_id);
+            if (!disciplinaAluno) return false;
+            return disciplinaAluno.respostas_por_questao.some(resposta => resposta.respondeu);
+          });
+        })
+        .map((item: RankingItemWithAluno) => ({
+          id: item.aluno_id,
+          nome: item.nome,
+          turma: item.turma || 'N/A',
+          nota: item.nota_geral || 0,
+          proficiencia: item.proficiencia_geral || 0,
+          classificacao: item.classificacao_geral as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
+          questoes_respondidas: item.total_questoes || 0,
+          acertos: item.total_acertos || 0,
+          erros: (item.total_questoes || 0) - (item.total_acertos || 0),
+          em_branco: 0,
+          tempo_gasto: 0,
+          status: 'concluida' as const
+        }));
+    }
 
-    return processedData;
+    return [];
   }, [apiData]);
 
   // ✅ NOVA IMPLEMENTAÇÃO: Processar dados dos alunos da tabela_detalhada da nova API

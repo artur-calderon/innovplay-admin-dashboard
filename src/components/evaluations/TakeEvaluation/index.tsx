@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +17,8 @@ import {
     Loader2,
     CheckCircle2,
     Maximize2,
-    X
+    X,
+    Menu
 } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -33,6 +34,7 @@ export default function TakeEvaluation() {
     const [showSubmitDialog, setShowSubmitDialog] = useState(false);
     const [showCompletionDialog, setShowCompletionDialog] = useState(false);
     const [showFullscreenQuestion, setShowFullscreenQuestion] = useState(false);
+    const [showMobileNav, setShowMobileNav] = useState(false);
     const [hasSeenCompletionDialog, setHasSeenCompletionDialog] = useState(false);
     const [isCompletionDialogClosed, setIsCompletionDialogClosed] = useState(false);
     const [shuffledQuestions, setShuffledQuestions] = useState<Question[]>([]);
@@ -146,20 +148,38 @@ export default function TakeEvaluation() {
         }
     }, [evaluationState, testData, session, startTestSession]);
 
-    // ✅ Fechar modal fullscreen com Escape
+    // ✅ Fechar modal fullscreen com Escape e navegar com setas
     useEffect(() => {
-        const handleEscape = (event: KeyboardEvent) => {
-            if (event.key === 'Escape' && showFullscreenQuestion) {
-                console.log('🔒 Fechando modal fullscreen com Escape...');
-                setShowFullscreenQuestion(false);
+        const handleKeyboard = (event: KeyboardEvent) => {
+            if (!showFullscreenQuestion) return;
+            
+            switch(event.key) {
+                case 'Escape':
+                    console.log('🔒 Fechando modal fullscreen com Escape...');
+                    setShowFullscreenQuestion(false);
+                    break;
+                case 'ArrowLeft':
+                    if (currentQuestionIndex > 0) {
+                        event.preventDefault();
+                        console.log('⬅️ Navegando para questão anterior com seta');
+                        navigateToQuestion(currentQuestionIndex - 1);
+                    }
+                    break;
+                case 'ArrowRight':
+                    if (currentQuestionIndex < shuffledQuestions.length - 1) {
+                        event.preventDefault();
+                        console.log('➡️ Navegando para próxima questão com seta');
+                        navigateToQuestion(currentQuestionIndex + 1);
+                    }
+                    break;
             }
         };
 
         if (showFullscreenQuestion) {
-            document.addEventListener('keydown', handleEscape);
-            return () => document.removeEventListener('keydown', handleEscape);
+            document.addEventListener('keydown', handleKeyboard);
+            return () => document.removeEventListener('keydown', handleKeyboard);
         }
-    }, [showFullscreenQuestion]);
+    }, [showFullscreenQuestion, currentQuestionIndex, shuffledQuestions.length, navigateToQuestion]);
 
     // ✅ Limpar estado dos modais quando necessário
     useEffect(() => {
@@ -190,11 +210,14 @@ export default function TakeEvaluation() {
     // ✅ Fechar modais quando avaliação for enviada (agora feito no useEffect de redirecionamento)
 
     // ✅ Fechar modal fullscreen quando navegar para uma questão
+    const prevQuestionIndexRef = useRef<number | null>(null);
     useEffect(() => {
-        if (currentQuestionIndex >= 0 && showFullscreenQuestion) {
-            // Se o usuário navegou para uma questão, fechar o modal fullscreen
+        const prevIndex = prevQuestionIndexRef.current;
+        const hasIndexChanged = prevIndex !== null && prevIndex !== currentQuestionIndex;
+        if (showFullscreenQuestion && hasIndexChanged) {
             setShowFullscreenQuestion(false);
         }
+        prevQuestionIndexRef.current = currentQuestionIndex;
     }, [currentQuestionIndex, showFullscreenQuestion]);
 
     // Log para debug da questão atual (apenas quando muda)
@@ -343,7 +366,7 @@ export default function TakeEvaluation() {
                 setHasSeenCompletionDialog(true);
             }
         }
-    }, [answers, shuffledQuestions.length, hasSeenCompletionDialog, isCompletionDialogClosed]);
+    }, [answers, shuffledQuestions, hasSeenCompletionDialog, isCompletionDialogClosed]);
 
     // ✅ Redirecionamento automático quando avaliação é concluída
     useEffect(() => {
@@ -750,6 +773,70 @@ export default function TakeEvaluation() {
         -webkit-box-orient: vertical;
         overflow: hidden;
     }
+
+    /* Media queries para responsividade */
+    @media (max-width: 768px) {
+      .evaluation-question-content img:not(.inline-image) {
+        max-width: 100% !important;
+        min-width: 150px !important;
+        max-height: 300px !important;
+        margin: 1rem auto !important;
+      }
+      
+      .evaluation-question-content img.inline-image {
+        max-height: 2em !important;
+        max-width: 3em !important;
+      }
+    }
+
+    @media (min-width: 769px) and (max-width: 1024px) {
+      .evaluation-question-content img:not(.inline-image) {
+        min-width: 250px !important;
+        max-height: 350px !important;
+      }
+    }
+
+    @media (min-width: 1536px) {
+      .evaluation-question-content img:not(.inline-image) {
+        min-width: 400px !important;
+        max-height: 550px !important;
+      }
+    }
+
+    /* Melhorias específicas para mobile no modo fullscreen */
+    @media (max-width: 767px) {
+      /* Garantir que em mobile vertical, a questão ocupe no máximo 40% da altura */
+      .fullscreen-question-container {
+        max-height: 40vh;
+      }
+      
+      /* E as alternativas ocupem o restante */
+      .fullscreen-options-container {
+        min-height: 50vh;
+      }
+    }
+
+    /* Otimizações para tablet */
+    @media (min-width: 768px) and (max-width: 1023px) {
+      .fullscreen-question-container {
+        width: 55% !important;
+      }
+      
+      .fullscreen-options-container {
+        width: 45% !important;
+      }
+    }
+
+    /* Otimizações para desktop grande */
+    @media (min-width: 1536px) {
+      .fullscreen-question-container {
+        width: 60% !important;
+      }
+      
+      .fullscreen-options-container {
+        width: 40% !important;
+      }
+    }
   `}
 </style>
 
@@ -757,22 +844,37 @@ export default function TakeEvaluation() {
 
                 {/* Header fixo */}
                 <div className="bg-white border-b shadow-sm flex-shrink-0">
-                    <div className="px-4 py-2">
-                        <div className="flex items-center justify-between">
-                            {/* Espaço vazio à esquerda para balancear */}
-                            <div className="w-32"></div>
+                    <div className="px-2 sm:px-4 py-2">
+                        <div className="flex items-center justify-between gap-2">
+                            {/* Botão menu mobile (só aparece em mobile) */}
+                            <div className="md:hidden">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setShowMobileNav(true)}
+                                    className="h-8 w-8 p-0"
+                                >
+                                    <Menu className="h-5 w-5" />
+                                </Button>
+                            </div>
+                            
+                            {/* Espaço vazio à esquerda para balancear (só desktop) */}
+                            <div className="hidden md:block w-24 lg:w-32"></div>
                             
                             {/* Conteúdo centralizado */}
-                            <div className="flex-1 flex flex-col items-center text-center">
-                                <h1 className="text-sm font-semibold">{testData.title}</h1>
+                            <div className="flex-1 flex flex-col items-center text-center min-w-0">
+                                <h1 className="text-xs sm:text-sm md:text-base font-semibold truncate w-full px-1">
+                                    {testData.title}
+                                </h1>
                                 <div className="text-xs text-muted-foreground">
-                                    Questão {currentQuestionIndex + 1} de {shuffledQuestions.length}
+                                    <span className="hidden sm:inline">Questão </span>
+                                    {currentQuestionIndex + 1}/{shuffledQuestions.length}
                                 </div>
                             </div>
 
                             {/* Timer à direita */}
-                            <div className="w-32 flex justify-end">
-                                <div className="flex items-center gap-3">
+                            <div className="w-auto md:w-24 lg:w-32 flex justify-end">
+                                <div className="flex items-center gap-1 sm:gap-3">
                                     <EvaluationTimer
                                         timeRemaining={timeRemaining}
                                         isTimeUp={isTimeUp}
@@ -782,9 +884,9 @@ export default function TakeEvaluation() {
                                     />
 
                                     {isSaving && (
-                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                        <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
                                             <Loader2 className="h-3 w-3 animate-spin" />
-                                            Salvando...
+                                            <span className="hidden md:inline">Salvando...</span>
                                         </div>
                                     )}
                                 </div>
@@ -795,13 +897,13 @@ export default function TakeEvaluation() {
 
                 <div className="flex-1 overflow-hidden">
                     <div className="h-full flex">
-                        {/* ✅ Navegação lateral */}
-                        <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
+                        {/* ✅ Navegação lateral - escondida em mobile */}
+                        <div className="hidden md:flex md:w-64 lg:w-72 xl:w-80 bg-white border-r border-gray-200 flex-col">
                             {/* Header da navegação */}
-                            <div className="p-4 border-b border-gray-200">
+                            <div className="p-3 lg:p-4 border-b border-gray-200">
                                 <div className="flex items-center justify-between mb-3">
-                                    <div className="flex items-center gap-3">
-                                        <h3 className="text-sm font-semibold text-gray-700">Navegação</h3>
+                                    <div className="flex items-center gap-2 lg:gap-3">
+                                        <h3 className="text-xs lg:text-sm font-semibold text-gray-700">Navegação</h3>
                                         <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
                                             {Object.keys(answers).length}/{shuffledQuestions.length}
                                         </div>
@@ -810,7 +912,7 @@ export default function TakeEvaluation() {
                                         size="sm"
                                         onClick={() => setShowSubmitDialog(true)}
                                         disabled={isTimeUp || isSubmitting || Object.keys(answers).length < shuffledQuestions.length}
-                                        className={`px-3 py-1 h-8 text-xs ${
+                                        className={`px-2 lg:px-3 py-1 h-7 lg:h-8 text-xs ${
                                             Object.keys(answers).length >= shuffledQuestions.length
                                                 ? 'bg-green-600 hover:bg-green-700 text-white'
                                                 : 'bg-gray-400 text-gray-200 cursor-not-allowed'
@@ -822,12 +924,12 @@ export default function TakeEvaluation() {
                                         }
                                     >
                                         <Send className="h-3 w-3 mr-1" />
-                                        Enviar
+                                        <span className="hidden lg:inline">Enviar</span>
                                     </Button>
                                 </div>
                                 
                                 {/* Progresso visual */}
-                                <div className="mb-4">
+                                <div className="mb-3 lg:mb-4">
                                     <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
                                         <span>Progresso</span>
                                         <span>{Math.round((Object.keys(answers).length / shuffledQuestions.length) * 100)}%</span>
@@ -844,8 +946,8 @@ export default function TakeEvaluation() {
                             </div>
                             
                             {/* Grid de navegação */}
-                            <div className="flex-1 overflow-y-auto p-4">
-                                <div className="grid grid-cols-5 gap-2">
+                            <div className="flex-1 overflow-y-auto p-3 lg:p-4">
+                                <div className="grid grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
                                     {shuffledQuestions.map((question, index) => {
                                         const hasAnswer = answers[question.id]?.answer && answers[question.id]?.answer !== "";
                                         const isCurrent = index === currentQuestionIndex;
@@ -854,7 +956,7 @@ export default function TakeEvaluation() {
                                             <button
                                                 key={question.id}
                                                 className={`
-                                                    relative w-12 h-12 rounded-lg text-sm font-medium flex items-center justify-center transition-all
+                                                    relative w-10 h-10 lg:w-11 lg:h-11 xl:w-12 xl:h-12 rounded-lg text-xs lg:text-sm font-medium flex items-center justify-center transition-all
                                                     ${isCurrent 
                                                         ? 'bg-purple-600 text-white ring-2 ring-purple-300 shadow-lg scale-105' 
                                                         : hasAnswer 
@@ -880,17 +982,18 @@ export default function TakeEvaluation() {
 
                         {/* ✅ Área principal - MAIS VISÍVEL e PROFISSIONAL */}
                         <div className="flex-1 overflow-y-auto bg-gray-50">
-                            <div className="max-w-4xl mx-auto p-6">
+                            <div className="max-w-4xl mx-2 sm:mx-4 md:mx-auto p-3 sm:p-4 md:p-6">
                                 <Card className="evaluation-question-card question-fade-in">
-                                    <CardHeader className="evaluation-question-header">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-4">
-                                                <div className="flex items-center gap-2">
-                                                    <Badge variant="outline" className="bg-white border-purple-300 text-purple-700">
-                                                        Questão {currentQuestionIndex + 1}
+                                    <CardHeader className="evaluation-question-header p-4 sm:p-5 md:p-6">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
+                                                <div className="flex items-center gap-1 sm:gap-2">
+                                                    <Badge variant="outline" className="bg-white border-purple-300 text-purple-700 text-xs sm:text-sm">
+                                                        <span className="hidden sm:inline">Questão </span>
+                                                        {currentQuestionIndex + 1}
                                                     </Badge>
                                                     {currentQuestion?.subject?.name && (
-                                                        <Badge variant="outline" className="bg-white border-blue-300 text-blue-700">
+                                                        <Badge variant="outline" className="bg-white border-blue-300 text-blue-700 text-xs sm:text-sm truncate max-w-[120px] sm:max-w-none">
                                                             {currentQuestion.subject.name}
                                                         </Badge>
                                                     )}
@@ -900,19 +1003,19 @@ export default function TakeEvaluation() {
                                                 variant="outline"
                                                 size="sm"
                                                 onClick={() => setShowFullscreenQuestion(true)}
-                                                className="h-8 w-8 p-0"
+                                                className="h-7 w-7 sm:h-8 sm:w-8 p-0 flex-shrink-0"
                                                 title="Visualizar questão em tela cheia"
                                             >
-                                                <Maximize2 className="h-4 w-4" />
+                                                <Maximize2 className="h-3 w-3 sm:h-4 sm:w-4" />
                                             </Button>
                                         </div>
                                     </CardHeader>
-                                    <CardContent className="p-8 space-y-10">
+                                    <CardContent className="p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8 md:space-y-10">
                                         {/* Conteúdo da Questão */}
-                                        <div className="evaluation-question-content space-y-6">
+                                        <div className="evaluation-question-content space-y-4 sm:space-y-6">
                                             {/* Primeiro Enunciado */}
                                             {(currentQuestion?.formattedText || currentQuestion?.text) && (
-                                                <div className="prose max-w-none text-gray-800 text-lg leading-relaxed">
+                                                <div className="prose max-w-none text-gray-800 text-sm sm:text-base md:text-lg leading-relaxed">
                                                     <div
                                                         dangerouslySetInnerHTML={{
                                                             __html: currentQuestion?.formattedText || currentQuestion?.text || '',
@@ -923,7 +1026,7 @@ export default function TakeEvaluation() {
 
                                             {/* Segundo Enunciado */}
                                             {currentQuestion?.secondStatement?.trim() && (
-                                                <div className="prose max-w-none text-gray-800 text-lg leading-relaxed">
+                                                <div className="prose max-w-none text-gray-800 text-sm sm:text-base md:text-lg leading-relaxed">
                                                     <div
                                                         dangerouslySetInnerHTML={{
                                                             __html: currentQuestion.secondStatement.trim(),
@@ -934,7 +1037,7 @@ export default function TakeEvaluation() {
                                         </div>
 
                                         {/* Opções de Resposta */}
-                                        <div className="rounded-2xl border border-gray-200 bg-white shadow p-6">
+                                        <div className="rounded-xl sm:rounded-2xl border border-gray-200 bg-white shadow p-4 sm:p-5 md:p-6">
                                             <QuestionOptions
                                                 question={currentQuestion}
                                                 answer={answers[currentQuestion?.id]?.answer}
@@ -983,36 +1086,164 @@ export default function TakeEvaluation() {
                                 </Card>
 
                                 {/* ✅ Navegação SIMPLIFICADA para crianças */}
-                                <div className="flex items-center justify-between pt-6 border-t border-gray-200">
+                                <div className="flex items-center justify-between pt-4 sm:pt-6 border-t border-gray-200 gap-2 sm:gap-4">
                                     <Button
                                         variant="outline"
-                                        size="lg"
+                                        size="sm"
                                         onClick={() => navigateToQuestion(currentQuestionIndex - 1)}
                                         disabled={currentQuestionIndex === 0 || isTimeUp}
-                                        className="px-8 py-4 text-lg font-bold border-2 rounded-xl hover:bg-gray-50 disabled:opacity-50"
+                                        className="px-3 sm:px-6 md:px-8 py-2 sm:py-3 md:py-4 text-sm sm:text-base md:text-lg font-bold border-2 rounded-lg sm:rounded-xl hover:bg-gray-50 disabled:opacity-50"
                                     >
-                                        <ChevronLeft className="h-8 w-8 mr-3" />
-                                        ← Voltar
+                                        <ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6 md:h-8 md:w-8 mr-1 sm:mr-2 md:mr-3" />
+                                        <span className="hidden xs:inline">← Voltar</span>
+                                        <span className="xs:hidden">←</span>
                                     </Button>
 
-                                    <div className="text-lg font-bold text-purple-600 bg-purple-50 px-6 py-3 rounded-full">
-                                        {currentQuestionIndex + 1} de {shuffledQuestions.length}
+                                    <div className="text-xs sm:text-sm md:text-base lg:text-lg font-bold text-purple-600 bg-purple-50 px-3 sm:px-4 md:px-6 py-2 sm:py-2.5 md:py-3 rounded-full whitespace-nowrap">
+                                        {currentQuestionIndex + 1} <span className="hidden xs:inline">de</span><span className="xs:hidden">/</span> {shuffledQuestions.length}
                                     </div>
 
                                     <Button
-                                        size="lg"
+                                        size="sm"
                                         onClick={() => navigateToQuestion(currentQuestionIndex + 1)}
                                         disabled={currentQuestionIndex === shuffledQuestions.length - 1 || isTimeUp}
-                                        className="px-8 py-4 text-lg font-bold bg-purple-600 hover:bg-purple-700 text-white rounded-xl shadow-lg hover:shadow-xl transition-all"
+                                        className="px-3 sm:px-6 md:px-8 py-2 sm:py-3 md:py-4 text-sm sm:text-base md:text-lg font-bold bg-purple-600 hover:bg-purple-700 text-white rounded-lg sm:rounded-xl shadow-lg hover:shadow-xl transition-all"
                                     >
-                                        Avançar →
-                                        <ChevronRight className="h-8 w-8 ml-3" />
+                                        <span className="hidden xs:inline">Avançar →</span>
+                                        <span className="xs:hidden">→</span>
+                                        <ChevronRight className="h-5 w-5 sm:h-6 sm:w-6 md:h-8 md:w-8 ml-1 sm:ml-2 md:ml-3" />
                                     </Button>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
+
+                 {/* ✅ Botão flutuante mobile para navegação */}
+                 <div className="md:hidden fixed bottom-4 right-4 z-30">
+                    <Button
+                        onClick={() => setShowMobileNav(true)}
+                        className="rounded-full w-14 h-14 sm:w-16 sm:h-16 shadow-xl bg-purple-600 hover:bg-purple-700 text-white flex flex-col items-center justify-center p-2"
+                        title="Abrir navegação"
+                    >
+                        <Menu className="h-5 w-5 sm:h-6 sm:w-6" />
+                        <span className="text-[10px] sm:text-xs font-semibold mt-0.5">
+                            {Object.keys(answers).length}/{shuffledQuestions.length}
+                        </span>
+                    </Button>
+                </div>
+
+                 {/* ✅ Modal de navegação móvel */}
+                 {showMobileNav && (
+                     <>
+                         {/* Overlay com blur ATRÁS */}
+                         <div 
+                             className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+                             onClick={() => setShowMobileNav(false)}
+                         />
+                         
+                         {/* Modal de navegação na FRENTE */}
+                         <div className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col animate-slide-up">
+                             {/* Header do modal */}
+                             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <h3 className="text-base font-bold text-gray-800">Navegação</h3>
+                                    <div className="text-xs text-gray-500 bg-gray-100 px-3 py-1.5 rounded-full font-semibold">
+                                        {Object.keys(answers).length}/{shuffledQuestions.length}
+                                    </div>
+                                </div>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setShowMobileNav(false)}
+                                    className="h-8 w-8 p-0 rounded-full"
+                                >
+                                    <X className="h-5 w-5" />
+                                </Button>
+                             </div>
+                             
+                             {/* Progresso */}
+                             <div className="px-4 pt-3 pb-2">
+                                <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
+                                    <span className="font-medium">Progresso da Avaliação</span>
+                                    <span className="font-bold text-purple-600">
+                                        {Math.round((Object.keys(answers).length / shuffledQuestions.length) * 100)}%
+                                    </span>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                                    <div 
+                                        className="bg-gradient-to-r from-purple-500 to-blue-600 h-full transition-all duration-300 ease-out"
+                                        style={{ 
+                                            width: `${(Object.keys(answers).length / shuffledQuestions.length) * 100}%` 
+                                        }}
+                                    />
+                                </div>
+                             </div>
+                             
+                             {/* Grid de navegação */}
+                             <div className="flex-1 overflow-y-auto p-4">
+                                <div className="grid grid-cols-5 sm:grid-cols-6 gap-2.5">
+                                    {shuffledQuestions.map((question, index) => {
+                                        const hasAnswer = answers[question.id]?.answer && answers[question.id]?.answer !== "";
+                                        const isCurrent = index === currentQuestionIndex;
+
+                                        return (
+                                            <button
+                                                key={question.id}
+                                                className={`
+                                                    relative w-full aspect-square rounded-xl text-sm font-bold flex items-center justify-center transition-all
+                                                    ${isCurrent 
+                                                        ? 'bg-purple-600 text-white ring-2 ring-purple-300 shadow-lg scale-105' 
+                                                        : hasAnswer 
+                                                            ? 'bg-green-100 text-green-700 border-2 border-green-400 hover:bg-green-200 hover:scale-105' 
+                                                            : 'bg-gray-100 text-gray-600 border-2 border-gray-300 hover:bg-gray-200 hover:scale-105'
+                                                    }
+                                                    ${isTimeUp ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
+                                                `}
+                                                onClick={() => {
+                                                    if (!isTimeUp) {
+                                                        navigateToQuestion(index);
+                                                        setShowMobileNav(false);
+                                                    }
+                                                }}
+                                                disabled={isTimeUp}
+                                            >
+                                                {index + 1}
+                                                {hasAnswer && !isCurrent && (
+                                                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                             </div>
+                             
+                             {/* Botão de enviar */}
+                             <div className="p-4 border-t border-gray-200 bg-gray-50">
+                                <Button
+                                    onClick={() => {
+                                        setShowMobileNav(false);
+                                        setShowSubmitDialog(true);
+                                    }}
+                                    disabled={isTimeUp || isSubmitting || Object.keys(answers).length < shuffledQuestions.length}
+                                    className={`w-full py-4 text-base font-bold rounded-xl ${
+                                        Object.keys(answers).length >= shuffledQuestions.length
+                                            ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg'
+                                            : 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                                    }`}
+                                >
+                                    <Send className="h-5 w-5 mr-2" />
+                                    Enviar Avaliação ({Object.keys(answers).length}/{shuffledQuestions.length})
+                                </Button>
+                                {Object.keys(answers).length < shuffledQuestions.length && (
+                                    <p className="text-xs text-center text-gray-500 mt-2">
+                                        Responda todas as questões para enviar
+                                    </p>
+                                )}
+                             </div>
+                         </div>
+                     </>
+                 )}
 
                  {/* Dialog de confirmação de envio */}
                  {showSubmitDialog && (
@@ -1024,27 +1255,29 @@ export default function TakeEvaluation() {
                          />
                          
                          {/* Modal na FRENTE */}
-                         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
-                             <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 sm:mx-0 border border-gray-200 pointer-events-auto">
-                                 <div className="p-6 pb-4">
-                                     <div className="space-y-4">
-                                         <h2 className="text-xl font-bold text-gray-800">Confirmar envio da avaliação</h2>
+                         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 pointer-events-none">
+                             <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-md w-full mx-2 sm:mx-4 border border-gray-200 pointer-events-auto">
+                                 <div className="p-4 sm:p-6 pb-3 sm:pb-4">
+                                     <div className="space-y-3 sm:space-y-4">
+                                         <h2 className="text-lg sm:text-xl font-bold text-gray-800">Confirmar envio da avaliação</h2>
                                          <div className="space-y-2">
-                                             <p className="mb-4">Você tem certeza que deseja enviar sua avaliação?</p>
-                                             <div>Questões respondidas: {Object.keys(answers).length} de {shuffledQuestions.length || 0}</div>
+                                             <p className="text-sm sm:text-base mb-3 sm:mb-4">Você tem certeza que deseja enviar sua avaliação?</p>
+                                             <div className="text-sm sm:text-base font-medium">
+                                                 Questões respondidas: <span className="text-purple-600">{Object.keys(answers).length}</span> de {shuffledQuestions.length || 0}
+                                             </div>
                                          </div>
                                      </div>
                                  </div>
-                                 <div className="flex gap-3 px-6 pb-6">
+                                 <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 px-4 sm:px-6 pb-4 sm:pb-6">
                                      <button
-                                         className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                                         className="flex-1 px-4 py-2.5 sm:py-2 text-sm sm:text-base border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 font-medium order-2 sm:order-1"
                                          onClick={() => setShowSubmitDialog(false)}
                                          disabled={isSubmitting}
                                      >
                                          Cancelar
                                      </button>
                                      <button
-                                         className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                                         className="flex-1 px-4 py-2.5 sm:py-2 text-sm sm:text-base bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-semibold order-1 sm:order-2"
                                          onClick={() => {
                                              if (isSubmitting) {
                                                  console.log('⚠️ Tentativa de envio bloqueada - já está enviando');
@@ -1085,30 +1318,30 @@ export default function TakeEvaluation() {
                          />
                          
                          {/* Modal na FRENTE */}
-                         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
-                             <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 sm:mx-0 border border-gray-200 pointer-events-auto">
-                                 <div className="p-6 pb-4">
-                                     <div className="text-center space-y-4">
+                         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 pointer-events-none">
+                             <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-md w-full mx-2 sm:mx-4 border border-gray-200 pointer-events-auto">
+                                 <div className="p-4 sm:p-6 pb-3 sm:pb-4">
+                                     <div className="text-center space-y-3 sm:space-y-4">
                                          <div className="flex items-center justify-center">
-                                             <CheckCircle2 className="h-12 w-12 sm:h-16 sm:w-16 text-green-600" />
+                                             <CheckCircle2 className="h-12 w-12 sm:h-14 sm:w-14 md:h-16 md:w-16 text-green-600" />
                                          </div>
                                          <div className="space-y-2">
-                                             <h2 className="text-xl sm:text-2xl font-bold text-green-700">
+                                             <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-green-700">
                                                  Avaliação Concluída
                                              </h2>
-                                             <p className="text-base sm:text-lg font-semibold text-gray-800 leading-relaxed">
+                                             <p className="text-sm sm:text-base md:text-lg font-semibold text-gray-800 leading-relaxed px-2">
                                                  Todas as questões foram respondidas com sucesso.
                                              </p>
-                                             <p className="text-sm text-gray-600">
+                                             <p className="text-xs sm:text-sm text-gray-600 px-2">
                                                  Deseja enviar sua avaliação agora para finalização?
                                              </p>
                                          </div>
                                      </div>
                                  </div>
 
-                                 <div className="flex flex-col sm:flex-row gap-3 px-6 pb-6">
+                                 <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 px-4 sm:px-6 pb-4 sm:pb-6">
                                      <button
-                                         className="w-full sm:w-auto order-2 sm:order-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 px-6 rounded-lg transition-colors"
+                                         className="w-full sm:w-auto order-2 sm:order-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg transition-colors text-sm sm:text-base"
                                          onClick={() => {
                                              console.log('🔍 Fechando modal de conclusão para permitir revisão...');
                                              setShowCompletionDialog(false);
@@ -1116,12 +1349,12 @@ export default function TakeEvaluation() {
                                              setIsCompletionDialogClosed(true);
                                          }}
                                      >
-                                         <ChevronLeft className="h-4 w-4 mr-2 inline" />
+                                         <ChevronLeft className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 inline" />
                                          Revisar Respostas
                                      </button>
 
                                      <button
-                                         className="w-full sm:w-auto order-1 sm:order-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors shadow-lg hover:shadow-xl"
+                                         className="w-full sm:w-auto order-1 sm:order-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg transition-colors shadow-lg hover:shadow-xl text-sm sm:text-base flex items-center justify-center"
                                          onClick={() => {
                                              if (isSubmitting) {
                                                  console.log('⚠️ Tentativa de envio bloqueada - já está enviando');
@@ -1145,12 +1378,12 @@ export default function TakeEvaluation() {
                                      >
                                          {isSubmitting ? (
                                              <>
-                                                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                                 <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 animate-spin inline" />
                                                  Enviando...
                                              </>
                                          ) : (
                                              <>
-                                                 <Send className="h-4 w-4 mr-2" />
+                                                 <Send className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 inline" />
                                                  Confirmar Envio
                                              </>
                                          )}
@@ -1161,122 +1394,191 @@ export default function TakeEvaluation() {
                      </>
                  )}
 
-                {/* ✅ Modal de visualização em tela cheia */}
-                {showFullscreenQuestion && (
-                    <div 
-                        className="fixed inset-0 z-[9999] bg-white"
-                        style={{
-                            position: 'fixed',
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            width: '100vw',
-                            height: '100vh',
-                            zIndex: 9999
-                        }}
-                    >
-                        {/* Header */}
-                        <div className="flex items-center justify-between px-6 py-3 bg-white border-b shadow-sm">
-                            <div className="flex items-center gap-4">
-                                <h2 className="text-lg font-bold">
-                                    Questão {currentQuestionIndex + 1} de {shuffledQuestions.length}
-                                </h2>
-                                {currentQuestion?.subject?.name && (
-                                    <Badge variant="outline" className="bg-purple-50 border-purple-300 text-purple-700">
-                                        {currentQuestion.subject.name}
-                                    </Badge>
-                                )}
-                            </div>
-                            <div className="flex items-center gap-4">
-                                <span className="text-sm text-gray-600">
-                                    {answers[currentQuestion?.id]?.answer ? (
-                                        <span className="flex items-center gap-2 text-green-600 font-medium">
-                                            <CheckCircle2 className="h-4 w-4" />
-                                            Respondida
-                                        </span>
-                                    ) : (
-                                        <span className="text-gray-500">
-                                            Não respondida
-                                        </span>
-                                    )}
-                                </span>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => setShowFullscreenQuestion(false)}
-                                    className="h-8 w-8 p-0 hover:bg-gray-100 rounded-full"
-                                    title="Fechar visualização"
-                                >
-                                    <X className="h-5 w-5" />
-                                </Button>
-                            </div>
-                        </div>
-                        
-                        {/* Conteúdo principal */}
-                        <div className="flex h-[calc(100vh-60px)]">
-                            {/* Lado esquerdo - Questão */}
-                            <div className="flex-1 bg-white overflow-y-auto">
-                                <div className="p-8">
-                                    <div className="evaluation-question-content space-y-6">
-                                        {/* Primeiro Enunciado */}
-                                        {(currentQuestion?.formattedText || currentQuestion?.text) && (
-                                            <div className="prose prose-lg max-w-none text-gray-800" style={{ fontSize: '1.25rem', lineHeight: '1.8' }}>
-                                                <div
-                                                    dangerouslySetInnerHTML={{
-                                                        __html: currentQuestion?.formattedText || currentQuestion?.text || '',
-                                                    }}
-                                                />
-                                            </div>
-                                        )}
+               {/* ✅ Modal de visualização em tela cheia - MELHORADO */}
+               {showFullscreenQuestion && (
+                   <div 
+                       className="fixed inset-0 z-[9999] bg-white flex flex-col"
+                       style={{
+                           position: 'fixed',
+                           top: 0,
+                           left: 0,
+                           right: 0,
+                           bottom: 0,
+                           width: '100vw',
+                           height: '100vh',
+                           zIndex: 9999
+                       }}
+                   >
+                       {/* Header - MELHORADO */}
+                       <div className="flex items-center justify-between px-3 sm:px-4 md:px-6 lg:px-8 py-2 sm:py-3 bg-white border-b shadow-sm flex-shrink-0">
+                           <div className="flex items-center gap-2 sm:gap-3 md:gap-4 min-w-0 flex-1">
+                               <h2 className="text-sm sm:text-base md:text-lg lg:text-xl font-bold truncate">
+                                   <span className="hidden sm:inline">Questão </span>
+                                   {currentQuestionIndex + 1}<span className="hidden xs:inline"> de {shuffledQuestions.length}</span>
+                               </h2>
+                               {currentQuestion?.subject?.name && (
+                                   <Badge variant="outline" className="bg-purple-50 border-purple-300 text-purple-700 text-xs sm:text-sm truncate max-w-[100px] sm:max-w-[150px] md:max-w-none">
+                                       {currentQuestion.subject.name}
+                                   </Badge>
+                               )}
+                           </div>
+                           <div className="flex items-center gap-2 sm:gap-3 md:gap-4 flex-shrink-0">
+                               {/* Status de resposta */}
+                               <span className="text-xs sm:text-sm text-gray-600 hidden xs:block">
+                                   {answers[currentQuestion?.id]?.answer ? (
+                                       <span className="flex items-center gap-1 sm:gap-2 text-green-600 font-medium">
+                                           <CheckCircle2 className="h-3 w-3 sm:h-4 sm:w-4" />
+                                           <span className="hidden md:inline">Respondida</span>
+                                           <span className="md:hidden">✓</span>
+                                       </span>
+                                   ) : (
+                                       <span className="text-gray-500 hidden lg:inline">
+                                           Não respondida
+                                       </span>
+                                   )}
+                               </span>
+                               {/* Botão fechar */}
+                               <Button
+                                   variant="ghost"
+                                   size="sm"
+                                   onClick={() => setShowFullscreenQuestion(false)}
+                                   className="h-7 w-7 sm:h-8 sm:w-8 md:h-9 md:w-9 p-0 hover:bg-gray-100 rounded-full"
+                                   title="Fechar visualização"
+                               >
+                                   <X className="h-4 w-4 sm:h-5 sm:w-5" />
+                               </Button>
+                           </div>
+                       </div>
+                       
+                       {/* Conteúdo principal - MELHORADO */}
+                       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+                           {/* Lado esquerdo/topo - Questão */}
+                           <div className="fullscreen-question-container flex-1 bg-white overflow-y-auto md:w-1/2 lg:w-3/5 xl:w-2/3">
+                               <div className="p-4 sm:p-5 md:p-6 lg:p-8 xl:p-10 max-w-4xl mx-auto">
+                                   <div className="evaluation-question-content space-y-3 sm:space-y-4 md:space-y-6">
+                                       {/* Primeiro Enunciado */}
+                                       {(currentQuestion?.formattedText || currentQuestion?.text) && (
+                                           <div 
+                                               className="prose prose-sm sm:prose-base md:prose-lg lg:prose-xl max-w-none text-gray-800"
+                                               style={{ 
+                                                   fontSize: 'clamp(0.875rem, 1.5vw + 0.5rem, 1.375rem)', 
+                                                   lineHeight: '1.75' 
+                                               }}
+                                           >
+                                               <div
+                                                   dangerouslySetInnerHTML={{
+                                                       __html: currentQuestion?.formattedText || currentQuestion?.text || '',
+                                                   }}
+                                               />
+                                           </div>
+                                       )}
 
-                                        {/* Segundo Enunciado */}
-                                        {currentQuestion?.secondStatement?.trim() && (
-                                            <div className="prose prose-lg max-w-none text-gray-800 pt-6 mt-6 border-t-2 border-gray-200" style={{ fontSize: '1.25rem', lineHeight: '1.8' }}>
-                                                <div
-                                                    dangerouslySetInnerHTML={{
-                                                        __html: currentQuestion.secondStatement.trim(),
-                                                    }}
-                                                />
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
+                                       {/* Segundo Enunciado */}
+                                       {currentQuestion?.secondStatement?.trim() && (
+                                           <div 
+                                               className="prose prose-sm sm:prose-base md:prose-lg lg:prose-xl max-w-none text-gray-800 pt-3 sm:pt-4 md:pt-6 mt-3 sm:mt-4 md:mt-6 border-t-2 border-gray-200"
+                                               style={{ 
+                                                   fontSize: 'clamp(0.875rem, 1.5vw + 0.5rem, 1.375rem)', 
+                                                   lineHeight: '1.75' 
+                                               }}
+                                           >
+                                               <div
+                                                   dangerouslySetInnerHTML={{
+                                                       __html: currentQuestion.secondStatement.trim(),
+                                                   }}
+                                               />
+                                           </div>
+                                       )}
+                                   </div>
+                               </div>
+                           </div>
 
-                            {/* Divisor vertical */}
-                            <div className="w-px bg-gray-300"></div>
+                           {/* Divisor */}
+                           <div className="h-px md:h-auto md:w-px bg-gray-300 flex-shrink-0"></div>
 
-                            {/* Lado direito - Alternativas */}
-                            <div className="w-1/2 flex flex-col bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
-                                <div className="p-8">
-                                    <h3 className="text-xl font-bold text-gray-800 mb-6">Alternativas:</h3>
-                                    <QuestionOptions
-                                        question={currentQuestion}
-                                        answer={answers[currentQuestion?.id]?.answer}
-                                        onAnswerChange={(answer) => {
-                                            if (currentQuestion?.id) {
-                                                // ✅ NOVO: Mapear resposta para letra original antes de salvar
-                                                const displayAnswer = Array.isArray(answer) ? answer[0] : answer;
-                                                const originalLetter = mapAnswerToOriginalLetter(currentQuestion.id, displayAnswer);
-                                                
-                                                console.log('💾 Salvando resposta mapeada (fullscreen):', {
-                                                    questionId: currentQuestion.id,
-                                                    interfaceAnswer: displayAnswer,
-                                                    originalLetter: originalLetter
-                                                });
-                                                
-                                                // Salvar a letra original (A, B, C, D...) no backend
-                                                saveAnswer(currentQuestion.id, originalLetter);
-                                            }
-                                        }}
-                                        disabled={false}
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                           {/* Lado direito/baixo - Alternativas */}
+                           <div className="fullscreen-options-container flex-1 flex flex-col bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 overflow-y-auto md:w-1/2 lg:w-2/5 xl:w-1/3">
+                               <div className="p-4 sm:p-5 md:p-6 lg:p-8">
+                                   <h3 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-gray-800 mb-3 sm:mb-4 md:mb-6 sticky top-0 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 pb-2 z-10">
+                                       Alternativas:
+                                   </h3>
+                                   <div className="space-y-3 sm:space-y-4">
+                                       <QuestionOptions
+                                           question={currentQuestion}
+                                           answer={answers[currentQuestion?.id]?.answer}
+                                           onAnswerChange={(answer) => {
+                                               if (currentQuestion?.id) {
+                                                   // ✅ NOVO: Mapear resposta para letra original antes de salvar
+                                                   const displayAnswer = Array.isArray(answer) ? answer[0] : answer;
+                                                   const originalLetter = mapAnswerToOriginalLetter(currentQuestion.id, displayAnswer);
+                                                   
+                                                   console.log('💾 Salvando resposta mapeada (fullscreen):', {
+                                                       questionId: currentQuestion.id,
+                                                       interfaceAnswer: displayAnswer,
+                                                       originalLetter: originalLetter
+                                                   });
+                                                   
+                                                   // Salvar a letra original (A, B, C, D...) no backend
+                                                   saveAnswer(currentQuestion.id, originalLetter);
+                                               }
+                                           }}
+                                           disabled={false}
+                                       />
+                                   </div>
+                               </div>
+                           </div>
+                       </div>
+
+                       {/* Footer com navegação - NOVO */}
+                       <div className="flex items-center justify-between px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 bg-white border-t shadow-lg flex-shrink-0">
+                           <Button
+                               variant="outline"
+                               size="sm"
+                               onClick={() => {
+                                   if (currentQuestionIndex > 0) {
+                                       navigateToQuestion(currentQuestionIndex - 1);
+                                   }
+                               }}
+                               disabled={currentQuestionIndex === 0}
+                               className="px-3 sm:px-4 md:px-6 py-2 sm:py-2.5 text-sm sm:text-base font-semibold"
+                           >
+                               <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5 mr-1 sm:mr-2" />
+                               <span className="hidden xs:inline">Anterior</span>
+                               <span className="xs:hidden">←</span>
+                           </Button>
+
+                           <div className="flex items-center gap-2 sm:gap-3">
+                               <span className="text-xs sm:text-sm md:text-base font-semibold text-gray-700 bg-gray-100 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full">
+                                   {currentQuestionIndex + 1} / {shuffledQuestions.length}
+                               </span>
+                               <Button
+                                   variant="ghost"
+                                   size="sm"
+                                   onClick={() => setShowFullscreenQuestion(false)}
+                                   className="text-xs sm:text-sm text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                               >
+                                   <X className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                                   <span className="hidden sm:inline">Fechar</span>
+                               </Button>
+                           </div>
+
+                           <Button
+                               size="sm"
+                               onClick={() => {
+                                   if (currentQuestionIndex < shuffledQuestions.length - 1) {
+                                       navigateToQuestion(currentQuestionIndex + 1);
+                                   }
+                               }}
+                               disabled={currentQuestionIndex === shuffledQuestions.length - 1}
+                               className="px-3 sm:px-4 md:px-6 py-2 sm:py-2.5 text-sm sm:text-base font-semibold bg-purple-600 hover:bg-purple-700"
+                           >
+                               <span className="hidden xs:inline">Próxima</span>
+                               <span className="xs:hidden">→</span>
+                               <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5 ml-1 sm:ml-2" />
+                           </Button>
+                       </div>
+                   </div>
+               )}
             </div>
         );
     }
@@ -1303,8 +1605,8 @@ function QuestionOptions({
         const questionOptions = question.options || question.alternatives || [];
 
         return (
-            <div className="space-y-6">
-                <div className="text-xl font-bold text-gray-800 mb-6">
+            <div className="space-y-4 sm:space-y-6">
+                <div className="text-base sm:text-lg md:text-xl font-bold text-gray-800 mb-4 sm:mb-6">
                     Selecione a alternativa correta:
                 </div>
                 <RadioGroup
@@ -1345,8 +1647,8 @@ function QuestionOptions({
                         return (
                             <div
                                 key={optionId}
-                                className={`flex items-start space-x-4 p-6 rounded-xl border-2 cursor-pointer transition-all hover:bg-gray-50 ${isSelected
-                                    ? 'border-purple-500 bg-purple-50 ring-4 ring-purple-200 shadow-lg'
+                                className={`flex items-start space-x-3 sm:space-x-4 p-4 sm:p-5 md:p-6 rounded-lg sm:rounded-xl border-2 cursor-pointer transition-all hover:bg-gray-50 ${isSelected
+                                    ? 'border-purple-500 bg-purple-50 ring-2 sm:ring-4 ring-purple-200 shadow-lg'
                                     : 'border-gray-300 hover:border-gray-400 hover:shadow-md'
                                     } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
 
@@ -1354,17 +1656,17 @@ function QuestionOptions({
                                 <RadioGroupItem
                                     value={optionId}
                                     id={optionId}
-                                    className="mt-1 w-5 h-5"
+                                    className="mt-0.5 sm:mt-1 w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0"
                                 />
                                 <Label
                                     htmlFor={optionId}
-                                    className="flex-1 cursor-pointer text-lg leading-relaxed"
+                                    className="flex-1 cursor-pointer text-sm sm:text-base md:text-lg leading-relaxed"
                                 >
-                                    <div className="flex items-start gap-3">
-                                        <span className="font-bold text-gray-700 min-w-[30px] text-xl">
+                                    <div className="flex items-start gap-2 sm:gap-3">
+                                        <span className="font-bold text-gray-700 min-w-[24px] sm:min-w-[30px] text-base sm:text-lg md:text-xl flex-shrink-0">
                                             {String.fromCharCode(65 + index)})
                                         </span>
-                                        <div className="text-lg leading-relaxed" dangerouslySetInnerHTML={{ __html: optionText }} />
+                                        <div className="text-sm sm:text-base md:text-lg leading-relaxed" dangerouslySetInnerHTML={{ __html: optionText }} />
                                     </div>
                                 </Label>
                             </div>
@@ -1377,8 +1679,8 @@ function QuestionOptions({
 
     if (question.type === "true_false" || question.type === "truefalse") {
         return (
-            <div className="space-y-6">
-                <div className="text-xl font-bold text-gray-800 mb-6">
+            <div className="space-y-4 sm:space-y-6">
+                <div className="text-base sm:text-lg md:text-xl font-bold text-gray-800 mb-4 sm:mb-6">
                     Selecione Verdadeiro ou Falso:
                 </div>
                 <RadioGroup
@@ -1395,14 +1697,14 @@ function QuestionOptions({
                         return (
                             <div
                                 key={option.id}
-                                className={`flex items-center space-x-4 p-6 rounded-xl border-2 cursor-pointer transition-all hover:bg-gray-50 ${isSelected
-                                    ? 'border-purple-500 bg-purple-50 ring-4 ring-purple-200 shadow-lg'
+                                className={`flex items-center space-x-3 sm:space-x-4 p-4 sm:p-5 md:p-6 rounded-lg sm:rounded-xl border-2 cursor-pointer transition-all hover:bg-gray-50 ${isSelected
+                                    ? 'border-purple-500 bg-purple-50 ring-2 sm:ring-4 ring-purple-200 shadow-lg'
                                     : 'border-gray-300 hover:border-gray-400 hover:shadow-md'
                                     } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 onClick={() => !disabled && onAnswerChange(option.id)}
                             >
-                                <RadioGroupItem value={option.id} id={option.id} className="w-5 h-5" />
-                                <Label htmlFor={option.id} className="flex-1 cursor-pointer font-bold text-lg">
+                                <RadioGroupItem value={option.id} id={option.id} className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                                <Label htmlFor={option.id} className="flex-1 cursor-pointer font-bold text-sm sm:text-base md:text-lg">
                                     {option.text}
                                 </Label>
                             </div>
@@ -1420,7 +1722,7 @@ function QuestionOptions({
 
         return (
             <div className="space-y-3">
-                <div className="text-sm font-medium text-gray-700 mb-3">
+                <div className="text-sm sm:text-base font-medium text-gray-700 mb-3">
                     Selecione todas as alternativas corretas:
                 </div>
                 <div className="space-y-2">
@@ -1432,7 +1734,7 @@ function QuestionOptions({
                         return (
                             <div
                                 key={optionId}
-                                className={`flex items-start space-x-3 p-4 rounded-lg border cursor-pointer transition-all hover:bg-gray-50 ${isSelected
+                                className={`flex items-start space-x-2 sm:space-x-3 p-3 sm:p-4 rounded-lg border cursor-pointer transition-all hover:bg-gray-50 ${isSelected
                                     ? 'border-purple-500 bg-purple-50 ring-2 ring-purple-200'
                                     : 'border-gray-200 hover:border-gray-300'
                                     } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -1457,17 +1759,17 @@ function QuestionOptions({
                                         }
                                     }}
                                     disabled={disabled}
-                                    className="mt-0.5"
+                                    className="mt-0.5 flex-shrink-0"
                                 />
                                 <Label
                                     htmlFor={optionId}
-                                    className="flex-1 cursor-pointer text-sm leading-relaxed"
+                                    className="flex-1 cursor-pointer text-xs sm:text-sm leading-relaxed"
                                 >
                                     <div className="flex items-start gap-2">
-                                        <span className="font-medium text-gray-600 min-w-[20px]">
+                                        <span className="font-medium text-gray-600 min-w-[20px] flex-shrink-0">
                                             {String.fromCharCode(65 + index)})
                                         </span>
-                                        <div dangerouslySetInnerHTML={{ __html: optionText }} />
+                                        <div className="text-xs sm:text-sm" dangerouslySetInnerHTML={{ __html: optionText }} />
                                     </div>
                                 </Label>
                             </div>
@@ -1480,8 +1782,8 @@ function QuestionOptions({
 
     if (question.type === "essay" || question.type === "open" || question.type === "dissertativa" || question.type === "text" || question.type === "short_answer") {
         return (
-            <div className="space-y-6">
-                <div className="text-xl font-bold text-gray-800 mb-6">
+            <div className="space-y-4 sm:space-y-6">
+                <div className="text-base sm:text-lg md:text-xl font-bold text-gray-800 mb-4 sm:mb-6">
                     Digite sua resposta:
                 </div>
                 <Textarea
@@ -1490,9 +1792,9 @@ function QuestionOptions({
                     onChange={(e) => onAnswerChange(e.target.value)}
                     rows={8}
                     disabled={disabled}
-                    className="min-h-[200px] resize-none text-lg p-4 border-2 rounded-xl"
+                    className="min-h-[150px] sm:min-h-[200px] resize-none text-sm sm:text-base md:text-lg p-3 sm:p-4 border-2 rounded-lg sm:rounded-xl"
                 />
-                <div className="text-sm text-gray-600 font-medium">
+                <div className="text-xs sm:text-sm text-gray-600 font-medium">
                     {answer ? `${answer.length} caracteres` : '0 caracteres'}
                 </div>
             </div>

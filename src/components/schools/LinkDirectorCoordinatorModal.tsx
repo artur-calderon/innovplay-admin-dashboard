@@ -249,7 +249,7 @@ export function LinkDirectorCoordinatorModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[95vw] max-w-6xl h-auto max-h-[90vh] overflow-hidden flex flex-col justify-start p-0">
+      <DialogContent className="w-[95vw] max-w-6xl h-[95vh] max-h-[95vh] overflow-hidden flex flex-col p-0">
         <DialogHeader className="px-4 sm:px-6 py-3 border-b bg-gradient-to-r from-orange-50 to-amber-50">
           <DialogTitle className="flex flex-col sm:flex-row sm:items-center gap-2 text-lg sm:text-xl">
             <div className="flex items-center gap-2">
@@ -301,14 +301,14 @@ export function LinkDirectorCoordinatorModal({
               </div>
 
               {/* Users List */}
-              <div className="flex-1 overflow-hidden border rounded-lg bg-white">
+              <div className="flex-1 overflow-hidden border rounded-lg bg-white min-h-[400px] max-h-[500px]">
                 {isLoading ? (
                   <div className="flex flex-col items-center justify-center p-8 h-full">
                     <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
                     <span className="text-sm sm:text-base text-gray-600">Carregando {userTypeLabel.toLowerCase()}...</span>
                   </div>
                 ) : filteredUsers.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center p-6 sm:p-8 h-full min-h-[300px]">
+                  <div className="flex flex-col items-center justify-center p-6 sm:p-8 h-full">
                     <div className={`${userType === 'diretor' ? 'bg-red-50' : 'bg-orange-50'} p-4 rounded-full mb-4`}>
                       <Building className={`h-8 w-8 sm:h-12 sm:w-12 ${userType === 'diretor' ? 'text-red-400' : 'text-orange-400'}`} />
                     </div>
@@ -324,10 +324,10 @@ export function LinkDirectorCoordinatorModal({
                   </div>
                 ) : (
                   <div 
-                    className={`h-full overflow-y-auto scrollbar-thin scroll-smooth ${
+                    className={`h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scroll-smooth ${
                       userType === 'diretor' 
-                        ? 'scrollbar-thumb-red-300 scrollbar-track-red-50 hover:scrollbar-thumb-red-400' 
-                        : 'scrollbar-thumb-orange-300 scrollbar-track-orange-50 hover:scrollbar-thumb-orange-400'
+                        ? 'scrollbar-thumb-red-300 hover:scrollbar-thumb-red-400' 
+                        : 'scrollbar-thumb-orange-300 hover:scrollbar-thumb-orange-400'
                     }`}
                   >
                     <div className="space-y-2 sm:space-y-3 p-3 sm:p-4">

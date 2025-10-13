@@ -343,14 +343,14 @@ export function LinkTeacherModal({
               </div>
 
               {/* Teachers List */}
-              <div className="flex-1 overflow-hidden border rounded-lg bg-white">
+              <div className="flex-1 overflow-hidden border rounded-lg bg-white min-h-[400px] max-h-[500px]">
                 {isLoading ? (
                   <div className="flex flex-col items-center justify-center p-8 h-full">
                     <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
                     <span className="text-sm sm:text-base text-gray-600">Carregando professores...</span>
                   </div>
                 ) : filteredTeachers.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center p-6 sm:p-8 h-full min-h-[300px]">
+                  <div className="flex flex-col items-center justify-center p-6 sm:p-8 h-full">
                     <div className="bg-blue-50 p-4 rounded-full mb-4">
                       <UserPlus className="h-8 w-8 sm:h-12 sm:w-12 text-blue-400" />
                     </div>
