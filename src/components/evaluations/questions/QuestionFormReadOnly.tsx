@@ -25,7 +25,7 @@ import TextAlign from '@tiptap/extension-text-align';
 import './QuestionForm.css';
 import MyEditor from './MyEditor';
 import './MyEditor.css';
-import { MultiSelect, Option } from "@/components/ui/multi-select";
+import { Option } from "@/components/ui/multi-select";
 import { useAuth } from "@/context/authContext";
 
 // Form schema
@@ -44,7 +44,7 @@ const questionSchema = z.object({
         })
     ).optional(),
     secondStatement: z.string().optional(),
-    skills: z.array(z.string()).optional(),
+    skills: z.string().optional(), // Uma questão tem apenas UMA habilidade
     topics: z.string().optional(),
     questionType: z.enum(['multipleChoice', 'dissertativa']),
 }).refine((data) => {
@@ -123,13 +123,10 @@ const QuestionPreview: React.FC<{ data: QuestionFormValues }> = ({ data }) => {
 
     const selectedSubject = subjects.find(s => s.id === data.subjectId);
     const selectedGrade = grades.find(g => g.id === data.grade);
-    // Buscar nomes das habilidades (apenas os 7 primeiros caracteres)
-    const selectedSkills = (data.skills && Array.isArray(data.skills))
-        ? data.skills.map(skillId => {
-            const name = skillsOptions.find(opt => opt.id === skillId)?.name || skillId;
-            return name.substring(0, 6);
-        })
-        : [];
+    // Buscar nome da habilidade (apenas os 7 primeiros caracteres)
+    const selectedSkill = data.skills 
+        ? skillsOptions.find(opt => opt.id === data.skills)?.name.substring(0, 6) || data.skills
+        : "";
 
     // Initialize read-only Tiptap editor for the preview statement
     const statementEditor = useEditor({
@@ -178,8 +175,8 @@ const QuestionPreview: React.FC<{ data: QuestionFormValues }> = ({ data }) => {
                     <Badge variant="outline">{selectedSubject?.name || data.subjectId}</Badge>
                     <Badge variant="outline">{data.difficulty}</Badge>
                     <Badge variant="outline">Valor: {data.value}</Badge>
-                    {selectedSkills.length > 0 && (
-                        <Badge variant="outline">{selectedSkills.join(", ")}</Badge>
+                    {selectedSkill && (
+                        <Badge variant="outline">{selectedSkill}</Badge>
                     )}
                 </div>
             </div>
@@ -267,7 +264,7 @@ const QuestionFormReadOnly = ({
                 { text: "", isCorrect: false },
             ],
             secondStatement: "",
-            skills: [],
+            skills: "", // String única ao invés de array
             topics: "",
             questionType: 'multipleChoice',
         },
@@ -453,9 +450,9 @@ const QuestionFormReadOnly = ({
                 console.log(`  Opção ${index}:`, opt);
             });
 
-            // skills como array de strings
-            const skills = Array.isArray(data.skills) ? data.skills : [];
-            console.log('🔍 QuestionFormReadOnly - Skills selecionadas:', skills);
+            // skills como string única
+            const skills = data.skills || "";
+            console.log('🔍 QuestionFormReadOnly - Habilidade selecionada:', skills);
 
             // Encontrar o subject e grade para criar o objeto Question completo
             const selectedSubject = subjects.find(s => s.id === data.subjectId);
@@ -482,7 +479,7 @@ const QuestionFormReadOnly = ({
                     text: opt.text,
                     isCorrect: opt.isCorrect
                 })) : [],
-                skills: data.skills || [],
+                skills: data.skills || "", // String única (ID da habilidade)
                 secondStatement: data.secondStatement || '',
                 lastModifiedBy: user?.id || '',
                 createdBy: user?.id || '',
@@ -706,36 +703,44 @@ const QuestionFormReadOnly = ({
                                     render={({ field }) => (
                                         <FormItem>
                                             <FormLabel className="text-sm font-semibold text-gray-700">
-                                                Habilidades (BNCC)
+                                                Habilidade (BNCC)
                                                 <span className="text-gray-500 font-normal ml-1">
                                                     {skills.length > 0 ? `(${skills.length} disponíveis)` : ''}
                                                 </span>
                                             </FormLabel>
                                             <FormControl>
-                                                <MultiSelect
-                                                    options={skills}
-                                                    selected={field.value || []}
-                                                    onChange={field.onChange}
-                                                    placeholder="Selecione as habilidades"
-                                                    className="w-full"
-                                                    label=""
-                                                />
+                                                <Select
+                                                    onValueChange={field.onChange}
+                                                    value={field.value || ""}
+                                                    disabled={skills.length === 0}
+                                                >
+                                                    <SelectTrigger className="h-11">
+                                                        <SelectValue placeholder="Selecione uma habilidade" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {skills.map((skill) => (
+                                                            <SelectItem key={skill.id} value={skill.id}>
+                                                                {skill.name}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
                                             </FormControl>
                                             <FormMessage />
-                                            {(field.value || []).length > 0 && (
+                                            {field.value && (
                                                 <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
                                                     <div className="text-sm font-medium text-blue-800 mb-2">
-                                                        Habilidades Selecionadas ({(field.value || []).length}):
+                                                        Habilidade Selecionada:
                                                     </div>
                                                     <div className="flex flex-wrap gap-1">
-                                                        {(field.value || []).map((skillId: string) => {
-                                                            const skill = skills.find(opt => opt.id === skillId);
+                                                        {(() => {
+                                                            const skill = skills.find(opt => opt.id === field.value);
                                                             return skill ? (
-                                                                <Badge key={skillId} variant="outline" className="text-xs bg-white border-blue-300">
-                                                                    {skill.code}
+                                                                <Badge key={skill.id} variant="outline" className="text-xs bg-white border-blue-300">
+                                                                    {skill.name?.substring(0, 6) || ''}
                                                                 </Badge>
                                                             ) : null;
-                                                        })}
+                                                        })()}
                                                     </div>
                                                 </div>
                                             )}

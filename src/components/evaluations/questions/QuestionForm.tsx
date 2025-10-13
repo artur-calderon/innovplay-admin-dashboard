@@ -26,7 +26,6 @@ import { useToast } from "@/hooks/use-toast";
 import { Option } from "@/components/ui/multi-select";
 import { useAuth } from "@/context/authContext";
 import QuestionPreview from "./QuestionPreview";
-import SkillsSelector from "./SkillsSelector";
 
 // Form schema
 const baseSchema = z.object({
@@ -45,7 +44,7 @@ const baseSchema = z.object({
     })
   ).optional(),
   secondStatement: z.string().optional(),
-  skills: z.array(z.string()).min(1, "Selecione pelo menos uma habilidade"),
+  skills: z.string().min(1, "Selecione uma habilidade"), // Uma questão tem apenas UMA habilidade
   questionType: z.enum(['multipleChoice', 'dissertativa']),
 });
 
@@ -124,7 +123,7 @@ const QuestionForm = ({
     educationStageId?: string;
     subjectId?: string;
     grade?: string;
-    skills?: string[];
+    skills?: string;
   }>({});
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -149,7 +148,7 @@ const QuestionForm = ({
         { text: "", isCorrect: false },
       ],
       secondStatement: "",
-      skills: [],
+      skills: "", // String única ao invés de array
       questionType: 'multipleChoice',
     },
   });
@@ -203,35 +202,47 @@ const QuestionForm = ({
           const questionData = response.data;
 
 
-          const normalizeSkills = (skills: string[] | { id: string }[] | any): string[] => {
-            if (!skills) return [];
+          const normalizeSkills = (skills: string | string[] | { id: string }[] | any): string => {
+            if (!skills) return "";
 
-            if (Array.isArray(skills)) {
-              if (skills.length === 0) return [];
-
-              // Se é array de strings
-              if (typeof skills[0] === 'string') {
-                // Limpar strings que podem estar com chaves ou JSON
-                return (skills as string[]).map(skill => {
-                  // Se é uma string JSON como "{id}", extrair o ID
-                  if (skill.startsWith('{') && skill.endsWith('}')) {
-                    try {
-                      const parsed = JSON.parse(skill);
-                      return typeof parsed === 'string' ? parsed : parsed.id || skill;
-                    } catch {
-                      // Se não é JSON válido, remover as chaves manualmente
-                      return skill.replace(/[{}]/g, '').trim();
-                    }
-                  }
-                  return skill;
-                });
+            // Se já é uma string, processar
+            if (typeof skills === 'string') {
+              // Limpar chaves se houver
+              if (skills.startsWith('{') && skills.endsWith('}')) {
+                try {
+                  const parsed = JSON.parse(skills);
+                  return typeof parsed === 'string' ? parsed : parsed.id || skills;
+                } catch {
+                  return skills.replace(/[{}]/g, '').trim();
+                }
               }
-
-              // Se é array de objetos com id
-              return (skills as { id: string }[]).map((skill) => skill.id);
+              return skills;
             }
 
-            return [];
+            // Se é array, pegar apenas o primeiro elemento
+            if (Array.isArray(skills)) {
+              if (skills.length === 0) return "";
+
+              const firstSkill = skills[0];
+              
+              // Se é string
+              if (typeof firstSkill === 'string') {
+                if (firstSkill.startsWith('{') && firstSkill.endsWith('}')) {
+                  try {
+                    const parsed = JSON.parse(firstSkill);
+                    return typeof parsed === 'string' ? parsed : parsed.id || firstSkill;
+                  } catch {
+                    return firstSkill.replace(/[{}]/g, '').trim();
+                  }
+                }
+                return firstSkill;
+              }
+
+              // Se é objeto com id
+              return firstSkill.id || "";
+            }
+
+            return "";
           };
 
           const normalizedSkills = normalizeSkills(questionData.skills);
@@ -320,14 +331,19 @@ const QuestionForm = ({
 
   useEffect(() => {
     const fetchGrades = async () => {
-      // NÃO executar se estiver carregando a questão inicial OU se não tem questionId mas ainda não carregou dados iniciais
-      if (isLoadingQuestion || (!questionId && !hasLoadedInitialData.current)) {
+      console.log('🔍 useEffect fetchGrades disparado. currentEducationStageId:', currentEducationStageId, 'isLoadingQuestion:', isLoadingQuestion);
+      
+      // NÃO executar apenas se estiver carregando a questão inicial
+      if (isLoadingQuestion) {
+        console.log('⏳ Aguardando carregamento da questão...');
         return;
       }
       
       if (currentEducationStageId) {
+        console.log('🔍 Carregando séries para o curso:', currentEducationStageId);
         try {
           const response = await api.get(`/grades/education-stage/${currentEducationStageId}`);
+          console.log('✅ Séries carregadas:', response.data);
           setGrades(response.data);
 
           // Aguardar um tick para garantir que setGrades foi aplicado
@@ -349,6 +365,7 @@ const QuestionForm = ({
           });
         }
       } else {
+        console.log('⚠️ Nenhum curso selecionado, limpando séries');
         setGrades([]);
       }
     };
@@ -357,8 +374,8 @@ const QuestionForm = ({
 
   useEffect(() => {
     const fetchSkills = async () => {
-      // NÃO executar se estiver carregando a questão inicial OU se não tem questionId mas ainda não carregou dados iniciais
-      if (isLoadingQuestion || (!questionId && !hasLoadedInitialData.current)) {
+      // NÃO executar apenas se estiver carregando a questão inicial
+      if (isLoadingQuestion) {
         return;
       }
       
@@ -368,7 +385,7 @@ const QuestionForm = ({
         // 2. Estiver editando mas ainda não carregou os dados iniciais
         const shouldResetSkills = !questionId || !hasLoadedInitialData.current;
         if (shouldResetSkills) {
-          form.setValue("skills", []); // Reseta apenas ao criar ou antes do primeiro load
+          form.setValue("skills", ""); // Reseta apenas ao criar ou antes do primeiro load
         }
         
         try {
@@ -420,7 +437,7 @@ const QuestionForm = ({
       if (!currentValues.educationStageId && preservedValues.current.educationStageId) lostFields.push('educationStageId');
       if (!currentValues.subjectId && preservedValues.current.subjectId) lostFields.push('subjectId');
       if (!currentValues.grade && preservedValues.current.grade) lostFields.push('grade');
-      if (!currentValues.skills?.length && preservedValues.current.skills?.length) lostFields.push('skills');
+      if (!currentValues.skills && preservedValues.current.skills) lostFields.push('skills');
 
       if (lostFields.length > 0) {
         // Restaurar valores perdidos
@@ -433,7 +450,7 @@ const QuestionForm = ({
         if (!currentValues.grade && preservedValues.current.grade) {
           form.setValue("grade", preservedValues.current.grade);
         }
-        if (!currentValues.skills?.length && preservedValues.current.skills?.length) {
+        if (!currentValues.skills && preservedValues.current.skills) {
           form.setValue("skills", preservedValues.current.skills);
         }
       }
@@ -489,7 +506,7 @@ const QuestionForm = ({
       solution,
       formattedSolution: data.solution || "",
       options: options,
-      skills: data.skills, // Agora é obrigatório, não precisa de fallback
+      skills: data.skills, // String única (ID da habilidade)
       secondStatement: data.secondStatement || '',
       lastModifiedBy: user.id,
       createdBy: user.id,
@@ -606,7 +623,7 @@ const QuestionForm = ({
                 text: o.text || '',
                 isCorrect: o.isCorrect || false
               })) : [],
-              skills: formData.skills || [],
+              skills: formData.skills || "",
               created_by: user?.id || '',
               secondStatement: formData.secondStatement,
               educationStage: null
@@ -800,36 +817,44 @@ const QuestionForm = ({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-sm font-semibold text-gray-700">
-                        Habilidades (BNCC)
+                        Habilidade (BNCC) *
                         <span className="text-gray-500 font-normal ml-1">
                           {skills.length > 0 ? `(${skills.length} disponíveis)` : ''}
                         </span>
                       </FormLabel>
                       <FormControl>
-                        <SkillsSelector
-                          skills={skills}
-                          selected={field.value || []}
-                          onChange={field.onChange}
-                          placeholder={currentSubjectId ? "Clique para abrir o seletor de habilidades" : "Selecione uma disciplina primeiro"}
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value || ""}
                           disabled={!currentSubjectId || skills.length === 0}
-                          gradeId={form.watch('grade')}
-                        />
+                        >
+                          <SelectTrigger className="h-11">
+                            <SelectValue placeholder={currentSubjectId ? "Selecione uma habilidade" : "Selecione uma disciplina primeiro"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {skills.map((skill) => (
+                              <SelectItem key={skill.id} value={skill.id}>
+                                {skill.code} - {skill.description}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </FormControl>
                       <FormMessage />
-                      {(field.value || []).length > 0 && (
+                      {field.value && (
                         <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
                           <div className="text-sm font-medium text-blue-800 mb-2">
-                            Habilidades Selecionadas ({(field.value || []).length}):
+                            Habilidade Selecionada:
                           </div>
                           <div className="flex flex-wrap gap-1">
-                            {(field.value || []).map((skillId: string) => {
-                              const skill = skills.find(opt => opt.id === skillId);
+                            {(() => {
+                              const skill = skills.find(opt => opt.id === field.value);
                               return skill ? (
-                                <Badge key={skillId} variant="outline" className="text-xs bg-white border-blue-300">
+                                <Badge key={skill.id} variant="outline" className="text-xs bg-white border-blue-300">
                                   {skill.code}
                                 </Badge>
                               ) : null;
-                            })}
+                            })()}
                           </div>
                         </div>
                       )}
