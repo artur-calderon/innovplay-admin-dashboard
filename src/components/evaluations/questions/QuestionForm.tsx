@@ -27,6 +27,7 @@ import { Option } from "@/components/ui/multi-select";
 import { useAuth } from "@/context/authContext";
 import QuestionPreview from "./QuestionPreview";
 import SkillsSelector from "./SkillsSelector";
+import { normalizeSkillCode } from "@/lib/utils";
 
 // Form schema
 const baseSchema = z.object({
@@ -184,7 +185,8 @@ const QuestionForm = ({
     : selectedSubjectId;
 
   // PROTEÇÃO EXTRA: Se valores estão vazios mas temos valores preservados, usar os preservados
-  if (!isLoadingQuestion && hasLoadedInitialData.current && preservedValues.current.educationStageId) {
+  // Só aplicar se estiver EDITANDO uma questão (tem questionId)
+  if (questionId && !isLoadingQuestion && hasLoadedInitialData.current && preservedValues.current.educationStageId) {
     if (!currentEducationStageId && preservedValues.current.educationStageId) {
       currentEducationStageId = preservedValues.current.educationStageId;
     }
@@ -292,6 +294,7 @@ const QuestionForm = ({
       } else {
         // Reset ao criar nova questão
         hasLoadedInitialData.current = false;
+        preservedValues.current = {}; // Limpar valores preservados
       }
     };
     fetchQuestionData();
@@ -320,8 +323,8 @@ const QuestionForm = ({
 
   useEffect(() => {
     const fetchGrades = async () => {
-      // NÃO executar se estiver carregando a questão inicial OU se não tem questionId mas ainda não carregou dados iniciais
-      if (isLoadingQuestion || (!questionId && !hasLoadedInitialData.current)) {
+      // NÃO executar apenas se estiver carregando a questão inicial
+      if (isLoadingQuestion) {
         return;
       }
       
@@ -357,8 +360,8 @@ const QuestionForm = ({
 
   useEffect(() => {
     const fetchSkills = async () => {
-      // NÃO executar se estiver carregando a questão inicial OU se não tem questionId mas ainda não carregou dados iniciais
-      if (isLoadingQuestion || (!questionId && !hasLoadedInitialData.current)) {
+      // NÃO executar apenas se estiver carregando a questão inicial
+      if (isLoadingQuestion) {
         return;
       }
       
@@ -826,7 +829,7 @@ const QuestionForm = ({
                               const skill = skills.find(opt => opt.id === skillId);
                               return skill ? (
                                 <Badge key={skillId} variant="outline" className="text-xs bg-white border-blue-300">
-                                  {skill.code}
+                                  {normalizeSkillCode(skill.code)}
                                 </Badge>
                               ) : null;
                             })}

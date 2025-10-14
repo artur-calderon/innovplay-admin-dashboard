@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { cn } from '@/lib/utils';
+import { cn, normalizeSkillCode } from '@/lib/utils';
 import './SkillsSelector.css';
 import { useSkillsStore } from '@/stores/useSkillsStore';
 
@@ -67,31 +67,39 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
     return () => { isMounted = false; };
   }, [skills, gradeId, fetchSkillsByGrade]);
 
-  // Agrupar habilidades por categoria (prefixo do código)
+  // Agrupar habilidades por categoria (prefixo do código normalizado)
   const groupedSkills = useMemo(() => {
     const groups: Record<string, Skill[]> = {};
     effectiveSkills.forEach(skill => {
-      const prefix = skill.code.split('.')[0] || 'Outros';
+      const normalizedCode = normalizeSkillCode(skill.code);
+      const prefix = normalizedCode.split('.')[0] || 'Outros';
       if (!groups[prefix]) groups[prefix] = [];
       groups[prefix].push(skill);
     });
     return groups;
   }, [effectiveSkills]);
 
-  // Filtrar habilidades por busca
+  // Filtrar habilidades por busca (normaliza espaços)
   const filteredSkills = useMemo(() => {
     if (!searchTerm) return effectiveSkills;
-    return effectiveSkills.filter(skill => 
-      skill.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      skill.description.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    
+    const normalizedSearch = normalizeSkillCode(searchTerm).toLowerCase();
+    
+    return effectiveSkills.filter(skill => {
+      const normalizedCode = normalizeSkillCode(skill.code).toLowerCase();
+      const normalizedDesc = skill.description.toLowerCase();
+      
+      return normalizedCode.includes(normalizedSearch) ||
+             normalizedDesc.includes(searchTerm.toLowerCase());
+    });
   }, [effectiveSkills, searchTerm]);
 
-  // Habilidades filtradas agrupadas
+  // Habilidades filtradas agrupadas (com códigos normalizados)
   const filteredGroupedSkills = useMemo(() => {
     const groups: Record<string, Skill[]> = {};
     filteredSkills.forEach(skill => {
-      const prefix = skill.code.split('.')[0] || 'Outros';
+      const normalizedCode = normalizeSkillCode(skill.code);
+      const prefix = normalizedCode.split('.')[0] || 'Outros';
       if (!groups[prefix]) groups[prefix] = [];
       groups[prefix].push(skill);
     });
@@ -124,7 +132,7 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
               <div className="flex flex-wrap gap-1">
                 {selectedSkills.slice(0, 3).map(skill => (
                   <Badge key={skill.id} variant="secondary" className="text-xs">
-                    {skill.code}
+                    {normalizeSkillCode(skill.code)}
                   </Badge>
                 ))}
                 {selected.length > 3 && (
@@ -332,7 +340,7 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
 
                                 <div className={cn("flex-1 min-w-0", viewMode === 'grid' && "text-center")}>
                                   <div className="font-mono text-xs sm:text-sm font-semibold text-blue-600 mb-1 break-all">
-                                    {skill.code}
+                                    {normalizeSkillCode(skill.code)}
                                   </div>
                                   <div className="text-xs sm:text-sm text-gray-700 leading-tight">
                                     {skill.description}
