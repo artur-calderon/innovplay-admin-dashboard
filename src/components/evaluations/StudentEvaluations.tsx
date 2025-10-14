@@ -864,10 +864,13 @@ export default function StudentEvaluations() {
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <span>
-                                                              Disponível até: {evaluation.endDateTime ?
-                        format(new Date(evaluation.endDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) :
-                        "Sem prazo definido"
-                      }
+                    Disponível em: {evaluation.startDateTime ?
+                      format(new Date(evaluation.startDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) :
+                      "Data não definida"
+                    } até {evaluation.endDateTime ?
+                      format(new Date(evaluation.endDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) :
+                      "Sem prazo definido"
+                    }
                   </span>
                 </div>
               </div>
@@ -1025,10 +1028,13 @@ export default function StudentEvaluations() {
                   Tempo disponível
                 </h5>
                 <p className="text-sm text-purple-800">
-                                                        Até {selectedEvaluation.endDateTime ?
-                      format(new Date(selectedEvaluation.endDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) :
-                      "sem prazo definido"
-                    }
+                  De {selectedEvaluation.startDateTime ?
+                    format(new Date(selectedEvaluation.startDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) :
+                    "data não definida"
+                  } até {selectedEvaluation.endDateTime ?
+                    format(new Date(selectedEvaluation.endDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) :
+                    "sem prazo definido"
+                  }
                 </p>
               </div>
             )}
