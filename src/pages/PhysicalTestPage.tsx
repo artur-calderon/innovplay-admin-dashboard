@@ -69,12 +69,23 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/context/authContext";
 
 interface PhysicalTestStatus {
-  test_id: string;
-  test_title: string;
-  is_applied: boolean;
-  total_students: number;
-  generated_forms: number;
-  corrected_forms: number;
+  applied_applications: number;
+  can_generate_forms: boolean;
+  class_tests: Array<{
+    id: string;
+    class_id: string;
+    status: string;
+    application: string;
+    expiration: string;
+  }>;
+  reason: string;
+  total_applications: number;
+  // Campos opcionais que podem não estar presentes
+  test_id?: string;
+  test_title?: string;
+  test_status?: string;
+  has_physical_forms?: boolean;
+  total_forms?: number;
 }
 
 interface GeneratedForm {
@@ -83,20 +94,23 @@ interface GeneratedForm {
   student_id: string;
   student_name: string;
   class_test_id: string;
-  form_pdf_url: string | null;
-  answer_sheet_url: string | null;
-  correction_image_url: string | null;
-  has_pdf_data: boolean;
-  has_answer_sheet_data: boolean;
-  has_correction_data: boolean;
-  qr_code_data: string;
-  qr_code_coordinates: any;
+  form_type: string;
   status: string;
-  is_corrected: boolean;
-  generated_at: string;
-  corrected_at: string | null;
-  processed_at: string | null;
   created_at: string;
+  updated_at: string;
+  // Campos opcionais que podem não estar presentes na API
+  form_pdf_url?: string | null;
+  answer_sheet_url?: string | null;
+  correction_image_url?: string | null;
+  has_pdf_data?: boolean;
+  has_answer_sheet_data?: boolean;
+  has_correction_data?: boolean;
+  qr_code_data?: string;
+  qr_code_coordinates?: any;
+  is_corrected?: boolean;
+  generated_at?: string;
+  corrected_at?: string | null;
+  processed_at?: string | null;
 }
 
 interface CorrectionResult {
@@ -168,6 +182,9 @@ export default function PhysicalTestPage() {
       
       // Carregar status da prova
       const statusResponse = await api.get(`/physical-tests/test/${id}/status`);
+      console.log("📊 Resposta da API de status:", statusResponse.data);
+      console.log("🔍 Campo test_status:", statusResponse.data.test_status);
+      console.log("🔍 Tipo do test_status:", typeof statusResponse.data.test_status);
       setTestStatus(statusResponse.data);
 
       // Carregar formulários gerados
@@ -199,22 +216,28 @@ export default function PhysicalTestPage() {
         setCorrectionProgress(prev => Math.min(prev + 10, 90));
       }, 200);
 
-      const response = await api.post(`/physical-tests/test/${id}/generate-forms`);
+      const response = await api.post(`/physical-tests/test/${id}/generate-forms`, {}, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
       clearInterval(progressInterval);
       setCorrectionProgress(100);
 
       // Mapear form_id para id para compatibilidade
-      const mappedForms = (response.data.generated_forms || []).map((form: any) => ({
+      const mappedForms = (response.data.forms || []).map((form: any) => ({
         ...form,
-        id: form.form_id, // Mapear form_id para id
-        created_at: new Date().toISOString() // Adicionar timestamp se não existir
+        id: form.form_id || form.id, // Mapear form_id para id (ou usar id se já existir)
+        created_at: form.created_at || new Date().toISOString(), // Usar created_at da API ou adicionar timestamp
+        updated_at: form.created_at || new Date().toISOString(), // Usar created_at como updated_at se não existir
+        status: 'gerado' // Definir status como gerado
       }));
       setGeneratedForms(mappedForms);
 
       toast({
         title: "Avaliações geradas!",
-        description: `${response.data.generated_forms?.length || 0} avaliações foram geradas com sucesso.`,
+        description: `${response.data.generated_forms || response.data.forms?.length || 0} avaliações foram geradas com sucesso.`,
       });
 
     } catch (error: any) {
@@ -453,7 +476,11 @@ export default function PhysicalTestPage() {
 
     try {
       setIsGeneratingIndividual(true);
-      const response = await api.post(`/physical-tests/test/${id}/student/${studentId}/generate`);
+      const response = await api.post(`/physical-tests/test/${id}/student/${studentId}/generate`, {}, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
       // Mapear form_id para id para compatibilidade
       const mappedForms = (response.data.forms || []).map((form: any) => ({
@@ -526,7 +553,7 @@ export default function PhysicalTestPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">{testStatus.test_title}</h1>
+          <h1 className="text-3xl font-bold">{testStatus.test_title || "Prova Física"}</h1>
           <p className="text-muted-foreground">Gerenciamento de Prova Física</p>
         </div>
         <Button onClick={() => navigate(-1)} variant="outline">
@@ -538,31 +565,33 @@ export default function PhysicalTestPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Alunos</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{testStatus.total_students}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Formulários Gerados</CardTitle>
+            <CardTitle className="text-sm font-medium">Pode Gerar Formulários</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{testStatus.generated_forms}</div>
+            <Badge variant={testStatus.can_generate_forms ? "default" : "secondary"}>
+              {testStatus.can_generate_forms ? "Sim" : "Não"}
+            </Badge>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Formulários Corrigidos</CardTitle>
+            <CardTitle className="text-sm font-medium">Turmas</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{testStatus.class_tests.length}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Aplicações</CardTitle>
             <CheckCircle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{testStatus.corrected_forms}</div>
+            <div className="text-2xl font-bold">{testStatus.applied_applications}/{testStatus.total_applications}</div>
           </CardContent>
         </Card>
 
@@ -572,9 +601,12 @@ export default function PhysicalTestPage() {
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <Badge variant={testStatus.is_applied ? "default" : "secondary"}>
-              {testStatus.is_applied ? "Aplicada" : "Não Aplicada"}
+            <Badge variant={testStatus.applied_applications > 0 ? "default" : "secondary"}>
+              {testStatus.applied_applications > 0 ? "Aplicada" : "Não Aplicada"}
             </Badge>
+            <div className="text-xs text-muted-foreground mt-1">
+              {testStatus.reason}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -678,12 +710,12 @@ export default function PhysicalTestPage() {
                             {form.student_name}
                           </TableCell>
                           <TableCell>
-                            <Badge variant={form.is_corrected ? "default" : "secondary"}>
-                              {form.is_corrected ? "Corrigido" : "Pendente"}
+                            <Badge variant={form.status === 'gerado' ? "default" : "secondary"}>
+                              {form.status === 'gerado' ? "Gerado" : form.status}
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            {new Date(form.generated_at).toLocaleDateString('pt-BR')}
+                            {new Date(form.created_at).toLocaleDateString('pt-BR')}
                           </TableCell>
                           <TableCell>
                             {form.corrected_at 
