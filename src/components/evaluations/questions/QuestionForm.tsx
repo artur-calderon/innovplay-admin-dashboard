@@ -26,6 +26,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Option } from "@/components/ui/multi-select";
 import { useAuth } from "@/context/authContext";
 import QuestionPreview from "./QuestionPreview";
+import SkillsSelector from "./SkillsSelector";
+import { normalizeSkillCode } from "@/lib/utils";
 
 // Form schema
 const baseSchema = z.object({
@@ -183,7 +185,8 @@ const QuestionForm = ({
     : selectedSubjectId;
 
   // PROTEÇÃO EXTRA: Se valores estão vazios mas temos valores preservados, usar os preservados
-  if (!isLoadingQuestion && hasLoadedInitialData.current && preservedValues.current.educationStageId) {
+  // Só aplicar se estiver EDITANDO uma questão (tem questionId)
+  if (questionId && !isLoadingQuestion && hasLoadedInitialData.current && preservedValues.current.educationStageId) {
     if (!currentEducationStageId && preservedValues.current.educationStageId) {
       currentEducationStageId = preservedValues.current.educationStageId;
     }
@@ -303,6 +306,7 @@ const QuestionForm = ({
       } else {
         // Reset ao criar nova questão
         hasLoadedInitialData.current = false;
+        preservedValues.current = {}; // Limpar valores preservados
       }
     };
     fetchQuestionData();
@@ -331,11 +335,8 @@ const QuestionForm = ({
 
   useEffect(() => {
     const fetchGrades = async () => {
-      console.log('🔍 useEffect fetchGrades disparado. currentEducationStageId:', currentEducationStageId, 'isLoadingQuestion:', isLoadingQuestion);
-      
       // NÃO executar apenas se estiver carregando a questão inicial
       if (isLoadingQuestion) {
-        console.log('⏳ Aguardando carregamento da questão...');
         return;
       }
       
@@ -850,8 +851,8 @@ const QuestionForm = ({
                             {(() => {
                               const skill = skills.find(opt => opt.id === field.value);
                               return skill ? (
-                                <Badge key={skill.id} variant="outline" className="text-xs bg-white border-blue-300">
-                                  {skill.code}
+                                <Badge key={skillId} variant="outline" className="text-xs bg-white border-blue-300">
+                                  {normalizeSkillCode(skill.code)}
                                 </Badge>
                               ) : null;
                             })()}

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { api } from '@/lib/api';
+import { normalizeSkillCode } from '@/lib/utils';
 
 interface Skill {
     id: string;
@@ -81,12 +82,15 @@ export const useSkillsStore = create<SkillsStore>((set, get) => ({
                     ? Promise.resolve(skillsByGrade[gradeId])
                     : api.get(`/skills/grade/${gradeId}`).then(res => {
                         const list: Skill[] = Array.isArray(res.data)
-                            ? res.data.map((skill: any) => ({
-                                id: skill.id,
-                                code: skill.code,
-                                description: skill.description,
-                                name: `${skill.code} - ${skill.description}`
-                              }))
+                            ? res.data.map((skill: any) => {
+                                const normalizedCode = normalizeSkillCode(skill.code);
+                                return {
+                                    id: skill.id,
+                                    code: normalizedCode,
+                                    description: skill.description,
+                                    name: `${normalizedCode} - ${skill.description}`
+                                };
+                              })
                             : [];
                         set(state => ({
                             skillsByGrade: { ...state.skillsByGrade, [gradeId]: list }
@@ -98,12 +102,15 @@ export const useSkillsStore = create<SkillsStore>((set, get) => ({
                     ? Promise.resolve(skillsBySubject[subjectId])
                     : api.get(`/skills/subject/${subjectId}`).then(res => {
                         const list: Skill[] = Array.isArray(res.data)
-                            ? res.data.map((skill: any) => ({
-                                id: skill.id,
-                                code: skill.code,
-                                description: skill.description,
-                                name: `${skill.code} - ${skill.description}`
-                              }))
+                            ? res.data.map((skill: any) => {
+                                const normalizedCode = normalizeSkillCode(skill.code);
+                                return {
+                                    id: skill.id,
+                                    code: normalizedCode,
+                                    description: skill.description,
+                                    name: `${normalizedCode} - ${skill.description}`
+                                };
+                              })
                             : [];
                         set(state => ({
                             skillsBySubject: { ...state.skillsBySubject, [subjectId]: list }
@@ -176,12 +183,15 @@ export const useSkillsStore = create<SkillsStore>((set, get) => ({
         try {
             const response = await api.get(`/skills/subject/${subjectId}`);
             const skills = Array.isArray(response.data) 
-                ? response.data.map((skill: any) => ({
-                    id: skill.id,
-                    code: skill.code,
-                    description: skill.description,
-                    name: `${skill.code} - ${skill.description}`
-                  }))
+                ? response.data.map((skill: any) => {
+                    const normalizedCode = normalizeSkillCode(skill.code);
+                    return {
+                        id: skill.id,
+                        code: normalizedCode,
+                        description: skill.description,
+                        name: `${normalizedCode} - ${skill.description}`
+                    };
+                  })
                 : [];
 
             set(state => ({
@@ -227,12 +237,15 @@ export const useSkillsStore = create<SkillsStore>((set, get) => ({
         try {
             const response = await api.get(`/skills/grade/${gradeId}`);
             const skills = Array.isArray(response.data) 
-                ? response.data.map(skill => ({
-                    id: skill.id,
-                    code: skill.code,
-                    description: skill.description,
-                    name: `${skill.code} - ${skill.description}`
-                  }))
+                ? response.data.map(skill => {
+                    const normalizedCode = normalizeSkillCode(skill.code);
+                    return {
+                        id: skill.id,
+                        code: normalizedCode,
+                        description: skill.description,
+                        name: `${normalizedCode} - ${skill.description}`
+                    };
+                  })
                 : [];
 
             set(state => ({
