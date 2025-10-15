@@ -12,15 +12,21 @@ WORKDIR /app
 
 COPY package*.json ./
 
-# Configurações de retry e cache para evitar ECONNRESET
-RUN npm config set fetch-retries 5 \
-    && npm config set fetch-retry-factor 2 \
-    && npm config set fetch-retry-mintimeout 20000 \
-    && npm config set fetch-retry-maxtimeout 120000 \
-    && npm config set registry https://registry.npmmirror.com/
+# Corrige DNS, aumenta timeouts e reduz sockets simultâneos
+# RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf \
+#     && npm config set registry https://registry.npmjs.org/ \
+#     && npm config set fetch-retries 5 \
+#     && npm config set fetch-retry-factor 2 \
+#     && npm config set fetch-retry-mintimeout 20000 \
+#     && npm config set fetch-retry-maxtimeout 120000 \
+#     && npm config set network-timeout 600000 \
+#     && npm set maxsockets 5
+
 
 # Usa npm ci (mais rápido e estável em ambientes CI/CD)
 RUN npm ci
+#RUN --mount=type=cache,target=/root/.npm npm ci --prefer-offline --no-audit
+
 
 COPY . .
 
