@@ -6,6 +6,7 @@ variables:
     CONTAINER_NAME: "$APP"
     HOST_PORT: 8000
     CONTAINER_PORT: 80
+    DOCKER_BUILDKIT: 0
 
 workflow:
     rules:

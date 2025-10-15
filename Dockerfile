@@ -24,8 +24,8 @@ RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf \
 
 
 # Usa npm ci (mais rápido e estável em ambientes CI/CD)
-#RUN npm ci
-RUN --mount=type=cache,target=/root/.npm npm ci --prefer-offline --no-audit
+RUN npm ci
+#RUN --mount=type=cache,target=/root/.npm npm ci --prefer-offline --no-audit
 
 
 COPY . .
