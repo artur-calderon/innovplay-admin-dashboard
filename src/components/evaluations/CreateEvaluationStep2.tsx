@@ -259,7 +259,7 @@ export const CreateEvaluationStep2 = ({
                text: opt.text,
                isCorrect: opt.isCorrect
              })) || [],
-             skills: question.skills || [],
+             skills: question.skills || "", // String única (ID da habilidade)
              grade: question.grade?.id || data.grade,
              difficulty: question.difficulty,
              solution: question.solution || "",
