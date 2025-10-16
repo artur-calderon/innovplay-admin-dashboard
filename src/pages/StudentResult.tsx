@@ -384,7 +384,7 @@ export default function StudentResult() {
                       <div className="h-full w-full rounded-full bg-white flex flex-col items-center justify-center">
                         <div className="text-xs uppercase tracking-wide text-gray-500">Sua Nota</div>
                         <div className={`text-5xl font-extrabold ${passedGood ? "text-green-600" : "text-orange-600"}`}>
-                          {gradeRounded != null ? gradeRounded.toFixed(1) : "-"}
+                          {gradeRounded != null ? (Math.ceil(gradeRounded * 10) / 10).toString().replace('.', ',') : "-"}
                         </div>
                         <div className="text-xs text-gray-500">de 10</div>
                         {scoreRounded != null && (
@@ -415,7 +415,7 @@ export default function StudentResult() {
                     {proficiency !== null && (
                       <StatCard
                         title="Proficiência"
-                        value={proficiency.toFixed(1)}
+                        value={(Math.ceil(proficiency * 10) / 10).toString().replace('.', ',')}
                         icon={TrendingUp}
                         color="bg-green-500"
                         subtitle="pontos"

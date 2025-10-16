@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { cn, normalizeSkillCode } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import './SkillsSelector.css';
 import { useSkillsStore } from '@/stores/useSkillsStore';
 
@@ -67,39 +67,34 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
     return () => { isMounted = false; };
   }, [skills, gradeId, fetchSkillsByGrade]);
 
-  // Agrupar habilidades por categoria (prefixo do código normalizado)
+  // Agrupar habilidades por categoria (prefixo do código)
   const groupedSkills = useMemo(() => {
     const groups: Record<string, Skill[]> = {};
     effectiveSkills.forEach(skill => {
-      const normalizedCode = normalizeSkillCode(skill.code);
-      const prefix = normalizedCode.split('.')[0] || 'Outros';
+      const prefix = skill.code.split('.')[0] || 'Outros';
       if (!groups[prefix]) groups[prefix] = [];
       groups[prefix].push(skill);
     });
     return groups;
   }, [effectiveSkills]);
 
-  // Filtrar habilidades por busca (normaliza espaços)
+  // Filtrar habilidades por busca
   const filteredSkills = useMemo(() => {
     if (!searchTerm) return effectiveSkills;
     
-    const normalizedSearch = normalizeSkillCode(searchTerm).toLowerCase();
+    const searchLower = searchTerm.toLowerCase();
     
     return effectiveSkills.filter(skill => {
-      const normalizedCode = normalizeSkillCode(skill.code).toLowerCase();
-      const normalizedDesc = skill.description.toLowerCase();
-      
-      return normalizedCode.includes(normalizedSearch) ||
-             normalizedDesc.includes(searchTerm.toLowerCase());
+      return skill.code.toLowerCase().includes(searchLower) ||
+             skill.description.toLowerCase().includes(searchLower);
     });
   }, [effectiveSkills, searchTerm]);
 
-  // Habilidades filtradas agrupadas (com códigos normalizados)
+  // Habilidades filtradas agrupadas
   const filteredGroupedSkills = useMemo(() => {
     const groups: Record<string, Skill[]> = {};
     filteredSkills.forEach(skill => {
-      const normalizedCode = normalizeSkillCode(skill.code);
-      const prefix = normalizedCode.split('.')[0] || 'Outros';
+      const prefix = skill.code.split('.')[0] || 'Outros';
       if (!groups[prefix]) groups[prefix] = [];
       groups[prefix].push(skill);
     });
@@ -133,7 +128,7 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
                <div className="flex items-center gap-1">
                  {selectedSkills.map(skill => (
                    <Badge key={skill.id} variant="secondary" className="text-xs">
-                     {normalizeSkillCode(skill.code)}
+                     {skill.code}
                    </Badge>
                  ))}
                </div>
@@ -271,7 +266,7 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
                        className="pl-10"
                      />
                   </div>
-                  {selected.length > 0 && (
+                   {selected.length > 0 && (
                      <Button
                        variant="outline"
                        size="sm"
@@ -334,14 +329,14 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
                                   </div>
                                 </div>
 
-                                <div className={cn("flex-1 min-w-0", viewMode === 'grid' && "text-center")}>
-                                  <div className="font-mono text-xs sm:text-sm font-semibold text-blue-600 mb-1 break-all">
-                                    {normalizeSkillCode(skill.code)}
-                                  </div>
-                                  <div className="text-xs sm:text-sm text-gray-700 leading-tight">
-                                    {skill.description}
-                                  </div>
-                                </div>
+                                 <div className={cn("flex-1 min-w-0", viewMode === 'grid' && "text-center")}>
+                                   <div className="font-mono text-xs sm:text-sm font-semibold text-blue-600 mb-1 break-all">
+                                     {skill.code}
+                                   </div>
+                                   <div className="text-xs sm:text-sm text-gray-700 leading-tight">
+                                     {skill.description}
+                                   </div>
+                                 </div>
                               </div>
                             );
                           })}
