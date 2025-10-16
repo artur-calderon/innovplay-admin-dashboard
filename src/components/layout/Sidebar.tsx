@@ -230,25 +230,25 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         {
           icon: FileText,
           label: "Relatórios",
-          role: ["admin", "tecadm"],
+          role: ["admin", "professor", "diretor", "coordenador", "tecadm"],
           children: [
             {
               icon: Target,
               label: "Acerto e Níveis",
               href: "/app/relatorios/acerto-niveis",
-              role: ["admin", "tecadm"]
+              role: ["admin", "professor", "diretor", "coordenador", "tecadm"]
             },
             {
               icon: BarChart3,
               label: "Análise das Avaliações",
               href: "/app/relatorios/analise-avaliacoes",
-              role: ["admin", "tecadm"]
+              role: ["admin", "professor", "diretor", "coordenador", "tecadm"]
             },
             {
               icon: School,
               label: "Relatório Escolar",
               href: "/app/relatorios/relatorio-escolar",
-              role: ["admin", "tecadm"]
+              role: ["admin", "professor", "diretor", "coordenador", "tecadm"]
             }
           ]
         },

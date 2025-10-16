@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { FileText, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/authContext";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
+import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext } from "@/utils/userHierarchy";
 import type { CellHookData } from "jspdf-autotable";
 
 // Types from the original component
@@ -128,6 +129,10 @@ export default function AcertoNiveis() {
   const [selectedGradeId, setSelectedGradeId] = useState<string>("");
   const [selectedClassId, setSelectedClassId] = useState<string>("");
 
+  // Estados para hierarquia do usuário
+  const [userHierarchyContext, setUserHierarchyContext] = useState<UserHierarchyContext | null>(null);
+  const [isLoadingHierarchy, setIsLoadingHierarchy] = useState(true);
+
   const [evaluationInfo, setEvaluationInfo] = useState<EvaluationInfo | null>(null);
   const [students, setStudents] = useState<StudentResult[]>([]);
   const [detailedReport, setDetailedReport] = useState<DetailedReport | null>(null);
@@ -148,9 +153,75 @@ export default function AcertoNiveis() {
   // Removidas as funções de cálculo de proficiência por disciplina do frontend
   // Agora todas as tabelas usam a mesma proficiência calculada pelo backend
 
+  // Carregar contexto hierárquico do usuário
   useEffect(() => {
-    // Carregar lista de estados
+    const loadUserHierarchy = async () => {
+      if (!user?.id || !user?.role) {
+        setIsLoadingHierarchy(false);
+        return;
+      }
+
+      try {
+        setIsLoadingHierarchy(true);
+        const context = await getUserHierarchyContext(user.id, user.role);
+        setUserHierarchyContext(context);
+
+        // Pre-selecionar filtros baseado na hierarquia
+        if (context.municipality) {
+          setSelectedMunicipality(context.municipality.id);
+          
+          // Carregar estado baseado no município
+          const statesResp = await EvaluationResultsApiService.getFilterStates();
+          const userState = statesResp.find(s => s.nome === context.municipality.state);
+          if (userState) {
+            setSelectedState(userState.id);
+          }
+        }
+
+        if (context.school) {
+          setSelectedSchoolId(context.school.id);
+        }
+
+        // Para professor, carregar escolas das suas turmas
+        if (context.classes && context.classes.length > 0) {
+          const uniqueSchools = Array.from(
+            new Set(context.classes.map(c => ({ id: c.school_id, name: c.school_name })))
+              .map(s => s.id)
+          ).map(id => context.classes!.find(c => c.school_id === id))
+            .filter(Boolean)
+            .map(c => ({ id: c!.school_id, nome: c!.school_name }));
+          
+          setSchools(uniqueSchools);
+          
+          // Se só tem uma escola, pre-selecionar
+          if (uniqueSchools.length === 1) {
+            setSelectedSchoolId(uniqueSchools[0].id);
+          }
+        }
+
+      } catch (error) {
+        console.error('Erro ao carregar contexto hierárquico:', error);
+        toast({
+          title: "Aviso",
+          description: "Não foi possível carregar suas permissões. Algumas funcionalidades podem estar limitadas.",
+          variant: "destructive"
+        });
+      } finally {
+        setIsLoadingHierarchy(false);
+      }
+    };
+
+    loadUserHierarchy();
+  }, [user?.id, user?.role, toast]);
+
+  useEffect(() => {
+    // Carregar lista de estados (apenas se for admin)
     const loadStates = async () => {
+      if (user?.role !== 'admin' && userHierarchyContext?.municipality) {
+        // Para usuários não-admin, estados já foram carregados no useEffect anterior
+        return;
+      }
+
       try {
         setIsLoading(true);
         const resp = await EvaluationResultsApiService.getFilterStates();
@@ -161,10 +232,23 @@ export default function AcertoNiveis() {
         setIsLoading(false);
       }
     };
-    loadStates();
-  }, [toast]);
+
+    if (!isLoadingHierarchy) {
+      loadStates();
+    }
+  }, [toast, user?.role, userHierarchyContext, isLoadingHierarchy]);
 
   const handleChangeState = async (stateId: string) => {
+    // Verificar se usuário pode alterar estado
+    if (userHierarchyContext?.restrictions.canSelectState === false) {
+      toast({
+        title: "Acesso Restrito",
+        description: "Você não pode alterar o estado. Este filtro está definido conforme suas permissões.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setSelectedState(stateId);
     setSelectedMunicipality("");
     setSelectedEvaluationId("");
@@ -192,6 +276,16 @@ export default function AcertoNiveis() {
   };
 
   const handleChangeMunicipality = async (municipioId: string) => {
+    // Verificar se usuário pode alterar município
+    if (userHierarchyContext?.restrictions.canSelectMunicipality === false) {
+      toast({
+        title: "Acesso Restrito",
+        description: "Você não pode alterar o município. Este filtro está definido conforme suas permissões.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setSelectedMunicipality(municipioId);
     setSelectedEvaluationId("");
     setEvaluations([]);
@@ -217,6 +311,28 @@ export default function AcertoNiveis() {
   };
 
   const handleSelectSchool = async (schoolId: string) => {
+    // Verificar se usuário pode alterar escola
+    if (userHierarchyContext?.restrictions.canSelectSchool === false) {
+      toast({
+        title: "Acesso Restrito",
+        description: "Você não pode alterar a escola. Este filtro está definido conforme suas permissões.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Para diretor/coordenador, validar se pode acessar esta escola
+    if (user?.role === 'diretor' || user?.role === 'coordenador') {
+      if (userHierarchyContext?.school && userHierarchyContext.school.id !== schoolId) {
+        toast({
+          title: "Acesso Negado",
+          description: "Você só pode visualizar dados da sua escola.",
+          variant: "destructive"
+        });
+        return;
+      }
+    }
+
     setSelectedSchoolId(schoolId);
     setSelectedGradeId("");
     setSelectedClassId("");
@@ -608,6 +724,26 @@ export default function AcertoNiveis() {
     if (!evaluationInfo || students.length === 0) {
       toast({ title: "Atenção", description: "Selecione uma avaliação com alunos.", variant: "destructive" });
       return;
+    }
+
+    // Validar acesso baseado na hierarquia
+    if (userHierarchyContext && user?.role) {
+      const validation = validateReportAccess(user.role, {
+        state: selectedState,
+        municipality: selectedMunicipality,
+        school: selectedSchoolId,
+        grade: selectedGradeId,
+        class: selectedClassId
+      }, userHierarchyContext);
+
+      if (!validation.isValid) {
+        toast({
+          title: "Acesso Negado",
+          description: validation.reason || "Você não tem permissão para gerar este relatório.",
+          variant: "destructive"
+        });
+        return;
+      }
     }
     
     // Se não há detailedReport, tentar carregar dados básicos para o PDF
@@ -1469,10 +1605,18 @@ export default function AcertoNiveis() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Acerto e Níveis</h1>
           <p className="text-gray-600 mt-2">Selecione uma avaliação e exporte o PDF consolidado.</p>
+          {user?.role && (
+            <p className="text-sm text-blue-600 mt-1">
+              {getRestrictionMessage(user.role)}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="text-sm">
-            {user?.role === 'admin' ? 'Administrador' : 'Técnico Administrativo'}
+            {user?.role === 'admin' ? 'Administrador' : 
+             user?.role === 'professor' ? 'Professor' :
+             user?.role === 'diretor' ? 'Diretor' :
+             user?.role === 'coordenador' ? 'Coordenador' : 'Técnico Administrativo'}
           </Badge>
         </div>
       </div>
@@ -1485,8 +1629,17 @@ export default function AcertoNiveis() {
            {/* Filtros Principais */}
            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
              <div>
-               <div className="text-sm font-medium mb-2">Estado</div>
-               <Select value={selectedState} onValueChange={handleChangeState}>
+               <div className="text-sm font-medium mb-2 flex items-center gap-2">
+                 Estado
+                 {userHierarchyContext?.restrictions.canSelectState === false && (
+                   <Badge variant="secondary" className="text-xs">Pré-selecionado</Badge>
+                 )}
+               </div>
+               <Select 
+                 value={selectedState} 
+                 onValueChange={handleChangeState}
+                 disabled={!selectedState || userHierarchyContext?.restrictions.canSelectState === false}
+               >
                  <SelectTrigger className="w-full">
                    <SelectValue placeholder="Selecione um estado" />
                  </SelectTrigger>
@@ -1498,8 +1651,17 @@ export default function AcertoNiveis() {
                </Select>
              </div>
              <div>
-               <div className="text-sm font-medium mb-2">Município</div>
-               <Select value={selectedMunicipality} onValueChange={handleChangeMunicipality} disabled={!selectedState}>
+               <div className="text-sm font-medium mb-2 flex items-center gap-2">
+                 Município
+                 {userHierarchyContext?.restrictions.canSelectMunicipality === false && (
+                   <Badge variant="secondary" className="text-xs">Pré-selecionado</Badge>
+                 )}
+               </div>
+               <Select 
+                 value={selectedMunicipality} 
+                 onValueChange={handleChangeMunicipality} 
+                 disabled={!selectedState || userHierarchyContext?.restrictions.canSelectMunicipality === false}
+               >
                  <SelectTrigger className="w-full">
                    <SelectValue placeholder={selectedState ? "Selecione um município" : "Primeiro selecione um estado"} />
                  </SelectTrigger>
@@ -1611,8 +1773,17 @@ export default function AcertoNiveis() {
                  </div>
                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                    <div>
-                     <div className="text-sm font-medium mb-2">Escola</div>
-                     <Select value={selectedSchoolId} onValueChange={handleSelectSchool}>
+                     <div className="text-sm font-medium mb-2 flex items-center gap-2">
+                       Escola
+                       {userHierarchyContext?.restrictions.canSelectSchool === false && (
+                         <Badge variant="secondary" className="text-xs">Pré-selecionado</Badge>
+                       )}
+                     </div>
+                     <Select 
+                       value={selectedSchoolId} 
+                       onValueChange={handleSelectSchool}
+                       disabled={userHierarchyContext?.restrictions.canSelectSchool === false}
+                     >
                        <SelectTrigger className="w-full">
                          <SelectValue placeholder="Todas as escolas" />
                        </SelectTrigger>

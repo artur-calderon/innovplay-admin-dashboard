@@ -31,6 +31,7 @@ import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
 import { BarChartComponent, DonutChartComponent } from "@/components/ui/charts";
 import { FilterComponentAnalise } from "@/components/filters";
+import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext } from "@/utils/userHierarchy";
 
 // Interfaces para os dados da API
 interface EvaluationResult {
@@ -126,11 +127,15 @@ export default function AnaliseAvaliacoes() {
   const [selectedSchool, setSelectedSchool] = useState<string>('all');
   const [selectedEvaluation, setSelectedEvaluation] = useState<string>('all');
 
+  // Estados para hierarquia do usuário
+  const [userHierarchyContext, setUserHierarchyContext] = useState<UserHierarchyContext | null>(null);
+  const [isLoadingHierarchy, setIsLoadingHierarchy] = useState(true);
+
   // Estados dos dados dos filtros (movidos para FilterComponentAnalise)
 
   // Verificar se o usuário tem permissão
   useEffect(() => {
-    if (user && !['admin', 'tecadm'].includes(user.role)) {
+    if (user && !['admin', 'professor', 'diretor', 'coordenador', 'tecadm'].includes(user.role)) {
       toast({
         title: "Acesso Negado",
         description: "Você não tem permissão para acessar esta página.",
@@ -140,6 +145,58 @@ export default function AnaliseAvaliacoes() {
       return;
     }
   }, [user, navigate, toast]);
+
+  // Carregar contexto hierárquico do usuário
+  useEffect(() => {
+    const loadUserHierarchy = async () => {
+      if (!user?.id || !user?.role) {
+        setIsLoadingHierarchy(false);
+        return;
+      }
+
+      try {
+        setIsLoadingHierarchy(true);
+        const context = await getUserHierarchyContext(user.id, user.role);
+        setUserHierarchyContext(context);
+
+        // Pre-selecionar filtros baseado na hierarquia
+        if (context.municipality) {
+          setSelectedMunicipality(context.municipality.id);
+        }
+
+        if (context.school) {
+          setSelectedSchool(context.school.id);
+        }
+
+        // Para professor, carregar escolas das suas turmas
+        if (context.classes && context.classes.length > 0) {
+          const uniqueSchools = Array.from(
+            new Set(context.classes.map(c => ({ id: c.school_id, name: c.school_name })))
+              .map(s => s.id)
+          ).map(id => context.classes!.find(c => c.school_id === id))
+            .filter(Boolean)
+            .map(c => ({ id: c!.school_id, nome: c!.school_name }));
+          
+          // Se só tem uma escola, pre-selecionar
+          if (uniqueSchools.length === 1) {
+            setSelectedSchool(uniqueSchools[0].id);
+          }
+        }
+
+      } catch (error) {
+        console.error('Erro ao carregar contexto hierárquico:', error);
+        toast({
+          title: "Aviso",
+          description: "Não foi possível carregar suas permissões. Algumas funcionalidades podem estar limitadas.",
+          variant: "destructive"
+        });
+      } finally {
+        setIsLoadingHierarchy(false);
+      }
+    };
+
+    loadUserHierarchy();
+  }, [user?.id, user?.role, toast]);
 
   // Inicialização e carregamento de filtros movido para FilterComponentAnalise
   useEffect(() => {
@@ -173,6 +230,25 @@ export default function AnaliseAvaliacoes() {
   // Função para baixar relatório PDF
   const downloadReport = async () => {
     if (!selectedEvaluation || !apiData) return;
+    
+    // Validar acesso baseado na hierarquia
+    if (userHierarchyContext && user?.role) {
+      const validation = validateReportAccess(user.role, {
+        state: selectedState,
+        municipality: selectedMunicipality,
+        school: selectedSchool,
+        evaluation: selectedEvaluation
+      }, userHierarchyContext);
+
+      if (!validation.isValid) {
+        toast({
+          title: "Acesso Negado",
+          description: validation.reason || "Você não tem permissão para gerar este relatório.",
+          variant: "destructive"
+        });
+        return;
+      }
+    }
     
     try {
       setIsGeneratingReport(true);
@@ -280,10 +356,18 @@ export default function AnaliseAvaliacoes() {
           <p className="text-gray-600 mt-2">
             Análise detalhada das avaliações do seu município
           </p>
+          {user?.role && (
+            <p className="text-sm text-blue-600 mt-1">
+              {getRestrictionMessage(user.role)}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="text-sm">
-            {user?.role === 'admin' ? 'Administrador' : 'Técnico Administrativo'}
+            {user?.role === 'admin' ? 'Administrador' : 
+             user?.role === 'professor' ? 'Professor' :
+             user?.role === 'diretor' ? 'Diretor' :
+             user?.role === 'coordenador' ? 'Coordenador' : 'Técnico Administrativo'}
           </Badge>
         </div>
       </div>
@@ -300,6 +384,11 @@ export default function AnaliseAvaliacoes() {
         onEvaluationChange={setSelectedEvaluation}
         isLoadingFilters={isLoadingFilters}
         onLoadingChange={setIsLoadingFilters}
+        // Props para hierarquia
+        userRole={user?.role}
+        canSelectState={userHierarchyContext?.restrictions.canSelectState}
+        canSelectMunicipality={userHierarchyContext?.restrictions.canSelectMunicipality}
+        canSelectSchool={userHierarchyContext?.restrictions.canSelectSchool}
       />
 
       {/* Mensagem quando não há filtros suficientes */}
