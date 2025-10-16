@@ -27,6 +27,7 @@ import MyEditor from './MyEditor';
 import './MyEditor.css';
 import { Option } from "@/components/ui/multi-select";
 import { useAuth } from "@/context/authContext";
+import SkillsSelector from "./SkillsSelector";
 
 // Form schema
 const questionSchema = z.object({
@@ -44,7 +45,7 @@ const questionSchema = z.object({
         })
     ).optional(),
     secondStatement: z.string().optional(),
-    skills: z.string().optional(), // Uma questão tem apenas UMA habilidade
+    skills: z.array(z.string()).min(1, "Selecione pelo menos uma habilidade"),
     topics: z.string().optional(),
     questionType: z.enum(['multipleChoice', 'dissertativa']),
 }).refine((data) => {
@@ -63,6 +64,14 @@ type QuestionFormValues = z.infer<typeof questionSchema>;
 // Tipagem para resposta de habilidades na API
 interface ApiSkill {
     id: string;
+    code: string;
+    description: string;
+}
+
+// Tipagem para habilidades no SkillsSelector
+interface SkillOption {
+    id: string;
+    name: string;
     code: string;
     description: string;
 }
@@ -123,10 +132,12 @@ const QuestionPreview: React.FC<{ data: QuestionFormValues }> = ({ data }) => {
 
     const selectedSubject = subjects.find(s => s.id === data.subjectId);
     const selectedGrade = grades.find(g => g.id === data.grade);
-    // Buscar nome da habilidade (apenas os 7 primeiros caracteres)
-    const selectedSkill = data.skills 
-        ? skillsOptions.find(opt => opt.id === data.skills)?.name.substring(0, 6) || data.skills
-        : "";
+    // Buscar nomes das habilidades (apenas os 7 primeiros caracteres)
+    const selectedSkills = data.skills 
+        ? data.skills.map(skillId => 
+            skillsOptions.find(opt => opt.id === skillId)?.name.substring(0, 6) || skillId
+          )
+        : [];
 
     // Initialize read-only Tiptap editor for the preview statement
     const statementEditor = useEditor({
@@ -175,9 +186,9 @@ const QuestionPreview: React.FC<{ data: QuestionFormValues }> = ({ data }) => {
                     <Badge variant="outline">{selectedSubject?.name || data.subjectId}</Badge>
                     <Badge variant="outline">{data.difficulty}</Badge>
                     <Badge variant="outline">Valor: {data.value}</Badge>
-                    {selectedSkill && (
-                        <Badge variant="outline">{selectedSkill}</Badge>
-                    )}
+                    {selectedSkills.map(skill => (
+                        <Badge key={skill} variant="outline">{skill}</Badge>
+                    ))}
                 </div>
             </div>
 
@@ -239,7 +250,7 @@ const QuestionFormReadOnly = ({
 }: QuestionFormReadOnlyProps) => {
     const [subjects, setSubjects] = useState<Subject[]>([]);
     const [grades, setGrades] = useState<{ id: string; name: string }[]>([]);
-    const [skills, setSkills] = useState<Option[]>([]);
+    const [skills, setSkills] = useState<SkillOption[]>([]);
     const [showPreview, setShowPreview] = useState(false);
     const [questionType, setQuestionType] = useState<'multipleChoice' | 'dissertativa'>('multipleChoice');
     const { toast } = useToast();
@@ -264,7 +275,7 @@ const QuestionFormReadOnly = ({
                 { text: "", isCorrect: false },
             ],
             secondStatement: "",
-            skills: "", // String única ao invés de array
+            skills: [], // Array vazio ao invés de string vazia
             topics: "",
             questionType: 'multipleChoice',
         },
@@ -384,6 +395,8 @@ const QuestionFormReadOnly = ({
                         const formattedSkills = response.data.map((skill: any) => ({
                             id: skill.id,
                             name: `${skill.code} - ${skill.description}`,
+                            code: skill.code,
+                            description: skill.description
                         }));
                         console.log('🔍 QuestionFormReadOnly - Habilidades encontradas:', formattedSkills);
                         setSkills(formattedSkills);
@@ -450,9 +463,9 @@ const QuestionFormReadOnly = ({
                 console.log(`  Opção ${index}:`, opt);
             });
 
-            // skills como string única
-            const skills = data.skills || "";
-            console.log('🔍 QuestionFormReadOnly - Habilidade selecionada:', skills);
+            // skills como array
+            const skills = data.skills || [];
+            console.log('🔍 QuestionFormReadOnly - Habilidades selecionadas:', skills);
 
             // Encontrar o subject e grade para criar o objeto Question completo
             const selectedSubject = subjects.find(s => s.id === data.subjectId);
@@ -479,7 +492,7 @@ const QuestionFormReadOnly = ({
                     text: opt.text,
                     isCorrect: opt.isCorrect
                 })) : [],
-                skills: data.skills || "", // String única (ID da habilidade)
+                skills: data.skills, // Array de strings (IDs)
                 secondStatement: data.secondStatement || '',
                 lastModifiedBy: user?.id || '',
                 createdBy: user?.id || '',
@@ -703,44 +716,36 @@ const QuestionFormReadOnly = ({
                                     render={({ field }) => (
                                         <FormItem>
                                             <FormLabel className="text-sm font-semibold text-gray-700">
-                                                Habilidade (BNCC)
+                                                Habilidades (BNCC)
                                                 <span className="text-gray-500 font-normal ml-1">
                                                     {skills.length > 0 ? `(${skills.length} disponíveis)` : ''}
                                                 </span>
                                             </FormLabel>
                                             <FormControl>
-                                                <Select
-                                                    onValueChange={field.onChange}
-                                                    value={field.value || ""}
+                                                <SkillsSelector
+                                                    skills={skills}
+                                                    selected={field.value || []}
+                                                    onChange={field.onChange}
+                                                    placeholder="Clique para abrir o seletor de habilidades"
                                                     disabled={skills.length === 0}
-                                                >
-                                                    <SelectTrigger className="h-11">
-                                                        <SelectValue placeholder="Selecione uma habilidade" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        {skills.map((skill) => (
-                                                            <SelectItem key={skill.id} value={skill.id}>
-                                                                {skill.name}
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
+                                                    gradeId={evaluationData.grade}
+                                                />
                                             </FormControl>
                                             <FormMessage />
-                                            {field.value && (
+                                            {(field.value || []).length > 0 && (
                                                 <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
                                                     <div className="text-sm font-medium text-blue-800 mb-2">
-                                                        Habilidade Selecionada:
+                                                        Habilidades Selecionadas ({(field.value || []).length}):
                                                     </div>
                                                     <div className="flex flex-wrap gap-1">
-                                                        {(() => {
-                                                            const skill = skills.find(opt => opt.id === field.value);
+                                                        {(field.value || []).map((skillId: string) => {
+                                                            const skill = skills.find(opt => opt.id === skillId);
                                                             return skill ? (
-                                                                <Badge key={skill.id} variant="outline" className="text-xs bg-white border-blue-300">
-                                                                    {skill.name?.substring(0, 6) || ''}
+                                                                <Badge key={skillId} variant="outline" className="text-xs bg-white border-blue-300">
+                                                                    {skill.code}
                                                                 </Badge>
                                                             ) : null;
-                                                        })()}
+                                                        })}
                                                     </div>
                                                 </div>
                                             )}
