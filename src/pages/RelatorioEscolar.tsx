@@ -18,7 +18,10 @@ export default function RelatorioEscolar() {
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="text-sm">
-            {user?.role === 'admin' ? 'Administrador' : 'Técnico Administrativo'}
+            {user?.role === 'admin' ? 'Administrador' : 
+             user?.role === 'professor' ? 'Professor' :
+             user?.role === 'diretor' ? 'Diretor' :
+             user?.role === 'coordenador' ? 'Coordenador' : 'Técnico Administrativo'}
           </Badge>
         </div>
       </div>
