@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { Filter } from "lucide-react";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
 import { useToast } from "@/hooks/use-toast";
@@ -43,6 +44,11 @@ interface FilterComponentAnaliseProps {
   onEvaluationChange: (evaluation: string) => void;
   isLoadingFilters: boolean;
   onLoadingChange: (loading: boolean) => void;
+  // Props para hierarquia
+  userRole?: string;
+  canSelectState?: boolean;
+  canSelectMunicipality?: boolean;
+  canSelectSchool?: boolean;
 }
 
 export function FilterComponentAnalise({
@@ -55,7 +61,12 @@ export function FilterComponentAnalise({
   onSchoolChange,
   onEvaluationChange,
   isLoadingFilters,
-  onLoadingChange
+  onLoadingChange,
+  // Props para hierarquia
+  userRole,
+  canSelectState = true,
+  canSelectMunicipality = true,
+  canSelectSchool = true,
 }: FilterComponentAnaliseProps) {
   const { toast } = useToast();
 
@@ -206,11 +217,16 @@ export function FilterComponentAnalise({
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {/* Estado */}
           <div className="space-y-2">
-            <label className="text-sm font-medium">Estado</label>
+            <label className="text-sm font-medium flex items-center gap-2">
+              Estado
+              {!canSelectState && (
+                <Badge variant="secondary" className="text-xs">Pré-selecionado</Badge>
+              )}
+            </label>
             <Select
               value={selectedState}
               onValueChange={onStateChange}
-              disabled={isLoadingFilters}
+              disabled={isLoadingFilters || !canSelectState}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Selecione o estado" />
@@ -228,11 +244,16 @@ export function FilterComponentAnalise({
 
           {/* Município */}
           <div className="space-y-2">
-            <label className="text-sm font-medium">Município</label>
+            <label className="text-sm font-medium flex items-center gap-2">
+              Município
+              {!canSelectMunicipality && (
+                <Badge variant="secondary" className="text-xs">Pré-selecionado</Badge>
+              )}
+            </label>
             <Select
               value={selectedMunicipality}
               onValueChange={onMunicipalityChange}
-              disabled={isLoadingFilters || selectedState === 'all'}
+              disabled={isLoadingFilters || selectedState === 'all' || !canSelectMunicipality}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Selecione o município" />
@@ -250,11 +271,16 @@ export function FilterComponentAnalise({
 
           {/* Escola */}
           <div className="space-y-2">
-            <label className="text-sm font-medium">Escola</label>
+            <label className="text-sm font-medium flex items-center gap-2">
+              Escola
+              {!canSelectSchool && (
+                <Badge variant="secondary" className="text-xs">Pré-selecionado</Badge>
+              )}
+            </label>
             <Select
               value={selectedSchool}
               onValueChange={onSchoolChange}
-              disabled={isLoadingFilters || selectedMunicipality === 'all'}
+              disabled={isLoadingFilters || selectedMunicipality === 'all' || !canSelectSchool}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Selecione a escola" />
