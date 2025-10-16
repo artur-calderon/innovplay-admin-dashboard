@@ -36,13 +36,3 @@ export function getDifficultyDotColor(difficulty: string): string {
       return 'bg-gray-500';
   }
 }
-
-/**
- * Remove todos os espaços de um código de habilidade
- * Exemplo: "9 L 1.1" -> "9L1.1"
- * @param code Código da habilidade com ou sem espaços
- * @returns Código normalizado sem espaços
- */
-export function normalizeSkillCode(code: string): string {
-  return code.replace(/\s+/g, '');
-}
