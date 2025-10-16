@@ -27,6 +27,59 @@ import {
   ArrowDown
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { api } from "@/lib/api";
+
+// Interface para resposta da API de notas
+interface StudentGradesResponse {
+  success: boolean;
+  data: {
+    user_id: string;
+    student_id: string;
+    student_name: string;
+    student_registration: string | null;
+    school_name: string;
+    class_name: string;
+    general_proficiency: number;
+    general_grade: number;
+    general_classification: string;
+    total_correct_answers: number;
+    total_questions_answered: number;
+    total_evaluations: number;
+    rankings: {
+      school: {
+        position: number;
+        total_students: number;
+        ranking: Array<{
+          position: number;
+          student_id: string;
+          student_name: string;
+          proficiency: number;
+        }>;
+      };
+      class: {
+        position: number;
+        total_students: number;
+        ranking: Array<{
+          position: number;
+          student_id: string;
+          student_name: string;
+          proficiency: number;
+        }>;
+      };
+      municipality: {
+        position: number;
+        total_students: number;
+        ranking: Array<{
+          position: number;
+          student_id: string;
+          student_name: string;
+          proficiency: number;
+        }>;
+      };
+    };
+  };
+  message: string;
+}
 
 interface StudentStats {
   proficiencia: { value: number; change: number; trend: 'up' | 'down' };
@@ -109,7 +162,7 @@ const StudentDashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [chartType, setChartType] = useState<ChartType>('bar');
   const [period, setPeriod] = useState<PeriodType>('week');
-  const [rankingFilter, setRankingFilter] = useState<'geral' | 'semanal' | 'mensal'>('geral');
+  const [rankingFilter, setRankingFilter] = useState<'turma' | 'escola' | 'municipio'>('turma');
 
   // Dados mockados baseados na imagem + dados de estatísticas
   const mockStats: StudentStats = {
@@ -202,45 +255,18 @@ const StudentDashboard = () => {
     }
   };
 
-  // Diferentes datasets de ranking para cada filtro
-  const rankingData = {
-    geral: {
-      posicaoAtual: 5,
-      pontos: 1000,
-      mudancaPosicao: 2,
-      lista: [
-        { id: 1, nome: 'Lucas Silva', acertos: 58, total: 60, posicao: 1, pontos: 1200 },
-        { id: 2, nome: 'Maria Souza', acertos: 56, total: 60, posicao: 2, pontos: 1150 },
-        { id: 3, nome: 'Pedro Oliveira', acertos: 54, total: 60, posicao: 3, pontos: 1100 },
-        { id: 4, nome: 'Ana Costa', acertos: 52, total: 60, posicao: 4, pontos: 1050 },
-        { id: 5, nome: 'João Lima', acertos: 50, total: 60, posicao: 5, pontos: 1000 },
-        { id: 6, nome: 'Beatriz Ramos', acertos: 48, total: 60, posicao: 6, pontos: 950 },
-        { id: 7, nome: 'Rafael Martins', acertos: 47, total: 60, posicao: 7, pontos: 900 },
-        { id: 8, nome: 'Gabriela Dias', acertos: 45, total: 60, posicao: 8, pontos: 850 },
-        { id: 9, nome: 'Carlos Mendes', acertos: 44, total: 60, posicao: 9, pontos: 800 },
-        { id: 10, nome: 'Fernanda Rocha', acertos: 42, total: 60, posicao: 10, pontos: 750 },
-      ],
-      proximoObjetivo: {
-        posicao: 4,
-        pontosNecessarios: 50,
-        progresso: 80
-      }
-    },
-    semanal: {
+  // Dados mockados para ranking (mantidos como fallback)
+  const mockRankingData = {
+    turma: {
       posicaoAtual: 3,
-      pontos: 245,
+      pontos: 285.5,
       mudancaPosicao: 1,
       lista: [
-        { id: 1, nome: 'Pedro Oliveira', acertos: 15, total: 15, posicao: 1, pontos: 285 },
-        { id: 2, nome: 'Maria Souza', acertos: 14, total: 15, posicao: 2, pontos: 270 },
-        { id: 3, nome: 'João Lima', acertos: 13, total: 15, posicao: 3, pontos: 245 },
-        { id: 4, nome: 'Ana Costa', acertos: 12, total: 15, posicao: 4, pontos: 230 },
-        { id: 5, nome: 'Lucas Silva', acertos: 11, total: 15, posicao: 5, pontos: 215 },
-        { id: 6, nome: 'Gabriela Dias', acertos: 10, total: 15, posicao: 6, pontos: 200 },
-        { id: 7, nome: 'Rafael Martins', acertos: 9, total: 15, posicao: 7, pontos: 185 },
-        { id: 8, nome: 'Beatriz Ramos', acertos: 8, total: 15, posicao: 8, pontos: 170 },
-        { id: 9, nome: 'Carlos Mendes', acertos: 7, total: 15, posicao: 9, pontos: 155 },
-        { id: 10, nome: 'Fernanda Rocha', acertos: 6, total: 15, posicao: 10, pontos: 140 },
+        { id: 1, nome: 'Ana Oliveira', acertos: 18, total: 20, posicao: 1, pontos: 320.0 },
+        { id: 2, nome: 'Carlos Lima', acertos: 17, total: 20, posicao: 2, pontos: 310.5 },
+        { id: 3, nome: 'Pedro Costa', acertos: 15, total: 20, posicao: 3, pontos: 285.5 },
+        { id: 4, nome: 'Maria Silva', acertos: 14, total: 20, posicao: 4, pontos: 280.0 },
+        { id: 5, nome: 'João Santos', acertos: 13, total: 20, posicao: 5, pontos: 275.0 },
       ],
       proximoObjetivo: {
         posicao: 2,
@@ -248,25 +274,47 @@ const StudentDashboard = () => {
         progresso: 60
       }
     },
-    mensal: {
-      posicaoAtual: 7,
-      pontos: 485,
-      mudancaPosicao: -2,
+    escola: {
+      posicaoAtual: 15,
+      pontos: 285.5,
+      mudancaPosicao: 2,
       lista: [
-        { id: 1, nome: 'Maria Souza', acertos: 45, total: 48, posicao: 1, pontos: 620 },
-        { id: 2, nome: 'Lucas Silva', acertos: 44, total: 48, posicao: 2, pontos: 595 },
-        { id: 3, nome: 'Ana Costa', acertos: 42, total: 48, posicao: 3, pontos: 570 },
-        { id: 4, nome: 'Pedro Oliveira', acertos: 40, total: 48, posicao: 4, pontos: 545 },
-        { id: 5, nome: 'Gabriela Dias', acertos: 39, total: 48, posicao: 5, pontos: 520 },
-        { id: 6, nome: 'Rafael Martins', acertos: 37, total: 48, posicao: 6, pontos: 510 },
-        { id: 7, nome: 'João Lima', acertos: 35, total: 48, posicao: 7, pontos: 485 },
-        { id: 8, nome: 'Beatriz Ramos', acertos: 34, total: 48, posicao: 8, pontos: 460 },
-        { id: 9, nome: 'Carlos Mendes', acertos: 32, total: 48, posicao: 9, pontos: 435 },
-        { id: 10, nome: 'Fernanda Rocha', acertos: 30, total: 48, posicao: 10, pontos: 410 },
+        { id: 1, nome: 'Lucas Ferreira', acertos: 20, total: 20, posicao: 1, pontos: 380.0 },
+        { id: 2, nome: 'Maria Silva', acertos: 19, total: 20, posicao: 2, pontos: 350.0 },
+        { id: 3, nome: 'João Santos', acertos: 18, total: 20, posicao: 3, pontos: 345.5 },
+        { id: 4, nome: 'Ana Costa', acertos: 17, total: 20, posicao: 4, pontos: 340.0 },
+        { id: 5, nome: 'Carlos Lima', acertos: 16, total: 20, posicao: 5, pontos: 335.0 },
+        { id: 6, nome: 'Beatriz Ramos', acertos: 15, total: 20, posicao: 6, pontos: 330.0 },
+        { id: 7, nome: 'Rafael Martins', acertos: 15, total: 20, posicao: 7, pontos: 325.0 },
+        { id: 8, nome: 'Gabriela Dias', acertos: 15, total: 20, posicao: 8, pontos: 320.0 },
+        { id: 9, nome: 'Fernanda Rocha', acertos: 15, total: 20, posicao: 9, pontos: 315.0 },
+        { id: 10, nome: 'Pedro Costa', acertos: 15, total: 20, posicao: 15, pontos: 285.5 },
       ],
       proximoObjetivo: {
-        posicao: 6,
-        pontosNecessarios: 25,
+        posicao: 14,
+        pontosNecessarios: 10,
+        progresso: 80
+      }
+    },
+    municipio: {
+      posicaoAtual: 89,
+      pontos: 285.5,
+      mudancaPosicao: -5,
+      lista: [
+        { id: 1, nome: 'Lucas Ferreira', acertos: 20, total: 20, posicao: 1, pontos: 380.0 },
+        { id: 2, nome: 'Maria Silva', acertos: 19, total: 20, posicao: 2, pontos: 375.0 },
+        { id: 3, nome: 'João Santos', acertos: 19, total: 20, posicao: 3, pontos: 370.0 },
+        { id: 4, nome: 'Ana Costa', acertos: 18, total: 20, posicao: 4, pontos: 365.0 },
+        { id: 5, nome: 'Carlos Lima', acertos: 18, total: 20, posicao: 5, pontos: 360.0 },
+        { id: 6, nome: 'Beatriz Ramos', acertos: 17, total: 20, posicao: 6, pontos: 355.0 },
+        { id: 7, nome: 'Rafael Martins', acertos: 17, total: 20, posicao: 7, pontos: 350.0 },
+        { id: 8, nome: 'Gabriela Dias', acertos: 16, total: 20, posicao: 8, pontos: 345.0 },
+        { id: 9, nome: 'Fernanda Rocha', acertos: 16, total: 20, posicao: 9, pontos: 340.0 },
+        { id: 10, nome: 'Pedro Costa', acertos: 15, total: 20, posicao: 89, pontos: 285.5 },
+      ],
+      proximoObjetivo: {
+        posicao: 88,
+        pontosNecessarios: 5,
         progresso: 50
       }
     }
@@ -274,21 +322,160 @@ const StudentDashboard = () => {
 
   // Função para obter dados do ranking baseado no filtro
   const getCurrentRankingData = () => {
-    return rankingData[rankingFilter];
+    if (!stats) {
+      console.log('⚠️ Stats não disponível, usando dados mockados');
+      return mockRankingData[rankingFilter];
+    }
+
+    console.log('🎯 Filtro de ranking selecionado:', rankingFilter);
+    console.log('📊 Stats disponíveis:', stats);
+
+    // Por enquanto, sempre usar dados da turma (que são os únicos mapeados)
+    // Quando implementarmos as outras abas, usar os dados específicos
+    const currentRanking = stats.ranking;
+    
+    return {
+      posicaoAtual: currentRanking.posicaoAtual,
+      pontos: currentRanking.pontos,
+      mudancaPosicao: currentRanking.mudancaPosicao,
+      lista: currentRanking.lista.length > 0 ? currentRanking.lista : mockRankingData[rankingFilter].lista,
+      proximoObjetivo: currentRanking.proximoObjetivo
+    };
   };
 
   // Função para alterar filtro do ranking
-  const handleRankingFilterChange = (filter: 'geral' | 'semanal' | 'mensal') => {
+  const handleRankingFilterChange = (filter: 'turma' | 'escola' | 'municipio') => {
     setRankingFilter(filter);
+  };
+
+  // Função para buscar dados do aluno via API
+  const fetchStudentGrades = async (userId: string): Promise<StudentGradesResponse> => {
+    console.log('🔍 Fazendo chamada para API:', `/students/${userId}/grades/general`);
+    const response = await api.get(`/students/${userId}/grades/general`);
+    console.log('📊 Resposta completa da API:', response.data);
+    console.log('📈 Dados de rankings:', response.data.data?.rankings);
+    return response.data;
+  };
+
+  // Função para mapear dados de ranking da API para o formato do componente
+  const mapRankingData = (rankingData: Array<{
+    position: number;
+    student_id: string;
+    student_name: string;
+    proficiency: number;
+  }>) => {
+    console.log('🔄 Mapeando dados de ranking:', rankingData);
+    const mappedData = rankingData.map((item, index) => ({
+      id: index + 1,
+      nome: item.student_name,
+      acertos: Math.round(item.proficiency / 20), // Aproximação baseada na proficiência
+      total: 20,
+      posicao: item.position,
+      pontos: item.proficiency
+    }));
+    console.log('✅ Dados mapeados:', mappedData);
+    return mappedData;
+  };
+
+  // Função para mapear dados da API para a interface atual
+  const mapApiDataToStats = (apiData: StudentGradesResponse): StudentStats => {
+    console.log('🔄 Mapeando dados da API para interface...');
+    console.log('📊 Dados da turma:', apiData.data.rankings.class);
+    console.log('📊 Dados da escola:', apiData.data.rankings.school);
+    console.log('📊 Dados do município:', apiData.data.rankings.municipality);
+    
+    return {
+      proficiencia: { 
+        value: apiData.data.general_proficiency, 
+        change: 0, 
+        trend: 'up' 
+      },
+      nota: { 
+        value: apiData.data.general_grade, 
+        change: 0, 
+        trend: 'up' 
+      },
+      nivel: { 
+        value: apiData.data.general_classification, 
+        change: 0, 
+        trend: 'up' 
+      },
+      acertos: { 
+        value: apiData.data.total_correct_answers, 
+        change: 0, 
+        trend: 'up' 
+      },
+      // Manter dados gamificados como mockados
+      medalhas: mockStats.medalhas,
+      moedas: mockStats.moedas,
+      ranking: {
+        posicaoAtual: apiData.data.rankings.class.position, // Usar posição da turma como padrão
+        pontos: apiData.data.general_proficiency, // Usar proficiência como pontos
+        mudancaPosicao: 0,
+        lista: mapRankingData(apiData.data.rankings.class.ranking), // Mapear dados da turma
+        proximoObjetivo: {
+          posicao: Math.max(1, apiData.data.rankings.class.position - 1),
+          pontosNecessarios: 50,
+          progresso: 80
+        }
+      },
+      estatisticas: {
+        semana: [
+          { day: 'Seg', nota: 7.2, avaliacao: 'Matemática' },
+          { day: 'Ter', nota: 8.5, avaliacao: 'Português' },
+          { day: 'Qua', nota: 6.8, avaliacao: 'História' },
+          { day: 'Qui', nota: 9.1, avaliacao: 'Ciências' },
+          { day: 'Sex', nota: 7.7, avaliacao: 'Geografia' },
+          { day: 'Sáb', nota: 8.9, avaliacao: 'Inglês' },
+          { day: 'Dom', nota: 7.5, avaliacao: 'Arte' },
+        ],
+        mes: [
+          { week: 'Sem 1', nota: 7.8, avaliacoes: 12 },
+          { week: 'Sem 2', nota: 8.2, avaliacoes: 15 },
+          { week: 'Sem 3', nota: 7.1, avaliacoes: 10 },
+          { week: 'Sem 4', nota: 8.6, avaliacoes: 18 },
+        ],
+        ano: [
+          { month: 'Jan', nota: 7.2, avaliacoes: 45 },
+          { month: 'Fev', nota: 7.8, avaliacoes: 52 },
+          { month: 'Mar', nota: 8.1, avaliacoes: 48 },
+          { month: 'Abr', nota: 7.5, avaliacoes: 51 },
+          { month: 'Mai', nota: 8.3, avaliacoes: 49 },
+          { month: 'Jun', nota: 7.9, avaliacoes: 47 },
+        ],
+        resumo: {
+          media: apiData.data.general_grade,
+          melhorNota: Math.max(apiData.data.general_grade, 9.1),
+          streak: 12,
+          metaAlcancada: apiData.data.general_grade >= 7.0,
+          progresso: Math.min(100, (apiData.data.general_grade / 10) * 100),
+          totalAvaliacoes: apiData.data.total_evaluations,
+          tendencia: apiData.data.general_grade >= 7.0 ? 'up' : 'stable'
+        }
+      }
+    };
   };
 
   useEffect(() => {
     const loadStudentStats = async () => {
       try {
         setIsLoading(true);
-        // Simular delay de carregamento
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        setStats(mockStats);
+        
+        if (!user?.id) {
+          throw new Error('ID do usuário não encontrado');
+        }
+
+        // Buscar dados reais da API
+        const apiData = await fetchStudentGrades(user.id);
+        
+        if (!apiData.success) {
+          throw new Error(apiData.message || 'Erro ao carregar dados');
+        }
+
+        // Mapear dados da API para a interface atual
+        const mappedStats = mapApiDataToStats(apiData);
+        setStats(mappedStats);
+        
       } catch (error) {
         console.error('Erro ao carregar estatísticas do aluno:', error);
         toast({
@@ -296,13 +483,16 @@ const StudentDashboard = () => {
           description: "Não foi possível carregar suas estatísticas.",
           variant: "destructive",
         });
+        
+        // Em caso de erro, mostrar dados vazios ao invés de mockados
+        setStats(null);
       } finally {
         setIsLoading(false);
       }
     };
 
     loadStudentStats();
-  }, [toast]);
+  }, [toast, user?.id]);
 
   const StatCard = ({ 
     title, 
@@ -358,6 +548,34 @@ const StudentDashboard = () => {
     };
 
     const data = getCurrentData();
+    
+    // Se não há dados, mostrar mensagem
+    if (!data || data.length === 0) {
+      return (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg">
+                <Activity className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold">Estatísticas de Performance</h3>
+                <p className="text-sm text-muted-foreground">Notas das suas avaliações</p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="bg-gray-50 rounded-lg p-8 text-center">
+            <div className="text-gray-400 mb-2">
+              <Activity className="w-12 h-12 mx-auto" />
+            </div>
+            <h4 className="text-lg font-medium text-gray-600 mb-2">Sem dados</h4>
+            <p className="text-sm text-gray-500">Não há estatísticas disponíveis para o período selecionado.</p>
+          </div>
+        </div>
+      );
+    }
+    
     const maxValue = Math.max(...data.map(item => 'nota' in item ? item.nota : 0));
     const minValue = Math.min(...data.map(item => 'nota' in item ? item.nota : 0));
 
@@ -616,6 +834,28 @@ const StudentDashboard = () => {
               </CardContent>
             </Card>
           ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Se não há dados após o carregamento, mostrar mensagem
+  if (!stats) {
+    return (
+      <div className="container mx-auto py-6 px-4 max-w-7xl">
+        <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
+          <div className="text-gray-400 mb-4">
+            <User className="w-16 h-16 mx-auto" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-600 mb-2">Sem dados</h2>
+          <p className="text-gray-500 mb-6">Não foi possível carregar suas estatísticas no momento.</p>
+          <Button 
+            onClick={() => window.location.reload()} 
+            variant="outline"
+            className="px-6 py-2"
+          >
+            Tentar novamente
+          </Button>
         </div>
       </div>
     );
@@ -887,27 +1127,27 @@ const StudentDashboard = () => {
               <div className="flex gap-1 bg-gray-100 rounded-lg p-1 mt-3">
                 <Button 
                   size="sm" 
-                  variant={rankingFilter === 'geral' ? 'default' : 'ghost'} 
+                  variant={rankingFilter === 'turma' ? 'default' : 'ghost'} 
                   className="text-xs px-2 py-1"
-                  onClick={() => handleRankingFilterChange('geral')}
+                  onClick={() => handleRankingFilterChange('turma')}
                 >
-                  Geral
+                  Turma
                 </Button>
                 <Button 
                   size="sm" 
-                  variant={rankingFilter === 'semanal' ? 'default' : 'ghost'} 
+                  variant={rankingFilter === 'escola' ? 'default' : 'ghost'} 
                   className="text-xs px-2 py-1"
-                  onClick={() => handleRankingFilterChange('semanal')}
+                  onClick={() => handleRankingFilterChange('escola')}
                 >
-                  Semanal
+                  Escola
                 </Button>
                 <Button 
                   size="sm" 
-                  variant={rankingFilter === 'mensal' ? 'default' : 'ghost'} 
+                  variant={rankingFilter === 'municipio' ? 'default' : 'ghost'} 
                   className="text-xs px-2 py-1"
-                  onClick={() => handleRankingFilterChange('mensal')}
+                  onClick={() => handleRankingFilterChange('municipio')}
                 >
-                  Mensal
+                  Município
                 </Button>
               </div>
             </CardHeader>
