@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { cn, normalizeSkillCode } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import './SkillsSelector.css';
 import { useSkillsStore } from '@/stores/useSkillsStore';
 
@@ -67,39 +67,34 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
     return () => { isMounted = false; };
   }, [skills, gradeId, fetchSkillsByGrade]);
 
-  // Agrupar habilidades por categoria (prefixo do código normalizado)
+  // Agrupar habilidades por categoria (prefixo do código)
   const groupedSkills = useMemo(() => {
     const groups: Record<string, Skill[]> = {};
     effectiveSkills.forEach(skill => {
-      const normalizedCode = normalizeSkillCode(skill.code);
-      const prefix = normalizedCode.split('.')[0] || 'Outros';
+      const prefix = skill.code.split('.')[0] || 'Outros';
       if (!groups[prefix]) groups[prefix] = [];
       groups[prefix].push(skill);
     });
     return groups;
   }, [effectiveSkills]);
 
-  // Filtrar habilidades por busca (normaliza espaços)
+  // Filtrar habilidades por busca
   const filteredSkills = useMemo(() => {
     if (!searchTerm) return effectiveSkills;
     
-    const normalizedSearch = normalizeSkillCode(searchTerm).toLowerCase();
+    const searchLower = searchTerm.toLowerCase();
     
     return effectiveSkills.filter(skill => {
-      const normalizedCode = normalizeSkillCode(skill.code).toLowerCase();
-      const normalizedDesc = skill.description.toLowerCase();
-      
-      return normalizedCode.includes(normalizedSearch) ||
-             normalizedDesc.includes(searchTerm.toLowerCase());
+      return skill.code.toLowerCase().includes(searchLower) ||
+             skill.description.toLowerCase().includes(searchLower);
     });
   }, [effectiveSkills, searchTerm]);
 
-  // Habilidades filtradas agrupadas (com códigos normalizados)
+  // Habilidades filtradas agrupadas
   const filteredGroupedSkills = useMemo(() => {
     const groups: Record<string, Skill[]> = {};
     filteredSkills.forEach(skill => {
-      const normalizedCode = normalizeSkillCode(skill.code);
-      const prefix = normalizedCode.split('.')[0] || 'Outros';
+      const prefix = skill.code.split('.')[0] || 'Outros';
       if (!groups[prefix]) groups[prefix] = [];
       groups[prefix].push(skill);
     });
@@ -107,10 +102,9 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
   }, [filteredSkills]);
 
   const handleToggleSkill = (skillId: string) => {
-    // Seleção única: se já está selecionado, desmarca; senão, seleciona apenas este
     const newSelected = selected.includes(skillId)
-      ? [] // Desmarca se já estava selecionado
-      : [skillId]; // Seleciona apenas este (remove outros)
+      ? selected.filter(id => id !== skillId)
+      : [...selected, skillId];
     onChange(newSelected);
   };
 
@@ -129,17 +123,22 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
         <div className="flex items-center gap-2 flex-1">
           <Filter className="h-4 w-4 text-gray-400" />
           <div className="flex-1">
-             {selected.length > 0 ? (
-               <div className="flex items-center gap-1">
-                 {selectedSkills.map(skill => (
+            {selected.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                 {selectedSkills.slice(0, 3).map(skill => (
                    <Badge key={skill.id} variant="secondary" className="text-xs">
-                     {normalizeSkillCode(skill.code)}
+                     {skill.code}
                    </Badge>
                  ))}
-               </div>
-             ) : (
-               <span className="text-muted-foreground">{placeholder}</span>
-             )}
+                {selected.length > 3 && (
+                  <Badge variant="outline" className="text-xs">
+                    +{selected.length - 3} mais
+                  </Badge>
+                )}
+              </div>
+            ) : (
+              <span className="text-muted-foreground">{placeholder}</span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -272,16 +271,16 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
                      />
                   </div>
                   {selected.length > 0 && (
-                     <Button
-                       variant="outline"
-                       size="sm"
-                       onClick={() => onChange([])}
-                       className="flex items-center gap-1 shrink-0"
-                     >
-                       <X className="h-3 w-3" />
-                       <span className="hidden sm:inline">Limpar</span>
-                     </Button>
-                   )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onChange([])}
+                      className="flex items-center gap-1 shrink-0"
+                    >
+                      <X className="h-3 w-3" />
+                      <span className="hidden sm:inline">Limpar</span> ({selected.length})
+                    </Button>
+                  )}
                 </div>
               </div>
 
@@ -295,9 +294,9 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
                       <div key={category}>
                         <div className="skills-category-header flex items-center gap-2 mb-3 sticky top-0 bg-white z-20 py-2 sm:py-3 border-b border-gray-200 -mx-3 sm:-mx-4 px-3 sm:px-4 backdrop-blur-sm">
                           <h4 className="font-semibold text-sm sm:text-base text-gray-700">{category}</h4>
-                           <Badge variant="outline" className="text-xs bg-gray-100">
-                             {categorySkills.filter(skill => selected.includes(skill.id)).length > 0 ? '1' : '0'} / {categorySkills.length}
-                           </Badge>
+                          <Badge variant="outline" className="text-xs bg-gray-100">
+                            {categorySkills.filter(skill => selected.includes(skill.id)).length} / {categorySkills.length}
+                          </Badge>
                         </div>
 
                         <div className={cn(
@@ -334,14 +333,14 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
                                   </div>
                                 </div>
 
-                                <div className={cn("flex-1 min-w-0", viewMode === 'grid' && "text-center")}>
-                                  <div className="font-mono text-xs sm:text-sm font-semibold text-blue-600 mb-1 break-all">
-                                    {normalizeSkillCode(skill.code)}
-                                  </div>
-                                  <div className="text-xs sm:text-sm text-gray-700 leading-tight">
-                                    {skill.description}
-                                  </div>
-                                </div>
+                                 <div className={cn("flex-1 min-w-0", viewMode === 'grid' && "text-center")}>
+                                   <div className="font-mono text-xs sm:text-sm font-semibold text-blue-600 mb-1 break-all">
+                                     {skill.code}
+                                   </div>
+                                   <div className="text-xs sm:text-sm text-gray-700 leading-tight">
+                                     {skill.description}
+                                   </div>
+                                 </div>
                               </div>
                             );
                           })}
@@ -358,13 +357,9 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
               {/* Footer */}
               <div className="skills-footer p-3 sm:p-4 border-t bg-white shadow-lg shrink-0">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                   <div className="text-xs sm:text-sm text-gray-600 text-center sm:text-left">
-                     {selected.length > 0 ? (
-                       <span className="font-medium text-blue-600">1 habilidade selecionada</span>
-                     ) : (
-                       <span>Nenhuma habilidade selecionada</span>
-                     )}
-                   </div>
+                  <div className="text-xs sm:text-sm text-gray-600 text-center sm:text-left">
+                    <span className="font-medium text-blue-600">{selected.length}</span> de {skills.length} habilidades selecionadas
+                  </div>
                   <div className="flex gap-2">
                     <Button variant="outline" onClick={() => setOpen(false)} className="flex-1 sm:flex-none">
                       Cancelar
