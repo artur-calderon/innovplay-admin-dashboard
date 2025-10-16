@@ -27,7 +27,6 @@ import { Option } from "@/components/ui/multi-select";
 import { useAuth } from "@/context/authContext";
 import QuestionPreview from "./QuestionPreview";
 import SkillsSelector from "./SkillsSelector";
-import { normalizeSkillCode } from "@/lib/utils";
 
 // Form schema
 const baseSchema = z.object({
@@ -829,7 +828,7 @@ const QuestionForm = ({
                               const skill = skills.find(opt => opt.id === skillId);
                               return skill ? (
                                 <Badge key={skillId} variant="outline" className="text-xs bg-white border-blue-300">
-                                  {normalizeSkillCode(skill.code)}
+                                  {skill.code}
                                 </Badge>
                               ) : null;
                             })}
