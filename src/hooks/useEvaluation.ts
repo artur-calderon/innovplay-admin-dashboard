@@ -314,7 +314,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             return;
         }
         
-        // ✅ NOVO: Verificar se há respostas para enviar
+        // ✅ MELHORADO: Validação completa dos dados antes do envio
         if (!answers || Object.keys(answers).length === 0) {
             console.log('⚠️ Não há respostas para enviar');
             toast({
@@ -324,6 +324,48 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             });
             return;
         }
+
+        // ✅ NOVO: Validar estrutura das respostas
+        const answersArray = Object.values(answers);
+        const invalidAnswers = answersArray.filter(answer => 
+            !answer || 
+            !answer.question_id || 
+            !answer.answer || 
+            answer.answer.trim() === ''
+        );
+        
+        if (invalidAnswers.length > 0) {
+            console.error('❌ Respostas inválidas encontradas:', invalidAnswers);
+            toast({
+                title: "❌ Dados inválidos",
+                description: "Algumas respostas estão corrompidas. Recarregue a página e tente novamente.",
+                variant: "destructive",
+            });
+            return;
+        }
+
+        // ✅ NOVO: Validar se todas as respostas têm question_id válido
+        const questionIds = shuffledQuestions.map(q => q.id);
+        const invalidQuestionIds = answersArray.filter(answer => 
+            !questionIds.includes(answer.question_id)
+        );
+        
+        if (invalidQuestionIds.length > 0) {
+            console.error('❌ Question IDs inválidos encontrados:', invalidQuestionIds);
+            toast({
+                title: "❌ Dados corrompidos",
+                description: "Algumas respostas referenciam questões inválidas. Recarregue a página.",
+                variant: "destructive",
+            });
+            return;
+        }
+
+        console.log('✅ Validação dos dados concluída:', {
+            totalAnswers: answersArray.length,
+            validAnswers: answersArray.length - invalidAnswers.length,
+            sessionId: session.session_id,
+            testId: testId
+        });
 
         // ✅ NOVO: Declarar results fora do try para evitar problemas de escopo
         let results: any = null;
@@ -356,7 +398,21 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             const answersArray = Object.values(answers);
             console.log('📤 Enviando respostas para o backend:', {
                 sessionId: session.session_id,
-                answersCount: answersArray.length
+                answersCount: answersArray.length,
+                answersPreview: answersArray.map(a => ({
+                    question_id: a.question_id,
+                    answer: a.answer,
+                    hasAnswer: !!a.answer
+                }))
+            });
+            
+            // ✅ NOVO: Log detalhado antes do envio para debug
+            console.log('🔍 Dados que serão enviados:', {
+                session_id: session.session_id,
+                answers: answersArray,
+                testId: testId,
+                user: user?.id,
+                timestamp: new Date().toISOString()
             });
             
             results = await EvaluationApiService.submitTest({
@@ -419,6 +475,22 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         } catch (error) {
             console.error('❌ Erro ao submeter avaliação:', error);
             
+            // ✅ MELHORADO: Log detalhado do erro para debug
+            console.error('🔍 Detalhes completos do erro:', {
+                message: error.message,
+                code: error.code,
+                response: error.response?.data,
+                status: error.response?.status,
+                statusText: error.response?.statusText,
+                url: error.config?.url,
+                method: error.config?.method,
+                timeout: error.config?.timeout,
+                stack: error.stack,
+                sessionId: session?.session_id,
+                answersCount: Object.keys(answers).length,
+                testId: testId
+            });
+            
             // ✅ NOVO: Verificar se já foi enviada com sucesso antes
             if (results) {
                 console.log('⚠️ Erro em tentativa duplicada - avaliação já foi enviada com sucesso');
@@ -426,16 +498,23 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 return;
             }
 
-            // ✅ NOVO: Verificar se é um erro de rede ou de validação
-            const isNetworkError = !error.response;
+            // ✅ MELHORADO: Verificar tipos de erro mais específicos
+            const isNetworkError = !error.response || error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED';
+            const isTimeoutError = error.code === 'ECONNABORTED' || error.message?.includes('timeout') || error.message?.includes('Timeout');
             const isValidationError = error.response?.status === 400;
             const isServerError = error.response?.status >= 500;
+            const isNotFoundError = error.response?.status === 404;
+            const isForbiddenError = error.response?.status === 403;
 
-            if (isNetworkError) {
-                console.log('⚠️ Erro de rede - permitindo nova tentativa');
+            if (isNetworkError || isTimeoutError) {
+                console.log('⚠️ Erro de rede/timeout - permitindo nova tentativa');
+                const errorMessage = isTimeoutError 
+                    ? "A requisição demorou muito para responder. O servidor pode estar processando muitos dados."
+                    : "Erro de conexão com o servidor. Verifique sua internet.";
+                
                 toast({
                     title: "❌ Erro de conexão",
-                    description: "Verifique sua conexão e tente novamente.",
+                    description: errorMessage,
                     variant: "destructive",
                 });
             } else if (isValidationError) {
@@ -448,11 +527,25 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 // Marcar como completed para evitar novas tentativas
                 setEvaluationState('completed');
                 return;
+            } else if (isNotFoundError) {
+                console.log('⚠️ Avaliação não encontrada (404)');
+                toast({
+                    title: "❌ Avaliação não encontrada",
+                    description: "A avaliação não foi encontrada no servidor. Recarregue a página.",
+                    variant: "destructive",
+                });
+            } else if (isForbiddenError) {
+                console.log('⚠️ Sem permissão (403)');
+                toast({
+                    title: "❌ Sem permissão",
+                    description: "Você não tem permissão para enviar esta avaliação.",
+                    variant: "destructive",
+                });
             } else if (isServerError) {
                 console.log('⚠️ Erro do servidor - permitindo nova tentativa');
                 toast({
                     title: "❌ Erro do servidor",
-                    description: "Tente novamente em alguns instantes.",
+                    description: "Erro interno do servidor. Tente novamente em alguns instantes.",
                     variant: "destructive",
                 });
             } else {

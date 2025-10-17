@@ -1,12 +1,16 @@
 import { ReactNode, useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { useScrollToTop } from "@/hooks/useScrollToTop";
 
 type FullscreenLayoutProps = {
   children?: ReactNode;
 };
 
 export default function FullscreenLayout({ children }: FullscreenLayoutProps) {
+  // Scroll to top on route change
+  useScrollToTop();
+  
   useEffect(() => {
     // Adicionar classe para ocultar scrollbars e garantir tela cheia
     document.body.style.overflow = 'hidden';

@@ -4,6 +4,7 @@ import { Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Outlet } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { useScrollToTop } from "@/hooks/useScrollToTop";
 
 type LayoutProps = {
   children: ReactNode;
@@ -12,6 +13,9 @@ type LayoutProps = {
 export default function Layout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  
+  // Scroll to top on route change
+  useScrollToTop();
 
   useEffect(() => {
     const checkIfMobile = () => {
