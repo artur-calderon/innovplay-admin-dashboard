@@ -155,20 +155,17 @@ export default function TakeEvaluation() {
             
             switch(event.key) {
                 case 'Escape':
-                    console.log('🔒 Fechando modal fullscreen com Escape...');
                     setShowFullscreenQuestion(false);
                     break;
                 case 'ArrowLeft':
                     if (currentQuestionIndex > 0) {
                         event.preventDefault();
-                        console.log('⬅️ Navegando para questão anterior com seta');
                         navigateToQuestion(currentQuestionIndex - 1);
                     }
                     break;
                 case 'ArrowRight':
                     if (currentQuestionIndex < shuffledQuestions.length - 1) {
                         event.preventDefault();
-                        console.log('➡️ Navegando para próxima questão com seta');
                         navigateToQuestion(currentQuestionIndex + 1);
                     }
                     break;
@@ -209,16 +206,8 @@ export default function TakeEvaluation() {
 
     // ✅ Fechar modais quando avaliação for enviada (agora feito no useEffect de redirecionamento)
 
-    // ✅ Fechar modal fullscreen quando navegar para uma questão
-    const prevQuestionIndexRef = useRef<number | null>(null);
-    useEffect(() => {
-        const prevIndex = prevQuestionIndexRef.current;
-        const hasIndexChanged = prevIndex !== null && prevIndex !== currentQuestionIndex;
-        if (showFullscreenQuestion && hasIndexChanged) {
-            setShowFullscreenQuestion(false);
-        }
-        prevQuestionIndexRef.current = currentQuestionIndex;
-    }, [currentQuestionIndex, showFullscreenQuestion]);
+    // ✅ REMOVIDO: useEffect que fechava automaticamente o fullscreen ao navegar
+    // Agora o modo tela cheia persiste durante a navegação entre questões
 
     // Log para debug da questão atual (apenas quando muda)
     useEffect(() => {
@@ -1002,7 +991,11 @@ export default function TakeEvaluation() {
                                             <Button
                                                 variant="outline"
                                                 size="sm"
-                                                onClick={() => setShowFullscreenQuestion(true)}
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    setShowFullscreenQuestion(true);
+                                                }}
                                                 className="h-7 w-7 sm:h-8 sm:w-8 p-0 flex-shrink-0"
                                                 title="Visualizar questão em tela cheia"
                                             >
@@ -1441,7 +1434,11 @@ export default function TakeEvaluation() {
                                <Button
                                    variant="ghost"
                                    size="sm"
-                                   onClick={() => setShowFullscreenQuestion(false)}
+                                   onClick={(e) => {
+                                       e.preventDefault();
+                                       e.stopPropagation();
+                                       setShowFullscreenQuestion(false);
+                                   }}
                                    className="h-7 w-7 sm:h-8 sm:w-8 md:h-9 md:w-9 p-0 hover:bg-gray-100 rounded-full"
                                    title="Fechar visualização"
                                >
@@ -1512,14 +1509,25 @@ export default function TakeEvaluation() {
                                                    const displayAnswer = Array.isArray(answer) ? answer[0] : answer;
                                                    const originalLetter = mapAnswerToOriginalLetter(currentQuestion.id, displayAnswer);
                                                    
-                                                   console.log('💾 Salvando resposta mapeada (fullscreen):', {
-                                                       questionId: currentQuestion.id,
-                                                       interfaceAnswer: displayAnswer,
-                                                       originalLetter: originalLetter
-                                                   });
-                                                   
                                                    // Salvar a letra original (A, B, C, D...) no backend
                                                    saveAnswer(currentQuestion.id, originalLetter);
+                                                   
+                                                   // ✅ NOVO: Verificar se todas as questões foram respondidas
+                                                   setTimeout(() => {
+                                                       // Verificar se todas as questões foram respondidas
+                                                       const totalQuestions = shuffledQuestions.length;
+                                                       const answeredQuestions = Object.keys(answers).length;
+                                                       
+                                                       if (answeredQuestions === totalQuestions) {
+                                                           // Todas as questões foram respondidas - fechar fullscreen e mostrar confirmação
+                                                           setShowFullscreenQuestion(false);
+                                                           setShowSubmitDialog(true);
+                                                       } else if (currentQuestionIndex < shuffledQuestions.length - 1) {
+                                                           // Não é a última questão - navegar para a próxima
+                                                           navigateToQuestion(currentQuestionIndex + 1);
+                                                       }
+                                                       // Se for a última questão mas não todas foram respondidas, não faz nada
+                                                   }, 500); // Pequeno delay para dar feedback visual
                                                }
                                            }}
                                            disabled={false}
@@ -1554,7 +1562,11 @@ export default function TakeEvaluation() {
                                <Button
                                    variant="ghost"
                                    size="sm"
-                                   onClick={() => setShowFullscreenQuestion(false)}
+                                   onClick={(e) => {
+                                       e.preventDefault();
+                                       e.stopPropagation();
+                                       setShowFullscreenQuestion(false);
+                                   }}
                                    className="text-xs sm:text-sm text-purple-600 hover:text-purple-700 hover:bg-purple-50"
                                >
                                    <X className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
@@ -1651,7 +1663,7 @@ function QuestionOptions({
                                     ? 'border-purple-500 bg-purple-50 ring-2 sm:ring-4 ring-purple-200 shadow-lg'
                                     : 'border-gray-300 hover:border-gray-400 hover:shadow-md'
                                     } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-
+                                onClick={() => !disabled && onAnswerChange(optionId)}
                             >
                                 <RadioGroupItem
                                     value={optionId}
