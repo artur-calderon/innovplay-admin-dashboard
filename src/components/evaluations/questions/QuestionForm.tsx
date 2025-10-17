@@ -27,6 +27,7 @@ import { Option } from "@/components/ui/multi-select";
 import { useAuth } from "@/context/authContext";
 import QuestionPreview from "./QuestionPreview";
 import SkillsSelector from "./SkillsSelector";
+import { scrollToFirstError, getFieldLabel } from "@/utils/formValidation";
 
 // Form schema
 const baseSchema = z.object({
@@ -119,6 +120,7 @@ const QuestionForm = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingQuestion, setIsLoadingQuestion] = useState(false);
   const [questionType, setQuestionType] = useState<'multipleChoice' | 'dissertativa'>('multipleChoice');
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const hasLoadedInitialData = useRef(false);
   const preservedValues = useRef<{
     educationStageId?: string;
@@ -132,6 +134,8 @@ const QuestionForm = ({
 
   const form = useForm<QuestionFormValues>({
     resolver: zodResolver(questionSchema),
+    mode: "onSubmit", // Só validar quando submeter
+    reValidateMode: "onSubmit", // Só revalidar quando submeter
     defaultValues: {
       title: "",
       text: "",
@@ -450,6 +454,47 @@ const QuestionForm = ({
   }
 
   const handleFormSubmit = async (data: QuestionFormValues) => {
+    setHasAttemptedSubmit(true);
+    
+    // Forçar validação do formulário
+    const isValid = await form.trigger();
+    
+    if (!isValid) {
+      const errors = form.formState.errors;
+      const firstErrorField = Object.keys(errors)[0];
+      scrollToFirstError(errors);
+      
+      toast({
+        title: "Campo obrigatório não preenchido",
+        description: `Por favor, preencha o campo "${getFieldLabel(firstErrorField)}"`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validação customizada para alternativas (múltipla escolha)
+    if (data.questionType === 'multipleChoice') {
+      if (!data.options || data.options.length < 2) {
+        scrollToFirstError({ options: 'error' });
+        toast({
+          title: "Alternativas insuficientes",
+          description: "Adicione pelo menos 2 alternativas para questões de múltipla escolha",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      if (!data.options.some(opt => opt.isCorrect)) {
+        scrollToFirstError({ options: 'error' });
+        toast({
+          title: "Resposta correta não marcada",
+          description: "Marque pelo menos uma alternativa como correta",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     if (!user) {
       toast({
         title: "Erro de Autenticação",
@@ -1014,7 +1059,7 @@ const QuestionForm = ({
                   ))}
                 </div>
 
-                {form.formState.errors.options && (
+                {hasAttemptedSubmit && form.formState.errors.options && (
                   <p className="text-red-600 text-sm mt-2">
                     {form.formState.errors.options.message}
                   </p>

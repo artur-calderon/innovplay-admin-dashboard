@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { EvaluationFormData } from "./types";
 
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
+import { scrollToFirstError, getFieldLabel } from "@/utils/formValidation";
 
 // Schema de validação simplificado e mais robusto
 const step1Schema = z.object({
@@ -106,6 +107,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
   const [schools, setSchools] = useState<School[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const { user } = useAuth();
 
   // Novo estado para escolas filtradas (apenas admin)
@@ -127,6 +129,8 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
 
   const form = useForm<Step1FormValues>({
     resolver: zodResolver(step1Schema),
+    mode: "onSubmit", // Só validar quando submeter
+    reValidateMode: "onSubmit", // Só revalidar quando submeter
     defaultValues: {
       title: initialData?.title || "",
       description: initialData?.description || "",
@@ -150,6 +154,23 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
   const selectedSchools = form.watch("selectedSchools");
   const selectedSubjects = form.watch("subjects");
   const selectedClasses = form.watch("selectedClasses");
+  
+  // Estados para controlar liberação progressiva
+  const title = form.watch("title");
+  const type = form.watch("type");
+  const model = form.watch("model");
+  const duration = form.watch("duration");
+  
+  // Funções para controlar liberação progressiva
+  const isTitleValid = title && title.trim().length >= 3;
+  const isBasicInfoValid = isTitleValid && type && model && duration;
+  const isCourseValid = isBasicInfoValid && selectedCourse;
+  const isGradeValid = isCourseValid && selectedGrade;
+  const isLocationValid = isGradeValid && selectedState;
+  const isMunicipalityValid = isLocationValid && selectedMunicipality;
+  const isSchoolsValid = isMunicipalityValid && selectedSchools.length > 0;
+  const isSubjectsValid = isSchoolsValid && selectedSubjects.length > 0;
+  const isClassesValid = isSubjectsValid && selectedClasses.length > 0;
 
   // Carregar dados iniciais
   useEffect(() => {
@@ -642,6 +663,24 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
   };
 
   const onSubmit = async (values: Step1FormValues) => {
+    setHasAttemptedSubmit(true);
+    
+    // Forçar validação do formulário
+    const isValid = await form.trigger();
+    
+    if (!isValid) {
+      const errors = form.formState.errors;
+      const firstErrorField = Object.keys(errors)[0];
+      scrollToFirstError(errors);
+      
+      toast({
+        title: "Campo obrigatório não preenchido",
+        description: `Por favor, preencha o campo "${getFieldLabel(firstErrorField)}"`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       setIsLoading(true);
 
@@ -696,6 +735,50 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      {/* Indicador de Progresso */}
+      <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-blue-900">Progresso do Formulário</h3>
+            <span className="text-sm text-blue-700">
+              {[
+                isTitleValid && type && model && duration,
+                isCourseValid,
+                isGradeValid,
+                isLocationValid,
+                isMunicipalityValid,
+                isSchoolsValid,
+                isSubjectsValid,
+                isClassesValid
+              ].filter(Boolean).length} de 8 etapas concluídas
+            </span>
+          </div>
+          <div className="grid grid-cols-8 gap-2">
+            {[
+              { label: "Básico", valid: isTitleValid && type && model && duration },
+              { label: "Curso", valid: isCourseValid },
+              { label: "Série", valid: isGradeValid },
+              { label: "Estado", valid: isLocationValid },
+              { label: "Município", valid: isMunicipalityValid },
+              { label: "Escolas", valid: isSchoolsValid },
+              { label: "Disciplinas", valid: isSubjectsValid },
+              { label: "Turmas", valid: isClassesValid }
+            ].map((step, index) => (
+              <div key={index} className="text-center">
+                <div className={`w-8 h-8 mx-auto rounded-full flex items-center justify-center text-xs font-medium ${
+                  step.valid 
+                    ? 'bg-green-500 text-white' 
+                    : 'bg-gray-200 text-gray-600'
+                }`}>
+                  {step.valid ? '✓' : index + 1}
+                </div>
+                <p className="text-xs mt-1 text-gray-600">{step.label}</p>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Informações Básicas */}
       <Card>
         <CardHeader>
@@ -713,10 +796,11 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
               <Label htmlFor="title">Título da Avaliação *</Label>
               <Input
                 id="title"
+                name="title"
                 placeholder="Ex: Prova de Matemática - 5º Ano"
                 {...form.register("title")}
               />
-              {form.formState.errors.title && (
+              {hasAttemptedSubmit && form.formState.errors.title && (
                 <p className="text-sm text-red-500">{form.formState.errors.title.message}</p>
               )}
             </div>
@@ -725,11 +809,12 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
               <Label htmlFor="duration">Duração (minutos) *</Label>
               <Input
                 id="duration"
+                name="duration"
                 type="number"
                 placeholder="60"
                 {...form.register("duration")}
               />
-              {form.formState.errors.duration && (
+              {hasAttemptedSubmit && form.formState.errors.duration && (
                 <p className="text-sm text-red-500">{form.formState.errors.duration.message}</p>
               )}
             </div>
@@ -739,6 +824,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
             <Label htmlFor="description">Descrição (opcional)</Label>
             <Textarea
               id="description"
+              name="description"
               placeholder="Descreva o objetivo da avaliação..."
               {...form.register("description")}
             />
@@ -751,7 +837,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
                 value={form.watch("type")}
                 onValueChange={(value) => form.setValue("type", value as "AVALIACAO" | "SIMULADO")}
               >
-                <SelectTrigger>
+                <SelectTrigger name="type">
                   <SelectValue placeholder="Selecione o tipo" />
                 </SelectTrigger>
                 <SelectContent>
@@ -759,7 +845,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
                   <SelectItem value="SIMULADO">Simulado</SelectItem>
                 </SelectContent>
               </Select>
-              {form.formState.errors.type && (
+              {hasAttemptedSubmit && form.formState.errors.type && (
                 <p className="text-sm text-red-500">{form.formState.errors.type.message}</p>
               )}
             </div>
@@ -770,7 +856,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
                 value={form.watch("model")}
                 onValueChange={(value) => form.setValue("model", value as "SAEB" | "PROVA" | "AVALIE")}
               >
-                <SelectTrigger>
+                <SelectTrigger name="model">
                   <SelectValue placeholder="Selecione o modelo" />
                 </SelectTrigger>
                 <SelectContent>
@@ -779,7 +865,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
                   <SelectItem value="AVALIE">Avalie</SelectItem>
                 </SelectContent>
               </Select>
-              {form.formState.errors.model && (
+              {hasAttemptedSubmit && form.formState.errors.model && (
                 <p className="text-sm text-red-500">{form.formState.errors.model.message}</p>
               )}
             </div>
@@ -805,9 +891,10 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
               <Select
                 value={form.watch("course")}
                 onValueChange={(value) => form.setValue("course", value)}
+                disabled={!isBasicInfoValid}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o curso" />
+                <SelectTrigger name="course">
+                  <SelectValue placeholder={isBasicInfoValid ? "Selecione o curso" : "Preencha as informações básicas primeiro"} />
                 </SelectTrigger>
                 <SelectContent>
                   {courses.map((course) => (
@@ -817,7 +904,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
                   ))}
                 </SelectContent>
               </Select>
-              {form.formState.errors.course && (
+              {hasAttemptedSubmit && form.formState.errors.course && (
                 <p className="text-sm text-red-500">{form.formState.errors.course.message}</p>
               )}
             </div>
@@ -827,10 +914,10 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
               <Select
                 value={form.watch("grade")}
                 onValueChange={(value) => form.setValue("grade", value)}
-                disabled={!selectedCourse}
+                disabled={!isCourseValid}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a série" />
+                <SelectTrigger name="grade">
+                  <SelectValue placeholder={isCourseValid ? "Selecione a série" : "Selecione um curso primeiro"} />
                 </SelectTrigger>
                 <SelectContent>
                   {grades.map((grade) => (
@@ -840,7 +927,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
                   ))}
                 </SelectContent>
               </Select>
-              {form.formState.errors.grade && (
+              {hasAttemptedSubmit && form.formState.errors.grade && (
                 <p className="text-sm text-red-500">{form.formState.errors.grade.message}</p>
               )}
             </div>
@@ -866,9 +953,10 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
               <Select
                 value={form.watch("state")}
                 onValueChange={(value) => form.setValue("state", value)}
+                disabled={!isGradeValid}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o estado" />
+                <SelectTrigger name="state">
+                  <SelectValue placeholder={isGradeValid ? "Selecione o estado" : "Selecione uma série primeiro"} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos os estados</SelectItem>
@@ -879,7 +967,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
                   ))}
                 </SelectContent>
               </Select>
-              {form.formState.errors.state && (
+              {hasAttemptedSubmit && form.formState.errors.state && (
                 <p className="text-sm text-red-500">{form.formState.errors.state.message}</p>
               )}
             </div>
@@ -889,10 +977,10 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
               <Select
                 value={form.watch("municipality")}
                 onValueChange={(value) => form.setValue("municipality", value)}
-                disabled={!selectedState}
+                disabled={!isLocationValid}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o município" />
+                <SelectTrigger name="municipality">
+                  <SelectValue placeholder={isLocationValid ? "Selecione o município" : "Selecione um estado primeiro"} />
                 </SelectTrigger>
                 <SelectContent>
                   {selectedState === 'all' ? (
@@ -906,17 +994,20 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
                   )}
                 </SelectContent>
               </Select>
-              {form.formState.errors.municipality && (
+              {hasAttemptedSubmit && form.formState.errors.municipality && (
                 <p className="text-sm text-red-500">{form.formState.errors.municipality.message}</p>
               )}
             </div>
           </div>
 
           {/* Escolas */}
-          <div className="space-y-2">
+          <div className={`space-y-2 ${!isMunicipalityValid ? 'opacity-50 pointer-events-none' : ''}`}>
             <div className="flex items-center justify-between">
               <Label>Escolas *</Label>
-              {schools.length > 0 && (
+              {!isMunicipalityValid && (
+                <span className="text-sm text-muted-foreground">Selecione um município primeiro</span>
+              )}
+              {isMunicipalityValid && schools.length > 0 && (
                 <Button
                   type="button"
                   variant="outline"
@@ -958,7 +1049,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
               </div>
             )}
 
-            {form.formState.errors.selectedSchools && (
+            {hasAttemptedSubmit && form.formState.errors.selectedSchools && (
               <p className="text-sm text-red-500">{form.formState.errors.selectedSchools.message}</p>
             )}
           </div>
@@ -990,11 +1081,14 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
       </Card>
 
       {/* Disciplinas */}
-      <Card>
+      <Card className={!isSchoolsValid ? 'opacity-50 pointer-events-none' : ''}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <BookOpen className="h-5 w-5" />
             Disciplinas
+            {!isSchoolsValid && (
+              <span className="text-sm text-muted-foreground ml-2">(Selecione escolas primeiro)</span>
+            )}
           </CardTitle>
           <CardDescription>
             Selecione as disciplinas que serão avaliadas
@@ -1019,7 +1113,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
             ))}
           </div>
 
-          {form.formState.errors.subjects && (
+          {hasAttemptedSubmit && form.formState.errors.subjects && (
             <p className="text-sm text-red-500">{form.formState.errors.subjects.message}</p>
           )}
 
@@ -1050,11 +1144,14 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
       </Card>
 
       {/* Turmas */}
-      <Card>
+      <Card className={!isSubjectsValid ? 'opacity-50 pointer-events-none' : ''}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
             Turmas
+            {!isSubjectsValid && (
+              <span className="text-sm text-muted-foreground ml-2">(Selecione disciplinas primeiro)</span>
+            )}
           </CardTitle>
           <CardDescription>
             Selecione as turmas que participarão da avaliação
@@ -1112,7 +1209,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
             </>
           )}
 
-          {form.formState.errors.selectedClasses && (
+          {hasAttemptedSubmit && form.formState.errors.selectedClasses && (
             <p className="text-sm text-red-500">{form.formState.errors.selectedClasses.message}</p>
           )}
 
