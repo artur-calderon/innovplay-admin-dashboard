@@ -20,6 +20,7 @@ import { useEvaluationActions, useQuestions, useQuestionActions } from "@/stores
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/authContext";
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
+import { scrollToFirstError, getFieldLabel } from "@/utils/formValidation";
 
 interface CreateEvaluationStep2Props {
   data: {
@@ -183,6 +184,15 @@ export const CreateEvaluationStep2 = ({
       }
 
       if (allQuestions.length === 0) {
+        // Scroll para a seção de questões
+        const questionsSection = document.querySelector('[data-section="questions"]');
+        if (questionsSection) {
+          questionsSection.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'center' 
+          });
+        }
+        
         toast({
           title: "Erro",
           description: "Adicione pelo menos uma questão à avaliação",
@@ -199,6 +209,15 @@ export const CreateEvaluationStep2 = ({
       });
 
       if (invalidQuestions.length > 0) {
+        // Scroll para a seção de questões
+        const questionsSection = document.querySelector('[data-section="questions"]');
+        if (questionsSection) {
+          questionsSection.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'center' 
+          });
+        }
+        
         toast({
           title: "Erro de Validação",
           description: `${invalidQuestions.length} questão(ões) não têm alternativas ou resposta correta definida`,
@@ -334,7 +353,7 @@ export const CreateEvaluationStep2 = ({
       </div>
 
       {/* Questões por disciplina */}
-      <div className="space-y-6">
+      <div className="space-y-6" data-section="questions">
         {data.subjects.map((subject) => {
           const subjectQuestions = getQuestionsForSubject(subject.id);
           

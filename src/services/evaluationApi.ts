@@ -175,24 +175,69 @@ export class EvaluationApiService {
             endpoint: '/student-answers/submit'
         });
         
-        try {
-            const response = await api.post('/student-answers/submit', data);
-            console.log('✅ Resposta da API submitTest recebida:', {
-                status: response.status,
-                statusText: response.statusText,
-                data: response.data,
-                hasResults: !!response.data?.results
-            });
-            return response.data;
-        } catch (error) {
-            console.error('❌ Erro ao finalizar teste:', {
-                error: error,
-                response: error.response?.data,
-                status: error.response?.status,
-                statusText: error.response?.statusText
-            });
-            throw error;
+        // ✅ MELHORADO: Implementar retry automático com timeout progressivo
+        const maxRetries = 3;
+        let lastError: any;
+        
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                console.log(`🔄 Tentativa ${attempt + 1}/${maxRetries + 1} de envio da avaliação`);
+                
+                // ✅ NOVO: Timeout progressivo (15s, 30s, 45s)
+                const timeout = 15000 + (attempt * 15000);
+                const timeoutPromise = new Promise<never>((_, reject) => {
+                    setTimeout(() => {
+                        reject(new Error(`Timeout de ${timeout}ms excedido na tentativa ${attempt + 1}`));
+                    }, timeout);
+                });
+                
+                const requestPromise = api.post('/student-answers/submit', data);
+                const response = await Promise.race([requestPromise, timeoutPromise]);
+                
+                console.log('✅ Resposta da API submitTest recebida:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    data: response.data,
+                    hasResults: !!response.data?.results,
+                    attempt: attempt + 1
+                });
+                return response.data;
+                
+            } catch (error) {
+                lastError = error;
+                console.error(`❌ Erro na tentativa ${attempt + 1}:`, {
+                    error: error,
+                    response: error.response?.data,
+                    status: error.response?.status,
+                    statusText: error.response?.statusText,
+                    code: error.code,
+                    message: error.message
+                });
+                
+                // ✅ NOVO: Só tentar novamente se for erro de rede/timeout
+                const shouldRetry = attempt < maxRetries && (
+                    error.code === 'ECONNABORTED' ||
+                    error.code === 'ERR_NETWORK' ||
+                    error.message?.includes('timeout') ||
+                    error.message?.includes('Timeout') ||
+                    error.response?.status >= 500
+                );
+                
+                if (shouldRetry) {
+                    const delay = 2000 * (attempt + 1); // 2s, 4s, 6s
+                    console.log(`⏳ Aguardando ${delay}ms antes da próxima tentativa...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    continue;
+                }
+                
+                // Se não deve tentar novamente, quebrar o loop
+                break;
+            }
         }
+        
+        // Se chegou aqui, todas as tentativas falharam
+        console.error('❌ Todas as tentativas de envio falharam:', lastError);
+        throw lastError;
     }
 }
 
