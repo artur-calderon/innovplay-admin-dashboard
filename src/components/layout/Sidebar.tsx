@@ -29,7 +29,8 @@ import {
   Menu,
   ChevronLeft,
   FileText,
-  Target
+  Target,
+  TrendingUp
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -218,6 +219,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         { icon: Calculator, label: "Calculadora SAEB", href: "/app/calculadora-saeb", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: ClipboardCheck, label: "Correção", href: "/app/avaliacoes/correcao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"], badge: "3" },
         { icon: BarChart3, label: "Resultados", href: "/app/resultados", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+        { icon: TrendingUp, label: "Evolução", href: "/app/evolucao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         {
           icon: FileText,
           label: "Questionários",

@@ -345,7 +345,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         }
 
         // ✅ NOVO: Validar se todas as respostas têm question_id válido
-        const questionIds = shuffledQuestions.map(q => q.id);
+        const questionIds = testData.questions.map(q => q.id);
         const invalidQuestionIds = answersArray.filter(answer => 
             !questionIds.includes(answer.question_id)
         );
