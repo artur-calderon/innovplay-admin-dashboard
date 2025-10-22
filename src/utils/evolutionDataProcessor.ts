@@ -1,11 +1,21 @@
-import { ComparisonResponse, EvolutionData } from '@/services/evaluationComparisonApi';
+import { ComparisonResponse } from '@/services/evaluationComparisonApi';
+import { EvolutionData } from '@/components/evolution/EvolutionChart';
 
 export interface ProcessedEvolutionData {
+  /** "Geral" por etapa (notas) */
   generalData: EvolutionData[];
-  subjectData: { [subjectName: string]: EvolutionData[] };
-  participationData: EvolutionData[];
+  /** "Geral" por etapa (proficiência) */
+  proficiencyData: EvolutionData[];
+  /** "Classificação/Aprovação" geral */
   approvalData: EvolutionData[];
-  classificationData: { [subjectName: string]: EvolutionData[] };
+  /** por disciplina (notas) */
+  subjectData: Record<string, EvolutionData[]>;
+  /** por disciplina (proficiência) */
+  subjectProficiencyData: Record<string, EvolutionData[]>;
+  /** classificação por disciplina (opcional) */
+  classificationData: Record<string, EvolutionData[]>;
+  /** nomes das avaliações para exibição */
+  evaluationNames: string[];
 }
 
 /**
@@ -13,17 +23,25 @@ export interface ProcessedEvolutionData {
  */
 export function processComparisonData(comparison: ComparisonResponse): ProcessedEvolutionData {
   const generalData = processGeneralComparison(comparison);
+  const proficiencyData = processProficiencyComparison(comparison);
   const subjectData = processSubjectComparison(comparison);
-  const participationData = processParticipationData(comparison);
+  const subjectProficiencyData = processSubjectProficiencyComparison(comparison);
   const approvalData = processApprovalData(comparison);
   const classificationData = processClassificationData(comparison);
+  
+  // Extrair nomes das avaliações
+  const evaluationNames = comparison.evaluations
+    ?.sort((a, b) => a.order - b.order)
+    ?.map(evaluation => evaluation.title) || [];
 
   return {
     generalData,
+    proficiencyData,
     subjectData,
-    participationData,
+    subjectProficiencyData,
     approvalData,
-    classificationData
+    classificationData,
+    evaluationNames
   };
 }
 
@@ -35,30 +53,81 @@ function processGeneralComparison(comparison: ComparisonResponse): EvolutionData
     return [];
   }
 
-  const data: EvolutionData[] = [];
+  // NOVO: Coletar todos os valores das avaliações
+  const values: number[] = [];
+  const variations: number[] = [];
   
-  // Para cada comparação, extrair dados gerais
-  comparison.comparisons.forEach((comp, index) => {
-    const general = comp.general_comparison;
+  // Primeira comparação tem evaluation_1 e evaluation_2
+  if (comparison.comparisons[0]) {
+    const first = comparison.comparisons[0].general_comparison;
+    values.push(first.average_grade.evaluation_1);
+    values.push(first.average_grade.evaluation_2);
+    variations.push(first.average_grade.evolution.percentage);
+  }
+  
+  // Comparações subsequentes só adicionam evaluation_2 (evita duplicatas)
+  for (let i = 1; i < comparison.comparisons.length; i++) {
+    const comp = comparison.comparisons[i].general_comparison;
+    values.push(comp.average_grade.evaluation_2);
+    variations.push(comp.average_grade.evolution.percentage);
+  }
+  
+  // Criar UM único registro com todas as etapas
+  return [{
+    name: "GERAL",
+    etapa1: values[0],
+    etapa2: values[1],
+    etapa3: values[2],  // undefined se não houver 3ª avaliação
+    variacao_1_2: variations[0],
+    variacao_2_3: variations[1]  // undefined se não houver 2ª variação
+  }];
+}
+
+/**
+ * Processa dados de proficiência geral
+ */
+function processProficiencyComparison(comparison: ComparisonResponse): EvolutionData[] {
+  if (!comparison.comparisons || comparison.comparisons.length === 0) {
+    return [];
+  }
+
+  // NOVO: Coletar todos os valores de proficiência
+  const values: number[] = [];
+  const variations: number[] = [];
+  
+  // Primeira comparação tem evaluation_1 e evaluation_2
+  if (comparison.comparisons[0]) {
+    const first = comparison.comparisons[0].general_comparison;
     
-    data.push({
-      name: "GERAL",
-      etapa1: general.average_grade.evaluation_1,
-      etapa2: general.average_grade.evaluation_2,
-      variacao_1_2: general.average_grade.evolution.percentage
-    });
-
-    // Se houver terceira avaliação, adicionar dados da próxima comparação
-    if (index < comparison.comparisons.length - 1) {
-      const nextComp = comparison.comparisons[index + 1];
-      const nextGeneral = nextComp.general_comparison;
-      
-      data[data.length - 1].etapa3 = nextGeneral.average_grade.evaluation_2;
-      data[data.length - 1].variacao_2_3 = nextGeneral.average_grade.evolution.percentage;
+    // Verificar se average_proficiency existe
+    if (first.average_proficiency) {
+      values.push(first.average_proficiency.evaluation_1);
+      values.push(first.average_proficiency.evaluation_2);
+      variations.push(first.average_proficiency.evolution.percentage);
+    } else {
+      // Se não há dados de proficiência, retornar array vazio
+      return [];
     }
-  });
-
-  return data;
+  }
+  
+  // Comparações subsequentes só adicionam evaluation_2 (evita duplicatas)
+  for (let i = 1; i < comparison.comparisons.length; i++) {
+    const comp = comparison.comparisons[i].general_comparison;
+    if (comp.average_proficiency) {
+      values.push(comp.average_proficiency.evaluation_2);
+      variations.push(comp.average_proficiency.evolution.percentage);
+    }
+  }
+  
+  // Criar UM único registro com todas as etapas
+  return [{
+    name: "PROFICIÊNCIA",
+    etapa1: values[0],
+    etapa2: values[1],
+    etapa3: values[2],  // undefined se não houver 3ª avaliação
+    variacao_1_2: variations[0],
+    variacao_2_3: variations[1]  // undefined se não houver 2ª variação
+  }];
 }
 
 /**
@@ -71,36 +140,85 @@ function processSubjectComparison(comparison: ComparisonResponse): { [subjectNam
 
   const subjectData: { [subjectName: string]: EvolutionData[] } = {};
   
-  comparison.comparisons.forEach((comp, index) => {
-    const subjectComparison = comp.subject_comparison;
+  // Agrupar dados por disciplina
+  Object.keys(comparison.comparisons[0].subject_comparison).forEach(subjectName => {
+    const values: number[] = [];
+    const variations: number[] = [];
     
-    Object.entries(subjectComparison).forEach(([subjectName, subjectData]) => {
-      if (!subjectData[subjectName]) {
-        subjectData[subjectName] = [];
+    // Primeira comparação
+    if (comparison.comparisons[0]) {
+      const subj = comparison.comparisons[0].subject_comparison[subjectName];
+      values.push(subj.average_grade.evaluation_1);
+      values.push(subj.average_grade.evaluation_2);
+      variations.push(subj.average_grade.evolution.percentage);
+    }
+    
+    // Comparações subsequentes
+    for (let i = 1; i < comparison.comparisons.length; i++) {
+      const subj = comparison.comparisons[i].subject_comparison[subjectName];
+      if (subj) {
+        values.push(subj.average_grade.evaluation_2);
+        variations.push(subj.average_grade.evolution.percentage);
       }
-      
-      subjectData[subjectName].push({
-        name: subjectName.toUpperCase(),
-        etapa1: subjectData.average_grade.evaluation_1,
-        etapa2: subjectData.average_grade.evaluation_2,
-        variacao_1_2: subjectData.average_grade.evolution.percentage
-      });
-
-      // Se houver terceira avaliação, adicionar dados da próxima comparação
-      if (index < comparison.comparisons.length - 1) {
-        const nextComp = comparison.comparisons[index + 1];
-        const nextSubjectComparison = nextComp.subject_comparison;
-        
-        if (nextSubjectComparison[subjectName]) {
-          const nextSubjectData = nextSubjectComparison[subjectName];
-          const lastItem = subjectData[subjectName][subjectData[subjectName].length - 1];
-          lastItem.etapa3 = nextSubjectData.average_grade.evaluation_2;
-          lastItem.variacao_2_3 = nextSubjectData.average_grade.evolution.percentage;
-        }
-      }
-    });
+    }
+    
+    // Um registro para NOTA
+    subjectData[subjectName] = [{
+      name: subjectName.toUpperCase(),
+      etapa1: values[0],
+      etapa2: values[1],
+      etapa3: values[2],
+      variacao_1_2: variations[0],
+      variacao_2_3: variations[1]
+    }];
   });
+  
+  return subjectData;
+}
 
+/**
+ * Processa dados de proficiência por disciplina
+ */
+function processSubjectProficiencyComparison(comparison: ComparisonResponse): { [subjectName: string]: EvolutionData[] } {
+  if (!comparison.comparisons || comparison.comparisons.length === 0) {
+    return {};
+  }
+
+  const subjectData: { [subjectName: string]: EvolutionData[] } = {};
+  
+  // Agrupar dados por disciplina
+  Object.keys(comparison.comparisons[0].subject_comparison).forEach(subjectName => {
+    const values: number[] = [];
+    const variations: number[] = [];
+    
+    // Primeira comparação
+    if (comparison.comparisons[0]) {
+      const subj = comparison.comparisons[0].subject_comparison[subjectName];
+      values.push(subj.average_proficiency.evaluation_1);
+      values.push(subj.average_proficiency.evaluation_2);
+      variations.push(subj.average_proficiency.evolution.percentage);
+    }
+    
+    // Comparações subsequentes
+    for (let i = 1; i < comparison.comparisons.length; i++) {
+      const subj = comparison.comparisons[i].subject_comparison[subjectName];
+      if (subj) {
+        values.push(subj.average_proficiency.evaluation_2);
+        variations.push(subj.average_proficiency.evolution.percentage);
+      }
+    }
+    
+    // Um registro para PROFICIÊNCIA
+    subjectData[subjectName] = [{
+      name: subjectName.toUpperCase(),
+      etapa1: values[0],
+      etapa2: values[1],
+      etapa3: values[2],
+      variacao_1_2: variations[0],
+      variacao_2_3: variations[1]
+    }];
+  });
+  
   return subjectData;
 }
 
@@ -161,38 +279,41 @@ function processApprovalData(comparison: ComparisonResponse): EvolutionData[] {
     return [];
   }
 
-  const data: EvolutionData[] = [];
+  // NOVO: Coletar todos os valores de aprovação
+  const values: number[] = [];
+  const variations: number[] = [];
   
-  comparison.comparisons.forEach((comp, index) => {
-    const general = comp.general_comparison;
-    
-    // Calcular taxa de aprovação baseada na classificação
+  // Primeira comparação
+  if (comparison.comparisons[0]) {
+    const general = comparison.comparisons[0].general_comparison;
     const approval1 = calculateApprovalRate(general.classification_distribution.evaluation_1);
     const approval2 = calculateApprovalRate(general.classification_distribution.evaluation_2);
     
-    const variation = approval1 > 0 ? ((approval2 - approval1) / approval1) * 100 : 0;
+    values.push(approval1);
+    values.push(approval2);
+    variations.push(approval1 > 0 ? ((approval2 - approval1) / approval1) * 100 : 0);
+  }
+  
+  // Comparações subsequentes
+  for (let i = 1; i < comparison.comparisons.length; i++) {
+    const general = comparison.comparisons[i].general_comparison;
+    const approval = calculateApprovalRate(general.classification_distribution.evaluation_2);
+    values.push(approval);
     
-    data.push({
-      name: "APROVAÇÃO",
-      etapa1: approval1,
-      etapa2: approval2,
-      variacao_1_2: variation
-    });
-
-    // Se houver terceira avaliação
-    if (index < comparison.comparisons.length - 1) {
-      const nextComp = comparison.comparisons[index + 1];
-      const nextGeneral = nextComp.general_comparison;
-      
-      const approval3 = calculateApprovalRate(nextGeneral.classification_distribution.evaluation_2);
-      const variation2 = approval2 > 0 ? ((approval3 - approval2) / approval2) * 100 : 0;
-      
-      data[data.length - 1].etapa3 = approval3;
-      data[data.length - 1].variacao_2_3 = variation2;
-    }
-  });
-
-  return data;
+    const prevApproval = values[values.length - 2];
+    const variation = prevApproval > 0 ? ((approval - prevApproval) / prevApproval) * 100 : 0;
+    variations.push(variation);
+  }
+  
+  // Criar UM único registro com todas as etapas
+  return [{
+    name: "APROVAÇÃO",
+    etapa1: values[0],
+    etapa2: values[1],
+    etapa3: values[2],  // undefined se não houver 3ª avaliação
+    variacao_1_2: variations[0],
+    variacao_2_3: variations[1]  // undefined se não houver 2ª variação
+  }];
 }
 
 /**
@@ -205,62 +326,50 @@ function processClassificationData(comparison: ComparisonResponse): { [subjectNa
 
   const classificationData: { [subjectName: string]: EvolutionData[] } = {};
   
-  comparison.comparisons.forEach((comp, index) => {
-    const subjectComparison = comp.subject_comparison;
+  // Agrupar dados por disciplina
+  Object.keys(comparison.comparisons[0].subject_comparison).forEach(subjectName => {
+    const values: number[] = [];
+    const variations: number[] = [];
     
-    Object.entries(subjectComparison).forEach(([subjectName, subjectData]) => {
-      if (!classificationData[subjectName]) {
-        classificationData[subjectName] = [];
-      }
-      
-      // Calcular percentual de alunos em cada nível
+    // Primeira comparação
+    if (comparison.comparisons[0]) {
+      const subjectData = comparison.comparisons[0].subject_comparison[subjectName];
       const levels1 = subjectData.classification_distribution.evaluation_1;
       const levels2 = subjectData.classification_distribution.evaluation_2;
       
-      // Calcular percentual de alunos "Adequado" e "Avançado" (considerados aprovados)
-      const adequate1 = levels1['Adequado'] || 0;
-      const advanced1 = levels1['Avançado'] || 0;
-      const total1 = Object.values(levels1).reduce((sum, count) => sum + count, 0);
-      const approval1 = total1 > 0 ? ((adequate1 + advanced1) / total1) * 100 : 0;
+      const approval1 = calculateApprovalRate(levels1);
+      const approval2 = calculateApprovalRate(levels2);
       
-      const adequate2 = levels2['Adequado'] || 0;
-      const advanced2 = levels2['Avançado'] || 0;
-      const total2 = Object.values(levels2).reduce((sum, count) => sum + count, 0);
-      const approval2 = total2 > 0 ? ((adequate2 + advanced2) / total2) * 100 : 0;
-      
-      const variation = approval1 > 0 ? ((approval2 - approval1) / approval1) * 100 : 0;
-      
-      classificationData[subjectName].push({
-        name: subjectName.toUpperCase(),
-        etapa1: approval1,
-        etapa2: approval2,
-        variacao_1_2: variation
-      });
-
-      // Se houver terceira avaliação
-      if (index < comparison.comparisons.length - 1) {
-        const nextComp = comparison.comparisons[index + 1];
-        const nextSubjectComparison = nextComp.subject_comparison;
+      values.push(approval1);
+      values.push(approval2);
+      variations.push(approval1 > 0 ? ((approval2 - approval1) / approval1) * 100 : 0);
+    }
+    
+    // Comparações subsequentes
+    for (let i = 1; i < comparison.comparisons.length; i++) {
+      const subjectData = comparison.comparisons[i].subject_comparison[subjectName];
+      if (subjectData) {
+        const levels = subjectData.classification_distribution.evaluation_2;
+        const approval = calculateApprovalRate(levels);
+        values.push(approval);
         
-        if (nextSubjectComparison[subjectName]) {
-          const nextSubjectData = nextSubjectComparison[subjectName];
-          const nextLevels = nextSubjectData.classification_distribution.evaluation_2;
-          
-          const nextAdequate = nextLevels['Adequado'] || 0;
-          const nextAdvanced = nextLevels['Avançado'] || 0;
-          const nextTotal = Object.values(nextLevels).reduce((sum, count) => sum + count, 0);
-          const nextApproval = nextTotal > 0 ? ((nextAdequate + nextAdvanced) / nextTotal) * 100 : 0;
-          
-          const nextVariation = approval2 > 0 ? ((nextApproval - approval2) / approval2) * 100 : 0;
-          
-          const lastItem = classificationData[subjectName][classificationData[subjectName].length - 1];
-          lastItem.etapa3 = nextApproval;
-          lastItem.variacao_2_3 = nextVariation;
-        }
+        const prevApproval = values[values.length - 2];
+        const variation = prevApproval > 0 ? ((approval - prevApproval) / prevApproval) * 100 : 0;
+        variations.push(variation);
       }
-    });
+    }
+    
+    // Um registro por disciplina
+    classificationData[subjectName] = [{
+      name: subjectName.toUpperCase(),
+      etapa1: values[0],
+      etapa2: values[1],
+      etapa3: values[2],
+      variacao_1_2: variations[0],
+      variacao_2_3: variations[1]
+    }];
   });
-
+  
   return classificationData;
 }
 
