@@ -222,6 +222,22 @@ export default function TakeEvaluation() {
         }
     }, [currentQuestionIndex, shuffledQuestions, answers]);
 
+    // ✅ NOVO: Verificação adicional para tablets - garantir que modal seja exibido quando todas questões estiverem respondidas
+    useEffect(() => {
+        const totalQuestions = shuffledQuestions.length;
+        const answeredQuestions = Object.keys(answers).length;
+        
+        // Se estamos em fullscreen e todas as questões foram respondidas, mostrar modal
+        if (showFullscreenQuestion && totalQuestions > 0 && answeredQuestions >= totalQuestions) {
+            setTimeout(() => {
+                setShowFullscreenQuestion(false);
+                setTimeout(() => {
+                    setShowSubmitDialog(true);
+                }, 150);
+            }, 300);
+        }
+    }, [answers, shuffledQuestions.length, showFullscreenQuestion]);
+
     // ✅ Organizar questões por disciplina e embaralhar alternativas
     useEffect(() => {
         if (testData?.questions?.length && shuffledQuestions.length === 0) {
@@ -1083,9 +1099,18 @@ export default function TakeEvaluation() {
                                     <Button
                                         variant="outline"
                                         size="sm"
-                                        onClick={() => navigateToQuestion(currentQuestionIndex - 1)}
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            navigateToQuestion(currentQuestionIndex - 1);
+                                        }}
+                                        onTouchEnd={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            navigateToQuestion(currentQuestionIndex - 1);
+                                        }}
                                         disabled={currentQuestionIndex === 0 || isTimeUp}
-                                        className="px-3 sm:px-6 md:px-8 py-2 sm:py-3 md:py-4 text-sm sm:text-base md:text-lg font-bold border-2 rounded-lg sm:rounded-xl hover:bg-gray-50 disabled:opacity-50"
+                                        className="px-3 sm:px-6 md:px-8 py-2 sm:py-3 md:py-4 text-sm sm:text-base md:text-lg font-bold border-2 rounded-lg sm:rounded-xl hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 touch-manipulation"
                                     >
                                         <ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6 md:h-8 md:w-8 mr-1 sm:mr-2 md:mr-3" />
                                         <span className="hidden xs:inline">← Voltar</span>
@@ -1098,9 +1123,18 @@ export default function TakeEvaluation() {
 
                                     <Button
                                         size="sm"
-                                        onClick={() => navigateToQuestion(currentQuestionIndex + 1)}
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            navigateToQuestion(currentQuestionIndex + 1);
+                                        }}
+                                        onTouchEnd={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            navigateToQuestion(currentQuestionIndex + 1);
+                                        }}
                                         disabled={currentQuestionIndex === shuffledQuestions.length - 1 || isTimeUp}
-                                        className="px-3 sm:px-6 md:px-8 py-2 sm:py-3 md:py-4 text-sm sm:text-base md:text-lg font-bold bg-purple-600 hover:bg-purple-700 text-white rounded-lg sm:rounded-xl shadow-lg hover:shadow-xl transition-all"
+                                        className="px-3 sm:px-6 md:px-8 py-2 sm:py-3 md:py-4 text-sm sm:text-base md:text-lg font-bold bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white rounded-lg sm:rounded-xl shadow-lg hover:shadow-xl transition-all touch-manipulation"
                                     >
                                         <span className="hidden xs:inline">Avançar →</span>
                                         <span className="xs:hidden">→</span>
@@ -1115,8 +1149,17 @@ export default function TakeEvaluation() {
                  {/* ✅ Botão flutuante mobile para navegação */}
                  <div className="md:hidden fixed bottom-4 right-4 z-30">
                     <Button
-                        onClick={() => setShowMobileNav(true)}
-                        className="rounded-full w-14 h-14 sm:w-16 sm:h-16 shadow-xl bg-purple-600 hover:bg-purple-700 text-white flex flex-col items-center justify-center p-2"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setShowMobileNav(true);
+                        }}
+                        onTouchEnd={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setShowMobileNav(true);
+                        }}
+                        className="rounded-full w-14 h-14 sm:w-16 sm:h-16 shadow-xl bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white flex flex-col items-center justify-center p-2 touch-manipulation"
                         title="Abrir navegação"
                     >
                         <Menu className="h-5 w-5 sm:h-6 sm:w-6" />
@@ -1132,7 +1175,16 @@ export default function TakeEvaluation() {
                          {/* Overlay com blur ATRÁS */}
                          <div 
                              className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
-                             onClick={() => setShowMobileNav(false)}
+                             onClick={(e) => {
+                                 e.preventDefault();
+                                 e.stopPropagation();
+                                 setShowMobileNav(false);
+                             }}
+                             onTouchEnd={(e) => {
+                                 e.preventDefault();
+                                 e.stopPropagation();
+                                 setShowMobileNav(false);
+                             }}
                          />
                          
                          {/* Modal de navegação na FRENTE */}
@@ -1148,8 +1200,17 @@ export default function TakeEvaluation() {
                                 <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => setShowMobileNav(false)}
-                                    className="h-8 w-8 p-0 rounded-full"
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setShowMobileNav(false);
+                                    }}
+                                    onTouchEnd={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setShowMobileNav(false);
+                                    }}
+                                    className="h-8 w-8 p-0 rounded-full touch-manipulation"
                                 >
                                     <X className="h-5 w-5" />
                                 </Button>
@@ -1193,7 +1254,17 @@ export default function TakeEvaluation() {
                                                     }
                                                     ${isTimeUp ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
                                                 `}
-                                                onClick={() => {
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    if (!isTimeUp) {
+                                                        navigateToQuestion(index);
+                                                        setShowMobileNav(false);
+                                                    }
+                                                }}
+                                                onTouchEnd={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
                                                     if (!isTimeUp) {
                                                         navigateToQuestion(index);
                                                         setShowMobileNav(false);
@@ -1214,14 +1285,22 @@ export default function TakeEvaluation() {
                              {/* Botão de enviar */}
                              <div className="p-4 border-t border-gray-200 bg-gray-50">
                                 <Button
-                                    onClick={() => {
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setShowMobileNav(false);
+                                        setShowSubmitDialog(true);
+                                    }}
+                                    onTouchEnd={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
                                         setShowMobileNav(false);
                                         setShowSubmitDialog(true);
                                     }}
                                     disabled={isTimeUp || isSubmitting || Object.keys(answers).length < shuffledQuestions.length}
-                                    className={`w-full py-4 text-base font-bold rounded-xl ${
+                                    className={`w-full py-4 text-base font-bold rounded-xl touch-manipulation ${
                                         Object.keys(answers).length >= shuffledQuestions.length
-                                            ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg'
+                                            ? 'bg-green-600 hover:bg-green-700 active:bg-green-800 text-white shadow-lg'
                                             : 'bg-gray-400 text-gray-200 cursor-not-allowed'
                                     }`}
                                 >
@@ -1244,12 +1323,25 @@ export default function TakeEvaluation() {
                          {/* Overlay com blur ATRÁS */}
                          <div 
                              className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm cursor-pointer"
-                             onClick={() => setShowSubmitDialog(false)}
+                             onClick={(e) => {
+                                 e.preventDefault();
+                                 e.stopPropagation();
+                                 setShowSubmitDialog(false);
+                             }}
+                             onTouchEnd={(e) => {
+                                 e.preventDefault();
+                                 e.stopPropagation();
+                                 setShowSubmitDialog(false);
+                             }}
                          />
                          
                          {/* Modal na FRENTE */}
                          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 pointer-events-none">
-                             <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-md w-full mx-2 sm:mx-4 border border-gray-200 pointer-events-auto">
+                             <div 
+                                 className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-md w-full mx-2 sm:mx-4 border border-gray-200 pointer-events-auto"
+                                 onClick={(e) => e.stopPropagation()}
+                                 onTouchEnd={(e) => e.stopPropagation()}
+                             >
                                  <div className="p-4 sm:p-6 pb-3 sm:pb-4">
                                      <div className="space-y-3 sm:space-y-4">
                                          <h2 className="text-lg sm:text-xl font-bold text-gray-800">Confirmar envio da avaliação</h2>
@@ -1263,28 +1355,49 @@ export default function TakeEvaluation() {
                                  </div>
                                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 px-4 sm:px-6 pb-4 sm:pb-6">
                                      <button
-                                         className="flex-1 px-4 py-2.5 sm:py-2 text-sm sm:text-base border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 font-medium order-2 sm:order-1"
-                                         onClick={() => setShowSubmitDialog(false)}
+                                         className="flex-1 px-4 py-3 sm:py-2.5 text-sm sm:text-base border border-gray-300 rounded-lg hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 font-medium order-2 sm:order-1 touch-manipulation"
+                                         onClick={(e) => {
+                                             e.preventDefault();
+                                             e.stopPropagation();
+                                             setShowSubmitDialog(false);
+                                         }}
+                                         onTouchEnd={(e) => {
+                                             e.preventDefault();
+                                             e.stopPropagation();
+                                             setShowSubmitDialog(false);
+                                         }}
                                          disabled={isSubmitting}
                                      >
                                          Cancelar
                                      </button>
                                      <button
-                                         className="flex-1 px-4 py-2.5 sm:py-2 text-sm sm:text-base bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-semibold order-1 sm:order-2"
-                                         onClick={() => {
+                                         className="flex-1 px-4 py-3 sm:py-2.5 text-sm sm:text-base bg-blue-600 text-white rounded-lg hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 font-semibold order-1 sm:order-2 touch-manipulation"
+                                         onClick={(e) => {
+                                             e.preventDefault();
+                                             e.stopPropagation();
+                                             
                                              if (isSubmitting) {
-                                                 console.log('⚠️ Tentativa de envio bloqueada - já está enviando');
                                                  return;
                                              }
                                              // ✅ NOVO: Verificar se já foi enviada
                                              if (evaluationState !== 'active') {
-                                                 console.log('⚠️ Tentativa de envio bloqueada - avaliação não está ativa');
                                                  return;
                                              }
-                                             console.log('🚀 Modal de envio: Enviando avaliação...');
                                              
-                                             // ✅ CORRIGIDO: Não fechar modal imediatamente - deixar o hook gerenciar
-                                             // Apenas chamar handleSubmitTest
+                                             // ✅ CORRIGIDO: Chamar handleSubmitTest com proteção adicional
+                                             handleSubmitTest(false);
+                                         }}
+                                         onTouchEnd={(e) => {
+                                             e.preventDefault();
+                                             e.stopPropagation();
+                                             
+                                             if (isSubmitting) {
+                                                 return;
+                                             }
+                                             if (evaluationState !== 'active') {
+                                                 return;
+                                             }
+                                             
                                              handleSubmitTest(false);
                                          }}
                                          disabled={isSubmitting}
@@ -1303,7 +1416,16 @@ export default function TakeEvaluation() {
                          {/* Overlay com blur ATRÁS */}
                          <div 
                              className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm cursor-pointer"
-                             onClick={() => {
+                             onClick={(e) => {
+                                 e.preventDefault();
+                                 e.stopPropagation();
+                                 setShowCompletionDialog(false);
+                                 setHasSeenCompletionDialog(false);
+                                 setIsCompletionDialogClosed(true);
+                             }}
+                             onTouchEnd={(e) => {
+                                 e.preventDefault();
+                                 e.stopPropagation();
                                  setShowCompletionDialog(false);
                                  setHasSeenCompletionDialog(false);
                                  setIsCompletionDialogClosed(true);
@@ -1512,22 +1634,29 @@ export default function TakeEvaluation() {
                                                    // Salvar a letra original (A, B, C, D...) no backend
                                                    saveAnswer(currentQuestion.id, originalLetter);
                                                    
-                                                   // ✅ NOVO: Verificar se todas as questões foram respondidas
+                                                   // ✅ NOVO: Verificar se todas as questões foram respondidas (com fallback para tablets)
                                                    setTimeout(() => {
-                                                       // Verificar se todas as questões foram respondidas
+                                                       // ✅ MELHORADO: Verificação mais robusta para tablets
                                                        const totalQuestions = shuffledQuestions.length;
-                                                       const answeredQuestions = Object.keys(answers).length;
                                                        
-                                                       if (answeredQuestions === totalQuestions) {
-                                                           // Todas as questões foram respondidas - fechar fullscreen e mostrar confirmação
-                                                           setShowFullscreenQuestion(false);
-                                                           setShowSubmitDialog(true);
-                                                       } else if (currentQuestionIndex < shuffledQuestions.length - 1) {
-                                                           // Não é a última questão - navegar para a próxima
-                                                           navigateToQuestion(currentQuestionIndex + 1);
-                                                       }
-                                                       // Se for a última questão mas não todas foram respondidas, não faz nada
-                                                   }, 500); // Pequeno delay para dar feedback visual
+                                                       // Aguardar um pouco mais para garantir que a resposta foi salva
+                                                       setTimeout(() => {
+                                                           // Re-verificar após delay adicional para tablets
+                                                           const currentAnsweredQuestions = Object.keys(answers).length;
+                                                           
+                                                           if (currentAnsweredQuestions >= totalQuestions) {
+                                                               // Todas as questões foram respondidas - fechar fullscreen e mostrar confirmação
+                                                               setShowFullscreenQuestion(false);
+                                                               // ✅ NOVO: Delay adicional para tablets para garantir transição suave
+                                                               setTimeout(() => {
+                                                                   setShowSubmitDialog(true);
+                                                               }, 100);
+                                                           } else if (currentQuestionIndex < shuffledQuestions.length - 1) {
+                                                               // Não é a última questão - navegar para a próxima
+                                                               navigateToQuestion(currentQuestionIndex + 1);
+                                                           }
+                                                       }, 200); // Delay adicional para tablets
+                                                   }, 300); // Delay inicial reduzido
                                                }
                                            }}
                                            disabled={false}

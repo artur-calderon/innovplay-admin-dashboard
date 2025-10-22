@@ -1,0 +1,261 @@
+import { api } from '@/lib/api';
+
+// Interfaces baseadas no retorno do backend (evaluation_comparison_service.py)
+export interface EvolutionData {
+  value: number;
+  percentage: number;
+  direction: 'increase' | 'decrease' | 'stable';
+}
+
+export interface EvaluationInfo {
+  order: number;
+  id: string;
+  title: string;
+  created_at?: string;
+  application_date?: string;
+}
+
+export interface GeneralComparison {
+  average_grade: {
+    evaluation_1: number;
+    evaluation_2: number;
+    evolution: EvolutionData;
+  };
+  average_proficiency: {
+    evaluation_1: number;
+    evaluation_2: number;
+    evolution: EvolutionData;
+  };
+  total_students: {
+    evaluation_1: number;
+    evaluation_2: number;
+  };
+  classification_distribution: {
+    evaluation_1: Record<string, number>;
+    evaluation_2: Record<string, number>;
+  };
+}
+
+export interface SubjectComparison {
+  [subjectName: string]: {
+    subject_id: string;
+    average_grade: {
+      evaluation_1: number;
+      evaluation_2: number;
+      evolution: EvolutionData;
+    };
+    average_proficiency: {
+      evaluation_1: number;
+      evaluation_2: number;
+      evolution: EvolutionData;
+    };
+    total_students: {
+      evaluation_1: number;
+      evaluation_2: number;
+    };
+    classification_distribution: {
+      evaluation_1: Record<string, number>;
+      evaluation_2: Record<string, number>;
+    };
+  };
+}
+
+export interface SkillsComparison {
+  [subjectName: string]: {
+    [skillCode: string]: {
+      code: string;
+      description: string;
+      evaluation_1: {
+        correct_answers: number;
+        total_questions: number;
+        percentage: number;
+      };
+      evaluation_2: {
+        correct_answers: number;
+        total_questions: number;
+        percentage: number;
+      };
+      evolution: EvolutionData;
+    };
+  };
+}
+
+export interface Comparison {
+  from_evaluation: {
+    id: string;
+    title: string;
+    order: number;
+  };
+  to_evaluation: {
+    id: string;
+    title: string;
+    order: number;
+  };
+  general_comparison: GeneralComparison;
+  subject_comparison: SubjectComparison;
+  skills_comparison: SkillsComparison;
+}
+
+export interface ComparisonResponse {
+  evaluations: EvaluationInfo[];
+  total_evaluations: number;
+  comparisons: Comparison[];
+  total_comparisons: number;
+}
+
+export interface StudentComparisonResponse {
+  student: {
+    id: string;
+    user_id: string;
+    name: string;
+  };
+  evaluations: EvaluationInfo[];
+  total_evaluations: number;
+  comparisons: Comparison[];
+  total_comparisons: number;
+}
+
+// Interfaces para a nova API de filtros de comparação
+export interface ComparisonFilterOptions {
+  estado?: string;
+  municipio?: string;
+  avaliacoes?: string;
+}
+
+export interface ComparisonFilterResponse {
+  filtros_aplicados: {
+    avaliacoes?: string[];
+    estado?: string;
+    municipio?: string;
+  };
+  opcoes: {
+    avaliacoes?: Array<{
+      id: string;
+      titulo: string;
+    }>;
+    escolas?: Array<{
+      id: string;
+      nome: string;
+    }>;
+    estados?: Array<{
+      id: string;
+      nome: string;
+    }>;
+    municipios?: Array<{
+      id: string;
+      nome: string;
+    }>;
+  };
+}
+
+export class EvaluationComparisonApiService {
+  /**
+   * Busca opções de filtros para comparação de avaliações
+   * @param params Parâmetros opcionais para filtrar as opções
+   * @returns Opções de filtros disponíveis
+   */
+  static async getComparisonFilterOptions(params?: ComparisonFilterOptions): Promise<ComparisonFilterResponse> {
+    try {
+      // Se não houver parâmetros, buscar estados iniciais
+      if (!params || Object.keys(params).length === 0) {
+        const response = await api.get('/evaluation-results/opcoes-filtros/estados');
+        return {
+          filtros_aplicados: {},
+          opcoes: {
+            estados: response.data.estados || []
+          }
+        };
+      }
+
+      // Caso contrário, usar endpoint unificado com parâmetros
+      const queryParams = new URLSearchParams();
+      
+      if (params?.estado) queryParams.append('estado', params.estado);
+      if (params?.municipio) queryParams.append('municipio', params.municipio);
+      if (params?.avaliacoes) queryParams.append('avaliacoes', params.avaliacoes);
+
+      const url = `/evaluation-results/opcoes-filtros?${queryParams.toString()}`;
+      
+      const response = await api.get(url);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao buscar opções de filtros de comparação:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Compara múltiplas avaliações e mostra a evolução sequencial entre elas
+   * @param testIds Array de IDs das avaliações (mínimo 2)
+   * @returns Dados de comparação entre as avaliações
+   */
+  static async compareEvaluations(testIds: string[]): Promise<ComparisonResponse> {
+    try {
+      if (testIds.length < 2) {
+        throw new Error('Mínimo de 2 avaliações necessário para comparação');
+      }
+
+      console.log('Enviando IDs para comparação:', testIds);
+      console.log('Payload sendo enviado:', { test_ids: testIds });
+
+      const response = await api.post('/test/compare', {
+        test_ids: testIds
+      });
+
+      console.log('Resposta da API de comparação:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao comparar avaliações:', error);
+      console.error('Detalhes do erro:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        config: error.config
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Compara múltiplas avaliações específicas de um aluno
+   * @param studentId ID do aluno (pode ser user_id ou student_id)
+   * @param testIds Array de IDs das avaliações (mínimo 2)
+   * @returns Dados de comparação do aluno entre as avaliações
+   */
+  static async compareStudentEvaluations(
+    studentId: string, 
+    testIds: string[]
+  ): Promise<StudentComparisonResponse> {
+    try {
+      if (testIds.length < 2) {
+        throw new Error('Mínimo de 2 avaliações necessário para comparação');
+      }
+
+      const response = await api.post(`/student/${studentId}/compare`, {
+        test_ids: testIds
+      });
+
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao comparar avaliações do aluno:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Valida se as avaliações podem ser comparadas
+   * @param testIds Array de IDs das avaliações
+   * @returns true se pode comparar, false caso contrário
+   */
+  static validateComparison(testIds: string[]): { valid: boolean; message?: string } {
+    if (testIds.length < 2) {
+      return { valid: false, message: 'Selecione pelo menos 2 avaliações para comparar' };
+    }
+
+    if (testIds.length > 10) {
+      return { valid: false, message: 'Máximo de 10 avaliações por comparação' };
+    }
+
+    return { valid: true };
+  }
+}

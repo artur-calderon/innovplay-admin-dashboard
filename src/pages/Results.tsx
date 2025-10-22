@@ -17,7 +17,8 @@ import {
   Search,
   BarChart3,
   BookOpen,
-  Check
+  Check,
+  TrendingUp
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -1894,10 +1895,11 @@ export default function Results() {
             <>
               {/* Abas com diferentes visualizações */}
               <Tabs defaultValue="charts" className="w-full">
-                <TabsList className={`grid w-full ${selectedEvaluation !== 'all' ? 'grid-cols-4' : 'grid-cols-3'}`}>
+                <TabsList className={`grid w-full ${selectedEvaluation !== 'all' ? 'grid-cols-5' : 'grid-cols-4'}`}>
                   <TabsTrigger value="charts">Gráficos</TabsTrigger>
                   <TabsTrigger value="tables">Tabelas</TabsTrigger>
                   <TabsTrigger value="statistics">Estatísticas</TabsTrigger>
+                  <TabsTrigger value="evolution">Evolução</TabsTrigger>
                   {selectedEvaluation !== 'all' && (
                     <TabsTrigger value="ranking">Ranking</TabsTrigger>
                   )}
@@ -2153,7 +2155,32 @@ export default function Results() {
                   <ClassStatistics apiData={apiData} />
                 </TabsContent>
 
-
+                <TabsContent value="evolution" className="space-y-6">
+                  <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-16">
+                      <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mb-6">
+                        <TrendingUp className="h-10 w-10 text-blue-600" />
+                      </div>
+                      <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                        Evolução dos Resultados
+                      </h3>
+                      <p className="text-gray-600 text-center max-w-md mb-6">
+                        Esta funcionalidade será implementada em breve para mostrar a evolução temporal dos resultados das avaliações.
+                      </p>
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-md">
+                        <div className="flex items-start gap-3">
+                          <div className="w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <span className="text-white text-xs font-bold">!</span>
+                          </div>
+                          <div className="text-sm text-blue-800">
+                            <strong>Em desenvolvimento</strong><br />
+                            Esta aba será utilizada para analisar tendências e evolução dos resultados ao longo do tempo.
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
 
                 {selectedEvaluation !== 'all' && (
                   <TabsContent value="ranking" className="space-y-6">
