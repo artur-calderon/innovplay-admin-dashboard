@@ -10,7 +10,8 @@ import { useAuth } from '@/context/authContext';
 import { EvaluationResultsApiService } from '@/services/evaluationResultsApi';
 import { EvaluationComparisonApiService, ComparisonResponse, ComparisonFilterOptions } from '@/services/evaluationComparisonApi';
 import { EvolutionCharts } from '@/components/evolution/EvolutionCharts';
-import { processComparisonData, ProcessedEvolutionData } from '@/utils/evolutionDataProcessor';
+import type { ProcessedEvolutionData } from '@/components/evolution/EvolutionCharts';
+import { processComparisonData } from '@/utils/evolutionDataProcessor';
 
 // Interfaces para os filtros
 interface State {
@@ -812,138 +813,6 @@ export default function Evolution() {
           </Card>
         )}
 
-      {/* Debug Info */}
-      {process.env.NODE_ENV === 'development' && (
-        <Card className="bg-yellow-50 border-yellow-200">
-          <CardContent className="p-4">
-            <h4 className="font-medium text-yellow-800 mb-2">Debug Info:</h4>
-            <div className="text-sm text-yellow-700 space-y-1">
-              <p>Estado: {selectedState} | Município: {selectedMunicipality} | Escola: {selectedSchool}</p>
-              <p>Avaliações disponíveis: {availableEvaluationsForPicker.length}</p>
-              <p>Avaliações selecionadas: {selectedEvaluationsForComparison.length}</p>
-              <p>Avaliações inválidas: {invalidEvaluationIds.size}</p>
-              <p>Escolas disponíveis: {schools.length}</p>
-              <p>Loading: {isLoadingFilters ? 'SIM' : 'NÃO'}</p>
-            </div>
-            <div className="mt-2 space-x-2">
-              <Button 
-                size="sm" 
-                variant="outline"
-                onClick={async () => {
-                  try {
-                    console.log('Testando nova API de filtros...');
-                    const response = await EvaluationComparisonApiService.getComparisonFilterOptions();
-                    console.log('Resposta completa:', response);
-                    console.log('Estados:', response.opcoes.estados);
-                    toast({ title: "Nova API funcionando", description: `${response.opcoes.estados?.length || 0} estados encontrados` });
-                  } catch (error) {
-                    console.error('Erro no teste:', error);
-                    toast({ title: "Erro no teste", description: "Erro ao carregar estados", variant: "destructive" });
-                  }
-                }}
-              >
-                Testar Nova API
-              </Button>
-              <Button 
-                size="sm" 
-                variant="outline"
-                onClick={async () => {
-                  if (selectedState !== 'all') {
-                    try {
-                      console.log('Testando API de municípios...');
-                      const response = await EvaluationComparisonApiService.getComparisonFilterOptions({
-                        estado: selectedState
-                      });
-                      console.log('Municípios:', response.opcoes.municipios);
-                      toast({ title: "Municípios carregados", description: `${response.opcoes.municipios?.length || 0} municípios encontrados` });
-                    } catch (error) {
-                      console.error('Erro no teste:', error);
-                      toast({ title: "Erro no teste", description: "Erro ao carregar municípios", variant: "destructive" });
-                    }
-                  } else {
-                    toast({ title: "Selecione um estado primeiro", variant: "destructive" });
-                  }
-                }}
-              >
-                Testar Municípios
-              </Button>
-              <Button 
-                size="sm" 
-                variant="outline"
-                onClick={async () => {
-                  if (selectedState !== 'all' && selectedMunicipality !== 'all') {
-                    try {
-                      console.log('Testando API de avaliações...');
-                      const response = await EvaluationComparisonApiService.getComparisonFilterOptions({
-                        estado: selectedState,
-                        municipio: selectedMunicipality
-                      });
-                      console.log('Avaliações:', response.opcoes.avaliacoes);
-                      toast({ title: "Avaliações carregadas", description: `${response.opcoes.avaliacoes?.length || 0} avaliações encontradas` });
-                    } catch (error) {
-                      console.error('Erro no teste:', error);
-                      toast({ title: "Erro no teste", description: "Erro ao carregar avaliações", variant: "destructive" });
-                    }
-                  } else {
-                    toast({ title: "Selecione estado e município primeiro", variant: "destructive" });
-                  }
-                }}
-              >
-                Testar Avaliações
-              </Button>
-              <Button 
-                size="sm" 
-                variant="outline"
-                onClick={async () => {
-                  if (selectedEvaluationsForComparison.length >= 2) {
-                    try {
-                      console.log('Testando API de escolas...');
-                      const evaluationIds = selectedEvaluationsForComparison.map(e => e.id);
-                      const response = await EvaluationComparisonApiService.getComparisonFilterOptions({
-                        estado: selectedState,
-                        municipio: selectedMunicipality,
-                        avaliacoes: evaluationIds.join(',')
-                      });
-                      console.log('Escolas:', response.opcoes.escolas);
-                      toast({ title: "Escolas carregadas", description: `${response.opcoes.escolas?.length || 0} escolas encontradas` });
-                    } catch (error) {
-                      console.error('Erro no teste de escolas:', error);
-                      toast({ title: "Erro no teste", description: "Erro ao carregar escolas", variant: "destructive" });
-                    }
-                  } else {
-                    toast({ title: "Selecione pelo menos 2 avaliações primeiro", variant: "destructive" });
-                  }
-                }}
-              >
-                Testar Escolas
-              </Button>
-              <Button 
-                size="sm" 
-                variant="outline"
-                onClick={async () => {
-                  if (selectedEvaluationsForComparison.length > 0) {
-                    try {
-                      console.log('Testando API de comparação...');
-                      const allIds = selectedEvaluationsForComparison.map(e => e.id);
-                      console.log('IDs para teste:', allIds);
-                      const comparison = await EvaluationComparisonApiService.compareEvaluations(allIds);
-                      console.log('Comparação:', comparison);
-                      toast({ title: "Comparação testada", description: "API de comparação funcionou!" });
-                    } catch (error) {
-                      console.error('Erro no teste de comparação:', error);
-                      toast({ title: "Erro no teste", description: "Erro na API de comparação", variant: "destructive" });
-                    }
-                  } else {
-                    toast({ title: "Selecione avaliações primeiro", variant: "destructive" });
-                  }
-                }}
-              >
-                Testar Comparação
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
 
 

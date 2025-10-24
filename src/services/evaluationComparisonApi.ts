@@ -1,7 +1,7 @@
 import { api } from '@/lib/api';
 
 // Interfaces baseadas no retorno do backend (evaluation_comparison_service.py)
-export interface EvolutionData {
+export interface EvolutionMetrics {
   value: number;
   percentage: number;
   direction: 'increase' | 'decrease' | 'stable';
@@ -19,12 +19,12 @@ export interface GeneralComparison {
   average_grade: {
     evaluation_1: number;
     evaluation_2: number;
-    evolution: EvolutionData;
+    evolution: EvolutionMetrics;
   };
   average_proficiency: {
     evaluation_1: number;
     evaluation_2: number;
-    evolution: EvolutionData;
+    evolution: EvolutionMetrics;
   };
   total_students: {
     evaluation_1: number;
@@ -42,12 +42,12 @@ export interface SubjectComparison {
     average_grade: {
       evaluation_1: number;
       evaluation_2: number;
-      evolution: EvolutionData;
+      evolution: EvolutionMetrics;
     };
     average_proficiency: {
       evaluation_1: number;
       evaluation_2: number;
-      evolution: EvolutionData;
+      evolution: EvolutionMetrics;
     };
     total_students: {
       evaluation_1: number;
@@ -75,7 +75,7 @@ export interface SkillsComparison {
         total_questions: number;
         percentage: number;
       };
-      evolution: EvolutionData;
+      evolution: EvolutionMetrics;
     };
   };
 }
@@ -156,25 +156,17 @@ export class EvaluationComparisonApiService {
    */
   static async getComparisonFilterOptions(params?: ComparisonFilterOptions): Promise<ComparisonFilterResponse> {
     try {
-      // Se não houver parâmetros, buscar estados iniciais
-      if (!params || Object.keys(params).length === 0) {
-        const response = await api.get('/evaluation-results/opcoes-filtros/estados');
-        return {
-          filtros_aplicados: {},
-          opcoes: {
-            estados: response.data.estados || []
-          }
-        };
-      }
-
-      // Caso contrário, usar endpoint unificado com parâmetros
+      // Construir query params dinamicamente
       const queryParams = new URLSearchParams();
       
       if (params?.estado) queryParams.append('estado', params.estado);
       if (params?.municipio) queryParams.append('municipio', params.municipio);
       if (params?.avaliacoes) queryParams.append('avaliacoes', params.avaliacoes);
 
-      const url = `/evaluation-results/opcoes-filtros?${queryParams.toString()}`;
+      // Usar endpoint correto - SEMPRE o mesmo, com ou sem params
+      const url = queryParams.toString() 
+        ? `/evaluation-results/opcoes-filtros-comparacao?${queryParams.toString()}`
+        : '/evaluation-results/opcoes-filtros-comparacao';
       
       const response = await api.get(url);
       return response.data;
