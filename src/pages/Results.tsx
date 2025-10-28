@@ -340,7 +340,7 @@ interface SimpleDetailedReport {
 }
 
 export default function Results() {
-  const { autoLogin } = useAuth();
+  const { autoLogin, user } = useAuth();
 
   const [apiData, setApiData] = useState<NovaRespostaAPI | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -821,12 +821,18 @@ export default function Results() {
     perPage
   ]);
 
-  // ✅ CORRIGIDO: Carregar dados APENAS quando os 3 filtros obrigatórios estiverem preenchidos
+  // Verificar se é professor para aplicar regras específicas
+  const isProfessor = user?.role === 'professor';
+
+  // ✅ CORRIGIDO: Carregar dados APENAS quando os filtros obrigatórios estiverem preenchidos
   useEffect(() => {
-    // Verificar se os 3 filtros obrigatórios estão preenchidos (Estado, Município e Avaliação)
+    // Verificar se os filtros obrigatórios estão preenchidos
+    // Para professores: Estado, Município, Avaliação e Escola
+    // Para outros: Estado, Município e Avaliação
     const requiredFiltersFilled = selectedState !== 'all' && 
                                  selectedMunicipality !== 'all' && 
-                                 selectedEvaluation !== 'all';
+                                 selectedEvaluation !== 'all' &&
+                                 (!isProfessor || selectedSchool !== 'all');
     
     if (!requiredFiltersFilled) {
       // Se não estão preenchidos, limpar dados e não fazer chamada
@@ -851,7 +857,7 @@ export default function Results() {
         clearTimeout(loadAllDataTimeoutRef.current);
       }
     };
-  }, [loadAllData, selectedState, selectedMunicipality, selectedEvaluation]);
+  }, [loadAllData, selectedState, selectedMunicipality, selectedEvaluation, selectedSchool, isProfessor]);
 
   const handleExportResults = async () => {
     try {
@@ -942,15 +948,13 @@ export default function Results() {
     return 'pendente';
   }, []);
 
-  // Contar filtros selecionados - Estado, Município e Avaliação são obrigatórios
-  const selectedFiltersCount = [
-    selectedState !== 'all',
-    selectedMunicipality !== 'all',
-    selectedEvaluation !== 'all'
-  ].filter(Boolean).length;
-
-  // Verificar se todos os filtros obrigatórios estão selecionados (Estado, Município e Avaliação)
-  const allRequiredFiltersSelected = selectedFiltersCount === 3;
+  // Verificar se todos os filtros obrigatórios estão selecionados
+  // Para todos: Estado, Município e Avaliação são obrigatórios
+  // Para professores: Escola também é obrigatória
+  const allRequiredFiltersSelected = selectedState !== 'all' && 
+                                    selectedMunicipality !== 'all' && 
+                                    selectedEvaluation !== 'all' &&
+                                    (!isProfessor || selectedSchool !== 'all');
 
   // Estados para dados reais dos alunos (como no DetailedResultsView)
   const [students, setStudents] = useState<Array<{
@@ -1652,14 +1656,17 @@ export default function Results() {
 
             {/* Escola */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Escola</label>
+              <label className="text-sm font-medium">
+                Escola
+                {isProfessor && <span className="text-red-500 ml-1">*</span>}
+              </label>
               <Select
                 value={selectedSchool}
                 onValueChange={setSelectedSchool}
                 disabled={isLoadingFilters || selectedEvaluation === 'all'}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a escola" />
+                <SelectTrigger className={isProfessor && selectedSchool === 'all' ? 'border-red-300 focus:border-red-500' : ''}>
+                  <SelectValue placeholder={isProfessor ? "Selecione a escola (obrigatório)" : "Selecione a escola"} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
@@ -1670,6 +1677,9 @@ export default function Results() {
                   ))}
                 </SelectContent>
               </Select>
+              {isProfessor && selectedSchool === 'all' && (
+                <p className="text-xs text-red-600">Escola é obrigatória para professores</p>
+              )}
             </div>
 
             {/* Série */}
@@ -1723,7 +1733,15 @@ export default function Results() {
               💡 <strong>Hierarquia dos Filtros:</strong> Estado → Município → Avaliação → Escola → Série → Turma
             </p>
             <p className="text-sm text-blue-700 mt-1">
-              <strong>Estado</strong>, <strong>Município</strong> e <strong>Avaliação</strong> são obrigatórios. Escola, Série e Turma são opcionais e podem ser "Todos".
+              {isProfessor ? (
+                <>
+                  <strong>Estado</strong>, <strong>Município</strong>, <strong>Avaliação</strong> e <strong>Escola</strong> são obrigatórios para professores. Série e Turma são opcionais e podem ser "Todos".
+                </>
+              ) : (
+                <>
+                  <strong>Estado</strong>, <strong>Município</strong> e <strong>Avaliação</strong> são obrigatórios. Escola, Série e Turma são opcionais e podem ser "Todos".
+                </>
+              )}
             </p>
           </div>
         </CardContent>
@@ -1740,7 +1758,15 @@ export default function Results() {
               Selecione os filtros obrigatórios para continuar
             </h3>
             <p className="text-gray-600 text-center max-w-md">
-              Para visualizar os resultados das avaliações, você precisa selecionar: <strong>Estado</strong>, <strong>Município</strong> e <strong>Avaliação</strong>. Os filtros Escola, Série e Turma são opcionais e podem ser "Todos".
+              {isProfessor ? (
+                <>
+                  Para visualizar os resultados das avaliações, você precisa selecionar: <strong>Estado</strong>, <strong>Município</strong>, <strong>Avaliação</strong> e <strong>Escola</strong>. Os filtros Série e Turma são opcionais e podem ser "Todos".
+                </>
+              ) : (
+                <>
+                  Para visualizar os resultados das avaliações, você precisa selecionar: <strong>Estado</strong>, <strong>Município</strong> e <strong>Avaliação</strong>. Os filtros Escola, Série e Turma são opcionais e podem ser "Todos".
+                </>
+              )}
             </p>
           </CardContent>
         </Card>
