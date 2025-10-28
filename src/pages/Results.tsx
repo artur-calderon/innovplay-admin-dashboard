@@ -821,18 +821,23 @@ export default function Results() {
     perPage
   ]);
 
-  // Verificar se é professor para aplicar regras específicas
+  // Verificar se é usuário com restrições (professor, diretor, coordenador)
+  const isRestrictedUser = user?.role === 'professor' || 
+                          user?.role === 'diretor' || 
+                          user?.role === 'coordenador';
+  
+  // Verificar se é professor especificamente (para mensagens específicas)
   const isProfessor = user?.role === 'professor';
 
   // ✅ CORRIGIDO: Carregar dados APENAS quando os filtros obrigatórios estiverem preenchidos
   useEffect(() => {
     // Verificar se os filtros obrigatórios estão preenchidos
-    // Para professores: Estado, Município, Avaliação e Escola
+    // Para professores, diretores e coordenadores: Estado, Município, Avaliação e Escola
     // Para outros: Estado, Município e Avaliação
     const requiredFiltersFilled = selectedState !== 'all' && 
                                  selectedMunicipality !== 'all' && 
                                  selectedEvaluation !== 'all' &&
-                                 (!isProfessor || selectedSchool !== 'all');
+                                 (!isRestrictedUser || selectedSchool !== 'all');
     
     if (!requiredFiltersFilled) {
       // Se não estão preenchidos, limpar dados e não fazer chamada
@@ -857,7 +862,7 @@ export default function Results() {
         clearTimeout(loadAllDataTimeoutRef.current);
       }
     };
-  }, [loadAllData, selectedState, selectedMunicipality, selectedEvaluation, selectedSchool, isProfessor]);
+  }, [loadAllData, selectedState, selectedMunicipality, selectedEvaluation, selectedSchool, isRestrictedUser]);
 
   const handleExportResults = async () => {
     try {
@@ -950,11 +955,11 @@ export default function Results() {
 
   // Verificar se todos os filtros obrigatórios estão selecionados
   // Para todos: Estado, Município e Avaliação são obrigatórios
-  // Para professores: Escola também é obrigatória
+  // Para professores, diretores e coordenadores: Escola também é obrigatória
   const allRequiredFiltersSelected = selectedState !== 'all' && 
                                     selectedMunicipality !== 'all' && 
                                     selectedEvaluation !== 'all' &&
-                                    (!isProfessor || selectedSchool !== 'all');
+                                    (!isRestrictedUser || selectedSchool !== 'all');
 
   // Estados para dados reais dos alunos (como no DetailedResultsView)
   const [students, setStudents] = useState<Array<{
@@ -1658,15 +1663,15 @@ export default function Results() {
             <div className="space-y-2">
               <label className="text-sm font-medium">
                 Escola
-                {isProfessor && <span className="text-red-500 ml-1">*</span>}
+                {isRestrictedUser && <span className="text-red-500 ml-1">*</span>}
               </label>
               <Select
                 value={selectedSchool}
                 onValueChange={setSelectedSchool}
                 disabled={isLoadingFilters || selectedEvaluation === 'all'}
               >
-                <SelectTrigger className={isProfessor && selectedSchool === 'all' ? 'border-red-300 focus:border-red-500' : ''}>
-                  <SelectValue placeholder={isProfessor ? "Selecione a escola (obrigatório)" : "Selecione a escola"} />
+                <SelectTrigger className={isRestrictedUser && selectedSchool === 'all' ? 'border-red-300 focus:border-red-500' : ''}>
+                  <SelectValue placeholder={isRestrictedUser ? "Selecione a escola (obrigatório)" : "Selecione a escola"} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
@@ -1677,8 +1682,10 @@ export default function Results() {
                   ))}
                 </SelectContent>
               </Select>
-              {isProfessor && selectedSchool === 'all' && (
-                <p className="text-xs text-red-600">Escola é obrigatória para professores</p>
+              {isRestrictedUser && selectedSchool === 'all' && (
+                <p className="text-xs text-red-600">
+                  Escola é obrigatória para {isProfessor ? 'professores' : 'diretores e coordenadores'}
+                </p>
               )}
             </div>
 
@@ -1733,9 +1740,9 @@ export default function Results() {
               💡 <strong>Hierarquia dos Filtros:</strong> Estado → Município → Avaliação → Escola → Série → Turma
             </p>
             <p className="text-sm text-blue-700 mt-1">
-              {isProfessor ? (
+              {isRestrictedUser ? (
                 <>
-                  <strong>Estado</strong>, <strong>Município</strong>, <strong>Avaliação</strong> e <strong>Escola</strong> são obrigatórios para professores. Série e Turma são opcionais e podem ser "Todos".
+                  <strong>Estado</strong>, <strong>Município</strong>, <strong>Avaliação</strong> e <strong>Escola</strong> são obrigatórios para {isProfessor ? 'professores' : 'diretores e coordenadores'}. Série e Turma são opcionais e podem ser "Todos".
                 </>
               ) : (
                 <>
@@ -1758,7 +1765,7 @@ export default function Results() {
               Selecione os filtros obrigatórios para continuar
             </h3>
             <p className="text-gray-600 text-center max-w-md">
-              {isProfessor ? (
+              {isRestrictedUser ? (
                 <>
                   Para visualizar os resultados das avaliações, você precisa selecionar: <strong>Estado</strong>, <strong>Município</strong>, <strong>Avaliação</strong> e <strong>Escola</strong>. Os filtros Série e Turma são opcionais e podem ser "Todos".
                 </>
