@@ -222,6 +222,25 @@ export default function TakeEvaluation() {
         }
     }, [currentQuestionIndex, shuffledQuestions, answers]);
 
+    // ✅ NOVO: Scroll automático para o topo da questão quando mudar
+    useEffect(() => {
+        if (currentQuestionIndex >= 0) {
+            // Scroll para o topo da área de conteúdo principal
+            setTimeout(() => {
+                const mainContent = document.querySelector('.evaluation-question-card');
+                if (mainContent) {
+                    mainContent.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+                
+                // Alternativa: scroll da área principal
+                const contentArea = document.querySelector('.overflow-y-auto.bg-gray-50');
+                if (contentArea) {
+                    contentArea.scrollTop = 0;
+                }
+            }, 100);
+        }
+    }, [currentQuestionIndex]);
+
     // ✅ NOVO: Verificação adicional para tablets - garantir que modal seja exibido quando todas questões estiverem respondidas
     useEffect(() => {
         const totalQuestions = shuffledQuestions.length;

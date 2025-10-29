@@ -277,7 +277,7 @@ interface StudentResult {
   status: 'concluida' | 'pendente';
 }
 
-interface StudentDetailedResult {
+export interface StudentDetailedResult {
   test_id: string;
   student_id: string;
   student_db_id: string;
@@ -464,12 +464,13 @@ export class EvaluationResultsApiService {
       const response = await api.get(`/evaluation-results/avaliacoes?${params}`);
 
       return response.data;
-    } catch (error: any) {
+    } catch (error: unknown) {
               // Erro ao buscar avaliações
       
       // ✅ NOVO: Tratamento específico de erros da API
-      if (error.response?.status === 400) {
-        const errorMessage = error.response.data?.error || 'Erro de validação';
+      const axiosError = error as { response?: { status?: number; data?: { error?: string } } };
+      if (axiosError.response?.status === 400) {
+        const errorMessage = axiosError.response.data?.error || 'Erro de validação';
                   // Erro 400 - Validação
         
         // Log específico para diferentes tipos de erro 400
@@ -480,16 +481,16 @@ export class EvaluationResultsApiService {
         } else if (errorMessage.includes('filtros válidos')) {
                       // É necessário aplicar pelo menos 2 filtros válidos (excluindo "all")
         }
-      } else if (error.response?.status === 403) {
-        const errorMessage = error.response.data?.error || 'Acesso negado';
+      } else if (axiosError.response?.status === 403) {
+        const errorMessage = axiosError.response.data?.error || 'Acesso negado';
                   // Erro 403 - Permissão
         
         if (errorMessage.includes('município')) {
                       // Acesso negado a este município
         }
-      } else if (error.response?.status === 404) {
+      } else if (axiosError.response?.status === 404) {
                   // Erro 404 - Endpoint não encontrado
-      } else if (error.response?.status >= 500) {
+      } else if (axiosError.response?.status && axiosError.response.status >= 500) {
                   // Erro 500+ - Erro interno do servidor
       }
       
@@ -677,7 +678,7 @@ export class EvaluationResultsApiService {
   }> {
     try {
       // Construir parâmetros para a API
-      const params: any = {
+      const params: Record<string, string | number> = {
         page,
         per_page: perPage
       };
@@ -824,7 +825,7 @@ export class EvaluationResultsApiService {
   // Buscar alunos de uma avaliação específica
   static async getStudents(evaluationId: string, filters: ResultsFilters = {}): Promise<StudentProficiency[]> {
     try {
-      const params: any = { test_id: evaluationId };
+      const params: Record<string, string | number> = { test_id: evaluationId };
       if (filters.class) params.class_id = filters.class;
       if (filters.proficiencyRange) {
         params.proficiency_min = filters.proficiencyRange[0];
@@ -868,7 +869,7 @@ export class EvaluationResultsApiService {
   static async recalculateEvaluation(evaluationId: string): Promise<{
     success: boolean;
     message: string;
-    dados_atualizados: any;
+    dados_atualizados: Record<string, unknown> | null;
   }> {
     try {
       // ✅ CORRIGIDO: Usar a rota correta da API do backend
@@ -881,11 +882,12 @@ export class EvaluationResultsApiService {
         message: 'Avaliação recalculada com sucesso!',
         dados_atualizados: response.data
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
               // Erro ao recalcular avaliação
+      const axiosError = error as { response?: { data?: { message?: string } } };
       return {
         success: false,
-        message: error.response?.data?.message || 'Erro ao recalcular avaliação',
+        message: axiosError.response?.data?.message || 'Erro ao recalcular avaliação',
         dados_atualizados: null
       };
     }
@@ -904,7 +906,7 @@ export class EvaluationResultsApiService {
   }
 
   // Corrigir submissão
-  static async correctSubmission(sessionId: string, corrections: any): Promise<{
+  static async correctSubmission(sessionId: string, corrections: Record<string, unknown>): Promise<{
     success: boolean;
     message: string;
   }> {
@@ -916,11 +918,12 @@ export class EvaluationResultsApiService {
         success: true,
         message: 'Correção aplicada com sucesso!'
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
               // Erro ao corrigir submissão
+      const axiosError = error as { response?: { data?: { message?: string } } };
       return {
         success: false,
-        message: error.response?.data?.message || 'Erro ao aplicar correção'
+        message: axiosError.response?.data?.message || 'Erro ao aplicar correção'
       };
     }
   }
@@ -1098,11 +1101,16 @@ export class EvaluationResultsApiService {
         api.get('/schools').catch(() => ({ data: [] }))
       ]);
 
+      interface CourseItem { name?: string; nome?: string; }
+      interface SubjectItem { name?: string; nome?: string; }
+      interface ClassItem { name?: string; nome?: string; }
+      interface SchoolItem { name?: string; nome?: string; }
+      
       return {
-        courses: Array.isArray(coursesRes.data) ? coursesRes.data.map((c: any) => c.name || c.nome) : [],
-        subjects: Array.isArray(subjectsRes.data) ? subjectsRes.data.map((s: any) => s.name || s.nome) : [],
-        classes: Array.isArray(classesRes.data) ? classesRes.data.map((c: any) => c.name || c.nome) : [],
-        schools: Array.isArray(schoolsRes.data) ? schoolsRes.data.map((s: any) => s.name || s.nome) : []
+        courses: Array.isArray(coursesRes.data) ? coursesRes.data.map((c: CourseItem) => c.name || c.nome) : [],
+        subjects: Array.isArray(subjectsRes.data) ? subjectsRes.data.map((s: SubjectItem) => s.name || s.nome) : [],
+        classes: Array.isArray(classesRes.data) ? classesRes.data.map((c: ClassItem) => c.name || c.nome) : [],
+        schools: Array.isArray(schoolsRes.data) ? schoolsRes.data.map((s: SchoolItem) => s.name || s.nome) : []
       };
 
     } catch (error) {
@@ -1131,11 +1139,12 @@ export class EvaluationResultsApiService {
         success: true,
         message: 'Avaliação finalizada com sucesso!'
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
               // Erro ao finalizar avaliação
+      const axiosError = error as { response?: { data?: { message?: string } } };
       return {
         success: false,
-        message: error.response?.data?.message || 'Erro ao finalizar avaliação'
+        message: axiosError.response?.data?.message || 'Erro ao finalizar avaliação'
       };
     }
   }
@@ -1144,7 +1153,7 @@ export class EvaluationResultsApiService {
   static async calculateTestScores(testId: string, studentIds?: string[]): Promise<{
     success: boolean;
     message: string;
-    data?: any;
+    data?: Record<string, unknown>;
   }> {
     try {
       const payload = studentIds ? { student_ids: studentIds } : {};
@@ -1154,11 +1163,12 @@ export class EvaluationResultsApiService {
         message: 'Notas calculadas com sucesso!',
         data: response.data
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
               // Erro ao calcular notas
+      const axiosError = error as { response?: { data?: { message?: string } } };
       return {
         success: false,
-        message: error.response?.data?.message || 'Erro ao calcular notas'
+        message: axiosError.response?.data?.message || 'Erro ao calcular notas'
       };
     }
   }
@@ -1180,11 +1190,12 @@ export class EvaluationResultsApiService {
         success: true,
         message: 'Correção manual aplicada com sucesso!'
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
               // Erro ao aplicar correção manual
+      const axiosError = error as { response?: { data?: { message?: string } } };
       return {
         success: false,
-        message: error.response?.data?.message || 'Erro ao aplicar correção manual'
+        message: axiosError.response?.data?.message || 'Erro ao aplicar correção manual'
       };
     }
   }
@@ -1194,38 +1205,33 @@ export class EvaluationResultsApiService {
 
   // ✅ NOVO: Buscar resultados de aluno específico
   static async getStudentResults(testId: string, studentId: string): Promise<StudentDetailedResult | null> {
-    try {
-      // ✅ CORRIGIDO: Usar timeout específico para dados de aluno
-      return apiWithTimeout(async () => {
-        // ✅ CORRIGIDO: Buscar dados básicos primeiro
-        const basicResponse = await api.get(`/evaluation-results/${testId}/student/${studentId}/results`);
+    // ✅ CORRIGIDO: Usar timeout específico para dados de aluno
+    return apiWithTimeout(async () => {
+      // ✅ CORRIGIDO: Buscar dados básicos primeiro
+      const basicResponse = await api.get(`/evaluation-results/${testId}/student/${studentId}/results`);
 
-        // ✅ CORRIGIDO: Buscar respostas detalhadas separadamente
-        let detailedAnswers = [];
+      // ✅ CORRIGIDO: Buscar respostas detalhadas separadamente
+      let detailedAnswers: unknown[] = [];
 
-        try {
-          const answersResponse = await api.get(`/evaluation-results/${testId}/student/${studentId}/answers`);
-          detailedAnswers = answersResponse.data.answers || answersResponse.data || [];
-        } catch (answersError: any) {
-          // Se não conseguir buscar respostas detalhadas, continuar com dados básicos
-        }
+      try {
+        const answersResponse = await api.get(`/evaluation-results/${testId}/student/${studentId}/answers`);
+        detailedAnswers = (answersResponse.data as { answers?: unknown[] }).answers || Array.isArray(answersResponse.data) ? answersResponse.data : [];
+      } catch {
+        // Se não conseguir buscar respostas detalhadas, continuar com dados básicos
+      }
 
-        // ✅ CORRIGIDO: Combinar dados básicos com respostas detalhadas
-        const combinedData = {
-          ...basicResponse.data,
-          answers: detailedAnswers
-        };
+      // ✅ CORRIGIDO: Combinar dados básicos com respostas detalhadas
+      const combinedData = {
+        ...basicResponse.data,
+        answers: detailedAnswers
+      };
 
-        return combinedData;
-      }, 45000); // 45s para dados completos
-    } catch (error: any) {
-              // Erro ao buscar resultados do aluno
-      throw error;
-    }
+      return combinedData;
+    }, 45000); // 45s para dados completos
   }
 
   // ✅ NOVO: Correção em lote
-  static async batchCorrection(testId: string, corrections: any[]): Promise<{
+  static async batchCorrection(testId: string, corrections: Array<Record<string, unknown>>): Promise<{
     success: boolean;
     message: string;
     processed: number;
@@ -1241,11 +1247,12 @@ export class EvaluationResultsApiService {
         processed: response.data.processed || 0,
         errors: response.data.errors || 0
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
               // Erro ao aplicar correção em lote
+      const axiosError = error as { response?: { data?: { message?: string } } };
       return {
         success: false,
-        message: error.response?.data?.message || 'Erro ao aplicar correção em lote',
+        message: axiosError.response?.data?.message || 'Erro ao aplicar correção em lote',
         processed: 0,
         errors: 0
       };
@@ -1269,11 +1276,12 @@ export class EvaluationResultsApiService {
         success: true,
         message: 'Correção finalizada com sucesso!'
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
               // Erro ao finalizar correção
+      const axiosError = error as { response?: { data?: { message?: string } } };
       return {
         success: false,
-        message: error.response?.data?.message || 'Erro ao finalizar correção'
+        message: axiosError.response?.data?.message || 'Erro ao finalizar correção'
       };
     }
   }
@@ -1333,10 +1341,11 @@ export class EvaluationResultsApiService {
       const subjects = subjectsResponse.data;
 
       // Encontrar a disciplina pelo nome
-      const subject = subjects.find((s: any) =>
-        s.name.toLowerCase() === subjectName.toLowerCase() ||
-        s.name.toLowerCase().includes(subjectName.toLowerCase()) ||
-        subjectName.toLowerCase().includes(s.name.toLowerCase())
+      interface SubjectItem { name?: string; id?: string; }
+      const subject = (subjects as SubjectItem[]).find((s: SubjectItem) =>
+        s.name?.toLowerCase() === subjectName.toLowerCase() ||
+        s.name?.toLowerCase().includes(subjectName.toLowerCase()) ||
+        subjectName.toLowerCase().includes(s.name?.toLowerCase() || '')
       );
 
       if (!subject) {
@@ -1679,9 +1688,14 @@ export class EvaluationResultsApiService {
       
       // Normalizar a resposta para garantir compatibilidade
       if (response.data && response.data.alunos) {
+        interface AlunoItem {
+          classificacao?: string;
+          nivel?: string;
+          [key: string]: unknown;
+        }
         const normalizedData = {
           ...response.data,
-          alunos: response.data.alunos.map((aluno: any) => ({
+          alunos: (response.data.alunos as AlunoItem[]).map((aluno: AlunoItem) => ({
             ...aluno,
             // Garantir que classificacao seja usado ao invés de nivel
             classificacao: aluno.classificacao || aluno.nivel || 'Abaixo do Básico'
@@ -1695,7 +1709,11 @@ export class EvaluationResultsApiService {
       console.error('❌ Erro ao buscar relatório detalhado filtrado:', error);
       // Adicionar mais detalhes do erro para debugging
       if (error instanceof Error && 'response' in error) {
-        const axiosError = error as any;
+        interface AxiosErrorType {
+          response?: { status?: number; data?: unknown };
+          message?: string;
+        }
+        const axiosError = error as AxiosErrorType;
         console.error('❌ Status do erro:', axiosError.response?.status);
         console.error('❌ Dados do erro:', axiosError.response?.data);
         console.error('❌ Mensagem do erro:', axiosError.message);
@@ -1755,21 +1773,31 @@ export class EvaluationResultsApiService {
       }
       
       if (response.data && response.data.alunos) {
-        const students = response.data.alunos;
+        interface StudentItem {
+          status?: string;
+          id?: string;
+          nome?: string;
+          turma?: string;
+          nota?: number;
+          proficiencia?: number;
+          nivel?: string;
+          classificacao?: string;
+        }
+        const students = response.data.alunos as StudentItem[];
         
         // Separar alunos que concluíram dos ausentes
-        const completed = students.filter((s: any) => s.status === 'concluida');
-        const absent = students.filter((s: any) => s.status !== 'concluida');
+        const completed = students.filter((s: StudentItem) => s.status === 'concluida');
+        const absent = students.filter((s: StudentItem) => s.status !== 'concluida');
         
         // Adicionar posição no ranking para alunos que concluíram
-        const rankedStudents = completed.map((student: any, index: number) => ({
+        const rankedStudents = completed.map((student: StudentItem, index: number) => ({
           position: index + 1,
           id: student.id,
           nome: student.nome,
           turma: student.turma,
           nota: student.nota || 0,
           proficiencia: student.proficiencia || 0,
-          classificacao: student.nivel || student.classificacao || 'Abaixo do Básico',
+          classificacao: (student.nivel || student.classificacao || 'Abaixo do Básico') as 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado',
           status: 'concluida' as const
         }));
         
@@ -1777,7 +1805,7 @@ export class EvaluationResultsApiService {
         
         return {
           ranked: rankedStudents,
-          absent: absent.map((s: any) => ({
+          absent: absent.map((s: StudentItem) => ({
             id: s.id,
             nome: s.nome,
             turma: s.turma,
@@ -1871,10 +1899,10 @@ export class EvaluationResultsApiService {
       total_series: number;
       total_turmas: number;
     };
-    filtros_aplicados: any;
+    filtros_aplicados: Record<string, unknown>;
     nivel_granularidade: string;
-    opcoes_proximos_filtros: any;
-    ranking: any[];
+    opcoes_proximos_filtros: Record<string, unknown>;
+    ranking: Array<Record<string, unknown>>;
   } | null> {
     try {
      
@@ -2335,7 +2363,7 @@ export class EvaluationResultsApiService {
   } | null> {
     try {
       
-      const body: any = {};
+      const body: Record<string, string> = {};
       if (filters?.municipio) body.municipio = filters.municipio;
       if (filters?.escola) body.escola = filters.escola;
       if (filters?.status) body.status = filters.status;
