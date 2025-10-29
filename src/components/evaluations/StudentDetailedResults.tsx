@@ -19,6 +19,7 @@ import {
 import { useParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
+import StudentBulletin from "./StudentBulletin";
 
 interface StudentDetailedResultsProps {
     onBack: () => void;
@@ -486,6 +487,11 @@ function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) 
                         </div>
                     </CardContent>
                 </Card>
+            )}
+
+            {/* Boletim de Questões */}
+            {evaluationId && studentId && (
+                <StudentBulletin testId={evaluationId} studentId={studentId} />
             )}
 
             {/* Informações da Avaliação */}
