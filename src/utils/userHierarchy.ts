@@ -79,45 +79,133 @@ export async function getUserHierarchyContext(
         
       case 'diretor':
       case 'coordenador':
-        // Buscar escola vinculada ao usuário
+        // Buscar escola vinculada ao usuário usando city_id
         try {
-          const schoolResponse = await api.get(`/users/school/${userId}`);
-          const schoolData = schoolResponse.data?.school || schoolResponse.data;
+          console.log('🔍 Buscando escola para diretor/coordenador:', userId);
           
-          if (schoolData) {
-            return {
-              school: {
-                id: schoolData.id || schoolData.school_id,
-                name: schoolData.name || schoolData.nome,
-                municipality_id: schoolData.city_id || schoolData.municipality_id
-              },
-              restrictions
-            };
+          // Buscar dados do usuário
+          const userResponse = await api.get(`/users/${userId}`);
+          const userData = userResponse.data;
+          console.log('🔍 Dados do usuário:', userData);
+          
+          // Se usuário tem city_id, buscar município e escolas
+          if (userData.city_id) {
+            try {
+              // Buscar dados do município
+              const municipalityResponse = await api.get(`/city/${userData.city_id}`);
+              const municipalityData = municipalityResponse.data;
+              console.log('🔍 Dados do município:', municipalityData);
+              
+              // Buscar escolas do município
+              const schoolsResponse = await api.get(`/school`);
+              const allSchools = Array.isArray(schoolsResponse.data) 
+                ? schoolsResponse.data 
+                : (schoolsResponse.data?.data || []);
+              
+              // Filtrar escolas do município do diretor
+              const municipalitySchools = allSchools.filter(
+                (school: any) => school.city_id === userData.city_id
+              );
+              
+              console.log('🔍 Escolas do município:', municipalitySchools);
+              
+              // Se há apenas 1 escola, selecionar automaticamente
+              if (municipalitySchools.length === 1) {
+                const context = {
+                  school: {
+                    id: municipalitySchools[0].id,
+                    name: municipalitySchools[0].name || municipalitySchools[0].nome,
+                    municipality_id: municipalitySchools[0].city_id
+                  },
+                  municipality: {
+                    id: municipalityData.id,
+                    name: municipalityData.name,
+                    state: municipalityData.state
+                  },
+                  restrictions
+                };
+                console.log('🔍 Contexto hierárquico retornado (escola única):', context);
+                return context;
+              }
+              
+              // Se há múltiplas escolas, retornar só o município
+              // Usuário escolherá a escola manualmente
+              const context = {
+                municipality: {
+                  id: municipalityData.id,
+                  name: municipalityData.name,
+                  state: municipalityData.state
+                },
+                restrictions
+              };
+              console.log('🔍 Contexto hierárquico retornado (múltiplas escolas):', context);
+              return context;
+            } catch (error) {
+              console.error('🔍 Erro ao buscar município/escolas:', error);
+            }
           }
+          
+          console.log('🔍 Nenhum city_id encontrado no usuário');
         } catch (error) {
-          console.error('Erro ao buscar escola do diretor/coordenador:', error);
+          console.error('🔍 Erro ao buscar dados do diretor:', error);
         }
         return { restrictions };
         
       case 'professor':
         // Buscar turmas do professor
         try {
+          console.log('🔍 Buscando turmas para professor:', userId);
           const teacherResponse = await api.get(`/teacher/${userId}`);
           const teacherData = teacherResponse.data;
+          console.log('🔍 Dados do professor:', teacherData);
           
           if (teacherData.turmas && Array.isArray(teacherData.turmas)) {
-            return {
+            console.log('🔍 Turmas encontradas:', teacherData.turmas);
+            
+            // Buscar município da escola do professor
+            let municipality = undefined;
+            if (teacherData.turmas.length > 0) {
+              const firstClass = teacherData.turmas[0];
+              console.log('🔍 Primeira turma:', firstClass);
+              
+              // Buscar dados da escola para obter city_id
+              try {
+                const schoolResponse = await api.get(`/school/${firstClass.school_id}`);
+                const schoolData = schoolResponse.data;
+                console.log('🔍 Dados da escola:', schoolData);
+                
+                if (schoolData.city_id) {
+                  // Buscar dados do município
+                  const municipalityResponse = await api.get(`/city/${schoolData.city_id}`);
+                  const municipalityData = municipalityResponse.data;
+                  console.log('🔍 Dados do município:', municipalityData);
+                  
+                  municipality = {
+                    id: municipalityData.id,
+                    name: municipalityData.name,
+                    state: municipalityData.state
+                  };
+                }
+              } catch (error) {
+                console.error('🔍 Erro ao buscar município da escola:', error);
+              }
+            }
+            
+            const context = {
               classes: teacherData.turmas,
               school: teacherData.turmas.length > 0 ? {
                 id: teacherData.turmas[0].school_id,
                 name: teacherData.turmas[0].school_name,
-                municipality_id: '' // Será preenchido se necessário
+                municipality_id: municipality?.id || ''
               } : undefined,
+              municipality,
               restrictions
             };
+            console.log('🔍 Contexto hierárquico retornado (professor):', context);
+            return context;
           }
         } catch (error) {
-          console.error('Erro ao buscar turmas do professor:', error);
+          console.error('🔍 Erro ao buscar turmas do professor:', error);
         }
         return { restrictions };
         

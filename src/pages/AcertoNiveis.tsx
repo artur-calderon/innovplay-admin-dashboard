@@ -8,6 +8,7 @@ import { FileText, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/authContext";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
 import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext } from "@/utils/userHierarchy";
+import { api } from "@/lib/api";
 import type { CellHookData } from "jspdf-autotable";
 
 // Types from the original component
@@ -164,6 +165,7 @@ export default function AcertoNiveis() {
       try {
         setIsLoadingHierarchy(true);
         const context = await getUserHierarchyContext(user.id, user.role);
+        console.log('🔍 Contexto hierárquico carregado:', context);
         setUserHierarchyContext(context);
 
         // Pre-selecionar filtros baseado na hierarquia
@@ -172,30 +174,130 @@ export default function AcertoNiveis() {
           
           // Carregar estado baseado no município
           const statesResp = await EvaluationResultsApiService.getFilterStates();
+          setStates(statesResp); // ← ADICIONAR esta linha
           const userState = statesResp.find(s => s.nome === context.municipality.state);
           if (userState) {
             setSelectedState(userState.id);
+            
+            // Carregar municípios do estado pré-selecionado
+            try {
+              const mun = await EvaluationResultsApiService.getFilterMunicipalities(userState.id);
+              setMunicipalities(mun);
+            } catch (error) {
+              console.error('Erro ao carregar municípios do estado pré-selecionado:', error);
+            }
+            
+            // Carregar avaliações do município pré-selecionado
+            try {
+              const avs = await EvaluationResultsApiService.getFilterEvaluations({ 
+                estado: userState.id, 
+                municipio: context.municipality.id 
+              });
+              setEvaluations(avs);
+            } catch (error) {
+              console.error('Erro ao carregar avaliações do município pré-selecionado:', error);
+            }
           }
+        } else if (context.school && context.school.municipality_id) {
+          // Para diretor/coordenador: buscar município e estado da escola
+          console.log('🔍 Processando escola do diretor:', context.school);
+          try {
+            // Buscar dados do município da escola
+            console.log('🔍 Buscando município:', context.school.municipality_id);
+            const municipalityResponse = await api.get(`/city/${context.school.municipality_id}`);
+            const municipalityData = municipalityResponse.data;
+            console.log('🔍 Dados do município:', municipalityData);
+            
+            setSelectedMunicipality(municipalityData.id);
+            
+            // Carregar estado baseado no município
+            const statesResp = await EvaluationResultsApiService.getFilterStates();
+            setStates(statesResp); // ← ADICIONAR esta linha
+            console.log('🔍 Estados carregados:', statesResp);
+            const userState = statesResp.find(s => s.nome === municipalityData.state);
+            console.log('🔍 Estado encontrado:', userState);
+            if (userState) {
+              setSelectedState(userState.id);
+              
+              // Carregar municípios do estado pré-selecionado
+              try {
+                const mun = await EvaluationResultsApiService.getFilterMunicipalities(userState.id);
+                setMunicipalities(mun);
+                console.log('🔍 Municípios carregados:', mun);
+              } catch (error) {
+                console.error('Erro ao carregar municípios do estado pré-selecionado:', error);
+              }
+              
+              // Carregar avaliações do município pré-selecionado
+              try {
+                const avs = await EvaluationResultsApiService.getFilterEvaluations({ 
+                  estado: userState.id, 
+                  municipio: municipalityData.id 
+                });
+                setEvaluations(avs);
+                console.log('🔍 Avaliações carregadas:', avs);
+              } catch (error) {
+                console.error('Erro ao carregar avaliações do município pré-selecionado:', error);
+              }
+            }
+          } catch (error) {
+            console.error('Erro ao buscar município da escola:', error);
+          }
+        } else {
+          console.log('🔍 Nenhum contexto de município ou escola encontrado');
         }
 
         if (context.school) {
           setSelectedSchoolId(context.school.id);
+          // Adicionar escola na lista de escolas disponíveis
+          setSchools([{
+            id: context.school.id,
+            nome: context.school.name
+          }]);
+        } else if (context.municipality && !context.school) {
+          // Diretor com município mas sem escola única
+          // Carregar lista de escolas do município para escolha manual
+          console.log('🔍 Diretor com município mas sem escola específica, carregando escolas do município');
+          try {
+            // Buscar escolas do município via API de escolas
+            const schoolsResponse = await api.get(`/school`);
+            const allSchools = Array.isArray(schoolsResponse.data) 
+              ? schoolsResponse.data 
+              : (schoolsResponse.data?.data || []);
+            
+            // Filtrar escolas do município
+            const municipalitySchools = allSchools.filter(
+              (school: { city_id?: string }) => school.city_id === context.municipality.id
+            );
+            
+            // Converter para formato esperado pelo componente
+            const schoolsFormatted = municipalitySchools.map((school: { id: string; name?: string; nome?: string }) => ({
+              id: school.id,
+              nome: school.name || school.nome
+            }));
+            
+            setSchools(schoolsFormatted);
+            console.log('🔍 Escolas disponíveis para seleção:', schoolsFormatted);
+          } catch (error) {
+            console.error('Erro ao carregar escolas do município:', error);
+          }
         }
 
         // Para professor, carregar escolas das suas turmas
         if (context.classes && context.classes.length > 0) {
+          console.log('🔍 Processando turmas do professor:', context.classes);
+          
           const uniqueSchools = Array.from(
             new Set(context.classes.map(c => ({ id: c.school_id, name: c.school_name })))
-              .map(s => s.id)
-          ).map(id => context.classes!.find(c => c.school_id === id))
-            .filter(Boolean)
-            .map(c => ({ id: c!.school_id, nome: c!.school_name }));
+          ).map(s => ({ id: s.id, nome: s.name }));
           
           setSchools(uniqueSchools);
+          console.log('🔍 Escolas únicas do professor:', uniqueSchools);
           
           // Se só tem uma escola, pre-selecionar
           if (uniqueSchools.length === 1) {
             setSelectedSchoolId(uniqueSchools[0].id);
+            console.log('🔍 Escola única pré-selecionada:', uniqueSchools[0].id);
           }
         }
 
@@ -217,10 +319,11 @@ export default function AcertoNiveis() {
   useEffect(() => {
     // Carregar lista de estados (apenas se for admin)
     const loadStates = async () => {
-      if (user?.role !== 'admin' && userHierarchyContext?.municipality) {
-        // Para usuários não-admin, estados já foram carregados no useEffect anterior
-        return;
-      }
+      // Pular se já foi carregado no useEffect anterior
+      if (states.length > 0) return;
+      
+      // Carregar apenas para admin
+      if (user?.role !== 'admin' || states.length > 0) return;
 
       try {
         setIsLoading(true);
@@ -236,7 +339,7 @@ export default function AcertoNiveis() {
     if (!isLoadingHierarchy) {
       loadStates();
     }
-  }, [toast, user?.role, userHierarchyContext, isLoadingHierarchy]);
+  }, [toast, user?.role, isLoadingHierarchy, states.length]);
 
   const handleChangeState = async (stateId: string) => {
     // Verificar se usuário pode alterar estado
@@ -1638,7 +1741,7 @@ export default function AcertoNiveis() {
                <Select 
                  value={selectedState} 
                  onValueChange={handleChangeState}
-                 disabled={!selectedState || userHierarchyContext?.restrictions.canSelectState === false}
+                 disabled={isLoading || userHierarchyContext?.restrictions.canSelectState === false}
                >
                  <SelectTrigger className="w-full">
                    <SelectValue placeholder="Selecione um estado" />
@@ -1660,7 +1763,7 @@ export default function AcertoNiveis() {
                <Select 
                  value={selectedMunicipality} 
                  onValueChange={handleChangeMunicipality} 
-                 disabled={!selectedState || userHierarchyContext?.restrictions.canSelectMunicipality === false}
+                 disabled={isLoading || !selectedState || userHierarchyContext?.restrictions.canSelectMunicipality === false}
                >
                  <SelectTrigger className="w-full">
                    <SelectValue placeholder={selectedState ? "Selecione um município" : "Primeiro selecione um estado"} />

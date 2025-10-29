@@ -10,6 +10,7 @@ import { api } from "@/lib/api";
 import { format, isAfter, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
+import StudentBulletin from "@/components/evaluations/StudentBulletin";
 
 // Interface para resposta da nova API de avaliação
 interface EvaluationGradesResponse {
@@ -486,6 +487,13 @@ export default function StudentResult() {
                   </div>
                 </div>
               </div>
+
+              {/* Boletim de Questões */}
+              {id && user.id && (
+                <div className="mt-8">
+                  <StudentBulletin testId={id} studentId={String(user.id)} />
+                </div>
+              )}
             </div>
           )}
         </CardContent>
