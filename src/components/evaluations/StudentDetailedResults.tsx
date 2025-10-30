@@ -342,43 +342,43 @@ function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) 
                     </CardContent>
                 </Card>
 
-                <Card>
-                    <CardHeader className="pb-3">
-                        <CardTitle className="text-sm font-medium flex items-center gap-2">
-                            <School className="h-4 w-4 text-purple-600" />
-                            Escola
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-purple-600">
-                            {currentEvaluation?.escola || 'Não informada'}
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            Instituição de ensino
-                        </p>
-                    </CardContent>
-                </Card>
+                {currentEvaluation?.turma && currentEvaluation.turma !== 'Não informada' && (
+                    <Card>
+                        <CardHeader className="pb-3">
+                            <CardTitle className="text-sm font-medium flex items-center gap-2">
+                                <Users className="h-4 w-4 text-orange-600" />
+                                Turma
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold text-orange-600">
+                                {currentEvaluation.turma}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Turma do aluno
+                            </p>
+                        </CardContent>
+                    </Card>
+                )}
             </div>
 
-            {/* Turma */}
-            {currentEvaluation?.turma && currentEvaluation.turma !== 'Não informada' && (
-                <Card>
-                    <CardHeader className="pb-3">
-                        <CardTitle className="text-sm font-medium flex items-center gap-2">
-                            <Users className="h-4 w-4 text-orange-600" />
-                            Turma
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-orange-600">
-                            {currentEvaluation.turma}
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            Turma do aluno
-                        </p>
-                    </CardContent>
-                </Card>
-            )}
+            {/* Escola (logo após Nome/Série/Turma) */}
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium flex items-center gap-2">
+                        <School className="h-4 w-4 text-purple-600" />
+                        Escola
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="text-2xl font-bold text-purple-600">
+                        {currentEvaluation?.escola || 'Não informada'}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                        Instituição de ensino
+                    </p>
+                </CardContent>
+            </Card>
 
             {/* Estatísticas da Avaliação */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
