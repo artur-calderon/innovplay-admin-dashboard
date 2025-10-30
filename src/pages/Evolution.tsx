@@ -269,6 +269,12 @@ export default function Evolution() {
     loadMunicipalities();
   }, [selectedState, toast]);
 
+  // Resetar município quando estado mudar, mas manter avaliações selecionadas
+  useEffect(() => {
+    setSelectedMunicipality('all');
+    setSelectedSchool('all');
+  }, [selectedState]);
+
   // Carregar avaliações quando município for selecionado usando nova API
   useEffect(() => {
     const loadEvaluations = async () => {
@@ -731,7 +737,7 @@ export default function Evolution() {
                   <span>Avaliações Selecionadas</span>
                 </div>
                 <Badge variant="secondary" className="bg-white/20 text-white border-white/30">
-                  {selectedEvaluationsForComparison.length} avaliação(ões)
+                  {selectedEvaluationsForComparison.length} avaliações
                 </Badge>
               </CardTitle>
             </CardHeader>
@@ -761,7 +767,7 @@ export default function Evolution() {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleRemoveEvaluation(evaluation.id)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-red-100 hover:text-red-600"
+                        className="hover:bg-red-100 hover:text-red-600 transition-colors duration-200"
                       >
                         <X className="h-4 w-4" />
                       </Button>
