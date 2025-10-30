@@ -29,6 +29,7 @@ import {
   Calendar,
   Users,
 } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import { EvolutionData } from './EvolutionChart';
 
 export interface ProcessedEvolutionData {
@@ -298,6 +299,93 @@ function mergeByName(rows: EvolutionData[]): EvolutionData[] {
 
 export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProps) {
   const [activeTab, setActiveTab] = useState<'general' | 'subjects'>('general');
+  const [hiddenByChart, setHiddenByChart] = useState<Record<string, Set<string>>>({});
+
+  function getHidden(chartId: string): Set<string> {
+    return hiddenByChart[chartId] ?? new Set<string>();
+  }
+
+  function handleToggle(chartId: string, name: string) {
+    setHiddenByChart(prev => {
+      const current = new Set(prev[chartId] ?? new Set<string>());
+      if (current.has(name)) current.delete(name); else current.add(name);
+      return { ...prev, [chartId]: current };
+    });
+  }
+
+  function handleShowAll(chartId: string) {
+    setHiddenByChart(prev => ({ ...prev, [chartId]: new Set() }));
+  }
+
+  function handleHideAll(chartId: string, names: string[]) {
+    setHiddenByChart(prev => ({ ...prev, [chartId]: new Set(names) }));
+  }
+
+  // Legenda custom: mantém itens padrão e adiciona toggles minimalistas por avaliação
+  function createLegendRenderer(chartId: string, names: string[]) {
+    return function LegendRenderer(props: { payload?: Array<{ value?: string; color?: string }>; }) {
+      const hidden = getHidden(chartId);
+      const payload = (props?.payload || []).filter((p) => p?.value !== 'Nota Média' && p?.value !== 'Proficiência');
+      return (
+        <div className="mt-2 space-y-2 flex flex-col items-center justify-center">
+          {/* Itens padrão da legenda */}
+          {payload.length > 0 && (
+            <div className="flex flex-wrap items-center justify-center gap-3 text-xs text-gray-700">
+              {payload.map((item, idx) => (
+                <div key={`${chartId}-lg-${idx}`} className="flex items-center gap-1.5">
+                  <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: item.color || '#9ca3af' }} />
+                  <span>{item.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Controles minimalistas por avaliação */}
+          {names.length > 0 && (
+            <div className="flex flex-wrap justify-center gap-1.5">
+              {names.map((name) => {
+                const isHidden = hidden.has(name);
+                return (
+                  <button
+                    key={`${chartId}-${name}`}
+                    type="button"
+                    onClick={() => handleToggle(chartId, name)}
+                    className={`px-2 py-0.5 text-[11px] rounded-full border transition-colors inline-flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-offset-1 ${
+                      isHidden
+                        ? 'bg-white text-gray-500 border-gray-300'
+                        : 'bg-white text-gray-800 border-gray-200 hover:border-gray-300'
+                    }`}
+                    aria-pressed={!isHidden}
+                    aria-label={`Alternar visibilidade da avaliação ${name}`}
+                    title={isHidden ? `Mostrar ${name}` : `Ocultar ${name}`}
+                  >
+                    {isHidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                    <span className="leading-none">{name}</span>
+                  </button>
+                );
+              })}
+              <span className="mx-1 text-gray-300 text-xs select-none">|</span>
+              <button
+                type="button"
+                onClick={() => handleHideAll(chartId, names)}
+                className="px-2 py-0.5 text-[11px] rounded-full border bg-white text-gray-500 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-1 inline-flex items-center gap-1"
+                aria-label="Ocultar todas as avaliações deste gráfico"
+              >
+                <EyeOff className="h-3 w-3" /> Ocultar todas
+              </button>
+              <button
+                type="button"
+                onClick={() => handleShowAll(chartId)}
+                className="px-2 py-0.5 text-[11px] rounded-full border bg-white text-gray-700 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-1 inline-flex items-center gap-1"
+                aria-label="Mostrar todas as avaliações deste gráfico"
+              >
+                <Eye className="h-3 w-3" /> Mostrar todas
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    };
+  }
 
   // Calcular estatísticas gerais
   const generalStats = useMemo(() => {
@@ -329,6 +417,8 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
 
   // Dados para gráfico de notas (aba geral)
   const chartData = useMemo(() => {
+    const chartId = 'general-nota';
+    const hidden = getHidden(chartId);
     if (activeTab === 'general') {
       const merged = mergeByName(data.generalData || []);
       if (merged.length === 0) return [];
@@ -337,7 +427,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
       const chartDataArray: Record<string, unknown>[] = [];
       
       // Construir dados usando os valores já processados
-      if (data.evaluationNames[0] && safe(r.etapa1) !== undefined) {
+      if (data.evaluationNames[0] && !hidden.has(data.evaluationNames[0]) && safe(r.etapa1) !== undefined) {
         chartDataArray.push({
           name: data.evaluationNames[0],
           nota: safe(r.etapa1),
@@ -346,7 +436,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
         });
       }
       
-      if (data.evaluationNames[1] && safe(r.etapa2) !== undefined) {
+      if (data.evaluationNames[1] && !hidden.has(data.evaluationNames[1]) && safe(r.etapa2) !== undefined) {
         chartDataArray.push({
           name: data.evaluationNames[1],
           nota: safe(r.etapa2),
@@ -355,7 +445,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
         });
       }
       
-      if (data.evaluationNames[2] && safe(r.etapa3) !== undefined) {
+      if (data.evaluationNames[2] && !hidden.has(data.evaluationNames[2]) && safe(r.etapa3) !== undefined) {
         chartDataArray.push({
           name: data.evaluationNames[2],
           nota: safe(r.etapa3),
@@ -369,7 +459,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
       // Para disciplinas, retornar array vazio (será tratado no loop)
       return [];
     }
-  }, [data, activeTab]);
+  }, [data, activeTab, hiddenByChart]);
 
   // Dados segmentados para gráfico de notas (aba geral)
   const segmentedGeneral = useMemo(
@@ -379,6 +469,8 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
 
   // Dados para gráfico de proficiência (aba geral)
   const proficiencyChartData = useMemo(() => {
+    const chartId = 'general-prof';
+    const hidden = getHidden(chartId);
     if (activeTab === 'general') {
       const merged = mergeByName(data.proficiencyData || []);
       if (merged.length === 0) return [];
@@ -387,7 +479,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
       const chartDataArray: Record<string, unknown>[] = [];
       
       // Construir dados de proficiência
-      if (data.evaluationNames[0] && safe(r.etapa1) !== undefined) {
+      if (data.evaluationNames[0] && !hidden.has(data.evaluationNames[0]) && safe(r.etapa1) !== undefined) {
         chartDataArray.push({
           name: data.evaluationNames[0],
           proficiencia: safe(r.etapa1),
@@ -395,7 +487,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
         });
       }
       
-      if (data.evaluationNames[1] && safe(r.etapa2) !== undefined) {
+      if (data.evaluationNames[1] && !hidden.has(data.evaluationNames[1]) && safe(r.etapa2) !== undefined) {
         chartDataArray.push({
           name: data.evaluationNames[1],
           proficiencia: safe(r.etapa2),
@@ -403,7 +495,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
         });
       }
       
-      if (data.evaluationNames[2] && safe(r.etapa3) !== undefined) {
+      if (data.evaluationNames[2] && !hidden.has(data.evaluationNames[2]) && safe(r.etapa3) !== undefined) {
         chartDataArray.push({
           name: data.evaluationNames[2],
           proficiencia: safe(r.etapa3),
@@ -415,7 +507,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
     } else {
       return [];
     }
-  }, [data, activeTab]);
+  }, [data, activeTab, hiddenByChart]);
 
   // Dados segmentados para gráfico de proficiência (aba geral)
   const segmentedProficiency = useMemo(
@@ -618,7 +710,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
               </p>
             </div>
           </div>
-
+          {/* Controles globais removidos: visibilidade agora é por gráfico */}
         </div>
 
 
@@ -687,7 +779,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
         )}
 
         {/* Gráficos Detalhados */}
-        <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6">
           {!!data.generalData?.length && (
             <Card className="border border-gray-200">
               <CardHeader className="bg-gray-50 border-b border-gray-200">
@@ -704,7 +796,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                       <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                       <YAxis domain={[0, 10]} tick={{ fontSize: 12 }} />
                       <Tooltip content={<CustomTooltip />} />
-                      <Legend />
+                      <Legend content={createLegendRenderer('general-nota', data.evaluationNames)} />
                       <Bar 
                         dataKey="nota" 
                         name="Nota Média"
@@ -734,7 +826,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                         dot={false}
                         isAnimationActive={false}
                       >
-                        <LabelList content={makeDeltaLabelRenderer(segmentedProficiency, 'proficiencia', 'up')} />
+                        <LabelList content={makeDeltaLabelRenderer(segmentedGeneral, 'nota', 'up')} />
                       </Line>
                       <Line
                         type="linear"
@@ -745,7 +837,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                         dot={false}
                         isAnimationActive={false}
                       >
-                        <LabelList content={makeDeltaLabelRenderer(segmentedProficiency, 'proficiencia', 'down')} />
+                        <LabelList content={makeDeltaLabelRenderer(segmentedGeneral, 'nota', 'down')} />
                       </Line>
                       <Line
                         type="linear"
@@ -756,7 +848,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                         dot={false}
                         isAnimationActive={false}
                       >
-                        <LabelList content={makeDeltaLabelRenderer(segmentedProficiency, 'proficiencia', 'flat')} />
+                        <LabelList content={makeDeltaLabelRenderer(segmentedGeneral, 'nota', 'flat')} />
                       </Line>
                     </ComposedChart>
                   </ResponsiveContainer>
@@ -786,7 +878,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                         label={{ value: 'Proficiência', angle: -90, position: 'insideLeft' }}
                       />
                       <Tooltip content={<CustomTooltip />} />
-                      <Legend />
+                      <Legend content={createLegendRenderer('general-prof', data.evaluationNames)} />
                       <Bar
                         dataKey="proficiencia"
                         name="Proficiência"
@@ -922,9 +1014,10 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
               const r = merged[0];
               const subjectChartData: Record<string, unknown>[] = [];
               const subjectColors = getSubjectColors(subject, subjectIndex);
+              const hiddenSubjectNota = getHidden(`subject-${subject}-nota`);
               
               // Dados de notas
-              if (data.evaluationNames[0] && safe(r.etapa1) !== undefined) {
+              if (data.evaluationNames[0] && !hiddenSubjectNota.has(data.evaluationNames[0]) && safe(r.etapa1) !== undefined) {
                 subjectChartData.push({
                   name: data.evaluationNames[0],
                   nota: safe(r.etapa1),
@@ -932,7 +1025,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                 });
               }
               
-              if (data.evaluationNames[1] && safe(r.etapa2) !== undefined) {
+              if (data.evaluationNames[1] && !hiddenSubjectNota.has(data.evaluationNames[1]) && safe(r.etapa2) !== undefined) {
                 subjectChartData.push({
                   name: data.evaluationNames[1],
                   nota: safe(r.etapa2),
@@ -940,7 +1033,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                 });
               }
               
-              if (data.evaluationNames[2] && safe(r.etapa3) !== undefined) {
+              if (data.evaluationNames[2] && !hiddenSubjectNota.has(data.evaluationNames[2]) && safe(r.etapa3) !== undefined) {
                 subjectChartData.push({
                   name: data.evaluationNames[2],
                   nota: safe(r.etapa3),
@@ -955,6 +1048,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
               const subjectProficiencyData = data.subjectProficiencyData[subject] || [];
               const mergedProficiency = mergeByName(subjectProficiencyData);
               const proficiencyChartData: Record<string, unknown>[] = [];
+              const hiddenSubjectProf = getHidden(`subject-${subject}-prof`);
               
               // Verificar se há dados de proficiência em todas as avaliações
               const hasAllProficiencyEvaluations = mergedProficiency.length > 0 && 
@@ -965,7 +1059,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
               if (mergedProficiency.length > 0 && hasAllProficiencyEvaluations) {
                 const prof = mergedProficiency[0];
                 
-                if (data.evaluationNames[0] && safe(prof.etapa1) !== undefined) {
+                if (data.evaluationNames[0] && !hiddenSubjectProf.has(data.evaluationNames[0]) && safe(prof.etapa1) !== undefined) {
                   proficiencyChartData.push({
                     name: data.evaluationNames[0],
                     proficiencia: safe(prof.etapa1),
@@ -973,7 +1067,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                   });
                 }
                 
-                if (data.evaluationNames[1] && safe(prof.etapa2) !== undefined) {
+                if (data.evaluationNames[1] && !hiddenSubjectProf.has(data.evaluationNames[1]) && safe(prof.etapa2) !== undefined) {
                   proficiencyChartData.push({
                     name: data.evaluationNames[1],
                     proficiencia: safe(prof.etapa2),
@@ -981,7 +1075,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                   });
                 }
                 
-                if (data.evaluationNames[2] && safe(prof.etapa3) !== undefined) {
+                if (data.evaluationNames[2] && !hiddenSubjectProf.has(data.evaluationNames[2]) && safe(prof.etapa3) !== undefined) {
                   proficiencyChartData.push({
                     name: data.evaluationNames[2],
                     proficiencia: safe(prof.etapa3),
@@ -1000,7 +1094,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                     {subject}
                   </h4>
                   
-                  <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-6">
                     {/* Gráfico de Notas */}
                 <Card className="border border-gray-200">
                   <CardHeader className="bg-gray-50 border-b border-gray-200">
@@ -1017,7 +1111,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                           <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                           <YAxis domain={[0, 10]} tick={{ fontSize: 12 }} />
                               <Tooltip content={<CustomSubjectTooltip />} />
-                              <Legend />
+                              <Legend content={createLegendRenderer(`subject-${subject}-nota`, data.evaluationNames)} />
                           <Bar 
                             dataKey="nota" 
                                 name="Nota Média"
@@ -1099,7 +1193,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                                 label={{ value: 'Proficiência', angle: -90, position: 'insideLeft' }}
                               />
                               <Tooltip content={<CustomSubjectTooltip />} />
-                              <Legend />
+                              <Legend content={createLegendRenderer(`subject-${subject}-prof`, data.evaluationNames)} />
                               <Bar
                                 dataKey="proficiencia"
                                 name="Proficiência"

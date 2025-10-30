@@ -368,6 +368,7 @@ export default function Evolution() {
       // Processar dados para os gráficos
       const processed = processComparisonData(comparison);
       setProcessedData(processed);
+      // Visibilidade de gráficos agora é controlada localmente em EvolutionCharts
 
       toast({
         title: "Comparação realizada com sucesso!",
@@ -405,6 +406,8 @@ export default function Evolution() {
       setIsLoadingComparison(false);
     }
   };
+
+  // Controles de visibilidade agora são por gráfico, definidos em EvolutionCharts
 
   // Função para formatar data
   const formatDate = (dateString: string) => {
