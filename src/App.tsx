@@ -60,6 +60,9 @@ const GameView = React.lazy(() => import("./components/games/GameView"));
 // Lazy loading para calculadora SAEB
 const IdebCalculatorPage = React.lazy(() => import("./pages/IdebCalculatorPage"));
 
+// Lazy loading para avisos
+const Avisos = React.lazy(() => import("./pages/Avisos"));
+
 // Lazy loading para questionários
 const FormRegistration = React.lazy(() => import("./pages/FormRegistration"));
 const FormView = React.lazy(() => import("./pages/FormView"));
@@ -144,7 +147,7 @@ const App = () => {
               <Route path="/aluno/questionario" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
 
               <Route path="/aluno/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
-              <Route path="/aluno/avisos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/aluno/avisos" element={<PrivateRoute><Avisos /></PrivateRoute>} />
             </Route>
 
             {/* Rota de avaliação em tela cheia para alunos */}
@@ -185,7 +188,7 @@ const App = () => {
               <Route path="/app/escola/:id" element={<PrivateRoute><SchoolDetails /></PrivateRoute>} />
               <Route path="/app/usuarios" element={<PrivateRoute><Users /></PrivateRoute>} />
               <Route path="/app/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
-              <Route path="/app/avisos" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/app/avisos" element={<PrivateRoute><Avisos /></PrivateRoute>} />
               <Route path="/app/configuracoes" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
 
               {/* Rotas de gerenciamento de questões */}

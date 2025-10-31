@@ -33,11 +33,12 @@ import {
   TrendingUp
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/context/authContext";
 import { Button } from "@/components/ui/button";
 import { useGamesCount } from "@/hooks/useGamesCount";
+import { useUnreadAvisos } from "@/hooks/useUnreadAvisos";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getRoleDisplayName } from "@/lib/constants";
 
@@ -80,10 +81,40 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
   const currentPath = useLocation().pathname;
   const isMobile = useIsMobile();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [avisoIds, setAvisoIds] = useState<string[]>([]);
 
   const navigate = useNavigate();
   const { logout, user } = useAuth();
   const { gamesCount } = useGamesCount();
+  const { getUnreadCount } = useUnreadAvisos();
+
+  // Carregar IDs dos avisos para calcular não lidos
+  useEffect(() => {
+    const loadAvisoIds = async () => {
+      try {
+        // TODO: Quando API estiver pronta, usar getFilteredAvisos
+        // import { getFilteredAvisos } from '@/services/avisosApi';
+        // const avisos = await getFilteredAvisos({ role: user.role, user_id: user.id });
+        // const ids = avisos.map(a => a.id);
+        // setAvisoIds(ids);
+        
+        // Por enquanto, usando IDs mockados
+        const mockAvisoIds = ['1', '2', '3', '4', '5', '6', '7', '8'];
+        setAvisoIds(mockAvisoIds);
+      } catch (error) {
+        console.error('Erro ao carregar avisos:', error);
+      }
+    };
+
+    if (user.id) {
+      loadAvisoIds();
+    }
+  }, [user.id, user.role]);
+
+  // Calcular avisos não lidos
+  const unreadAvisosCount = useMemo(() => {
+    return getUnreadCount(avisoIds);
+  }, [avisoIds, getUnreadCount]);
 
   function handleLogout() {
     logout().then(() => {
@@ -143,8 +174,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           icon: Gamepad,
           label: "Jogos",
           href: `${user.role === 'aluno' ? "/aluno/jogos" : "/app/jogos"}`,
-          role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"],
-          badge: gamesCount > 0 ? gamesCount.toString() : "0"
+          role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"]
         },
         {
           icon: Tv,
@@ -217,7 +247,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           role: ["admin", "professor", "diretor", "coordenador", "tecadm"]
         },
         { icon: Calculator, label: "Calculadora SAEB", href: "/app/calculadora-saeb", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
-        { icon: ClipboardCheck, label: "Correção", href: "/app/avaliacoes/correcao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"], badge: "3" },
+        { icon: ClipboardCheck, label: "Correção", href: "/app/avaliacoes/correcao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: BarChart3, label: "Resultados", href: "/app/resultados", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: TrendingUp, label: "Evolução", href: "/app/evolucao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         {
@@ -270,8 +300,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           icon: Trophy,
           label: "Competições",
           href: `${user.role === 'aluno' ? "/aluno/competicoes" : "/app/competicoes"}`,
-          role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"  ],
-          badge: "2"
+          role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"]
         },
         {
           icon: Award,
@@ -296,7 +325,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           label: "Avisos",
           href: `${user.role === 'aluno' ? "/aluno/avisos" : "/app/avisos"}`,
           role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"],
-          badge: "5"
+          badge: unreadAvisosCount > 0 ? unreadAvisosCount.toString() : undefined
         },
         {
           icon: Settings,
@@ -380,6 +409,11 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         </div>
         {!isCollapsed && (
           <div className="flex items-center gap-2">
+            {link.badge && (
+              <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center">
+                {link.badge}
+              </span>
+            )}
             {hasSubmenu && (
               <ChevronDown
                 size={14}
@@ -390,6 +424,11 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
               />
             )}
           </div>
+        )}
+        {isCollapsed && link.badge && (
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
+            {link.badge}
+          </span>
         )}
       </div>
     );
