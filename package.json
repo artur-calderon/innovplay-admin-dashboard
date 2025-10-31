@@ -11,6 +11,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@dicebear/collection": "^9.2.4",
+    "@dicebear/core": "^9.2.4",
     "@editorjs/code": "^2.9.3",
     "@editorjs/editorjs": "^2.30.8",
     "@editorjs/header": "^2.8.8",

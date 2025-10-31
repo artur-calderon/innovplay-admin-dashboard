@@ -3,6 +3,48 @@ import { api } from '@/lib/api'
 import { toast } from 'react-toastify'
 import { AxiosError } from 'axios'
 
+export interface AvatarConfig {
+    seed?: string;
+    flip?: boolean;
+    rotate?: number;
+    scale?: number;
+    radius?: number;
+    size?: number;
+    backgroundColor?: string[];
+    backgroundType?: string[];
+    backgroundRotation?: number[];
+    translateX?: number;
+    translateY?: number;
+    clip?: boolean;
+    randomizeIds?: boolean;
+    beard?: string[];
+    beardProbability?: number;
+    earrings?: string[];
+    earringsColor?: string[];
+    earringsProbability?: number;
+    eyebrows?: string[];
+    eyebrowsColor?: string[];
+    eyes?: string[];
+    eyesColor?: string[];
+    freckles?: string[];
+    frecklesColor?: string[];
+    frecklesProbability?: number;
+    glasses?: string[];
+    glassesColor?: string[];
+    glassesProbability?: number;
+    hair?: string[];
+    hairAccessories?: string[];
+    hairAccessoriesColor?: string[];
+    hairAccessoriesProbability?: number;
+    hairColor?: string[];
+    head?: string[];
+    mouth?: string[];
+    mouthColor?: string[];
+    nose?: string[];
+    noseColor?: string[];
+    skinColor?: string[];
+}
+
 interface User {
     id: string,
     name: string,
@@ -17,6 +59,7 @@ interface User {
     gender: string,
     nationality: string,
     birth_date: string,
+    avatar_config?: AvatarConfig | null,
 }
 
 interface ApiError {
@@ -32,7 +75,8 @@ interface AuthContext {
     autoLogin: () => Promise<any>,
     logout: () => Promise<void>,
     setUser: (user: User) => void,
-    persistUser: () => Promise<boolean>
+    persistUser: () => Promise<boolean>,
+    updateAvatarConfig: (config: AvatarConfig) => Promise<void>
 }
 
 export const useAuth = create<AuthContext>((set) => ({
@@ -51,6 +95,7 @@ export const useAuth = create<AuthContext>((set) => ({
         gender: '',
         nationality: '',
         birth_date: '',
+        avatar_config: null,
     },
     setUser: (user) => {
         set({ user })
@@ -140,7 +185,7 @@ export const useAuth = create<AuthContext>((set) => ({
                 console.warn("Erro ao resetar estilos:", error);
             }
 
-            set({
+                set({
                 user: {
                     id: '',
                     name: '',
@@ -155,6 +200,7 @@ export const useAuth = create<AuthContext>((set) => ({
                     gender: '',
                     nationality: '',
                     birth_date: '',
+                    avatar_config: null,
                 }
             })
             window.location.href = '/';
@@ -194,6 +240,34 @@ export const useAuth = create<AuthContext>((set) => ({
             localStorage.removeItem('token');
             delete api.defaults.headers.common['Authorization'];
             return false;
+        }
+    },
+    updateAvatarConfig: async (config: AvatarConfig) => {
+        try {
+            const currentUser = useAuth.getState().user;
+            if (!currentUser.id) {
+                throw new Error('Usuário não autenticado');
+            }
+
+            const response = await api.put(`/users/${currentUser.id}`, {
+                avatar_config: config
+            });
+
+            if (response.data && response.data.user) {
+                set((state) => ({
+                    user: {
+                        ...state.user,
+                        ...response.data.user,
+                    }
+                }));
+                toast.success('Avatar atualizado com sucesso!');
+            }
+        } catch (error: unknown) {
+            console.error('Erro ao atualizar avatar:', error);
+            const axiosError = error as AxiosError<ApiError>;
+            const errorMessage = axiosError.response?.data?.erro || axiosError.response?.data?.error || 'Erro ao atualizar avatar';
+            toast.error(errorMessage);
+            throw error;
         }
     }
 }))

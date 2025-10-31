@@ -41,6 +41,7 @@ import { useGamesCount } from "@/hooks/useGamesCount";
 import { useUnreadAvisos } from "@/hooks/useUnreadAvisos";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getRoleDisplayName } from "@/lib/constants";
+import { AvatarPreview } from "@/components/profile/AvatarPreview";
 
 type SidebarLink = {
   icon: React.ElementType;
@@ -315,12 +316,6 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
       role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"],
       links: [
         {
-          icon: Edit,
-          label: "Editar Perfil",
-          href: `${user.role === 'aluno' ? "/aluno/perfil" : "/app/perfil"}`,
-          role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"]
-        },
-        {
           icon: Bell,
           label: "Avisos",
           href: `${user.role === 'aluno' ? "/aluno/avisos" : "/app/avisos"}`,
@@ -345,25 +340,54 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
   ];
 
   // User info component
-  const UserInfo = () => (
-    <div className="p-4 border-b border-white/10">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white font-semibold flex-shrink-0">
-          {user?.name ? user.name.charAt(0).toUpperCase() : "U"}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-white font-medium text-sm truncate">
-            {user?.name || "Usuário"}
-          </p>
+  const UserInfo = () => {
+    const handleProfileClick = () => {
+      navigate(user.role === 'aluno' ? "/aluno/perfil" : "/app/perfil");
+      handleLinkClick();
+    };
 
-
-          <p className="text-white/70 text-xs truncate capitalize">
-            {user?.role ? getRoleDisplayName(user.role) : "Usuário"}
-          </p>
+    return (
+      <div className="p-4 border-b border-white/10">
+        <div className="flex items-center gap-3">
+          {user?.avatar_config ? (
+            <div className="flex-shrink-0">
+              <AvatarPreview config={user.avatar_config} size={40} className="flex-shrink-0" />
+            </div>
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white font-semibold flex-shrink-0">
+              {user?.name ? user.name.charAt(0).toUpperCase() : "U"}
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="text-white font-medium text-sm truncate">
+                {user?.name || "Usuário"}
+              </p>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={handleProfileClick}
+                      className="flex-shrink-0 p-1 hover:bg-white/10 rounded transition-colors"
+                      aria-label="Editar perfil"
+                    >
+                      <Edit className="h-4 w-4 text-white/70 hover:text-white" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    <p>Editar perfil</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+            <p className="text-white/70 text-xs truncate capitalize">
+              {user?.role ? getRoleDisplayName(user.role) : "Usuário"}
+            </p>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // Enhanced menu item component with tooltips and badges
   function RenderMenuItem({
