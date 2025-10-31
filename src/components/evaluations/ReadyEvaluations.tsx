@@ -113,7 +113,7 @@ const SubjectsList = ({ evaluation }: { evaluation: Evaluation }) => {
   if (subjects.length === 0) {
     return (
       <div className="flex flex-wrap gap-1">
-        <Badge variant="secondary" className="text-xs text-gray-500">
+        <Badge variant="secondary" className="text-xs text-muted-foreground">
           Sem disciplina
         </Badge>
       </div>
@@ -158,18 +158,18 @@ const SubjectsList = ({ evaluation }: { evaluation: Evaluation }) => {
           </TooltipTrigger>
           <TooltipContent className="max-w-xs">
             <div className="space-y-2">
-              <p className="font-semibold text-sm text-gray-900">Outras disciplinas:</p>
+              <p className="font-semibold text-sm text-foreground">Outras disciplinas:</p>
               <div className="space-y-1">
                 {subjects.slice(2).map((subject, index) => (
                   <div key={subject.id || index} className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
-                    <span className="text-sm text-gray-700">{subject.name}</span>
+                    <div className="w-1.5 h-1.5 bg-blue-500 dark:bg-blue-400 rounded-full"></div>
+                    <span className="text-sm text-foreground">{subject.name}</span>
                   </div>
                 ))}
                 {subjectsCount > subjects.length && (
                   <div className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full"></div>
-                    <span className="text-sm text-gray-500">
+                    <div className="w-1.5 h-1.5 bg-muted-foreground rounded-full"></div>
+                    <span className="text-sm text-muted-foreground">
                       +{subjectsCount - subjects.length} disciplinas adicionais
                     </span>
                   </div>
@@ -239,18 +239,18 @@ const EvaluationsTable = ({
 
   const getTypeColor = (type: string) => {
     switch (type?.toUpperCase()) {
-      case 'AVALIACAO': return 'bg-blue-100 text-blue-800';
-      case 'SIMULADO': return 'bg-green-100 text-green-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'AVALIACAO': return 'bg-blue-100 dark:bg-blue-950/30 text-blue-800 dark:text-blue-400';
+      case 'SIMULADO': return 'bg-green-100 dark:bg-green-950/30 text-green-800 dark:text-green-400';
+      default: return 'bg-muted text-foreground';
     }
   };
 
   const getModelColor = (model: string) => {
     switch (model?.toUpperCase()) {
-      case 'SAEB': return 'bg-purple-100 text-purple-800';
-      case 'PROVA': return 'bg-orange-100 text-orange-800';
-      case 'AVALIE': return 'bg-cyan-100 text-cyan-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'SAEB': return 'bg-purple-100 dark:bg-purple-950/30 text-purple-800 dark:text-purple-400';
+      case 'PROVA': return 'bg-orange-100 dark:bg-orange-950/30 text-orange-800 dark:text-orange-400';
+      case 'AVALIE': return 'bg-cyan-100 dark:bg-cyan-950/30 text-cyan-800 dark:text-cyan-400';
+      default: return 'bg-muted text-foreground';
     }
   };
 
@@ -278,7 +278,7 @@ const EvaluationsTable = ({
       {/* Header com busca e filtros */}
       <div className="flex flex-col lg:flex-row gap-4">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Buscar avaliações..."
             value={searchTerm}
@@ -362,8 +362,8 @@ const EvaluationsTable = ({
 
       {/* Ações em lote */}
       {selectedIds.length > 0 && (
-        <div className="flex items-center justify-between bg-blue-50 p-3 rounded-lg">
-          <span className="text-sm text-blue-800">
+        <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-950/30 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
+          <span className="text-sm text-blue-800 dark:text-blue-400">
             {selectedIds.length} avaliação(ões) selecionada(s)
           </span>
           <Button
@@ -580,7 +580,7 @@ const EvaluationsTable = ({
       {/* Paginação */}
       {!isLoading && !searchTerm && pagination && totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-muted-foreground">
             Mostrando {((currentPage - 1) * itemsPerPage) + 1} a {Math.min(currentPage * itemsPerPage, pagination.total)} de {pagination.total} avaliações
           </div>
           <div className="flex items-center space-x-2">
@@ -1015,9 +1015,9 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
         <div className="space-y-6">
           {/* ✅ NOVO: Indicador de atualização */}
           {isUpdating && (
-            <div className="flex items-center justify-center p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <RefreshCw className="h-4 w-4 mr-2 animate-spin text-blue-600" />
-              <span className="text-sm text-blue-700">
+            <div className="flex items-center justify-center p-4 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <RefreshCw className="h-4 w-4 mr-2 animate-spin text-blue-600 dark:text-blue-400" />
+              <span className="text-sm text-blue-700 dark:text-blue-400">
                 Atualizando lista de avaliações...
               </span>
             </div>

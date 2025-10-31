@@ -126,6 +126,20 @@ export const useAuth = create<AuthContext>((set) => ({
             // ✅ CORRIGIDO: Usar a instância da API corretamente
             delete api.defaults.headers.common['Authorization']
 
+            // Resetar tema, fonte e tamanho de fonte para padrões no DOM apenas
+            // NÃO limpar localStorage - as configurações devem permanecer salvas para quando o usuário fizer login novamente
+            try {
+                document.documentElement.classList.remove('dark');
+                document.documentElement.style.setProperty('--app-font-family', 'Inter');
+                document.documentElement.style.setProperty('--app-font-size', '100%');
+                if (document.body) {
+                    document.body.style.fontFamily = 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif';
+                    document.body.style.fontSize = '100%';
+                }
+            } catch (error) {
+                console.warn("Erro ao resetar estilos:", error);
+            }
+
             set({
                 user: {
                     id: '',

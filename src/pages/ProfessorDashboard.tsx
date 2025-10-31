@@ -255,7 +255,7 @@ const ProfessorDashboard = () => {
                   return (
                     <div 
                       key={index} 
-                      className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-all duration-200 hover:shadow-sm"
+                      className="flex items-center gap-3 cursor-pointer hover:bg-muted p-2 rounded-lg transition-all duration-200 hover:shadow-sm"
                       onClick={() => navigate(link.href)}
                     >
                       <div className="p-3 rounded-full bg-innov-purple/10 flex-shrink-0">

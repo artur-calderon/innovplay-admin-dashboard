@@ -326,12 +326,12 @@ Criado por: ${extendedProps.createdBy}
 
   const getEventTypeColor = (type: AgendaEvent['type']) => {
     const colors = {
-      aula: 'bg-blue-100 text-blue-800',
+      aula: 'bg-blue-100 dark:bg-blue-950/30 text-blue-800 dark:text-blue-400',
       prova: 'bg-destructive/10 text-destructive',
       evento: 'bg-primary/10 text-primary',
-      tarefa: 'bg-yellow-100 text-yellow-800',
-      reuniao: 'bg-orange-100 text-orange-800',
-      feriado: 'bg-green-100 text-green-800',
+      tarefa: 'bg-yellow-100 dark:bg-yellow-950/30 text-yellow-800 dark:text-yellow-400',
+      reuniao: 'bg-orange-100 dark:bg-orange-950/30 text-orange-800 dark:text-orange-400',
+      feriado: 'bg-green-100 dark:bg-green-950/30 text-green-800 dark:text-green-400',
     };
     return colors[type] || 'bg-muted text-muted-foreground';
   };
@@ -446,12 +446,12 @@ Criado por: ${extendedProps.createdBy}
         <p className="text-muted-foreground">
           Gerencie eventos por estado, município e escola
         </p>
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-center gap-2 text-blue-800 mb-2">
+        <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+          <div className="flex items-center gap-2 text-blue-800 dark:text-blue-400 mb-2">
             <AlertCircle className="h-5 w-5" />
             <span className="font-semibold">Em Desenvolvimento</span>
           </div>
-          <p className="text-sm text-blue-700">
+          <p className="text-sm text-blue-700 dark:text-blue-400">
             Esta funcionalidade está sendo desenvolvida. Os dados mostrados são exemplos para demonstrar 
             o futuro design da agenda administrativa.
           </p>

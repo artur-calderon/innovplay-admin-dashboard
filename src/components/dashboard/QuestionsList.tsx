@@ -136,11 +136,11 @@ export default function QuestionsList() {
   const getDifficultyColor = (difficulty: Question['difficulty']) => {
     switch (difficulty) {
       case 'easy':
-        return 'bg-green-100 text-green-800';
+        return 'bg-green-100 dark:bg-green-950/30 text-green-800 dark:text-green-400';
       case 'medium':
-        return 'bg-yellow-100 text-yellow-800';
+        return 'bg-yellow-100 dark:bg-yellow-950/30 text-yellow-800 dark:text-yellow-400';
       case 'hard':
-        return 'bg-red-100 text-red-800';
+        return 'bg-red-100 dark:bg-red-950/30 text-red-800 dark:text-red-400';
     }
   };
 
@@ -208,7 +208,7 @@ export default function QuestionsList() {
       <CardContent>
         <div className="space-y-4">
           {questions.map((question) => (
-            <div key={question.id} className="p-3 rounded-lg border hover:bg-gray-50 transition-colors">
+            <div key={question.id} className="p-3 rounded-lg border hover:bg-muted transition-colors border-border">
               {/* Header com questão e dificuldade */}
               <div className="flex items-start justify-between mb-2">
                 <div className="flex-1 min-w-0">
@@ -216,10 +216,10 @@ export default function QuestionsList() {
                     {question.title}
                   </h4>
                   <div className="flex items-center gap-2">
-                    <BookOpen className="h-3 w-3 text-gray-400" />
-                    <span className="text-xs text-gray-500">{question.subject}</span>
-                    <span className="text-xs text-gray-400">•</span>
-                    <span className="text-xs text-gray-500">{question.grade}</span>
+                    <BookOpen className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">{question.subject}</span>
+                    <span className="text-xs text-muted-foreground">•</span>
+                    <span className="text-xs text-muted-foreground">{question.grade}</span>
                   </div>
                 </div>
                 <Badge className={`text-xs ${getDifficultyColor(question.difficulty)}`}>
@@ -228,7 +228,7 @@ export default function QuestionsList() {
               </div>
 
               {/* Informações adicionais */}
-              <div className="flex items-center justify-between text-xs text-gray-500">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-1">
                     <User className="h-3 w-3" />

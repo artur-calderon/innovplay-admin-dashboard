@@ -153,7 +153,7 @@ export function StudentCard({ student, totalQuestions, subjects, onViewDetails }
             variant="outline"
             size="sm"
             onClick={() => onViewDetails(student.id)}
-            className="w-full bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-colors"
+            className="w-full bg-card text-foreground border-border hover:bg-muted hover:border-border transition-colors"
           >
             <Eye className="h-4 w-4 mr-2" />
             Ver Detalhes Completos

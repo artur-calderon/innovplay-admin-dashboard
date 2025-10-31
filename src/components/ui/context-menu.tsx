@@ -103,7 +103,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           
           <button
             onClick={(event) => handleMenuItemClick(event, onViewDetails)}
-            className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+            className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-muted flex items-center gap-2"
           >
             <Eye className="h-4 w-4" />
             Ver detalhes
@@ -111,7 +111,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           
           <button
             onClick={(event) => handleMenuItemClick(event, onOpenInNewTab)}
-            className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+            className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-muted flex items-center gap-2"
           >
             <ExternalLink className="h-4 w-4" />
             Abrir em nova guia

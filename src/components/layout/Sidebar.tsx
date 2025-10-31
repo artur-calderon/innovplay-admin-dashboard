@@ -330,8 +330,8 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         {
           icon: Settings,
           label: "Configurações",
-          href: "/app/configuracoes",
-          role: ["admin", "professor", "diretor", "coordenador", "tecadm"]
+          href: `${user.role === 'aluno' ? "/aluno/configuracoes" : "/app/configuracoes"}`,
+          role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"]
         },
         {
           icon: LogOut,

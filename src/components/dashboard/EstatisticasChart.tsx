@@ -72,12 +72,12 @@ const EstatisticasChart: React.FC<EstatisticasChartProps> = ({
           </div>
         </div>
         
-        <div className="bg-gray-50 rounded-lg p-8 text-center">
-          <div className="text-gray-400 mb-2">
+        <div className="bg-muted rounded-lg p-8 text-center">
+          <div className="text-muted-foreground mb-2">
             <Activity className="w-12 h-12 mx-auto" />
           </div>
-          <h4 className="text-lg font-medium text-gray-600 mb-2">Sem dados</h4>
-          <p className="text-sm text-gray-500">Não há estatísticas disponíveis para o período selecionado.</p>
+          <h4 className="text-lg font-medium text-foreground mb-2">Sem dados</h4>
+          <p className="text-sm text-muted-foreground">Não há estatísticas disponíveis para o período selecionado.</p>
         </div>
       </div>
     );
@@ -219,7 +219,7 @@ const EstatisticasChart: React.FC<EstatisticasChartProps> = ({
         
         {/* Controles de período e tipo de gráfico */}
         <div className="flex flex-col sm:flex-row gap-2">
-          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+          <div className="flex gap-1 bg-muted rounded-lg p-1">
             <Button
               size="sm"
               variant={period === 'week' ? 'default' : 'ghost'}
@@ -247,7 +247,7 @@ const EstatisticasChart: React.FC<EstatisticasChartProps> = ({
             </Button>
           </div>
           
-          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+          <div className="flex gap-1 bg-muted rounded-lg p-1">
             <Button
               size="sm"
               variant={chartType === 'bar' ? 'default' : 'ghost'}
@@ -316,7 +316,7 @@ const EstatisticasChart: React.FC<EstatisticasChartProps> = ({
       </div>
 
       {/* Gráfico principal */}
-      <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
+      <div className="bg-muted rounded-lg p-3 sm:p-4">
         {renderChart()}
       </div>
 

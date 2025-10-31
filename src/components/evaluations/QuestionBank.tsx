@@ -367,7 +367,7 @@ export function QuestionBank({
       case 'Adequado': return 'bg-green-100 text-green-800';
       case 'Básico': return 'bg-yellow-100 text-yellow-800';
       case 'Abaixo do Básico': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+      default: return 'bg-muted text-foreground';
     }
   };
 
@@ -549,7 +549,7 @@ export function QuestionBank({
               <div className="space-y-3">
                 {paginatedQuestions.length > 0 ? (
                   <>
-                    <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
                       <Checkbox
                         checked={selectedQuestions.length === paginatedQuestions.length && paginatedQuestions.length > 0}
                         onCheckedChange={handleSelectAll}
@@ -571,7 +571,7 @@ export function QuestionBank({
                                 checked={selectedQuestions.includes(question.id)}
                                 onCheckedChange={(checked) => toggleQuestionSelection(question.id)}
                               />
-                              <span className="ml-2 text-xs text-gray-400 font-mono">
+                              <span className="ml-2 text-xs text-muted-foreground font-mono">
                                 #{index + 1 + (currentPage - 1) * pageSize}
                               </span>
                             </div>
@@ -633,14 +633,14 @@ export function QuestionBank({
                   <Card>
                     <CardContent className="py-12 text-center">
                       <div className="flex flex-col items-center gap-4">
-                        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
-                          <Search className="h-8 w-8 text-gray-400" />
+                        <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center">
+                          <Search className="h-8 w-8 text-muted-foreground" />
                         </div>
                         <div className="space-y-2">
-                          <p className="text-lg font-medium text-gray-700">
+                          <p className="text-lg font-medium text-foreground">
                             {erro ? "Erro ao carregar questões" : "Nenhuma questão encontrada"}
                           </p>
-                          <p className="text-sm text-gray-500">
+                          <p className="text-sm text-muted-foreground">
                             {erro 
                               ? "Verifique sua conexão e tente novamente" 
                               : subjectId

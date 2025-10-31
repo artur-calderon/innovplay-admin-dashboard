@@ -121,8 +121,8 @@ export function AvisoDetailModal({ aviso, open, onOpenChange }: AvisoDetailModal
         {/* Mensagem Principal */}
         <div className="space-y-4">
           <div>
-            <h4 className="text-sm font-semibold text-gray-700 mb-2">Mensagem</h4>
-            <p className="text-base text-gray-900 leading-relaxed whitespace-pre-wrap">
+            <h4 className="text-sm font-semibold text-foreground mb-2">Mensagem</h4>
+            <p className="text-base text-foreground leading-relaxed whitespace-pre-wrap">
               {aviso.mensagem}
             </p>
           </div>
@@ -130,25 +130,25 @@ export function AvisoDetailModal({ aviso, open, onOpenChange }: AvisoDetailModal
           <Separator />
 
           {/* Informações de Destinatários */}
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+          <div className="bg-muted p-4 rounded-lg">
+            <h4 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
               <Mail className="w-4 h-4" />
               Destinatários
             </h4>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted-foreground">
               {destinatarioInfo.descricao}
             </p>
           </div>
 
           {/* Informações do Autor e Data */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="bg-blue-50 p-4 rounded-lg">
+            <div className="bg-blue-50 dark:bg-blue-950/30 p-4 rounded-lg">
               <div className="flex items-center gap-2 mb-1">
-                <User className="w-4 h-4 text-blue-600" />
-                <h4 className="text-sm font-semibold text-gray-700">Publicado por</h4>
+                <User className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <h4 className="text-sm font-semibold text-foreground">Publicado por</h4>
               </div>
-              <p className="text-sm text-gray-900 font-medium">{aviso.autor}</p>
-              <p className="text-xs text-gray-500 mt-1 capitalize">
+              <p className="text-sm text-foreground font-medium">{aviso.autor}</p>
+              <p className="text-xs text-muted-foreground mt-1 capitalize">
                 {aviso.autor_role === 'admin' && 'Administrador'}
                 {aviso.autor_role === 'tecadm' && 'Técnico Administrativo'}
                 {aviso.autor_role === 'diretor' && 'Diretor'}
@@ -157,12 +157,12 @@ export function AvisoDetailModal({ aviso, open, onOpenChange }: AvisoDetailModal
               </p>
             </div>
 
-            <div className="bg-green-50 p-4 rounded-lg">
+            <div className="bg-green-50 dark:bg-green-950/30 p-4 rounded-lg">
               <div className="flex items-center gap-2 mb-1">
-                <Calendar className="w-4 h-4 text-green-600" />
-                <h4 className="text-sm font-semibold text-gray-700">Data de publicação</h4>
+                <Calendar className="w-4 h-4 text-green-600 dark:text-green-400" />
+                <h4 className="text-sm font-semibold text-foreground">Data de publicação</h4>
               </div>
-              <p className="text-sm text-gray-900 font-medium">
+              <p className="text-sm text-foreground font-medium">
                 {formatDate(aviso.created_at)}
               </p>
             </div>

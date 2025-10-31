@@ -164,7 +164,7 @@ export function ClassStatistics({ apiData }: ClassStatisticsProps) {
     return (
       <Card>
         <CardContent className="text-center py-12">
-          <p className="text-gray-600">Não há dados disponíveis para os filtros selecionados.</p>
+          <p className="text-muted-foreground">Não há dados disponíveis para os filtros selecionados.</p>
         </CardContent>
       </Card>
     );
@@ -183,7 +183,7 @@ export function ClassStatistics({ apiData }: ClassStatisticsProps) {
               : 0;
 
             return (
-              <div key={statisticsItem.name} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+              <div key={statisticsItem.name} className="border rounded-lg p-4 hover:bg-muted transition-colors border-border">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="font-semibold text-lg">{statisticsItem.seriesName ? `${statisticsItem.seriesName} - ${statisticsItem.name}` : statisticsItem.name}</h3>
                   <Badge variant="outline">{statisticsItem.totalStudents} alunos</Badge>

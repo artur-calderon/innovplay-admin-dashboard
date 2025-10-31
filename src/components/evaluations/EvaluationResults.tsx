@@ -1167,7 +1167,7 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
                         }
 
                         return portugueseQuestions.map((item, index) => (
-                          <tr key={index} className="border-b border-gray-100 hover:bg-gray-50">
+                          <tr key={index} className="border-b border-border hover:bg-muted transition-colors">
                             <td className="p-3 font-medium">{item.q}</td>
                             <td className="p-3 text-center">
                               <Badge variant="outline" className="text-xs">
@@ -1236,7 +1236,7 @@ export default function EvaluationResults({ onBack }: EvaluationResultsProps) {
                         }
 
                         return mathQuestions.map((item, index) => (
-                          <tr key={index} className="border-b border-gray-100 hover:bg-gray-50">
+                          <tr key={index} className="border-b border-border hover:bg-muted transition-colors">
                             <td className="p-3 font-medium">{item.q}</td>
                             <td className="p-3 text-center">
                               <Badge variant="outline" className="text-xs">

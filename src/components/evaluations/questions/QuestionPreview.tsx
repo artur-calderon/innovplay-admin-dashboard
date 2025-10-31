@@ -136,8 +136,8 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
             )}
 
             {/* Header com conteúdo e badges */}
-            <div className="space-y-4 mb-8 pb-6 border-b border-gray-100">
-                <h3 className="text-xl font-bold leading-tight text-gray-800">{question.title}</h3>
+            <div className="space-y-4 mb-8 pb-6 border-b border-border">
+                <h3 className="text-xl font-bold leading-tight text-foreground">{question.title}</h3>
                 <div className="flex flex-wrap gap-2">
                     {question.grade?.name && <Badge variant="outline">{question.grade.name}</Badge>}
                     {question.subject?.name && <Badge variant="outline">{question.subject.name}</Badge>}
@@ -208,7 +208,7 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
             {/* Alternativas para questões de múltipla escolha */}
             {(question.type === 'multipleChoice' || question.type === 'multiple_choice') && (
                 <div className="space-y-4 mb-8">
-                    <h4 className="font-semibold text-lg text-gray-700 mb-4">Alternativas</h4>
+                    <h4 className="font-semibold text-lg text-foreground mb-4">Alternativas</h4>
                     {isLoadingDetails ? (
                         <div className="space-y-3">
                             {[...Array(4)].map((_, i) => (
@@ -221,18 +221,18 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
                     ) : questionOptions && questionOptions.length > 0 ? (
                         <div className="space-y-3">
                             {questionOptions.map((option, index) => (
-                                <div key={option.id || index} className="alternative-item flex items-start space-x-4 p-5 rounded-xl border bg-white hover:shadow-md transition-all duration-200">
+                                <div key={option.id || index} className="alternative-item flex items-start space-x-4 p-5 rounded-xl border bg-card hover:shadow-md transition-all duration-200">
                                     <div
                                         className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm font-semibold shrink-0 transition-all duration-200 ${
                                             option.isCorrect 
                                                 ? 'bg-green-500 text-white border-green-500 shadow-lg' 
-                                                : 'bg-gray-50 border-gray-300 text-gray-600 hover:border-gray-400'
+                                                : 'bg-muted border-border text-muted-foreground hover:border-border/80'
                                         }`}
                                     >
                                         {String.fromCharCode(65 + index)}
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <div className={`leading-relaxed text-base ${option.isCorrect ? 'font-medium text-green-800' : 'text-gray-700'}`}>
+                                        <div className={`leading-relaxed text-base ${option.isCorrect ? 'font-medium text-green-800 dark:text-green-400' : 'text-foreground'}`}>
                                             {option.text}
                                         </div>
                                         {option.isCorrect && (
@@ -258,18 +258,18 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
             {/* Área de resposta para questões dissertativas */}
             {(question.type === 'dissertativa' || question.type === 'open') && (
                 <div className="space-y-4 mb-8">
-                    <h4 className="font-semibold text-lg text-gray-700 mb-4">Área de Resposta</h4>
-                    <div className="answer-area rounded-xl p-6 bg-gray-50 border-2 border-dashed border-gray-300">
-                        <Label htmlFor="answer-area" className="text-sm font-medium text-gray-600 block mb-3">
+                    <h4 className="font-semibold text-lg text-foreground mb-4">Área de Resposta</h4>
+                    <div className="answer-area rounded-xl p-6 bg-muted border-2 border-dashed border-border">
+                        <Label htmlFor="answer-area" className="text-sm font-medium text-muted-foreground block mb-3">
                             Espaço destinado para a resposta do estudante
                         </Label>
                         <Textarea
                             id="answer-area"
                             placeholder="O estudante deve desenvolver sua resposta aqui, demonstrando conhecimento e raciocínio sobre o tema abordado na questão..."
-                            className="min-h-[140px] resize-none bg-white border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 text-gray-700 placeholder:text-gray-400"
+                            className="min-h-[140px] resize-none bg-card border-border focus:border-blue-400 dark:focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-950/30 text-foreground placeholder:text-muted-foreground"
                             disabled
                         />
-                        <p className="text-xs text-gray-500 mt-3 leading-relaxed">
+                        <p className="text-xs text-muted-foreground mt-3 leading-relaxed">
                             📝 Esta área será preenchida pelo estudante durante a avaliação e será corrigida pelo professor.
                         </p>
                     </div>
@@ -278,13 +278,13 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
 
             {/* Resolução/Gabarito */}
             {!isLoadingDetails && question.solution && question.solution.trim() !== '' && (
-                <div className="resolution-section space-y-4 border-t border-gray-200 pt-8">
-                    <h4 className="font-semibold text-lg text-gray-700 flex items-center gap-2">
+                <div className="resolution-section space-y-4 border-t border-border pt-8">
+                    <h4 className="font-semibold text-lg text-foreground flex items-center gap-2">
                         <span className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm">💡</span>
                         Resolução
                     </h4>
                     <div className="resolution-content bg-blue-50 border border-blue-200 rounded-xl p-6">
-                        <div className="text-base leading-relaxed text-gray-700">
+                        <div className="text-base leading-relaxed text-foreground">
                             <SimpleHtmlRenderer content={question.formattedSolution || question.solution} />
                         </div>
                     </div>

@@ -944,7 +944,7 @@ export default function StudentEvaluations() {
                   evaluation.student_status.status !== "em_andamento" &&
                   evaluation.availability.status !== "expired" &&
                   evaluation.availability.status !== 'not_started' as any && (
-                    <Button className="flex-1 bg-gray-600 hover:bg-gray-700" disabled>
+                    <Button className="flex-1 bg-muted text-muted-foreground hover:bg-muted/80" disabled>
                       <AlertCircle className="h-4 w-4 mr-2" />
                       Indisponível
                     </Button>

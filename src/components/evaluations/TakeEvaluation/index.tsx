@@ -447,7 +447,7 @@ export default function TakeEvaluation() {
     // Se não há evaluationId, mostrar erro
     if (!evaluationId) {
         return (
-            <div className="flex items-center justify-center h-screen w-screen bg-gray-50">
+            <div className="flex items-center justify-center h-screen w-screen bg-background">
                 <div className="max-w-md w-full mx-4">
                     <Alert variant="destructive">
                         <AlertTriangle className="h-4 w-4" />
@@ -463,7 +463,7 @@ export default function TakeEvaluation() {
     // Loading state
     if (evaluationState === 'loading') {
         return (
-            <div className="flex items-center justify-center h-screen w-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
+            <div className="flex items-center justify-center h-screen w-screen bg-background">
                 <div className="max-w-lg w-full mx-4 text-center">
                     <Card className="p-8 shadow-xl border-0 bg-white/80 backdrop-blur-sm">
                         <div className="space-y-8">
@@ -523,7 +523,7 @@ export default function TakeEvaluation() {
     // Error state
     if (evaluationState === 'error') {
         return (
-            <div className="flex items-center justify-center h-screen w-screen bg-gray-50">
+            <div className="flex items-center justify-center h-screen w-screen bg-background">
                 <div className="max-w-md w-full mx-4">
                     <Alert variant="destructive">
                         <AlertTriangle className="h-4 w-4" />
@@ -567,7 +567,7 @@ export default function TakeEvaluation() {
     // Results screen - Mostrar resultados imediatos
     if (evaluationState === 'completed') {
         return (
-            <div className="flex items-center justify-center min-h-screen w-screen bg-gray-50 p-4">
+            <div className="flex items-center justify-center min-h-screen w-screen bg-background p-4">
                 <div className="max-w-lg w-full">
                     <Card>
                         <CardHeader>
@@ -729,7 +729,7 @@ export default function TakeEvaluation() {
         }
 
         return (
-            <div className="h-screen w-screen bg-gray-50 flex flex-col overflow-hidden">
+            <div className="h-screen w-screen bg-background flex flex-col overflow-hidden">
 <style>
   {`
     /* Imagens principais - tamanho médio/grande com tamanho mínimo */
@@ -922,13 +922,13 @@ export default function TakeEvaluation() {
                 <div className="flex-1 overflow-hidden">
                     <div className="h-full flex">
                         {/* ✅ Navegação lateral - escondida em mobile */}
-                        <div className="hidden md:flex md:w-64 lg:w-72 xl:w-80 bg-white border-r border-gray-200 flex-col">
+                        <div className="hidden md:flex md:w-64 lg:w-72 xl:w-80 bg-card border-r border-border flex-col">
                             {/* Header da navegação */}
-                            <div className="p-3 lg:p-4 border-b border-gray-200">
+                            <div className="p-3 lg:p-4 border-b border-border">
                                 <div className="flex items-center justify-between mb-3">
                                     <div className="flex items-center gap-2 lg:gap-3">
-                                        <h3 className="text-xs lg:text-sm font-semibold text-gray-700">Navegação</h3>
-                                        <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                                        <h3 className="text-xs lg:text-sm font-semibold text-foreground">Navegação</h3>
+                                        <div className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
                                             {Object.keys(answers).length}/{shuffledQuestions.length}
                                         </div>
                                     </div>
@@ -954,11 +954,11 @@ export default function TakeEvaluation() {
                                 
                                 {/* Progresso visual */}
                                 <div className="mb-3 lg:mb-4">
-                                    <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
+                                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
                                         <span>Progresso</span>
                                         <span>{Math.round((Object.keys(answers).length / shuffledQuestions.length) * 100)}%</span>
                                     </div>
-                                    <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                                    <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
                                         <div 
                                             className="bg-gradient-to-r from-purple-500 to-blue-600 h-full transition-all duration-300 ease-out"
                                             style={{ 
@@ -984,8 +984,8 @@ export default function TakeEvaluation() {
                                                     ${isCurrent 
                                                         ? 'bg-purple-600 text-white ring-2 ring-purple-300 shadow-lg scale-105' 
                                                         : hasAnswer 
-                                                            ? 'bg-green-100 text-green-700 border border-green-300 hover:bg-green-200 hover:scale-105' 
-                                                            : 'bg-gray-100 text-gray-600 border border-gray-300 hover:bg-gray-200 hover:scale-105'
+                                                            ? 'bg-green-100 dark:bg-green-950/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-800 hover:bg-green-200 dark:hover:bg-green-950/50 hover:scale-105' 
+                                                            : 'bg-muted text-muted-foreground border border-border hover:bg-muted/80 hover:scale-105'
                                                     }
                                                     ${isTimeUp ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
                                                 `}
@@ -1005,7 +1005,7 @@ export default function TakeEvaluation() {
                         </div>
 
                         {/* ✅ Área principal - MAIS VISÍVEL e PROFISSIONAL */}
-                        <div className="flex-1 overflow-y-auto bg-gray-50">
+                        <div className="flex-1 overflow-y-auto bg-background">
                             <div className="max-w-4xl mx-2 sm:mx-4 md:mx-auto p-3 sm:p-4 md:p-6">
                                 <Card className="evaluation-question-card question-fade-in">
                                     <CardHeader className="evaluation-question-header p-4 sm:p-5 md:p-6">
@@ -1043,7 +1043,7 @@ export default function TakeEvaluation() {
                                         <div className="evaluation-question-content space-y-4 sm:space-y-6">
                                             {/* Primeiro Enunciado */}
                                             {(currentQuestion?.formattedText || currentQuestion?.text) && (
-                                                <div className="prose max-w-none text-gray-800 text-sm sm:text-base md:text-lg leading-relaxed">
+                                                <div className="prose max-w-none text-foreground text-sm sm:text-base md:text-lg leading-relaxed">
                                                     <div
                                                         dangerouslySetInnerHTML={{
                                                             __html: currentQuestion?.formattedText || currentQuestion?.text || '',
@@ -1054,7 +1054,7 @@ export default function TakeEvaluation() {
 
                                             {/* Segundo Enunciado */}
                                             {currentQuestion?.secondStatement?.trim() && (
-                                                <div className="prose max-w-none text-gray-800 text-sm sm:text-base md:text-lg leading-relaxed">
+                                                <div className="prose max-w-none text-foreground text-sm sm:text-base md:text-lg leading-relaxed">
                                                     <div
                                                         dangerouslySetInnerHTML={{
                                                             __html: currentQuestion.secondStatement.trim(),
@@ -1065,7 +1065,7 @@ export default function TakeEvaluation() {
                                         </div>
 
                                         {/* Opções de Resposta */}
-                                        <div className="rounded-xl sm:rounded-2xl border border-gray-200 bg-white shadow p-4 sm:p-5 md:p-6">
+                                        <div className="rounded-xl sm:rounded-2xl border border-border bg-card shadow p-4 sm:p-5 md:p-6">
                                             <QuestionOptions
                                                 question={currentQuestion}
                                                 answer={answers[currentQuestion?.id]?.answer}
@@ -1114,7 +1114,7 @@ export default function TakeEvaluation() {
                                 </Card>
 
                                 {/* ✅ Navegação SIMPLIFICADA para crianças */}
-                                <div className="flex items-center justify-between pt-4 sm:pt-6 border-t border-gray-200 gap-2 sm:gap-4">
+                                <div className="flex items-center justify-between pt-4 sm:pt-6 border-t border-border gap-2 sm:gap-4">
                                     <Button
                                         variant="outline"
                                         size="sm"
@@ -1129,7 +1129,7 @@ export default function TakeEvaluation() {
                                             navigateToQuestion(currentQuestionIndex - 1);
                                         }}
                                         disabled={currentQuestionIndex === 0 || isTimeUp}
-                                        className="px-3 sm:px-6 md:px-8 py-2 sm:py-3 md:py-4 text-sm sm:text-base md:text-lg font-bold border-2 rounded-lg sm:rounded-xl hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 touch-manipulation"
+                                        className="px-3 sm:px-6 md:px-8 py-2 sm:py-3 md:py-4 text-sm sm:text-base md:text-lg font-bold border-2 rounded-lg sm:rounded-xl hover:bg-muted active:bg-muted/80 disabled:opacity-50 touch-manipulation"
                                     >
                                         <ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6 md:h-8 md:w-8 mr-1 sm:mr-2 md:mr-3" />
                                         <span className="hidden xs:inline">← Voltar</span>
@@ -1207,12 +1207,12 @@ export default function TakeEvaluation() {
                          />
                          
                          {/* Modal de navegação na FRENTE */}
-                         <div className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col animate-slide-up">
+                         <div className="fixed inset-x-0 bottom-0 z-50 bg-card rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col animate-slide-up">
                              {/* Header do modal */}
-                             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                             <div className="p-4 border-b border-border flex items-center justify-between">
                                 <div className="flex items-center gap-3">
-                                    <h3 className="text-base font-bold text-gray-800">Navegação</h3>
-                                    <div className="text-xs text-gray-500 bg-gray-100 px-3 py-1.5 rounded-full font-semibold">
+                                    <h3 className="text-base font-bold text-foreground">Navegação</h3>
+                                    <div className="text-xs text-muted-foreground bg-muted px-3 py-1.5 rounded-full font-semibold">
                                         {Object.keys(answers).length}/{shuffledQuestions.length}
                                     </div>
                                 </div>
@@ -1237,13 +1237,13 @@ export default function TakeEvaluation() {
                              
                              {/* Progresso */}
                              <div className="px-4 pt-3 pb-2">
-                                <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
+                                <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
                                     <span className="font-medium">Progresso da Avaliação</span>
                                     <span className="font-bold text-purple-600">
                                         {Math.round((Object.keys(answers).length / shuffledQuestions.length) * 100)}%
                                     </span>
                                 </div>
-                                <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                                <div className="w-full bg-muted rounded-full h-3 overflow-hidden">
                                     <div 
                                         className="bg-gradient-to-r from-purple-500 to-blue-600 h-full transition-all duration-300 ease-out"
                                         style={{ 
@@ -1268,8 +1268,8 @@ export default function TakeEvaluation() {
                                                     ${isCurrent 
                                                         ? 'bg-purple-600 text-white ring-2 ring-purple-300 shadow-lg scale-105' 
                                                         : hasAnswer 
-                                                            ? 'bg-green-100 text-green-700 border-2 border-green-400 hover:bg-green-200 hover:scale-105' 
-                                                            : 'bg-gray-100 text-gray-600 border-2 border-gray-300 hover:bg-gray-200 hover:scale-105'
+                                                            ? 'bg-green-100 dark:bg-green-950/30 text-green-700 dark:text-green-400 border-2 border-green-400 dark:border-green-800 hover:bg-green-200 dark:hover:bg-green-950/50 hover:scale-105' 
+                                                            : 'bg-muted text-muted-foreground border-2 border-border hover:bg-muted/80 hover:scale-105'
                                                     }
                                                     ${isTimeUp ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
                                                 `}
@@ -1302,7 +1302,7 @@ export default function TakeEvaluation() {
                              </div>
                              
                              {/* Botão de enviar */}
-                             <div className="p-4 border-t border-gray-200 bg-gray-50">
+                             <div className="p-4 border-t border-border bg-muted">
                                 <Button
                                     onClick={(e) => {
                                         e.preventDefault();
@@ -1326,8 +1326,8 @@ export default function TakeEvaluation() {
                                     <Send className="h-5 w-5 mr-2" />
                                     Enviar Avaliação ({Object.keys(answers).length}/{shuffledQuestions.length})
                                 </Button>
-                                {Object.keys(answers).length < shuffledQuestions.length && (
-                                    <p className="text-xs text-center text-gray-500 mt-2">
+                                    {Object.keys(answers).length < shuffledQuestions.length && (
+                                    <p className="text-xs text-center text-muted-foreground mt-2">
                                         Responda todas as questões para enviar
                                     </p>
                                 )}
@@ -1357,15 +1357,15 @@ export default function TakeEvaluation() {
                          {/* Modal na FRENTE */}
                          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 pointer-events-none">
                              <div 
-                                 className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-md w-full mx-2 sm:mx-4 border border-gray-200 pointer-events-auto"
+                                 className="bg-card rounded-xl sm:rounded-2xl shadow-2xl max-w-md w-full mx-2 sm:mx-4 border border-border pointer-events-auto"
                                  onClick={(e) => e.stopPropagation()}
                                  onTouchEnd={(e) => e.stopPropagation()}
                              >
                                  <div className="p-4 sm:p-6 pb-3 sm:pb-4">
                                      <div className="space-y-3 sm:space-y-4">
-                                         <h2 className="text-lg sm:text-xl font-bold text-gray-800">Confirmar envio da avaliação</h2>
+                                         <h2 className="text-lg sm:text-xl font-bold text-foreground">Confirmar envio da avaliação</h2>
                                          <div className="space-y-2">
-                                             <p className="text-sm sm:text-base mb-3 sm:mb-4">Você tem certeza que deseja enviar sua avaliação?</p>
+                                             <p className="text-sm sm:text-base mb-3 sm:mb-4 text-muted-foreground">Você tem certeza que deseja enviar sua avaliação?</p>
                                              <div className="text-sm sm:text-base font-medium">
                                                  Questões respondidas: <span className="text-purple-600">{Object.keys(answers).length}</span> de {shuffledQuestions.length || 0}
                                              </div>
@@ -1374,7 +1374,7 @@ export default function TakeEvaluation() {
                                  </div>
                                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 px-4 sm:px-6 pb-4 sm:pb-6">
                                      <button
-                                         className="flex-1 px-4 py-3 sm:py-2.5 text-sm sm:text-base border border-gray-300 rounded-lg hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 font-medium order-2 sm:order-1 touch-manipulation"
+                                         className="flex-1 px-4 py-3 sm:py-2.5 text-sm sm:text-base border border-border rounded-lg hover:bg-muted active:bg-muted/80 disabled:opacity-50 font-medium order-2 sm:order-1 touch-manipulation"
                                          onClick={(e) => {
                                              e.preventDefault();
                                              e.stopPropagation();
@@ -1475,7 +1475,7 @@ export default function TakeEvaluation() {
 
                                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 px-4 sm:px-6 pb-4 sm:pb-6">
                                      <button
-                                         className="w-full sm:w-auto order-2 sm:order-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg transition-colors text-sm sm:text-base"
+                                         className="w-full sm:w-auto order-2 sm:order-1 bg-muted hover:bg-muted/80 text-foreground font-medium py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg transition-colors text-sm sm:text-base"
                                          onClick={() => {
                                              console.log('🔍 Fechando modal de conclusão para permitir revisão...');
                                              setShowCompletionDialog(false);
@@ -1531,7 +1531,7 @@ export default function TakeEvaluation() {
                {/* ✅ Modal de visualização em tela cheia - MELHORADO */}
                {showFullscreenQuestion && (
                    <div 
-                       className="fixed inset-0 z-[9999] bg-white flex flex-col"
+                       className="fixed inset-0 z-[9999] bg-background flex flex-col"
                        style={{
                            position: 'fixed',
                            top: 0,
@@ -1544,7 +1544,7 @@ export default function TakeEvaluation() {
                        }}
                    >
                        {/* Header - MELHORADO */}
-                       <div className="flex items-center justify-between px-3 sm:px-4 md:px-6 lg:px-8 py-2 sm:py-3 bg-white border-b shadow-sm flex-shrink-0">
+                       <div className="flex items-center justify-between px-3 sm:px-4 md:px-6 lg:px-8 py-2 sm:py-3 bg-card border-b border-border shadow-sm flex-shrink-0">
                            <div className="flex items-center gap-2 sm:gap-3 md:gap-4 min-w-0 flex-1">
                                <h2 className="text-sm sm:text-base md:text-lg lg:text-xl font-bold truncate">
                                    <span className="hidden sm:inline">Questão </span>
@@ -1558,7 +1558,7 @@ export default function TakeEvaluation() {
                            </div>
                            <div className="flex items-center gap-2 sm:gap-3 md:gap-4 flex-shrink-0">
                                {/* Status de resposta */}
-                               <span className="text-xs sm:text-sm text-gray-600 hidden xs:block">
+                               <span className="text-xs sm:text-sm text-muted-foreground hidden xs:block">
                                    {answers[currentQuestion?.id]?.answer ? (
                                        <span className="flex items-center gap-1 sm:gap-2 text-green-600 font-medium">
                                            <CheckCircle2 className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -1566,7 +1566,7 @@ export default function TakeEvaluation() {
                                            <span className="md:hidden">✓</span>
                                        </span>
                                    ) : (
-                                       <span className="text-gray-500 hidden lg:inline">
+                                       <span className="text-muted-foreground hidden lg:inline">
                                            Não respondida
                                        </span>
                                    )}
@@ -1580,7 +1580,7 @@ export default function TakeEvaluation() {
                                        e.stopPropagation();
                                        setShowFullscreenQuestion(false);
                                    }}
-                                   className="h-7 w-7 sm:h-8 sm:w-8 md:h-9 md:w-9 p-0 hover:bg-gray-100 rounded-full"
+                                   className="h-7 w-7 sm:h-8 sm:w-8 md:h-9 md:w-9 p-0 hover:bg-muted rounded-full"
                                    title="Fechar visualização"
                                >
                                    <X className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -1591,13 +1591,13 @@ export default function TakeEvaluation() {
                        {/* Conteúdo principal - MELHORADO */}
                        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
                            {/* Lado esquerdo/topo - Questão */}
-                           <div className="fullscreen-question-container flex-1 bg-white overflow-y-auto md:w-1/2 lg:w-3/5 xl:w-2/3">
+                           <div className="fullscreen-question-container flex-1 bg-card overflow-y-auto md:w-1/2 lg:w-3/5 xl:w-2/3">
                                <div className="p-4 sm:p-5 md:p-6 lg:p-8 xl:p-10 max-w-4xl mx-auto">
                                    <div className="evaluation-question-content space-y-3 sm:space-y-4 md:space-y-6">
                                        {/* Primeiro Enunciado */}
                                        {(currentQuestion?.formattedText || currentQuestion?.text) && (
                                            <div 
-                                               className="prose prose-sm sm:prose-base md:prose-lg lg:prose-xl max-w-none text-gray-800"
+                                               className="prose prose-sm sm:prose-base md:prose-lg lg:prose-xl max-w-none text-foreground"
                                                style={{ 
                                                    fontSize: 'clamp(0.875rem, 1.5vw + 0.5rem, 1.375rem)', 
                                                    lineHeight: '1.75' 
@@ -1614,7 +1614,7 @@ export default function TakeEvaluation() {
                                        {/* Segundo Enunciado */}
                                        {currentQuestion?.secondStatement?.trim() && (
                                            <div 
-                                               className="prose prose-sm sm:prose-base md:prose-lg lg:prose-xl max-w-none text-gray-800 pt-3 sm:pt-4 md:pt-6 mt-3 sm:mt-4 md:mt-6 border-t-2 border-gray-200"
+                                               className="prose prose-sm sm:prose-base md:prose-lg lg:prose-xl max-w-none text-foreground pt-3 sm:pt-4 md:pt-6 mt-3 sm:mt-4 md:mt-6 border-t-2 border-border"
                                                style={{ 
                                                    fontSize: 'clamp(0.875rem, 1.5vw + 0.5rem, 1.375rem)', 
                                                    lineHeight: '1.75' 
@@ -1632,12 +1632,12 @@ export default function TakeEvaluation() {
                            </div>
 
                            {/* Divisor */}
-                           <div className="h-px md:h-auto md:w-px bg-gray-300 flex-shrink-0"></div>
+                           <div className="h-px md:h-auto md:w-px bg-border flex-shrink-0"></div>
 
                            {/* Lado direito/baixo - Alternativas */}
-                           <div className="fullscreen-options-container flex-1 flex flex-col bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 overflow-y-auto md:w-1/2 lg:w-2/5 xl:w-1/3">
+                           <div className="fullscreen-options-container flex-1 flex flex-col bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 dark:from-purple-950/30 dark:via-blue-950/30 dark:to-indigo-950/30 overflow-y-auto md:w-1/2 lg:w-2/5 xl:w-1/3">
                                <div className="p-4 sm:p-5 md:p-6 lg:p-8">
-                                   <h3 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-gray-800 mb-3 sm:mb-4 md:mb-6 sticky top-0 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 pb-2 z-10">
+                                   <h3 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-foreground mb-3 sm:mb-4 md:mb-6 sticky top-0 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 dark:from-purple-950/30 dark:via-blue-950/30 dark:to-indigo-950/30 pb-2 z-10">
                                        Alternativas:
                                    </h3>
                                    <div className="space-y-3 sm:space-y-4">
@@ -1686,7 +1686,7 @@ export default function TakeEvaluation() {
                        </div>
 
                        {/* Footer com navegação - NOVO */}
-                       <div className="flex items-center justify-between px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 bg-white border-t shadow-lg flex-shrink-0">
+                       <div className="flex items-center justify-between px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 bg-card border-t border-border shadow-lg flex-shrink-0">
                            <Button
                                variant="outline"
                                size="sm"
@@ -1704,7 +1704,7 @@ export default function TakeEvaluation() {
                            </Button>
 
                            <div className="flex items-center gap-2 sm:gap-3">
-                               <span className="text-xs sm:text-sm md:text-base font-semibold text-gray-700 bg-gray-100 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full">
+                               <span className="text-xs sm:text-sm md:text-base font-semibold text-foreground bg-muted px-3 sm:px-4 py-1.5 sm:py-2 rounded-full">
                                    {currentQuestionIndex + 1} / {shuffledQuestions.length}
                                </span>
                                <Button
@@ -1766,7 +1766,7 @@ function QuestionOptions({
 
         return (
             <div className="space-y-4 sm:space-y-6">
-                <div className="text-base sm:text-lg md:text-xl font-bold text-gray-800 mb-4 sm:mb-6">
+                <div className="text-base sm:text-lg md:text-xl font-bold text-foreground mb-4 sm:mb-6">
                     Selecione a alternativa correta:
                 </div>
                 <RadioGroup
@@ -1807,9 +1807,9 @@ function QuestionOptions({
                         return (
                             <div
                                 key={optionId}
-                                className={`flex items-start space-x-3 sm:space-x-4 p-4 sm:p-5 md:p-6 rounded-lg sm:rounded-xl border-2 cursor-pointer transition-all hover:bg-gray-50 ${isSelected
-                                    ? 'border-purple-500 bg-purple-50 ring-2 sm:ring-4 ring-purple-200 shadow-lg'
-                                    : 'border-gray-300 hover:border-gray-400 hover:shadow-md'
+                                className={`flex items-start space-x-3 sm:space-x-4 p-4 sm:p-5 md:p-6 rounded-lg sm:rounded-xl border-2 cursor-pointer transition-all hover:bg-muted ${isSelected
+                                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/30 ring-2 sm:ring-4 ring-purple-200 dark:ring-purple-800 shadow-lg'
+                                    : 'border-border hover:border-border/80 hover:shadow-md'
                                     } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 onClick={() => !disabled && onAnswerChange(optionId)}
                             >
@@ -1823,7 +1823,7 @@ function QuestionOptions({
                                     className="flex-1 cursor-pointer text-sm sm:text-base md:text-lg leading-relaxed"
                                 >
                                     <div className="flex items-start gap-2 sm:gap-3">
-                                        <span className="font-bold text-gray-700 min-w-[24px] sm:min-w-[30px] text-base sm:text-lg md:text-xl flex-shrink-0">
+                                        <span className="font-bold text-foreground min-w-[24px] sm:min-w-[30px] text-base sm:text-lg md:text-xl flex-shrink-0">
                                             {String.fromCharCode(65 + index)})
                                         </span>
                                         <div className="text-sm sm:text-base md:text-lg leading-relaxed" dangerouslySetInnerHTML={{ __html: optionText }} />
@@ -1840,7 +1840,7 @@ function QuestionOptions({
     if (question.type === "true_false" || question.type === "truefalse") {
         return (
             <div className="space-y-4 sm:space-y-6">
-                <div className="text-base sm:text-lg md:text-xl font-bold text-gray-800 mb-4 sm:mb-6">
+                <div className="text-base sm:text-lg md:text-xl font-bold text-foreground mb-4 sm:mb-6">
                     Selecione Verdadeiro ou Falso:
                 </div>
                 <RadioGroup
@@ -1857,9 +1857,9 @@ function QuestionOptions({
                         return (
                             <div
                                 key={option.id}
-                                className={`flex items-center space-x-3 sm:space-x-4 p-4 sm:p-5 md:p-6 rounded-lg sm:rounded-xl border-2 cursor-pointer transition-all hover:bg-gray-50 ${isSelected
-                                    ? 'border-purple-500 bg-purple-50 ring-2 sm:ring-4 ring-purple-200 shadow-lg'
-                                    : 'border-gray-300 hover:border-gray-400 hover:shadow-md'
+                                className={`flex items-center space-x-3 sm:space-x-4 p-4 sm:p-5 md:p-6 rounded-lg sm:rounded-xl border-2 cursor-pointer transition-all hover:bg-muted ${isSelected
+                                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/30 ring-2 sm:ring-4 ring-purple-200 dark:ring-purple-800 shadow-lg'
+                                    : 'border-border hover:border-border/80 hover:shadow-md'
                                     } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 onClick={() => !disabled && onAnswerChange(option.id)}
                             >
@@ -1882,7 +1882,7 @@ function QuestionOptions({
 
         return (
             <div className="space-y-3">
-                <div className="text-sm sm:text-base font-medium text-gray-700 mb-3">
+                <div className="text-sm sm:text-base font-medium text-muted-foreground mb-3">
                     Selecione todas as alternativas corretas:
                 </div>
                 <div className="space-y-2">
@@ -1894,9 +1894,9 @@ function QuestionOptions({
                         return (
                             <div
                                 key={optionId}
-                                className={`flex items-start space-x-2 sm:space-x-3 p-3 sm:p-4 rounded-lg border cursor-pointer transition-all hover:bg-gray-50 ${isSelected
-                                    ? 'border-purple-500 bg-purple-50 ring-2 ring-purple-200'
-                                    : 'border-gray-200 hover:border-gray-300'
+                                className={`flex items-start space-x-2 sm:space-x-3 p-3 sm:p-4 rounded-lg border cursor-pointer transition-all hover:bg-muted ${isSelected
+                                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/30 ring-2 ring-purple-200 dark:ring-purple-800'
+                                    : 'border-border hover:border-border/80'
                                     } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 onClick={() => {
                                     if (!disabled) {
@@ -1926,7 +1926,7 @@ function QuestionOptions({
                                     className="flex-1 cursor-pointer text-xs sm:text-sm leading-relaxed"
                                 >
                                     <div className="flex items-start gap-2">
-                                        <span className="font-medium text-gray-600 min-w-[20px] flex-shrink-0">
+                                        <span className="font-medium text-muted-foreground min-w-[20px] flex-shrink-0">
                                             {String.fromCharCode(65 + index)})
                                         </span>
                                         <div className="text-xs sm:text-sm" dangerouslySetInnerHTML={{ __html: optionText }} />
@@ -1943,7 +1943,7 @@ function QuestionOptions({
     if (question.type === "essay" || question.type === "open" || question.type === "dissertativa" || question.type === "text" || question.type === "short_answer") {
         return (
             <div className="space-y-4 sm:space-y-6">
-                <div className="text-base sm:text-lg md:text-xl font-bold text-gray-800 mb-4 sm:mb-6">
+                <div className="text-base sm:text-lg md:text-xl font-bold text-foreground mb-4 sm:mb-6">
                     Digite sua resposta:
                 </div>
                 <Textarea
@@ -1954,7 +1954,7 @@ function QuestionOptions({
                     disabled={disabled}
                     className="min-h-[150px] sm:min-h-[200px] resize-none text-sm sm:text-base md:text-lg p-3 sm:p-4 border-2 rounded-lg sm:rounded-xl"
                 />
-                <div className="text-xs sm:text-sm text-gray-600 font-medium">
+                <div className="text-xs sm:text-sm text-muted-foreground font-medium">
                     {answer ? `${answer.length} caracteres` : '0 caracteres'}
                 </div>
             </div>
@@ -1962,8 +1962,8 @@ function QuestionOptions({
     }
 
     return (
-        <div className="p-4 border rounded-lg bg-gray-50">
-            <div className="text-sm text-gray-600">
+        <div className="p-4 border rounded-lg bg-muted">
+            <div className="text-sm text-muted-foreground">
                 Tipo de questão não suportado: {question.type}
             </div>
         </div>

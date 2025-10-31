@@ -257,6 +257,10 @@ const makeDeltaLabelRenderer = (
   const color = d > 0 ? '#10B981' : d < 0 ? '#EF4444' : '#6B7280';
   const text = `${d > 0 ? '+' : ''}${d.toFixed(1).replace('.', ',')}%`;
 
+  // Detectar se está em modo escuro
+  const isDarkMode = document.documentElement.classList.contains('dark');
+  const strokeColor = isDarkMode ? 'hsl(var(--background))' : '#ffffff';
+
   return (
     <g>
       <text
@@ -266,7 +270,7 @@ const makeDeltaLabelRenderer = (
         fontSize={12}
         fontWeight={700}
         fill={color}
-        stroke="#ffffff"
+        stroke={strokeColor}
         strokeWidth={2}
         paintOrder="stroke fill"
       >
@@ -330,7 +334,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
         <div className="mt-2 space-y-2 flex flex-col items-center justify-center">
           {/* Itens padrão da legenda */}
           {payload.length > 0 && (
-            <div className="flex flex-wrap items-center justify-center gap-3 text-xs text-gray-700">
+            <div className="flex flex-wrap items-center justify-center gap-3 text-xs text-muted-foreground">
               {payload.map((item, idx) => (
                 <div key={`${chartId}-lg-${idx}`} className="flex items-center gap-1.5">
                   <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: item.color || '#9ca3af' }} />
@@ -351,8 +355,8 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                     onClick={() => handleToggle(chartId, name)}
                     className={`px-2 py-0.5 text-[11px] rounded-full border transition-colors inline-flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-offset-1 ${
                       isHidden
-                        ? 'bg-white text-gray-500 border-gray-300'
-                        : 'bg-white text-gray-800 border-gray-200 hover:border-gray-300'
+                        ? 'bg-card text-muted-foreground border-border'
+                        : 'bg-card text-foreground border-border hover:border-border/80'
                     }`}
                     aria-pressed={!isHidden}
                     aria-label={`Alternar visibilidade da avaliação ${name}`}
@@ -363,11 +367,11 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                   </button>
                 );
               })}
-              <span className="mx-1 text-gray-300 text-xs select-none">|</span>
+              <span className="mx-1 text-border text-xs select-none">|</span>
               <button
                 type="button"
                 onClick={() => handleHideAll(chartId, names)}
-                className="px-2 py-0.5 text-[11px] rounded-full border bg-white text-gray-500 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-1 inline-flex items-center gap-1"
+                className="px-2 py-0.5 text-[11px] rounded-full border bg-card text-muted-foreground border-border hover:border-border/80 focus:outline-none focus:ring-2 focus:ring-offset-1 inline-flex items-center gap-1"
                 aria-label="Ocultar todas as avaliações deste gráfico"
               >
                 <EyeOff className="h-3 w-3" /> Ocultar todas
@@ -375,7 +379,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
               <button
                 type="button"
                 onClick={() => handleShowAll(chartId)}
-                className="px-2 py-0.5 text-[11px] rounded-full border bg-white text-gray-700 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-1 inline-flex items-center gap-1"
+                className="px-2 py-0.5 text-[11px] rounded-full border bg-card text-foreground border-border hover:border-border/80 focus:outline-none focus:ring-2 focus:ring-offset-1 inline-flex items-center gap-1"
                 aria-label="Mostrar todas as avaliações deste gráfico"
               >
                 <Eye className="h-3 w-3" /> Mostrar todas
@@ -538,13 +542,13 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
         const sinal = variacao > 0 ? '+' : '';
         
         return (
-          <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-sm">
-            <p className="text-sm font-medium text-gray-900 mb-1">{label}</p>
-            <p className="text-sm text-gray-700">
+          <div className="bg-card p-3 border border-border rounded-lg shadow-sm">
+            <p className="text-sm font-medium text-foreground mb-1">{label}</p>
+            <p className="text-sm text-muted-foreground">
               Nota: <span className="font-semibold">{nota.toFixed(1).replace('.', ',')}</span>
             </p>
             <p className={`text-sm font-medium ${
-              variacao > 0 ? 'text-green-600' : variacao < 0 ? 'text-red-600' : 'text-gray-600'
+              variacao > 0 ? 'text-green-600 dark:text-green-400' : variacao < 0 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'
             }`}>
               Variação: {sinal}{variacao.toFixed(1)}%
             </p>
@@ -614,12 +618,12 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
           }
 
           const sinal = variacao > 0 ? '+' : '';
-          const colorClass = variacao > 0 ? 'text-green-600' : variacao < 0 ? 'text-red-600' : 'text-gray-600';
+          const colorClass = variacao > 0 ? 'text-green-600 dark:text-green-400' : variacao < 0 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground';
 
           return (
-            <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-sm">
-              <p className="text-sm font-medium text-gray-900 mb-1">{label}</p>
-              <p className="text-sm text-gray-700">
+            <div className="bg-card p-3 border border-border rounded-lg shadow-sm">
+              <p className="text-sm font-medium text-foreground mb-1">{label}</p>
+              <p className="text-sm text-muted-foreground">
                 {metricName}: <span className="font-semibold">{value.toFixed(1).replace('.', ',')}</span>
               </p>
               <p className={`text-sm font-medium ${colorClass}`}>
@@ -636,13 +640,13 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
 
   if (isLoading) {
     return (
-      <Card className="border border-gray-200 shadow-sm">
+      <Card className="border border-border shadow-sm">
         <CardContent className="flex flex-col items-center justify-center py-16">
-          <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center mb-4">
-            <Activity className="h-8 w-8 animate-spin text-gray-600" />
+          <div className="w-16 h-16 bg-muted rounded-lg flex items-center justify-center mb-4">
+            <Activity className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Processando Dados</h3>
-          <p className="text-sm text-gray-600 text-center max-w-md">
+          <h3 className="text-lg font-medium text-foreground mb-2">Processando Dados</h3>
+          <p className="text-sm text-muted-foreground text-center max-w-md">
             Gerando análise de evolução das avaliações...
           </p>
         </CardContent>
@@ -652,13 +656,13 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
 
   if (!data || (!data.generalData?.length && !Object.keys(data.subjectData || {}).length)) {
     return (
-      <Card className="border border-gray-200 shadow-sm">
+      <Card className="border border-border shadow-sm">
         <CardContent className="flex flex-col items-center justify-center py-16">
-          <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center mb-4">
-            <TrendingUp className="h-8 w-8 text-gray-400" />
+          <div className="w-16 h-16 bg-muted rounded-lg flex items-center justify-center mb-4">
+            <TrendingUp className="h-8 w-8 text-muted-foreground" />
           </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Dados Insuficientes</h3>
-          <p className="text-sm text-gray-600 text-center max-w-md">
+          <h3 className="text-lg font-medium text-foreground mb-2">Dados Insuficientes</h3>
+          <p className="text-sm text-muted-foreground text-center max-w-md">
             Não há dados suficientes para gerar a análise de evolução.
           </p>
         </CardContent>
@@ -668,13 +672,13 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
 
   if (!chartData || chartData.length === 0) {
     return (
-      <Card className="border border-gray-200 shadow-sm">
+      <Card className="border border-border shadow-sm">
         <CardContent className="flex flex-col items-center justify-center py-16">
-          <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center mb-4">
-            <Activity className="h-8 w-8 text-gray-400" />
+          <div className="w-16 h-16 bg-muted rounded-lg flex items-center justify-center mb-4">
+            <Activity className="h-8 w-8 text-muted-foreground" />
           </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Sem Dados</h3>
-          <p className="text-sm text-gray-600 text-center max-w-md">
+          <h3 className="text-lg font-medium text-foreground mb-2">Sem Dados</h3>
+          <p className="text-sm text-muted-foreground text-center max-w-md">
             Não há dados disponíveis para o período selecionado.
           </p>
         </CardContent>
@@ -700,12 +704,12 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
         {/* Header com controles */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-gray-100 rounded-lg">
-              <Activity className="w-5 h-5 text-gray-700" />
+            <div className="p-2 bg-muted rounded-lg">
+              <Activity className="w-5 h-5 text-foreground" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">Análise de Evolução - Geral</h3>
-              <p className="text-sm text-gray-600">
+              <h3 className="text-lg font-semibold text-foreground">Análise de Evolução - Geral</h3>
+              <p className="text-sm text-muted-foreground">
                 Comparação entre avaliações selecionadas
               </p>
             </div>
@@ -717,62 +721,62 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
         {/* Resumo Estatístico */}
         {generalStats && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card className="border border-gray-200">
+            <Card className="border border-border">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <Target className="w-4 h-4 text-gray-600" />
-                  <span className="text-sm font-medium text-gray-700">Média Geral</span>
+                  <Target className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm font-medium text-muted-foreground">Média Geral</span>
                 </div>
-                <p className="text-2xl font-semibold text-gray-900">
+                <p className="text-2xl font-semibold text-foreground">
                   {generalStats.media.toFixed(1).replace(".", ",")}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">pontos</p>
+                <p className="text-xs text-muted-foreground mt-1">pontos</p>
               </CardContent>
             </Card>
 
-            <Card className="border border-gray-200">
+            <Card className="border border-border">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <TrendingUp className="w-4 h-4 text-gray-600" />
-                  <span className="text-sm font-medium text-gray-700">Melhor Resultado</span>
+                  <TrendingUp className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm font-medium text-muted-foreground">Melhor Resultado</span>
                 </div>
-                <p className="text-2xl font-semibold text-gray-900">
+                <p className="text-2xl font-semibold text-foreground">
                   {generalStats.melhorNota.toFixed(1).replace(".", ",")}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">pontos</p>
+                <p className="text-xs text-muted-foreground mt-1">pontos</p>
               </CardContent>
             </Card>
 
-            <Card className="border border-gray-200">
+            <Card className="border border-border">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-2">
                   {generalStats.tendencia === 'up' ? (
-                    <ArrowUpRight className="w-4 h-4 text-green-600" />
+                    <ArrowUpRight className="w-4 h-4 text-green-600 dark:text-green-400" />
                   ) : generalStats.tendencia === 'down' ? (
-                    <ArrowDownRight className="w-4 h-4 text-red-600" />
+                    <ArrowDownRight className="w-4 h-4 text-red-600 dark:text-red-400" />
                   ) : (
-                    <ArrowRight className="w-4 h-4 text-gray-600" />
+                    <ArrowRight className="w-4 h-4 text-muted-foreground" />
                   )}
-                  <span className="text-sm font-medium text-gray-700">Variação</span>
+                  <span className="text-sm font-medium text-muted-foreground">Variação</span>
                 </div>
                 <p className={`text-2xl font-semibold ${
-                  generalStats.variacaoTotal > 0 ? 'text-green-600' : 
-                  generalStats.variacaoTotal < 0 ? 'text-red-600' : 'text-gray-900'
+                  generalStats.variacaoTotal > 0 ? 'text-green-600 dark:text-green-400' : 
+                  generalStats.variacaoTotal < 0 ? 'text-red-600 dark:text-red-400' : 'text-foreground'
                 }`}>
                   {generalStats.variacaoTotal > 0 ? '+' : ''}{generalStats.variacaoTotal.toFixed(1)}%
                 </p>
-                <p className="text-xs text-gray-500 mt-1">período</p>
+                <p className="text-xs text-muted-foreground mt-1">período</p>
               </CardContent>
             </Card>
 
-            <Card className="border border-gray-200">
+            <Card className="border border-border">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <Calendar className="w-4 h-4 text-gray-600" />
-                  <span className="text-sm font-medium text-gray-700">Total de Avaliações</span>
+                  <Calendar className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm font-medium text-muted-foreground">Total de Avaliações</span>
                 </div>
-                <p className="text-2xl font-semibold text-gray-900">{generalStats.totalAvaliacoes}</p>
-                <p className="text-xs text-gray-500 mt-1">avaliações</p>
+                <p className="text-2xl font-semibold text-foreground">{generalStats.totalAvaliacoes}</p>
+                <p className="text-xs text-muted-foreground mt-1">avaliações</p>
               </CardContent>
             </Card>
           </div>
@@ -781,10 +785,10 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
         {/* Gráficos Detalhados */}
         <div className="grid grid-cols-1 gap-6">
           {!!data.generalData?.length && (
-            <Card className="border border-gray-200">
-              <CardHeader className="bg-gray-50 border-b border-gray-200">
-                <CardTitle className="flex items-center gap-2 text-gray-900">
-                  <TrendingUp className="h-5 w-5 text-gray-600" />
+            <Card className="border border-border">
+              <CardHeader className="bg-muted border-b border-border">
+                <CardTitle className="flex items-center gap-2 text-foreground">
+                  <TrendingUp className="h-5 w-5 text-muted-foreground" />
                   Nota Geral
                 </CardTitle>
               </CardHeader>
@@ -792,9 +796,9 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                 <div className="h-80 w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={segmentedGeneral} margin={{ top: 30, right: 30, left: 20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                      <YAxis domain={[0, 10]} tick={{ fontSize: 12 }} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'hsl(var(--foreground))' }} />
+                      <YAxis domain={[0, 10]} tick={{ fontSize: 12, fill: 'hsl(var(--foreground))' }} />
                       <Tooltip content={<CustomTooltip />} />
                       <Legend content={createLegendRenderer('general-nota', data.evaluationNames)} />
                       <Bar 
@@ -858,10 +862,10 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
           )}
 
           {!!data.proficiencyData?.length && (
-            <Card className="border border-gray-200">
-              <CardHeader className="bg-gray-50 border-b border-gray-200">
-                <CardTitle className="flex items-center gap-2 text-gray-900">
-                  <Target className="h-5 w-5 text-gray-600" />
+            <Card className="border border-border">
+              <CardHeader className="bg-muted border-b border-border">
+                <CardTitle className="flex items-center gap-2 text-foreground">
+                  <Target className="h-5 w-5 text-muted-foreground" />
                   Proficiência Geral
                 </CardTitle>
               </CardHeader>
@@ -869,13 +873,13 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                 <div className="h-80 w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={segmentedProficiency} margin={{ top: 30, right: 30, left: 20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'hsl(var(--foreground))' }} />
                       <YAxis 
                         domain={[0, 425]} 
-                        tick={{ fontSize: 12 }} 
+                        tick={{ fontSize: 12, fill: 'hsl(var(--foreground))' }} 
                         tickFormatter={(value) => value.toFixed(0)}
-                        label={{ value: 'Proficiência', angle: -90, position: 'insideLeft' }}
+                        label={{ value: 'Proficiência', angle: -90, position: 'insideLeft', fill: 'hsl(var(--foreground))' }}
                       />
                       <Tooltip content={<CustomTooltip />} />
                       <Legend content={createLegendRenderer('general-prof', data.evaluationNames)} />
@@ -944,26 +948,26 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
       {/* POR DISCIPLINA */}
       <TabsContent value="subjects" className="space-y-6">
         {/* Header para disciplinas */}
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-gray-100 rounded-lg">
-            <BookOpen className="w-5 h-5 text-gray-700" />
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-muted rounded-lg">
+              <BookOpen className="w-5 h-5 text-foreground" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-foreground">Análise por Disciplina</h3>
+              <p className="text-sm text-muted-foreground">
+                Comparação detalhada por disciplina
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">Análise por Disciplina</h3>
-            <p className="text-sm text-gray-600">
-              Comparação detalhada por disciplina
-            </p>
-          </div>
-        </div>
 
         {Object.keys(data.subjectData || {}).length === 0 ? (
-          <Card className="border border-gray-200">
+          <Card className="border border-border">
             <CardContent className="flex flex-col items-center justify-center py-12">
-              <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center mb-4">
-                <BookOpen className="h-8 w-8 text-gray-400" />
+              <div className="w-16 h-16 bg-muted rounded-lg flex items-center justify-center mb-4">
+                <BookOpen className="h-8 w-8 text-muted-foreground" />
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhuma Disciplina Encontrada</h3>
-              <p className="text-sm text-gray-600 text-center max-w-md">Não há dados de disciplinas para exibir os gráficos.</p>
+              <h3 className="text-lg font-medium text-foreground mb-2">Nenhuma Disciplina Encontrada</h3>
+              <p className="text-sm text-muted-foreground text-center max-w-md">Não há dados de disciplinas para exibir os gráficos.</p>
             </CardContent>
           </Card>
         ) : Object.entries(data.subjectData).filter(([subject, rows]) => {
@@ -978,13 +982,13 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
           
           return hasAllEvaluations;
         }).length === 0 ? (
-          <Card className="border border-gray-200">
+          <Card className="border border-border">
             <CardContent className="flex flex-col items-center justify-center py-12">
-              <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center mb-4">
-                <BookOpen className="h-8 w-8 text-gray-400" />
+              <div className="w-16 h-16 bg-muted rounded-lg flex items-center justify-center mb-4">
+                <BookOpen className="h-8 w-8 text-muted-foreground" />
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhuma Disciplina com Dados Completos</h3>
-              <p className="text-sm text-gray-600 text-center max-w-md">
+              <h3 className="text-lg font-medium text-foreground mb-2">Nenhuma Disciplina com Dados Completos</h3>
+              <p className="text-sm text-muted-foreground text-center max-w-md">
                 Não há disciplinas com dados em todas as avaliações selecionadas. 
                 Apenas disciplinas com dados completos são exibidas para comparação.
               </p>
@@ -1089,17 +1093,17 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
 
               return (
                 <div key={subject} className="space-y-4">
-                  <h4 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                    <BookOpen className="h-5 w-5 text-gray-600" />
+                  <h4 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <BookOpen className="h-5 w-5 text-muted-foreground" />
                     {subject}
                   </h4>
                   
                   <div className="grid grid-cols-1 gap-6">
                     {/* Gráfico de Notas */}
-                <Card className="border border-gray-200">
-                  <CardHeader className="bg-gray-50 border-b border-gray-200">
-                    <CardTitle className="flex items-center gap-2 text-gray-900">
-                          <TrendingUp className="h-5 w-5 text-gray-600" />
+                <Card className="border border-border">
+                  <CardHeader className="bg-muted border-b border-border">
+                    <CardTitle className="flex items-center gap-2 text-foreground">
+                          <TrendingUp className="h-5 w-5 text-muted-foreground" />
                           Notas - {subject}
                     </CardTitle>
                   </CardHeader>
@@ -1107,9 +1111,9 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                     <div className="h-80 w-full">
                       <ResponsiveContainer width="100%" height="100%">
                             <ComposedChart data={subjectSegmented} margin={{ top: 30, right: 30, left: 20, bottom: 5 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                          <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                          <YAxis domain={[0, 10]} tick={{ fontSize: 12 }} />
+                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                          <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'hsl(var(--foreground))' }} />
+                          <YAxis domain={[0, 10]} tick={{ fontSize: 12, fill: 'hsl(var(--foreground))' }} />
                               <Tooltip content={<CustomSubjectTooltip />} />
                               <Legend content={createLegendRenderer(`subject-${subject}-nota`, data.evaluationNames)} />
                           <Bar 
@@ -1173,10 +1177,10 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
 
                     {/* Gráfico de Proficiência - apenas se houver dados completos */}
                     {hasAllProficiencyEvaluations && proficiencyChartData.length > 0 && (
-                      <Card className="border border-gray-200">
-                        <CardHeader className="bg-gray-50 border-b border-gray-200">
-                          <CardTitle className="flex items-center gap-2 text-gray-900">
-                            <Target className="h-5 w-5 text-gray-600" />
+                      <Card className="border border-border">
+                        <CardHeader className="bg-muted border-b border-border">
+                          <CardTitle className="flex items-center gap-2 text-foreground">
+                            <Target className="h-5 w-5 text-muted-foreground" />
                             Proficiência - {subject}
                           </CardTitle>
                         </CardHeader>
@@ -1184,13 +1188,13 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                           <div className="h-80 w-full">
                             <ResponsiveContainer width="100%" height="100%">
                             <ComposedChart data={subjectProfSegmented} margin={{ top: 30, right: 30, left: 20, bottom: 5 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                              <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'hsl(var(--foreground))' }} />
                               <YAxis 
                                 domain={getProficiencyDomain(subject)} 
-                                tick={{ fontSize: 12 }} 
+                                tick={{ fontSize: 12, fill: 'hsl(var(--foreground))' }} 
                                 tickFormatter={(value) => value.toFixed(0)}
-                                label={{ value: 'Proficiência', angle: -90, position: 'insideLeft' }}
+                                label={{ value: 'Proficiência', angle: -90, position: 'insideLeft', fill: 'hsl(var(--foreground))' }}
                               />
                               <Tooltip content={<CustomSubjectTooltip />} />
                               <Legend content={createLegendRenderer(`subject-${subject}-prof`, data.evaluationNames)} />

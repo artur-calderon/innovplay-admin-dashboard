@@ -71,9 +71,9 @@ export function AvisoCard({ aviso, onViewDetails }: AvisoCardProps) {
     : aviso.mensagem;
 
   return (
-    <Card className={cn(
+      <Card className={cn(
       "hover:shadow-lg transition-shadow duration-200 flex flex-col h-full relative",
-      isUnread && "border-l-4 border-l-blue-500 bg-blue-50/30"
+      isUnread && "border-l-4 border-l-blue-500 bg-blue-50/30 dark:bg-blue-950/30"
     )}>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2 mb-2">
@@ -101,13 +101,13 @@ export function AvisoCard({ aviso, onViewDetails }: AvisoCardProps) {
       </CardHeader>
 
       <CardContent className="flex-1 pb-3">
-        <p className="text-sm text-gray-600 leading-relaxed line-clamp-3">
+        <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">
           {previewMensagem}
         </p>
       </CardContent>
 
       <CardFooter className="pt-3 border-t flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex flex-col gap-1 text-xs text-gray-500">
+        <div className="flex flex-col gap-1 text-xs text-muted-foreground">
           <div className="flex items-center gap-1">
             <User className="w-3 h-3" />
             <span>{aviso.autor}</span>

@@ -98,12 +98,12 @@ export const TableRow: React.FC<TableRowProps> = ({
 
   return (
     <tr 
-      className="border-b hover:bg-gray-50 cursor-pointer group"
+      className="border-b hover:bg-muted cursor-pointer group border-border"
       onClick={() => onViewStudentDetails(student.id)}
       title="Clique para ver resultados detalhados do aluno"
     >
       {/* Nome do Aluno */}
-      <td className="px-4 py-3 text-sm font-medium text-gray-900 whitespace-nowrap border border-gray-300">
+      <td className="px-4 py-3 text-sm font-medium text-foreground whitespace-nowrap border border-border">
         <ContextMenu
           onViewDetails={() => onViewStudentDetails(student.id)}
           onOpenInNewTab={() => onOpenInNewTab?.(student.id)}
@@ -119,8 +119,8 @@ export const TableRow: React.FC<TableRowProps> = ({
               }
             }}
           >
-            <span className="hover:text-blue-600 transition-colors">{student.nome}</span>
-            <Eye className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <span className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">{student.nome}</span>
+            <Eye className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
         </ContextMenu>
       </td>
@@ -132,49 +132,49 @@ export const TableRow: React.FC<TableRowProps> = ({
         const uniqueKey = `${student.id}-${questao.disciplina}-q${questao.numero}-${questao.question_id}-${index}`;
         
         return (
-          <td key={uniqueKey} className="px-2 py-3 text-center border border-gray-300">
+          <td key={uniqueKey} className="px-2 py-3 text-center border border-border">
             {answer ? (
               // Aluno respondeu
               answer.acertou ? (
-                <Check className="w-4 h-4 text-green-700 mx-auto" title={`Q${questionDisplayNumber} - ${questao.disciplina}: Acertou`} />
+                <Check className="w-4 h-4 text-green-700 dark:text-green-400 mx-auto" title={`Q${questionDisplayNumber} - ${questao.disciplina}: Acertou`} />
               ) : (
-                <X className="w-4 h-4 text-red-600 mx-auto" title={`Q${questionDisplayNumber} - ${questao.disciplina}: Errou`} />
+                <X className="w-4 h-4 text-red-600 dark:text-red-400 mx-auto" title={`Q${questionDisplayNumber} - ${questao.disciplina}: Errou`} />
               )
             ) : (
               // Aluno não respondeu
-              <Minus className="w-4 h-4 text-gray-400 mx-auto" title={`Q${questionDisplayNumber} - ${questao.disciplina}: Não respondeu`} />
+              <Minus className="w-4 h-4 text-muted-foreground mx-auto" title={`Q${questionDisplayNumber} - ${questao.disciplina}: Não respondeu`} />
             )}
           </td>
         );
       })}
 
       {/* Total de acertos */}
-      <td className="px-4 py-3 text-sm font-semibold text-center border border-gray-300">
+      <td className="px-4 py-3 text-sm font-semibold text-center border border-border text-foreground">
         {student.acertos}
       </td>
 
       {/* Nota */}
-      <td className="px-4 py-3 text-sm text-center border border-gray-300">
+      <td className="px-4 py-3 text-sm text-center border border-border text-foreground">
         {student.nota.toFixed(1)}
       </td>
 
       {/* Proficiência */}
-      <td className="px-4 py-3 text-sm text-center border border-gray-300">
+      <td className="px-4 py-3 text-sm text-center border border-border text-foreground">
         {student.proficiencia}
       </td>
 
       {/* Nível */}
-      <td className="px-4 py-3 text-sm font-medium text-center border border-gray-300">
+      <td className="px-4 py-3 text-sm font-medium text-center border border-border">
         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs text-white ${
           student.classificacao === 'Avançado'
-            ? 'bg-green-600'
+            ? 'bg-green-600 dark:bg-green-700'
             : student.classificacao === 'Adequado'
-            ? 'bg-green-400'
+            ? 'bg-green-400 dark:bg-green-600'
             : student.classificacao === 'Básico'
-            ? 'bg-yellow-500'
+            ? 'bg-yellow-500 dark:bg-yellow-600'
             : student.classificacao === 'Abaixo do Básico'
-            ? 'bg-red-500'
-            : 'bg-red-500'
+            ? 'bg-red-500 dark:bg-red-600'
+            : 'bg-red-500 dark:bg-red-600'
         }`}>
           {student.classificacao || 'Abaixo do Básico'}
         </span>

@@ -212,45 +212,45 @@ const getStatusConfig = (status: 'concluida' | 'em_andamento' | 'pendente' | str
   const configs: Record<string, { label: string; color: string }> = {
     concluida: {
       label: "Concluída",
-      color: "bg-green-100 text-green-800 border-green-300"
+      color: "bg-green-100 dark:bg-green-950/30 text-green-800 dark:text-green-400 border-green-300 dark:border-green-800"
     },
     em_andamento: {
       label: "Em Andamento",
-      color: "bg-blue-100 text-blue-800 border-blue-300"
+      color: "bg-blue-100 dark:bg-blue-950/30 text-blue-800 dark:text-blue-400 border-blue-300 dark:border-blue-800"
     },
     pendente: {
       label: "Pendente",
-      color: "bg-gray-100 text-gray-800 border-gray-300"
+      color: "bg-muted text-foreground border-border"
     },
     agendada: {
       label: "Agendada",
-      color: "bg-yellow-50 text-yellow-600 border-yellow-200"
+      color: "bg-yellow-50 dark:bg-yellow-950/30 text-yellow-600 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800"
     },
     'concluído': {
       label: "Concluída",
-      color: "bg-green-100 text-green-800 border-green-300"
+      color: "bg-green-100 dark:bg-green-950/30 text-green-800 dark:text-green-400 border-green-300 dark:border-green-800"
     },
     'em andamento': {
       label: "Em Andamento",
-      color: "bg-blue-100 text-blue-800 border-blue-300"
+      color: "bg-blue-100 dark:bg-blue-950/30 text-blue-800 dark:text-blue-400 border-blue-300 dark:border-blue-800"
     },
     'finalizada': {
       label: "Concluída",
-      color: "bg-green-100 text-green-800 border-green-300"
+      color: "bg-green-100 dark:bg-green-950/30 text-green-800 dark:text-green-400 border-green-300 dark:border-green-800"
     },
     'finalizado': {
       label: "Concluída",
-      color: "bg-green-100 text-green-800 border-green-300"
+      color: "bg-green-100 dark:bg-green-950/30 text-green-800 dark:text-green-400 border-green-300 dark:border-green-800"
     },
     'agendado': {
       label: "Agendada",
-      color: "bg-yellow-50 text-yellow-600 border-yellow-200"
+      color: "bg-yellow-50 dark:bg-yellow-950/30 text-yellow-600 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800"
     }
   };
 
   const config = configs[status] || {
     label: "Desconhecido",
-    color: "bg-gray-100 text-gray-800 border-gray-300"
+    color: "bg-muted text-foreground border-border"
   };
 
   return config;
@@ -1718,11 +1718,11 @@ export default function Results() {
           </div>
 
           {/* Informação sobre filtros */}
-          <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-            <p className="text-sm text-blue-700">
+          <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+            <p className="text-sm text-blue-700 dark:text-blue-400">
               💡 <strong>Hierarquia dos Filtros:</strong> Estado → Município → Avaliação → Escola → Série → Turma
             </p>
-            <p className="text-sm text-blue-700 mt-1">
+            <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
               <strong>Estado</strong>, <strong>Município</strong> e <strong>Avaliação</strong> são obrigatórios. Escola, Série e Turma são opcionais e podem ser "Todos".
             </p>
           </div>
@@ -1733,13 +1733,13 @@ export default function Results() {
       {!allRequiredFiltersSelected && !isLoading && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-              <Filter className="h-8 w-8 text-gray-400" />
+            <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+              <Filter className="h-8 w-8 text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
+            <h3 className="text-lg font-medium text-foreground mb-2">
               Selecione os filtros obrigatórios para continuar
             </h3>
-            <p className="text-gray-600 text-center max-w-md">
+            <p className="text-muted-foreground text-center max-w-md">
               Para visualizar os resultados das avaliações, você precisa selecionar: <strong>Estado</strong>, <strong>Município</strong> e <strong>Avaliação</strong>. Os filtros Escola, Série e Turma são opcionais e podem ser "Todos".
             </p>
           </CardContent>
@@ -1750,8 +1750,8 @@ export default function Results() {
       {allRequiredFiltersSelected && isLoadingData && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mb-4" />
-            <p className="text-gray-600">Carregando dados...</p>
+            <RefreshCw className="h-8 w-8 animate-spin text-blue-600 dark:text-blue-400 mb-4" />
+            <p className="text-muted-foreground">Carregando dados...</p>
           </CardContent>
         </Card>
       )}
@@ -1786,7 +1786,7 @@ export default function Results() {
                           )}
                         </div>
                       ) : (
-                        <span className="text-gray-700">{evaluationInfo?.disciplina || 'Disciplina não informada'}</span>
+                        <span className="text-foreground">{evaluationInfo?.disciplina || 'Disciplina não informada'}</span>
                       )}
                     </div>
                   </div>
@@ -1880,13 +1880,13 @@ export default function Results() {
           })() ? (
             <Card>
               <CardContent className="text-center py-12">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                  <FileX className="h-8 w-8 text-gray-400" />
+                <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                  <FileX className="h-8 w-8 text-muted-foreground" />
                 </div>
-                                 <h3 className="text-lg font-medium text-gray-900 mb-2">
+                                 <h3 className="text-lg font-medium text-foreground mb-2">
                    Nenhum resultado para mostrar
                  </h3>
-                 <p className="text-gray-600">
+                 <p className="text-muted-foreground">
                    Não foram encontrados resultados para os filtros selecionados.
                  </p>
               </CardContent>
@@ -1955,7 +1955,7 @@ export default function Results() {
                   ) : (
                     <Card>
                       <CardContent className="text-center py-12">
-                        <p className="text-gray-600">Não há dados suficientes para gerar os gráficos.</p>
+                        <p className="text-muted-foreground">Não há dados suficientes para gerar os gráficos.</p>
                       </CardContent>
                     </Card>
                   )}
@@ -1966,21 +1966,21 @@ export default function Results() {
                     // Estado inicial: Nenhuma avaliação selecionada
                     <Card>
                       <CardContent className="flex flex-col items-center justify-center py-16">
-                        <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mb-6">
-                          <BookOpen className="h-10 w-10 text-blue-600" />
+                        <div className="w-20 h-20 bg-blue-50 dark:bg-blue-950/30 rounded-full flex items-center justify-center mb-6">
+                          <BookOpen className="h-10 w-10 text-blue-600 dark:text-blue-400" />
                         </div>
-                        <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                        <h3 className="text-xl font-semibold text-foreground mb-3">
                           Selecione uma Avaliação
                         </h3>
-                        <p className="text-gray-600 text-center max-w-md mb-6">
+                        <p className="text-muted-foreground text-center max-w-md mb-6">
                           Para visualizar os resultados detalhados dos alunos, é necessário selecionar uma avaliação específica nos filtros acima.
                         </p>
-                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-md">
+                        <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4 max-w-md">
                           <div className="flex items-start gap-3">
-                            <div className="w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <div className="w-5 h-5 bg-blue-600 dark:bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                               <span className="text-white text-xs font-bold">!</span>
                             </div>
-                            <div className="text-sm text-blue-800">
+                            <div className="text-sm text-blue-800 dark:text-blue-400">
                               <strong>Por que essa restrição?</strong><br />
                               Isso garante maior estabilidade, carregamento mais rápido e dados sempre precisos.
                             </div>
@@ -2006,50 +2006,50 @@ export default function Results() {
                     <CardContent>
                       {/* Loading State */}
                       {isLoadingStudents && (
-                        <div className="mb-6 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+                        <div className="mb-6 p-6 bg-gradient-to-r from-blue-50 dark:from-blue-950/30 to-indigo-50 dark:to-indigo-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
                           <div className="text-center space-y-4">
                             {/* Spinner animado */}
                             <div className="relative mx-auto w-16 h-16">
-                              <div className="absolute inset-0 rounded-full border-4 border-blue-200"></div>
-                              <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-600 animate-spin"></div>
+                              <div className="absolute inset-0 rounded-full border-4 border-blue-200 dark:border-blue-800"></div>
+                              <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-600 dark:border-t-blue-400 animate-spin"></div>
                               <div className="absolute inset-0 flex items-center justify-center">
-                                <div className="w-6 h-6 bg-blue-600 rounded-full"></div>
+                                <div className="w-6 h-6 bg-blue-600 dark:bg-blue-500 rounded-full"></div>
                               </div>
                             </div>
                             
                             {/* Texto do passo atual */}
                             <div className="space-y-2">
-                              <h3 className="text-lg font-semibold text-blue-800">
+                              <h3 className="text-lg font-semibold text-blue-800 dark:text-blue-400">
                                 {loadingStep}
                               </h3>
                               
                               {/* Barra de progresso */}
-                              <div className="w-full bg-blue-200 rounded-full h-2">
+                              <div className="w-full bg-blue-200 dark:bg-blue-900 rounded-full h-2">
                                 <div 
-                                  className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                                  className="bg-blue-600 dark:bg-blue-500 h-2 rounded-full transition-all duration-300 ease-out"
                                   style={{ width: `${loadingProgress}%` }}
                                 ></div>
                               </div>
-                              <p className="text-sm text-blue-600">{loadingProgress}%</p>
+                              <p className="text-sm text-blue-600 dark:text-blue-400">{loadingProgress}%</p>
                             </div>
                             
                             {/* Indicadores de status */}
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                               <div className="flex items-center gap-2">
-                                <div className={`w-3 h-3 rounded-full ${loadingDetails.detailedReport ? 'bg-blue-500 animate-pulse' : 'bg-gray-300'}`}></div>
-                                <span className="text-xs text-gray-600">Relatório</span>
+                                <div className={`w-3 h-3 rounded-full ${loadingDetails.detailedReport ? 'bg-blue-500 animate-pulse' : 'bg-muted-foreground'}`}></div>
+                                <span className="text-xs text-muted-foreground">Relatório</span>
                               </div>
                               <div className="flex items-center gap-2">
-                                <div className={`w-3 h-3 rounded-full ${loadingDetails.questionsWithSkills ? 'bg-blue-500 animate-pulse' : 'bg-gray-300'}`}></div>
-                                <span className="text-xs text-gray-600">Questões</span>
+                                <div className={`w-3 h-3 rounded-full ${loadingDetails.questionsWithSkills ? 'bg-blue-500 animate-pulse' : 'bg-muted-foreground'}`}></div>
+                                <span className="text-xs text-muted-foreground">Questões</span>
                               </div>
                               <div className="flex items-center gap-2">
-                                <div className={`w-3 h-3 rounded-full ${loadingDetails.skills ? 'bg-blue-500 animate-pulse' : 'bg-gray-300'}`}></div>
-                                <span className="text-xs text-gray-600">Skills</span>
+                                <div className={`w-3 h-3 rounded-full ${loadingDetails.skills ? 'bg-blue-500 animate-pulse' : 'bg-muted-foreground'}`}></div>
+                                <span className="text-xs text-muted-foreground">Skills</span>
                               </div>
                               <div className="flex items-center gap-2">
-                                <div className={`w-3 h-3 rounded-full ${loadingDetails.students ? 'bg-blue-500 animate-pulse' : 'bg-gray-300'}`}></div>
-                                <span className="text-xs text-gray-600">Alunos</span>
+                                <div className={`w-3 h-3 rounded-full ${loadingDetails.students ? 'bg-blue-500 animate-pulse' : 'bg-muted-foreground'}`}></div>
+                                <span className="text-xs text-muted-foreground">Alunos</span>
                               </div>
                             </div>
                           </div>
@@ -2086,10 +2086,10 @@ export default function Results() {
 
                           {/* Estado de carregamento inicial */}
                           {!isTableReady && (
-                            <div className="mb-4 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                            <div className="mb-4 p-4 bg-yellow-50 dark:bg-yellow-950/30 rounded-lg border border-yellow-200 dark:border-yellow-800">
                               <div className="flex items-center gap-3">
-                                <div className="w-4 h-4 bg-yellow-500 rounded-full animate-pulse"></div>
-                                <span className="text-sm text-yellow-700">
+                                <div className="w-4 h-4 bg-yellow-500 dark:bg-yellow-600 rounded-full animate-pulse"></div>
+                                <span className="text-sm text-yellow-700 dark:text-yellow-400">
                                   Preparando dados para exibição...
                                 </span>
                               </div>
@@ -2106,13 +2106,13 @@ export default function Results() {
                               />
                             ) : (
                               <div className="text-center py-12">
-                                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                                <div className="w-16 h-16 bg-blue-100 dark:bg-blue-950/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 dark:border-blue-400"></div>
                                 </div>
-                                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                                <h3 className="text-lg font-semibold text-foreground mb-2">
                                   Carregando tabelas por disciplina...
                                 </h3>
-                                <p className="text-gray-600">
+                                <p className="text-muted-foreground">
                                   Aguarde enquanto finalizamos o processamento dos dados.
                                 </p>
                               </div>
@@ -2134,13 +2134,13 @@ export default function Results() {
             </>
                       ) : (
                         <div className="text-center py-12">
-                          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <BarChart3 className="h-8 w-8 text-gray-400" />
+                          <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                            <BarChart3 className="h-8 w-8 text-muted-foreground" />
                           </div>
-                          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                          <h3 className="text-lg font-semibold text-foreground mb-2">
                             Nenhum dado encontrado
                           </h3>
-                          <p className="text-gray-600">
+                          <p className="text-muted-foreground">
                             Não há dados disponíveis para exibir na tabela.
                           </p>
                         </div>
@@ -2158,21 +2158,21 @@ export default function Results() {
                 <TabsContent value="evolution" className="space-y-6">
                   <Card>
                     <CardContent className="flex flex-col items-center justify-center py-16">
-                      <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mb-6">
-                        <TrendingUp className="h-10 w-10 text-blue-600" />
+                      <div className="w-20 h-20 bg-blue-50 dark:bg-blue-950/30 rounded-full flex items-center justify-center mb-6">
+                        <TrendingUp className="h-10 w-10 text-blue-600 dark:text-blue-400" />
                       </div>
-                      <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                      <h3 className="text-xl font-semibold text-foreground mb-3">
                         Evolução dos Resultados
                       </h3>
-                      <p className="text-gray-600 text-center max-w-md mb-6">
+                      <p className="text-muted-foreground text-center max-w-md mb-6">
                         Esta funcionalidade será implementada em breve para mostrar a evolução temporal dos resultados das avaliações.
                       </p>
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-md">
+                      <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4 max-w-md">
                         <div className="flex items-start gap-3">
-                          <div className="w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <div className="w-5 h-5 bg-blue-600 dark:bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                             <span className="text-white text-xs font-bold">!</span>
                           </div>
-                          <div className="text-sm text-blue-800">
+                          <div className="text-sm text-blue-800 dark:text-blue-400">
                             <strong>Em desenvolvimento</strong><br />
                             Esta aba será utilizada para analisar tendências e evolução dos resultados ao longo do tempo.
                           </div>
@@ -2211,7 +2211,7 @@ export default function Results() {
               <Users className="h-5 w-5 text-red-600" />
               Alunos Faltosos
               {evaluationInfo && (
-                <span className="text-sm font-normal text-gray-600 ml-2">
+                <span className="text-sm font-normal text-muted-foreground ml-2">
                   - {evaluationInfo.titulo}
                 </span>
               )}
@@ -2222,41 +2222,41 @@ export default function Results() {
             {isLoadingAbsentStudents ? (
               <div className="flex items-center justify-center py-8">
                 <div className="flex items-center gap-3">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600"></div>
-                  <span className="text-gray-600">Carregando lista de alunos faltosos...</span>
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600 dark:border-red-500"></div>
+                  <span className="text-muted-foreground">Carregando lista de alunos faltosos...</span>
                 </div>
               </div>
             ) : absentStudents.length > 0 ? (
               <div className="space-y-4">
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-4">
                   <div className="flex items-center gap-2 mb-2">
-                    <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                    <span className="font-semibold text-red-800">
+                    <div className="w-3 h-3 bg-red-500 dark:bg-red-400 rounded-full"></div>
+                    <span className="font-semibold text-red-800 dark:text-red-400">
                       {absentStudents.length} {absentStudents.length === 1 ? 'aluno faltoso' : 'alunos faltosos'}
                     </span>
                   </div>
-                  <p className="text-sm text-red-700">
+                  <p className="text-sm text-red-700 dark:text-red-400">
                     Estes alunos foram selecionados para a avaliação mas não a realizaram.
                   </p>
                 </div>
                 
                 <div className="grid gap-3">
                   {absentStudents.map((aluno) => (
-                    <div key={aluno.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                    <div key={aluno.id} className="flex items-center justify-between p-3 bg-muted rounded-lg border border-border">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
-                          <span className="text-red-600 font-semibold text-sm">
+                        <div className="w-8 h-8 bg-red-100 dark:bg-red-950/30 rounded-full flex items-center justify-center">
+                          <span className="text-red-600 dark:text-red-400 font-semibold text-sm">
                             {aluno.nome.charAt(0).toUpperCase()}
                           </span>
                         </div>
                         <div>
-                          <div className="font-medium text-gray-900">{aluno.nome}</div>
-                          <div className="text-sm text-gray-600">
+                          <div className="font-medium text-foreground">{aluno.nome}</div>
+                          <div className="text-sm text-muted-foreground">
                             {aluno.turma} • {aluno.escola} • {aluno.serie}
                           </div>
                         </div>
                       </div>
-                      <Badge variant="outline" className="text-red-600 border-red-300">
+                      <Badge variant="outline" className="text-red-600 dark:text-red-400 border-red-300 dark:border-red-800">
                         Faltoso
                       </Badge>
                     </div>
@@ -2265,13 +2265,13 @@ export default function Results() {
               </div>
             ) : (
               <div className="text-center py-8">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Check className="h-8 w-8 text-green-600" />
+                <div className="w-16 h-16 bg-green-100 dark:bg-green-950/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Check className="h-8 w-8 text-green-600 dark:text-green-400" />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                <h3 className="text-lg font-semibold text-foreground mb-2">
                   Nenhum aluno faltoso
                 </h3>
-                <p className="text-gray-600">
+                <p className="text-muted-foreground">
                   Todos os alunos realizaram a avaliação.
                 </p>
               </div>

@@ -356,7 +356,7 @@ export function CreateAvisoForm({
           </div>
 
           {/* Destinatários */}
-          <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
+          <div className="space-y-4 p-4 border rounded-lg bg-muted">
             <Label className="text-base font-semibold">Destinatários</Label>
 
             {/* Admin - pode escolher entre todos, município ou escola */}

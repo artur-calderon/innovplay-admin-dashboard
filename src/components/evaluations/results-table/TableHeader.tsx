@@ -117,42 +117,42 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
 
   // Função para obter cor baseada na porcentagem de acertos
   const getPercentageColor = (percentage: number) => {
-    if (percentage >= 80) return 'text-green-600 bg-green-50';
-    if (percentage >= 60) return 'text-yellow-600 bg-yellow-50';
-    if (percentage >= 40) return 'text-orange-600 bg-orange-50';
-    return 'text-red-600 bg-red-50';
+    if (percentage >= 80) return 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950/30';
+    if (percentage >= 60) return 'text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-950/30';
+    if (percentage >= 40) return 'text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/30';
+    return 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30';
   };
 
   // Função para obter cor baseada no threshold
   const getThresholdColor = (percentage: number) => {
-    return percentage >= successThreshold ? 'text-green-600' : 'text-red-600';
+    return percentage >= successThreshold ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
   };
 
   return (
     <thead>
       {/* Cabeçalho simplificado - uma única linha */}
-      <tr className="bg-gradient-to-r from-gray-100 to-gray-200 border-b-2 border-gray-300">
-        <th className="border border-gray-300 p-2 text-center font-semibold text-gray-700">
+      <tr className="bg-gradient-to-r from-gray-100 dark:from-gray-800 to-gray-200 dark:to-gray-700 border-b-2 border-border">
+        <th className="border border-border p-2 text-center font-semibold text-foreground">
           <div className="flex flex-col items-center gap-1">
             <div className="flex items-center gap-1">
               <Users className="h-4 w-4" />
               ALUNO
             </div>
             {visibleFields.habilidade && (
-              <div className="text-xs text-blue-600 font-medium">HABILIDADE</div>
+              <div className="text-xs text-blue-600 dark:text-blue-400 font-medium">HABILIDADE</div>
             )}
             {visibleFields.percentualTurma && (
-              <div className="text-xs text-green-600 font-medium">% DA TURMA</div>
+              <div className="text-xs text-green-600 dark:text-green-400 font-medium">% DA TURMA</div>
             )}
           </div>
         </th>
         {processedQuestions.map((questao, index) => (
-          <th key={questao.question_id} className="border border-gray-300 p-1 text-center font-semibold hover:bg-gray-200 transition-colors">
-            <div className="text-xs font-bold text-gray-800">Q{questao.numero}</div>
-            <div className="text-xs text-gray-600 mt-1">{questao.disciplina}</div>
+          <th key={questao.question_id} className="border border-border p-1 text-center font-semibold hover:bg-muted transition-colors">
+            <div className="text-xs font-bold text-foreground">Q{questao.numero}</div>
+            <div className="text-xs text-muted-foreground mt-1">{questao.disciplina}</div>
             {visibleFields.habilidade && (
               <div 
-                className="text-xs font-semibold text-blue-600 cursor-help hover:bg-blue-100 rounded px-1 py-0.5 transition-colors mt-1" 
+                className="text-xs font-semibold text-blue-600 dark:text-blue-400 cursor-help hover:bg-blue-100 dark:hover:bg-blue-950/30 rounded px-1 py-0.5 transition-colors mt-1" 
                 title={questao.habilidade}
                 onMouseEnter={() => setHoveredSkill(questao.habilidade)}
                 onMouseLeave={() => setHoveredSkill(null)}
@@ -174,25 +174,25 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
             )}
           </th>
         ))}
-        <th className="border border-gray-300 p-2 text-center font-semibold text-gray-700">
+        <th className="border border-border p-2 text-center font-semibold text-foreground">
           <div className="flex items-center justify-center gap-1">
             <CheckCircle2 className="h-4 w-4" />
             TOTAL
           </div>
         </th>
-        <th className="border border-gray-300 p-2 text-center font-semibold text-gray-700">
+        <th className="border border-border p-2 text-center font-semibold text-foreground">
           <div className="flex items-center justify-center gap-1">
             <Target className="h-4 w-4" />
             NOTA
           </div>
         </th>
-        <th className="border border-gray-300 p-2 text-center font-semibold text-gray-700">
+        <th className="border border-border p-2 text-center font-semibold text-foreground">
           <div className="flex items-center justify-center gap-1">
             <Gauge className="h-4 w-4" />
             PROFICIÊNCIA
           </div>
         </th>
-        <th className="border border-gray-300 p-2 text-center font-semibold text-gray-700">
+        <th className="border border-border p-2 text-center font-semibold text-foreground">
           <div className="flex items-center justify-center gap-1">
             <Award className="h-4 w-4" />
             NÍVEL

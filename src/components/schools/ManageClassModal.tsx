@@ -506,7 +506,7 @@ export function ManageClassModal({
                               {teachers.map((teacher) => (
                                 <div
                                   key={teacher.id}
-                                  className="flex items-center gap-3 p-3 sm:p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                                  className="flex items-center gap-3 p-3 sm:p-4 border rounded-lg hover:bg-muted transition-colors border-border"
                                 >
                                   <div className="flex-shrink-0">
                                     <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-100 rounded-full flex items-center justify-center">
@@ -592,7 +592,7 @@ export function ManageClassModal({
                               {students.map((student) => (
                                 <div
                                   key={student.id}
-                                  className="flex items-center gap-3 p-3 sm:p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                                  className="flex items-center gap-3 p-3 sm:p-4 border rounded-lg hover:bg-muted transition-colors border-border"
                                 >
                                   <div className="flex-shrink-0">
                                     <div className="w-8 h-8 sm:w-10 sm:h-10 bg-green-100 rounded-full flex items-center justify-center">

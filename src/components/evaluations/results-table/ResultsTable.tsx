@@ -48,7 +48,7 @@ export const ResultsTable: React.FC<ExtendedResultsTableProps> = ({
 }) => {
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-max border border-gray-300 text-center text-sm shadow-md rounded-lg">
+      <table className="min-w-max border border-border text-center text-sm shadow-md rounded-lg bg-card">
         <TableHeader
           totalQuestions={totalQuestions}
           startQuestionNumber={startQuestionNumber}

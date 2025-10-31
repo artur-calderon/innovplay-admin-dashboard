@@ -150,7 +150,7 @@ export function ManageSchoolLinksModal({
               {schoolName}
             </span>
           </DialogTitle>
-          <DialogDescription className="text-sm sm:text-base text-gray-600 mt-2">
+          <DialogDescription className="text-sm sm:text-base text-muted-foreground mt-2">
             <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
               <span>Visualize e gerencie diretores e coordenadores vinculados à escola</span>
             </div>
@@ -161,7 +161,7 @@ export function ManageSchoolLinksModal({
           {isLoading ? (
             <div className="flex flex-col items-center justify-center p-8 h-full">
               <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
-              <span className="text-sm sm:text-base text-gray-600">Carregando vínculos...</span>
+              <span className="text-sm sm:text-base text-muted-foreground">Carregando vínculos...</span>
             </div>
           ) : (
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6 h-full overflow-y-auto pr-2 pb-4 scroll-smooth mt-4">
@@ -177,40 +177,40 @@ export function ManageSchoolLinksModal({
                   </h3>
                 </div>
 
-                <div className="border rounded-lg flex-1 overflow-hidden bg-white">
+                <div className="border rounded-lg flex-1 overflow-hidden bg-card border-border">
                   {directors.length === 0 ? (
                     <div className="flex flex-col items-center justify-center p-6 sm:p-8 h-full min-h-[200px]">
-                      <div className="bg-red-50 p-4 rounded-full mb-4">
-                        <Users className="h-6 w-6 sm:h-8 sm:w-8 text-red-400" />
+                      <div className="bg-red-50 dark:bg-red-950/30 p-4 rounded-full mb-4">
+                        <Users className="h-6 w-6 sm:h-8 sm:w-8 text-red-400 dark:text-red-500" />
                       </div>
-                      <p className="text-sm sm:text-base text-gray-500 text-center">
+                      <p className="text-sm sm:text-base text-muted-foreground text-center">
                         Nenhum diretor vinculado
                       </p>
-                      <p className="text-xs sm:text-sm text-gray-400 text-center mt-1">
+                      <p className="text-xs sm:text-sm text-muted-foreground text-center mt-1">
                         Use o sistema de vínculos para adicionar diretores
                       </p>
                     </div>
                   ) : (
-                    <div className="p-3 sm:p-4 h-full overflow-y-auto scrollbar-thin scrollbar-thumb-red-300 scrollbar-track-red-50 hover:scrollbar-thumb-red-400 scroll-smooth">
+                    <div className="p-3 sm:p-4 h-full overflow-y-auto scrollbar-thin scrollbar-thumb-red-300 scrollbar-track-red-50 dark:scrollbar-thumb-red-800 dark:scrollbar-track-red-950/30 hover:scrollbar-thumb-red-400 dark:hover:scrollbar-thumb-red-700 scroll-smooth">
                       <div className="space-y-2 sm:space-y-3">
                         {directors.map((link) => (
                           <div
                             key={link.user.id}
-                            className="flex items-center gap-3 p-3 sm:p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                            className="flex items-center gap-3 p-3 sm:p-4 border rounded-lg hover:bg-muted transition-colors border-border"
                           >
                             <div className="flex-shrink-0">
-                              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-red-100 rounded-full flex items-center justify-center">
-                                <Users className="h-4 w-4 sm:h-5 sm:w-5 text-red-600" />
+                              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-red-100 dark:bg-red-950/30 rounded-full flex items-center justify-center">
+                                <Users className="h-4 w-4 sm:h-5 sm:w-5 text-red-600 dark:text-red-400" />
                               </div>
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="font-medium text-sm sm:text-base truncate text-gray-900">
+                              <div className="font-medium text-sm sm:text-base truncate text-foreground">
                                 {link.user.name}
                               </div>
-                              <div className="text-xs sm:text-sm text-gray-500 truncate">
+                              <div className="text-xs sm:text-sm text-muted-foreground truncate">
                                 {link.user.email}
                               </div>
-                              <div className="text-xs text-gray-400 mt-1">
+                              <div className="text-xs text-muted-foreground mt-1">
                                 Matrícula: {link.user.registration}
                               </div>
                             </div>
@@ -252,40 +252,40 @@ export function ManageSchoolLinksModal({
                   </h3>
                 </div>
 
-                <div className="border rounded-lg flex-1 overflow-hidden bg-white">
+                <div className="border rounded-lg flex-1 overflow-hidden bg-card border-border">
                   {coordinators.length === 0 ? (
                     <div className="flex flex-col items-center justify-center p-6 sm:p-8 h-full min-h-[200px]">
-                      <div className="bg-orange-50 p-4 rounded-full mb-4">
-                        <Users className="h-6 w-6 sm:h-8 sm:w-8 text-orange-400" />
+                      <div className="bg-orange-50 dark:bg-orange-950/30 p-4 rounded-full mb-4">
+                        <Users className="h-6 w-6 sm:h-8 sm:w-8 text-orange-400 dark:text-orange-500" />
                       </div>
-                      <p className="text-sm sm:text-base text-gray-500 text-center">
+                      <p className="text-sm sm:text-base text-muted-foreground text-center">
                         Nenhum coordenador vinculado
                       </p>
-                      <p className="text-xs sm:text-sm text-gray-400 text-center mt-1">
+                      <p className="text-xs sm:text-sm text-muted-foreground text-center mt-1">
                         Use o sistema de vínculos para adicionar coordenadores
                       </p>
                     </div>
                   ) : (
-                    <div className="p-3 sm:p-4 h-full overflow-y-auto scrollbar-thin scrollbar-thumb-orange-300 scrollbar-track-orange-50 hover:scrollbar-thumb-orange-400 scroll-smooth">
+                    <div className="p-3 sm:p-4 h-full overflow-y-auto scrollbar-thin scrollbar-thumb-orange-300 scrollbar-track-orange-50 dark:scrollbar-thumb-orange-800 dark:scrollbar-track-orange-950/30 hover:scrollbar-thumb-orange-400 dark:hover:scrollbar-thumb-orange-700 scroll-smooth">
                       <div className="space-y-2 sm:space-y-3">
                         {coordinators.map((link) => (
                           <div
                             key={link.user.id}
-                            className="flex items-center gap-3 p-3 sm:p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                            className="flex items-center gap-3 p-3 sm:p-4 border rounded-lg hover:bg-muted transition-colors border-border"
                           >
                             <div className="flex-shrink-0">
-                              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-orange-100 rounded-full flex items-center justify-center">
-                                <Users className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600" />
+                              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-orange-100 dark:bg-orange-950/30 rounded-full flex items-center justify-center">
+                                <Users className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600 dark:text-orange-400" />
                               </div>
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="font-medium text-sm sm:text-base truncate text-gray-900">
+                              <div className="font-medium text-sm sm:text-base truncate text-foreground">
                                 {link.user.name}
                               </div>
-                              <div className="text-xs sm:text-sm text-gray-500 truncate">
+                              <div className="text-xs sm:text-sm text-muted-foreground truncate">
                                 {link.user.email}
                               </div>
-                              <div className="text-xs text-gray-400 mt-1">
+                              <div className="text-xs text-muted-foreground mt-1">
                                 Matrícula: {link.user.registration}
                               </div>
                             </div>
@@ -318,7 +318,7 @@ export function ManageSchoolLinksModal({
           )}
         </div>
 
-        <DialogFooter className="px-4 sm:px-6 py-4 border-t bg-gray-50/50">
+        <DialogFooter className="px-4 sm:px-6 py-4 border-t bg-muted/50 border-border">
           <Button 
             variant="outline" 
             onClick={onClose}

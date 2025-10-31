@@ -391,7 +391,7 @@ export default function QuestionBank({
         <div className="space-y-4">
       {/* Barra de pesquisa */}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           placeholder="Buscar questões por título ou ID..."
           value={searchTerm}
@@ -632,8 +632,8 @@ export default function QuestionBank({
                 </div>
               </div>
               <div className="space-y-1">
-                <h3 className="text-lg font-semibold text-gray-700">Carregando Questões</h3>
-                <p className="text-sm text-gray-500">
+                <h3 className="text-lg font-semibold text-foreground">Carregando Questões</h3>
+                <p className="text-sm text-muted-foreground">
                   {selectedSubjectId && selectedSubjectId !== 'all' 
                     ? `Buscando questões de ${subjects.find(s => s.id === selectedSubjectId)?.name || 'disciplina selecionada'}...`
                     : 'Buscando questões disponíveis...'
@@ -644,7 +644,7 @@ export default function QuestionBank({
           </div>
 
           {/* Barra de progresso animada */}
-          <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+          <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
             <div className="h-2 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full animate-pulse">
               <div className="h-full bg-gradient-to-r from-transparent via-white/20 to-transparent animate-[shimmer_2s_infinite] w-full"></div>
             </div>
@@ -694,12 +694,12 @@ export default function QuestionBank({
 
           {/* Estatísticas de carregamento */}
           <div className="flex items-center justify-center py-2">
-            <div className="flex items-center gap-4 text-sm text-gray-500">
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
                 <span>Conectando com servidor</span>
               </div>
-              <div className="w-px h-4 bg-gray-300"></div>
+              <div className="w-px h-4 bg-border"></div>
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" style={{ animationDelay: '0.5s' }}></div>
                 <span>Processando filtros</span>
@@ -730,7 +730,7 @@ export default function QuestionBank({
                       onCheckedChange={(checked) => handleSelectOne(question.id, !!checked)}
                           className="transition-transform hover:scale-110"
                     />
-                        <span className="ml-2 text-xs text-gray-400 font-mono">
+                        <span className="ml-2 text-xs text-muted-foreground font-mono">
                           #{index + 1 + (currentPage - 1) * pageSize}
                         </span>
                       </div>
@@ -791,14 +791,14 @@ export default function QuestionBank({
             <Card className="question-loaded">
               <CardContent className="py-12 text-center">
                 <div className="flex flex-col items-center gap-4">
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
-                    <Search className="h-8 w-8 text-gray-400" />
+                  <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center">
+                    <Search className="h-8 w-8 text-muted-foreground" />
                   </div>
                   <div className="space-y-2">
-                    <p className="text-lg font-medium text-gray-700">
+                    <p className="text-lg font-medium text-foreground">
                   {error ? "Erro ao carregar questões" : "Nenhuma questão encontrada"}
                 </p>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-muted-foreground">
                       {error 
                         ? "Verifique sua conexão e tente novamente" 
                         : selectedSubjectId && selectedSubjectId !== 'all'

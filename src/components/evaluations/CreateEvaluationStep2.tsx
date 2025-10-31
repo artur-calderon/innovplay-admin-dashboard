@@ -400,7 +400,7 @@ export const CreateEvaluationStep2 = ({
                     subjectQuestions.map((question, index) => (
                       <div
                         key={question.id || index}
-                        className="flex items-center justify-between p-3 border rounded-lg bg-gray-50"
+                        className="flex items-center justify-between p-3 border rounded-lg bg-muted"
                       >
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">

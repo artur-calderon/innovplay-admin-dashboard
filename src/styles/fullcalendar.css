@@ -22,8 +22,8 @@
   text-align: left;
   font-family: inherit;
   color-scheme: light;
-  background-color: white;
-  color: #0f172a;
+  background-color: hsl(var(--card));
+  color: hsl(var(--foreground));
 }
 
 .fc-theme-standard .fc-scrollgrid {
@@ -164,11 +164,11 @@
 }
 
 .fc .fc-daygrid-day.fc-day-today {
-  background-color: rgba(255, 220, 40, 0.15);
+  background-color: hsl(var(--primary) / 0.15);
 }
 
 .fc .fc-daygrid-day:hover {
-  background-color: rgba(0, 0, 0, 0.05);
+  background-color: hsl(var(--muted) / 0.5);
 }
 
 /* Events */
@@ -200,7 +200,7 @@
 }
 
 .fc .fc-list-event:hover {
-  background-color: #f5f5f5;
+  background-color: hsl(var(--muted));
 }
 
 .fc .fc-list-event-title {
@@ -208,13 +208,13 @@
 }
 
 .fc .fc-list-event-time {
-  color: #999;
+  color: hsl(var(--muted-foreground));
 }
 
 /* Time Grid */
 .fc .fc-timegrid-slot {
   height: 1.5em;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid hsl(var(--border));
 }
 
 .fc .fc-timegrid-slot-label {
@@ -466,8 +466,8 @@
 }
 
 .fc .fc-daygrid-more-link:hover {
-  background-color: #6366f1 !important;
-  color: white !important;
+  background-color: hsl(var(--primary)) !important;
+  color: hsl(var(--primary-foreground)) !important;
   transform: scale(1.02);
 }
 
@@ -674,15 +674,24 @@
   border-radius: 0 2px 2px 0;
 }
 
-/* Tipos de evento específicos - Cores mais vibrantes */
+/* Tipos de evento específicos - Cores mais vibrantes com suporte dark mode */
 .fc-event-type-exam {
   background-color: #ef4444 !important; /* red-500 */
   border-color: #dc2626 !important; /* red-600 */
   color: white !important;
 }
 
+.dark .fc-event-type-exam {
+  background-color: #dc2626 !important; /* red-600 mais escuro */
+  border-color: #b91c1c !important; /* red-700 */
+}
+
 .fc-event-type-exam::before {
   background-color: #dc2626 !important; /* red-600 */
+}
+
+.dark .fc-event-type-exam::before {
+  background-color: #b91c1c !important; /* red-700 */
 }
 
 .fc-event-type-event {
@@ -691,8 +700,17 @@
   color: white !important;
 }
 
+.dark .fc-event-type-event {
+  background-color: #7c3aed !important; /* violet-600 mais escuro */
+  border-color: #6d28d9 !important; /* violet-700 */
+}
+
 .fc-event-type-event::before {
   background-color: #7c3aed !important; /* violet-600 */
+}
+
+.dark .fc-event-type-event::before {
+  background-color: #6d28d9 !important; /* violet-700 */
 }
 
 .fc-event-type-holiday {
@@ -701,8 +719,17 @@
   color: white !important;
 }
 
+.dark .fc-event-type-holiday {
+  background-color: #16a34a !important; /* green-600 mais escuro */
+  border-color: #15803d !important; /* green-700 */
+}
+
 .fc-event-type-holiday::before {
   background-color: #16a34a !important; /* green-600 */
+}
+
+.dark .fc-event-type-holiday::before {
+  background-color: #15803d !important; /* green-700 */
 }
 
 .fc-event-type-class {
@@ -711,8 +738,17 @@
   color: white !important;
 }
 
+.dark .fc-event-type-class {
+  background-color: #2563eb !important; /* blue-600 mais escuro */
+  border-color: #1d4ed8 !important; /* blue-700 */
+}
+
 .fc-event-type-class::before {
   background-color: #2563eb !important; /* blue-600 */
+}
+
+.dark .fc-event-type-class::before {
+  background-color: #1d4ed8 !important; /* blue-700 */
 }
 
 .fc-event-type-meeting {
@@ -721,8 +757,17 @@
   color: white !important;
 }
 
+.dark .fc-event-type-meeting {
+  background-color: #d97706 !important; /* amber-600 mais escuro */
+  border-color: #b45309 !important; /* amber-700 */
+}
+
 .fc-event-type-meeting::before {
   background-color: #d97706 !important; /* amber-600 */
+}
+
+.dark .fc-event-type-meeting::before {
+  background-color: #b45309 !important; /* amber-700 */
 }
 
 .fc-event-type-task {
@@ -731,8 +776,17 @@
   color: white !important;
 }
 
+.dark .fc-event-type-task {
+  background-color: #d97706 !important; /* amber-600 mais escuro */
+  border-color: #b45309 !important; /* amber-700 */
+}
+
 .fc-event-type-task::before {
   background-color: #d97706 !important; /* amber-600 */
+}
+
+.dark .fc-event-type-task::before {
+  background-color: #b45309 !important; /* amber-700 */
 }
 
 /* Tipos específicos para eventos do aluno */
@@ -742,8 +796,17 @@
   color: white !important;
 }
 
+.dark .fc-event-type-assignment {
+  background-color: #d97706 !important; /* amber-600 mais escuro */
+  border-color: #b45309 !important; /* amber-700 */
+}
+
 .fc-event-type-assignment::before {
   background-color: #d97706 !important; /* amber-600 */
+}
+
+.dark .fc-event-type-assignment::before {
+  background-color: #b45309 !important; /* amber-700 */
 }
 
 .fc .fc-daygrid-month .fc-event:hover {
@@ -876,7 +939,7 @@
   top: 0.5rem;
   left: 0.5rem;
   z-index: 10; /* Sempre por cima dos eventos */
-  background-color: white;
+  background-color: hsl(var(--card));
   border-radius: 50%;
   width: 2rem;
   height: 2rem;

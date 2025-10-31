@@ -188,7 +188,7 @@ export function LinkStudentModal({
                   {filteredStudents.map((student) => (
                     <div
                       key={student.id}
-                      className="flex items-center gap-3 p-3 sm:p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                      className="flex items-center gap-3 p-3 sm:p-4 border rounded-lg hover:bg-muted transition-colors border-border"
                     >
                       <Checkbox
                         checked={selectedStudents.includes(student.id)}

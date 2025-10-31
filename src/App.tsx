@@ -19,6 +19,7 @@ const ForgotPassword = React.lazy(() => import("./pages/ForgotPassword"));
 const ResetPassword = React.lazy(() => import("./pages/ResetPassword"));
 const ChangePassword = React.lazy(() => import("./pages/ChangePassword"));
 const EmBreve = React.lazy(() => import("./pages/EmBreve"));
+const Settings = React.lazy(() => import("./pages/Settings"));
 const StudentEvaluations = React.lazy(() => import("./components/evaluations/StudentEvaluations"));
 const Users = React.lazy(() => import("./pages/Users"));
 const Profile = React.lazy(() => import("./pages/Profile"));
@@ -148,6 +149,7 @@ const App = () => {
 
               <Route path="/aluno/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
               <Route path="/aluno/avisos" element={<PrivateRoute><Avisos /></PrivateRoute>} />
+              <Route path="/aluno/configuracoes" element={<PrivateRoute><Settings /></PrivateRoute>} />
             </Route>
 
             {/* Rota de avaliação em tela cheia para alunos */}
@@ -189,7 +191,7 @@ const App = () => {
               <Route path="/app/usuarios" element={<PrivateRoute><Users /></PrivateRoute>} />
               <Route path="/app/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
               <Route path="/app/avisos" element={<PrivateRoute><Avisos /></PrivateRoute>} />
-              <Route path="/app/configuracoes" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/app/configuracoes" element={<PrivateRoute><Settings /></PrivateRoute>} />
 
               {/* Rotas de gerenciamento de questões */}
               <Route path="/app/cadastros/questao" element={<PrivateRoute><QuestionsPage /></PrivateRoute>} />

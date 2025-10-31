@@ -142,9 +142,9 @@ export default function SchoolRankingTable() {
 
   const getPositionIcon = (position: number) => {
     if (position === 1) return <Trophy className="h-4 w-4 text-yellow-500" />;
-    if (position === 2) return <Award className="h-4 w-4 text-gray-400" />;
+    if (position === 2) return <Award className="h-4 w-4 text-muted-foreground" />;
     if (position === 3) return <Award className="h-4 w-4 text-amber-600" />;
-    return <span className="text-sm font-medium text-gray-500">#{position}</span>;
+    return <span className="text-sm font-medium text-muted-foreground">#{position}</span>;
   };
 
   if (isLoading) {
@@ -208,7 +208,7 @@ export default function SchoolRankingTable() {
       <CardContent>
         <div className="space-y-3">
           {rankings.map((school) => (
-            <div key={school.position} className="flex items-center justify-between p-3 rounded-lg border hover:bg-gray-50 transition-colors">
+            <div key={school.position} className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted transition-colors border-border">
               {/* Posição e Nome da Escola */}
               <div className="flex items-center gap-3 flex-1 min-w-0">
                 <div className="flex-shrink-0">
@@ -218,7 +218,7 @@ export default function SchoolRankingTable() {
                   <h4 className="font-medium text-sm truncate">
                     {school.schoolName}
                   </h4>
-                  <p className="text-xs text-gray-500 truncate">
+                  <p className="text-xs text-muted-foreground truncate">
                     {school.municipality}
                   </p>
                 </div>
@@ -231,7 +231,7 @@ export default function SchoolRankingTable() {
                   <div className={`text-sm font-semibold px-2 py-1 rounded-full ${getPerformanceColor(school.averageScore)}`}>
                     {school.averageScore.toFixed(1)}
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">Média</p>
+                  <p className="text-xs text-muted-foreground mt-1">Média</p>
                 </div>
 
                 {/* Taxa de Conclusão */}
@@ -240,7 +240,7 @@ export default function SchoolRankingTable() {
                     <TrendingUp className="h-3 w-3 text-green-500" />
                     <span className="text-sm font-medium">{school.completionRate.toFixed(1)}%</span>
                   </div>
-                  <p className="text-xs text-gray-500">Conclusão</p>
+                  <p className="text-xs text-muted-foreground">Conclusão</p>
                 </div>
 
                 {/* Número de Alunos */}
@@ -249,7 +249,7 @@ export default function SchoolRankingTable() {
                     <Users className="h-3 w-3 text-blue-500" />
                     <span className="text-sm font-medium">{school.totalStudents}</span>
                   </div>
-                  <p className="text-xs text-gray-500">Alunos</p>
+                  <p className="text-xs text-muted-foreground">Alunos</p>
                 </div>
               </div>
             </div>

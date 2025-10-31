@@ -859,7 +859,7 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
               size="sm"
               onClick={handleExportToPDF}
               disabled={isExportingPDF}
-              className="h-9 whitespace-nowrap shrink-0 border-gray-300 hover:bg-gray-50"
+              className="h-9 whitespace-nowrap shrink-0 border-border hover:bg-muted"
               type="button"
               aria-label={isExportingPDF ? 'Exportando PDF' : 'Exportar PDF'}
             >
@@ -900,21 +900,21 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
                 className="space-y-4"
               >
                 {/* Cabeçalho da Disciplina */}
-                <div data-section-header className="flex items-center gap-2 pb-2 border-b border-gray-200">
-                  <BookOpen className="h-4 w-4 text-gray-500" />
-                  <h3 className="text-sm font-semibold text-gray-900">{subjectName}</h3>
+                <div data-section-header className="flex items-center gap-2 pb-2 border-b border-border">
+                  <BookOpen className="h-4 w-4 text-muted-foreground" />
+                  <h3 className="text-sm font-semibold text-foreground">{subjectName}</h3>
                   
                   {(() => {
                     const stats = getDisciplineStats(subjectName);
                     if (stats) {
                       return (
                         <div className="flex items-center gap-3 ml-3 text-xs">
-                          <span className="text-gray-600">
-                            Nota: <span className="font-semibold text-gray-900">{stats.nota.toFixed(1)}</span>
+                          <span className="text-muted-foreground">
+                            Nota: <span className="font-semibold text-foreground">{stats.nota.toFixed(1)}</span>
                           </span>
-                          <span className="text-gray-400">|</span>
-                              <span className="text-gray-600">
-                                Proficiência: <span className="font-semibold text-gray-900">{stats.proficiencia.toFixed(2)}</span>
+                          <span className="text-muted-foreground">|</span>
+                              <span className="text-muted-foreground">
+                                Proficiência: <span className="font-semibold text-foreground">{stats.proficiencia.toFixed(2)}</span>
                               </span>
                         </div>
                       );
@@ -922,7 +922,7 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
                     return null;
                   })()}
                   
-                  <span className="text-xs text-gray-500 ml-auto">
+                  <span className="text-xs text-muted-foreground ml-auto">
                     {questions.length} {questions.length === 1 ? 'questão' : 'questões'}
                   </span>
                 </div>
@@ -931,9 +931,9 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse">
                     <thead>
-                      <tr className="border-b border-gray-200 bg-gray-50">
-                        <th className="text-left py-2 px-3 text-xs font-medium text-gray-600 w-20">Questão</th>
-                        <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Alternativas</th>
+                      <tr className="border-b border-border bg-muted">
+                        <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground w-20">Questão</th>
+                        <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Alternativas</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -944,11 +944,11 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
                           <tr
                             key={`${question.id}-${index}`}
                             id={`question-${bulletinQuestion.questionNumber}`}
-                            className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
+                            className="border-b border-border hover:bg-muted transition-colors"
                           >
                             {/* Coluna Questão */}
                             <td className="py-3 px-3">
-                              <span className="text-sm font-medium text-gray-700">
+                              <span className="text-sm font-medium text-foreground">
                                 Q{bulletinQuestion.questionNumber}
                               </span>
                             </td>
@@ -985,9 +985,9 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
                                       borderClass = 'border-green-200';
                                     } else {
                                       // Alternativa neutra
-                                      bgClass = 'bg-gray-50';
-                                      textClass = 'text-gray-700';
-                                      borderClass = 'border-gray-200';
+                                      bgClass = 'bg-muted';
+                                      textClass = 'text-foreground';
+                                      borderClass = 'border-border';
                                     }
 
                                     return (
@@ -1014,7 +1014,7 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
                                 </div>
                               ) : (
                                 // Questão discursiva
-                                <div className="text-xs text-gray-600">
+                                <div className="text-xs text-muted-foreground">
                                   <p className="font-medium mb-1">Resposta:</p>
                                   <p className="truncate max-w-md">
                                     {bulletinQuestion.studentAnswer || "Não respondida"}
@@ -1043,7 +1043,7 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
         </ScrollArea>
 
         {filteredQuestions.length === 0 && (
-          <div className="text-center py-12 text-gray-500 p-6">
+          <div className="text-center py-12 text-muted-foreground p-6">
             <p className="text-sm">Nenhuma questão encontrada com o filtro selecionado.</p>
           </div>
         )}

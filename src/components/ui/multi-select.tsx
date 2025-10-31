@@ -157,7 +157,7 @@ export function MultiSelect({
             {Object.keys(groupOptionsByPrefix).map((prefix) => (
               <div
                 key={prefix}
-                className="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-100 transition-colors cursor-pointer"
+                className="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-muted transition-colors cursor-pointer"
                 onClick={() => {
                   document.getElementById(`group-${prefix}`)?.scrollIntoView({ 
                     behavior: 'smooth', 

@@ -92,7 +92,7 @@ export function RelatorioCompletoView({ data }: RelatorioCompletoViewProps) {
               </thead>
               <tbody>
                 {data.total_alunos.por_turma.map((turma, index) => (
-                  <tr key={index} className="hover:bg-gray-50">
+                  <tr key={index} className="hover:bg-muted transition-colors">
                     <td className="border border-gray-300 px-4 py-2">{turma.turma}</td>
                     <td className="border border-gray-300 px-4 py-2 text-center">{turma.matriculados}</td>
                     <td className="border border-gray-300 px-4 py-2 text-center">{turma.avaliados}</td>
@@ -144,7 +144,7 @@ export function RelatorioCompletoView({ data }: RelatorioCompletoViewProps) {
                     </thead>
                     <tbody>
                       {dadosDisciplina.por_turma.map((turma, index) => (
-                        <tr key={index} className="hover:bg-gray-50">
+                        <tr key={index} className="hover:bg-muted transition-colors">
                           <td className="border border-gray-300 px-4 py-2 font-medium">{turma.turma}</td>
                           <td className="border border-gray-300 px-4 py-2 text-center bg-red-50">{turma.abaixo_do_basico}</td>
                           <td className="border border-gray-300 px-4 py-2 text-center bg-yellow-50">{turma.basico}</td>
@@ -197,7 +197,7 @@ export function RelatorioCompletoView({ data }: RelatorioCompletoViewProps) {
                     </thead>
                     <tbody>
                       {dadosDisciplina.por_turma.map((turma, index) => (
-                        <tr key={index} className="hover:bg-gray-50">
+                        <tr key={index} className="hover:bg-muted transition-colors">
                           <td className="border border-gray-300 px-4 py-2 font-medium">{turma.turma}</td>
                           <td className="border border-gray-300 px-4 py-2 text-center">{turma.proficiencia.toFixed(2)}</td>
                         </tr>
@@ -250,7 +250,7 @@ export function RelatorioCompletoView({ data }: RelatorioCompletoViewProps) {
                     </thead>
                     <tbody>
                       {dadosDisciplina.por_turma.map((turma, index) => (
-                        <tr key={index} className="hover:bg-gray-50">
+                        <tr key={index} className="hover:bg-muted transition-colors">
                           <td className="border border-gray-300 px-4 py-2 font-medium">{turma.turma}</td>
                           <td className="border border-gray-300 px-4 py-2 text-center">{turma.nota.toFixed(2)}</td>
                         </tr>
@@ -357,7 +357,7 @@ export function RelatorioCompletoView({ data }: RelatorioCompletoViewProps) {
                       </thead>
                       <tbody>
                         {dadosDisciplina.habilidades.map((habilidade, index) => (
-                          <tr key={index} className="hover:bg-gray-50">
+                          <tr key={index} className="hover:bg-muted transition-colors">
                             <td className="border border-gray-300 px-4 py-2 text-center font-medium">
                               #{habilidade.ranking}
                             </td>

@@ -1,4 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -77,41 +81,66 @@
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+
+    /* App Settings - Font and Size */
+    --app-font-family: 'Inter';
+    --app-font-size: 100%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 267 84% 65%;
-    --primary-foreground: 222.2 84% 4.9%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 267 84% 65%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Background - Preto com leve tom azul escuro */
+    --background: 220 15% 8%;
+    --foreground: 210 20% 98%;
+    
+    /* Card - Cinza escuro com tom azul sutil */
+    --card: 220 12% 11%;
+    --card-foreground: 210 20% 98%;
+    
+    /* Popover - Mesma paleta harmoniosa */
+    --popover: 220 12% 11%;
+    --popover-foreground: 210 20% 98%;
+    
+    /* Primary - Azul mais escuro e harmônico */
+    --primary: 217 65% 55%;
+    --primary-foreground: 210 20% 98%;
+    
+    /* Secondary - Cinza escuro com tom azul */
+    --secondary: 220 10% 15%;
+    --secondary-foreground: 210 20% 98%;
+    
+    /* Muted - Cinza muito escuro */
+    --muted: 220 8% 13%;
+    --muted-foreground: 215 15% 70%;
+    
+    /* Accent - Azul escuro harmonioso */
+    --accent: 217 30% 18%;
+    --accent-foreground: 210 20% 98%;
+    
+    /* Destructive - Mantém identidade visual */
+    --destructive: 0 65% 45%;
+    --destructive-foreground: 210 20% 98%;
+    
+    /* Border - Cinza muito escuro com leve azul */
+    --border: 220 10% 16%;
+    --input: 220 10% 16%;
+    --ring: 217 65% 55%;
+    
+    /* Chart Colors - Ajustados para modo escuro */
+    --chart-1: 217 65% 55%;
+    --chart-2: 200 60% 50%;
+    --chart-3: 30 75% 55%;
+    --chart-4: 280 60% 55%;
+    --chart-5: 340 70% 55%;
+    
+    /* Sidebar - Tons escuros harmoniosos */
+    --sidebar-background: 220 15% 6%;
+    --sidebar-foreground: 210 20% 95%;
+    --sidebar-primary: 217 70% 60%;
+    --sidebar-primary-foreground: 210 20% 98%;
+    --sidebar-accent: 220 10% 14%;
+    --sidebar-accent-foreground: 210 20% 95%;
+    --sidebar-border: 220 10% 12%;
+    --sidebar-ring: 217 70% 60%;
   }
 }
 
@@ -122,7 +151,9 @@
   
   body {
     @apply bg-background text-foreground font-sans;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    /* Font family será sobrescrito por JavaScript, mas mantém fallback */
+    font-family: var(--app-font-family, 'Inter'), -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    font-size: var(--app-font-size, 100%);
     font-feature-settings: 'cv11', 'ss01';
     font-variation-settings: 'opsz' 32;
     text-rendering: optimizeLegibility;
