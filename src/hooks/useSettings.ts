@@ -198,7 +198,17 @@ export const useSettings = () => {
                 console.warn("Erro ao sincronizar configurações locais com servidor:", error);
               }
             } else {
-              loadedSettings = DEFAULT_SETTINGS;
+              // Se não há configurações salvas, verificar se já há tema aplicado no DOM
+              // para evitar remover o modo escuro se já estiver aplicado
+              const currentDarkMode = document.documentElement.classList.contains('dark');
+              if (currentDarkMode) {
+                // Se já está em modo escuro, manter as configurações padrão mas com dark mode
+                loadedSettings = { ...DEFAULT_SETTINGS, theme: 'dark' };
+                // Salvar essa preferência para manter consistência
+                saveSettings(userId, loadedSettings);
+              } else {
+                loadedSettings = DEFAULT_SETTINGS;
+              }
             }
           }
         } catch (error) {
@@ -208,18 +218,47 @@ export const useSettings = () => {
           if (localSettings && JSON.stringify(localSettings) !== JSON.stringify(DEFAULT_SETTINGS)) {
             loadedSettings = localSettings;
           } else {
-            loadedSettings = DEFAULT_SETTINGS;
+            // Se não há configurações salvas, verificar se já há tema aplicado no DOM
+            const currentDarkMode = document.documentElement.classList.contains('dark');
+            if (currentDarkMode) {
+              loadedSettings = { ...DEFAULT_SETTINGS, theme: 'dark' };
+              saveSettings(userId, loadedSettings);
+            } else {
+              loadedSettings = DEFAULT_SETTINGS;
+            }
           }
         }
       } else {
         // Se não tem userId, usar localStorage padrão
-        loadedSettings = loadSettings(null);
+        const localSettings = loadSettings(null);
+        if (localSettings && JSON.stringify(localSettings) !== JSON.stringify(DEFAULT_SETTINGS)) {
+          loadedSettings = localSettings;
+        } else {
+          // Verificar se já há tema aplicado no DOM
+          const currentDarkMode = document.documentElement.classList.contains('dark');
+          if (currentDarkMode) {
+            loadedSettings = { ...DEFAULT_SETTINGS, theme: 'dark' };
+            saveSettings(null, loadedSettings);
+          } else {
+            loadedSettings = DEFAULT_SETTINGS;
+          }
+        }
       }
 
       setSettings(loadedSettings);
 
-      // Aplicar configurações no DOM
-      applyTheme(loadedSettings.theme);
+      // Aplicar configurações no DOM apenas se forem diferentes das atuais
+      // Isso evita remover o modo escuro se já estiver aplicado
+      const currentDarkMode = document.documentElement.classList.contains('dark');
+      if (loadedSettings.theme === 'dark' && !currentDarkMode) {
+        applyTheme(loadedSettings.theme);
+      } else if (loadedSettings.theme === 'light' && currentDarkMode) {
+        applyTheme(loadedSettings.theme);
+      } else if (loadedSettings.theme === 'dark') {
+        // Garantir que o modo escuro está aplicado mesmo se já estava
+        applyTheme(loadedSettings.theme);
+      }
+      
       applyFontFamily(loadedSettings.fontFamily);
       applyFontSize(loadedSettings.fontSize);
 
@@ -321,48 +360,60 @@ export const applyStoredSettings = (): void => {
         // Tentar decodificar o token JWT (formato básico)
         try {
           const payload = JSON.parse(atob(token.split(".")[1]));
-          userId = payload?.user_id || payload?.id || null;
+          userId = payload?.user_id || payload?.id || payload?.sub || null;
         } catch {
-          // Se não conseguir decodificar, não aplicar configurações específicas
-          // Aplicar apenas configurações padrão
-          applyTheme(DEFAULT_SETTINGS.theme);
-          applyFontFamily(DEFAULT_SETTINGS.fontFamily);
-          applyFontSize(DEFAULT_SETTINGS.fontSize);
+          // Se não conseguir decodificar, tentar carregar do localStorage padrão
+          // Não aplicar configurações padrão, apenas deixar como está
+          const fallbackSettings = loadSettings(null);
+          if (fallbackSettings && JSON.stringify(fallbackSettings) !== JSON.stringify(DEFAULT_SETTINGS)) {
+            applyTheme(fallbackSettings.theme);
+            applyFontFamily(fallbackSettings.fontFamily);
+            applyFontSize(fallbackSettings.fontSize);
+          }
           return;
         }
       } else {
-        // Se não há token, aplicar apenas configurações padrão
-        applyTheme(DEFAULT_SETTINGS.theme);
-        applyFontFamily(DEFAULT_SETTINGS.fontFamily);
-        applyFontSize(DEFAULT_SETTINGS.fontSize);
+        // Se não há token, tentar carregar do localStorage padrão
+        const fallbackSettings = loadSettings(null);
+        if (fallbackSettings && JSON.stringify(fallbackSettings) !== JSON.stringify(DEFAULT_SETTINGS)) {
+          applyTheme(fallbackSettings.theme);
+          applyFontFamily(fallbackSettings.fontFamily);
+          applyFontSize(fallbackSettings.fontSize);
+        }
         return;
       }
     } catch {
-      // Se houver erro ao obter token, aplicar apenas configurações padrão
-      applyTheme(DEFAULT_SETTINGS.theme);
-      applyFontFamily(DEFAULT_SETTINGS.fontFamily);
-      applyFontSize(DEFAULT_SETTINGS.fontSize);
+      // Se houver erro ao obter token, tentar carregar do localStorage padrão
+      const fallbackSettings = loadSettings(null);
+      if (fallbackSettings && JSON.stringify(fallbackSettings) !== JSON.stringify(DEFAULT_SETTINGS)) {
+        applyTheme(fallbackSettings.theme);
+        applyFontFamily(fallbackSettings.fontFamily);
+        applyFontSize(fallbackSettings.fontSize);
+      }
       return;
     }
 
     // Só aplicar configurações se userId for válido
     if (userId) {
       const loadedSettings = loadSettings(userId);
-      applyTheme(loadedSettings.theme);
-      applyFontFamily(loadedSettings.fontFamily);
-      applyFontSize(loadedSettings.fontSize);
+      // Só aplicar se as configurações forem diferentes dos padrões
+      if (loadedSettings && JSON.stringify(loadedSettings) !== JSON.stringify(DEFAULT_SETTINGS)) {
+        applyTheme(loadedSettings.theme);
+        applyFontFamily(loadedSettings.fontFamily);
+        applyFontSize(loadedSettings.fontSize);
+      }
     } else {
-      // Se não há userId válido, aplicar configurações padrão
-      applyTheme(DEFAULT_SETTINGS.theme);
-      applyFontFamily(DEFAULT_SETTINGS.fontFamily);
-      applyFontSize(DEFAULT_SETTINGS.fontSize);
+      // Se não há userId válido, tentar carregar do localStorage padrão
+      const fallbackSettings = loadSettings(null);
+      if (fallbackSettings && JSON.stringify(fallbackSettings) !== JSON.stringify(DEFAULT_SETTINGS)) {
+        applyTheme(fallbackSettings.theme);
+        applyFontFamily(fallbackSettings.fontFamily);
+        applyFontSize(fallbackSettings.fontSize);
+      }
     }
   } catch (error) {
     console.warn("Erro ao aplicar configurações salvas:", error);
-    // Aplicar configurações padrão em caso de erro
-    applyTheme(DEFAULT_SETTINGS.theme);
-    applyFontFamily(DEFAULT_SETTINGS.fontFamily);
-    applyFontSize(DEFAULT_SETTINGS.fontSize);
+    // Não aplicar configurações padrão em caso de erro - deixar como está
   }
 };
 
