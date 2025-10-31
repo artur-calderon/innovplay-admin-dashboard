@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,31 @@ export default function ForgotPassword() {
     const [isSuccess, setIsSuccess] = useState(false);
     const navigate = useNavigate();
     const { toast } = useToast();
+
+    // Garantir que a página sempre use tema claro
+    useEffect(() => {
+        const rootElement = document.documentElement;
+        rootElement.classList.remove('dark');
+        
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                    if (rootElement.classList.contains('dark')) {
+                        rootElement.classList.remove('dark');
+                    }
+                }
+            });
+        });
+        
+        observer.observe(rootElement, {
+            attributes: true,
+            attributeFilter: ['class']
+        });
+        
+        return () => {
+            observer.disconnect();
+        };
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -70,7 +95,7 @@ export default function ForgotPassword() {
                 <div className="bg-[#8257e5] text-white w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12">
                     <div className="max-w-md flex flex-col items-center text-center">
                         <div className="mb-8 w-32 h-32 md:w-full md:h-full flex items-center justify-center flex-col">
-                            <img src={LOGO} alt="Logo" className="w-[300rem]" />
+                            <img src={LOGO} alt="Logo" className="w-[300px] max-w-full h-auto" />
                             <p className="text-lg md:text-xl text-white/80">APRENDIZAGEM E RESULTADO</p>
                         </div>
                     </div>
@@ -110,7 +135,7 @@ export default function ForgotPassword() {
             <div className="bg-[#8257e5] text-white w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12">
                 <div className="max-w-md flex flex-col items-center text-center">
                     <div className="mb-8 w-32 h-32 md:w-full md:h-full flex items-center justify-center flex-col">
-                        <img src={LOGO} alt="Logo" className="w-[300rem]" />
+                        <img src={LOGO} alt="Logo" className="w-[300px] max-w-full h-auto" />
                         <p className="text-lg md:text-xl text-white/80">APRENDIZAGEM E RESULTADO</p>
                     </div>
                 </div>

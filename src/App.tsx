@@ -20,6 +20,8 @@ const ResetPassword = React.lazy(() => import("./pages/ResetPassword"));
 const ChangePassword = React.lazy(() => import("./pages/ChangePassword"));
 const EmBreve = React.lazy(() => import("./pages/EmBreve"));
 const Settings = React.lazy(() => import("./pages/Settings"));
+const Certificates = React.lazy(() => import("./pages/Certificates"));
+const StudentCertificates = React.lazy(() => import("./pages/StudentCertificates"));
 const StudentEvaluations = React.lazy(() => import("./components/evaluations/StudentEvaluations"));
 const Users = React.lazy(() => import("./pages/Users"));
 const Profile = React.lazy(() => import("./pages/Profile"));
@@ -78,6 +80,15 @@ const TorneioExecucao = React.lazy(() => import("./pages/TorneioExecucao"));
 const StudentDashboard = React.lazy(() => import("./pages/StudentDashboard"));
 const StudentResult = React.lazy(() => import("./pages/StudentResult"));
 const ProfessorDashboard = React.lazy(() => import("./pages/ProfessorDashboard"));
+
+// Lazy loading para Play TV
+const PlayTvManagement = React.lazy(() => import("./pages/PlayTvManagement"));
+const PlayTvStudent = React.lazy(() => import("./pages/PlayTvStudent"));
+const PlayTvVideoView = React.lazy(() => import("./pages/PlayTvVideoView"));
+
+// Lazy loading para Plantão Online
+const PlantaoOnline = React.lazy(() => import("./pages/PlantaoOnline"));
+const PlantaoOnlineStudent = React.lazy(() => import("./pages/PlantaoOnlineStudent"));
 
 // Loading component
 const LoadingSpinner = () => (
@@ -140,8 +151,10 @@ const App = () => {
               <Route path="/aluno/editar-atalhos" element={<PrivateRoute><EditQuickLinks /></PrivateRoute>} />
               <Route path="/aluno/jogos" element={<PrivateRoute><StudentGames /></PrivateRoute>} />
               <Route path="/aluno/jogos/:id" element={<PrivateRoute><GameView /></PrivateRoute>} />
-              <Route path="/aluno/play-tv" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-              <Route path="/aluno/certificados" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/aluno/play-tv" element={<PrivateRoute><PlayTvStudent /></PrivateRoute>} />
+              <Route path="/aluno/play-tv/:id" element={<PrivateRoute><PlayTvVideoView /></PrivateRoute>} />
+              <Route path="/aluno/plantao-online" element={<PrivateRoute><PlantaoOnlineStudent /></PrivateRoute>} />
+              <Route path="/aluno/certificados" element={<PrivateRoute><StudentCertificates /></PrivateRoute>} />
               <Route path="/aluno/competicoes" element={<PrivateRoute><Competicoes /></PrivateRoute>} />
               <Route path="/aluno/torneio/:torneioId" element={<PrivateRoute><TorneioExecucao /></PrivateRoute>} />
               <Route path="/aluno/olimpiadas" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
@@ -178,10 +191,11 @@ const App = () => {
               <Route path="/app/jogos" element={<PrivateRoute><GamesManagement /></PrivateRoute>} />
               <Route path="/app/jogos/adicionar" element={<PrivateRoute><AddGame /></PrivateRoute>} />
               <Route path="/app/jogos/:id" element={<PrivateRoute><GameView /></PrivateRoute>} />
-              <Route path="/app/play-tv" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-              <Route path="/app/plantao" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/app/play-tv" element={<PrivateRoute><PlayTvManagement /></PrivateRoute>} />
+              <Route path="/app/play-tv/:id" element={<PrivateRoute><PlayTvVideoView /></PrivateRoute>} />
+              <Route path="/app/plantao" element={<PrivateRoute><PlantaoOnline /></PrivateRoute>} />
               <Route path="/app/cartao-resposta" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
-              <Route path="/app/certificados" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/app/certificados" element={<PrivateRoute><Certificates /></PrivateRoute>} />
               <Route path="/app/competicoes" element={<PrivateRoute><Competicoes /></PrivateRoute>} />
               <Route path="/app/torneio/:torneioId" element={<PrivateRoute><TorneioExecucao /></PrivateRoute>} />
               <Route path="/app/olimpiadas" element={<PrivateRoute><EmBreve /></PrivateRoute>} />

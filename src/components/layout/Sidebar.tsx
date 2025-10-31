@@ -186,8 +186,8 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         {
           icon: Headset,
           label: "Plantão Online",
-          href: "/app/plantao",
-          role: ["admin", "professor", "tecadm"]
+          href: `${user.role === 'aluno' ? "/aluno/plantao-online" : "/app/plantao"}`,
+          role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"]
         },
       ]
     },
