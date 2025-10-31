@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -6,10 +6,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar, Clock, Users, AlertCircle, BookOpen, Plus, Edit, Trash2, MapPin, School, Building } from "lucide-react";
+import { Calendar, CalendarDays, Clock, Users, AlertCircle, BookOpen, Plus, Edit, Trash2, MapPin, School, Building } from "lucide-react";
 import { format, addDays, addHours, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { CalendarApi } from "@/services/calendarApi";
+import { toLocalOffsetISO } from "@/utils/date";
+import { toast } from 'react-toastify';
+import { api } from '@/lib/api';
 
 // FullCalendar imports
 import FullCalendar from '@fullcalendar/react';
@@ -58,29 +62,10 @@ interface AgendaEvent {
 interface ScopeOption {
   id: string;
   name: string;
-  type: 'estado' | 'municipio' | 'escola';
+  type: 'estado' | 'municipio' | 'escola' | 'serie' | 'turma';
 }
 
-// Função para converter AgendaEvent para CustomEventInput
-const convertToCalendarEvent = (event: AgendaEvent): CustomEventInput => ({
-  id: event.id,
-  title: event.title,
-  start: event.startTime.toISOString(),
-  end: event.endTime.toISOString(),
-  allDay: false,
-  extendedProps: {
-    type: event.type,
-    description: event.description,
-    location: event.location,
-    teacher: event.teacher,
-    subject: event.subject,
-    scope: event.scope,
-    scopeId: event.scopeId,
-    scopeName: event.scopeName,
-    createdBy: event.createdBy,
-    createdAt: event.createdAt,
-  },
-});
+// Conversor local removido (eventos vêm do backend já no formato do FullCalendar)
 
 // Função para renderizar o conteúdo customizado dos eventos
 function renderEventContent(eventInfo: EventContentArg) {
@@ -140,92 +125,20 @@ function renderEventContent(eventInfo: EventContentArg) {
 }
 
 export default function AdminAgenda() {
-  // Estados mockados
-  const [mockStates] = useState<ScopeOption[]>([
-    { id: '1', name: 'São Paulo', type: 'estado' },
-    { id: '2', name: 'Rio de Janeiro', type: 'estado' },
-    { id: '3', name: 'Minas Gerais', type: 'estado' },
-  ]);
-
-  const [mockCities] = useState<ScopeOption[]>([
-    { id: '1', name: 'São Paulo - SP', type: 'municipio' },
-    { id: '2', name: 'Santos - SP', type: 'municipio' },
-    { id: '3', name: 'Campinas - SP', type: 'municipio' },
-    { id: '4', name: 'Rio de Janeiro - RJ', type: 'municipio' },
-    { id: '5', name: 'Niterói - RJ', type: 'municipio' },
-  ]);
-
-  const [mockSchools] = useState<ScopeOption[]>([
-    { id: '1', name: 'E.E. Professor João Silva', type: 'escola' },
-    { id: '2', name: 'E.E. Maria Santos', type: 'escola' },
-    { id: '3', name: 'E.E. Carlos Alberto', type: 'escola' },
-    { id: '4', name: 'E.E. Ana Paula', type: 'escola' },
-  ]);
-
-  // Eventos mockados
-  const [mockEvents] = useState<AgendaEvent[]>([
-    {
-      id: '1',
-      title: 'Reunião Pedagógica Estadual',
-      description: 'Reunião para alinhamento das diretrizes pedagógicas do estado',
-      type: 'reuniao',
-      startTime: new Date(2024, 5, 15, 9, 0),
-      endTime: new Date(2024, 5, 15, 12, 0),
-      location: 'Secretaria de Educação - SP',
-      scope: 'estado',
-      scopeId: '1',
-      scopeName: 'São Paulo',
-      createdBy: 'Admin Sistema',
-      createdAt: new Date(2024, 5, 1),
-    },
-    {
-      id: '2',
-      title: 'Prova SAEB Municipal',
-      description: 'Aplicação da prova SAEB para todas as escolas do município',
-      type: 'prova',
-      startTime: new Date(2024, 5, 20, 8, 0),
-      endTime: new Date(2024, 5, 20, 12, 0),
-      scope: 'municipio',
-      scopeId: '1',
-      scopeName: 'São Paulo - SP',
-      createdBy: 'Coordenador Regional',
-      createdAt: new Date(2024, 5, 5),
-    },
-    {
-      id: '3',
-      title: 'Festa Junina Escolar',
-      description: 'Festa junina da escola com apresentações dos alunos',
-      type: 'evento',
-      startTime: new Date(2024, 5, 24, 14, 0),
-      endTime: new Date(2024, 5, 24, 18, 0),
-      location: 'Pátio da Escola',
-      scope: 'escola',
-      scopeId: '1',
-      scopeName: 'E.E. Professor João Silva',
-      createdBy: 'Diretor da Escola',
-      createdAt: new Date(2024, 5, 10),
-    },
-    {
-      id: '4',
-      title: 'Capacitação de Professores',
-      description: 'Capacitação sobre novas metodologias de ensino',
-      type: 'aula',
-      startTime: new Date(2024, 5, 28, 8, 0),
-      endTime: new Date(2024, 5, 28, 17, 0),
-      location: 'Auditório Municipal',
-      scope: 'municipio',
-      scopeId: '2',
-      scopeName: 'Santos - SP',
-      createdBy: 'Coordenador Pedagógico',
-      createdAt: new Date(2024, 5, 12),
-    },
-  ]);
-
-  const [events, setEvents] = useState<AgendaEvent[]>(mockEvents);
-  const [selectedScope, setSelectedScope] = useState<'estado' | 'municipio' | 'escola'>('estado');
+  // Opções dinâmicas (sem mocks)
+  const [stateOptions, setStateOptions] = useState<ScopeOption[]>([]);
+  const [cityOptions, setCityOptions] = useState<ScopeOption[]>([]);
+  const [schoolOptions, setSchoolOptions] = useState<ScopeOption[]>([]);
+  const [gradeOptions, setGradeOptions] = useState<ScopeOption[]>([]);
+  const [classOptions, setClassOptions] = useState<ScopeOption[]>([]);
+  const [fcEvents, setFcEvents] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [selectedScope, setSelectedScope] = useState<'estado' | 'municipio' | 'escola' | 'serie' | 'turma'>('estado');
   const [selectedScopeId, setSelectedScopeId] = useState<string>('');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+  const [selectedEventForView, setSelectedEventForView] = useState<any | null>(null);
   const [editingEvent, setEditingEvent] = useState<AgendaEvent | null>(null);
   const calendarRef = useRef<FullCalendar>(null);
 
@@ -246,32 +159,77 @@ export default function AdminAgenda() {
   const getScopeOptions = () => {
     switch (selectedScope) {
       case 'estado':
-        return mockStates;
+        return stateOptions;
       case 'municipio':
-        return mockCities;
+        return cityOptions;
       case 'escola':
-        return mockSchools;
+        return schoolOptions;
+      case 'serie':
+        return gradeOptions;
+      case 'turma':
+        return classOptions;
       default:
         return [];
     }
   };
 
-  const getFilteredEvents = () => {
-    if (!selectedScopeId) return events;
-    return events.filter(event => 
-      event.scope === selectedScope && event.scopeId === selectedScopeId
-    );
-  };
+  // Carregar escolas (existe rota GET /school)
+  useEffect(() => {
+    const loadSchools = async () => {
+      try {
+        const res = await api.get('/school');
+        const data = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+        setSchoolOptions(
+          data.map((s: any) => ({ id: String(s.id), name: s.name || s.nome, type: 'escola' }))
+        );
+      } catch (_) {}
+    };
+    loadSchools();
+  }, []);
 
-  // Converter eventos filtrados para o formato do FullCalendar
-  const getCalendarEvents = (): CustomEventInput[] => {
-    return getFilteredEvents().map(convertToCalendarEvent);
-  };
+  // Removido filtro local: backend já retorna a lista consolidada
+
+  // Busca eventos do backend para preencher o FullCalendar
+  const fetchEvents = useCallback(async (startISO: string, endISO: string) => {
+    try {
+      setIsLoading(true);
+      const list = await CalendarApi.listEvents(startISO, endISO);
+      setFcEvents(list);
+    } catch (error) {
+      // TODO: opcionalmente exibir toast de erro
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   // Callback para clique em data (criar novo evento)
+  const [isWarningOpen, setIsWarningOpen] = useState(false);
+  const [isSuccessOpen, setIsSuccessOpen] = useState(false);
+  const [createdEventTitle, setCreatedEventTitle] = useState<string>("");
+  const [isRecipientsOpen, setIsRecipientsOpen] = useState(false);
+  const [recipients, setRecipients] = useState<any[]>([]);
+  const [recipientsPage, setRecipientsPage] = useState(1);
+  const [recipientsPerPage, setRecipientsPerPage] = useState(50);
+  const [recipientsTotal, setRecipientsTotal] = useState(0);
+
+  const loadRecipients = async (eventId: string, page = 1, perPage = 50) => {
+    try {
+      const data = await CalendarApi.listRecipients(eventId, page, perPage);
+      setRecipients(data.items || []);
+      setRecipientsPage(data.page || page);
+      setRecipientsPerPage(data.per_page || perPage);
+      setRecipientsTotal(data.total || 0);
+      setIsRecipientsOpen(true);
+    } catch (_) {
+      toast.error('Não foi possível carregar os destinatários');
+    }
+  };
+
   const handleDateSelect = (selectInfo: DateSelectArg) => {
     if (!selectedScopeId) {
-      alert('Por favor, selecione um escopo e entidade antes de criar eventos.');
+      setIsWarningOpen(true);
+      // Limpar seleção no calendário
+      selectInfo.view.calendar.unselect();
       return;
     }
 
@@ -301,27 +259,48 @@ export default function AdminAgenda() {
     selectInfo.view.calendar.unselect();
   };
 
-  // Callback para clique em evento (visualizar/editar)
+  // Clique em evento -> abre modal de visualização/ações
   const handleEventClick = (clickInfo: EventClickArg) => {
     const eventData = clickInfo.event;
-    const extendedProps = eventData.extendedProps;
-    
-    const eventDetails = `
-Evento: ${eventData.title}
-Tipo: ${extendedProps.type}
-Escopo: ${extendedProps.scopeName}
-Local: ${extendedProps.location || 'N/A'}
-Descrição: ${extendedProps.description || 'N/A'}
-Criado por: ${extendedProps.createdBy}
-    `;
+    setSelectedEventForView({
+      id: eventData.id,
+      title: eventData.title,
+      start: eventData.startStr,
+      end: eventData.endStr,
+      extendedProps: eventData.extendedProps || {},
+    });
+    setIsViewDialogOpen(true);
+  };
 
-    if (confirm(`${eventDetails}\n\nDeseja editar este evento?`)) {
-      // Encontrar o evento original
-      const originalEvent = events.find(e => e.id === eventData.id);
-      if (originalEvent) {
-        handleEditEvent(originalEvent);
-      }
+  const refetchCurrentRange = async () => {
+    const api = calendarRef.current?.getApi();
+    if (api) {
+      const view = api.view;
+      const startISOView = new Date(view.activeStart).toISOString();
+      const endISOView = new Date(view.activeEnd).toISOString();
+      await fetchEvents(startISOView, endISOView);
     }
+  };
+
+  const handlePublishEvent = async (eventId: string) => {
+    try {
+      await CalendarApi.publishEvent(eventId);
+      await refetchCurrentRange();
+      setIsSuccessOpen(true);
+      setCreatedEventTitle('Evento publicado');
+      toast.success('Evento publicado');
+    } catch (_) { toast.error('Erro ao publicar evento'); }
+  };
+
+  const handleDeleteEvent = async (eventId: string) => {
+    try {
+      await CalendarApi.deleteEvent(eventId);
+      setIsViewDialogOpen(false);
+      await refetchCurrentRange();
+      setIsSuccessOpen(true);
+      setCreatedEventTitle('Evento removido');
+      toast.success('Evento excluído');
+    } catch (_) { toast.error('Erro ao excluir evento'); }
   };
 
   const getEventTypeColor = (type: AgendaEvent['type']) => {
@@ -348,30 +327,59 @@ Criado por: ${extendedProps.createdBy}
     return icons[type] || Calendar;
   };
 
-  const handleCreateEvent = () => {
+  const handleCreateEvent = async () => {
     const scopeOption = getScopeOptions().find(opt => opt.id === formData.scopeId);
     if (!scopeOption) return;
 
-    const newEvent: AgendaEvent = {
-      id: Date.now().toString(),
-      title: formData.title,
-      description: formData.description,
-      type: formData.type,
-      startTime: new Date(formData.startTime),
-      endTime: new Date(formData.endTime),
-      location: formData.location,
-      teacher: formData.teacher,
-      subject: formData.subject,
-      scope: formData.scope,
-      scopeId: formData.scopeId,
-      scopeName: scopeOption.name,
-      createdBy: 'Usuário Atual',
-      createdAt: new Date(),
+    // Mapear escopo para API
+    const scopeMap: Record<string, 'CITY' | 'SCHOOL' | 'GRADE' | 'CLASS'> = {
+      estado: 'CITY', // sem seleção de estado real por enquanto; manter CITY como aproximação
+      municipio: 'CITY',
+      escola: 'SCHOOL',
+      serie: 'GRADE',
+      turma: 'CLASS',
     };
 
-    setEvents([...events, newEvent]);
-    setIsCreateDialogOpen(false);
-    resetForm();
+    const visibility_scope = scopeMap[formData.scope] || 'SCHOOL';
+    const targets = [{ target_type: visibility_scope, target_id: formData.scopeId }];
+
+    // Converter datas para ISO com timezone local (assumindo America/Sao_Paulo)
+    const tz = 'America/Sao_Paulo';
+    const startISO = toLocalOffsetISO(new Date(formData.startTime));
+    const endISO = toLocalOffsetISO(new Date(formData.endTime));
+
+    try {
+      const created = await CalendarApi.createEvent({
+        title: formData.title,
+        description: formData.description,
+        location: formData.location,
+        start_at: startISO,
+        end_at: endISO,
+        all_day: false,
+        timezone: tz,
+        visibility_scope,
+        targets,
+        is_published: true,
+        recurrence_rule: null,
+      });
+
+      setIsCreateDialogOpen(false);
+      resetForm();
+      setCreatedEventTitle(created.title || 'Evento criado');
+      setIsSuccessOpen(true);
+      toast.success('Evento criado e publicado');
+
+      // Refetch eventos no range atual
+      const api = calendarRef.current?.getApi();
+      if (api) {
+        const view = api.view;
+        const startISOView = new Date(view.activeStart).toISOString();
+        const endISOView = new Date(view.activeEnd).toISOString();
+        await fetchEvents(startISOView, endISOView);
+      }
+    } catch (e) {
+      toast.error('Erro ao criar evento');
+    }
   };
 
   const handleEditEvent = (event: AgendaEvent) => {
@@ -391,31 +399,43 @@ Criado por: ${extendedProps.createdBy}
     setIsEditDialogOpen(true);
   };
 
-  const handleUpdateEvent = () => {
+  const handleUpdateEvent = async () => {
     if (!editingEvent) return;
 
-    const scopeOption = getScopeOptions().find(opt => opt.id === formData.scopeId);
-    if (!scopeOption) return;
-
-    const updatedEvent: AgendaEvent = {
-      ...editingEvent,
-      title: formData.title,
-      description: formData.description,
-      type: formData.type,
-      startTime: new Date(formData.startTime),
-      endTime: new Date(formData.endTime),
-      location: formData.location,
-      teacher: formData.teacher,
-      subject: formData.subject,
-      scope: formData.scope,
-      scopeId: formData.scopeId,
-      scopeName: scopeOption.name,
+    const scopeMap: Record<string, 'CITY' | 'SCHOOL' | 'GRADE' | 'CLASS'> = {
+      estado: 'CITY',
+      municipio: 'CITY',
+      escola: 'SCHOOL',
+      serie: 'GRADE',
+      turma: 'CLASS',
     };
 
-    setEvents(events.map(e => e.id === editingEvent.id ? updatedEvent : e));
-    setIsEditDialogOpen(false);
-    setEditingEvent(null);
-    resetForm();
+    const visibility_scope = scopeMap[formData.scope] || 'SCHOOL';
+    const targets = [{ target_type: visibility_scope, target_id: formData.scopeId }];
+    const tz = 'America/Sao_Paulo';
+    const startISO = toLocalOffsetISO(new Date(formData.startTime));
+    const endISO = toLocalOffsetISO(new Date(formData.endTime));
+
+    try {
+      await CalendarApi.updateEvent(editingEvent.id, {
+        title: formData.title,
+        description: formData.description,
+        location: formData.location,
+        start_at: startISO,
+        end_at: endISO,
+        all_day: false,
+        timezone: tz,
+        visibility_scope,
+        targets,
+      });
+
+      setIsEditDialogOpen(false);
+      setEditingEvent(null);
+      resetForm();
+      await refetchCurrentRange();
+      setIsSuccessOpen(true);
+      setCreatedEventTitle('Evento atualizado');
+    } catch (_) { toast.error('Erro ao atualizar evento'); }
   };
 
   const handleDeleteEvent = (eventId: string) => {
@@ -477,7 +497,7 @@ Criado por: ${extendedProps.createdBy}
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione o escopo" />
                 </SelectTrigger>
-                <SelectContent>
+                  <SelectContent>
                   <SelectItem value="estado">
                     <div className="flex items-center gap-2">
                       <MapPin className="h-4 w-4" />
@@ -496,6 +516,18 @@ Criado por: ${extendedProps.createdBy}
                       Escola
                     </div>
                   </SelectItem>
+                    <SelectItem value="serie">
+                      <div className="flex items-center gap-2">
+                        <BookOpen className="h-4 w-4" />
+                        Série
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="turma">
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4" />
+                        Turma
+                      </div>
+                    </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -668,7 +700,7 @@ Criado por: ${extendedProps.createdBy}
                 initialView="dayGridMonth"
                 locale="pt-br"
                 weekends={true}
-                events={getCalendarEvents()}
+                events={fcEvents}
                 editable={false}
                 selectable={selectedScopeId !== ''}
                 selectMirror={true}
@@ -705,10 +737,78 @@ Criado por: ${extendedProps.createdBy}
                   day: 'Dia'
                 }}
                 noEventsText="Nenhum evento encontrado"
+                datesSet={(arg) => {
+                  const startISO = new Date(arg.start).toISOString();
+                  const endISO = new Date(arg.end).toISOString();
+                  fetchEvents(startISO, endISO);
+                }}
               />
           </div>
         </CardContent>
       </Card>
+
+      {/* Dialog de visualização/ações */}
+      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{selectedEventForView?.title || 'Evento'}</DialogTitle>
+            <DialogDescription>
+              {selectedEventForView?.extendedProps?.description || 'Sem descrição'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 text-sm">
+            {selectedEventForView?.extendedProps?.location && (
+              <div>Local: {selectedEventForView.extendedProps.location}</div>
+            )}
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>Fechar</Button>
+            {selectedEventForView && (
+              <>
+                <Button variant="secondary" onClick={() => {
+                  setIsViewDialogOpen(false);
+                  setEditingEvent({
+                    id: selectedEventForView.id,
+                    title: selectedEventForView.title,
+                    description: selectedEventForView.extendedProps?.description || '',
+                    type: 'evento',
+                    startTime: new Date(selectedEventForView.start),
+                    endTime: new Date(selectedEventForView.end || selectedEventForView.start),
+                    location: selectedEventForView.extendedProps?.location || '',
+                    teacher: '',
+                    subject: '',
+                    scope: 'escola',
+                    scopeId: '',
+                    scopeName: '',
+                    createdBy: '',
+                    createdAt: new Date(),
+                  });
+                  setFormData({
+                    title: selectedEventForView.title,
+                    description: selectedEventForView.extendedProps?.description || '',
+                    type: 'evento',
+                    startTime: selectedEventForView.start?.slice(0,16) || '',
+                    endTime: selectedEventForView.end?.slice(0,16) || '',
+                    location: selectedEventForView.extendedProps?.location || '',
+                    teacher: '',
+                    subject: '',
+                    scope: 'escola',
+                    scopeId: '',
+                  });
+                  setIsEditDialogOpen(true);
+                }}>
+                  <Edit className="h-4 w-4 mr-2" />Editar
+                </Button>
+                <Button onClick={() => handlePublishEvent(selectedEventForView.id)}>Publicar</Button>
+                <Button variant="destructive" onClick={() => handleDeleteEvent(selectedEventForView.id)}>
+                  <Trash2 className="h-4 w-4 mr-2" />Excluir
+                </Button>
+                <Button onClick={() => loadRecipients(selectedEventForView.id)}>Destinatários</Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog de edição */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
@@ -823,6 +923,82 @@ Criado por: ${extendedProps.createdBy}
             <Button onClick={handleUpdateEvent}>
               Salvar Alterações
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Aviso de seleção obrigatória */}
+      <Dialog open={isWarningOpen} onOpenChange={setIsWarningOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Selecione o escopo e a entidade</DialogTitle>
+            <DialogDescription>
+              Para criar um evento, escolha primeiro o escopo (Estado, Município ou Escola) e a entidade correspondente.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => setIsWarningOpen(false)}>Entendi</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmação de sucesso na criação */}
+      <Dialog open={isSuccessOpen} onOpenChange={setIsSuccessOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Evento criado</DialogTitle>
+            <DialogDescription>
+              {createdEventTitle} foi criado com sucesso e publicado.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => setIsSuccessOpen(false)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Destinatários do evento */}
+      <Dialog open={isRecipientsOpen} onOpenChange={setIsRecipientsOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Destinatários</DialogTitle>
+            <DialogDescription>Usuários que receberam este evento</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[50vh] overflow-auto space-y-2">
+            {recipients.length === 0 && (
+              <div className="text-sm text-muted-foreground">Nenhum destinatário encontrado</div>
+            )}
+            {recipients.map((r) => (
+              <div key={`${r.user_id}`} className="flex items-center justify-between p-2 border rounded">
+                <div className="text-sm">
+                  <div className="font-medium">{r.user_id}</div>
+                  <div className="text-muted-foreground">{r.role_snapshot}</div>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {r.read_at ? `Lido: ${new Date(r.read_at).toLocaleString()}` : 'Não lido'}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-between pt-2">
+            <div className="text-sm text-muted-foreground">
+              Página {recipientsPage} de {Math.max(1, Math.ceil(recipientsTotal / recipientsPerPage))}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                disabled={recipientsPage <= 1 || !selectedEventForView}
+                onClick={() => selectedEventForView && loadRecipients(selectedEventForView.id, recipientsPage - 1, recipientsPerPage)}
+              >Anterior</Button>
+              <Button
+                variant="outline"
+                disabled={recipientsPage >= Math.ceil(recipientsTotal / recipientsPerPage) || !selectedEventForView}
+                onClick={() => selectedEventForView && loadRecipients(selectedEventForView.id, recipientsPage + 1, recipientsPerPage)}
+              >Próxima</Button>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setIsRecipientsOpen(false)}>Fechar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
