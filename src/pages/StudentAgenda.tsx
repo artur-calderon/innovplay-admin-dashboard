@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar } from "lucide-react";
 import { addDays, addHours, format } from "date-fns";
@@ -6,13 +6,17 @@ import { ptBR } from "date-fns/locale";
 
 // FullCalendar imports
 import FullCalendar from '@fullcalendar/react';
-import { EventInput, EventClickArg, EventContentArg } from '@fullcalendar/core';
+import { EventInput, EventClickArg, EventContentArg, DatesSetArg } from '@fullcalendar/core';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 
 // FullCalendar styles customizados
 import '../styles/fullcalendar.css';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { CalendarApi as CalendarService } from "@/services/calendarApi";
+import { toast } from 'react-toastify';
 
 // Interface customizada para eventos do FullCalendar (estudante)
 interface StudentEventInput extends EventInput {
@@ -106,114 +110,38 @@ function renderStudentEventContent(eventInfo: EventContentArg) {
 
 export default function StudentAgenda() {
   
-  // Dados mockados para implementação futura
-  const [mockEvents] = useState<AgendaEvent[]>([
-    {
-      id: '1',
-      title: 'Aula de Matemática',
-      description: 'Estudos sobre Geometria Analítica',
-      type: 'aula',
-      startTime: addHours(new Date(), 2),
-      endTime: addHours(new Date(), 4),
-      location: 'Sala 101',
-      teacher: 'Prof. Silva',
-      subject: 'Matemática'
-    },
-    {
-      id: '2',
-      title: 'Prova de História',
-      description: 'Avaliação sobre Segunda Guerra Mundial',
-      type: 'prova',
-      startTime: addDays(new Date(), 1),
-      endTime: addDays(addHours(new Date(), 2), 1),
-      location: 'Sala 105',
-      teacher: 'Prof. Santos',
-      subject: 'História'
-    },
-    {
-      id: '3',
-      title: 'Tarefa de Português',
-      description: 'Entrega do ensaio sobre Literatura Brasileira',
-      type: 'tarefa',
-      startTime: addDays(new Date(), 2),
-      endTime: addDays(addHours(new Date(), 1), 2),
-      subject: 'Português'
-    },
-    {
-      id: '4',
-      title: 'Feira de Ciências',
-      description: 'Apresentação dos projetos científicos',
-      type: 'evento',
-      startTime: addDays(addHours(new Date(), 8), 3),
-      endTime: addDays(addHours(new Date(), 17), 3),
-      location: 'Auditório Principal'
-    },
-    {
-      id: '5',
-      title: 'Aula de Física',
-      description: 'Experimentos de Eletromagnetismo',
-      type: 'aula',
-      startTime: addDays(addHours(new Date(), 10), 1),
-      endTime: addDays(addHours(new Date(), 12), 1),
-      location: 'Laboratório de Física',
-      teacher: 'Prof. Oliveira',
-      subject: 'Física'
-    },
-    {
-      id: '6',
-      title: 'Prova de Matemática',
-      description: 'Avaliação de Álgebra Linear',
-      type: 'prova',
-      startTime: addDays(addHours(new Date(), 14), 1),
-      endTime: addDays(addHours(new Date(), 16), 1),
-      location: 'Sala 102',
-      teacher: 'Prof. Silva',
-      subject: 'Matemática'
-    },
-    {
-      id: '7',
-      title: 'Seminário de Química',
-      description: 'Apresentação sobre Química Orgânica',
-      type: 'evento',
-      startTime: addDays(addHours(new Date(), 16), 1),
-      endTime: addDays(addHours(new Date(), 18), 1),
-      location: 'Auditório',
-      subject: 'Química'
-    },
-    {
-      id: '8',
-      title: 'Entrega de Trabalho',
-      description: 'Trabalho de Geografia sobre Climatologia',
-      type: 'tarefa',
-      startTime: addDays(addHours(new Date(), 8), 2),
-      endTime: addDays(addHours(new Date(), 9), 2),
-      subject: 'Geografia'
-    }
-  ]);
+  const calendarRef = useRef<FullCalendar>(null);
+  const [fcEvents, setFcEvents] = useState<StudentEventInput[]>([]);
+  const [isViewOpen, setIsViewOpen] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<EventInput | null>(null);
 
-  // Converter eventos para o formato do FullCalendar
-  const getStudentCalendarEvents = (): StudentEventInput[] => {
-    return mockEvents.map(convertToStudentCalendarEvent);
+  const fetchMyEvents = async (range: DatesSetArg) => {
+    try {
+      const startISO = new Date(range.start).toISOString();
+      const endISO = new Date(range.end).toISOString();
+      const items = await CalendarService.listMyEvents(startISO, endISO);
+      setFcEvents(items as StudentEventInput[]);
+    } catch (_) {
+      toast.error('Não foi possível carregar seus eventos');
+    }
   };
 
   // Callback para clique em evento (visualizar detalhes)
-  const handleStudentEventClick = (clickInfo: EventClickArg) => {
+  const handleStudentEventClick = async (clickInfo: EventClickArg) => {
     const eventData = clickInfo.event;
-    const extendedProps = eventData.extendedProps;
-    
-    const eventDetails = `
-📅 ${eventData.title}
-
-📚 Tipo: ${extendedProps.type}
-${extendedProps.subject ? `📖 Disciplina: ${extendedProps.subject}` : ''}
-${extendedProps.teacher ? `👨‍🏫 Professor: ${extendedProps.teacher}` : ''}
-${extendedProps.location ? `📍 Local: ${extendedProps.location}` : ''}
-${extendedProps.description ? `📝 Descrição: ${extendedProps.description}` : ''}
-
-⏰ Horário: ${format(new Date(eventData.start!), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-    `;
-
-    alert(eventDetails);
+    setSelectedEvent({
+      id: eventData.id,
+      title: eventData.title,
+      start: eventData.startStr,
+      end: eventData.endStr,
+      allDay: eventData.allDay,
+      extendedProps: eventData.extendedProps || {},
+    });
+    setIsViewOpen(true);
+    // marcar como lido
+    if (!eventData.extendedProps?.read) {
+      try { await CalendarService.markRead(eventData.id); } catch { /* noop */ }
+    }
   };
 
   return (
@@ -237,6 +165,7 @@ ${extendedProps.description ? `📝 Descrição: ${extendedProps.description}` :
         <CardContent className="pt-0">
           <div className="fullcalendar-container">
             <FullCalendar
+              ref={calendarRef}
               plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
               headerToolbar={{
                 left: 'prev,next today',
@@ -246,7 +175,7 @@ ${extendedProps.description ? `📝 Descrição: ${extendedProps.description}` :
               initialView="dayGridMonth"
               locale="pt-br"
               weekends={true}
-              events={getStudentCalendarEvents()}
+              events={fcEvents}
               editable={false}
               selectable={false}
               dayMaxEvents={false}
@@ -280,10 +209,34 @@ ${extendedProps.description ? `📝 Descrição: ${extendedProps.description}` :
                 day: 'Dia'
               }}
               noEventsText="Nenhum evento encontrado"
+              datesSet={fetchMyEvents}
             />
                 </div>
               </CardContent>
             </Card>
+      <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{selectedEvent?.title}</DialogTitle>
+            <DialogDescription>
+              {selectedEvent?.extendedProps?.description || 'Sem descrição'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 text-sm">
+            {selectedEvent?.extendedProps?.subject && (<div>Disciplina: {selectedEvent.extendedProps.subject}</div>)}
+            {selectedEvent?.extendedProps?.teacher && (<div>Professor: {selectedEvent.extendedProps.teacher}</div>)}
+            {selectedEvent?.extendedProps?.location && (<div>Local: {selectedEvent.extendedProps.location}</div>)}
+            {selectedEvent?.start && (
+              <div>
+                Horário: {format(new Date(selectedEvent.start), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setIsViewOpen(false)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 

@@ -165,16 +165,16 @@ export function BulkUploadStudentsModal({
 
   const downloadCSVTemplate = () => {
     const csvContent = `nome,email,senha,data_nascimento,matricula,escola,endereco_escola,estado_escola,municipio_escola,curso,serie,turma
-João Silva,joao.silva@email.com,123456,15/03/2008,2024001,${schoolName},Rua das Flores 123,SP,São Paulo,Matemática,6º Ano,Turma A
-Maria Santos,maria.santos@email.com,123456,22/07/2008,2024002,${schoolName},Rua das Flores 123,SP,São Paulo,Português,6º Ano,Turma A
-Pedro Oliveira,pedro.oliveira@email.com,123456,10/11/2008,2024003,${schoolName},Rua das Flores 123,SP,São Paulo,História,6º Ano,Turma B
-Ana Costa,ana.costa@email.com,123456,05/05/2008,2024004,${schoolName},Rua das Flores 123,SP,São Paulo,Geografia,6º Ano,Turma B
-Lucas Ferreira,lucas.ferreira@email.com,123456,18/09/2008,2024005,${schoolName},Rua das Flores 123,SP,São Paulo,Ciências,6º Ano,Turma C
-Julia Rodrigues,julia.rodrigues@email.com,123456,12/12/2008,2024006,${schoolName},Rua das Flores 123,SP,São Paulo,Inglês,6º Ano,Turma C
-Carlos Lima,carlos.lima@email.com,123456,25/04/2008,2024007,${schoolName},Rua das Flores 123,SP,São Paulo,Educação Física,6º Ano,Turma C
-Fernanda Costa,fernanda.costa@email.com,123456,30/01/2009,2024008,${schoolName},Av. Principal 456,RJ,Rio de Janeiro,Arte,6º Ano,Turma A
-Roberto Alves,roberto.alves@email.com,123456,14/06/2009,2024009,${schoolName},Av. Principal 456,RJ,Rio de Janeiro,Matemática,6º Ano,Turma A
-Patricia Souza,patricia.souza@email.com,123456,08/08/2009,2024010,${schoolName},Av. Principal 456,RJ,Rio de Janeiro,Português,6º Ano,Turma B`;
+João Silva,joao.silva@email.com,123456,15/03/2008,2024001,${schoolName},Rua das Flores 123,SP,São Paulo,Anos Finais,6º Ano,Turma A
+Maria Santos,maria.santos@email.com,123456,22/07/2008,2024002,${schoolName},Rua das Flores 123,SP,São Paulo,Anos Finais,6º Ano,Turma A
+Pedro Oliveira,pedro.oliveira@email.com,123456,10/11/2008,2024003,${schoolName},Rua das Flores 123,SP,São Paulo,Anos Finais,6º Ano,Turma B
+Ana Costa,ana.costa@email.com,123456,05/05/2008,2024004,${schoolName},Rua das Flores 123,SP,São Paulo,Anos Finais,6º Ano,Turma B
+Lucas Ferreira,lucas.ferreira@email.com,123456,18/09/2008,2024005,${schoolName},Rua das Flores 123,SP,São Paulo,Anos Finais,6º Ano,Turma C
+Julia Rodrigues,julia.rodrigues@email.com,123456,12/12/2008,2024006,${schoolName},Rua das Flores 123,SP,São Paulo,Anos Finais,6º Ano,Turma C
+Carlos Lima,carlos.lima@email.com,123456,25/04/2008,2024007,${schoolName},Rua das Flores 123,SP,São Paulo,Anos Finais,6º Ano,Turma C
+Fernanda Costa,fernanda.costa@email.com,123456,30/01/2009,2024008,${schoolName},Av. Principal 456,RJ,Rio de Janeiro,Anos Finais,6º Ano,Turma A
+Roberto Alves,roberto.alves@email.com,123456,14/06/2009,2024009,${schoolName},Av. Principal 456,RJ,Rio de Janeiro,Anos Finais,6º Ano,Turma A
+Patricia Souza,patricia.souza@email.com,123456,08/08/2009,2024010,${schoolName},Av. Principal 456,RJ,Rio de Janeiro,Anos Finais,6º Ano,Turma B`;
     
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -193,16 +193,16 @@ Patricia Souza,patricia.souza@email.com,123456,08/08/2009,2024010,${schoolName},
       // Dados do template
       const templateData = [
         ['nome', 'email', 'senha', 'data_nascimento', 'matricula', 'escola', 'endereco_escola', 'estado_escola', 'municipio_escola', 'curso', 'serie', 'turma'],
-        ['João Silva', 'joao.silva@email.com', '123456', '15/03/2008', '2024001', schoolName, 'Rua das Flores 123', 'SP', 'São Paulo', 'Matemática', '6º Ano', 'Turma A'],
-        ['Maria Santos', 'maria.santos@email.com', '123456', '22/07/2008', '2024002', schoolName, 'Rua das Flores 123', 'SP', 'São Paulo', 'Português', '6º Ano', 'Turma A'],
-        ['Pedro Oliveira', 'pedro.oliveira@email.com', '123456', '10/11/2008', '2024003', schoolName, 'Rua das Flores 123', 'SP', 'São Paulo', 'História', '6º Ano', 'Turma B'],
-        ['Ana Costa', 'ana.costa@email.com', '123456', '05/05/2008', '2024004', schoolName, 'Rua das Flores 123', 'SP', 'São Paulo', 'Geografia', '6º Ano', 'Turma B'],
-        ['Lucas Ferreira', 'lucas.ferreira@email.com', '123456', '18/09/2008', '2024005', schoolName, 'Rua das Flores 123', 'SP', 'São Paulo', 'Ciências', '6º Ano', 'Turma C'],
-        ['Julia Rodrigues', 'julia.rodrigues@email.com', '123456', '12/12/2008', '2024006', schoolName, 'Rua das Flores 123', 'SP', 'São Paulo', 'Inglês', '6º Ano', 'Turma C'],
-        ['Carlos Lima', 'carlos.lima@email.com', '123456', '25/04/2008', '2024007', schoolName, 'Rua das Flores 123', 'SP', 'São Paulo', 'Educação Física', '6º Ano', 'Turma C'],
-        ['Fernanda Costa', 'fernanda.costa@email.com', '123456', '30/01/2009', '2024008', schoolName, 'Av. Principal 456', 'RJ', 'Rio de Janeiro', 'Arte', '6º Ano', 'Turma A'],
-        ['Roberto Alves', 'roberto.alves@email.com', '123456', '14/06/2009', '2024009', schoolName, 'Av. Principal 456', 'RJ', 'Rio de Janeiro', 'Matemática', '6º Ano', 'Turma A'],
-        ['Patricia Souza', 'patricia.souza@email.com', '123456', '08/08/2009', '2024010', schoolName, 'Av. Principal 456', 'RJ', 'Rio de Janeiro', 'Português', '6º Ano', 'Turma B']
+        ['João Silva', 'joao.silva@email.com', '123456', '15/03/2008', '2024001', schoolName, 'Rua das Flores 123', 'SP', 'São Paulo', 'Anos Finais', '6º Ano', 'Turma A'],
+        ['Maria Santos', 'maria.santos@email.com', '123456', '22/07/2008', '2024002', schoolName, 'Rua das Flores 123', 'SP', 'São Paulo', 'Anos Finais', '6º Ano', 'Turma A'],
+        ['Pedro Oliveira', 'pedro.oliveira@email.com', '123456', '10/11/2008', '2024003', schoolName, 'Rua das Flores 123', 'SP', 'São Paulo', 'Anos Finais', '6º Ano', 'Turma B'],
+        ['Ana Costa', 'ana.costa@email.com', '123456', '05/05/2008', '2024004', schoolName, 'Rua das Flores 123', 'SP', 'São Paulo', 'Anos Finais', '6º Ano', 'Turma B'],
+        ['Lucas Ferreira', 'lucas.ferreira@email.com', '123456', '18/09/2008', '2024005', schoolName, 'Rua das Flores 123', 'SP', 'São Paulo', 'Anos Finais', '6º Ano', 'Turma C'],
+        ['Julia Rodrigues', 'julia.rodrigues@email.com', '123456', '12/12/2008', '2024006', schoolName, 'Rua das Flores 123', 'SP', 'São Paulo', 'Anos Finais', '6º Ano', 'Turma C'],
+        ['Carlos Lima', 'carlos.lima@email.com', '123456', '25/04/2008', '2024007', schoolName, 'Rua das Flores 123', 'SP', 'São Paulo', 'Anos Finais', '6º Ano', 'Turma C'],
+        ['Fernanda Costa', 'fernanda.costa@email.com', '123456', '30/01/2009', '2024008', schoolName, 'Av. Principal 456', 'RJ', 'Rio de Janeiro', 'Anos Finais', '6º Ano', 'Turma A'],
+        ['Roberto Alves', 'roberto.alves@email.com', '123456', '14/06/2009', '2024009', schoolName, 'Av. Principal 456', 'RJ', 'Rio de Janeiro', 'Anos Finais', '6º Ano', 'Turma A'],
+        ['Patricia Souza', 'patricia.souza@email.com', '123456', '08/08/2009', '2024010', schoolName, 'Av. Principal 456', 'RJ', 'Rio de Janeiro', 'Anos Finais', '6º Ano', 'Turma B']
       ];
       
       // Criar planilha

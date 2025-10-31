@@ -802,9 +802,16 @@ export default function SchoolDetails() {
                           <div>
                             <h4 className="font-medium text-lg">{classItem.name}</h4>
                             {classItem.grade && (
-                              <p className="text-sm text-muted-foreground">
-                                Série: {typeof classItem.grade === 'object' && classItem.grade !== null ? (classItem.grade as any).name : classItem.grade}
-                              </p>
+                              <div className="text-sm text-muted-foreground">
+                                <p>
+                                  Série: {typeof classItem.grade === 'object' && classItem.grade !== null ? (classItem.grade as any).name : classItem.grade}
+                                </p>
+                                {typeof classItem.grade === 'object' && classItem.grade !== null && (classItem.grade as any).education_stage && (
+                                  <p className="text-xs text-muted-foreground">
+                                    Curso: {(classItem.grade as any).education_stage.name}
+                                  </p>
+                                )}
+                              </div>
                             )}
                           </div>
                           {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
