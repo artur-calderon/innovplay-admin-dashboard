@@ -41,6 +41,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { CreateClassForm } from "@/components/schools/CreateClassForm";
 
 interface School {
   id: string;
@@ -426,12 +427,6 @@ export default function Turmas() {
     }
   };
 
-  const openCreateModal = () => {
-    setEditingItem(null);
-    setFormData({ name: "", school_id: "", grade_id: "" });
-    setStudents([]);
-    setIsModalOpen(true);
-  };
 
   const openEditModal = (item: Turma) => {
     setEditingItem(item);
@@ -675,10 +670,13 @@ export default function Turmas() {
             Cadastre e gerencie as turmas das escolas
           </p>
         </div>
-        <Button onClick={openCreateModal}>
-          <PlusCircle className="h-4 w-4 mr-2" />
-          Nova Turma
-        </Button>
+        <CreateClassForm
+          showSchoolSelector={true}
+          availableSchools={schools}
+          onSuccess={() => {
+            fetchTurmas();
+          }}
+        />
       </div>
 
       <div className="flex items-center space-x-2">
@@ -777,14 +775,8 @@ export default function Turmas() {
             <p className="text-muted-foreground text-center mb-4">
               {searchTerm
                 ? "Tente ajustar sua pesquisa"
-                : "Comece criando sua primeira turma no sistema"}
+                : "Use o botão acima para criar turmas"}
             </p>
-            {!searchTerm && (
-              <Button onClick={openCreateModal}>
-                <PlusCircle className="h-4 w-4 mr-2" />
-                Nova Turma
-              </Button>
-            )}
           </CardContent>
         </Card>
       )}

@@ -85,9 +85,12 @@ interface Grade {
 }
 
 interface CreateClassFormProps {
-  schoolId: string;
+  schoolId?: string;
   schoolName?: string;
   onSuccess?: () => void;
+  // Para permitir seleção de escola quando não houver schoolId
+  showSchoolSelector?: boolean;
+  availableSchools?: Array<{ id: string; name: string }>;
 }
 
 interface ClassPreview {
@@ -98,14 +101,18 @@ interface ClassPreview {
   room?: string;
 }
 
-export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClassFormProps) {
+export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSelector, availableSchools }: CreateClassFormProps) {
   const [open, setOpen] = useState(false);
   const [educationStages, setEducationStages] = useState<EducationStage[]>([]);
   const [grades, setGrades] = useState<Grade[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [classesToCreate, setClassesToCreate] = useState<ClassPreview[]>([]);
+  const [selectedSchoolId, setSelectedSchoolId] = useState<string>(schoolId || "");
   const { toast } = useToast();
+  
+  // Use schoolId da prop ou do estado selecionado
+  const currentSchoolId = schoolId || selectedSchoolId;
 
   const form = useForm<ClassFormValues>({
     resolver: zodResolver(classSchema),
@@ -147,22 +154,36 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
 
   useEffect(() => {
     const fetchEducationStages = async () => {
+      if (!currentSchoolId) {
+        setEducationStages([]);
+        return;
+      }
+      
       try {
-        const response = await api.get("/education_stages/");
-        setEducationStages(response.data);
+        // Buscar cursos vinculados à escola específica
+        const response = await api.get(`/school/${currentSchoolId}/courses`);
+        const data = response.data;
+        
+        // A resposta tem formato: { school_id, school_name, courses: [...] }
+        if (data?.courses && Array.isArray(data.courses)) {
+          setEducationStages(data.courses);
+        } else {
+          setEducationStages([]);
+        }
       } catch (error) {
         toast({
           title: "Erro",
           description: "Erro ao carregar cursos",
           variant: "destructive",
         });
+        setEducationStages([]);
       }
     };
 
-    if (open) {
+    if (open && currentSchoolId) {
       fetchEducationStages();
     }
-  }, [open, toast]);
+  }, [open, currentSchoolId, toast]);
 
   useEffect(() => {
     const fetchGrades = async () => {
@@ -172,7 +193,7 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
       }
 
       try {
-        const response = await api.get(`/grades/education-stage/${selectedStage}`);
+        const response = await api.get(`/grades/by-education-stage/${selectedStage}`);
         setGrades(response.data);
       } catch (error) {
         console.error("Error fetching grades:", error);
@@ -250,6 +271,15 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
   };
 
   const handleSubmit = async (data: ClassFormValues) => {
+    if (!currentSchoolId) {
+      toast({
+        title: "Erro",
+        description: "Selecione uma escola primeiro",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     if (classesToCreate.length === 0) {
       toast({
         title: "Erro",
@@ -266,7 +296,7 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
           name: nameType === 'custom' ? data.customName : 
                 nameType === 'letter' ? classPreview.name.split(' ').pop() :
                 classPreview.name.split(' ').pop(),
-          school_id: schoolId,
+          school_id: currentSchoolId,
           grade_id: data.gradeId,
           description: data.description || undefined,
           capacity: data.capacity ? parseInt(data.capacity) : undefined,
@@ -351,6 +381,28 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    {/* Seletor de escola quando showSchoolSelector estiver ativo */}
+                    {showSchoolSelector && availableSchools && (
+                      <div className="space-y-2">
+                        <Label>Escola *</Label>
+                        <Select 
+                          value={selectedSchoolId} 
+                          onValueChange={setSelectedSchoolId}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione uma escola" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableSchools.map((school) => (
+                              <SelectItem key={school.id} value={school.id}>
+                                {school.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <FormField
                         control={form.control}
@@ -358,10 +410,14 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>Curso *</FormLabel>
-                            <Select onValueChange={field.onChange} value={field.value}>
+                            <Select 
+                              onValueChange={field.onChange} 
+                              value={field.value}
+                              disabled={!currentSchoolId}
+                            >
                               <FormControl>
                                 <SelectTrigger>
-                                  <SelectValue placeholder="Selecione o curso" />
+                                  <SelectValue placeholder={!currentSchoolId ? "Selecione uma escola primeiro" : "Selecione o curso"} />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>

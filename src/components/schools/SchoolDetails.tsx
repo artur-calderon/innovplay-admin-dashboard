@@ -978,6 +978,9 @@ export default function SchoolDetails() {
           onClose={() => setShowBulkUploadModal(false)}
           schoolId={school.id}
           schoolName={school.name}
+          schoolAddress={school.address}
+          schoolState={school.city.state}
+          schoolMunicipality={school.city.name}
           onSuccess={() => {
             // Recarregar dados da escola
             window.location.reload();

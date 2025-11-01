@@ -402,80 +402,21 @@ export function ClassStatistics({ apiData }: ClassStatisticsProps) {
         </Card>
       )}
 
-            return (
-              <div key={statisticsItem.name} className="border rounded-lg p-4 hover:bg-muted transition-colors border-border">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-semibold text-lg">{statisticsItem.seriesName ? `${statisticsItem.seriesName} - ${statisticsItem.name}` : statisticsItem.name}</h3>
-                  <Badge variant="outline">{statisticsItem.totalStudents} alunos</Badge>
-                </div>
-                
-                <div className="space-y-3">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Participação:</span>
-                      <span className="font-medium">
-                        {statisticsItem.participatingStudents}/{statisticsItem.totalStudents} alunos
-                      </span>
-                    </div>
-                    <Progress value={participationRate} className="h-2" />
-                  </div>
-                  
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Média Nota:</span>
-                    <span className="font-medium">{statisticsItem.averageGrade.toFixed(1)}</span>
-                  </div>
-                  
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Proficiência:</span>
-                    <span className="font-medium">{statisticsItem.proficiency.toFixed(1)}</span>
-                  </div>
-                  
-                  {/* Distribuição de classificação */}
-                  <div className="space-y-1">
-                    <div className="text-xs text-muted-foreground">Distribuição:</div>
-                    <div className="flex gap-1">
-                      <div 
-                        className="flex-1 bg-red-500 rounded-sm h-2" 
-                        title={`Abaixo do Básico: ${statisticsItem.distribution.abaixo_do_basico}`}
-                        style={{ 
-                          width: `${statisticsItem.totalStudents > 0 ? (statisticsItem.distribution.abaixo_do_basico / statisticsItem.totalStudents) * 100 : 0}%` 
-                        }}
-                      ></div>
-                      <div 
-                        className="flex-1 bg-yellow-500 rounded-sm h-2" 
-                        title={`Básico: ${statisticsItem.distribution.basico}`}
-                        style={{ 
-                          width: `${statisticsItem.totalStudents > 0 ? (statisticsItem.distribution.basico / statisticsItem.totalStudents) * 100 : 0}%` 
-                        }}
-                      ></div>
-                      <div 
-                        className="flex-1 bg-green-400 rounded-sm h-2" 
-                        title={`Adequado: ${statisticsItem.distribution.adequado}`}
-                        style={{ 
-                          width: `${statisticsItem.totalStudents > 0 ? (statisticsItem.distribution.adequado / statisticsItem.totalStudents) * 100 : 0}%` 
-                        }}
-                      ></div>
-                      <div 
-                        className="flex-1 bg-green-600 rounded-sm h-2" 
-                        title={`Avançado: ${statisticsItem.distribution.avancado}`}
-                        style={{ 
-                          width: `${statisticsItem.totalStudents > 0 ? (statisticsItem.distribution.avancado / statisticsItem.totalStudents) * 100 : 0}%` 
-                        }}
-                      ></div>
-                    </div>
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>{statisticsItem.distribution.abaixo_do_basico}</span>
-                      <span>{statisticsItem.distribution.basico}</span>
-                      <span>{statisticsItem.distribution.adequado}</span>
-                      <span>{statisticsItem.distribution.avancado}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </CardContent>
-    </Card>
+      {/* ✅ NOVO: Seção de Dados Detalhados */}
+      {detailedData.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">{titles.detailed}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {detailedData.map((statisticsItem, index) => 
+                renderStatisticsCard(statisticsItem, `detailed-${index}`)
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 }
