@@ -26,6 +26,7 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/authContext";
 import { 
   Users, 
   Plus, 
@@ -102,6 +103,7 @@ interface ClassPreview {
 }
 
 export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSelector, availableSchools }: CreateClassFormProps) {
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [educationStages, setEducationStages] = useState<EducationStage[]>([]);
   const [grades, setGrades] = useState<Grade[]>([]);
@@ -154,6 +156,23 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
 
   useEffect(() => {
     const fetchEducationStages = async () => {
+      // Admin: buscar todos os cursos sem restrição
+      if (user?.role === 'admin') {
+        try {
+          const response = await api.get("/education_stages/all");
+          setEducationStages(Array.isArray(response.data) ? response.data : []);
+        } catch (error) {
+          toast({
+            title: "Erro",
+            description: "Erro ao carregar cursos",
+            variant: "destructive",
+          });
+          setEducationStages([]);
+        }
+        return;
+      }
+      
+      // Para outros usuários: buscar cursos vinculados à escola específica
       if (!currentSchoolId) {
         setEducationStages([]);
         return;
@@ -180,10 +199,10 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
       }
     };
 
-    if (open && currentSchoolId) {
+    if (open) {
       fetchEducationStages();
     }
-  }, [open, currentSchoolId, toast]);
+  }, [open, currentSchoolId, user?.role, toast]);
 
   useEffect(() => {
     const fetchGrades = async () => {
@@ -413,11 +432,15 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSel
                             <Select 
                               onValueChange={field.onChange} 
                               value={field.value}
-                              disabled={!currentSchoolId}
+                              disabled={!currentSchoolId && user?.role !== 'admin'}
                             >
                               <FormControl>
                                 <SelectTrigger>
-                                  <SelectValue placeholder={!currentSchoolId ? "Selecione uma escola primeiro" : "Selecione o curso"} />
+                                  <SelectValue placeholder={
+                                    user?.role === 'admin' ? "Selecione o curso" : 
+                                    !currentSchoolId ? "Selecione uma escola primeiro" : 
+                                    "Selecione o curso"
+                                  } />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>

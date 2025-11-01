@@ -1364,7 +1364,7 @@ export default function Curso() {
             )}
 
             {/* Modal para tecadm, diretor, coordenador (sem admin) */}
-            {canLinkCoursesToSchool() && !editingItem && user?.role !== 'admin' ? (
+            {canLinkCoursesToSchool() && !editingItem && user?.role !== 'admin' && (
               <>
                 {/* Seleção de escola para tecadm */}
                 {user?.role === 'tecadm' && (
@@ -1478,20 +1478,6 @@ export default function Curso() {
                   </div>
                 )}
               </>
-            ) : (
-              /* Formulário para admin criar novo curso (quando tab create está selecionada) */
-              user?.role === 'admin' && adminModalTab === 'create' && (
-                <div className="space-y-2">
-                  <Label htmlFor="name">Nome *</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
-                    placeholder="Nome do curso"
-                    required
-                  />
-                </div>
-              )
             )}
 
             <div className="flex justify-end space-x-2 pt-4">
