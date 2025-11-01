@@ -916,8 +916,8 @@ export default function StudentEvaluations() {
                   </Button>
                 )}
 
-                {/* ✅ Botão "Ver Resultado" aparece quando concluída e após o prazo final */}
-                                 {evaluation.student_status.has_completed && evaluation.endDateTime && new Date() >= new Date(evaluation.endDateTime) && (
+                {/* ✅ Botão "Ver Resultado" aparece quando concluída */}
+                                 {evaluation.student_status.has_completed && (
                   <Button
                     className="flex-1 bg-purple-600 hover:bg-purple-700"
                     onClick={() => navigate(`/aluno/avaliacao/${evaluation.id}/resultado`)}

@@ -1,333 +1,186 @@
-import React, { useState, useRef } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import FullCalendar from '@fullcalendar/react';
-import { EventInput, DateSelectArg, EventClickArg, EventApi } from '@fullcalendar/core';
+import { DateSelectArg, EventApi, EventClickArg, EventInput } from '@fullcalendar/core';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import listPlugin from '@fullcalendar/list';
 import interactionPlugin from '@fullcalendar/interaction';
 import ptBrLocale from '@fullcalendar/core/locales/pt-br';
-
-// Importe a folha de estilos personalizada
 import '../styles/fullcalendar.css';
 
-// Interface atualizada para corresponder às classes CSS
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Edit, Trash2 } from 'lucide-react';
+import { CalendarApi as CalendarService } from "@/services/calendarApi";
+import { toLocalOffsetISO } from "@/utils/date";
+import { toast } from 'react-toastify';
+
 interface CustomEventInput extends EventInput {
   extendedProps: {
-    type: 'exam' | 'event' | 'holiday' | 'class' | 'meeting' | 'task';
     description?: string;
     location?: string;
+    [key: string]: any;
   };
 }
 
-// Função para obter a data atual no formato YYYY-MM-DD
-const getTodayStr = () => new Date().toISOString().replace(/T.*$/, '');
-
-// Função para obter uma data relativa (em dias)
-const getDateRelative = (days: number) => {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  return date.toISOString().replace(/T.*$/, '');
-};
-
-// Função para obter uma data/hora relativa
-const getDateTimeRelative = (days: number, hour: number, minute: number = 0) => {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  date.setHours(hour, minute, 0, 0);
-  return date.toISOString();
-};
-
-// Dados iniciais de exemplo com datas dinâmicas
-const eventosIniciais: CustomEventInput[] = [
-  // Eventos passados
-  {
-    id: '1',
-    title: 'Reunião de Coordenação',
-    start: getDateTimeRelative(-7, 9, 0), // 7 dias atrás
-    end: getDateTimeRelative(-7, 11, 0),
-    extendedProps: {
-      type: 'meeting',
-      description: 'Reunião de coordenação pedagógica mensal',
-      location: 'Sala de Coordenação'
-    }
-  },
-  {
-    id: '2',
-    title: 'Aula de Matemática',
-    start: getDateTimeRelative(-5, 14, 0), // 5 dias atrás
-    end: getDateTimeRelative(-5, 16, 0),
-    extendedProps: {
-      type: 'class',
-      description: 'Aula de Matemática - 3º ano',
-      location: 'Sala 101'
-    }
-  },
-  {
-    id: '3',
-    title: 'Prova de Física',
-    start: getDateTimeRelative(-3, 8, 0), // 3 dias atrás
-    end: getDateTimeRelative(-3, 10, 0),
-    extendedProps: {
-      type: 'exam',
-      description: 'Prova de Física - 2º ano',
-      location: 'Sala 102'
-    }
-  },
-  
-  // Eventos hoje
-  {
-    id: '4',
-    title: 'Aula de Química',
-    start: getDateTimeRelative(0, 10, 0), // Hoje
-    end: getDateTimeRelative(0, 12, 0),
-    extendedProps: {
-      type: 'class',
-      description: 'Aula de Química - 1º ano',
-      location: 'Laboratório de Química'
-    }
-  },
-  {
-    id: '5',
-    title: 'Reunião de Pais',
-    start: getDateTimeRelative(0, 19, 0), // Hoje à noite
-    end: getDateTimeRelative(0, 21, 0),
-    extendedProps: {
-      type: 'meeting',
-      description: 'Reunião de pais e mestres',
-      location: 'Auditório Principal'
-    }
-  },
-  
-  // Eventos futuros próximos
-  {
-    id: '7',
-    title: 'Aula de Biologia',
-    start: getDateTimeRelative(1, 14, 0), // Amanhã
-    end: getDateTimeRelative(1, 16, 0),
-    extendedProps: {
-      type: 'class',
-      description: 'Aula de Biologia - 2º ano',
-      location: 'Laboratório de Biologia'
-    }
-  },
-  {
-    id: '8',
-    title: 'Trabalho de História',
-    start: getDateTimeRelative(2, 9, 0), // Depois de amanhã
-    end: getDateTimeRelative(2, 11, 0),
-    extendedProps: {
-      type: 'task',
-      description: 'Apresentação de trabalho de História',
-      location: 'Sala 203'
-    }
-  },
-  {
-    id: '9',
-    title: 'Aula de Português',
-    start: getDateTimeRelative(2, 14, 0), // Depois de amanhã
-    end: getDateTimeRelative(2, 16, 0),
-    extendedProps: {
-      type: 'class',
-      description: 'Aula de Português - 1º ano',
-      location: 'Sala 104'
-    }
-  },
-  {
-    id: '10',
-    title: 'Evento Cultural',
-    start: getDateTimeRelative(3, 19, 0), // 3 dias
-    end: getDateTimeRelative(3, 21, 0),
-    extendedProps: {
-      type: 'event',
-      description: 'Apresentação cultural da escola',
-      location: 'Auditório Principal'
-    }
-  },
-  {
-    id: '11',
-    title: 'Prova de Geografia',
-    start: getDateRelative(4), // 4 dias (dia inteiro)
-    allDay: true,
-    extendedProps: {
-      type: 'exam',
-      description: 'Prova de Geografia - 1º ano',
-      location: 'Sala 105'
-    }
-  },
-  {
-    id: '12',
-    title: 'Aula de Educação Física',
-    start: getDateTimeRelative(4, 8, 0), // 4 dias (mesmo dia da prova)
-    end: getDateTimeRelative(4, 10, 0),
-    extendedProps: {
-      type: 'class',
-      description: 'Aula de Educação Física - 2º ano',
-      location: 'Quadra de Esportes'
-    }
-  },
-  {
-    id: '13',
-    title: 'Reunião Pedagógica',
-    start: getDateTimeRelative(5, 14, 0), // 5 dias
-    end: getDateTimeRelative(5, 17, 0),
-    extendedProps: {
-      type: 'meeting',
-      description: 'Reunião pedagógica mensal',
-      location: 'Sala de Reuniões'
-    }
-  },
-  {
-    id: '14',
-    title: 'Aula de Inglês',
-    start: getDateTimeRelative(5, 16, 0), // 5 dias
-    end: getDateTimeRelative(5, 18, 0),
-    extendedProps: {
-      type: 'class',
-      description: 'Aula de Inglês - 3º ano',
-      location: 'Sala 106'
-    }
-  },
-  {
-    id: '15',
-    title: 'Feriado Nacional',
-    start: getDateRelative(7), // 7 dias (dia inteiro)
-    allDay: true,
-    extendedProps: {
-      type: 'holiday',
-      description: 'Feriado Nacional'
-    }
-  },
-  
-  // Eventos mais distantes
-  {
-    id: '16',
-    title: 'Prova de Literatura',
-    start: getDateRelative(10), // 10 dias (dia inteiro)
-    allDay: true,
-    extendedProps: {
-      type: 'exam',
-      description: 'Prova de Literatura - 2º ano',
-      location: 'Sala 103'
-    }
-  },
-  {
-    id: '17',
-    title: 'Aula de Filosofia',
-    start: getDateTimeRelative(10, 14, 0), // 10 dias
-    end: getDateTimeRelative(10, 16, 0),
-    extendedProps: {
-      type: 'class',
-      description: 'Aula de Filosofia - 3º ano',
-      location: 'Sala 107'
-    }
-  },
-  {
-    id: '18',
-    title: 'Trabalho de Química',
-    start: getDateTimeRelative(12, 9, 0), // 12 dias
-    end: getDateTimeRelative(12, 11, 0),
-    extendedProps: {
-      type: 'task',
-      description: 'Experimento de Química',
-      location: 'Laboratório de Química'
-    }
-  },
-  {
-    id: '19',
-    title: 'Evento Esportivo',
-    start: getDateTimeRelative(14, 14, 0), // 14 dias
-    end: getDateTimeRelative(14, 18, 0),
-    extendedProps: {
-      type: 'event',
-      description: 'Campeonato interno de futebol',
-      location: 'Quadra de Esportes'
-    }
-  },
-  {
-    id: '20',
-    title: 'Reunião de Professores',
-    start: getDateTimeRelative(15, 14, 0), // 15 dias
-    end: getDateTimeRelative(15, 16, 0),
-    extendedProps: {
-      type: 'meeting',
-      description: 'Reunião de planejamento pedagógico',
-      location: 'Sala de Professores'
-    }
-  },
-  
-  // Eventos que abrangem vários dias
-  {
-    id: '21',
-    title: 'Semana de Avaliações',
-    start: getDateRelative(20), // 20 dias
-    end: getDateRelative(24), // Termina em 24 dias
-    allDay: true,
-    extendedProps: {
-      type: 'exam',
-      description: 'Semana de avaliações bimestrais',
-      location: 'Várias salas'
-    }
-  },
-  {
-    id: '22',
-    title: 'Workshop de Tecnologia',
-    start: getDateRelative(25), // 25 dias
-    end: getDateRelative(27), // Termina em 27 dias
-    allDay: true,
-    extendedProps: {
-      type: 'event',
-      description: 'Workshop intensivo sobre tecnologia educacional',
-      location: 'Laboratório de Informática'
-    }
-  }
-];
-
-// Função para obter classes CSS baseadas no tipo de evento
 function getEventClassNames(eventInfo: { event: EventApi }) {
-  const type = eventInfo.event.extendedProps.type;
-  if (type) {
-    return [`fc-event-type-${type}`];
-  }
-  return [];
+  const type = eventInfo.event.extendedProps.type as string | undefined;
+  return type ? [`fc-event-type-${type}`] : [];
 }
 
 export default function AdminAgendaOptimized() {
-  const [currentEvents, setCurrentEvents] = useState<CustomEventInput[]>(eventosIniciais);
+  const [currentEvents, setCurrentEvents] = useState<CustomEventInput[]>([]);
   const calendarRef = useRef<FullCalendar>(null);
 
-  const handleDateSelect = (selectInfo: DateSelectArg) => {
-    let title = prompt('Por favor, insira um título para o novo evento')?.trim();
-    let calendarApi = selectInfo.view.calendar;
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isViewOpen, setIsViewOpen] = useState(false);
+  const [isSuccessOpen, setIsSuccessOpen] = useState(false);
+  const [createdTitle, setCreatedTitle] = useState('');
+  const [selected, setSelected] = useState<EventInput | null>(null);
 
-    calendarApi.unselect(); // Limpa a seleção
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    location: '',
+    startTime: '',
+    endTime: '',
+    allDay: false,
+    scope: 'SCHOOL' as 'CITY' | 'SCHOOL' | 'GRADE' | 'CLASS',
+    scopeId: '',
+  });
 
-    if (title) {
-      const newEvent: CustomEventInput = {
-        id: String(Date.now()),
-        title,
-        start: selectInfo.startStr,
-        end: selectInfo.endStr,
-        allDay: selectInfo.allDay,
-        extendedProps: {
-          type: 'event', // Tipo padrão para novos eventos
-        },
-      };
-      setCurrentEvents([...currentEvents, newEvent]);
+  const fetchEvents = useCallback(async (startISO: string, endISO: string) => {
+    try {
+      const list = await CalendarService.listEvents(startISO, endISO);
+      setCurrentEvents(list as CustomEventInput[]);
+    } catch (_) {
+      toast.error('Não foi possível carregar os eventos');
     }
+  }, []);
+
+  const handleDateSelect = (selectInfo: DateSelectArg) => {
+    const start = new Date(selectInfo.start);
+    const end = new Date(selectInfo.end);
+    setFormData((f) => ({
+      ...f,
+      title: '',
+      description: '',
+      location: '',
+      startTime: start.toISOString().slice(0, 16),
+      endTime: end.toISOString().slice(0, 16),
+      allDay: !!selectInfo.allDay,
+    }));
+    setIsCreateOpen(true);
+    selectInfo.view.calendar.unselect();
   };
 
   const handleEventClick = (clickInfo: EventClickArg) => {
-    const { title, extendedProps } = clickInfo.event;
-    const details = `
-      Evento: ${title}
-      Tipo: ${extendedProps.type}
-      Local: ${extendedProps.location || 'N/A'}
-      Descrição: ${extendedProps.description || 'N/A'}
-    `;
-    if (confirm(`Deseja remover o evento '${title}'?\n\nDetalhes:\n${details}`)) {
-      clickInfo.event.remove(); // Remove o evento da UI
-      setCurrentEvents(currentEvents.filter(event => event.id !== clickInfo.event.id));
+    const e = clickInfo.event;
+    setSelected({
+      id: e.id,
+      title: e.title,
+      start: e.startStr,
+      end: e.endStr,
+      allDay: e.allDay,
+      extendedProps: e.extendedProps || {},
+    });
+    setIsViewOpen(true);
+  };
+
+  const refetchCurrentRange = async () => {
+    const api = calendarRef.current?.getApi();
+    if (!api) return;
+    const view = api.view;
+    await fetchEvents(new Date(view.activeStart).toISOString(), new Date(view.activeEnd).toISOString());
+  };
+
+  const createEvent = async () => {
+    try {
+      const startISO = toLocalOffsetISO(new Date(formData.startTime));
+      const endISO = toLocalOffsetISO(new Date(formData.endTime));
+      const created = await CalendarService.createEvent({
+        title: formData.title,
+        description: formData.description,
+        location: formData.location,
+        start_at: startISO,
+        end_at: endISO,
+        all_day: !!formData.allDay,
+        timezone: 'America/Sao_Paulo',
+        visibility_scope: formData.scope,
+        targets: formData.scopeId ? [{ target_type: formData.scope, target_id: formData.scopeId }] : [],
+        is_published: true,
+        recurrence_rule: null,
+      });
+      setIsCreateOpen(false);
+      setCreatedTitle(created.title || 'Evento criado');
+      setIsSuccessOpen(true);
+      await refetchCurrentRange();
+      toast.success('Evento criado e publicado');
+    } catch (_) {
+      toast.error('Erro ao criar evento');
     }
+  };
+
+  const openEditFromSelected = () => {
+    if (!selected) return;
+    setFormData({
+      title: String(selected.title || ''),
+      description: selected.extendedProps?.description || '',
+      location: selected.extendedProps?.location || '',
+      startTime: (selected.start as string)?.slice(0, 16) || '',
+      endTime: (selected.end as string)?.slice(0, 16) || '',
+      allDay: !!selected.allDay,
+      scope: 'SCHOOL',
+      scopeId: '',
+    });
+    setIsEditOpen(true);
+  };
+
+  const updateEvent = async () => {
+    if (!selected?.id) return;
+    try {
+      const startISO = toLocalOffsetISO(new Date(formData.startTime));
+      const endISO = toLocalOffsetISO(new Date(formData.endTime));
+      await CalendarService.updateEvent(String(selected.id), {
+        title: formData.title,
+        description: formData.description,
+        location: formData.location,
+        start_at: startISO,
+        end_at: endISO,
+        all_day: !!formData.allDay,
+        timezone: 'America/Sao_Paulo',
+        visibility_scope: formData.scope,
+        targets: formData.scopeId ? [{ target_type: formData.scope, target_id: formData.scopeId }] : [],
+      });
+      setIsEditOpen(false);
+      setIsViewOpen(false);
+      await refetchCurrentRange();
+      toast.success('Evento atualizado');
+    } catch (_) { toast.error('Erro ao atualizar evento'); }
+  };
+
+  const publishEvent = async () => {
+    if (!selected?.id) return;
+    try {
+      await CalendarService.publishEvent(String(selected.id));
+      await refetchCurrentRange();
+      toast.success('Evento publicado');
+    } catch (_) { toast.error('Erro ao publicar evento'); }
+  };
+
+  const deleteEvent = async () => {
+    if (!selected?.id) return;
+    try {
+      await CalendarService.deleteEvent(String(selected.id));
+      setIsViewOpen(false);
+      await refetchCurrentRange();
+      toast.success('Evento excluído');
+    } catch (_) { toast.error('Erro ao excluir evento'); }
   };
 
   return (
@@ -347,38 +200,185 @@ export default function AdminAgendaOptimized() {
             right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
           }}
           initialView="dayGridMonth"
-          locale={ptBrLocale} // Define o idioma para português do Brasil
+          locale={ptBrLocale}
           weekends={true}
           events={currentEvents}
           editable={true}
           selectable={true}
           selectMirror={true}
-          
+
           // --- CONFIGURAÇÃO DE TAMANHO E EVENTOS ---
-          height="auto" // Permite que a altura do calendário se ajuste ao conteúdo
-          dayMaxEvents={3} // Mostra até 3 eventos por dia, depois mostra "mais"
-          dayMaxEventRows={false} // Permite expansão além do limite
-          moreLinkClick="popover" // Mostra eventos extras em popover
-          // Configurações específicas para semana e dia
-          eventMaxStack={3} // Máximo de eventos empilhados em semana/dia
-          eventOverlap={false} // Evita sobreposição de eventos
-          // -------------------------------------------
-          
+          height="auto"
+          dayMaxEvents={3}
+          dayMaxEventRows={false}
+          moreLinkClick="popover"
+          eventMaxStack={3}
+          eventOverlap={false}
+
           select={handleDateSelect}
           eventClick={handleEventClick}
-          eventClassNames={getEventClassNames} // Hook para adicionar classes dinâmicas
-          // Configurações otimizadas para múltiplos eventos
+          eventClassNames={getEventClassNames}
           eventMinHeight={48}
           eventOrder="start,title"
-          // Configurações para visualizações de tempo
           slotMinTime="06:00:00"
           slotMaxTime="22:00:00"
           slotDuration="01:00:00"
           slotLabelInterval="01:00:00"
           expandRows={true}
           nowIndicator={true}
+          datesSet={(arg) => {
+            fetchEvents(new Date(arg.start).toISOString(), new Date(arg.end).toISOString());
+          }}
         />
       </div>
+
+      {/* Criar evento */}
+      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Criar Novo Evento</DialogTitle>
+            <DialogDescription>Preencha os dados do evento</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="title">Título</Label>
+                <Input id="title" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="scope">Alvo</Label>
+                <Select value={formData.scope} onValueChange={(v: 'CITY' | 'SCHOOL' | 'GRADE' | 'CLASS') => setFormData({ ...formData, scope: v, scopeId: '' })}>
+                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CITY">Município</SelectItem>
+                    <SelectItem value="SCHOOL">Escola</SelectItem>
+                    <SelectItem value="GRADE">Série</SelectItem>
+                    <SelectItem value="CLASS">Turma</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">Descrição</Label>
+              <Textarea id="description" value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="start">Início</Label>
+                <Input id="start" type="datetime-local" value={formData.startTime} onChange={(e) => setFormData({ ...formData, startTime: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="end">Fim</Label>
+                <Input id="end" type="datetime-local" value={formData.endTime} onChange={(e) => setFormData({ ...formData, endTime: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="location">Local</Label>
+                <Input id="location" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="scopeId">ID do alvo</Label>
+                <Input id="scopeId" value={formData.scopeId} onChange={(e) => setFormData({ ...formData, scopeId: e.target.value })} placeholder="ex.: turma-123" />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
+            <Button onClick={createEvent}>Criar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Visualizar evento */}
+      <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{selected?.title || 'Evento'}</DialogTitle>
+            <DialogDescription>{selected?.extendedProps?.description || 'Sem descrição'}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 text-sm">
+            {selected?.extendedProps?.location && (<div>Local: {selected.extendedProps.location}</div>)}
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button variant="outline" onClick={() => setIsViewOpen(false)}>Fechar</Button>
+            <Button variant="secondary" onClick={openEditFromSelected}><Edit className="h-4 w-4 mr-2" />Editar</Button>
+            <Button onClick={publishEvent}>Publicar</Button>
+            <Button variant="destructive" onClick={deleteEvent}><Trash2 className="h-4 w-4 mr-2" />Excluir</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Editar evento */}
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Editar Evento</DialogTitle>
+            <DialogDescription>Atualize os dados do evento</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-title">Título</Label>
+                <Input id="edit-title" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-scope">Alvo</Label>
+                <Select value={formData.scope} onValueChange={(v: 'CITY' | 'SCHOOL' | 'GRADE' | 'CLASS') => setFormData({ ...formData, scope: v, scopeId: '' })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CITY">Município</SelectItem>
+                    <SelectItem value="SCHOOL">Escola</SelectItem>
+                    <SelectItem value="GRADE">Série</SelectItem>
+                    <SelectItem value="CLASS">Turma</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-description">Descrição</Label>
+              <Textarea id="edit-description" value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-start">Início</Label>
+                <Input id="edit-start" type="datetime-local" value={formData.startTime} onChange={(e) => setFormData({ ...formData, startTime: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-end">Fim</Label>
+                <Input id="edit-end" type="datetime-local" value={formData.endTime} onChange={(e) => setFormData({ ...formData, endTime: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-location">Local</Label>
+                <Input id="edit-location" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-scopeId">ID do alvo</Label>
+                <Input id="edit-scopeId" value={formData.scopeId} onChange={(e) => setFormData({ ...formData, scopeId: e.target.value })} />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditOpen(false)}>Cancelar</Button>
+            <Button onClick={updateEvent}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sucesso */}
+      <Dialog open={isSuccessOpen} onOpenChange={setIsSuccessOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Sucesso</DialogTitle>
+            <DialogDescription>{createdTitle} foi criado com sucesso e publicado.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => setIsSuccessOpen(false)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

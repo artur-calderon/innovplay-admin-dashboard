@@ -234,12 +234,12 @@ export default function StudentResult() {
           return;
         }
 
-        // Regra: só liberar após o prazo final
-        const expiration = found.application_info?.expiration;
-        const passed = expiration ? new Date() >= new Date(expiration) : false;
+        // ✅ MODIFICADO: Liberar resultados imediatamente após completar
+        // Verificar se o aluno completou a avaliação
+        const hasCompleted = found.student_status?.has_completed;
 
-        if (!passed) {
-          // Não buscar nota antes do prazo
+        if (!hasCompleted) {
+          // Não buscar nota se não completou
           return;
         }
 
@@ -327,7 +327,8 @@ export default function StudentResult() {
     );
   }
 
-  const locked = !isDeadlinePassed;
+  // ✅ MODIFICADO: Bloqueio baseado apenas em ter completado a avaliação
+  const locked = !test?.student_status?.has_completed;
   const scoreRounded = typeof scorePct === "number" ? Math.round(scorePct) : null;
   const gradeRounded = typeof grade === "number" ? Math.round(grade * 10) / 10 : null;
   const passedGood = (gradeRounded ?? (scoreRounded != null ? scoreRounded / 10 : 0)) >= 7;
@@ -348,11 +349,11 @@ export default function StudentResult() {
             <CardTitle className="text-xl">Seu desempenho</CardTitle>
             {locked ? (
               <Badge variant="secondary" className="bg-white/20 text-white border-white/30">
-                <Lock className="h-3.5 w-3.5 mr-1" /> Bloqueado até o prazo
+                <Lock className="h-3.5 w-3.5 mr-1" /> Complete a avaliação
               </Badge>
             ) : (
               <Badge variant="secondary" className="bg-white/20 text-white border-white/30">
-                <Sparkles className="h-3.5 w-3.5 mr-1" /> Liberado
+                <Sparkles className="h-3.5 w-3.5 mr-1" /> Resultados disponíveis
               </Badge>
             )}
           </div>
@@ -361,16 +362,16 @@ export default function StudentResult() {
           </div>
         </CardHeader>
         <CardContent className="p-6">
-          {locked && endDate ? (
+          {locked ? (
             <div className="flex flex-col items-center justify-center text-center py-8">
               <Lock className="h-10 w-10 text-gray-500 mb-3" />
-              <p className="text-gray-700 mb-1">O resultado ficará disponível após o prazo final.</p>
+              <p className="text-gray-700 mb-1">Complete a avaliação para ver seus resultados.</p>
               <p className="text-gray-600 flex items-center gap-2">
                 <Clock className="h-4 w-4" />
-                {`Disponível em ${format(parseISO(endDate.toISOString()), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`}
+                Resultados disponíveis após finalizar a avaliação
               </p>
               <div className="mt-6">
-                <Button onClick={() => navigate(-1)} className="bg-gray-800 hover:bg-gray-900">Voltar</Button>
+                <Button onClick={() => navigate("/aluno/avaliacoes")} className="bg-gray-800 hover:bg-gray-900">Voltar às Avaliações</Button>
               </div>
             </div>
           ) : (
