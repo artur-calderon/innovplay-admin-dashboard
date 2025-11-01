@@ -40,17 +40,17 @@ export function StudentRanking({
   // Função para obter ícone do ranking
   const getRankingIcon = (position: number) => {
     if (position === 1) return <Trophy className="h-6 w-6 text-amber-500" />;
-    if (position === 2) return <Medal className="h-6 w-6 text-gray-400" />;
-    if (position === 3) return <Award className="h-6 w-6 text-amber-600" />;
-    return <span className="text-lg font-bold text-slate-600">{position}</span>;
+    if (position === 2) return <Medal className="h-6 w-6 text-muted-foreground" />;
+    if (position === 3) return <Award className="h-6 w-6 text-amber-600 dark:text-amber-500" />;
+    return <span className="text-lg font-bold text-muted-foreground">{position}</span>;
   };
 
   // Função para obter cor de fundo do ranking
   const getRankingBackground = (position: number) => {
-    if (position === 1) return 'bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200';
-    if (position === 2) return 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-200';
-    if (position === 3) return 'bg-gradient-to-r from-orange-50 to-amber-50 border-orange-200';
-    return 'bg-white border-gray-200';
+    if (position === 1) return 'bg-gradient-to-r from-amber-50 dark:from-amber-950/30 to-yellow-50 dark:to-yellow-950/30 border-amber-200 dark:border-amber-800';
+    if (position === 2) return 'bg-gradient-to-r from-gray-50 dark:from-muted to-slate-50 dark:to-muted border-border';
+    if (position === 3) return 'bg-gradient-to-r from-orange-50 dark:from-orange-950/30 to-amber-50 dark:to-amber-950/30 border-orange-200 dark:border-orange-800';
+    return 'bg-card border-border';
   };
 
   // Função para obter cor do nível
@@ -67,18 +67,18 @@ export function StudentRanking({
   // Função para obter cor do badge do nível
   const getLevelBadgeColor = (classificacao: string) => {
     switch (classificacao) {
-      case 'Avançado': return 'bg-green-100 text-green-800 border-green-200';
-      case 'Adequado': return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'Básico': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'Abaixo do Básico': return 'bg-red-100 text-red-800 border-red-200';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+      case 'Avançado': return 'bg-green-100 dark:bg-green-950/30 text-green-800 dark:text-green-400 border-green-200 dark:border-green-800';
+      case 'Adequado': return 'bg-blue-100 dark:bg-blue-950/30 text-blue-800 dark:text-blue-400 border-blue-200 dark:border-blue-800';
+      case 'Básico': return 'bg-yellow-100 dark:bg-yellow-950/30 text-yellow-800 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800';
+      case 'Abaixo do Básico': return 'bg-red-100 dark:bg-red-950/30 text-red-800 dark:text-red-400 border-red-200 dark:border-red-800';
+      default: return 'bg-muted text-foreground border-border';
     }
   };
 
   return (
     <div className="space-y-6">
       {/* Ranking dos Melhores Alunos */}
-      <Card className="border border-gray-200 shadow-lg">
+      <Card className="border border-border shadow-lg">
         <CardHeader className="bg-gradient-to-r from-purple-700 to-purple-600 text-white">
           <CardTitle className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -114,14 +114,14 @@ export function StudentRanking({
                     className={`flex items-center gap-4 p-4 rounded-lg border transition-all duration-200 hover:shadow-md ${getRankingBackground(position)}`}
                   >
                     {/* Posição no ranking */}
-                    <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-white border border-gray-200 shadow-sm">
+                    <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-card border border-border shadow-sm">
                       {getRankingIcon(position)}
                     </div>
 
                     {/* Informações do aluno */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-3 mb-2">
-                        <h3 className="font-semibold text-gray-900 truncate text-base">
+                        <h3 className="font-semibold text-foreground truncate text-base">
                           {student.nome}
                         </h3>
                         <Badge variant="outline" className="text-xs">
@@ -129,23 +129,23 @@ export function StudentRanking({
                         </Badge>
                       </div>
 
-                      <div className="flex items-center gap-6 text-sm text-gray-600">
+                      <div className="flex items-center gap-6 text-sm text-muted-foreground">
                         <div className="flex items-center gap-2">
-                          <TrendingUp className="h-4 w-4 text-blue-500" />
+                          <TrendingUp className="h-4 w-4 text-blue-500 dark:text-blue-400" />
                           <span className="font-medium">Nota:</span>
-                          <span className="font-semibold text-gray-900">{(student.nota || 0).toFixed(1)}</span>
+                          <span className="font-semibold text-foreground">{(student.nota || 0).toFixed(1)}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Star className="h-4 w-4 text-purple-600" />
+                          <Star className="h-4 w-4 text-purple-600 dark:text-purple-400" />
                           <span className="font-medium">Proficiência:</span>
-                          <span className="font-semibold text-gray-900">{student.proficiencia || 0}</span>
+                          <span className="font-semibold text-foreground">{student.proficiencia || 0}</span>
                         </div>
                       </div>
                     </div>
 
                     {/* Nível de proficiência */}
                     <div className="flex flex-col items-end gap-1">
-                      <div className="text-xs text-gray-500 font-medium">Nível</div>
+                      <div className="text-xs text-muted-foreground font-medium">Nível</div>
                       <Badge className={`${getLevelBadgeColor(student.classificacao)} text-xs font-medium border`}>
                         {student.classificacao}
                       </Badge>
@@ -156,11 +156,11 @@ export function StudentRanking({
             </div>
           ) : (
             <div className="text-center py-12">
-              <Trophy className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              <Trophy className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-foreground mb-2">
                 Nenhum aluno participou da avaliação
               </h3>
-              <p className="text-gray-600">
+              <p className="text-muted-foreground">
                 Não há dados de alunos que concluíram a avaliação para gerar o ranking.
               </p>
             </div>
@@ -170,7 +170,7 @@ export function StudentRanking({
 
       {/* Alunos Ausentes */}
       {absentStudents.length > 0 && (
-        <Card className="border border-gray-200 shadow-lg">
+        <Card className="border border-border shadow-lg">
           <CardHeader className="bg-gradient-to-r from-gray-700 to-gray-600 text-white">
             <CardTitle className="flex items-center justify-between">
               <div className="flex items-center gap-4">
@@ -179,12 +179,12 @@ export function StudentRanking({
                 </div>
                 <div>
                   <h2 className="text-lg font-semibold">Alunos Ausentes</h2>
-                  <p className="text-gray-300 text-sm">
+                  <p className="text-gray-300 dark:text-gray-400 text-sm">
                     Alunos que não participaram da avaliação
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 text-gray-300">
+              <div className="flex items-center gap-2 text-gray-300 dark:text-gray-400">
                 <Users className="h-4 w-4" />
                 <span className="text-sm font-medium">
                   {absentStudents.length} {absentStudents.length === 1 ? 'aluno' : 'alunos'}
@@ -197,18 +197,18 @@ export function StudentRanking({
               {absentStudents.map((student) => (
                 <div
                   key={student.id}
-                  className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors duration-200"
+                  className="flex items-center gap-3 p-3 bg-muted rounded-lg border border-border hover:bg-muted/80 transition-colors duration-200"
                 >
-                  <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center">
-                    <UserX className="h-4 w-4 text-gray-600" />
+                  <div className="w-8 h-8 rounded-full bg-muted-foreground/50 flex items-center justify-center">
+                    <UserX className="h-4 w-4 text-muted-foreground" />
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-medium text-gray-900 truncate text-sm">{student.nome}</h4>
-                    <p className="text-xs text-gray-500">{student.turma}</p>
+                    <h4 className="font-medium text-foreground truncate text-sm">{student.nome}</h4>
+                    <p className="text-xs text-muted-foreground">{student.turma}</p>
                   </div>
 
-                  <Badge variant="outline" className="text-xs text-gray-600 border-gray-300">
+                  <Badge variant="outline" className="text-xs text-muted-foreground border-border">
                     Ausente
                   </Badge>
                 </div>

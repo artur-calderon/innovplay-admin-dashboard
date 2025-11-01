@@ -1,15 +1,17 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CheckCircle2, XCircle, Minus, Filter, BookOpen } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { CheckCircle2, XCircle, Minus, Filter, BookOpen, Download } from "lucide-react";
 import { EvaluationApiService } from "@/services/evaluationApi";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
 import type { StudentDetailedResult } from "@/services/evaluationResultsApi";
 import { Question, TestData } from "@/types/evaluation-types";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { calculateProficiency, calculateGrade } from "@/utils/evaluationCalculator";
+import { useToast } from "@/hooks/use-toast";
 
 // Mapeamento de séries para cursos (duplicado de evaluation-results.ts para uso local)
 const GRADE_TO_COURSE_MAPPING: Record<string, string> = {
@@ -76,6 +78,20 @@ function mapGradeToCourse(grade?: string | null): string | null {
   }
   
   return null;
+}
+
+// Helper robusto para extrair série e turma de uma string de turma
+function parseGradeAndClassFromTurma(input?: string | null): { grade?: string; classLetter?: string } {
+  if (!input) return {};
+  const text = input.replace(/\(.*?\)/g, '').replace(/turma/gi, '').replace(/-+/g, ' ').trim();
+  // Captura a última letra (A-Z) como turma
+  const letterMatch = text.match(/([A-Za-z])\s*$/);
+  if (letterMatch) {
+    const classLetter = letterMatch[1].toUpperCase();
+    const grade = text.slice(0, Math.max(0, text.lastIndexOf(classLetter))).trim();
+    return { grade: grade || undefined, classLetter };
+  }
+  return { grade: text || undefined };
 }
 
 interface Alternative {
@@ -263,6 +279,22 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
   }>({ questions: true, answers: true });
   const [error, setError] = useState<string | null>(null);
   const [disciplineStats, setDisciplineStats] = useState<Record<string, DisciplineStats>>({});
+  const [studentName, setStudentName] = useState<string | null>(null);
+  const [evaluationTitle, setEvaluationTitle] = useState<string | null>(null);
+  const [studentGrade, setStudentGrade] = useState<string | null>(null);
+  const [studentClass, setStudentClass] = useState<string | null>(null);
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+  const studentNameRef = useRef<string | null>(null);
+  const studentGradeRef = useRef<string | null>(null);
+  const studentClassRef = useRef<string | null>(null);
+  const controlsRef = useRef<HTMLDivElement | null>(null);
+  const scrollAreaRef = useRef<HTMLDivElement | null>(null);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const { toast } = useToast();
+
+  studentNameRef.current = studentName;
+  studentGradeRef.current = studentGrade;
+  studentClassRef.current = studentClass;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -291,9 +323,18 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
             ? testData.questions 
             : [];
           
+          // Tentar obter título da avaliação
+          const testDataObj = testData as TestData & Record<string, unknown>;
+          if (testDataObj.title && typeof testDataObj.title === 'string') {
+            setEvaluationTitle(testDataObj.title);
+          } else if (testDataObj.titulo && typeof testDataObj.titulo === 'string') {
+            setEvaluationTitle(testDataObj.titulo);
+          } else if (testDataObj.name && typeof testDataObj.name === 'string') {
+            setEvaluationTitle(testDataObj.name);
+          }
+          
           // Tentar obter nome do curso/nível educacional do teste
           // A API pode retornar em diferentes campos, então verificamos o objeto completo
-          const testDataObj = testData as TestData & Record<string, unknown>;
           if (testDataObj.course && typeof testDataObj.course === 'string') {
             courseName = testDataObj.course;
           } else if (testDataObj.course_name && typeof testDataObj.course_name === 'string') {
@@ -305,40 +346,35 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
           } else if (testDataObj.educationStage && typeof testDataObj.educationStage === 'string') {
             courseName = testDataObj.educationStage;
           }
-        } else {
-          console.warn('Erro ao buscar questões:', questionsData.status === 'rejected' ? questionsData.reason : 'Dados inválidos');
         }
 
         // Processar respostas
         let studentAnswers: StudentDetailedResult | null = null;
         if (answersData.status === 'fulfilled' && answersData.value) {
           studentAnswers = answersData.value;
-        } else {
-          console.warn('Erro ao buscar respostas do aluno:', answersData.status === 'rejected' ? answersData.reason : 'Dados inválidos');
         }
 
         // Buscar relatório detalhado para obter série/curso
         let detailedReport = null;
         if (detailedReportData.status === 'fulfilled' && detailedReportData.value) {
           detailedReport = detailedReportData.value;
-        } else {
-          console.warn('Erro ao buscar relatório detalhado:', detailedReportData.status === 'rejected' ? detailedReportData.reason : 'Dados inválidos');
         }
 
         // Detectar curso/nível educacional de múltiplas fontes
         let detectedCourse: string | null = null;
-        let detectionSource = 'nenhuma';
         
-        // Prioridade 1: Série do aluno no relatório detalhado
+        // Prioridade 1: Série/Turma do aluno no relatório detalhado
         if (detailedReport?.alunos) {
           const alunoNoRelatorio = detailedReport.alunos.find((a: { id: string }) => a.id === studentId);
           if (alunoNoRelatorio?.turma) {
             // Tentar extrair série da turma (formato como "6º Ano A", "7º Ano B", etc)
             const turma = alunoNoRelatorio.turma;
             const gradeFromTurma = mapGradeToCourse(turma);
+            const parsed = parseGradeAndClassFromTurma(turma);
+            if (parsed.grade && !studentGradeRef.current) setStudentGrade(parsed.grade);
+            if (parsed.classLetter && !studentClassRef.current) setStudentClass(parsed.classLetter);
             if (gradeFromTurma) {
               detectedCourse = gradeFromTurma;
-              detectionSource = 'turma do aluno (relatório detalhado)';
             }
           }
         }
@@ -350,61 +386,66 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
           // Verificar campos diretos de curso primeiro
           if (testDataObj.course && typeof testDataObj.course === 'string') {
             detectedCourse = testDataObj.course;
-            detectionSource = 'campo course (testData)';
           } else if (testDataObj.course_name && typeof testDataObj.course_name === 'string') {
             detectedCourse = testDataObj.course_name;
-            detectionSource = 'campo course_name (testData)';
           } else if (testDataObj.courseName && typeof testDataObj.courseName === 'string') {
             detectedCourse = testDataObj.courseName;
-            detectionSource = 'campo courseName (testData)';
           } else if (testDataObj.education_stage && typeof testDataObj.education_stage === 'string') {
             detectedCourse = testDataObj.education_stage;
-            detectionSource = 'campo education_stage (testData)';
           } else if (testDataObj.educationStage && typeof testDataObj.educationStage === 'string') {
             detectedCourse = testDataObj.educationStage;
-            detectionSource = 'campo educationStage (testData)';
           }
         }
 
-        // Prioridade 3: Tentar buscar alunos da avaliação para obter série
-        if (!detectedCourse) {
+        // Prioridade 3: Tentar buscar alunos da avaliação para obter série, turma e nome do aluno
+        if (!detectedCourse || !studentNameRef.current || !studentGradeRef.current || !studentClassRef.current) {
           try {
             const studentsData = await EvaluationResultsApiService.getStudentsByEvaluation(testId);
             const studentData = studentsData?.find(s => s.id === studentId);
             if (studentData) {
-              // Tentar extrair série de diferentes campos
-              // getStudentsByEvaluation retorna StudentResult[], que tem campo 'grade'
-              const possibleGrade = (studentData as { grade?: string; serie?: string; grade_name?: string }).grade 
-                || (studentData as { grade?: string; serie?: string; grade_name?: string }).serie
-                || (studentData as { grade?: string; serie?: string; grade_name?: string }).grade_name;
-              if (possibleGrade) {
-                const mappedCourse = mapGradeToCourse(possibleGrade);
-                if (mappedCourse) {
-                  detectedCourse = mappedCourse;
-                  detectionSource = 'série do aluno (getStudentsByEvaluation)';
+              // Buscar nome do aluno
+              if (!studentNameRef.current) {
+                const foundName = studentData.nome || (studentData as { name?: string }).name || null;
+                if (foundName) {
+                  studentNameRef.current = foundName;
+                  setStudentName(foundName);
                 }
               }
               
-              // Tentar extrair da turma
-              if (!detectedCourse && studentData.turma) {
-                const gradeFromTurma = mapGradeToCourse(studentData.turma);
-                if (gradeFromTurma) {
-                  detectedCourse = gradeFromTurma;
-                  detectionSource = 'turma do aluno (getStudentsByEvaluation)';
+              // Tentar extrair série de diferentes campos
+              // getStudentsByEvaluation retorna StudentResult[], que tem campo 'grade'
+              if (!detectedCourse) {
+                const possibleGrade = (studentData as { grade?: string; serie?: string; grade_name?: string }).grade 
+                  || (studentData as { grade?: string; serie?: string; grade_name?: string }).serie
+                  || (studentData as { grade?: string; serie?: string; grade_name?: string }).grade_name;
+                 if (possibleGrade) {
+                  if (!studentGradeRef.current) setStudentGrade(possibleGrade);
+                  const mappedCourse = mapGradeToCourse(possibleGrade);
+                  if (mappedCourse) {
+                    detectedCourse = mappedCourse;
+                  }
+                }
+                
+                // Tentar extrair da turma
+                if (studentData.turma) {
+                  const turmaText = String(studentData.turma);
+                  const parsed = parseGradeAndClassFromTurma(turmaText);
+                  if (parsed.grade && !studentGradeRef.current) setStudentGrade(parsed.grade);
+                  if (parsed.classLetter && !studentClassRef.current) setStudentClass(parsed.classLetter);
+                  const gradeFromTurma = mapGradeToCourse(turmaText);
+                  if (!detectedCourse && gradeFromTurma) {
+                    detectedCourse = gradeFromTurma;
+                  }
                 }
               }
             }
           } catch (error) {
-            console.warn('Erro ao buscar alunos para detectar série:', error);
+            console.error('Erro ao buscar alunos para detectar série:', error);
           }
         }
 
-        // Se encontrou um curso, usar ele; senão manter o padrão ou valor do testData
         if (detectedCourse) {
           courseName = detectedCourse;
-          console.log(`✅ Curso detectado: "${courseName}" (fonte: ${detectionSource})`);
-        } else {
-          console.warn(`⚠️ Não foi possível detectar o curso. Usando padrão ou valor do testData: "${courseName}"`);
         }
 
         if (questions.length === 0) {
@@ -412,22 +453,7 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
           return;
         }
 
-        // Debug: verificar números das questões
-        console.log('🔍 Debug questões:', questions.map((q, i) => ({
-          index: i,
-          id: q.id,
-          number: q.number,
-          hasNumber: !!(q.number && q.number > 0)
-        })));
-
         const combined = combineQuestionsAndAnswers(questions, studentAnswers);
-        
-        // Debug: verificar números finais atribuídos
-        console.log('🔍 Debug números finais:', combined.map((bq, i) => ({
-          index: i,
-          questionNumber: bq.questionNumber,
-          originalNumber: bq.question.number
-        })));
 
         setBulletinQuestions(combined);
 
@@ -533,6 +559,237 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
     return <XCircle className="h-4 w-4 text-red-500" />;
   };
 
+  const handleExportToPDF = async () => {
+    const cardElement = cardRef.current;
+    if (!cardElement) {
+      toast({
+        title: "Erro ao Exportar PDF",
+        description: "Não foi possível capturar o conteúdo do boletim.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsExportingPDF(true);
+
+    try {
+      const { jsPDF } = await import('jspdf');
+      const html2canvas = (await import('html2canvas')).default;
+
+      // Criar clone offscreen para captura sem alterar a UI
+      const offscreenRoot = document.createElement('div');
+      offscreenRoot.setAttribute('aria-hidden', 'true');
+      offscreenRoot.style.position = 'fixed';
+      offscreenRoot.style.left = '-10000px';
+      offscreenRoot.style.top = '-10000px';
+      offscreenRoot.style.zIndex = '-1';
+
+      const clonedCard = cardElement.cloneNode(true) as HTMLElement;
+      offscreenRoot.appendChild(clonedCard);
+      document.body.appendChild(offscreenRoot);
+
+      // Ocultar controles e header no clone
+      const clonedHeader = clonedCard.querySelector('[data-pdf-header]') as HTMLElement | null;
+      const clonedControls = clonedCard.querySelector('[data-pdf-controls]') as HTMLElement | null;
+      if (clonedHeader) clonedHeader.style.display = 'none';
+      if (clonedControls) clonedControls.style.display = 'none';
+
+      // Expandir áreas roláveis no clone
+      const clonedScrollArea = clonedCard.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement | null;
+      if (clonedScrollArea) {
+        clonedScrollArea.style.height = 'auto';
+        clonedScrollArea.style.maxHeight = 'none';
+        clonedScrollArea.style.overflow = 'visible';
+      }
+      const clonedScrollRoot = clonedCard.querySelector('[data-radix-scroll-area]') as HTMLElement | null;
+      if (clonedScrollRoot) {
+        clonedScrollRoot.style.height = 'auto';
+        clonedScrollRoot.style.maxHeight = 'none';
+        clonedScrollRoot.style.overflow = 'visible';
+      }
+      // Remover truncamento/overflow horizontal no clone
+      clonedCard.querySelectorAll('.truncate').forEach((el) => {
+        const e = el as HTMLElement;
+        e.className = e.className.replace(/\btruncate\b/g, '').trim();
+        e.style.whiteSpace = 'normal';
+        e.style.overflow = 'visible';
+        e.style.textOverflow = 'clip';
+      });
+      clonedCard.querySelectorAll('.overflow-x-auto').forEach((el) => {
+        const e = el as HTMLElement;
+        e.className = e.className.replace(/\boverflow-x-auto\b/g, '').trim();
+        e.style.overflowX = 'visible';
+        e.style.overflow = 'visible';
+      });
+
+      const canvasOptions = {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+      } as const;
+
+      // Seções no clone
+      const subjectSections = Array.from(
+        clonedCard.querySelectorAll('[data-subject-section]')
+      ) as HTMLElement[];
+
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const margin = 10;
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const usableWidth = pageWidth - margin * 2;
+      const usableHeight = pageHeight - margin * 2;
+
+      // Capa
+      const coverTitle = 'Boletim do Aluno';
+      const nameLine = `Aluno: ${studentNameRef.current || studentName || 'Não informado'}`;
+      const gradeLine = `Série: ${studentGrade || 'Não informada'}`;
+      const classLine = `Turma: ${studentClass || 'Não informada'}`;
+
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(24);
+      const centerX = pageWidth / 2;
+      const centerY = pageHeight / 2;
+      pdf.text(coverTitle, centerX, centerY, { align: 'center' });
+
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(14);
+      const footerStartY = pageHeight - margin - 20;
+      const lineHeight = 6;
+      pdf.text(nameLine, margin, footerStartY);
+      pdf.text(gradeLine, margin, footerStartY + lineHeight);
+      pdf.text(classLine, margin, footerStartY + lineHeight * 2);
+
+      // Conteúdo
+      pdf.addPage();
+
+      if (subjectSections.length > 0) {
+        for (let s = 0; s < subjectSections.length; s += 1) {
+          const sectionElement = subjectSections[s];
+
+          // Preparar header da seção
+          const headerEl = sectionElement.querySelector('[data-section-header]') as HTMLElement | null;
+          let headerImgData: string | null = null;
+          let headerImgHeight = 0;
+          if (headerEl) {
+            const headerCanvas = await html2canvas(headerEl, canvasOptions);
+            headerImgData = headerCanvas.toDataURL('image/png');
+            headerImgHeight = (headerCanvas.height * usableWidth) / headerCanvas.width;
+          }
+
+          // Função para desenhar header (se existir)
+          function drawHeaderIfAny(currentY: number): number {
+            if (!headerImgData) return currentY;
+            pdf.addImage(headerImgData, 'PNG', margin, currentY, usableWidth, headerImgHeight);
+            return currentY + headerImgHeight + 2; // pequeno espaçamento
+          }
+
+          let currentY = margin;
+          currentY = drawHeaderIfAny(currentY);
+
+          // Pegar linhas da tabela
+          const rowNodes = Array.from(
+            sectionElement.querySelectorAll('tbody > tr')
+          ) as HTMLElement[];
+
+          // Se não houver linhas (fallback), renderizar a seção inteira como antes
+          if (rowNodes.length === 0) {
+            const sectionCanvas = await html2canvas(sectionElement, canvasOptions);
+            const sectionImgData = sectionCanvas.toDataURL('image/png');
+            const sectionImgHeight = (sectionCanvas.height * usableWidth) / sectionCanvas.width;
+
+            if (currentY + sectionImgHeight > pageHeight - margin) {
+              pdf.addPage();
+              currentY = margin;
+              currentY = drawHeaderIfAny(currentY);
+            }
+
+            pdf.addImage(sectionImgData, 'PNG', margin, currentY, usableWidth, sectionImgHeight);
+            // Após seção, começar nova página para próxima seção
+            if (s < subjectSections.length - 1) {
+              pdf.addPage();
+            }
+            continue;
+          }
+
+          // Paginar linha a linha
+          for (let r = 0; r < rowNodes.length; r += 1) {
+            const rowCanvas = await html2canvas(rowNodes[r], canvasOptions);
+            const rowImgData = rowCanvas.toDataURL('image/png');
+            const rowImgHeight = (rowCanvas.height * usableWidth) / rowCanvas.width;
+
+            if (currentY + rowImgHeight > pageHeight - margin) {
+              pdf.addPage();
+              currentY = margin;
+              currentY = drawHeaderIfAny(currentY);
+            }
+
+            pdf.addImage(rowImgData, 'PNG', margin, currentY, usableWidth, rowImgHeight);
+            currentY += rowImgHeight + 2;
+          }
+
+          // Após seção, começar nova página para a próxima seção
+          if (s < subjectSections.length - 1) {
+            pdf.addPage();
+          }
+        }
+      } else {
+        const fallbackCanvas = await html2canvas(clonedCard, canvasOptions);
+        const fallbackImgData = fallbackCanvas.toDataURL('image/png');
+        const fallbackImgHeight = (fallbackCanvas.height * usableWidth) / fallbackCanvas.width;
+        let heightLeft = fallbackImgHeight;
+        let position = margin;
+
+        pdf.addImage(fallbackImgData, 'PNG', margin, position, usableWidth, fallbackImgHeight);
+        heightLeft -= usableHeight;
+
+        while (heightLeft > 0) {
+          position = margin - (fallbackImgHeight - heightLeft);
+          pdf.addPage();
+          pdf.addImage(fallbackImgData, 'PNG', margin, position, usableWidth, fallbackImgHeight);
+          heightLeft -= usableHeight;
+        }
+      }
+
+      const sanitizeFileName = (text: string | null): string => {
+        if (!text) return '';
+        return text
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-zA-Z0-9\s]/g, '')
+          .replace(/\s+/g, '-')
+          .toLowerCase()
+          .substring(0, 50);
+      };
+
+      const studentNameSanitized = sanitizeFileName(studentName);
+      const evaluationTitleSanitized = sanitizeFileName(evaluationTitle);
+      const dateStr = new Date().toISOString().split('T')[0];
+      const nameParts = ['boletim', studentNameSanitized || 'aluno', evaluationTitleSanitized || 'avaliacao', dateStr].filter(Boolean);
+      const fileName = `${nameParts.join('-')}.pdf`;
+      pdf.save(fileName);
+
+      toast({
+        title: "PDF Exportado com Sucesso",
+        description: `O boletim foi salvo como ${fileName}`,
+      });
+
+      // Limpar clone
+      document.body.removeChild(offscreenRoot);
+    } catch (error) {
+      console.error('Erro ao exportar PDF:', error);
+      toast({
+        title: "Erro ao Exportar PDF",
+        description: "Não foi possível gerar o PDF. Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExportingPDF(false);
+    }
+  };
+
   const isLoading = loadingState.questions || loadingState.answers;
 
   // Se há erro mas temos questões carregadas, mostrar com aviso
@@ -585,10 +842,10 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
   }
 
   return (
-    <Card>
-      <CardHeader className="border-b border-gray-200 pb-4">
-        <div className="flex items-center justify-between">
-          <div>
+    <Card ref={cardRef}>
+      <CardHeader data-pdf-header className="border-b border-gray-200 pb-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex-1 min-w-0">
             <CardTitle className="text-lg font-semibold text-gray-900">Boletim de Questões</CardTitle>
             {error && bulletinQuestions.length > 0 && (
               <p className="text-xs text-amber-600 mt-1">
@@ -596,49 +853,68 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-gray-400" />
-            <Select value={filter} onValueChange={(value: FilterType) => setFilter(value)}>
-              <SelectTrigger className="w-44 h-9 border-gray-300">
-                <SelectValue placeholder="Filtrar" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas ({bulletinQuestions.length})</SelectItem>
-                <SelectItem value="correct">
-                  Corretas ({bulletinQuestions.filter(q => q.isCorrect === true).length})
-                </SelectItem>
-                <SelectItem value="incorrect">
-                  Incorretas ({bulletinQuestions.filter(q => q.isCorrect === false).length})
-                </SelectItem>
-                <SelectItem value="unanswered">
-                  Não respondidas ({bulletinQuestions.filter(q => !q.hasAnswer).length})
-                </SelectItem>
-              </SelectContent>
-            </Select>
+          <div ref={controlsRef} className="flex items-center gap-2 flex-shrink-0" data-pdf-controls>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportToPDF}
+              disabled={isExportingPDF}
+              className="h-9 whitespace-nowrap shrink-0 border-border hover:bg-muted"
+              type="button"
+              aria-label={isExportingPDF ? 'Exportando PDF' : 'Exportar PDF'}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              {isExportingPDF ? 'Exportando...' : 'Exportar PDF'}
+            </Button>
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-gray-400" />
+              <Select value={filter} onValueChange={(value: FilterType) => setFilter(value)}>
+                <SelectTrigger className="w-44 h-9 border-gray-300">
+                  <SelectValue placeholder="Filtrar" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas ({bulletinQuestions.length})</SelectItem>
+                  <SelectItem value="correct">
+                    Corretas ({bulletinQuestions.filter(q => q.isCorrect === true).length})
+                  </SelectItem>
+                  <SelectItem value="incorrect">
+                    Incorretas ({bulletinQuestions.filter(q => q.isCorrect === false).length})
+                  </SelectItem>
+                  <SelectItem value="unanswered">
+                    Não respondidas ({bulletinQuestions.filter(q => !q.hasAnswer).length})
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
       </CardHeader>
       <CardContent className="p-0">
-        <ScrollArea className="h-[600px]">
+        <ScrollArea ref={scrollAreaRef} className="h-[600px]">
           <div className="p-6 space-y-8">
             {Object.entries(questionsBySubject).map(([subjectName, questions]) => (
-              <div key={subjectName} className="space-y-4">
+              <div
+                key={subjectName}
+                data-subject-section
+                data-subject-name={subjectName}
+                className="space-y-4"
+              >
                 {/* Cabeçalho da Disciplina */}
-                <div className="flex items-center gap-2 pb-2 border-b border-gray-200">
-                  <BookOpen className="h-4 w-4 text-gray-500" />
-                  <h3 className="text-sm font-semibold text-gray-900">{subjectName}</h3>
+                <div data-section-header className="flex items-center gap-2 pb-2 border-b border-border">
+                  <BookOpen className="h-4 w-4 text-muted-foreground" />
+                  <h3 className="text-sm font-semibold text-foreground">{subjectName}</h3>
                   
                   {(() => {
                     const stats = getDisciplineStats(subjectName);
                     if (stats) {
                       return (
                         <div className="flex items-center gap-3 ml-3 text-xs">
-                          <span className="text-gray-600">
-                            Nota: <span className="font-semibold text-gray-900">{stats.nota.toFixed(1)}</span>
+                          <span className="text-muted-foreground">
+                            Nota: <span className="font-semibold text-foreground">{stats.nota.toFixed(1)}</span>
                           </span>
-                          <span className="text-gray-400">|</span>
-                              <span className="text-gray-600">
-                                Proficiência: <span className="font-semibold text-gray-900">{stats.proficiencia.toFixed(2)}</span>
+                          <span className="text-muted-foreground">|</span>
+                              <span className="text-muted-foreground">
+                                Proficiência: <span className="font-semibold text-foreground">{stats.proficiencia.toFixed(2)}</span>
                               </span>
                         </div>
                       );
@@ -646,7 +922,7 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
                     return null;
                   })()}
                   
-                  <span className="text-xs text-gray-500 ml-auto">
+                  <span className="text-xs text-muted-foreground ml-auto">
                     {questions.length} {questions.length === 1 ? 'questão' : 'questões'}
                   </span>
                 </div>
@@ -655,9 +931,9 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse">
                     <thead>
-                      <tr className="border-b border-gray-200 bg-gray-50">
-                        <th className="text-left py-2 px-3 text-xs font-medium text-gray-600 w-20">Questão</th>
-                        <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Alternativas</th>
+                      <tr className="border-b border-border bg-muted">
+                        <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground w-20">Questão</th>
+                        <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Alternativas</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -668,11 +944,11 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
                           <tr
                             key={`${question.id}-${index}`}
                             id={`question-${bulletinQuestion.questionNumber}`}
-                            className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
+                            className="border-b border-border hover:bg-muted transition-colors"
                           >
                             {/* Coluna Questão */}
                             <td className="py-3 px-3">
-                              <span className="text-sm font-medium text-gray-700">
+                              <span className="text-sm font-medium text-foreground">
                                 Q{bulletinQuestion.questionNumber}
                               </span>
                             </td>
@@ -709,9 +985,9 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
                                       borderClass = 'border-green-200';
                                     } else {
                                       // Alternativa neutra
-                                      bgClass = 'bg-gray-50';
-                                      textClass = 'text-gray-700';
-                                      borderClass = 'border-gray-200';
+                                      bgClass = 'bg-muted';
+                                      textClass = 'text-foreground';
+                                      borderClass = 'border-border';
                                     }
 
                                     return (
@@ -738,7 +1014,7 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
                                 </div>
                               ) : (
                                 // Questão discursiva
-                                <div className="text-xs text-gray-600">
+                                <div className="text-xs text-muted-foreground">
                                   <p className="font-medium mb-1">Resposta:</p>
                                   <p className="truncate max-w-md">
                                     {bulletinQuestion.studentAnswer || "Não respondida"}
@@ -767,7 +1043,7 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
         </ScrollArea>
 
         {filteredQuestions.length === 0 && (
-          <div className="text-center py-12 text-gray-500 p-6">
+          <div className="text-center py-12 text-muted-foreground p-6">
             <p className="text-sm">Nenhuma questão encontrada com o filtro selecionado.</p>
           </div>
         )}

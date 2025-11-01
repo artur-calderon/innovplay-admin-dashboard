@@ -724,10 +724,10 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
     return (
       <div className="space-y-6">
         <div className="animate-pulse space-y-4">
-          <div className="h-4 bg-gray-200 rounded w-1/4"></div>
-          <div className="h-10 bg-gray-200 rounded"></div>
-          <div className="h-4 bg-gray-200 rounded w-1/3"></div>
-          <div className="h-10 bg-gray-200 rounded"></div>
+          <div className="h-4 bg-muted rounded w-1/4"></div>
+          <div className="h-10 bg-muted rounded"></div>
+          <div className="h-4 bg-muted rounded w-1/3"></div>
+          <div className="h-10 bg-muted rounded"></div>
         </div>
       </div>
     );
@@ -736,11 +736,11 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
       {/* Indicador de Progresso */}
-      <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+      <Card className="bg-gradient-to-r from-blue-50 dark:from-blue-950/30 to-indigo-50 dark:to-indigo-950/30 border-blue-200 dark:border-blue-800">
         <CardContent className="pt-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-blue-900">Progresso do Formulário</h3>
-            <span className="text-sm text-blue-700">
+            <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-300">Progresso do Formulário</h3>
+            <span className="text-sm text-blue-700 dark:text-blue-400">
               {[
                 isTitleValid && type && model && duration,
                 isCourseValid,
@@ -768,11 +768,11 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
                 <div className={`w-8 h-8 mx-auto rounded-full flex items-center justify-center text-xs font-medium ${
                   step.valid 
                     ? 'bg-green-500 text-white' 
-                    : 'bg-gray-200 text-gray-600'
+                    : 'bg-muted text-muted-foreground'
                 }`}>
                   {step.valid ? '✓' : index + 1}
                 </div>
-                <p className="text-xs mt-1 text-gray-600">{step.label}</p>
+                <p className="text-xs mt-1 text-muted-foreground">{step.label}</p>
               </div>
             ))}
           </div>
@@ -1025,9 +1025,9 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
                 <span>Carregando escolas...</span>
               </div>
             ) : noSchoolsMessage ? (
-              <div className="flex items-center gap-2 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <AlertCircle className="h-4 w-4 text-yellow-600" />
-                <span className="text-yellow-800">{noSchoolsMessage}</span>
+              <div className="flex items-center gap-2 p-4 bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+                <span className="text-yellow-800 dark:text-yellow-400">{noSchoolsMessage}</span>
               </div>
             ) : (
               <div className="grid gap-2 max-h-40 overflow-y-auto">
@@ -1164,9 +1164,9 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
               <span>Carregando turmas...</span>
             </div>
           ) : noClassesMessage ? (
-            <div className="flex items-center gap-2 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <AlertCircle className="h-4 w-4 text-yellow-600" />
-              <span className="text-yellow-800">{noClassesMessage}</span>
+            <div className="flex items-center gap-2 p-4 bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+              <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+              <span className="text-yellow-800 dark:text-yellow-400">{noClassesMessage}</span>
             </div>
           ) : (
             <>

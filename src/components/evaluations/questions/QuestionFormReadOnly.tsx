@@ -571,10 +571,10 @@ const QuestionFormReadOnly = ({
             </div>
 
             {showPreview ? (
-                <div className="bg-gray-50 rounded-xl border-2 border-gray-200 p-6">
+                <div className="bg-muted rounded-xl border-2 border-border p-6">
                     <div className="flex items-center gap-2 mb-4">
-                        <Eye className="h-5 w-5 text-blue-600" />
-                        <h3 className="text-lg font-semibold text-gray-800">Preview da Questão</h3>
+                        <Eye className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                        <h3 className="text-lg font-semibold text-foreground">Preview da Questão</h3>
                     </div>
                     <QuestionPreview data={{ ...form.getValues(), questionType }} />
                 </div>
@@ -586,7 +586,7 @@ const QuestionFormReadOnly = ({
                         <div className="bg-blue-50 rounded-xl p-6 border border-blue-200">
                             <div className="flex items-center gap-2 mb-4">
                                 <Book className="h-5 w-5 text-blue-600" />
-                                <h3 className="text-lg font-semibold text-gray-800">Informações Básicas</h3>
+                                <h3 className="text-lg font-semibold text-foreground">Informações Básicas</h3>
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
@@ -596,7 +596,7 @@ const QuestionFormReadOnly = ({
                                         name="title"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel className="text-sm font-semibold text-gray-700">Titulo da Questão *</FormLabel>
+                                                <FormLabel className="text-sm font-semibold text-foreground">Titulo da Questão *</FormLabel>
                                                 <FormControl>
                                                     <Input
                                                         {...field}
@@ -615,12 +615,12 @@ const QuestionFormReadOnly = ({
                                     name="grade"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel className="text-sm font-semibold text-gray-700">Série *</FormLabel>
+                                            <FormLabel className="text-sm font-semibold text-foreground">Série *</FormLabel>
                                             <FormControl>
                                                 <Input
                                                     value={grades.find(g => g.id === evaluationData.grade)?.name || ""}
                                                     readOnly
-                                                    className="h-11 bg-gray-50"
+                                                    className="h-11 bg-muted"
                                                 />
                                             </FormControl>
                                             <FormMessage />
@@ -633,12 +633,12 @@ const QuestionFormReadOnly = ({
                                     name="subjectId"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel className="text-sm font-semibold text-gray-700">Disciplina *</FormLabel>
+                                            <FormLabel className="text-sm font-semibold text-foreground">Disciplina *</FormLabel>
                                             <FormControl>
                                                 <Input
                                                     value={subjects.find(s => s.id === evaluationData.subject)?.name || ""}
                                                     readOnly
-                                                    className="h-11 bg-gray-50"
+                                                    className="h-11 bg-muted"
                                                 />
                                             </FormControl>
                                             <FormMessage />
@@ -651,7 +651,7 @@ const QuestionFormReadOnly = ({
                                     name="difficulty"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel className="text-sm font-semibold text-gray-700">Dificuldade *</FormLabel>
+                                            <FormLabel className="text-sm font-semibold text-foreground">Dificuldade *</FormLabel>
                                             <FormControl>
                                                 <Select onValueChange={field.onChange} value={field.value}>
                                                     <SelectTrigger className="h-11">
@@ -695,7 +695,7 @@ const QuestionFormReadOnly = ({
                                     name="value"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel className="text-sm font-semibold text-gray-700">Valor da Questão *</FormLabel>
+                                            <FormLabel className="text-sm font-semibold text-foreground">Valor da Questão *</FormLabel>
                                             <FormControl>
                                                 <Input
                                                     {...field}
@@ -715,9 +715,9 @@ const QuestionFormReadOnly = ({
                                     name="skills"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel className="text-sm font-semibold text-gray-700">
+                                            <FormLabel className="text-sm font-semibold text-foreground">
                                                 Habilidades (BNCC)
-                                                <span className="text-gray-500 font-normal ml-1">
+                                                <span className="text-muted-foreground font-normal ml-1">
                                                     {skills.length > 0 ? `(${skills.length} disponíveis)` : ''}
                                                 </span>
                                             </FormLabel>
@@ -741,7 +741,7 @@ const QuestionFormReadOnly = ({
                                                         {(field.value || []).map((skillId: string) => {
                                                             const skill = skills.find(opt => opt.id === skillId);
                                                             return skill ? (
-                                                                <Badge key={skillId} variant="outline" className="text-xs bg-white border-blue-300">
+                                                                <Badge key={skillId} variant="outline" className="text-xs bg-card border-blue-300 dark:border-blue-800">
                                                                     {skill.code}
                                                                 </Badge>
                                                             ) : null;
@@ -759,7 +759,7 @@ const QuestionFormReadOnly = ({
                         <div className="bg-purple-50 rounded-xl p-6 border border-purple-200">
                             <div className="flex items-center gap-2 mb-4">
                                 <ListIcon className="h-5 w-5 text-purple-600" />
-                                <h3 className="text-lg font-semibold text-gray-800">Tipo de Questão</h3>
+                                <h3 className="text-lg font-semibold text-foreground">Tipo de Questão</h3>
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
@@ -807,7 +807,7 @@ const QuestionFormReadOnly = ({
                         <div className="bg-green-50 rounded-xl p-6 border border-green-200">
                             <div className="flex items-center gap-2 mb-4">
                                 <Type className="h-5 w-5 text-green-600" />
-                                <h3 className="text-lg font-semibold text-gray-800">Enunciados</h3>
+                                <h3 className="text-lg font-semibold text-foreground">Enunciados</h3>
                             </div>
 
                             <div className="space-y-6">
@@ -816,7 +816,7 @@ const QuestionFormReadOnly = ({
                                     name="text"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel className="text-sm font-semibold text-gray-700">Enunciado Principal *</FormLabel>
+                                            <FormLabel className="text-sm font-semibold text-foreground">Enunciado Principal *</FormLabel>
                                             <FormControl>
                                                 <MyEditor
                                                     value={field.value}
@@ -833,9 +833,9 @@ const QuestionFormReadOnly = ({
                                     name="secondStatement"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel className="text-sm font-semibold text-gray-700">
+                                            <FormLabel className="text-sm font-semibold text-foreground">
                                                 Segundo Enunciado
-                                                <span className="text-gray-500 font-normal ml-1">(opcional)</span>
+                                                <span className="text-muted-foreground font-normal ml-1">(opcional)</span>
                                             </FormLabel>
                                             <FormControl>
                                                 <MyEditor
@@ -856,7 +856,7 @@ const QuestionFormReadOnly = ({
                                 <div className="flex items-center justify-between mb-4">
                                     <div className="flex items-center gap-2">
                                         <Check className="h-5 w-5 text-orange-600" />
-                                        <h3 className="text-lg font-semibold text-gray-800">Alternativas</h3>
+                                        <h3 className="text-lg font-semibold text-foreground">Alternativas</h3>
                                     </div>
                                     {fields.length < 5 && (
                                         <Button
@@ -874,20 +874,20 @@ const QuestionFormReadOnly = ({
 
                                 <div className="space-y-4">
                                     {fields.map((field, index) => (
-                                        <div key={field.id} className="flex items-center gap-4 p-4 bg-white rounded-lg border border-gray-200 shadow-sm">
+                                        <div key={field.id} className="flex items-center gap-4 p-4 bg-card rounded-lg border border-border shadow-sm">
                                             <button
                                                 type="button"
                                                 onClick={() => handleRadioChange(index)}
                                                 className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${form.watch("options")[index].isCorrect
                                                     ? 'bg-green-500 border-green-500 text-white shadow-lg'
-                                                    : 'bg-white border-gray-300 hover:border-gray-400'
+                                                    : 'bg-card border-border hover:border-border/80'
                                                     }`}
                                                 aria-label={`Marcar alternativa ${String.fromCharCode(65 + index)} como correta`}
                                             >
                                                 {form.watch("options")[index].isCorrect ? <Check className="w-4 h-4" /> : null}
                                             </button>
 
-                                            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center font-semibold text-gray-600">
+                                            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center font-semibold text-muted-foreground">
                                                 {String.fromCharCode(65 + index)}
                                             </div>
 
@@ -936,9 +936,9 @@ const QuestionFormReadOnly = ({
                         <div className="bg-indigo-50 rounded-xl p-6 border border-indigo-200">
                             <div className="flex items-center gap-2 mb-4">
                                 <Save className="h-5 w-5 text-indigo-600" />
-                                <h3 className="text-lg font-semibold text-gray-800">
+                                <h3 className="text-lg font-semibold text-foreground">
                                     Resolução
-                                    <span className="text-gray-500 font-normal ml-1">(opcional)</span>
+                                    <span className="text-muted-foreground font-normal ml-1">(opcional)</span>
                                 </h3>
                             </div>
 
@@ -947,7 +947,7 @@ const QuestionFormReadOnly = ({
                                 name="solution"
                                 render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel className="text-sm font-semibold text-gray-700">
+                                        <FormLabel className="text-sm font-semibold text-foreground">
                                             Explicação detalhada da resolução
                                         </FormLabel>
                                         <FormControl>
@@ -963,7 +963,7 @@ const QuestionFormReadOnly = ({
                         </div>
 
                         {/* Botões de ação */}
-                        <div className="flex flex-col sm:flex-row sm:justify-end gap-3 sm:gap-4 pt-6 border-t border-gray-200">
+                        <div className="flex flex-col sm:flex-row sm:justify-end gap-3 sm:gap-4 pt-6 border-t border-border">
                             <Button
                                 type="button"
                                 variant="outline"

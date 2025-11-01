@@ -186,11 +186,11 @@ export default function AdminAgendaOptimized() {
   return (
     <div className="p-4">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Agenda Administrativa</h1>
-        <p className="text-gray-600">Gerencie eventos e atividades da instituição</p>
+        <h1 className="text-2xl font-bold text-foreground mb-2">Agenda Administrativa</h1>
+        <p className="text-muted-foreground">Gerencie eventos e atividades da instituição</p>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border">
+      <div className="bg-card rounded-lg shadow-sm border border-border">
         <FullCalendar
           ref={calendarRef}
           plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}

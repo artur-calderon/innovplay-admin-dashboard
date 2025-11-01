@@ -32,38 +32,38 @@ export default function PerformanceCard({
     switch (perf) {
       case 'excellent':
         return {
-          bg: 'bg-green-50',
-          icon: 'text-green-600',
-          value: 'text-green-700',
-          border: 'border-green-200'
+          bg: 'bg-green-50 dark:bg-green-950/30',
+          icon: 'text-green-600 dark:text-green-400',
+          value: 'text-green-700 dark:text-green-400',
+          border: 'border-green-200 dark:border-green-800'
         };
       case 'good':
         return {
-          bg: 'bg-blue-50',
-          icon: 'text-blue-600',
-          value: 'text-blue-700',
-          border: 'border-blue-200'
+          bg: 'bg-blue-50 dark:bg-blue-950/30',
+          icon: 'text-blue-600 dark:text-blue-400',
+          value: 'text-blue-700 dark:text-blue-400',
+          border: 'border-blue-200 dark:border-blue-800'
         };
       case 'average':
         return {
-          bg: 'bg-yellow-50',
-          icon: 'text-yellow-600',
-          value: 'text-yellow-700',
-          border: 'border-yellow-200'
+          bg: 'bg-yellow-50 dark:bg-yellow-950/30',
+          icon: 'text-yellow-600 dark:text-yellow-400',
+          value: 'text-yellow-700 dark:text-yellow-400',
+          border: 'border-yellow-200 dark:border-yellow-800'
         };
       case 'poor':
         return {
-          bg: 'bg-orange-50',
-          icon: 'text-orange-600',
-          value: 'text-orange-700',
-          border: 'border-orange-200'
+          bg: 'bg-orange-50 dark:bg-orange-950/30',
+          icon: 'text-orange-600 dark:text-orange-400',
+          value: 'text-orange-700 dark:text-orange-400',
+          border: 'border-orange-200 dark:border-orange-800'
         };
       case 'critical':
         return {
-          bg: 'bg-red-50',
-          icon: 'text-red-600',
-          value: 'text-red-700',
-          border: 'border-red-200'
+          bg: 'bg-red-50 dark:bg-red-950/30',
+          icon: 'text-red-600 dark:text-red-400',
+          value: 'text-red-700 dark:text-red-400',
+          border: 'border-red-200 dark:border-red-800'
         };
     }
   };
@@ -102,7 +102,7 @@ export default function PerformanceCard({
 
         {/* Conteúdo */}
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-medium text-gray-600 truncate">
+          <h3 className="text-sm font-medium text-muted-foreground truncate">
             {title}
           </h3>
           <div className="flex items-center gap-2 mt-1">
@@ -119,7 +119,7 @@ export default function PerformanceCard({
             )}
           </div>
           {subtitle && (
-            <p className="text-xs text-gray-500 mt-1 truncate">
+            <p className="text-xs text-muted-foreground mt-1 truncate">
               {subtitle}
             </p>
           )}

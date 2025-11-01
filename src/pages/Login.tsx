@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,35 @@ export default function Login() {
   const { toast } = useToast();
 
   const { login, user } = useAuth();
+
+  // Garantir que a página de login sempre use tema claro
+  useEffect(() => {
+    // Forçar remoção da classe dark ao montar o componente
+    const rootElement = document.documentElement;
+    rootElement.classList.remove('dark');
+    
+    // Usar MutationObserver para detectar e remover classe dark se for adicionada
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+          if (rootElement.classList.contains('dark')) {
+            rootElement.classList.remove('dark');
+          }
+        }
+      });
+    });
+    
+    // Observar mudanças no atributo class do elemento raiz
+    observer.observe(rootElement, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+    
+    // Cleanup: desconectar observer quando sair da página
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,13 +132,13 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row">
+    <div className="min-h-screen flex flex-col lg:flex-row dark:bg-white">
       {/* Lado esquerdo (roxo) */}
-      <div className="bg-[#8257e5] text-white w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12">
+      <div className="bg-[#8257e5] dark:bg-[#8257e5] text-white w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12">
         <div className="max-w-md flex flex-col items-center text-center">
           {/* Ilustração centralizada */}
           <div className="mb-8 w-32 h-32 md:w-full md:h-full flex items-center justify-center flex-col">
-            <img src={LOGO} alt="Logo" className="w-[300rem]" />
+            <img src={LOGO} alt="Logo" className="w-[300px] max-w-full h-auto" />
 
             <p className="text-lg md:text-xl text-white/80">APRENDIZAGEM E RESULTADO</p>
           </div>
@@ -117,10 +146,10 @@ export default function Login() {
       </div>
 
       {/* Lado direito (branco) */}
-      <div className="bg-white w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12">
+      <div className="bg-white dark:bg-white w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12">
         <div className="w-full max-w-md">
-          <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-4">Área Login</h2>
-          <p className="text-gray-600 mb-8">
+          <h2 className="text-2xl md:text-3xl font-bold text-gray-800 dark:text-gray-800 mb-4">Área Login</h2>
+          <p className="text-gray-600 dark:text-gray-600 mb-8">
             A educação constrói seres humanos, jogos (diversão) alegra a vida, juntos transformam o mundo.
           </p>
 
@@ -180,14 +209,14 @@ export default function Login() {
                   Lembrar
                 </label>
               </div>
-              <a href="/forgot-password" className="text-sm text-[#8257e5] hover:underline">
+              <a href="/forgot-password" className="text-sm text-[#8257e5] dark:text-[#8257e5] hover:underline">
                 Esqueceu sua senha?
               </a>
             </div>
 
             <Button
               type="submit"
-              className="w-full py-6 bg-[#8257e5] hover:bg-[#6d48c2]"
+              className="w-full py-6 bg-[#8257e5] hover:bg-[#6d48c2] dark:bg-[#8257e5] dark:hover:bg-[#6d48c2] text-white"
               disabled={isLoading}
             >
               {isLoading ? (
@@ -201,7 +230,7 @@ export default function Login() {
             </Button>
           </form>
 
-          <div className="mt-12 text-center text-sm text-gray-500">
+          <div className="mt-12 text-center text-sm text-gray-500 dark:text-gray-500">
             © 2025 Innov Play ❤️
           </div>
         </div>

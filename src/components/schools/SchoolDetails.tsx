@@ -407,10 +407,10 @@ export default function SchoolDetails() {
     return (
       <div className="text-center py-8">
         <Building className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">
+        <h2 className="text-2xl font-bold text-foreground mb-2">
           {user.role === 'professor' ? "Instituição não encontrada" : "Escola não encontrada"}
         </h2>
-        <p className="text-gray-500 mb-4">
+        <p className="text-muted-foreground mb-4">
           {user.role === 'professor' 
             ? "A instituição que você está procurando não existe ou você não tem acesso a ela. Entre em contato com o diretor ou coordenador da sua escola."
             : "A escola que você está procurando não existe ou foi removida."}
@@ -531,16 +531,16 @@ export default function SchoolDetails() {
               <div className="flex items-start gap-3">
                 <Building className="h-5 w-5 text-orange-600 mt-0.5 flex-shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-500">Nome da Instituição</p>
-                  <p className="text-sm text-gray-900 break-words">{school.name}</p>
+                  <p className="text-sm font-medium text-muted-foreground">Nome da Instituição</p>
+                  <p className="text-sm text-foreground break-words">{school.name}</p>
                 </div>
               </div>
               
               <div className="flex items-start gap-3">
                 <MapPin className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-500">Localização</p>
-                  <p className="text-sm text-gray-900 break-words">{school.city.name} - {school.city.state}</p>
+                  <p className="text-sm font-medium text-muted-foreground">Localização</p>
+                  <p className="text-sm text-foreground break-words">{school.city.name} - {school.city.state}</p>
                 </div>
               </div>
             </div>
@@ -549,16 +549,16 @@ export default function SchoolDetails() {
               <div className="flex items-start gap-3">
                 <MapPin className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-500">Endereço</p>
-                  <p className="text-sm text-gray-900 break-words">{school.address || "Não informado"}</p>
+                  <p className="text-sm font-medium text-muted-foreground">Endereço</p>
+                  <p className="text-sm text-foreground break-words">{school.address || "Não informado"}</p>
                 </div>
               </div>
               
               <div className="flex items-start gap-3">
                 <Globe className="h-5 w-5 text-purple-600 mt-0.5 flex-shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-500">Domínio</p>
-                  <p className="text-sm text-gray-900 break-words">{school.domain || "Não informado"}</p>
+                  <p className="text-sm font-medium text-muted-foreground">Domínio</p>
+                  <p className="text-sm text-foreground break-words">{school.domain || "Não informado"}</p>
                 </div>
               </div>
             </div>
@@ -631,13 +631,13 @@ export default function SchoolDetails() {
                   )}
                 </div>
                 {directors.length === 0 ? (
-                  <div className="text-center py-4 bg-gray-50 rounded-lg">
+                  <div className="text-center py-4 bg-muted rounded-lg">
                     <p className="text-sm text-muted-foreground">Nenhum diretor cadastrado</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
                     {directors.map((director) => (
-                      <div key={director.id} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50">
+                      <div key={director.id} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted border-border">
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-sm">{director.name}</div>
                           <div className="text-xs text-muted-foreground">{director.email}</div>
@@ -670,13 +670,13 @@ export default function SchoolDetails() {
                   )}
                 </div>
                 {coordinators.length === 0 ? (
-                  <div className="text-center py-4 bg-gray-50 rounded-lg">
+                  <div className="text-center py-4 bg-muted rounded-lg">
                     <p className="text-sm text-muted-foreground">Nenhum coordenador cadastrado</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
                     {coordinators.map((coordinator) => (
-                      <div key={coordinator.id} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50">
+                      <div key={coordinator.id} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted border-border">
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-sm">{coordinator.name}</div>
                           <div className="text-xs text-muted-foreground">{coordinator.email}</div>
@@ -978,6 +978,9 @@ export default function SchoolDetails() {
           onClose={() => setShowBulkUploadModal(false)}
           schoolId={school.id}
           schoolName={school.name}
+          schoolAddress={school.address}
+          schoolState={school.city.state}
+          schoolMunicipality={school.city.name}
           onSuccess={() => {
             // Recarregar dados da escola
             window.location.reload();

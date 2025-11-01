@@ -380,7 +380,7 @@ export function ClassStatistics({ apiData }: ClassStatisticsProps) {
     return (
       <Card>
         <CardContent className="text-center py-12">
-          <p className="text-gray-600">Não há dados disponíveis para os filtros selecionados.</p>
+          <p className="text-muted-foreground">Não há dados disponíveis para os filtros selecionados.</p>
         </CardContent>
       </Card>
     );

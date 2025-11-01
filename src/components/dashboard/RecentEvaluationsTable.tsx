@@ -275,15 +275,15 @@ export default function RecentEvaluationsTable() {
       <CardContent>
         <div className="space-y-3">
           {evaluations.map((evaluation) => (
-            <div key={evaluation.id} className="p-3 rounded-lg border hover:bg-gray-50 transition-colors">
+            <div key={evaluation.id} className="p-3 rounded-lg border hover:bg-muted transition-colors border-border">
               {/* Header com título e status */}
               <div className="flex items-start justify-between mb-2">
                 <div className="flex-1 min-w-0">
                   <h4 className="font-medium text-sm truncate">{evaluation.title}</h4>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="text-xs text-gray-500">{evaluation.subject}</span>
-                    <span className="text-xs text-gray-400">•</span>
-                    <span className="text-xs text-gray-500 truncate">{evaluation.school}</span>
+                    <span className="text-xs text-muted-foreground">{evaluation.subject}</span>
+                    <span className="text-xs text-muted-foreground">•</span>
+                    <span className="text-xs text-muted-foreground truncate">{evaluation.school}</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -296,11 +296,11 @@ export default function RecentEvaluationsTable() {
 
               {/* Barra de progresso */}
               <div className="mb-2">
-                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                <div className="flex justify-between text-xs text-muted-foreground mb-1">
                   <span>Progresso</span>
                   <span>{evaluation.progress}%</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
+                <div className="w-full bg-muted rounded-full h-2">
                   <div 
                     className={`h-2 rounded-full transition-all duration-300 ${
                       evaluation.status === 'completed' ? 'bg-green-500' :
@@ -313,7 +313,7 @@ export default function RecentEvaluationsTable() {
               </div>
 
               {/* Métricas */}
-              <div className="flex items-center justify-between text-xs text-gray-500">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-1">
                     <Users className="h-3 w-3" />

@@ -334,7 +334,7 @@ export function LinkDirectorCoordinatorModal({
                       {filteredUsers.map((user) => (
                         <div
                           key={user.id}
-                          className="flex items-center gap-3 p-3 sm:p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                          className="flex items-center gap-3 p-3 sm:p-4 border rounded-lg hover:bg-muted transition-colors border-border"
                         >
                           <Checkbox
                             checked={selectedUsers.includes(user.id)}
@@ -552,7 +552,7 @@ export function LinkDirectorCoordinatorModal({
                       variant="outline" 
                       onClick={onClose} 
                       disabled={isCreating}
-                      className="order-2 sm:order-1 h-11 border-gray-300 hover:bg-gray-50"
+                      className="order-2 sm:order-1 h-11 border-border hover:bg-muted"
                     >
                       Cancelar
                     </Button>

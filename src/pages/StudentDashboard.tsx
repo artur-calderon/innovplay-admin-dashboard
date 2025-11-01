@@ -28,7 +28,7 @@ interface StudentGradesResponse {
     total_questions_answered: number;
     total_evaluations: number;
     rankings: {
-      school: {
+      school?: {
         position: number;
         total_students: number;
         ranking: Array<{
@@ -38,7 +38,7 @@ interface StudentGradesResponse {
           proficiency: number;
         }>;
       };
-      class: {
+      class?: {
         position: number;
         total_students: number;
         ranking: Array<{
@@ -48,7 +48,7 @@ interface StudentGradesResponse {
           proficiency: number;
         }>;
       };
-      municipality: {
+      municipality?: {
         position: number;
         total_students: number;
         ranking: Array<{
@@ -487,8 +487,18 @@ const StudentDashboard = () => {
   // Função para obter dados do ranking baseado no filtro
   const getCurrentRankingData = () => {
     if (!stats) {
-      console.log('⚠️ Stats não disponível, usando dados mockados');
-      return mockRankingData[rankingFilter];
+      console.log('⚠️ Stats não disponível, retornando dados vazios');
+      return {
+        posicaoAtual: 0,
+        pontos: 0,
+        mudancaPosicao: 0,
+        lista: [],
+        proximoObjetivo: {
+          posicao: 1,
+          pontosNecessarios: 0,
+          progresso: 0
+        }
+      };
     }
 
     console.log('🎯 Filtro de ranking selecionado:', rankingFilter);
@@ -502,7 +512,7 @@ const StudentDashboard = () => {
       posicaoAtual: currentRanking.posicaoAtual,
       pontos: currentRanking.pontos,
       mudancaPosicao: currentRanking.mudancaPosicao,
-      lista: currentRanking.lista.length > 0 ? currentRanking.lista : mockRankingData[rankingFilter].lista,
+      lista: currentRanking.lista, // Sempre usar a lista real, mesmo se vazia
       proximoObjetivo: currentRanking.proximoObjetivo
     };
   };
@@ -598,8 +608,15 @@ const StudentDashboard = () => {
     student_id: string;
     student_name: string;
     proficiency: number;
-  }>) => {
+  }> | undefined | null) => {
     console.log('🔄 Mapeando dados de ranking:', rankingData);
+    
+    // Validar se rankingData existe e é um array
+    if (!rankingData || !Array.isArray(rankingData) || rankingData.length === 0) {
+      console.log('⚠️ Dados de ranking vazios ou inválidos, retornando array vazio');
+      return [];
+    }
+    
     const mappedData = rankingData.map((item, index) => ({
       id: index + 1,
       nome: item.student_name,
@@ -615,9 +632,27 @@ const StudentDashboard = () => {
   // Função para mapear dados gerais da API para a interface atual
   const mapGeneralApiDataToStats = useCallback((apiData: StudentGradesResponse): StudentStats => {
     console.log('🔄 Mapeando dados gerais da API para interface...');
-    console.log('📊 Dados da turma:', apiData.data.rankings.class);
-    console.log('📊 Dados da escola:', apiData.data.rankings.school);
-    console.log('📊 Dados do município:', apiData.data.rankings.municipality);
+    console.log('📊 Dados da turma:', apiData.data.rankings?.class);
+    console.log('📊 Dados da escola:', apiData.data.rankings?.school);
+    console.log('📊 Dados do município:', apiData.data.rankings?.municipality);
+    
+    // Validar se rankings.class existe (pode ser undefined para alunos novos)
+    const classRanking = apiData.data.rankings?.class;
+    const schoolRanking = apiData.data.rankings?.school;
+    const municipalityRanking = apiData.data.rankings?.municipality;
+    
+    // Valores padrão quando não há dados de ranking
+    const defaultPosition = 0;
+    const defaultRankingList: Array<{
+      position: number;
+      student_id: string;
+      student_name: string;
+      proficiency: number;
+    }> = [];
+    
+    // Usar dados da turma se disponível, senão usar valores padrão
+    const currentPosition = classRanking?.position ?? defaultPosition;
+    const rankingList = mapRankingData(classRanking?.ranking ?? defaultRankingList);
     
     return {
       proficiencia: { 
@@ -644,14 +679,14 @@ const StudentDashboard = () => {
       medalhas: mockStats.medalhas,
       moedas: mockStats.moedas,
       ranking: {
-        posicaoAtual: apiData.data.rankings.class.position, // Usar posição da turma como padrão
+        posicaoAtual: currentPosition, // Usar posição da turma como padrão ou 0 se não houver
         pontos: apiData.data.general_proficiency, // Usar proficiência como pontos
         mudancaPosicao: 0,
-        lista: mapRankingData(apiData.data.rankings.class.ranking), // Mapear dados da turma
+        lista: rankingList, // Mapear dados da turma ou lista vazia
         proximoObjetivo: {
-          posicao: Math.max(1, apiData.data.rankings.class.position - 1),
+          posicao: currentPosition > 0 ? Math.max(1, currentPosition - 1) : 1,
           pontosNecessarios: 50,
-          progresso: 80
+          progresso: currentPosition > 0 ? 80 : 0
         }
       },
       estatisticas: {

@@ -222,9 +222,9 @@ export default function Evaluations() {
         <TabsContent value="create" className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
             {/* Criar Avaliação Virtual */}
-            <Card className="border-blue-200 bg-blue-50/30">
+            <Card className="border-blue-200 dark:border-blue-800 bg-blue-50/30 dark:bg-blue-950/30">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-blue-700">
+                <CardTitle className="flex items-center gap-2 text-blue-700 dark:text-blue-400">
                   <Calendar className="h-5 w-5" />
                   Avaliação Virtual
                 </CardTitle>
@@ -256,9 +256,9 @@ export default function Evaluations() {
             </Card>
 
             {/* Criar Avaliação Física */}
-            <Card className="border-green-200 bg-green-50/30">
+            <Card className="border-green-200 dark:border-green-800 bg-green-50/30 dark:bg-green-950/30">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-green-700">
+                <CardTitle className="flex items-center gap-2 text-green-700 dark:text-green-400">
                   <ClipboardList className="h-5 w-5" />
                   Avaliação Física
                 </CardTitle>
@@ -303,10 +303,10 @@ export default function Evaluations() {
             </CardHeader>
             <CardContent>
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-3 p-4 border border-blue-200 rounded-lg bg-blue-50/20">
+                <div className="space-y-3 p-4 border border-blue-200 dark:border-blue-800 rounded-lg bg-blue-50/20 dark:bg-blue-950/20">
                   <div className="flex items-center gap-2">
-                    <Calendar className="h-5 w-5 text-blue-600" />
-                    <h3 className="font-medium text-blue-700">Avaliação Virtual</h3>
+                    <Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                    <h3 className="font-medium text-blue-700 dark:text-blue-400">Avaliação Virtual</h3>
                   </div>
                   <ul className="space-y-1 text-sm text-muted-foreground">
                     <li>• Ideal para avaliações remotas</li>
@@ -317,10 +317,10 @@ export default function Evaluations() {
                   </ul>
                 </div>
 
-                <div className="space-y-3 p-4 border border-green-200 rounded-lg bg-green-50/20">
+                <div className="space-y-3 p-4 border border-green-200 dark:border-green-800 rounded-lg bg-green-50/20 dark:bg-green-950/20">
                   <div className="flex items-center gap-2">
-                    <ClipboardList className="h-5 w-5 text-green-600" />
-                    <h3 className="font-medium text-green-700">Avaliação Física</h3>
+                    <ClipboardList className="h-5 w-5 text-green-600 dark:text-green-400" />
+                    <h3 className="font-medium text-green-700 dark:text-green-400">Avaliação Física</h3>
                   </div>
                   <ul className="space-y-1 text-sm text-muted-foreground">
                     <li>• Ideal para provas presenciais</li>
@@ -407,7 +407,7 @@ export default function Evaluations() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-3">
                     <div className="flex items-start gap-3">
-                      <div className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-medium">
+                      <div className="w-6 h-6 bg-blue-100 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center text-xs font-medium">
                         1
                       </div>
                       <div>
@@ -416,7 +416,7 @@ export default function Evaluations() {
                       </div>
                     </div>
                     <div className="flex items-start gap-3">
-                      <div className="w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-xs font-medium">
+                      <div className="w-6 h-6 bg-green-100 dark:bg-green-950/30 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center text-xs font-medium">
                         2
                       </div>
                       <div>
@@ -428,7 +428,7 @@ export default function Evaluations() {
 
                   <div className="space-y-3">
                     <div className="flex items-start gap-3">
-                      <div className="w-6 h-6 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-xs font-medium">
+                      <div className="w-6 h-6 bg-purple-100 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400 rounded-full flex items-center justify-center text-xs font-medium">
                         3
                       </div>
                       <div>
@@ -437,7 +437,7 @@ export default function Evaluations() {
                       </div>
                     </div>
                     <div className="flex items-start gap-3">
-                      <div className="w-6 h-6 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center text-xs font-medium">
+                      <div className="w-6 h-6 bg-orange-100 dark:bg-orange-950/30 text-orange-600 dark:text-orange-400 rounded-full flex items-center justify-center text-xs font-medium">
                         4
                       </div>
                       <div>

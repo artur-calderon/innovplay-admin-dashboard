@@ -40,19 +40,19 @@ const MedalhasCard: React.FC<MedalhasCardProps> = ({ medalhas }) => {
       <CardContent className="pt-0">
         {/* Medalhas Conquistadas */}
         <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-4">
-          <div className="text-center p-1 sm:p-2 bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-lg border border-yellow-300">
+          <div className="text-center p-1 sm:p-2 bg-gradient-to-br from-yellow-100 to-yellow-200 dark:from-yellow-950/30 dark:to-yellow-900/30 rounded-lg border border-yellow-300 dark:border-yellow-800">
             <div className="w-6 h-6 sm:w-8 sm:h-8 bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-full flex items-center justify-center mx-auto mb-1">
               <Medal className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
             </div>
-            <div className="text-xs font-medium text-yellow-700 truncate">Primeira Nota 10</div>
+            <div className="text-xs font-medium text-yellow-700 dark:text-yellow-400 truncate">Primeira Nota 10</div>
           </div>
-          <div className="text-center p-1 sm:p-2 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg border border-blue-300">
+          <div className="text-center p-1 sm:p-2 bg-gradient-to-br from-blue-100 to-blue-200 dark:from-blue-950/30 dark:to-blue-900/30 rounded-lg border border-blue-300 dark:border-blue-800">
             <div className="w-6 h-6 sm:w-8 sm:h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-1">
               <Star className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
             </div>
-            <div className="text-xs font-medium text-blue-700 truncate">Streak 7 dias</div>
+            <div className="text-xs font-medium text-blue-700 dark:text-blue-400 truncate">Streak 7 dias</div>
           </div>
-          <div className="text-center p-1 sm:p-2 bg-gradient-to-br from-purple-100 to-purple-200 rounded-lg border border-purple-300">
+          <div className="text-center p-1 sm:p-2 bg-gradient-to-br from-purple-100 to-purple-200 dark:from-purple-950/30 dark:to-purple-900/30 rounded-lg border border-purple-300 dark:border-purple-800">
             <div className="w-6 h-6 sm:w-8 sm:h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-1">
               <Trophy className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
             </div>
@@ -73,16 +73,16 @@ const MedalhasCard: React.FC<MedalhasCardProps> = ({ medalhas }) => {
         </div>
 
         {/* Próximas Medalhas */}
-        <div className="mt-4 p-2 sm:p-3 bg-gradient-to-r from-orange-50 to-red-50 rounded-lg border border-orange-200">
+        <div className="mt-4 p-2 sm:p-3 bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-950/30 dark:to-red-950/30 rounded-lg border border-orange-200 dark:border-orange-800">
           <div className="flex items-center gap-2 mb-2">
-            <Zap className="w-4 h-4 text-orange-600 flex-shrink-0" />
-            <span className="text-xs sm:text-sm font-medium text-orange-700 truncate">Próximas Conquistas</span>
+            <Zap className="w-4 h-4 text-orange-600 dark:text-orange-400 flex-shrink-0" />
+            <span className="text-xs sm:text-sm font-medium text-orange-700 dark:text-orange-400 truncate">Próximas Conquistas</span>
           </div>
           <div className="space-y-2">
             {medalhas.proximas.map((medalha) => (
               <div key={medalha.id} className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-gray-300 rounded-full opacity-50 flex-shrink-0"></div>
-                <span className="text-xs text-gray-600 truncate">{medalha.nome} - {medalha.requisito}</span>
+                <div className="w-4 h-4 bg-muted rounded-full opacity-50 flex-shrink-0"></div>
+                <span className="text-xs text-muted-foreground truncate">{medalha.nome} - {medalha.requisito}</span>
               </div>
             ))}
           </div>
@@ -90,13 +90,13 @@ const MedalhasCard: React.FC<MedalhasCardProps> = ({ medalhas }) => {
 
         {/* Stats das Medalhas */}
         <div className="grid grid-cols-2 gap-2 mt-3">
-          <div className="text-center p-2 bg-yellow-50 rounded border border-yellow-200">
-            <div className="text-base sm:text-lg font-bold text-yellow-600">3</div>
-            <div className="text-xs text-yellow-700">Ouro</div>
+          <div className="text-center p-2 bg-yellow-50 dark:bg-yellow-950/30 rounded border border-yellow-200 dark:border-yellow-800">
+            <div className="text-base sm:text-lg font-bold text-yellow-600 dark:text-yellow-400">3</div>
+            <div className="text-xs text-yellow-700 dark:text-yellow-400">Ouro</div>
           </div>
-          <div className="text-center p-2 bg-gray-50 rounded border border-gray-200">
-            <div className="text-base sm:text-lg font-bold text-gray-600">1</div>
-            <div className="text-xs text-gray-700">Prata</div>
+          <div className="text-center p-2 bg-muted rounded border border-border">
+            <div className="text-base sm:text-lg font-bold text-foreground">1</div>
+            <div className="text-xs text-muted-foreground">Prata</div>
           </div>
         </div>
       </CardContent>

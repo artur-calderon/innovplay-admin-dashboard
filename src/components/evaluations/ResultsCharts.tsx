@@ -208,7 +208,7 @@ export function ResultsCharts({
   if (!chartData) {
     return (
       <div className="text-center py-12">
-        <p className="text-gray-600">Não há dados suficientes para gerar os gráficos.</p>
+        <p className="text-muted-foreground">Não há dados suficientes para gerar os gráficos.</p>
       </div>
     );
   }

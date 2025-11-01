@@ -275,8 +275,8 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
     const startQuestion = currentWindow * questionsPerWindow + 1;
     const endQuestion = Math.min((currentWindow + 1) * questionsPerWindow, totalQuestions);
     const colorClasses = colorScheme === "purple" 
-      ? "bg-purple-50 border-purple-200 text-purple-700" 
-      : "bg-blue-50 border-blue-200 text-blue-700";
+      ? "bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-400" 
+      : "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400";
 
     return (
       <div className={`${colorClasses} border-b px-4 py-3 flex items-center justify-between text-sm`}>
@@ -310,8 +310,8 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                   onClick={() => onGoToWindow(windowIndex)}
                   className={`w-2 h-2 rounded-full transition-colors ${
                     isActive 
-                      ? (colorScheme === "purple" ? "bg-purple-600" : "bg-blue-600")
-                      : (colorScheme === "purple" ? "bg-purple-300" : "bg-blue-300")
+                      ? (colorScheme === "purple" ? "bg-purple-600 dark:bg-purple-500" : "bg-blue-600 dark:bg-blue-500")
+                      : (colorScheme === "purple" ? "bg-purple-300 dark:bg-purple-700" : "bg-blue-300 dark:bg-blue-700")
                   }`}
                   title={`Ir para janela ${windowIndex + 1}`}
                 />
@@ -340,7 +340,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
     <div className="space-y-6 lg:space-y-8">
       {/* ✅ NOVO: Visão Geral - Todas as Questões */}
       {allQuestions.length > 0 && consolidatedStudents.length > 0 && (
-        <Card className="shadow-xl border-2 border-purple-200 hover:shadow-2xl transition-shadow duration-300 overflow-hidden w-full">
+        <Card className="shadow-xl border-2 border-purple-200 dark:border-purple-800 hover:shadow-2xl transition-shadow duration-300 overflow-hidden w-full">
           <CardHeader className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-t-lg px-0">
             <CardTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-4 sm:px-6 gap-3 sm:gap-0">
               <div className="flex items-center gap-3">
@@ -359,7 +359,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                   </p>
                 </div>
               </div>
-              <Badge variant="secondary" className="bg-white/90 text-purple-700 font-bold text-xs sm:text-sm flex-shrink-0">
+              <Badge variant="secondary" className="bg-white/90 dark:bg-white/10 text-purple-700 dark:text-purple-400 font-bold text-xs sm:text-sm flex-shrink-0">
                 VISÃO GERAL
               </Badge>
             </CardTitle>
@@ -379,7 +379,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
               />
             )}
             <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 max-w-full">
-              <table className="min-w-full border border-gray-300 text-center text-xs sm:text-sm shadow-md rounded-lg border-separate border-spacing-0 bg-white">
+              <table className="min-w-full border border-border text-center text-xs sm:text-sm shadow-md rounded-lg border-separate border-spacing-0 bg-card">
                 <TableHeader
                   totalQuestions={allQuestions.length > MAX_QUESTIONS_FOR_FULL_VIEW 
                     ? getQuestionWindow(allQuestions, currentQuestionWindow).length 
@@ -489,7 +489,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
               </table>
               {/* ✅ NOVO: Contador de questões no final */}
               {allQuestions.length > MAX_QUESTIONS_FOR_FULL_VIEW && (
-                <div className="bg-gray-50 border-t border-gray-200 px-4 py-2 text-xs text-gray-600 text-center">
+                <div className="bg-muted border-t border-border px-4 py-2 text-xs text-muted-foreground text-center">
                   Total: {allQuestions.length} questões • {consolidatedStudents.length} alunos • 
                   Janela {currentQuestionWindow + 1} de {getTotalWindows(allQuestions.length)}
                 </div>
@@ -521,7 +521,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                   </p>
                 </div>
               </div>
-              <Badge variant="secondary" className="bg-white/90 text-blue-700 font-bold text-xs sm:text-sm flex-shrink-0">
+              <Badge variant="secondary" className="bg-white/90 dark:bg-white/10 text-blue-700 dark:text-blue-400 font-bold text-xs sm:text-sm flex-shrink-0">
                 {disciplina.nome.toUpperCase()}
               </Badge>
             </CardTitle>
@@ -541,7 +541,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
               />
             )}
             <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 max-w-full">
-              <table className="min-w-full border border-gray-300 text-center text-xs sm:text-sm shadow-md rounded-lg border-separate border-spacing-0 bg-white">
+              <table className="min-w-full border border-border text-center text-xs sm:text-sm shadow-md rounded-lg border-separate border-spacing-0 bg-card">
                 <TableHeader
                   totalQuestions={disciplina.questoes.length > MAX_QUESTIONS_FOR_FULL_VIEW 
                     ? getQuestionWindow(disciplina.questoes, getCurrentWindowForDiscipline(disciplina.id)).length 
@@ -642,7 +642,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
               </table>
               {/* ✅ NOVO: Contador de questões no final */}
               {disciplina.questoes.length > MAX_QUESTIONS_FOR_FULL_VIEW && (
-                <div className="bg-gray-50 border-t border-gray-200 px-4 py-2 text-xs text-gray-600 text-center">
+                <div className="bg-muted border-t border-border px-4 py-2 text-xs text-muted-foreground text-center">
                   {disciplina.nome}: {disciplina.questoes.length} questões • {disciplina.alunos.length} alunos • 
                   Janela {getCurrentWindowForDiscipline(disciplina.id) + 1} de {getTotalWindows(disciplina.questoes.length)}
                 </div>

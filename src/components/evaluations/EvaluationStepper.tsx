@@ -280,9 +280,9 @@ export default function EvaluationStepper({ mode = "virtual", editMode = false, 
     return (
       <div className="container max-w-5xl mx-auto py-6 space-y-6">
         <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-gray-200 rounded w-1/3"></div>
-          <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-          <div className="h-64 bg-gray-200 rounded"></div>
+          <div className="h-8 bg-muted rounded w-1/3"></div>
+          <div className="h-4 bg-muted rounded w-1/2"></div>
+          <div className="h-64 bg-muted rounded"></div>
         </div>
       </div>
     );
@@ -330,13 +330,13 @@ export default function EvaluationStepper({ mode = "virtual", editMode = false, 
                   ? 'bg-green-600 text-white' 
                   : currentStep === step.id 
                     ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-200 text-gray-500'
+                    : 'bg-muted text-muted-foreground'
               }`}>
                 {currentStep > step.id ? <Check className="h-5 w-5" /> : step.id}
               </div>
               <div className="mt-2 text-center max-w-32">
                 <p className={`text-sm font-medium ${
-                  currentStep >= step.id ? 'text-blue-600' : 'text-gray-500'
+                  currentStep >= step.id ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground'
                 }`}>
                   {step.title}
                 </p>
@@ -345,7 +345,7 @@ export default function EvaluationStepper({ mode = "virtual", editMode = false, 
                 </p>
               </div>
               {index < STEPS.length - 1 && (
-                <div className={`absolute top-5 h-0.5 bg-gray-300 transition-colors ${
+                <div className={`absolute top-5 h-0.5 bg-border transition-colors ${
                   currentStep > step.id ? 'bg-green-600' : ''
                 }`} 
                 style={{

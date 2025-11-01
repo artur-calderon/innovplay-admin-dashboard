@@ -1706,8 +1706,8 @@ export default function AcertoNiveis() {
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Acerto e Níveis</h1>
-          <p className="text-gray-600 mt-2">Selecione uma avaliação e exporte o PDF consolidado.</p>
+          <h1 className="text-3xl font-bold text-foreground">Acerto e Níveis</h1>
+          <p className="text-muted-foreground mt-2">Selecione uma avaliação e exporte o PDF consolidado.</p>
           {user?.role && (
             <p className="text-sm text-blue-600 mt-1">
               {getRestrictionMessage(user.role)}
@@ -1787,7 +1787,7 @@ export default function AcertoNiveis() {
                        <div className="flex flex-col">
                          <span className="font-medium">{ev.titulo}</span>
                          {ev.data_aplicacao && (
-                           <span className="text-xs text-gray-500">
+                           <span className="text-xs text-muted-foreground">
                              {new Date(ev.data_aplicacao).toLocaleDateString('pt-BR')}
                            </span>
                          )}
@@ -1928,9 +1928,9 @@ export default function AcertoNiveis() {
              )}
 
            {/* Informações de Status */}
-           <div className="mt-6 p-4 rounded-lg bg-blue-50 text-blue-800 text-sm">
+           <div className="mt-6 p-4 rounded-lg bg-blue-50 dark:bg-blue-950/30 text-blue-800 dark:text-blue-400 text-sm">
              <div className="flex items-start gap-2">
-               <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+               <div className="w-2 h-2 bg-blue-500 dark:bg-blue-400 rounded-full mt-2 flex-shrink-0"></div>
                <div>
                  <span className="font-semibold">Hierarquia dos Filtros:</span> Estado → Município → Avaliação
                  <br />
@@ -1957,30 +1957,30 @@ export default function AcertoNiveis() {
          <Card>
            <CardHeader>
              <CardTitle className="flex items-center gap-2">
-               <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+               <div className="w-2 h-2 bg-green-500 dark:bg-green-400 rounded-full"></div>
                Resumo da Avaliação Selecionada
              </CardTitle>
            </CardHeader>
            <CardContent>
              {/* Informações Básicas */}
              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-6">
-               <div className="p-3 bg-gray-50 rounded-lg">
-                 <span className="text-gray-500 text-xs uppercase tracking-wide">Avaliação</span>
-                 <div className="font-semibold text-gray-900 mt-1">{evaluationInfo.titulo}</div>
+               <div className="p-3 bg-muted rounded-lg">
+                 <span className="text-muted-foreground text-xs uppercase tracking-wide">Avaliação</span>
+                 <div className="font-semibold text-foreground mt-1">{evaluationInfo.titulo}</div>
                </div>
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                  <span className="text-gray-500 text-xs uppercase tracking-wide">Escola</span>
-                  <div className="font-semibold text-gray-900 mt-1">
+                  <div className="p-3 bg-muted rounded-lg">
+                  <span className="text-muted-foreground text-xs uppercase tracking-wide">Escola</span>
+                  <div className="font-semibold text-foreground mt-1">
                     {selectedSchoolId ? schools.find(s => s.id === selectedSchoolId)?.nome || 'Escola Selecionada' : 'Todas as Escolas'}
                   </div>
                 </div>
-               <div className="p-3 bg-gray-50 rounded-lg">
-                 <span className="text-gray-500 text-xs uppercase tracking-wide">Município</span>
-                 <div className="font-semibold text-gray-900 mt-1">{evaluationInfo.municipio}</div>
+               <div className="p-3 bg-muted rounded-lg">
+                 <span className="text-muted-foreground text-xs uppercase tracking-wide">Município</span>
+                 <div className="font-semibold text-foreground mt-1">{evaluationInfo.municipio}</div>
                </div>
-                <div className="p-3 bg-gray-50 rounded-lg">
-                  <span className="text-gray-500 text-xs uppercase tracking-wide">Série</span>
-                  <div className="font-semibold text-gray-900 mt-1">
+                <div className="p-3 bg-muted rounded-lg">
+                  <span className="text-muted-foreground text-xs uppercase tracking-wide">Série</span>
+                  <div className="font-semibold text-foreground mt-1">
                     {selectedGradeId ? grades.find(g => g.id === selectedGradeId)?.nome || 'Série Selecionada' : evaluationInfo.serie}
                   </div>
                 </div>
@@ -1991,34 +1991,34 @@ export default function AcertoNiveis() {
                <div className="border-t pt-6">
                  <h3 className="text-lg font-semibold mb-4">Estatísticas da Avaliação</h3>
                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                   <div className="text-center p-4 bg-blue-50 rounded-lg">
-                     <div className="text-2xl font-bold text-blue-600">{detailedReport.questoes.length}</div>
-                     <div className="text-sm text-gray-600 mt-1">Total de Questões</div>
+                   <div className="text-center p-4 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
+                     <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{detailedReport.questoes.length}</div>
+                     <div className="text-sm text-muted-foreground mt-1">Total de Questões</div>
                    </div>
-                   <div className="text-center p-4 bg-green-50 rounded-lg">
-                     <div className="text-2xl font-bold text-green-600">
+                   <div className="text-center p-4 bg-green-50 dark:bg-green-950/30 rounded-lg">
+                     <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                        {students.filter(s => s.status === 'concluida').length}
                      </div>
-                     <div className="text-sm text-gray-600 mt-1">Alunos Concluíram</div>
+                     <div className="text-sm text-muted-foreground mt-1">Alunos Concluíram</div>
                    </div>
-                   <div className="text-center p-4 bg-yellow-50 rounded-lg">
-                     <div className="text-2xl font-bold text-yellow-600">{students.length}</div>
-                     <div className="text-sm text-gray-600 mt-1">Total de Alunos</div>
+                   <div className="text-center p-4 bg-yellow-50 dark:bg-yellow-950/30 rounded-lg">
+                     <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{students.length}</div>
+                     <div className="text-sm text-muted-foreground mt-1">Total de Alunos</div>
                    </div>
-                   <div className="text-center p-4 bg-purple-50 rounded-lg">
-                     <div className="text-2xl font-bold text-purple-600">
+                   <div className="text-center p-4 bg-purple-50 dark:bg-purple-950/30 rounded-lg">
+                     <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
                        {students.length > 0 
                          ? ((students.filter(s => s.status === 'concluida').length / students.length) * 100).toFixed(1)
                          : '0'}%
                      </div>
-                     <div className="text-sm text-gray-600 mt-1">Taxa de Participação</div>
+                     <div className="text-sm text-muted-foreground mt-1">Taxa de Participação</div>
                    </div>
                  </div>
 
                  {/* Filtros Aplicados */}
                  {(selectedSchoolId || selectedGradeId || selectedClassId) && (
-                   <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-                     <h4 className="font-medium text-gray-900 mb-2">Filtros Aplicados:</h4>
+                   <div className="mt-6 p-4 bg-muted rounded-lg">
+                     <h4 className="font-medium text-foreground mb-2">Filtros Aplicados:</h4>
                      <div className="flex flex-wrap gap-2">
                        {selectedSchoolId && (
                          <Badge variant="secondary" className="text-xs">

@@ -275,8 +275,8 @@ const Index = () => {
       {/* Tabelas Interativas - Nova Seção */}
       <div className="mb-8">
         <div className="flex items-center gap-2 mb-6">
-          <Target className="h-6 w-6 text-blue-600" />
-          <h2 className="text-xl font-semibold text-gray-800">Análises e Rankings</h2>
+          <Target className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+          <h2 className="text-xl font-semibold text-foreground">Análises e Rankings</h2>
         </div>
         
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">

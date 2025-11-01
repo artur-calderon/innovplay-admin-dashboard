@@ -26,7 +26,7 @@ export default function FullscreenLayout({ children }: FullscreenLayoutProps) {
   return (
     <div className={cn(
       "fixed inset-0 z-50",
-      "bg-white overflow-hidden",
+      "bg-background overflow-hidden",
       "flex flex-col h-screen w-screen"
     )}>
       {/* Conteúdo em tela cheia */}

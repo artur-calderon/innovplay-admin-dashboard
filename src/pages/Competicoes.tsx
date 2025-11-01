@@ -258,13 +258,13 @@ const Competicoes = () => {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'disponivel':
-        return <Badge className="bg-green-100 text-green-800">Disponível</Badge>;
+        return <Badge className="bg-green-100 dark:bg-green-950/30 text-green-800 dark:text-green-400">Disponível</Badge>;
       case 'inscrito':
-        return <Badge className="bg-blue-100 text-blue-800">Inscrito</Badge>;
+        return <Badge className="bg-blue-100 dark:bg-blue-950/30 text-blue-800 dark:text-blue-400">Inscrito</Badge>;
       case 'em_andamento':
-        return <Badge className="bg-orange-100 text-orange-800">Em Andamento</Badge>;
+        return <Badge className="bg-orange-100 dark:bg-orange-950/30 text-orange-800 dark:text-orange-400">Em Andamento</Badge>;
       case 'finalizado':
-        return <Badge className="bg-gray-100 text-gray-800">Finalizado</Badge>;
+        return <Badge className="bg-muted text-foreground">Finalizado</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -273,13 +273,13 @@ const Competicoes = () => {
   const getDifficultyColor = (dificuldade: string) => {
     switch (dificuldade) {
       case 'facil':
-        return 'text-green-600';
+        return 'text-green-600 dark:text-green-400';
       case 'medio':
-        return 'text-yellow-600';
+        return 'text-yellow-600 dark:text-yellow-400';
       case 'dificil':
-        return 'text-red-600';
+        return 'text-red-600 dark:text-red-400';
       default:
-        return 'text-gray-600';
+        return 'text-muted-foreground';
     }
   };
 
@@ -300,7 +300,7 @@ const Competicoes = () => {
           {[...Array(6)].map((_, i) => (
             <Card key={i} className="animate-pulse">
               <CardContent className="p-6">
-                <div className="h-40 bg-gray-200 rounded"></div>
+                <div className="h-40 bg-muted rounded"></div>
               </CardContent>
             </Card>
           ))}
@@ -318,12 +318,12 @@ const Competicoes = () => {
             <Trophy className="w-8 h-8 text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Competições</h1>
-            <p className="text-gray-600">Participe de torneios semanais e ganhe recompensas!</p>
+            <h1 className="text-2xl font-bold text-foreground">Competições</h1>
+            <p className="text-muted-foreground">Participe de torneios semanais e ganhe recompensas!</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className="bg-yellow-100 text-yellow-800 px-3 py-1">
+          <Badge variant="outline" className="bg-yellow-100 dark:bg-yellow-950/30 text-yellow-800 dark:text-yellow-400 px-3 py-1">
             <Coins className="w-4 h-4 mr-1" />
             Ganhe InnovCoins
           </Badge>
@@ -333,11 +333,11 @@ const Competicoes = () => {
       {/* Filtros */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-3 text-gray-400" />
+          <Search className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
           <input
             type="text"
             placeholder="Buscar torneios..."
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full pl-10 pr-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-background text-foreground"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -346,7 +346,7 @@ const Competicoes = () => {
         <select
           value={filtroStatus}
           onChange={(e) => setFiltroStatus(e.target.value as FiltroStatus)}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="w-full px-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-background text-foreground"
         >
           <option value="todos">Todos os Status</option>
           <option value="disponivel">Disponível</option>
@@ -358,7 +358,7 @@ const Competicoes = () => {
         <select
           value={filtroDisciplina}
           onChange={(e) => setFiltroDisciplina(e.target.value as FiltroDisciplina)}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="w-full px-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-background text-foreground"
         >
           <option value="todas">Todas as Disciplinas</option>
           <option value="matematica">Matemática</option>
@@ -372,49 +372,49 @@ const Competicoes = () => {
 
       {/* Estatísticas rápidas */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+        <Card className="bg-gradient-to-br from-blue-50 dark:from-blue-950/30 to-blue-100 dark:to-blue-950/40 border-blue-200 dark:border-blue-800">
           <CardContent className="p-4 text-center">
             <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center mx-auto mb-2">
               <Trophy className="w-6 h-6 text-white" />
             </div>
-            <div className="text-2xl font-bold text-blue-600">{torneios.length}</div>
-            <div className="text-sm text-blue-700">Torneios Ativos</div>
+            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{torneios.length}</div>
+            <div className="text-sm text-blue-700 dark:text-blue-400">Torneios Ativos</div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+        <Card className="bg-gradient-to-br from-green-50 dark:from-green-950/30 to-green-100 dark:to-green-950/40 border-green-200 dark:border-green-800">
           <CardContent className="p-4 text-center">
             <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-2">
               <Users className="w-6 h-6 text-white" />
             </div>
-            <div className="text-2xl font-bold text-green-600">
+            <div className="text-2xl font-bold text-green-600 dark:text-green-400">
               {torneios.reduce((sum, t) => sum + t.participantes, 0)}
             </div>
-            <div className="text-sm text-green-700">Participantes</div>
+            <div className="text-sm text-green-700 dark:text-green-400">Participantes</div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-yellow-200">
+        <Card className="bg-gradient-to-br from-yellow-50 dark:from-yellow-950/30 to-yellow-100 dark:to-yellow-950/40 border-yellow-200 dark:border-yellow-800">
           <CardContent className="p-4 text-center">
             <div className="w-12 h-12 bg-yellow-500 rounded-full flex items-center justify-center mx-auto mb-2">
               <Coins className="w-6 h-6 text-white" />
             </div>
-            <div className="text-2xl font-bold text-yellow-600">
+            <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
               {torneios.reduce((sum, t) => sum + t.recompensaOuro, 0)}
             </div>
-            <div className="text-sm text-yellow-700">Total em Prêmios</div>
+            <div className="text-sm text-yellow-700 dark:text-yellow-400">Total em Prêmios</div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+        <Card className="bg-gradient-to-br from-purple-50 dark:from-purple-950/30 to-purple-100 dark:to-purple-950/40 border-purple-200 dark:border-purple-800">
           <CardContent className="p-4 text-center">
             <div className="w-12 h-12 bg-purple-500 rounded-full flex items-center justify-center mx-auto mb-2">
               <Star className="w-6 h-6 text-white" />
             </div>
-            <div className="text-2xl font-bold text-purple-600">
+            <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
               {torneios.filter(t => t.status === 'inscrito').length}
             </div>
-            <div className="text-sm text-purple-700">Seus Torneios</div>
+            <div className="text-sm text-purple-700 dark:text-purple-400">Seus Torneios</div>
           </CardContent>
         </Card>
       </div>
@@ -422,7 +422,7 @@ const Competicoes = () => {
       {/* Grid de Torneios */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {torneiosFiltrados.map((torneio) => (
-          <Card key={torneio.id} className="hover:shadow-xl transition-all duration-300 border-2 hover:border-blue-200">
+          <Card key={torneio.id} className="hover:shadow-xl transition-all duration-300 border-2 hover:border-blue-200 dark:hover:border-blue-800">
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
@@ -446,31 +446,31 @@ const Competicoes = () => {
             </CardHeader>
             
             <CardContent className="space-y-4">
-              <p className="text-sm text-gray-600">{torneio.descricao}</p>
+              <p className="text-sm text-muted-foreground">{torneio.descricao}</p>
               
               {/* Info Grid */}
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-gray-500" />
+                  <Users className="w-4 h-4 text-muted-foreground" />
                   <span>{torneio.participantes}/{torneio.maxParticipantes}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-gray-500" />
+                  <Clock className="w-4 h-4 text-muted-foreground" />
                   <span>{torneio.duracao}min</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Target className="w-4 h-4 text-gray-500" />
+                  <Target className="w-4 h-4 text-muted-foreground" />
                   <span>{torneio.questoes} questões</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <BookOpen className="w-4 h-4 text-gray-500" />
+                  <BookOpen className="w-4 h-4 text-muted-foreground" />
                   <span>{torneio.nivel}</span>
                 </div>
               </div>
 
               {/* Progress Bar */}
               <div className="space-y-2">
-                <div className="flex justify-between text-xs text-gray-600">
+                <div className="flex justify-between text-xs text-muted-foreground">
                   <span>Participantes</span>
                   <span>{Math.round((torneio.participantes / torneio.maxParticipantes) * 100)}%</span>
                 </div>
@@ -478,38 +478,38 @@ const Competicoes = () => {
               </div>
 
               {/* Recompensas */}
-              <div className="bg-yellow-50 rounded-lg p-3 border border-yellow-200">
+              <div className="bg-yellow-50 dark:bg-yellow-950/30 rounded-lg p-3 border border-yellow-200 dark:border-yellow-800">
                 <div className="flex items-center gap-2 mb-2">
-                  <Coins className="w-4 h-4 text-yellow-600" />
-                  <span className="text-sm font-medium text-yellow-700">Recompensas</span>
+                  <Coins className="w-4 h-4 text-yellow-600 dark:text-yellow-400" />
+                  <span className="text-sm font-medium text-yellow-700 dark:text-yellow-400">Recompensas</span>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-xs">
                   <div className="text-center">
-                    <div className="text-yellow-600 font-bold">🥇 {torneio.recompensaOuro}</div>
-                    <div className="text-yellow-700">1º lugar</div>
+                    <div className="text-yellow-600 dark:text-yellow-400 font-bold">🥇 {torneio.recompensaOuro}</div>
+                    <div className="text-yellow-700 dark:text-yellow-400">1º lugar</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-gray-600 font-bold">🥈 {torneio.recompensaPrata}</div>
-                    <div className="text-gray-700">2º lugar</div>
+                    <div className="text-muted-foreground font-bold">🥈 {torneio.recompensaPrata}</div>
+                    <div className="text-muted-foreground">2º lugar</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-orange-600 font-bold">🥉 {torneio.recompensaBronze}</div>
-                    <div className="text-orange-700">3º lugar</div>
+                    <div className="text-orange-600 dark:text-orange-400 font-bold">🥉 {torneio.recompensaBronze}</div>
+                    <div className="text-orange-700 dark:text-orange-400">3º lugar</div>
                   </div>
                 </div>
               </div>
 
               {/* Timer */}
               {torneio.status !== 'finalizado' && (
-                <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                <div className="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
                   <div className="flex items-center gap-2">
-                    <Timer className="w-4 h-4 text-blue-600" />
-                    <span className="text-sm font-medium text-blue-700">
+                    <Timer className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    <span className="text-sm font-medium text-blue-700 dark:text-blue-400">
                       {torneio.status === 'disponivel' ? 'Inscrições até:' : 
                        torneio.status === 'inscrito' || torneio.status === 'em_andamento' ? 'Termina em:' : 'Tempo restante:'}
                     </span>
                   </div>
-                  <div className="text-lg font-bold text-blue-600 mt-1">
+                  <div className="text-lg font-bold text-blue-600 dark:text-blue-400 mt-1">
                     {formatTimeRemaining(torneio.dataFim)}
                   </div>
                 </div>
@@ -565,11 +565,11 @@ const Competicoes = () => {
 
       {torneiosFiltrados.length === 0 && (
         <div className="text-center py-12">
-          <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Trophy className="w-10 h-10 text-gray-400" />
+          <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+            <Trophy className="w-10 h-10 text-muted-foreground" />
           </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum torneio encontrado</h3>
-          <p className="text-gray-600">Tente ajustar os filtros ou aguarde novos torneios!</p>
+          <h3 className="text-lg font-medium text-foreground mb-2">Nenhum torneio encontrado</h3>
+          <p className="text-muted-foreground">Tente ajustar os filtros ou aguarde novos torneios!</p>
         </div>
       )}
     </div>

@@ -80,7 +80,7 @@ export default function ModernStatCard({
 
   if (isLoading) {
     return (
-      <AnimatedCard className={cn("p-4 rounded-lg border bg-white", className)}>
+      <AnimatedCard className={cn("p-4 rounded-lg border bg-card", className)}>
         <div className="flex items-center gap-3">
           <Skeleton className="h-10 w-10 rounded-lg" />
           <div className="flex-1 space-y-2">
@@ -96,7 +96,7 @@ export default function ModernStatCard({
   return (
     <AnimatedCard 
       className={cn(
-        "p-4 rounded-lg border bg-white cursor-pointer transition-all duration-200",
+        "p-4 rounded-lg border bg-card cursor-pointer transition-all duration-200",
         colors.borderColor,
         colors.hoverBg,
         onClick && "hover:shadow-md",
@@ -114,7 +114,7 @@ export default function ModernStatCard({
 
         {/* Conteúdo */}
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-medium text-gray-600 truncate">
+          <h3 className="text-sm font-medium text-muted-foreground truncate">
             {title}
           </h3>
           <div className="flex items-center gap-2 mt-1">
@@ -131,7 +131,7 @@ export default function ModernStatCard({
             )}
           </div>
           {subtitle && (
-            <p className="text-xs text-gray-500 mt-1 truncate">
+            <p className="text-xs text-muted-foreground mt-1 truncate">
               {subtitle}
             </p>
           )}

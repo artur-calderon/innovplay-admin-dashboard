@@ -378,22 +378,22 @@ const EvolutionChart: React.FC<EvolutionChartProps> = ({ data, isLoading = false
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
-        <div className="bg-white p-4 border border-gray-200 rounded-xl shadow-xl backdrop-blur-sm">
+        <div className="bg-card p-4 border border-border rounded-xl shadow-xl backdrop-blur-sm">
           <div className="flex items-center gap-2 mb-2">
             <div 
               className="w-3 h-3 rounded-full" 
               style={{ backgroundColor: data.color }}
             />
-            <p className="font-semibold text-sm text-gray-800">{label}</p>
+            <p className="font-semibold text-sm text-foreground">{label}</p>
           </div>
           <div className="space-y-1">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-foreground">
               <span className="font-medium">Valor:</span> 
               <span className="ml-1 font-bold text-lg" style={{ color: data.color }}>
                 {data.value.toFixed(1)}
               </span>
             </p>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               {selectedMetric === 'grade' ? 'Nota (0-10)' : 
                selectedMetric === 'proficiency' ? 'Proficiência' : 'Classificação (1-5)'}
             </p>
@@ -419,8 +419,8 @@ const EvolutionChart: React.FC<EvolutionChartProps> = ({ data, isLoading = false
           </CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
-          <div className="h-64 bg-gray-100 rounded-lg animate-pulse flex items-center justify-center">
-            <div className="text-gray-500">Carregando gráfico...</div>
+          <div className="h-64 bg-muted rounded-lg animate-pulse flex items-center justify-center">
+            <div className="text-muted-foreground">Carregando gráfico...</div>
           </div>
         </CardContent>
       </Card>
@@ -442,11 +442,11 @@ const EvolutionChart: React.FC<EvolutionChartProps> = ({ data, isLoading = false
           </CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
-          <div className="h-64 bg-gray-50 rounded-lg flex items-center justify-center">
+          <div className="h-64 bg-muted rounded-lg flex items-center justify-center">
             <div className="text-center">
-              <Activity className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500 font-medium">Sem avaliações para comparar</p>
-              <p className="text-sm text-gray-400 mt-2">
+              <Activity className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-foreground font-medium">Sem avaliações para comparar</p>
+              <p className="text-sm text-muted-foreground mt-2">
                 É necessário pelo menos 2 avaliações para mostrar a evolução
               </p>
             </div>
@@ -517,7 +517,7 @@ const EvolutionChart: React.FC<EvolutionChartProps> = ({ data, isLoading = false
         </div>
 
         {/* Gráfico */}
-        <div className="h-96 bg-gray-50 rounded-lg p-4">
+        <div className="h-96 bg-muted rounded-lg p-4">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
               data={chartData.evaluations}
@@ -529,9 +529,9 @@ const EvolutionChart: React.FC<EvolutionChartProps> = ({ data, isLoading = false
                 textAnchor="end"
                 height={80}
                 fontSize={11}
-                tick={{ fill: '#374151' }}
-                axisLine={{ stroke: '#D1D5DB' }}
-                tickLine={{ stroke: '#D1D5DB' }}
+                tick={{ fill: 'hsl(var(--foreground))' }}
+                axisLine={{ stroke: 'hsl(var(--border))' }}
+                tickLine={{ stroke: 'hsl(var(--border))' }}
               />
               <YAxis 
                 domain={selectedMetric === 'classification' ? [0, 6] : [0, 'dataMax + 1']}
@@ -549,10 +549,10 @@ const EvolutionChart: React.FC<EvolutionChartProps> = ({ data, isLoading = false
                   return value.toFixed(1);
                 }}
                 fontSize={11}
-                tick={{ fill: '#374151' }}
-                axisLine={{ stroke: '#D1D5DB' }}
-                tickLine={{ stroke: '#D1D5DB' }}
-                gridLine={{ stroke: '#E5E7EB' }}
+                tick={{ fill: 'hsl(var(--foreground))' }}
+                axisLine={{ stroke: 'hsl(var(--border))' }}
+                tickLine={{ stroke: 'hsl(var(--border))' }}
+                gridLine={{ stroke: 'hsl(var(--border))' }}
               />
               <Tooltip content={<CustomTooltip />} />
               
@@ -574,7 +574,7 @@ const EvolutionChart: React.FC<EvolutionChartProps> = ({ data, isLoading = false
                   dataKey="value" 
                   position="top" 
                   formatter={(value: number) => value.toFixed(1)}
-                  style={{ fill: '#374151', fontSize: '11px', fontWeight: 'bold' }}
+                  style={{ fill: 'hsl(var(--foreground))', fontSize: '11px', fontWeight: 'bold' }}
                 />
               </Bar>
               

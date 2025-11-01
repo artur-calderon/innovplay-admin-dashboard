@@ -3,15 +3,19 @@ import {
   ComposedChart,
   Bar,
   Line,
+  LineChart,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
   Cell,
+  LabelList,
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { TrendingUp, ArrowUpRight, ArrowDownRight, ArrowRight } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
+import { TrendingUp, ArrowUpRight, ArrowDownRight, ArrowRight, BarChart3, LineChart as LineChartIcon } from 'lucide-react';
 
 type Metric = 'grade' | 'proficiency' | 'approval';
 
@@ -182,21 +186,165 @@ export function EvolutionChart({
   const merged = useMemo(() => mergeByName(data || []), [data]);
 
   const chartData = useMemo(() => {
-    return merged.map((r) => ({
-      name: r.name,
-      [evaluationNames[0] || '1ª Etapa']: safe(r.etapa1) ?? null,
-      [evaluationNames[1] || '2ª Etapa']: safe(r.etapa2) ?? null,
-      [evaluationNames[2] || '3ª Etapa']: safe(r.etapa3) ?? null,
-      'Variação 1→2': safe(r.variacao_1_2),
-      'Variação 2→3': safe(r.variacao_2_3),
-    }));
+    const data: Record<string, unknown>[] = [];
+    
+    merged.forEach((r) => {
+      // Verificar se a disciplina tem dados válidos em TODAS as avaliações que estão sendo comparadas
+      // Considerar null/undefined como inválido, mas 0 pode ser um valor válido
+      const hasValidDataInAllEvaluations = (
+        (!evaluationNames[0] || safe(r.etapa1) !== undefined) &&
+        (!evaluationNames[1] || safe(r.etapa2) !== undefined) &&
+        (!evaluationNames[2] || safe(r.etapa3) !== undefined)
+      );
+      
+      // Se não tem dados válidos em todas as avaliações, pular esta disciplina
+      if (!hasValidDataInAllEvaluations) {
+        console.log(`🔍 Disciplina "${r.name}" não tem dados válidos em todas as avaliações, removendo do gráfico`);
+        console.log(`🔍 Dados da disciplina:`, {
+          etapa1: r.etapa1,
+          etapa2: r.etapa2,
+          etapa3: r.etapa3,
+          evaluationNames
+        });
+        return;
+      }
+      
+      const item: Record<string, unknown> = { name: r.name };
+      
+      // Adicionar apenas as avaliações que existem E têm dados válidos
+      if (evaluationNames[0] && safe(r.etapa1) !== undefined) {
+        item[evaluationNames[0]] = safe(r.etapa1);
+      }
+      if (evaluationNames[1] && safe(r.etapa2) !== undefined) {
+        item[evaluationNames[1]] = safe(r.etapa2);
+      }
+      if (evaluationNames[2] && safe(r.etapa3) !== undefined) {
+        item[evaluationNames[2]] = safe(r.etapa3);
+      }
+      
+      // Adicionar variações se existirem
+      if (r.variacao_1_2 !== undefined && r.variacao_1_2 !== null) {
+        item['Variação 1→2'] = safe(r.variacao_1_2);
+      }
+      if (r.variacao_2_3 !== undefined && r.variacao_2_3 !== null) {
+        item['Variação 2→3'] = safe(r.variacao_2_3);
+      }
+      
+      data.push(item);
+    });
+    
+    console.log('🔍 chartData filtrado:', data);
+    return data;
   }, [merged, evaluationNames]);
+
+  // Dados específicos para o gráfico de linhas de variações
+  const variationChartData = useMemo(() => {
+    console.log('🔍 merged:', merged);
+    console.log('🔍 evaluationNames:', evaluationNames);
+    
+    if (merged.length === 0) return [];
+    
+    const r = merged[0]; // pegar primeiro registro (GERAL ou nome da disciplina)
+    console.log('🔍 primeiro registro (r):', r);
+    
+    // Verificar se a disciplina tem dados válidos em TODAS as avaliações para poder calcular variações
+    // Considerar null/undefined como inválido, mas 0 pode ser um valor válido
+    const hasValidDataInAllEvaluations = (
+      (!evaluationNames[0] || safe(r.etapa1) !== undefined) &&
+      (!evaluationNames[1] || safe(r.etapa2) !== undefined) &&
+      (!evaluationNames[2] || safe(r.etapa3) !== undefined)
+    );
+    
+    // Se não tem dados válidos em todas as avaliações, retornar array vazio
+    if (!hasValidDataInAllEvaluations) {
+      console.log(`🔍 Disciplina "${r.name}" não tem dados válidos em todas as avaliações, removendo do gráfico de variações`);
+      console.log(`🔍 Dados da disciplina para variações:`, {
+        etapa1: r.etapa1,
+        etapa2: r.etapa2,
+        etapa3: r.etapa3,
+        variacao_1_2: r.variacao_1_2,
+        variacao_2_3: r.variacao_2_3,
+        evaluationNames
+      });
+      return [];
+    }
+    
+    const data: Record<string, unknown>[] = [];
+    
+    // Ponto 1: Primeira avaliação (baseline = 0%) - só incluir se tiver dados válidos
+    if (evaluationNames[0] && safe(r.etapa1) !== undefined) {
+      data.push({
+        name: evaluationNames[0],
+        variacao: 0
+      });
+    }
+    
+    // Ponto 2: Segunda avaliação (variação 1→2) - só incluir se tiver dados válidos
+    if (evaluationNames[1] && safe(r.etapa2) !== undefined && r.variacao_1_2 !== undefined && r.variacao_1_2 !== null) {
+      data.push({
+        name: evaluationNames[1],
+        variacao: safe(r.variacao_1_2)
+      });
+    }
+    
+    // Ponto 3: Terceira avaliação (variação 2→3) - só incluir se tiver dados válidos
+    if (evaluationNames[2] && safe(r.etapa3) !== undefined && r.variacao_2_3 !== undefined && r.variacao_2_3 !== null) {
+      data.push({
+        name: evaluationNames[2],
+        variacao: safe(r.variacao_2_3)
+      });
+    }
+    
+    console.log('🔍 variationChartData filtrado:', data);
+    return data;
+  }, [merged, evaluationNames]);
+
+  // Dados segmentados alinhados ao eixo X
+  const segmentedData = useMemo(() => {
+    if (variationChartData.length < 2) return variationChartData;
+    
+    // Copia alinhada ao eixo X + campos por direção
+    const base = variationChartData.map(p => ({
+      ...p,
+      asc: null as number | null,
+      desc: null as number | null,
+      stable: null as number | null,
+    })) as Array<{
+      name: string;
+      variacao: number;
+      asc: number | null;
+      desc: number | null;
+      stable: number | null;
+    }>;
+    
+    // Marcar segmentos na mesma série baseada na direção
+    for (let i = 0; i < base.length - 1; i++) {
+      const a = base[i].variacao as number;
+      const b = base[i + 1].variacao as number;
+      const key = b > a ? 'asc' : b < a ? 'desc' : 'stable';
+      
+      // Marcar os dois extremos do segmento na MESMA série
+      (base[i] as Record<string, unknown>)[key] = a;
+      (base[i + 1] as Record<string, unknown>)[key] = b;
+    }
+    
+    console.log('🔍 segmentedData:', base);
+    return base;
+  }, [variationChartData]);
 
   const leftDomain = yAxisDomain ?? domainFor(metric, merged);
   const leftLabel = yAxisLabel ?? labelFor(metric);
 
   const leftTick = (v: number) =>
     metric === 'approval' ? `${nf1.format(v)}%` : nf1.format(v);
+
+  // Configuração do chart para variações
+  const variationChartConfig = {
+    variacao: {
+      label: "Variação",
+      color: "hsl(var(--chart-1))",
+    },
+  } satisfies ChartConfig;
 
   const tooltipFormatter = (value: unknown, key: string) => {
     if (typeof value !== 'number') return ['–', key];
@@ -218,140 +366,415 @@ export function EvolutionChart({
         </span>
       </CardHeader>
       <CardContent>
-        <div className="h-80 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart
-              data={chartData}
-              margin={{ 
-                top: 16, 
-                right: isMobile ? 10 : 28, 
-                left: isMobile ? 8 : 12, 
-                bottom: 8 
-              }}
-              barCategoryGap={isMobile ? "15%" : "25%"}
-              barGap={isMobile ? 4 : 8}
-              accessibilityLayer
-              aria-label={`Gráfico de ${title}`}
-            >
-              <CartesianGrid 
-                strokeDasharray="3 3" 
-                stroke="#eef2f7" 
-                opacity={0.5}
-                vertical={false}
-              />
-              <XAxis
-                dataKey="name"
-                tick={{ fontSize: isMobile ? 10 : 12 }}
-                tickLine={{ stroke: '#d1d5db' }}
-                minTickGap={isMobile ? 16 : 32}
-                angle={isMobile ? -45 : 0}
-                textAnchor={isMobile ? "end" : "middle"}
-                height={isMobile ? 60 : 30}
-              />
-              <YAxis
-                yAxisId="left"
-                domain={leftDomain}
-                label={isMobile ? undefined : { value: leftLabel, angle: -90, position: 'insideLeft' }}
-                tick={{ fontSize: isMobile ? 10 : 12 }}
-                tickLine={{ stroke: '#d1d5db' }}
-                tickFormatter={leftTick}
-                width={isMobile ? 40 : 60}
-              />
-              {showVariation && (
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  domain={[-100, 100]}
-                  label={{ value: 'Variação (%)', angle: 90, position: 'insideRight' }}
-                  tick={{ fontSize: 12 }}
-                  tickLine={{ stroke: '#d1d5db' }}
-                  tickFormatter={(v) => `${nf1.format(v)}%`}
-                />
-              )}
-              <Tooltip
-                contentStyle={{ 
-                  borderRadius: 8,
-                  border: '1px solid #e5e7eb',
-                  boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+        {showVariation && variationChartData.length > 0 ? (
+          <Tabs defaultValue="columns" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 mb-4">
+              <TabsTrigger value="columns" className="flex items-center gap-2">
+                <BarChart3 className="h-4 w-4" />
+                Valores
+              </TabsTrigger>
+              <TabsTrigger value="variations" className="flex items-center gap-2">
+                <LineChartIcon className="h-4 w-4" />
+                Variações
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="columns" className="space-y-4">
+              {/* Gráfico principal de colunas */}
+              <div className="h-80 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart
+                    data={chartData}
+                    margin={{ 
+                      top: 20,
+                      left: 12,
+                      right: 12,
+                      bottom: 8
+                    }}
+                    barCategoryGap={isMobile ? "5%" : "10%"}
+                    barGap={isMobile ? 2 : 4}
+                    accessibilityLayer
+                    aria-label={`Gráfico de ${title}`}
+                  >
+                    <CartesianGrid vertical={false} />
+                    <XAxis
+                      dataKey="name"
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={10}
+                      tick={{ fontSize: isMobile ? 10 : 12 }}
+                      tickFormatter={(value) => value.length > 8 ? value.slice(0, 8) + '...' : value}
+                    />
+                    <YAxis
+                      yAxisId="left"
+                      domain={leftDomain}
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={8}
+                      tick={{ fontSize: isMobile ? 10 : 12 }}
+                      tickFormatter={leftTick}
+                      width={isMobile ? 40 : 60}
+                    />
+                    <Tooltip
+                      cursor={false}
+                      content={({ active, payload, label }) => {
+                        if (active && payload && payload.length) {
+                          return (
+                            <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
+                              <p className="font-medium text-sm mb-2">{label}</p>
+                              <div className="space-y-1">
+                                {payload.map((entry, index) => {
+                                  const value = entry.value as number;
+                                  const color = entry.color;
+                                  return (
+                                    <div key={index} className="flex items-center gap-2">
+                                      <div 
+                                        className="w-3 h-3 rounded" 
+                                        style={{ backgroundColor: color }}
+                                      />
+                                      <span className="text-sm font-medium">{entry.name}:</span>
+                                      <span className="text-sm">
+                                        {metric === 'approval' ? `${value.toFixed(1)}%` : value.toFixed(1)}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+
+                    {/* Barras com labels modernos - primeira coluna sempre no início */}
+                    <Bar 
+                      yAxisId="left" 
+                      dataKey={evaluationNames[0] || '1ª Etapa'} 
+                      name={evaluationNames[0] || '1ª Etapa'} 
+                      fill={colors.etapa1} 
+                      radius={8}
+                      stackId="a"
+                    >
+                      {chartData.map((_, i) => <Cell key={`b1-${i}`} fill={colors.etapa1} />)}
+                      <LabelList
+                        position="top"
+                        offset={12}
+                        className="fill-foreground"
+                        fontSize={12}
+                        formatter={(value: number) => value ? value.toFixed(1) : ''}
+                      />
+                    </Bar>
+                    
+                    {evaluationNames[1] && (
+                      <Bar 
+                        yAxisId="left" 
+                        dataKey={evaluationNames[1]} 
+                        name={evaluationNames[1]} 
+                        fill={colors.etapa2} 
+                        radius={8}
+                        stackId="b"
+                      >
+                        {chartData.map((_, i) => <Cell key={`b2-${i}`} fill={colors.etapa2} />)}
+                        <LabelList
+                          position="top"
+                          offset={12}
+                          className="fill-foreground"
+                          fontSize={12}
+                          formatter={(value: number) => value ? value.toFixed(1) : ''}
+                        />
+                      </Bar>
+                    )}
+                    
+                    {evaluationNames[2] && (
+                      <Bar 
+                        yAxisId="left" 
+                        dataKey={evaluationNames[2]} 
+                        name={evaluationNames[2]} 
+                        fill={colors.etapa3} 
+                        radius={8}
+                        stackId="c"
+                      >
+                        {chartData.map((_, i) => <Cell key={`b3-${i}`} fill={colors.etapa3} />)}
+                        <LabelList
+                          position="top"
+                          offset={12}
+                          className="fill-foreground"
+                          fontSize={12}
+                          formatter={(value: number) => value ? value.toFixed(1) : ''}
+                        />
+                      </Bar>
+                    )}
+
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="variations" className="space-y-4">
+              {/* Gráfico de linhas para variações - Estilo moderno */}
+              <ChartContainer config={variationChartConfig} className="h-80 w-full">
+                <LineChart
+                  data={segmentedData}
+                  margin={{
+                    left: 12,
+                    right: 12,
+                    top: 8,
+                    bottom: 8
+                  }}
+                  accessibilityLayer
+                  aria-label={`Gráfico de variações de ${title}`}
+                >
+                  <CartesianGrid vertical={false} />
+                  <XAxis
+                    dataKey="name"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    tick={{ fontSize: isMobile ? 9 : 11 }}
+                    tickFormatter={(value) => value.length > 8 ? value.slice(0, 8) + '...' : value}
+                    allowDuplicatedCategory={false}
+                  />
+                  <YAxis
+                    yAxisId="variation"
+                    orientation="right"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    tick={{ fontSize: isMobile ? 9 : 11 }}
+                    domain={[-100, 100]}
+                    tickFormatter={(value) => `${value}%`}
+                  />
+                  <ChartTooltip
+                    cursor={false}
+                    content={({ active, payload, label }) => {
+                      if (active && payload && payload.length) {
+                        const value = payload[0]?.value as number;
+                        const color = value > 0 ? '#16a34a' : value < 0 ? '#ef4444' : '#6b7280';
+                        return (
+                          <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
+                            <p className="font-medium text-sm">{label}</p>
+                            <p className="text-sm" style={{ color }}>
+                              Variação: {value > 0 ? '+' : ''}{value?.toFixed(1)}%
+                            </p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  
+                  {/* Segmentos coloridos, todos usando o MESMO data do LineChart */}
+                  <Line
+                    yAxisId="variation"
+                    type="linear"
+                    dataKey="asc"
+                    stroke="#16a34a"
+                    strokeWidth={2}
+                    dot={false}
+                    connectNulls={false}
+                    isAnimationActive={false}
+                  />
+                  <Line
+                    yAxisId="variation"
+                    type="linear"
+                    dataKey="desc"
+                    stroke="#ef4444"
+                    strokeWidth={2}
+                    dot={false}
+                    connectNulls={false}
+                    isAnimationActive={false}
+                  />
+                  <Line
+                    yAxisId="variation"
+                    type="linear"
+                    dataKey="stable"
+                    stroke="#6b7280"
+                    strokeWidth={2}
+                    dot={false}
+                    connectNulls={false}
+                    isAnimationActive={false}
+                  />
+                  
+                  {/* Pontos coloridos */}
+                  <Line
+                    yAxisId="variation"
+                    type="linear"
+                    dataKey="variacao"
+                    stroke="transparent"
+                    strokeWidth={0}
+                    isAnimationActive={false}
+                    dot={(props: { cx?: number; cy?: number; index?: number; payload?: { variacao?: number } }) => {
+                      const { cx, cy, payload, index } = props;
+                      const value = payload?.variacao ?? 0;
+                      const color = value > 0 ? '#16a34a' : value < 0 ? '#ef4444' : '#6b7280';
+                      return (
+                        <circle
+                          key={`dot-${index}`}
+                          cx={cx}
+                          cy={cy}
+                          r={4}
+                          fill={color}
+                          stroke="#fff"
+                          strokeWidth={2}
+                        />
+                      );
+                    }}
+                  />
+                </LineChart>
+              </ChartContainer>
+            </TabsContent>
+          </Tabs>
+        ) : (
+          /* Fallback para quando não há dados de variação */
+          <div className="h-80 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart
+                data={chartData}
+                margin={{ 
+                  top: 20,
+                  left: 12,
+                  right: 12,
+                  bottom: 8
                 }}
-                formatter={tooltipFormatter}
-                labelStyle={{ fontWeight: 'bold', marginBottom: 4 }}
-              />
+                barCategoryGap={isMobile ? "5%" : "10%"}
+                barGap={isMobile ? 2 : 4}
+                accessibilityLayer
+                aria-label={`Gráfico de ${title}`}
+              >
+                <CartesianGrid vertical={false} />
+                <XAxis
+                  dataKey="name"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={10}
+                  tick={{ fontSize: isMobile ? 10 : 12 }}
+                  tickFormatter={(value) => value.length > 8 ? value.slice(0, 8) + '...' : value}
+                />
+                <YAxis
+                  yAxisId="left"
+                  domain={leftDomain}
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  tick={{ fontSize: isMobile ? 10 : 12 }}
+                  tickFormatter={leftTick}
+                  width={isMobile ? 40 : 60}
+                />
+                <Tooltip
+                  cursor={false}
+                  content={({ active, payload, label }) => {
+                    if (active && payload && payload.length) {
+                      return (
+                        <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
+                          <p className="font-medium text-sm mb-2">{label}</p>
+                          <div className="space-y-1">
+                            {payload.map((entry, index) => {
+                              const value = entry.value as number;
+                              const color = entry.color;
+                              return (
+                                <div key={index} className="flex items-center gap-2">
+                                  <div 
+                                    className="w-3 h-3 rounded" 
+                                    style={{ backgroundColor: color }}
+                                  />
+                                  <span className="text-sm font-medium">{entry.name}:</span>
+                                  <span className="text-sm">
+                                    {metric === 'approval' ? `${value.toFixed(1)}%` : value.toFixed(1)}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
 
-              {/* Barras - SEMPRE renderizar as 3 */}
-              <Bar yAxisId="left" dataKey={evaluationNames[0] || '1ª Etapa'} name={evaluationNames[0] || '1ª Etapa'} fill={colors.etapa1} radius={[3, 3, 0, 0]}>
-                {chartData.map((_, i) => <Cell key={`b1-${i}`} fill={colors.etapa1} />)}
-              </Bar>
-              <Bar yAxisId="left" dataKey={evaluationNames[1] || '2ª Etapa'} name={evaluationNames[1] || '2ª Etapa'} fill={colors.etapa2} radius={[3, 3, 0, 0]}>
-                {chartData.map((_, i) => <Cell key={`b2-${i}`} fill={colors.etapa2} />)}
-              </Bar>
-              <Bar yAxisId="left" dataKey={evaluationNames[2] || '3ª Etapa'} name={evaluationNames[2] || '3ª Etapa'} fill={colors.etapa3} radius={[3, 3, 0, 0]}>
-                {chartData.map((_, i) => <Cell key={`b3-${i}`} fill={colors.etapa3} />)}
-              </Bar>
+                {/* Barras com labels modernos - primeira coluna sempre no início */}
+                <Bar 
+                  yAxisId="left" 
+                  dataKey={evaluationNames[0] || '1ª Etapa'} 
+                  name={evaluationNames[0] || '1ª Etapa'} 
+                  fill={colors.etapa1} 
+                  radius={8}
+                  stackId="a"
+                >
+                  {chartData.map((_, i) => <Cell key={`b1-${i}`} fill={colors.etapa1} />)}
+                  <LabelList
+                    position="top"
+                    offset={12}
+                    className="fill-foreground"
+                    fontSize={12}
+                    formatter={(value: number) => value ? value.toFixed(1) : ''}
+                  />
+                </Bar>
+                
+                {evaluationNames[1] && (
+                  <Bar 
+                    yAxisId="left" 
+                    dataKey={evaluationNames[1]} 
+                    name={evaluationNames[1]} 
+                    fill={colors.etapa2} 
+                    radius={8}
+                    stackId="b"
+                  >
+                    {chartData.map((_, i) => <Cell key={`b2-${i}`} fill={colors.etapa2} />)}
+                    <LabelList
+                      position="top"
+                      offset={12}
+                      className="fill-foreground"
+                      fontSize={12}
+                      formatter={(value: number) => value ? value.toFixed(1) : ''}
+                    />
+                  </Bar>
+                )}
+                
+                {evaluationNames[2] && (
+                  <Bar 
+                    yAxisId="left" 
+                    dataKey={evaluationNames[2]} 
+                    name={evaluationNames[2]} 
+                    fill={colors.etapa3} 
+                    radius={8}
+                    stackId="c"
+                  >
+                    {chartData.map((_, i) => <Cell key={`b3-${i}`} fill={colors.etapa3} />)}
+                    <LabelList
+                      position="top"
+                      offset={12}
+                      className="fill-foreground"
+                      fontSize={12}
+                      formatter={(value: number) => value ? value.toFixed(1) : ''}
+                    />
+                  </Bar>
+                )}
 
-              {/* Linhas de variação */}
-              {showVariation && (
-                <>
-                  <Line
-                    yAxisId="right"
-                    type="monotone"
-                    dataKey="Variação 1→2"
-                    name="Variação 1→2"
-                    stroke="#0891b2"
-                    strokeWidth={2.5}
-                    dot={VariationDot('Variação 1→2')}
-                    connectNulls
-                  />
-                  <Line
-                    yAxisId="right"
-                    type="monotone"
-                    dataKey="Variação 2→3"
-                    name="Variação 2→3"
-                    stroke="#0ea5e9"
-                    strokeWidth={2.5}
-                    dot={VariationDot('Variação 2→3')}
-                    connectNulls
-                  />
-                </>
-              )}
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        )}
 
         {/* Legenda enxuta */}
         <div className="mt-4 flex flex-wrap gap-4 text-sm">
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded" style={{ backgroundColor: colors.etapa1 }} />
-            {evaluationNames[0] || '1ª Etapa'}
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded" style={{ backgroundColor: colors.etapa2 }} />
-            {evaluationNames[1] || '2ª Etapa'}
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded" style={{ backgroundColor: colors.etapa3 }} />
-            {evaluationNames[2] || '3ª Etapa'}
-          </div>
-          {showVariation && (
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1">
-                <div className="w-4 h-4 rounded-full bg-green-500 flex items-center justify-center">
-                  <span className="text-white text-xs font-bold">↗</span>
-                </div>
-                <span className="text-xs text-green-600">Aumento</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-4 h-4 rounded-full bg-red-500 flex items-center justify-center">
-                  <span className="text-white text-xs font-bold">↘</span>
-                </div>
-                <span className="text-xs text-red-600">Queda</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-4 h-4 rounded-full bg-gray-500 flex items-center justify-center">
-                  <span className="text-white text-xs font-bold">→</span>
-                </div>
-                <span className="text-xs text-gray-600">Estável</span>
-              </div>
+          {evaluationNames[0] && (
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded" style={{ backgroundColor: colors.etapa1 }} />
+              {evaluationNames[0]}
+            </div>
+          )}
+          {evaluationNames[1] && (
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded" style={{ backgroundColor: colors.etapa2 }} />
+              {evaluationNames[1]}
+            </div>
+          )}
+          {evaluationNames[2] && (
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded" style={{ backgroundColor: colors.etapa3 }} />
+              {evaluationNames[2]}
             </div>
           )}
         </div>

@@ -67,19 +67,19 @@ const getStatusConfig = (status: 'concluida' | 'em_andamento' | 'pendente' | str
   const configs: Record<string, { label: string; color: string }> = {
     concluida: {
       label: "Concluída",
-      color: "bg-green-100 text-green-800 border-green-300"
+      color: "bg-green-100 dark:bg-green-950/30 text-green-800 dark:text-green-400 border-green-300 dark:border-green-800"
     },
     em_andamento: {
       label: "Em Andamento",
-      color: "bg-blue-100 text-blue-800 border-blue-300"
+      color: "bg-blue-100 dark:bg-blue-950/30 text-blue-800 dark:text-blue-400 border-blue-300 dark:border-blue-800"
     },
     pendente: {
       label: "Pendente",
-      color: "bg-gray-100 text-gray-800 border-gray-300"
+      color: "bg-muted text-muted-foreground border-border"
     },
     agendada: {
       label: "Agendada",
-      color: "bg-yellow-50 text-yellow-600 border-yellow-200"
+      color: "bg-yellow-50 dark:bg-yellow-950/30 text-yellow-600 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800"
     },
     'concluído': {
       label: "Concluída",
@@ -99,13 +99,13 @@ const getStatusConfig = (status: 'concluida' | 'em_andamento' | 'pendente' | str
     },
     'agendado': {
       label: "Agendada",
-      color: "bg-yellow-50 text-yellow-600 border-yellow-200"
+      color: "bg-yellow-50 dark:bg-yellow-950/30 text-yellow-600 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800"
     }
   };
 
   const config = configs[status] || {
     label: "Desconhecido",
-    color: "bg-gray-100 text-gray-800 border-gray-300"
+    color: "bg-muted text-muted-foreground border-border"
   };
 
   return config;
@@ -352,8 +352,8 @@ export default function AnaliseAvaliacoes() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Análise das Avaliações</h1>
-          <p className="text-gray-600 mt-2">
+          <h1 className="text-3xl font-bold text-foreground">Análise das Avaliações</h1>
+          <p className="text-muted-foreground mt-2">
             Análise detalhada das avaliações do seu município
           </p>
           {user?.role && (
@@ -395,13 +395,13 @@ export default function AnaliseAvaliacoes() {
       {!allRequiredFiltersSelected && !isLoading && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-              <Filter className="h-8 w-8 text-gray-400" />
+            <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+              <Filter className="h-8 w-8 text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
+            <h3 className="text-lg font-medium text-foreground mb-2">
               Selecione todos os filtros para continuar
             </h3>
-            <p className="text-gray-600 text-center max-w-md">
+            <p className="text-muted-foreground text-center max-w-md">
               Para visualizar a análise das avaliações, você precisa selecionar: <strong>Estado</strong>, <strong>Município</strong> e <strong>Avaliação</strong>. A <strong>Escola</strong> pode ser "Todas" para ver todas as escolas do município.
             </p>
           </CardContent>
@@ -413,7 +413,7 @@ export default function AnaliseAvaliacoes() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mb-4" />
-            <p className="text-gray-600">Carregando dados da análise...</p>
+            <p className="text-muted-foreground">Carregando dados da análise...</p>
           </CardContent>
         </Card>
       )}
@@ -453,7 +453,7 @@ export default function AnaliseAvaliacoes() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <h4 className="text-lg font-medium mb-2">{apiData.avaliacao.titulo}</h4>
-                  <p className="text-gray-600">{apiData.avaliacao.descricao}</p>
+                  <p className="text-muted-foreground">{apiData.avaliacao.descricao}</p>
                 </div>
                 <div>
                   <h5 className="font-medium mb-2">Disciplinas:</h5>
@@ -479,32 +479,32 @@ export default function AnaliseAvaliacoes() {
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
-                <table className="w-full border-collapse border border-gray-300">
+                <table className="w-full border-collapse border border-border">
                   <thead>
-                    <tr className="bg-gray-50">
-                      <th className="border border-gray-300 px-4 py-2 text-left font-medium">Série/Turno</th>
-                      <th className="border border-gray-300 px-4 py-2 text-center font-medium">Matriculados</th>
-                      <th className="border border-gray-300 px-4 py-2 text-center font-medium">Avaliados</th>
-                      <th className="border border-gray-300 px-4 py-2 text-center font-medium">Percentual</th>
-                      <th className="border border-gray-300 px-4 py-2 text-center font-medium">Faltosos</th>
+                    <tr className="bg-muted">
+                      <th className="border border-border px-4 py-2 text-left font-medium">Série/Turno</th>
+                      <th className="border border-border px-4 py-2 text-center font-medium">Matriculados</th>
+                      <th className="border border-border px-4 py-2 text-center font-medium">Avaliados</th>
+                      <th className="border border-border px-4 py-2 text-center font-medium">Percentual</th>
+                      <th className="border border-border px-4 py-2 text-center font-medium">Faltosos</th>
                     </tr>
                   </thead>
                   <tbody>
                     {apiData.total_alunos.por_turma?.map((turma, index: number) => (
-                      <tr key={index} className="hover:bg-gray-50">
-                        <td className="border border-gray-300 px-4 py-2">{turma.turma}</td>
-                        <td className="border border-gray-300 px-4 py-2 text-center">{turma.matriculados}</td>
-                        <td className="border border-gray-300 px-4 py-2 text-center">{turma.avaliados}</td>
-                        <td className="border border-gray-300 px-4 py-2 text-center">{turma.percentual}%</td>
-                        <td className="border border-gray-300 px-4 py-2 text-center">{turma.faltosos}</td>
+                      <tr key={index} className="hover:bg-muted transition-colors">
+                        <td className="border border-border px-4 py-2">{turma.turma}</td>
+                        <td className="border border-border px-4 py-2 text-center">{turma.matriculados}</td>
+                        <td className="border border-border px-4 py-2 text-center">{turma.avaliados}</td>
+                        <td className="border border-border px-4 py-2 text-center">{turma.percentual}%</td>
+                        <td className="border border-border px-4 py-2 text-center">{turma.faltosos}</td>
                       </tr>
                     ))}
-                    <tr className="bg-blue-50 font-semibold">
-                      <td className="border border-gray-300 px-4 py-2">TOTAL GERAL</td>
-                      <td className="border border-gray-300 px-4 py-2 text-center">{apiData.total_alunos.total_geral.matriculados}</td>
-                      <td className="border border-gray-300 px-4 py-2 text-center">{apiData.total_alunos.total_geral.avaliados}</td>
-                      <td className="border border-gray-300 px-4 py-2 text-center">{apiData.total_alunos.total_geral.percentual}%</td>
-                      <td className="border border-gray-300 px-4 py-2 text-center">{apiData.total_alunos.total_geral.faltosos}</td>
+                    <tr className="bg-blue-50 dark:bg-blue-950/30 font-semibold">
+                      <td className="border border-border px-4 py-2">TOTAL GERAL</td>
+                      <td className="border border-border px-4 py-2 text-center">{apiData.total_alunos.total_geral.matriculados}</td>
+                      <td className="border border-border px-4 py-2 text-center">{apiData.total_alunos.total_geral.avaliados}</td>
+                      <td className="border border-border px-4 py-2 text-center">{apiData.total_alunos.total_geral.percentual}%</td>
+                      <td className="border border-border px-4 py-2 text-center">{apiData.total_alunos.total_geral.faltosos}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -524,39 +524,39 @@ export default function AnaliseAvaliacoes() {
                <div className="space-y-8">
                  {Object.entries(apiData.niveis_aprendizagem).map(([disciplina, dadosDisciplina]) => (
                    <div key={disciplina} className="space-y-4">
-                     <h4 className="text-xl font-bold text-gray-800 text-center uppercase">
+                     <h4 className="text-xl font-bold text-foreground text-center uppercase">
                        {disciplina}
                      </h4>
                      <div className="overflow-x-auto">
-                       <table className="w-full border-collapse border border-gray-300">
+                       <table className="w-full border-collapse border border-border">
                          <thead>
-                           <tr className="bg-gray-50">
-                             <th className="border border-gray-300 px-4 py-2 text-left font-medium">Turma</th>
-                             <th className="border border-gray-300 px-4 py-2 text-center font-medium bg-red-100">Abaixo do Básico</th>
-                             <th className="border border-gray-300 px-4 py-2 text-center font-medium bg-yellow-100">Básico</th>
-                             <th className="border border-gray-300 px-4 py-2 text-center font-medium bg-blue-100">Adequado</th>
-                             <th className="border border-gray-300 px-4 py-2 text-center font-medium bg-green-100">Avançado</th>
-                             <th className="border border-gray-300 px-4 py-2 text-center font-medium">Total</th>
+                           <tr className="bg-muted">
+                             <th className="border border-border px-4 py-2 text-left font-medium">Turma</th>
+                             <th className="border border-border px-4 py-2 text-center font-medium bg-red-100 dark:bg-red-950/30">Abaixo do Básico</th>
+                             <th className="border border-border px-4 py-2 text-center font-medium bg-yellow-100 dark:bg-yellow-950/30">Básico</th>
+                             <th className="border border-border px-4 py-2 text-center font-medium bg-blue-100 dark:bg-blue-950/30">Adequado</th>
+                             <th className="border border-border px-4 py-2 text-center font-medium bg-green-100 dark:bg-green-950/30">Avançado</th>
+                             <th className="border border-border px-4 py-2 text-center font-medium">Total</th>
                            </tr>
                          </thead>
                          <tbody>
                            {dadosDisciplina.por_turma?.map((turma, index: number) => (
-                             <tr key={index} className="hover:bg-gray-50">
-                               <td className="border border-gray-300 px-4 py-2 font-medium">{turma.turma}</td>
-                               <td className="border border-gray-300 px-4 py-2 text-center bg-red-50">{turma.abaixo_do_basico}</td>
-                               <td className="border border-gray-300 px-4 py-2 text-center bg-yellow-50">{turma.basico}</td>
-                               <td className="border border-gray-300 px-4 py-2 text-center bg-blue-50">{turma.adequado}</td>
-                               <td className="border border-gray-300 px-4 py-2 text-center bg-green-50">{turma.avancado}</td>
-                               <td className="border border-gray-300 px-4 py-2 text-center font-medium">{turma.total}</td>
+                             <tr key={index} className="hover:bg-muted transition-colors">
+                               <td className="border border-border px-4 py-2 font-medium">{turma.turma}</td>
+                               <td className="border border-border px-4 py-2 text-center bg-red-50 dark:bg-red-950/20">{turma.abaixo_do_basico}</td>
+                               <td className="border border-border px-4 py-2 text-center bg-yellow-50 dark:bg-yellow-950/20">{turma.basico}</td>
+                               <td className="border border-border px-4 py-2 text-center bg-blue-50 dark:bg-blue-950/20">{turma.adequado}</td>
+                               <td className="border border-border px-4 py-2 text-center bg-green-50 dark:bg-green-950/20">{turma.avancado}</td>
+                               <td className="border border-border px-4 py-2 text-center font-medium">{turma.total}</td>
                              </tr>
                            ))}
-                           <tr className="bg-blue-50 font-semibold">
-                             <td className="border border-gray-300 px-4 py-2">TOTAL GERAL</td>
-                             <td className="border border-gray-300 px-4 py-2 text-center bg-red-100">{dadosDisciplina.geral.abaixo_do_basico}</td>
-                             <td className="border border-gray-300 px-4 py-2 text-center bg-yellow-100">{dadosDisciplina.geral.basico}</td>
-                             <td className="border border-gray-300 px-4 py-2 text-center bg-blue-100">{dadosDisciplina.geral.adequado}</td>
-                             <td className="border border-gray-300 px-4 py-2 text-center bg-green-100">{dadosDisciplina.geral.avancado}</td>
-                             <td className="border border-gray-300 px-4 py-2 text-center">{dadosDisciplina.geral.total}</td>
+                           <tr className="bg-blue-50 dark:bg-blue-950/30 font-semibold">
+                             <td className="border border-border px-4 py-2">TOTAL GERAL</td>
+                             <td className="border border-border px-4 py-2 text-center bg-red-100 dark:bg-red-950/30">{dadosDisciplina.geral.abaixo_do_basico}</td>
+                             <td className="border border-border px-4 py-2 text-center bg-yellow-100 dark:bg-yellow-950/30">{dadosDisciplina.geral.basico}</td>
+                             <td className="border border-border px-4 py-2 text-center bg-blue-100 dark:bg-blue-950/30">{dadosDisciplina.geral.adequado}</td>
+                             <td className="border border-border px-4 py-2 text-center bg-green-100 dark:bg-green-950/30">{dadosDisciplina.geral.avancado}</td>
+                             <td className="border border-border px-4 py-2 text-center">{dadosDisciplina.geral.total}</td>
                            </tr>
                          </tbody>
                        </table>
@@ -579,32 +579,32 @@ export default function AnaliseAvaliacoes() {
                <div className="space-y-8">
                  {Object.entries(apiData.proficiencia.por_disciplina).map(([disciplina, dadosDisciplina]) => (
                    <div key={disciplina} className="space-y-4">
-                     <h4 className="text-xl font-bold text-gray-800 text-center uppercase">
+                     <h4 className="text-xl font-bold text-foreground text-center uppercase">
                        {disciplina}
                      </h4>
                      <div className="overflow-x-auto">
-                       <table className="w-full border-collapse border border-gray-300">
+                       <table className="w-full border-collapse border border-border">
                          <thead>
-                           <tr className="bg-gray-50">
-                             <th className="border border-gray-300 px-4 py-2 text-left font-medium">Turma</th>
-                             <th className="border border-gray-300 px-4 py-2 text-center font-medium">Proficiência</th>
+                           <tr className="bg-muted">
+                             <th className="border border-border px-4 py-2 text-left font-medium">Turma</th>
+                             <th className="border border-border px-4 py-2 text-center font-medium">Proficiência</th>
                            </tr>
                          </thead>
                          <tbody>
                            {dadosDisciplina.por_turma?.map((turma, index: number) => (
-                             <tr key={index} className="hover:bg-gray-50">
-                               <td className="border border-gray-300 px-4 py-2 font-medium">{turma.turma}</td>
-                               <td className="border border-gray-300 px-4 py-2 text-center">{turma.proficiencia.toFixed(2)}</td>
+                             <tr key={index} className="hover:bg-muted transition-colors">
+                               <td className="border border-border px-4 py-2 font-medium">{turma.turma}</td>
+                               <td className="border border-border px-4 py-2 text-center">{turma.proficiencia.toFixed(2)}</td>
                              </tr>
                            ))}
-                           <tr className="bg-blue-50 font-semibold">
-                             <td className="border border-gray-300 px-4 py-2">MÉDIA GERAL</td>
-                             <td className="border border-gray-300 px-4 py-2 text-center">{dadosDisciplina.media_geral.toFixed(2)}</td>
+                           <tr className="bg-blue-50 dark:bg-blue-950/30 font-semibold">
+                             <td className="border border-border px-4 py-2">MÉDIA GERAL</td>
+                             <td className="border border-border px-4 py-2 text-center">{dadosDisciplina.media_geral.toFixed(2)}</td>
                            </tr>
                            {disciplina !== 'GERAL' && (
-                             <tr className="bg-green-50 font-semibold">
-                               <td className="border border-gray-300 px-4 py-2">MÉDIA MUNICIPAL</td>
-                               <td className="border border-gray-300 px-4 py-2 text-center">{apiData.proficiencia.media_municipal_por_disciplina[disciplina]?.toFixed(2) || 'N/A'}</td>
+                             <tr className="bg-green-50 dark:bg-green-950/30 font-semibold">
+                               <td className="border border-border px-4 py-2">MÉDIA MUNICIPAL</td>
+                               <td className="border border-border px-4 py-2 text-center">{apiData.proficiencia.media_municipal_por_disciplina[disciplina]?.toFixed(2) || 'N/A'}</td>
                              </tr>
                            )}
                          </tbody>
@@ -628,32 +628,32 @@ export default function AnaliseAvaliacoes() {
                <div className="space-y-8">
                  {Object.entries(apiData.nota_geral.por_disciplina).map(([disciplina, dadosDisciplina]) => (
                    <div key={disciplina} className="space-y-4">
-                     <h4 className="text-xl font-bold text-gray-800 text-center uppercase">
+                     <h4 className="text-xl font-bold text-foreground text-center uppercase">
                        {disciplina}
                      </h4>
                      <div className="overflow-x-auto">
-                       <table className="w-full border-collapse border border-gray-300">
+                       <table className="w-full border-collapse border border-border">
                          <thead>
-                           <tr className="bg-gray-50">
-                             <th className="border border-gray-300 px-4 py-2 text-left font-medium">Turma</th>
-                             <th className="border border-gray-300 px-4 py-2 text-center font-medium">Nota</th>
+                           <tr className="bg-muted">
+                             <th className="border border-border px-4 py-2 text-left font-medium">Turma</th>
+                             <th className="border border-border px-4 py-2 text-center font-medium">Nota</th>
                            </tr>
                          </thead>
                          <tbody>
                            {dadosDisciplina.por_turma?.map((turma, index: number) => (
-                             <tr key={index} className="hover:bg-gray-50">
-                               <td className="border border-gray-300 px-4 py-2 font-medium">{turma.turma}</td>
-                               <td className="border border-gray-300 px-4 py-2 text-center">{turma.nota.toFixed(2)}</td>
+                             <tr key={index} className="hover:bg-muted transition-colors">
+                               <td className="border border-border px-4 py-2 font-medium">{turma.turma}</td>
+                               <td className="border border-border px-4 py-2 text-center">{turma.nota.toFixed(2)}</td>
                              </tr>
                            ))}
-                           <tr className="bg-blue-50 font-semibold">
-                             <td className="border border-gray-300 px-4 py-2">MÉDIA GERAL</td>
-                             <td className="border border-gray-300 px-4 py-2 text-center">{dadosDisciplina.media_geral.toFixed(2)}</td>
+                           <tr className="bg-blue-50 dark:bg-blue-950/30 font-semibold">
+                             <td className="border border-border px-4 py-2">MÉDIA GERAL</td>
+                             <td className="border border-border px-4 py-2 text-center">{dadosDisciplina.media_geral.toFixed(2)}</td>
                            </tr>
                            {disciplina !== 'GERAL' && (
-                             <tr className="bg-green-50 font-semibold">
-                               <td className="border border-gray-300 px-4 py-2">MÉDIA MUNICIPAL</td>
-                               <td className="border border-gray-300 px-4 py-2 text-center">{apiData.nota_geral.media_municipal_por_disciplina[disciplina]?.toFixed(2) || 'N/A'}</td>
+                             <tr className="bg-green-50 dark:bg-green-950/30 font-semibold">
+                               <td className="border border-border px-4 py-2">MÉDIA MUNICIPAL</td>
+                               <td className="border border-border px-4 py-2 text-center">{apiData.nota_geral.media_municipal_por_disciplina[disciplina]?.toFixed(2) || 'N/A'}</td>
                              </tr>
                            )}
                          </tbody>
@@ -677,37 +677,37 @@ export default function AnaliseAvaliacoes() {
                 <div className="space-y-8">
                   {Object.entries(apiData.acertos_por_habilidade).map(([disciplina, dadosDisciplina]) => (
                     <div key={disciplina} className="space-y-4">
-                      <h4 className="text-xl font-bold text-gray-800 text-center uppercase">
+                      <h4 className="text-xl font-bold text-foreground text-center uppercase">
                         {disciplina}
                       </h4>
                       
                       {/* Grid de questões */}
-                      <div className="grid grid-cols-13 gap-0 border border-gray-300">
+                      <div className="grid grid-cols-13 gap-0 border border-border">
                         {dadosDisciplina.questoes && dadosDisciplina.questoes.length > 0 ? dadosDisciplina.questoes.map((questao, index: number) => (
                           <div key={index} className="flex flex-col">
                             {/* Header da questão */}
-                            <div className="bg-blue-600 text-white text-center py-2 px-1 text-sm font-medium border-r border-gray-300 last:border-r-0">
+                            <div className="bg-blue-600 dark:bg-blue-700 text-white text-center py-2 px-1 text-sm font-medium border-r border-border last:border-r-0">
                               {questao.numero_questao}ª Q
                             </div>
                             
                             {/* Código da habilidade */}
-                            <div className="bg-yellow-400 text-black text-center py-2 px-1 text-sm font-medium border-r border-gray-300 last:border-r-0 border-t border-gray-300">
+                            <div className="bg-yellow-400 dark:bg-yellow-600 text-black dark:text-white text-center py-2 px-1 text-sm font-medium border-r border-border last:border-r-0 border-t border-border">
                               {questao.codigo}
                             </div>
                             
                             {/* Percentual com cor baseada no valor */}
                             <div 
-                              className={`text-center py-2 px-1 text-sm font-medium border-r border-gray-300 last:border-r-0 border-t border-gray-300 ${
+                              className={`text-center py-2 px-1 text-sm font-medium border-r border-border last:border-r-0 border-t border-border ${
                                 questao.percentual >= 70 
-                                  ? 'bg-green-500 text-white' 
-                                  : 'bg-white text-black'
+                                  ? 'bg-green-500 dark:bg-green-600 text-white' 
+                                  : 'bg-card text-foreground'
                               }`}
                             >
                               {questao.percentual}%
                             </div>
                           </div>
                         )) : (
-                          <div className="col-span-13 text-center py-8 text-gray-500">
+                          <div className="col-span-13 text-center py-8 text-muted-foreground">
                             Nenhuma questão encontrada para esta disciplina.
                           </div>
                         )}
@@ -716,11 +716,11 @@ export default function AnaliseAvaliacoes() {
                       {/* Legenda */}
                       <div className="flex justify-center gap-6 text-sm">
                         <div className="flex items-center gap-2">
-                          <div className="w-4 h-4 bg-green-500 border border-gray-300"></div>
+                          <div className="w-4 h-4 bg-green-500 dark:bg-green-600 border border-border"></div>
                           <span>≥ 70%</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <div className="w-4 h-4 bg-white border border-gray-300"></div>
+                          <div className="w-4 h-4 bg-card border border-border"></div>
                           <span>&lt; 70%</span>
                         </div>
                       </div>

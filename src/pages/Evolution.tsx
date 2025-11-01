@@ -269,6 +269,12 @@ export default function Evolution() {
     loadMunicipalities();
   }, [selectedState, toast]);
 
+  // Resetar município quando estado mudar, mas manter avaliações selecionadas
+  useEffect(() => {
+    setSelectedMunicipality('all');
+    setSelectedSchool('all');
+  }, [selectedState]);
+
   // Carregar avaliações quando município for selecionado usando nova API
   useEffect(() => {
     const loadEvaluations = async () => {
@@ -362,6 +368,7 @@ export default function Evolution() {
       // Processar dados para os gráficos
       const processed = processComparisonData(comparison);
       setProcessedData(processed);
+      // Visibilidade de gráficos agora é controlada localmente em EvolutionCharts
 
       toast({
         title: "Comparação realizada com sucesso!",
@@ -400,6 +407,8 @@ export default function Evolution() {
     }
   };
 
+  // Controles de visibilidade agora são por gráfico, definidos em EvolutionCharts
+
   // Função para formatar data
   const formatDate = (dateString: string) => {
     try {
@@ -410,7 +419,7 @@ export default function Evolution() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+    <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8 space-y-8">
         {/* Header com design melhorado */}
         <div className="text-center space-y-4">
@@ -420,7 +429,7 @@ export default function Evolution() {
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
             Análise de Evolução
           </h1>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             Compare múltiplas avaliações e acompanhe a evolução dos resultados ao longo do tempo com insights detalhados.
           </p>
         </div>
@@ -448,15 +457,15 @@ export default function Evolution() {
         </div>
 
         {/* Filtros com design melhorado */}
-        <Card className="shadow-lg border-0 bg-white/80 backdrop-blur-sm">
+        <Card className="shadow-lg border-0 bg-card/80 backdrop-blur-sm">
           <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
             <CardTitle className="flex items-center gap-3 text-xl">
-              <div className="p-2 bg-white/20 rounded-lg">
+              <div className="p-2 bg-white/20 dark:bg-white/10 rounded-lg">
                 <Filter className="h-6 w-6" />
               </div>
               Configurar Filtros de Busca
             </CardTitle>
-            <CardDescription className="text-blue-100">
+            <CardDescription className="text-blue-100 dark:text-blue-300">
               Selecione os critérios para encontrar as avaliações que deseja comparar
             </CardDescription>
           </CardHeader>
@@ -464,7 +473,7 @@ export default function Evolution() {
             <div className={`grid gap-6 ${selectedEvaluationsForComparison.length >= 2 ? 'grid-cols-1 lg:grid-cols-4' : 'grid-cols-1 lg:grid-cols-3'}`}>
               {/* Estado */}
               <div className="space-y-3">
-                <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                <label className="text-sm font-semibold text-foreground flex items-center gap-2">
                   <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                   Estado
                 </label>
@@ -473,7 +482,7 @@ export default function Evolution() {
                   onValueChange={setSelectedState}
                   disabled={isLoadingFilters}
                 >
-                  <SelectTrigger className="h-12 border-2 border-gray-200 hover:border-blue-300 focus:border-blue-500 transition-colors">
+                  <SelectTrigger className="h-12 border-2 border-border hover:border-blue-300 dark:hover:border-blue-600 focus:border-blue-500 dark:focus:border-blue-400 transition-colors">
                     <SelectValue placeholder="Selecione um estado" />
                   </SelectTrigger>
                   <SelectContent>
@@ -486,7 +495,7 @@ export default function Evolution() {
                   </SelectContent>
                 </Select>
                 {selectedState !== 'all' && (
-                  <div className="text-xs text-green-600 flex items-center gap-1">
+                  <div className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
                     <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
                     Estado selecionado
                   </div>
@@ -495,7 +504,7 @@ export default function Evolution() {
 
               {/* Município */}
               <div className="space-y-3">
-                <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                <label className="text-sm font-semibold text-foreground flex items-center gap-2">
                   <div className="w-2 h-2 bg-indigo-500 rounded-full"></div>
                   Município
                 </label>
@@ -504,7 +513,7 @@ export default function Evolution() {
                   onValueChange={setSelectedMunicipality}
                   disabled={isLoadingFilters || selectedState === 'all'}
                 >
-                  <SelectTrigger className="h-12 border-2 border-gray-200 hover:border-indigo-300 focus:border-indigo-500 transition-colors">
+                  <SelectTrigger className="h-12 border-2 border-border hover:border-indigo-300 dark:hover:border-indigo-600 focus:border-indigo-500 dark:focus:border-indigo-400 transition-colors">
                     <SelectValue placeholder={
                       isLoadingFilters ? "Carregando..." : 
                       selectedState === 'all' ? "Selecione o estado primeiro" :
@@ -521,13 +530,13 @@ export default function Evolution() {
                   </SelectContent>
                 </Select>
                 {isLoadingFilters && selectedState !== 'all' && (
-                  <div className="text-xs text-blue-600 flex items-center gap-1">
+                  <div className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1">
                     <RefreshCw className="h-3 w-3 animate-spin" />
                     Carregando municípios...
                   </div>
                 )}
                 {selectedMunicipality !== 'all' && selectedState !== 'all' && (
-                  <div className="text-xs text-green-600 flex items-center gap-1">
+                  <div className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
                     <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
                     Município selecionado
                   </div>
@@ -537,10 +546,10 @@ export default function Evolution() {
               {/* Escola - Mostrar apenas quando houver 2+ avaliações selecionadas */}
               {selectedEvaluationsForComparison.length >= 2 && (
                 <div className="space-y-3">
-                  <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <label className="text-sm font-semibold text-foreground flex items-center gap-2">
                     <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
                     Escola (Opcional)
-                    <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                    <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
                       Filtro opcional
                     </span>
                   </label>
@@ -549,7 +558,7 @@ export default function Evolution() {
                     onValueChange={setSelectedSchool}
                     disabled={isLoadingFilters || selectedMunicipality === 'all'}
                   >
-                    <SelectTrigger className="h-12 border-2 border-gray-200 hover:border-purple-300 focus:border-purple-500 transition-colors">
+                    <SelectTrigger className="h-12 border-2 border-border hover:border-purple-300 dark:hover:border-purple-600 focus:border-purple-500 dark:focus:border-purple-400 transition-colors">
                       <SelectValue placeholder={
                         isLoadingFilters ? "Carregando..." : 
                         selectedMunicipality === 'all' ? "Selecione o município primeiro" :
@@ -566,12 +575,12 @@ export default function Evolution() {
                     </SelectContent>
                   </Select>
                   {selectedSchool !== 'all' && selectedMunicipality !== 'all' && (
-                    <div className="text-xs text-green-600 flex items-center gap-1">
+                    <div className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
                       <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
                       Escola selecionada
                     </div>
                   )}
-                  <div className="text-xs text-blue-600 flex items-center gap-1">
+                  <div className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1">
                     <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
                     Filtro opcional - pode comparar sem selecionar escola
                   </div>
@@ -581,18 +590,18 @@ export default function Evolution() {
 
             {/* Seção de Avaliações com design profissional */}
             {selectedState !== 'all' && selectedMunicipality !== 'all' && (
-              <div className="mt-8 pt-6 border-t border-gray-200">
+              <div className="mt-8 pt-6 border-t border-border">
                 <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-lg">
                     <Target className="h-5 w-5 text-white" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900">Avaliações Disponíveis</h3>
-                    <p className="text-sm text-gray-600">
+                    <h3 className="text-lg font-semibold text-foreground">Avaliações Disponíveis</h3>
+                    <p className="text-sm text-muted-foreground">
                       Selecione as avaliações para comparação
                       {selectedEvaluationsForComparison.length >= 2 && (
-                        <span className="ml-2 text-blue-600 font-medium">
+                        <span className="ml-2 text-blue-600 dark:text-blue-400 font-medium">
                           • Filtro de escolas disponível
                         </span>
                       )}
@@ -601,13 +610,13 @@ export default function Evolution() {
                 </div>
                   <div className="flex items-center gap-3">
                     {isLoadingFilters && (
-                      <div className="flex items-center gap-2 text-blue-600">
+                      <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
                         <RefreshCw className="h-4 w-4 animate-spin" />
                         <span className="text-sm">Carregando...</span>
                       </div>
                     )}
                     {!isLoadingFilters && availableEvaluationsForPicker.length > 0 && (
-                      <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                      <Badge variant="outline" className="bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800">
                         {availableEvaluationsForPicker.length} encontrada(s)
                       </Badge>
                     )}
@@ -615,10 +624,10 @@ export default function Evolution() {
                 </div>
 
                 {isLoadingFilters ? (
-                  <div className="flex items-center justify-center py-12 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50/50">
+                  <div className="flex items-center justify-center py-12 border-2 border-dashed border-border rounded-xl bg-muted/50">
                     <div className="text-center">
-                      <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-3" />
-                      <p className="text-sm text-gray-600">Carregando avaliações...</p>
+                      <RefreshCw className="h-8 w-8 animate-spin text-blue-600 dark:text-blue-400 mx-auto mb-3" />
+                      <p className="text-sm text-muted-foreground">Carregando avaliações...</p>
                     </div>
                   </div>
                 ) : availableEvaluationsForPicker.length > 0 ? (
@@ -632,10 +641,10 @@ export default function Evolution() {
                           key={evaluation.id} 
                           className={`group relative p-4 rounded-xl border-2 transition-all duration-200 ${
                             isAlreadyAdded 
-                              ? 'bg-gradient-to-br from-green-50 to-emerald-50 border-green-300 shadow-green-100 shadow-lg' 
+                              ? 'bg-gradient-to-br from-green-50 dark:from-green-950/30 to-emerald-50 dark:to-emerald-950/30 border-green-300 dark:border-green-800 shadow-green-100 dark:shadow-green-950/30 shadow-lg' 
                               : isInvalid
-                              ? 'bg-gradient-to-br from-red-50 to-rose-50 border-red-300 opacity-60'
-                              : 'bg-white border-gray-200 hover:border-blue-300 hover:shadow-lg hover:shadow-blue-100'
+                              ? 'bg-gradient-to-br from-red-50 dark:from-red-950/30 to-rose-50 dark:to-rose-950/30 border-red-300 dark:border-red-800 opacity-60'
+                              : 'bg-card border-border hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-lg hover:shadow-blue-100 dark:hover:shadow-blue-950/30'
                           }`}
                         >
                           {/* Status indicator */}
@@ -649,21 +658,21 @@ export default function Evolution() {
                                 <AlertCircle className="h-4 w-4 text-white" />
                               </div>
                             ) : (
-                              <div className="w-6 h-6 bg-gray-300 rounded-full group-hover:bg-blue-500 transition-colors"></div>
+                              <div className="w-6 h-6 bg-muted rounded-full group-hover:bg-blue-500 dark:group-hover:bg-blue-600 transition-colors"></div>
                             )}
                           </div>
 
                           <div className="pr-8">
-                            <h4 className="font-semibold text-gray-900 text-sm leading-tight mb-2">
+                            <h4 className="font-semibold text-foreground text-sm leading-tight mb-2">
                               {evaluation.titulo}
                             </h4>
                             <div className="space-y-1">
-                              <div className="flex items-center gap-2 text-xs text-gray-600">
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                 <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
                                 {formatDate(evaluation.data_aplicacao)}
                               </div>
                               {isInvalid && (
-                                <div className="flex items-center gap-1 text-xs text-red-600">
+                                <div className="flex items-center gap-1 text-xs text-red-600 dark:text-red-400">
                                   <AlertCircle className="h-3 w-3" />
                                   Sem resultados calculados
                                 </div>
@@ -676,7 +685,7 @@ export default function Evolution() {
                               <Button 
                                 size="sm" 
                                 variant="outline" 
-                                className="w-full bg-green-100 text-green-800 border-green-300 hover:bg-green-200"
+                                className="w-full bg-green-100 dark:bg-green-950/30 text-green-800 dark:text-green-400 border-green-300 dark:border-green-800 hover:bg-green-200 dark:hover:bg-green-950/40"
                                 disabled
                               >
                                 <Check className="h-4 w-4 mr-2" />
@@ -690,7 +699,7 @@ export default function Evolution() {
                                 disabled={isInvalid}
                                 className={`w-full ${
                                   isInvalid 
-                                    ? 'bg-gray-100 text-gray-500 border-gray-300' 
+                                    ? 'bg-muted text-muted-foreground border-border' 
                                     : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white'
                                 }`}
                               >
@@ -704,12 +713,12 @@ export default function Evolution() {
                     })}
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center py-12 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50/50">
-                    <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mb-4">
-                      <TrendingUp className="h-8 w-8 text-gray-400" />
+                  <div className="flex flex-col items-center justify-center py-12 border-2 border-dashed border-border rounded-xl bg-muted/50">
+                    <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                      <TrendingUp className="h-8 w-8 text-muted-foreground" />
                     </div>
-                    <h4 className="text-lg font-medium text-gray-900 mb-2">Nenhuma avaliação encontrada</h4>
-                    <p className="text-sm text-gray-600 text-center max-w-sm">
+                    <h4 className="text-lg font-medium text-foreground mb-2">Nenhuma avaliação encontrada</h4>
+                    <p className="text-sm text-muted-foreground text-center max-w-sm">
                       Tente ajustar os filtros ou verifique se existem avaliações para os critérios selecionados.
                     </p>
                   </div>
@@ -721,17 +730,17 @@ export default function Evolution() {
 
         {/* Card de Avaliações Selecionadas com design profissional */}
         {selectedEvaluationsForComparison.length > 0 && (
-          <Card className="shadow-lg border-0 bg-white/90 backdrop-blur-sm">
+          <Card className="shadow-lg border-0 bg-card/90 backdrop-blur-sm">
             <CardHeader className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-t-lg">
               <CardTitle className="flex items-center justify-between text-xl">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-white/20 rounded-lg">
+                  <div className="p-2 bg-white/20 dark:bg-white/10 rounded-lg">
                     <Users className="h-6 w-6" />
                   </div>
                   <span>Avaliações Selecionadas</span>
                 </div>
-                <Badge variant="secondary" className="bg-white/20 text-white border-white/30">
-                  {selectedEvaluationsForComparison.length} avaliação(ões)
+                <Badge variant="secondary" className="bg-white/20 dark:bg-white/10 text-white border-white/30 dark:border-white/20">
+                  {selectedEvaluationsForComparison.length} avaliações
                 </Badge>
               </CardTitle>
             </CardHeader>
@@ -740,7 +749,7 @@ export default function Evolution() {
                 {selectedEvaluationsForComparison.map((evaluation, index) => (
                   <div 
                     key={evaluation.id} 
-                    className="group relative p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200 hover:border-blue-300 transition-all duration-200"
+                    className="group relative p-4 bg-gradient-to-br from-blue-50 dark:from-blue-950/30 to-indigo-50 dark:to-indigo-950/30 rounded-xl border-2 border-blue-200 dark:border-blue-800 hover:border-blue-300 dark:hover:border-blue-600 transition-all duration-200"
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3 flex-1">
@@ -748,10 +757,10 @@ export default function Evolution() {
                           {index + 1}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h4 className="font-semibold text-gray-900 text-sm leading-tight mb-1">
+                          <h4 className="font-semibold text-foreground text-sm leading-tight mb-1">
                             {evaluation.titulo}
                           </h4>
-                          <div className="flex items-center gap-2 text-xs text-gray-600">
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
                             {formatDate(evaluation.data_aplicacao)}
                           </div>
@@ -761,7 +770,7 @@ export default function Evolution() {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleRemoveEvaluation(evaluation.id)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-red-100 hover:text-red-600"
+                        className="hover:bg-red-100 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400 transition-colors duration-200"
                       >
                         <X className="h-4 w-4" />
                       </Button>
@@ -770,7 +779,7 @@ export default function Evolution() {
                 ))}
               </div>
               
-              <div className="pt-4 border-t border-gray-200">
+              <div className="pt-4 border-t border-border">
                 <Button 
                   className="w-full h-12 text-lg font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-lg hover:shadow-xl transition-all duration-200"
                   onClick={handleCompareEvaluations}
@@ -790,20 +799,20 @@ export default function Evolution() {
                 </Button>
                 
                 {selectedEvaluationsForComparison.length < 2 && (
-                  <p className="text-center text-sm text-gray-500 mt-3">
+                  <p className="text-center text-sm text-muted-foreground mt-3">
                     Selecione pelo menos 2 avaliações para iniciar a comparação
                   </p>
                 )}
                 
                 {selectedEvaluationsForComparison.length >= 2 && schools.length > 0 && (
-                  <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                    <div className="flex items-center gap-2 text-blue-700">
+                  <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+                    <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400">
                       <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                       <span className="text-sm font-medium">
                         Filtro de escolas disponível ({schools.length} escola{schools.length !== 1 ? 's' : ''})
                       </span>
                     </div>
-                    <p className="text-xs text-blue-600 mt-1">
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
                       Você pode opcionalmente filtrar por escola específica ou comparar todas as escolas
                     </p>
                   </div>
@@ -818,7 +827,7 @@ export default function Evolution() {
 
         {/* Loading dos dados com design melhorado */}
         {isLoadingComparison && (
-          <Card className="shadow-lg border-0 bg-white/90 backdrop-blur-sm">
+          <Card className="shadow-lg border-0 bg-card/90 backdrop-blur-sm">
             <CardContent className="flex flex-col items-center justify-center py-16">
               <div className="relative">
                 <div className="w-20 h-20 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full flex items-center justify-center mb-6">
@@ -826,8 +835,8 @@ export default function Evolution() {
                 </div>
                 <div className="absolute -inset-2 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full opacity-20 animate-pulse"></div>
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Processando Análise</h3>
-              <p className="text-gray-600 text-center max-w-md">
+              <h3 className="text-xl font-semibold text-foreground mb-2">Processando Análise</h3>
+              <p className="text-muted-foreground text-center max-w-md">
                 Estamos comparando suas avaliações e gerando insights detalhados. Isso pode levar alguns momentos...
               </p>
             </CardContent>
@@ -836,21 +845,21 @@ export default function Evolution() {
 
         {/* Erro na comparação com design melhorado */}
         {comparisonError && (
-          <Card className="shadow-lg border-0 bg-white/90 backdrop-blur-sm">
+          <Card className="shadow-lg border-0 bg-card/90 backdrop-blur-sm">
             <CardContent className="flex flex-col items-center justify-center py-16">
               <div className="w-20 h-20 bg-gradient-to-r from-red-500 to-rose-500 rounded-full flex items-center justify-center mb-6">
                 <AlertCircle className="h-10 w-10 text-white" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              <h3 className="text-xl font-semibold text-foreground mb-2">
                 Erro na Análise
               </h3>
-              <p className="text-gray-600 text-center max-w-md mb-6">
+              <p className="text-muted-foreground text-center max-w-md mb-6">
                 {comparisonError}
               </p>
               <Button 
                 variant="outline" 
                 onClick={() => setComparisonError(null)}
-                className="border-red-300 text-red-600 hover:bg-red-50"
+                className="border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30"
               >
                 Tentar Novamente
               </Button>

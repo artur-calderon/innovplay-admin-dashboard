@@ -33,13 +33,15 @@ import {
   TrendingUp
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/context/authContext";
 import { Button } from "@/components/ui/button";
 import { useGamesCount } from "@/hooks/useGamesCount";
+import { useUnreadAvisos } from "@/hooks/useUnreadAvisos";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getRoleDisplayName } from "@/lib/constants";
+import { AvatarPreview } from "@/components/profile/AvatarPreview";
 
 type SidebarLink = {
   icon: React.ElementType;
@@ -80,10 +82,40 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
   const currentPath = useLocation().pathname;
   const isMobile = useIsMobile();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [avisoIds, setAvisoIds] = useState<string[]>([]);
 
   const navigate = useNavigate();
   const { logout, user } = useAuth();
   const { gamesCount } = useGamesCount();
+  const { getUnreadCount } = useUnreadAvisos();
+
+  // Carregar IDs dos avisos para calcular não lidos
+  useEffect(() => {
+    const loadAvisoIds = async () => {
+      try {
+        // TODO: Quando API estiver pronta, usar getFilteredAvisos
+        // import { getFilteredAvisos } from '@/services/avisosApi';
+        // const avisos = await getFilteredAvisos({ role: user.role, user_id: user.id });
+        // const ids = avisos.map(a => a.id);
+        // setAvisoIds(ids);
+        
+        // Por enquanto, usando IDs mockados
+        const mockAvisoIds = ['1', '2', '3', '4', '5', '6', '7', '8'];
+        setAvisoIds(mockAvisoIds);
+      } catch (error) {
+        console.error('Erro ao carregar avisos:', error);
+      }
+    };
+
+    if (user.id) {
+      loadAvisoIds();
+    }
+  }, [user.id, user.role]);
+
+  // Calcular avisos não lidos
+  const unreadAvisosCount = useMemo(() => {
+    return getUnreadCount(avisoIds);
+  }, [avisoIds, getUnreadCount]);
 
   function handleLogout() {
     logout().then(() => {
@@ -143,8 +175,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           icon: Gamepad,
           label: "Jogos",
           href: `${user.role === 'aluno' ? "/aluno/jogos" : "/app/jogos"}`,
-          role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"],
-          badge: gamesCount > 0 ? gamesCount.toString() : "0"
+          role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"]
         },
         {
           icon: Tv,
@@ -155,8 +186,8 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         {
           icon: Headset,
           label: "Plantão Online",
-          href: "/app/plantao",
-          role: ["admin", "professor", "tecadm"]
+          href: `${user.role === 'aluno' ? "/aluno/plantao-online" : "/app/plantao"}`,
+          role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"]
         },
       ]
     },
@@ -217,7 +248,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           role: ["admin", "professor", "diretor", "coordenador", "tecadm"]
         },
         { icon: Calculator, label: "Calculadora SAEB", href: "/app/calculadora-saeb", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
-        { icon: ClipboardCheck, label: "Correção", href: "/app/avaliacoes/correcao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"], badge: "3" },
+        { icon: ClipboardCheck, label: "Correção", href: "/app/avaliacoes/correcao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: BarChart3, label: "Resultados", href: "/app/resultados", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: TrendingUp, label: "Evolução", href: "/app/evolucao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         {
@@ -270,8 +301,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           icon: Trophy,
           label: "Competições",
           href: `${user.role === 'aluno' ? "/aluno/competicoes" : "/app/competicoes"}`,
-          role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"  ],
-          badge: "2"
+          role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"]
         },
         {
           icon: Award,
@@ -286,23 +316,17 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
       role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"],
       links: [
         {
-          icon: Edit,
-          label: "Editar Perfil",
-          href: `${user.role === 'aluno' ? "/aluno/perfil" : "/app/perfil"}`,
-          role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"]
-        },
-        {
           icon: Bell,
           label: "Avisos",
           href: `${user.role === 'aluno' ? "/aluno/avisos" : "/app/avisos"}`,
           role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"],
-          badge: "5"
+          badge: unreadAvisosCount > 0 ? unreadAvisosCount.toString() : undefined
         },
         {
           icon: Settings,
           label: "Configurações",
-          href: "/app/configuracoes",
-          role: ["admin", "professor", "diretor", "coordenador", "tecadm"]
+          href: `${user.role === 'aluno' ? "/aluno/configuracoes" : "/app/configuracoes"}`,
+          role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"]
         },
         {
           icon: LogOut,
@@ -316,25 +340,54 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
   ];
 
   // User info component
-  const UserInfo = () => (
-    <div className="p-4 border-b border-white/10">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white font-semibold flex-shrink-0">
-          {user?.name ? user.name.charAt(0).toUpperCase() : "U"}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-white font-medium text-sm truncate">
-            {user?.name || "Usuário"}
-          </p>
+  const UserInfo = () => {
+    const handleProfileClick = () => {
+      navigate(user.role === 'aluno' ? "/aluno/perfil" : "/app/perfil");
+      handleLinkClick();
+    };
 
-
-          <p className="text-white/70 text-xs truncate capitalize">
-            {user?.role ? getRoleDisplayName(user.role) : "Usuário"}
-          </p>
+    return (
+      <div className="p-4 border-b border-white/10">
+        <div className="flex items-center gap-3">
+          {user?.avatar_config ? (
+            <div className="flex-shrink-0">
+              <AvatarPreview config={user.avatar_config} size={40} className="flex-shrink-0" />
+            </div>
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white font-semibold flex-shrink-0">
+              {user?.name ? user.name.charAt(0).toUpperCase() : "U"}
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="text-white font-medium text-sm truncate">
+                {user?.name || "Usuário"}
+              </p>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={handleProfileClick}
+                      className="flex-shrink-0 p-1 hover:bg-white/10 rounded transition-colors"
+                      aria-label="Editar perfil"
+                    >
+                      <Edit className="h-4 w-4 text-white/70 hover:text-white" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    <p>Editar perfil</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+            <p className="text-white/70 text-xs truncate capitalize">
+              {user?.role ? getRoleDisplayName(user.role) : "Usuário"}
+            </p>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // Enhanced menu item component with tooltips and badges
   function RenderMenuItem({
@@ -380,6 +433,11 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         </div>
         {!isCollapsed && (
           <div className="flex items-center gap-2">
+            {link.badge && (
+              <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center">
+                {link.badge}
+              </span>
+            )}
             {hasSubmenu && (
               <ChevronDown
                 size={14}
@@ -390,6 +448,11 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
               />
             )}
           </div>
+        )}
+        {isCollapsed && link.badge && (
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
+            {link.badge}
+          </span>
         )}
       </div>
     );
