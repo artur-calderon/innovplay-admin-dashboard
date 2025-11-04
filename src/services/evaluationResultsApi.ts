@@ -2103,15 +2103,24 @@ export class EvaluationResultsApiService {
   }
 
   // ✅ NOVO: Buscar relatório completo de uma avaliação
-  static async getRelatorioCompleto(evaluationId: string): Promise<RelatorioCompleto> {
+  static async getRelatorioCompleto(
+    evaluationId: string, 
+    options?: { schoolId?: string; cityId?: string }
+  ): Promise<RelatorioCompleto> {
     try {
- 
+      const params = new URLSearchParams();
       
-      const response = await api.get(`/reports/relatorio-completo/${evaluationId}`);
+      // Adicionar parâmetros opcionais baseado no que foi fornecido
+      if (options?.schoolId) {
+        params.append('school_id', options.schoolId);
+      } else if (options?.cityId) {
+        params.append('city_id', options.cityId);
+      }
+      
+      const url = `/reports/dados-json/${evaluationId}${params.toString() ? `?${params.toString()}` : ''}`;
+      
+      const response = await api.get(url);
     
-      
-     
-      
       return response.data;
     } catch (error) {
       console.error('❌ LOG - Erro ao buscar relatório completo:');
