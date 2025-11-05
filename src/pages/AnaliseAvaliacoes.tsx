@@ -130,6 +130,9 @@ export default function AnaliseAvaliacoes() {
   // Estados para hierarquia do usuário
   const [userHierarchyContext, setUserHierarchyContext] = useState<UserHierarchyContext | null>(null);
   const [isLoadingHierarchy, setIsLoadingHierarchy] = useState(true);
+  
+  // Estado para determinar o modo de renderização (escola ou turma)
+  const [renderMode, setRenderMode] = useState<'escola' | 'turma'>('turma');
 
   // Estados dos dados dos filtros (movidos para FilterComponentAnalise)
 
@@ -318,10 +321,22 @@ export default function AnaliseAvaliacoes() {
         try {
           setIsLoadingData(true);
           // Buscar relatório completo da avaliação selecionada
-          const relatorio = await EvaluationResultsApiService.getRelatorioCompleto(selectedEvaluation);
+          // Determinar qual tipo de relatório buscar baseado na seleção da escola
+          const options = selectedSchool !== 'all' 
+            ? { schoolId: selectedSchool }
+            : { cityId: selectedMunicipality };
+          
+          const relatorio = await EvaluationResultsApiService.getRelatorioCompleto(selectedEvaluation, options);
           console.log("📊 Estrutura completa da resposta da API:", relatorio);
           console.log("📊 Estrutura de acertos_por_habilidade:", relatorio.acertos_por_habilidade);
           setApiData(relatorio);
+          
+          // Determinar o modo de renderização baseado nos dados retornados
+          if (relatorio.total_alunos.por_escola && relatorio.total_alunos.por_escola.length > 0) {
+            setRenderMode('escola');
+          } else if (relatorio.total_alunos.por_turma && relatorio.total_alunos.por_turma.length > 0) {
+            setRenderMode('turma');
+          }
         } catch (error) {
           console.error("Erro ao carregar dados:", error);
           toast({
@@ -336,7 +351,7 @@ export default function AnaliseAvaliacoes() {
     };
 
     loadData();
-  }, [allRequiredFiltersSelected, selectedState, selectedMunicipality, selectedEvaluation, toast]);
+  }, [allRequiredFiltersSelected, selectedState, selectedMunicipality, selectedSchool, selectedEvaluation, toast]);
 
   if (isLoading) {
     return (
@@ -474,7 +489,7 @@ export default function AnaliseAvaliacoes() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Users className="h-5 w-5" />
-                Total de Alunos por Turma
+                Total de Alunos {renderMode === 'escola' ? 'por Escola' : 'por Turma'}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -482,7 +497,9 @@ export default function AnaliseAvaliacoes() {
                 <table className="w-full border-collapse border border-border">
                   <thead>
                     <tr className="bg-muted">
-                      <th className="border border-border px-4 py-2 text-left font-medium">Série/Turno</th>
+                      <th className="border border-border px-4 py-2 text-left font-medium">
+                        {renderMode === 'escola' ? 'Escola' : 'Série/Turno'}
+                      </th>
                       <th className="border border-border px-4 py-2 text-center font-medium">Matriculados</th>
                       <th className="border border-border px-4 py-2 text-center font-medium">Avaliados</th>
                       <th className="border border-border px-4 py-2 text-center font-medium">Percentual</th>
@@ -490,15 +507,25 @@ export default function AnaliseAvaliacoes() {
                     </tr>
                   </thead>
                   <tbody>
-                    {apiData.total_alunos.por_turma?.map((turma, index: number) => (
-                      <tr key={index} className="hover:bg-muted transition-colors">
-                        <td className="border border-border px-4 py-2">{turma.turma}</td>
-                        <td className="border border-border px-4 py-2 text-center">{turma.matriculados}</td>
-                        <td className="border border-border px-4 py-2 text-center">{turma.avaliados}</td>
-                        <td className="border border-border px-4 py-2 text-center">{turma.percentual}%</td>
-                        <td className="border border-border px-4 py-2 text-center">{turma.faltosos}</td>
-                      </tr>
-                    ))}
+                    {renderMode === 'escola' 
+                      ? apiData.total_alunos.por_escola?.map((escola, index: number) => (
+                          <tr key={index} className="hover:bg-muted transition-colors">
+                            <td className="border border-border px-4 py-2">{escola.escola}</td>
+                            <td className="border border-border px-4 py-2 text-center">{escola.matriculados}</td>
+                            <td className="border border-border px-4 py-2 text-center">{escola.avaliados}</td>
+                            <td className="border border-border px-4 py-2 text-center">{escola.percentual}%</td>
+                            <td className="border border-border px-4 py-2 text-center">{escola.faltosos}</td>
+                          </tr>
+                        ))
+                      : apiData.total_alunos.por_turma?.map((turma, index: number) => (
+                          <tr key={index} className="hover:bg-muted transition-colors">
+                            <td className="border border-border px-4 py-2">{turma.turma}</td>
+                            <td className="border border-border px-4 py-2 text-center">{turma.matriculados}</td>
+                            <td className="border border-border px-4 py-2 text-center">{turma.avaliados}</td>
+                            <td className="border border-border px-4 py-2 text-center">{turma.percentual}%</td>
+                            <td className="border border-border px-4 py-2 text-center">{turma.faltosos}</td>
+                          </tr>
+                        ))}
                     <tr className="bg-blue-50 dark:bg-blue-950/30 font-semibold">
                       <td className="border border-border px-4 py-2">TOTAL GERAL</td>
                       <td className="border border-border px-4 py-2 text-center">{apiData.total_alunos.total_geral.matriculados}</td>
@@ -517,7 +544,7 @@ export default function AnaliseAvaliacoes() {
              <CardHeader>
                <CardTitle className="flex items-center gap-2">
                  <Target className="h-5 w-5" />
-                 Níveis de Aprendizagem por Turma
+                 Níveis de Aprendizagem {renderMode === 'escola' ? 'por Escola' : 'por Turma'}
                </CardTitle>
              </CardHeader>
              <CardContent>
@@ -531,7 +558,9 @@ export default function AnaliseAvaliacoes() {
                        <table className="w-full border-collapse border border-border">
                          <thead>
                            <tr className="bg-muted">
-                             <th className="border border-border px-4 py-2 text-left font-medium">Turma</th>
+                             <th className="border border-border px-4 py-2 text-left font-medium">
+                               {renderMode === 'escola' ? 'Escola' : 'Turma'}
+                             </th>
                              <th className="border border-border px-4 py-2 text-center font-medium bg-red-100 dark:bg-red-950/30">Abaixo do Básico</th>
                              <th className="border border-border px-4 py-2 text-center font-medium bg-yellow-100 dark:bg-yellow-950/30">Básico</th>
                              <th className="border border-border px-4 py-2 text-center font-medium bg-blue-100 dark:bg-blue-950/30">Adequado</th>
@@ -540,23 +569,59 @@ export default function AnaliseAvaliacoes() {
                            </tr>
                          </thead>
                          <tbody>
-                           {dadosDisciplina.por_turma?.map((turma, index: number) => (
-                             <tr key={index} className="hover:bg-muted transition-colors">
-                               <td className="border border-border px-4 py-2 font-medium">{turma.turma}</td>
-                               <td className="border border-border px-4 py-2 text-center bg-red-50 dark:bg-red-950/20">{turma.abaixo_do_basico}</td>
-                               <td className="border border-border px-4 py-2 text-center bg-yellow-50 dark:bg-yellow-950/20">{turma.basico}</td>
-                               <td className="border border-border px-4 py-2 text-center bg-blue-50 dark:bg-blue-950/20">{turma.adequado}</td>
-                               <td className="border border-border px-4 py-2 text-center bg-green-50 dark:bg-green-950/20">{turma.avancado}</td>
-                               <td className="border border-border px-4 py-2 text-center font-medium">{turma.total}</td>
-                             </tr>
-                           ))}
+                           {renderMode === 'escola'
+                             ? dadosDisciplina.por_escola?.map((escola, index: number) => (
+                                 <tr key={index} className="hover:bg-muted transition-colors">
+                                   <td className="border border-border px-4 py-2 font-medium">{escola.escola}</td>
+                                   <td className="border border-border px-4 py-2 text-center bg-red-50 dark:bg-red-950/20">{escola.abaixo_do_basico}</td>
+                                   <td className="border border-border px-4 py-2 text-center bg-yellow-50 dark:bg-yellow-950/20">{escola.basico}</td>
+                                   <td className="border border-border px-4 py-2 text-center bg-blue-50 dark:bg-blue-950/20">{escola.adequado}</td>
+                                   <td className="border border-border px-4 py-2 text-center bg-green-50 dark:bg-green-950/20">{escola.avancado}</td>
+                                   <td className="border border-border px-4 py-2 text-center font-medium">{escola.total}</td>
+                                 </tr>
+                               ))
+                             : dadosDisciplina.por_turma?.map((turma, index: number) => (
+                                 <tr key={index} className="hover:bg-muted transition-colors">
+                                   <td className="border border-border px-4 py-2 font-medium">{turma.turma}</td>
+                                   <td className="border border-border px-4 py-2 text-center bg-red-50 dark:bg-red-950/20">{turma.abaixo_do_basico}</td>
+                                   <td className="border border-border px-4 py-2 text-center bg-yellow-50 dark:bg-yellow-950/20">{turma.basico}</td>
+                                   <td className="border border-border px-4 py-2 text-center bg-blue-50 dark:bg-blue-950/20">{turma.adequado}</td>
+                                   <td className="border border-border px-4 py-2 text-center bg-green-50 dark:bg-green-950/20">{turma.avancado}</td>
+                                   <td className="border border-border px-4 py-2 text-center font-medium">{turma.total}</td>
+                                 </tr>
+                               ))}
                            <tr className="bg-blue-50 dark:bg-blue-950/30 font-semibold">
                              <td className="border border-border px-4 py-2">TOTAL GERAL</td>
-                             <td className="border border-border px-4 py-2 text-center bg-red-100 dark:bg-red-950/30">{dadosDisciplina.geral.abaixo_do_basico}</td>
-                             <td className="border border-border px-4 py-2 text-center bg-yellow-100 dark:bg-yellow-950/30">{dadosDisciplina.geral.basico}</td>
-                             <td className="border border-border px-4 py-2 text-center bg-blue-100 dark:bg-blue-950/30">{dadosDisciplina.geral.adequado}</td>
-                             <td className="border border-border px-4 py-2 text-center bg-green-100 dark:bg-green-950/30">{dadosDisciplina.geral.avancado}</td>
-                             <td className="border border-border px-4 py-2 text-center">{dadosDisciplina.geral.total}</td>
+                             <td className="border border-border px-4 py-2 text-center bg-red-100 dark:bg-red-950/30">
+                               {dadosDisciplina.total_geral?.abaixo_do_basico ?? dadosDisciplina.geral?.abaixo_do_basico ?? 
+                                (renderMode === 'escola' 
+                                  ? dadosDisciplina.por_escola?.reduce((sum, e) => sum + (e.abaixo_do_basico || 0), 0) ?? 0
+                                  : dadosDisciplina.por_turma?.reduce((sum, t) => sum + (t.abaixo_do_basico || 0), 0) ?? 0)}
+                             </td>
+                             <td className="border border-border px-4 py-2 text-center bg-yellow-100 dark:bg-yellow-950/30">
+                               {dadosDisciplina.total_geral?.basico ?? dadosDisciplina.geral?.basico ?? 
+                                (renderMode === 'escola' 
+                                  ? dadosDisciplina.por_escola?.reduce((sum, e) => sum + (e.basico || 0), 0) ?? 0
+                                  : dadosDisciplina.por_turma?.reduce((sum, t) => sum + (t.basico || 0), 0) ?? 0)}
+                             </td>
+                             <td className="border border-border px-4 py-2 text-center bg-blue-100 dark:bg-blue-950/30">
+                               {dadosDisciplina.total_geral?.adequado ?? dadosDisciplina.geral?.adequado ?? 
+                                (renderMode === 'escola' 
+                                  ? dadosDisciplina.por_escola?.reduce((sum, e) => sum + (e.adequado || 0), 0) ?? 0
+                                  : dadosDisciplina.por_turma?.reduce((sum, t) => sum + (t.adequado || 0), 0) ?? 0)}
+                             </td>
+                             <td className="border border-border px-4 py-2 text-center bg-green-100 dark:bg-green-950/30">
+                               {dadosDisciplina.total_geral?.avancado ?? dadosDisciplina.geral?.avancado ?? 
+                                (renderMode === 'escola' 
+                                  ? dadosDisciplina.por_escola?.reduce((sum, e) => sum + (e.avancado || 0), 0) ?? 0
+                                  : dadosDisciplina.por_turma?.reduce((sum, t) => sum + (t.avancado || 0), 0) ?? 0)}
+                             </td>
+                             <td className="border border-border px-4 py-2 text-center">
+                               {dadosDisciplina.total_geral?.total ?? dadosDisciplina.geral?.total ?? 
+                                (renderMode === 'escola' 
+                                  ? dadosDisciplina.por_escola?.reduce((sum, e) => sum + (e.total || 0), 0) ?? 0
+                                  : dadosDisciplina.por_turma?.reduce((sum, t) => sum + (t.total || 0), 0) ?? 0)}
+                             </td>
                            </tr>
                          </tbody>
                        </table>
@@ -572,7 +637,7 @@ export default function AnaliseAvaliacoes() {
              <CardHeader>
                <CardTitle className="flex items-center gap-2">
                  <TrendingUp className="h-5 w-5" />
-                 Proficiência por Turma
+                 Proficiência {renderMode === 'escola' ? 'por Escola' : 'por Turma'}
                </CardTitle>
              </CardHeader>
              <CardContent>
@@ -586,25 +651,34 @@ export default function AnaliseAvaliacoes() {
                        <table className="w-full border-collapse border border-border">
                          <thead>
                            <tr className="bg-muted">
-                             <th className="border border-border px-4 py-2 text-left font-medium">Turma</th>
+                             <th className="border border-border px-4 py-2 text-left font-medium">
+                               {renderMode === 'escola' ? 'Escola' : 'Turma'}
+                             </th>
                              <th className="border border-border px-4 py-2 text-center font-medium">Proficiência</th>
                            </tr>
                          </thead>
                          <tbody>
-                           {dadosDisciplina.por_turma?.map((turma, index: number) => (
-                             <tr key={index} className="hover:bg-muted transition-colors">
-                               <td className="border border-border px-4 py-2 font-medium">{turma.turma}</td>
-                               <td className="border border-border px-4 py-2 text-center">{turma.proficiencia.toFixed(2)}</td>
-                             </tr>
-                           ))}
+                           {renderMode === 'escola'
+                             ? dadosDisciplina.por_escola?.map((escola, index: number) => (
+                                 <tr key={index} className="hover:bg-muted transition-colors">
+                                   <td className="border border-border px-4 py-2 font-medium">{escola.escola}</td>
+                                   <td className="border border-border px-4 py-2 text-center">{((escola.proficiencia ?? escola.media) || 0).toFixed(2)}</td>
+                                 </tr>
+                               ))
+                             : dadosDisciplina.por_turma?.map((turma, index: number) => (
+                                 <tr key={index} className="hover:bg-muted transition-colors">
+                                   <td className="border border-border px-4 py-2 font-medium">{turma.turma}</td>
+                                   <td className="border border-border px-4 py-2 text-center">{turma.proficiencia.toFixed(2)}</td>
+                                 </tr>
+                               ))}
                            <tr className="bg-blue-50 dark:bg-blue-950/30 font-semibold">
                              <td className="border border-border px-4 py-2">MÉDIA GERAL</td>
                              <td className="border border-border px-4 py-2 text-center">{dadosDisciplina.media_geral.toFixed(2)}</td>
                            </tr>
-                           {disciplina !== 'GERAL' && (
+                           {disciplina !== 'GERAL' && renderMode === 'turma' && apiData.proficiencia.media_municipal_por_disciplina && apiData.proficiencia.media_municipal_por_disciplina[disciplina] !== undefined && (
                              <tr className="bg-green-50 dark:bg-green-950/30 font-semibold">
                                <td className="border border-border px-4 py-2">MÉDIA MUNICIPAL</td>
-                               <td className="border border-border px-4 py-2 text-center">{apiData.proficiencia.media_municipal_por_disciplina[disciplina]?.toFixed(2) || 'N/A'}</td>
+                               <td className="border border-border px-4 py-2 text-center">{apiData.proficiencia.media_municipal_por_disciplina[disciplina].toFixed(2)}</td>
                              </tr>
                            )}
                          </tbody>
@@ -621,7 +695,7 @@ export default function AnaliseAvaliacoes() {
              <CardHeader>
                <CardTitle className="flex items-center gap-2">
                  <Award className="h-5 w-5" />
-                 Nota Geral por Turma
+                 Nota Geral {renderMode === 'escola' ? 'por Escola' : 'por Turma'}
                </CardTitle>
              </CardHeader>
              <CardContent>
@@ -635,25 +709,34 @@ export default function AnaliseAvaliacoes() {
                        <table className="w-full border-collapse border border-border">
                          <thead>
                            <tr className="bg-muted">
-                             <th className="border border-border px-4 py-2 text-left font-medium">Turma</th>
+                             <th className="border border-border px-4 py-2 text-left font-medium">
+                               {renderMode === 'escola' ? 'Escola' : 'Turma'}
+                             </th>
                              <th className="border border-border px-4 py-2 text-center font-medium">Nota</th>
                            </tr>
                          </thead>
                          <tbody>
-                           {dadosDisciplina.por_turma?.map((turma, index: number) => (
-                             <tr key={index} className="hover:bg-muted transition-colors">
-                               <td className="border border-border px-4 py-2 font-medium">{turma.turma}</td>
-                               <td className="border border-border px-4 py-2 text-center">{turma.nota.toFixed(2)}</td>
-                             </tr>
-                           ))}
+                           {renderMode === 'escola'
+                             ? dadosDisciplina.por_escola?.map((escola, index: number) => (
+                                 <tr key={index} className="hover:bg-muted transition-colors">
+                                   <td className="border border-border px-4 py-2 font-medium">{escola.escola}</td>
+                                   <td className="border border-border px-4 py-2 text-center">{((escola.nota ?? escola.media) || 0).toFixed(2)}</td>
+                                 </tr>
+                               ))
+                             : dadosDisciplina.por_turma?.map((turma, index: number) => (
+                                 <tr key={index} className="hover:bg-muted transition-colors">
+                                   <td className="border border-border px-4 py-2 font-medium">{turma.turma}</td>
+                                   <td className="border border-border px-4 py-2 text-center">{turma.nota.toFixed(2)}</td>
+                                 </tr>
+                               ))}
                            <tr className="bg-blue-50 dark:bg-blue-950/30 font-semibold">
                              <td className="border border-border px-4 py-2">MÉDIA GERAL</td>
                              <td className="border border-border px-4 py-2 text-center">{dadosDisciplina.media_geral.toFixed(2)}</td>
                            </tr>
-                           {disciplina !== 'GERAL' && (
+                           {disciplina !== 'GERAL' && renderMode === 'turma' && apiData.nota_geral.media_municipal_por_disciplina && apiData.nota_geral.media_municipal_por_disciplina[disciplina] !== undefined && (
                              <tr className="bg-green-50 dark:bg-green-950/30 font-semibold">
                                <td className="border border-border px-4 py-2">MÉDIA MUNICIPAL</td>
-                               <td className="border border-border px-4 py-2 text-center">{apiData.nota_geral.media_municipal_por_disciplina[disciplina]?.toFixed(2) || 'N/A'}</td>
+                               <td className="border border-border px-4 py-2 text-center">{apiData.nota_geral.media_municipal_por_disciplina[disciplina].toFixed(2)}</td>
                              </tr>
                            )}
                          </tbody>

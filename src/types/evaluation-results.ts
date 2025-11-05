@@ -400,6 +400,14 @@ export interface TotalAlunosTurma {
   faltosos: number;
 }
 
+export interface TotalAlunosEscola {
+  escola: string;
+  matriculados: number;
+  avaliados: number;
+  percentual: number;
+  faltosos: number;
+}
+
 export interface TotalAlunosGeral {
   matriculados: number;
   avaliados: number;
@@ -408,12 +416,22 @@ export interface TotalAlunosGeral {
 }
 
 export interface TotalAlunos {
-  por_turma: TotalAlunosTurma[];
+  por_turma?: TotalAlunosTurma[];
+  por_escola?: TotalAlunosEscola[];
   total_geral: TotalAlunosGeral;
 }
 
 export interface NivelAprendizagemTurma {
   turma: string;
+  abaixo_do_basico: number;
+  basico: number;
+  adequado: number;
+  avancado: number;
+  total: number;
+}
+
+export interface NivelAprendizagemEscola {
+  escola: string;
   abaixo_do_basico: number;
   basico: number;
   adequado: number;
@@ -430,8 +448,10 @@ export interface NivelAprendizagemGeral {
 }
 
 export interface NivelAprendizagemDisciplina {
-  por_turma: NivelAprendizagemTurma[];
-  geral: NivelAprendizagemGeral;
+  por_turma?: NivelAprendizagemTurma[];
+  por_escola?: NivelAprendizagemEscola[];
+  geral?: NivelAprendizagemGeral;
+  total_geral?: NivelAprendizagemGeral;
 }
 
 export interface NiveisAprendizagem {
@@ -443,8 +463,16 @@ export interface ProficienciaTurma {
   proficiencia: number;
 }
 
+export interface ProficienciaEscola {
+  escola: string;
+  proficiencia?: number;
+  media?: number;
+  total_alunos?: number;
+}
+
 export interface ProficienciaDisciplina {
-  por_turma: ProficienciaTurma[];
+  por_turma?: ProficienciaTurma[];
+  por_escola?: ProficienciaEscola[];
   media_geral: number;
 }
 
@@ -452,7 +480,7 @@ export interface Proficiencia {
   por_disciplina: {
     [disciplina: string]: ProficienciaDisciplina;
   };
-  media_municipal_por_disciplina: {
+  media_municipal_por_disciplina?: {
     [disciplina: string]: number;
   };
 }
@@ -462,8 +490,16 @@ export interface NotaGeralTurma {
   nota: number;
 }
 
+export interface NotaGeralEscola {
+  escola: string;
+  nota?: number;
+  media?: number;
+  total_alunos?: number;
+}
+
 export interface NotaGeralDisciplina {
-  por_turma: NotaGeralTurma[];
+  por_turma?: NotaGeralTurma[];
+  por_escola?: NotaGeralEscola[];
   media_geral: number;
 }
 
@@ -471,7 +507,7 @@ export interface NotaGeral {
   por_disciplina: {
     [disciplina: string]: NotaGeralDisciplina;
   };
-  media_municipal_por_disciplina: {
+  media_municipal_por_disciplina?: {
     [disciplina: string]: number;
   };
 }

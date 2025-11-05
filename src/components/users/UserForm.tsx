@@ -83,9 +83,11 @@ interface UserFormProps {
     city_id?: string;
   };
   onSubmit?: (data: UserFormValues) => Promise<void> | void;
+  allowedRoles?: string[]; // Roles permitidas para criação (ex: ["Administrador", "Diretor"])
+  showCitySelect?: boolean; // Se deve mostrar o campo de seleção de município
 }
 
-export default function UserForm({ user, onSubmit }: UserFormProps) {
+export default function UserForm({ user, onSubmit, allowedRoles, showCitySelect = true }: UserFormProps) {
   const isEditing = !!user;
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -305,60 +307,81 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
           )}
         />
 
-        <FormField
-          control={form.control}
-          name="city_id"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Município</FormLabel>
-              <Select
-                onValueChange={field.onChange}
-                defaultValue={field.value || undefined}
-              >
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione um município" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {municipioOptions.map((municipio) => (
-                    <SelectItem key={municipio.id} value={municipio.id}>
-                      {municipio.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {showCitySelect && (
+          <FormField
+            control={form.control}
+            name="city_id"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Município</FormLabel>
+                <Select
+                  onValueChange={field.onChange}
+                  defaultValue={field.value || undefined}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione um município" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {municipioOptions.map((municipio) => (
+                      <SelectItem key={municipio.id} value={municipio.id}>
+                        {municipio.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
         <FormField
           control={form.control}
           name="role"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Função</FormLabel>
-              <Select
-                onValueChange={field.onChange}
-                defaultValue={field.value}
-              >
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione uma função" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  <SelectItem value="Administrador">Administrador</SelectItem>
-                  <SelectItem value="Professor">Professor</SelectItem>
-                  <SelectItem value="Coordenador">Coordenador</SelectItem>
-                  <SelectItem value="Diretor">Diretor</SelectItem>
-                  <SelectItem value="Técnico Administrador">Técnico Administrador</SelectItem>
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
+          render={({ field }) => {
+            // Lista completa de roles disponíveis
+            const allRoles = [
+              { value: "Administrador", label: "Administrador" },
+              { value: "Professor", label: "Professor" },
+              { value: "Coordenador", label: "Coordenador" },
+              { value: "Diretor", label: "Diretor" },
+              { value: "Técnico Administrador", label: "Técnico Administrador" }
+            ];
+
+            // Se estiver editando, mostrar todas as roles (para não quebrar edição)
+            // Se estiver criando, filtrar baseado em allowedRoles
+            const availableRoles = isEditing 
+              ? allRoles 
+              : (allowedRoles && allowedRoles.length > 0 
+                  ? allRoles.filter(role => allowedRoles.includes(role.value))
+                  : allRoles);
+
+            return (
+              <FormItem>
+                <FormLabel>Função</FormLabel>
+                <Select
+                  onValueChange={field.onChange}
+                  defaultValue={field.value}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione uma função" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {availableRoles.map((role) => (
+                      <SelectItem key={role.value} value={role.value}>
+                        {role.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            );
+          }}
         />
 
         <div className="flex justify-end">
