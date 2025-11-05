@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useAuth } from "@/context/authContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,58 +10,6 @@ import MedalhasCard from "@/components/dashboard/MedalhasCard";
 import InnovCoinsCard from "@/components/dashboard/InnovCoinsCard";
 import RankingCard from "@/components/dashboard/RankingCard";
 import EvolutionChart from "@/components/dashboard/EvolutionChart";
-
-// Interface para resposta da API de notas gerais
-interface StudentGradesResponse {
-  success: boolean;
-  data: {
-    user_id: string;
-    student_id: string;
-    student_name: string;
-    student_registration: string | null;
-    school_name: string;
-    class_name: string;
-    general_proficiency: number;
-    general_grade: number;
-    general_classification: string;
-    total_correct_answers: number;
-    total_questions_answered: number;
-    total_evaluations: number;
-    rankings: {
-      school?: {
-        position: number;
-        total_students: number;
-        ranking: Array<{
-          position: number;
-          student_id: string;
-          student_name: string;
-          proficiency: number;
-        }>;
-      };
-      class?: {
-        position: number;
-        total_students: number;
-        ranking: Array<{
-          position: number;
-          student_id: string;
-          student_name: string;
-          proficiency: number;
-        }>;
-      };
-      municipality?: {
-        position: number;
-        total_students: number;
-        ranking: Array<{
-          position: number;
-          student_id: string;
-          student_name: string;
-          proficiency: number;
-        }>;
-      };
-    };
-  };
-  message: string;
-}
 
 // Interface para avaliações do aluno
 interface StudentEvaluation {
@@ -327,6 +275,9 @@ const StudentDashboard = () => {
   const [comparisonData, setComparisonData] = useState<StudentCompareResponse | null>(null);
   const [isLoadingComparison, setIsLoadingComparison] = useState(false);
   const [hasLoadedData, setHasLoadedData] = useState(false);
+  
+  // Ref para rastrear a última avaliação carregada e evitar chamadas duplicadas
+  const lastLoadedEvaluationRef = useRef<string | null>(null);
 
   // Dados mockados baseados na imagem + dados de estatísticas
   const mockStats: StudentStats = useMemo(() => ({
@@ -564,15 +515,6 @@ const StudentDashboard = () => {
     return response.data;
   };
 
-  // Função para buscar dados gerais do aluno (fallback)
-  const fetchStudentGrades = async (userId: string): Promise<StudentGradesResponse> => {
-    console.log('🔍 Fazendo chamada para API:', `/students/${userId}/grades/general`);
-    const response = await api.get(`/students/${userId}/grades/general`);
-    console.log('📊 Resposta completa da API:', response.data);
-    console.log('📈 Dados de rankings:', response.data.data?.rankings);
-    return response.data;
-  };
-
   // Função para buscar dados de comparação entre avaliações
   const fetchStudentComparison = async (studentId: string, testIds: string[]): Promise<StudentCompareResponse> => {
     console.log('🔍 Buscando comparação entre avaliações:', `/test/student/compare`);
@@ -601,130 +543,6 @@ const StudentDashboard = () => {
     console.log('📊 Dados de comparação:', response.data);
     return response.data;
   };
-
-  // Função para mapear dados de ranking da API para o formato do componente
-  const mapRankingData = (rankingData: Array<{
-    position: number;
-    student_id: string;
-    student_name: string;
-    proficiency: number;
-  }> | undefined | null) => {
-    console.log('🔄 Mapeando dados de ranking:', rankingData);
-    
-    // Validar se rankingData existe e é um array
-    if (!rankingData || !Array.isArray(rankingData) || rankingData.length === 0) {
-      console.log('⚠️ Dados de ranking vazios ou inválidos, retornando array vazio');
-      return [];
-    }
-    
-    const mappedData = rankingData.map((item, index) => ({
-      id: index + 1,
-      nome: item.student_name,
-      acertos: Math.round(item.proficiency / 20), // Aproximação baseada na proficiência
-      total: 20,
-      posicao: item.position,
-      pontos: item.proficiency
-    }));
-    console.log('✅ Dados mapeados:', mappedData);
-    return mappedData;
-  };
-
-  // Função para mapear dados gerais da API para a interface atual
-  const mapGeneralApiDataToStats = useCallback((apiData: StudentGradesResponse): StudentStats => {
-    console.log('🔄 Mapeando dados gerais da API para interface...');
-    console.log('📊 Dados da turma:', apiData.data.rankings?.class);
-    console.log('📊 Dados da escola:', apiData.data.rankings?.school);
-    console.log('📊 Dados do município:', apiData.data.rankings?.municipality);
-    
-    // Validar se rankings.class existe (pode ser undefined para alunos novos)
-    const classRanking = apiData.data.rankings?.class;
-    const schoolRanking = apiData.data.rankings?.school;
-    const municipalityRanking = apiData.data.rankings?.municipality;
-    
-    // Valores padrão quando não há dados de ranking
-    const defaultPosition = 0;
-    const defaultRankingList: Array<{
-      position: number;
-      student_id: string;
-      student_name: string;
-      proficiency: number;
-    }> = [];
-    
-    // Usar dados da turma se disponível, senão usar valores padrão
-    const currentPosition = classRanking?.position ?? defaultPosition;
-    const rankingList = mapRankingData(classRanking?.ranking ?? defaultRankingList);
-    
-    return {
-      proficiencia: { 
-        value: apiData.data.general_proficiency, 
-        change: 0, 
-        trend: 'up' 
-      },
-      nota: { 
-        value: apiData.data.general_grade, 
-        change: 0, 
-        trend: 'up' 
-      },
-      nivel: { 
-        value: apiData.data.general_classification, 
-        change: 0, 
-        trend: 'up' 
-      },
-      acertos: { 
-        value: apiData.data.total_correct_answers, 
-        change: 0, 
-        trend: 'up' 
-      },
-      // Manter dados gamificados como mockados
-      medalhas: mockStats.medalhas,
-      moedas: mockStats.moedas,
-      ranking: {
-        posicaoAtual: currentPosition, // Usar posição da turma como padrão ou 0 se não houver
-        pontos: apiData.data.general_proficiency, // Usar proficiência como pontos
-        mudancaPosicao: 0,
-        lista: rankingList, // Mapear dados da turma ou lista vazia
-        proximoObjetivo: {
-          posicao: currentPosition > 0 ? Math.max(1, currentPosition - 1) : 1,
-          pontosNecessarios: 50,
-          progresso: currentPosition > 0 ? 80 : 0
-        }
-      },
-      estatisticas: {
-        semana: [
-          { day: 'Seg', nota: 7.2, avaliacao: 'Matemática' },
-          { day: 'Ter', nota: 8.5, avaliacao: 'Português' },
-          { day: 'Qua', nota: 6.8, avaliacao: 'História' },
-          { day: 'Qui', nota: 9.1, avaliacao: 'Ciências' },
-          { day: 'Sex', nota: 7.7, avaliacao: 'Geografia' },
-          { day: 'Sáb', nota: 8.9, avaliacao: 'Inglês' },
-          { day: 'Dom', nota: 7.5, avaliacao: 'Arte' },
-        ],
-        mes: [
-          { week: 'Sem 1', nota: 7.8, avaliacoes: 12 },
-          { week: 'Sem 2', nota: 8.2, avaliacoes: 15 },
-          { week: 'Sem 3', nota: 7.1, avaliacoes: 10 },
-          { week: 'Sem 4', nota: 8.6, avaliacoes: 18 },
-        ],
-        ano: [
-          { month: 'Jan', nota: 7.2, avaliacoes: 45 },
-          { month: 'Fev', nota: 7.8, avaliacoes: 52 },
-          { month: 'Mar', nota: 8.1, avaliacoes: 48 },
-          { month: 'Abr', nota: 7.5, avaliacoes: 51 },
-          { month: 'Mai', nota: 8.3, avaliacoes: 49 },
-          { month: 'Jun', nota: 7.9, avaliacoes: 47 },
-        ],
-        resumo: {
-          media: apiData.data.general_grade,
-          melhorNota: Math.max(apiData.data.general_grade, 9.1),
-          streak: 12,
-          metaAlcancada: apiData.data.general_grade >= 7.0,
-          progresso: Math.min(100, (apiData.data.general_grade / 10) * 100),
-          totalAvaliacoes: apiData.data.total_evaluations,
-          tendencia: apiData.data.general_grade >= 7.0 ? 'up' : 'stable'
-        }
-      }
-    };
-  }, []);
 
   // Função para mapear dados específicos de uma avaliação para a interface atual
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -813,36 +631,20 @@ const StudentDashboard = () => {
     };
   }, []);
 
-  // Função para carregar dados gerais (fallback)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const loadGeneralData = useCallback(async () => {
-    if (!user?.id) return;
-    
-    try {
-      console.log('🔍 Carregando dados gerais do aluno');
-        const apiData = await fetchStudentGrades(user.id);
-        
-        if (!apiData.success) {
-          throw new Error(apiData.message || 'Erro ao carregar dados');
-        }
-
-      const mappedStats = mapGeneralApiDataToStats(apiData);
-        setStats(mappedStats);
-    } catch (error) {
-      console.error('Erro ao carregar dados gerais:', error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível carregar seus dados gerais.",
-        variant: "destructive",
-      });
-    }
-  }, [user?.id, toast]);
-
   // Função para carregar dados de uma avaliação específica
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const loadEvaluationData = useCallback(async (evaluationId: string) => {
     if (!user?.id || !evaluationId) {
       console.log('⚠️ Dados insuficientes para carregar avaliação:', { userId: user?.id, evaluationId });
+      return;
+    }
+    
+    // Validação: garantir que o evaluationId corresponde ao selectedEvaluation
+    if (evaluationId !== selectedEvaluation) {
+      console.warn('⚠️ Tentativa de carregar avaliação diferente da selecionada:', {
+        requested: evaluationId,
+        selected: selectedEvaluation
+      });
       return;
     }
     
@@ -852,33 +654,18 @@ const StudentDashboard = () => {
       const selectedEval = evaluations.find(evaluation => evaluation.id === evaluationId);
       
       if (selectedEval) {
-        // Buscar dados gerais para pegar o ranking
-        console.log('🔍 Buscando dados gerais para ranking...');
-        const generalData = await fetchStudentGrades(user.id);
-        
-        if (generalData.success) {
-          // Usar dados da avaliação específica + ranking dos dados gerais
-          const mappedStats = mapEvaluationResultsToStats(evaluationResults, selectedEval);
-          const generalStats = mapGeneralApiDataToStats(generalData);
-          
-          // Combinar: dados específicos da avaliação + ranking dos dados gerais
-          const combinedStats = {
-            ...mappedStats,
-            ranking: generalStats.ranking // Usar ranking dos dados gerais
-          };
-          
-          setStats(combinedStats);
-          setEvaluationResults(evaluationResults);
-        } else {
-          // Se não conseguir dados gerais, usar apenas dados da avaliação
+        // Validar novamente antes de setar os dados
+        if (evaluationId === selectedEvaluation) {
           const mappedStats = mapEvaluationResultsToStats(evaluationResults, selectedEval);
           setStats(mappedStats);
           setEvaluationResults(evaluationResults);
+          // Atualizar ref apenas após carregar com sucesso
+          lastLoadedEvaluationRef.current = evaluationId;
+        } else {
+          console.warn('⚠️ Avaliação mudou durante o carregamento, ignorando dados antigos');
         }
       } else {
         console.warn('⚠️ Avaliação não encontrada na lista:', evaluationId);
-        // Se não encontrar a avaliação, usar dados gerais
-        await loadGeneralData();
       }
     } catch (error) {
       console.error('Erro ao carregar dados da avaliação:', error);
@@ -887,10 +674,8 @@ const StudentDashboard = () => {
         description: "Não foi possível carregar os dados da avaliação selecionada.",
         variant: "destructive",
       });
-      // Em caso de erro, tentar dados gerais
-      await loadGeneralData();
     }
-  }, [user?.id, evaluations, toast]);
+  }, [user?.id, evaluations, selectedEvaluation, toast]);
 
   // Função principal para carregar dados
   const loadStudentData = async () => {
@@ -919,9 +704,8 @@ const StudentDashboard = () => {
         console.log('🔍 Carregando dados da primeira avaliação:', firstEvaluation.id);
         await loadEvaluationData(firstEvaluation.id);
       } else {
-        // 4. Se não houver avaliações, usar dados gerais
-        console.log('⚠️ Nenhuma avaliação encontrada, usando dados gerais');
-        await loadGeneralData();
+        // 4. Se não houver avaliações, não há nada para exibir
+        console.log('⚠️ Nenhuma avaliação encontrada');
       }
         
     } catch (error) {
@@ -933,78 +717,85 @@ const StudentDashboard = () => {
       });
         
       // Em caso de erro, usar dados mockados como último recurso
-      try {
-        await loadGeneralData();
-      } catch (fallbackError) {
-        console.error('Erro no fallback, usando dados mockados:', fallbackError);
-        setStats(mockStats);
-      } finally {
-        setIsLoading(false);
-        setIsLoadingEvaluations(false);
-      }
-    };
+      console.error('Erro no carregamento, usando dados mockados:', error);
+      setStats(mockStats);
+    } finally {
+      setIsLoading(false);
+      setIsLoadingEvaluations(false);
+    }
   };
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     if (hasLoadedData || !user?.id) return;
     
-  const loadStudentData = async () => {
-    try {
-      setIsLoading(true);
-      setIsLoadingEvaluations(true);
-      setHasLoadedData(true);
-      
-      if (!user?.id) {
-        throw new Error('ID do usuário não encontrado');
-      }
+    const loadStudentData = async () => {
+      try {
+        setIsLoading(true);
+        setIsLoadingEvaluations(true);
+        setHasLoadedData(true);
+        
+        if (!user?.id) {
+          throw new Error('ID do usuário não encontrado');
+        }
 
-      // 1. Buscar avaliações do aluno PRIMEIRO
-      console.log('🔍 Buscando avaliações do aluno...');
-      const studentEvaluations = await fetchStudentEvaluations(user.id);
-      console.log('📊 Avaliações encontradas:', studentEvaluations);
-      setEvaluations(studentEvaluations);
-      
-      if (studentEvaluations.length > 0) {
-        // 2. Selecionar automaticamente a primeira avaliação
-        const firstEvaluation = studentEvaluations[0];
-        console.log('✅ Primeira avaliação selecionada:', firstEvaluation);
-        console.log('✅ ID da primeira avaliação:', firstEvaluation.id);
-        setSelectedEvaluation(firstEvaluation.id);
+        // 1. Buscar avaliações do aluno PRIMEIRO
+        console.log('🔍 Buscando avaliações do aluno...');
+        const studentEvaluations = await fetchStudentEvaluations(user.id);
+        console.log('📊 Avaliações encontradas:', studentEvaluations);
+        setEvaluations(studentEvaluations);
         
-        // 3. AGORA carregar dados da primeira avaliação (após ter a lista)
-        console.log('🔍 Carregando dados da primeira avaliação:', firstEvaluation.id);
-        await loadEvaluationData(firstEvaluation.id);
-      } else {
-        // 4. Se não houver avaliações, usar dados gerais
-        console.log('⚠️ Nenhuma avaliação encontrada, usando dados gerais');
-        await loadGeneralData();
-      }
-        
+        if (studentEvaluations.length > 0) {
+          // 2. Selecionar automaticamente a primeira avaliação
+          // O useEffect abaixo irá detectar a mudança e carregar os dados automaticamente
+          const firstEvaluation = studentEvaluations[0];
+          console.log('✅ Primeira avaliação selecionada:', firstEvaluation);
+          console.log('✅ ID da primeira avaliação:', firstEvaluation.id);
+          setSelectedEvaluation(firstEvaluation.id);
+        } else {
+          // 3. Se não houver avaliações, não há nada para exibir
+          console.log('⚠️ Nenhuma avaliação encontrada');
+        }
+          
       } catch (error) {
-      console.error('Erro ao carregar dados do aluno:', error);
+        console.error('Erro ao carregar dados do aluno:', error);
         toast({
           title: "Erro",
-        description: "Não foi possível carregar seus dados.",
+          description: "Não foi possível carregar seus dados.",
           variant: "destructive",
         });
         setHasLoadedData(false);
         
-      // Em caso de erro, usar dados mockados como último recurso
-      try {
-        await loadGeneralData();
-      } catch (fallbackError) {
-        console.error('Erro no fallback, usando dados mockados:', fallbackError);
+        // Em caso de erro, usar dados mockados como último recurso
+        console.error('Erro no carregamento, usando dados mockados:', error);
         setStats(mockStats);
-      }
       } finally {
         setIsLoading(false);
-      setIsLoadingEvaluations(false);
+        setIsLoadingEvaluations(false);
       }
     };
 
     loadStudentData();
   }, [user?.id]);
+
+  // useEffect que monitora selectedEvaluation e carrega dados automaticamente
+  useEffect(() => {
+    if (selectedEvaluation && user?.id && evaluations.length > 0) {
+      // Verificar se a avaliação selecionada existe na lista
+      const evaluationExists = evaluations.find(e => e.id === selectedEvaluation);
+      if (evaluationExists) {
+        // Evitar carregar a mesma avaliação novamente
+        if (lastLoadedEvaluationRef.current !== selectedEvaluation) {
+          console.log('🔄 selectedEvaluation mudou, carregando dados:', selectedEvaluation);
+          loadEvaluationData(selectedEvaluation);
+        } else {
+          console.log('ℹ️ Avaliação já carregada, ignorando:', selectedEvaluation);
+        }
+      } else {
+        console.warn('⚠️ Avaliação selecionada não encontrada na lista:', selectedEvaluation);
+      }
+    }
+  }, [selectedEvaluation, user?.id, evaluations.length, loadEvaluationData]);
 
   // Função para carregar dados de comparação
   const loadComparisonData = useCallback(async () => {
@@ -1045,15 +836,15 @@ const StudentDashboard = () => {
   }, [evaluations, comparisonData]);
 
   // Função para lidar com mudança de avaliação
-  const handleEvaluationChange = async (evaluationId: string) => {
+  const handleEvaluationChange = (evaluationId: string) => {
     if (!evaluationId) {
       console.warn('⚠️ ID da avaliação não fornecido');
       return;
     }
     
     console.log('🔄 Mudando para avaliação:', evaluationId);
+    // Apenas setar selectedEvaluation - o useEffect irá detectar e carregar os dados automaticamente
     setSelectedEvaluation(evaluationId);
-    await loadEvaluationData(evaluationId);
   };
 
 
@@ -1110,9 +901,11 @@ const StudentDashboard = () => {
               </select>
             </div>
           )}
-          <Badge variant="outline" className="bg-green-100 text-green-800 px-2 sm:px-3 py-1 text-xs sm:text-sm">
-            {selectedEvaluation ? 'Avaliação Específica' : 'Dados Gerais'}
-          </Badge>
+          {selectedEvaluation && (
+            <Badge variant="outline" className="bg-green-100 text-green-800 px-2 sm:px-3 py-1 text-xs sm:text-sm">
+              Avaliação Específica
+            </Badge>
+          )}
         </div>
       </div>
 
