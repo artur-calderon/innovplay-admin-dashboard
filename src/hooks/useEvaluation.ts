@@ -50,6 +50,24 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             const sessionInfo = await EvaluationApiService.getTestSessionInfo(testId);
 
             if (sessionInfo.session_exists && sessionInfo.status === 'em_andamento') {
+                // ✅ NOVO: Validar se a sessão pertence ao teste atual
+                if (sessionInfo.test_id && sessionInfo.test_id !== testId) {
+                    console.error('❌ Sessão ativa encontrada pertence a outro teste:', {
+                        requestedTestId: testId,
+                        sessionTestId: sessionInfo.test_id,
+                        sessionId: sessionInfo.session_id
+                    });
+                    
+                    toast({
+                        title: "⚠️ Sessão inválida detectada",
+                        description: "Foi encontrada uma sessão de outro teste. Limpando e iniciando nova sessão...",
+                        variant: "destructive",
+                    });
+                    
+                    // Não usar esta sessão - retornar false para iniciar nova
+                    return false;
+                }
+
                 // ✅ CORRIGIDO: Usar duration da avaliação em vez de time_limit_minutes da sessão
                 const evaluationDuration = testData?.duration || 60; // fallback para 60 minutos
 
@@ -100,9 +118,11 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
 
             return false;
         } catch (error) {
+            console.error('❌ Erro ao verificar sessão ativa:', error);
             return false;
         }
-    }, [testId, testData?.duration]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [testId, testData?.duration, toast]); // ✅ REMOVIDO: startTimerSync para evitar dependência circular
 
     // ✅ NOVO: Iniciar sincronização de timer
     const startTimerSync = useCallback((sessionId: string, initialElapsed: number, initialRemaining: number) => {
@@ -138,7 +158,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 // Não submeter automaticamente - deixar o timer local fazer isso
             }
         }, 5 * 60 * 1000); // 5 minutos
-    }, [evaluationState, isSubmitting]); // ✅ NOVO: Adicionar evaluationState como dependência
+    }, [evaluationState, isSubmitting, syncTimerWithBackend]); // ✅ CORRIGIDO: Adicionar syncTimerWithBackend como dependência
 
     // ✅ NOVO: Iniciar sessão de teste
     const startTestSession = useCallback(async (): Promise<void> => {
@@ -168,6 +188,65 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             // Iniciar nova sessão
             const sessionData = await EvaluationApiService.startSession(testId);
 
+            // ✅ NOVO: Validar se a sessão retornada pertence ao teste atual
+            if (sessionData.test_id && sessionData.test_id !== testId) {
+                console.error('❌ Sessão retornada não pertence ao teste atual:', {
+                    requestedTestId: testId,
+                    returnedTestId: sessionData.test_id,
+                    sessionId: sessionData.session_id
+                });
+                
+                toast({
+                    title: "❌ Erro de sessão",
+                    description: "A sessão retornada pertence a outro teste. Limpando e tentando novamente...",
+                    variant: "destructive",
+                });
+                
+                // Limpar sessão antiga e tentar novamente
+                setSession(null);
+                setEvaluationState('instructions');
+                setIsSaving(false);
+                
+                // Tentar novamente após um pequeno delay
+                setTimeout(async () => {
+                    try {
+                        const retrySessionData = await EvaluationApiService.startSession(testId);
+                        if (retrySessionData.test_id && retrySessionData.test_id !== testId) {
+                            throw new Error('Sessão ainda pertence a outro teste após retry');
+                        }
+                        // Se chegou aqui, a sessão é válida - continuar com o fluxo normal
+                        const newSession: TestSession = {
+                            session_id: retrySessionData.session_id,
+                            status: 'em_andamento',
+                            started_at: retrySessionData.started_at,
+                            actual_start_time: retrySessionData.actual_start_time,
+                            time_limit_minutes: evaluationDuration,
+                            remaining_time_minutes: evaluationDuration,
+                            total_questions: testData.totalQuestions,
+                            correct_answers: 0,
+                            score: 0,
+                            grade: null,
+                            is_expired: false
+                        };
+                        setSession(newSession);
+                        setTimeRemaining(evaluationDuration * 60);
+                        sessionStartTimeRef.current = new Date(retrySessionData.actual_start_time);
+                        setIsPaused(false);
+                        setEvaluationState('active');
+                        startTimerSync(retrySessionData.session_id, 0, evaluationDuration);
+                    } catch (retryError) {
+                        console.error('❌ Erro ao tentar novamente:', retryError);
+                        toast({
+                            title: "❌ Erro ao iniciar avaliação",
+                            description: "Não foi possível iniciar uma sessão válida. Recarregue a página e tente novamente.",
+                            variant: "destructive",
+                        });
+                        setEvaluationState('error');
+                    }
+                }, 1000);
+                return;
+            }
+
             // Configurar sessão
             const newSession: TestSession = {
                 session_id: sessionData.session_id,
@@ -196,15 +275,28 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             // startAutoSave(sessionData.session_id);
 
         } catch (error) {
-            toast({
-                title: "❌ Erro ao iniciar avaliação",
-                description: "Não foi possível iniciar a sessão. Tente novamente.",
-                variant: "destructive",
-            });
+            console.error('❌ Erro ao iniciar sessão:', error);
+            const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+            
+            // ✅ NOVO: Mensagem mais específica para erro de sessão de outro teste
+            if (errorMessage.includes('pertence a outro teste')) {
+                toast({
+                    title: "❌ Erro de sessão",
+                    description: "Foi detectada uma sessão de outro teste. Recarregue a página para iniciar uma nova sessão.",
+                    variant: "destructive",
+                });
+                setEvaluationState('error');
+            } else {
+                toast({
+                    title: "❌ Erro ao iniciar avaliação",
+                    description: "Não foi possível iniciar a sessão. Tente novamente.",
+                    variant: "destructive",
+                });
+            }
         } finally {
             setIsSaving(false);
         }
-    }, [testData, testId, toast]); // ✅ REMOVIDO: startTimerSync e startAutoSave para evitar dependência circular
+    }, [testData, testId, toast, startTimerSync]); // ✅ ADICIONADO: startTimerSync necessário para retry
 
     // ✅ NOVO: Salvar resposta
     const saveAnswer = useCallback(async (questionId: string, answer: string | string[] | null): Promise<void> => {
@@ -367,6 +459,46 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             testId: testId
         });
 
+        // ✅ NOVO: Validar sessão antes de submeter
+        try {
+            const sessionInfo = await EvaluationApiService.getTestSessionInfo(testId);
+            if (sessionInfo.session_exists && sessionInfo.test_id && sessionInfo.test_id !== testId) {
+                console.error('❌ Sessão não pertence ao teste atual antes de submeter:', {
+                    requestedTestId: testId,
+                    sessionTestId: sessionInfo.test_id,
+                    sessionId: sessionInfo.session_id
+                });
+                toast({
+                    title: "❌ Sessão inválida",
+                    description: "A sessão não pertence a este teste. Recarregue a página para iniciar uma nova sessão.",
+                    variant: "destructive",
+                });
+                setEvaluationState('error');
+                return;
+            }
+            if (sessionInfo.session_exists && sessionInfo.session_id !== session.session_id) {
+                console.warn('⚠️ Session ID não corresponde:', {
+                    currentSessionId: session.session_id,
+                    backendSessionId: sessionInfo.session_id
+                });
+            }
+        } catch (error) {
+            // Se getTestSessionInfo falhar (404), pode ser que a sessão não existe mais
+            const apiError = error as { response?: { status?: number } };
+            if (apiError.response?.status === 404) {
+                console.warn('⚠️ Sessão não encontrada no backend antes de submeter');
+                toast({
+                    title: "⚠️ Sessão não encontrada",
+                    description: "A sessão não foi encontrada no servidor. Recarregue a página.",
+                    variant: "destructive",
+                });
+                setEvaluationState('error');
+                return;
+            }
+            // Para outros erros, continuar tentando submeter
+            console.warn('⚠️ Erro ao verificar sessão antes de submeter:', error);
+        }
+
         // ✅ NOVO: Declarar results fora do try para evitar problemas de escopo
         let results: SubmitTestResponse | null = null;
 
@@ -519,20 +651,87 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             const isGenericServerError = !hasResponse && error.message?.includes('Erro interno do servidor');
 
             if (isGoneError) {
-                // ✅ NOVO: Tratamento específico para erro 410 (sessão expirada)
+                // ✅ MELHORADO: Tratamento específico para erro 410 (sessão expirada ou inválida)
                 console.log('⚠️ Sessão expirada (410) - avaliação ou tempo limite expirado');
-                const errorMessage = (errorData as { error?: string })?.error || 
-                    "A sessão expirou. O tempo limite foi excedido ou a avaliação expirou.";
+                
+                // ✅ NOVO: Log detalhado da resposta de erro
+                console.log('🔍 Detalhes do erro 410:', {
+                    errorData: errorData,
+                    errorDataString: JSON.stringify(errorData),
+                    errorDataKeys: errorData ? Object.keys(errorData as Record<string, unknown>) : [],
+                    fullError: error
+                });
+                
+                // ✅ NOVO: Verificar se o erro é por sessão de outro teste
+                const errorMessageFromServer = (errorData as { error?: string; message?: string; detail?: string })?.error || 
+                    (errorData as { error?: string; message?: string; detail?: string })?.message ||
+                    (errorData as { error?: string; message?: string; detail?: string })?.detail ||
+                    (typeof errorData === 'string' ? errorData : '') ||
+                    '';
+                
+                console.log('📝 Mensagem de erro do servidor:', errorMessageFromServer);
+                
+                const isSessionMismatch = errorMessageFromServer.toLowerCase().includes('teste') || 
+                    errorMessageFromServer.toLowerCase().includes('test') ||
+                    errorMessageFromServer.toLowerCase().includes('sessão') ||
+                    errorMessageFromServer.toLowerCase().includes('session') ||
+                    errorMessageFromServer.toLowerCase().includes('outro') ||
+                    errorMessageFromServer.toLowerCase().includes('diferente');
+                
+                let userMessage: string;
+                let userTitle: string;
+                
+                if (isSessionMismatch) {
+                    // Erro por sessão de outro teste
+                    userTitle = "❌ Sessão inválida";
+                    userMessage = "A sessão usada pertence a outro teste. Isso pode acontecer se você iniciou outra avaliação anteriormente. Recarregue a página para iniciar uma nova sessão.";
+                    console.error('❌ Erro 410: Sessão de outro teste detectada', {
+                        sessionId: session?.session_id,
+                        testId: testId,
+                        errorMessage: errorMessageFromServer
+                    });
+                } else {
+                    // Erro por tempo expirado ou avaliação expirada
+                    // ✅ MELHORADO: Mensagem mais específica baseada na mensagem do servidor
+                    if (errorMessageFromServer.toLowerCase().includes('avaliação expirada') || 
+                        errorMessageFromServer.toLowerCase().includes('avaliacao expirada')) {
+                        userTitle = "⏰ Período de disponibilidade expirado";
+                        userMessage = "O período de disponibilidade desta avaliação expirou. Você não pode mais submeter respostas. Entre em contato com o professor se acredita que isso é um erro.";
+                    } else if (errorMessageFromServer.toLowerCase().includes('tempo') || 
+                               errorMessageFromServer.toLowerCase().includes('time')) {
+                        userTitle = "⏰ Tempo esgotado";
+                        userMessage = errorMessageFromServer || 
+                            "O tempo limite da avaliação foi excedido. Entre em contato com o professor se acredita que isso é um erro.";
+                    } else {
+                        userTitle = "⏰ Avaliação expirada";
+                        userMessage = errorMessageFromServer || 
+                            "A avaliação expirou. O tempo limite foi excedido ou o período de disponibilidade terminou. Entre em contato com o professor se acredita que isso é um erro.";
+                    }
+                    console.log('⏰ Erro 410: Tempo expirado ou avaliação expirada', {
+                        sessionId: session?.session_id,
+                        testId: testId,
+                        errorMessage: errorMessageFromServer
+                    });
+                }
                 
                 toast({
-                    title: "⏰ Tempo esgotado",
-                    description: errorMessage,
+                    title: userTitle,
+                    description: userMessage,
                     variant: "destructive",
                 });
                 
                 // Marcar como expirada e não permitir nova tentativa
                 setIsTimeUp(true);
                 setEvaluationState('expired');
+                
+                // ✅ NOVO: Se for erro de sessão de outro teste, limpar dados
+                if (isSessionMismatch) {
+                    localStorage.removeItem(`test_session_${testId}`);
+                    localStorage.removeItem(`test_answers_${testId}`);
+                    sessionStorage.removeItem("current_evaluation");
+                    sessionStorage.removeItem("evaluation_session");
+                }
+                
                 return;
             } else if (isNetworkError || isTimeoutError) {
                 // ✅ Verificar erros de rede/timeout antes de erros genéricos do servidor
@@ -745,7 +944,8 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         return () => {
             isMounted = false;
         };
-    }, [testId]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [testId]); // ✅ CORRIGIDO: checkActiveSession e loadSavedAnswers são chamados dentro do useEffect, não precisam estar nas dependências
 
     // ✅ NOVO: Carregar respostas salvas
     const loadSavedAnswers = useCallback(async () => {

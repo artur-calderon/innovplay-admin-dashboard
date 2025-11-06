@@ -166,6 +166,12 @@ export default function StartEvaluationModal({
     try {
       setIsLoadingClasses(true);
       console.log("🔍 Buscando turmas para avaliação:", evaluation.id);
+      console.log("📋 Dados da avaliação recebidos:", {
+        id: evaluation.id,
+        title: evaluation.title,
+        classes: evaluation.classes,
+        hasClasses: !!evaluation.classes && Array.isArray(evaluation.classes)
+      });
       
       // Buscar turmas já aplicadas para esta avaliação
       const response = await api.get(`/test/${evaluation.id}/classes`);
@@ -173,7 +179,7 @@ export default function StartEvaluationModal({
       
       if (response.data && Array.isArray(response.data) && response.data.length > 0) {
         // Mapear dados do backend para o formato esperado pelo componente
-        const classes = response.data.map((item: Record<string, unknown>) => ({
+        let mappedClasses = response.data.map((item: Record<string, unknown>) => ({
           id: (item.class as Record<string, unknown>).id as string,
           name: (item.class as Record<string, unknown>).name as string,
           school_name: ((item.class as Record<string, unknown>).school as Record<string, unknown>)?.name as string || "Escola não informada",
@@ -186,8 +192,20 @@ export default function StartEvaluationModal({
           status: ((item.status as string) || "configured") as "applied" | "configured"  // "applied" ou "configured"
         }));
         
-        setEvaluationClasses(classes);
-        console.log("✅ Turmas processadas:", classes);
+        // ✅ CORREÇÃO: Filtrar apenas as turmas selecionadas durante a criação da avaliação
+        // O backend pode retornar todas as turmas da escola, mas devemos mostrar apenas as selecionadas
+        if (evaluation.classes && Array.isArray(evaluation.classes) && evaluation.classes.length > 0) {
+          const selectedClassIds = evaluation.classes.map(id => String(id));
+          mappedClasses = mappedClasses.filter(cls => selectedClassIds.includes(String(cls.id)));
+          console.log("🔍 Filtrando turmas selecionadas:", {
+            totalFromBackend: response.data.length,
+            selectedClassIds,
+            filteredCount: mappedClasses.length
+          });
+        }
+        
+        setEvaluationClasses(mappedClasses);
+        console.log("✅ Turmas processadas:", mappedClasses);
         
         // Se chegou aqui e tem turmas, limpar qualquer erro anterior
         setError(null);

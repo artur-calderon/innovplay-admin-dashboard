@@ -124,7 +124,50 @@ export class EvaluationApiService {
                 time_limit_minutes: timeLimitMinutes
             });
             console.log('Resposta da API startSession:', response.data);
-            return response.data;
+            
+            const sessionData = response.data;
+            
+            // ✅ NOVO: Log detalhado para debug
+            console.log('🔍 Validação de sessão:', {
+                requestedTestId: testId,
+                returnedTestId: sessionData.test_id,
+                hasTestId: !!sessionData.test_id,
+                sessionId: sessionData.session_id,
+                message: sessionData.message
+            });
+            
+            // ✅ NOVO: Validar se a sessão retornada pertence ao teste solicitado
+            if (sessionData.test_id && sessionData.test_id !== testId) {
+                console.error('❌ Sessão retornada pertence a outro teste:', {
+                    requestedTestId: testId,
+                    returnedTestId: sessionData.test_id,
+                    sessionId: sessionData.session_id
+                });
+                throw new Error(`A sessão retornada (${sessionData.session_id}) pertence a outro teste (${sessionData.test_id}). Teste solicitado: ${testId}`);
+            }
+            
+            // ✅ NOVO: Se test_id não foi retornado, verificar via getTestSessionInfo
+            if (!sessionData.test_id && sessionData.session_id) {
+                console.log('⚠️ test_id não retornado na resposta, verificando via getTestSessionInfo...');
+                try {
+                    const sessionInfo = await this.getTestSessionInfo(testId);
+                    if (sessionInfo.session_exists && sessionInfo.test_id && sessionInfo.test_id !== testId) {
+                        console.error('❌ Sessão verificada pertence a outro teste:', {
+                            requestedTestId: testId,
+                            sessionTestId: sessionInfo.test_id,
+                            sessionId: sessionInfo.session_id
+                        });
+                        throw new Error(`A sessão verificada (${sessionInfo.session_id}) pertence a outro teste (${sessionInfo.test_id}). Teste solicitado: ${testId}`);
+                    }
+                } catch (error) {
+                    // Se getTestSessionInfo falhar (404), é normal - sessão ainda não existe
+                    if ((error as { response?: { status?: number } }).response?.status !== 404) {
+                        throw error;
+                    }
+                }
+            }
+            
+            return sessionData;
         } catch (error) {
             console.error('Erro ao iniciar sessão:', error);
             console.error('Detalhes do erro:', error.response?.data);

@@ -89,6 +89,7 @@ export interface StartSessionResponse {
     actual_start_time?: string;
     time_limit_minutes: number;
     remaining_time_minutes: number;
+    test_id?: string; // ✅ NOVO: ID do teste para validação
 }
 
 export interface SessionStatusResponse {

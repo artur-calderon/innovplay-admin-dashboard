@@ -1008,8 +1008,12 @@ export default function StudentEvaluations() {
                   </Button>
                 )}
 
-                {/* ✅ Botão "Ver Resultado" aparece quando concluída */}
-                                 {evaluation.student_status.has_completed && (
+                {/* ✅ Botão "Ver Resultado" aparece apenas quando concluída E entregue (tem score ou status finalizado) */}
+                {evaluation.student_status.has_completed && 
+                 (evaluation.student_status.score !== undefined || 
+                  evaluation.student_status.status === "finalizada" || 
+                  evaluation.student_status.status === "corrigida" || 
+                  evaluation.student_status.status === "revisada") && (
                   <Button
                     className="flex-1 bg-purple-600 hover:bg-purple-700"
                     onClick={() => navigate(`/aluno/avaliacao/${evaluation.id}/resultado`)}
