@@ -217,75 +217,98 @@ export default function StudentResult() {
     return response.data;
   };
 
+  // Função auxiliar para buscar resultados
+  const fetchResults = async () => {
+    if (!id || !user?.id) return false;
+
+    try {
+      // Buscar avaliações da turma do aluno (autenticado)
+      const resp = await api.get("/test/my-class/tests");
+      const tests: MyClassTestItem[] = resp.data?.tests || [];
+      const found = tests.find(t => String(t.test_id) === String(id)) || null;
+      
+      if (!found) {
+        return false;
+      }
+
+      setTest(found);
+
+      // Verificar se o aluno completou a avaliação
+      const hasCompleted = found.student_status?.has_completed;
+
+      if (!hasCompleted) {
+        return false;
+      }
+
+      // Tentar usar nova API primeiro
+      try {
+        console.log('🔄 Tentando buscar dados via nova API...');
+        const apiData = await fetchEvaluationGrades(String(user.id), String(id));
+        
+        if (apiData.success && apiData.data) {
+          console.log('✅ Dados obtidos via nova API:', apiData.data);
+          setEvaluationData(apiData);
+          setGrade(apiData.data.grade);
+          setScorePct(apiData.data.score_percentage);
+          setProficiency(apiData.data.proficiency);
+          setClassification(apiData.data.classification);
+          setCorrectAnswers(apiData.data.correct_answers);
+          setTotalQuestions(apiData.data.total_questions);
+          setRankings(apiData.data.rankings);
+          return true; // Resultados encontrados
+        }
+      } catch (apiError) {
+        console.log('⚠️ Nova API falhou, usando fallback:', apiError);
+      }
+
+      // Fallback: tentar pegar diretamente da avaliação do aluno
+      const directGrade = typeof found.student_status?.grade === "number" ? found.student_status.grade : null;
+      const directScore = typeof found.student_status?.score === "number" ? found.student_status.score : null;
+
+      if (directGrade != null || directScore != null) {
+        console.log('📊 Usando dados diretos da avaliação');
+        setGrade(directGrade != null ? directGrade : Math.round(((directScore || 0) / 10) * 10) / 10);
+        setScorePct(directScore != null ? directScore : Math.round(((directGrade || 0) * 10) * 10) / 10);
+        return true; // Resultados encontrados
+      }
+
+      // Fallback final: buscar resultado detalhado
+      try {
+        console.log('🔄 Usando fallback final...');
+        const detailed = await EvaluationResultsApiService.getStudentDetailedResults(String(id), String(user.id));
+        if (detailed) {
+          setGrade(typeof detailed.grade === "number" ? detailed.grade : Math.round((detailed.score_percentage / 10) * 10) / 10);
+          setScorePct(typeof detailed.score_percentage === "number" ? detailed.score_percentage : Math.round(((detailed.grade || 0) * 10) * 10) / 10);
+          return true; // Resultados encontrados
+        }
+      } catch (e) {
+        console.log('⚠️ Todos os métodos falharam, mantendo sem nota');
+      }
+
+      return false; // Resultados ainda não disponíveis
+    } catch (e) {
+      console.error('Erro ao buscar resultados:', e);
+      return false;
+    }
+  };
+
   useEffect(() => {
     const load = async () => {
       if (!id) return;
       setLoading(true);
       setError(null);
+      
       try {
-        // Buscar avaliações da turma do aluno (autenticado)
-        const resp = await api.get("/test/my-class/tests");
-        const tests: MyClassTestItem[] = resp.data?.tests || [];
-        const found = tests.find(t => String(t.test_id) === String(id)) || null;
-        setTest(found);
-
-        if (!found) {
+        const resultsFound = await fetchResults();
+        
+        if (!test) {
           setError("Avaliação não encontrada");
           return;
         }
 
-        // ✅ MODIFICADO: Liberar resultados imediatamente após completar
-        // Verificar se o aluno completou a avaliação
-        const hasCompleted = found.student_status?.has_completed;
-
-        if (!hasCompleted) {
-          // Não buscar nota se não completou
-          return;
-        }
-
-        // Tentar usar nova API primeiro
-        try {
-          console.log('🔄 Tentando buscar dados via nova API...');
-          const apiData = await fetchEvaluationGrades(String(user.id), String(id));
-          
-          if (apiData.success && apiData.data) {
-            console.log('✅ Dados obtidos via nova API:', apiData.data);
-            setEvaluationData(apiData);
-            setGrade(apiData.data.grade);
-            setScorePct(apiData.data.score_percentage);
-            setProficiency(apiData.data.proficiency);
-            setClassification(apiData.data.classification);
-            setCorrectAnswers(apiData.data.correct_answers);
-            setTotalQuestions(apiData.data.total_questions);
-            setRankings(apiData.data.rankings);
-            return;
-          }
-        } catch (apiError) {
-          console.log('⚠️ Nova API falhou, usando fallback:', apiError);
-        }
-
-        // Fallback: tentar pegar diretamente da avaliação do aluno
-        const directGrade = typeof found.student_status?.grade === "number" ? found.student_status.grade : null;
-        const directScore = typeof found.student_status?.score === "number" ? found.student_status.score : null;
-
-        if (directGrade != null || directScore != null) {
-          console.log('📊 Usando dados diretos da avaliação');
-          setGrade(directGrade != null ? directGrade : Math.round(((directScore || 0) / 10) * 10) / 10);
-          setScorePct(directScore != null ? directScore : Math.round(((directGrade || 0) * 10) * 10) / 10);
-          return;
-        }
-
-        // Fallback final: buscar resultado detalhado (pode exigir studentId do domínio)
-        try {
-          console.log('🔄 Usando fallback final...');
-          const detailed = await EvaluationResultsApiService.getStudentDetailedResults(String(id), String(user.id));
-          if (detailed) {
-            setGrade(typeof detailed.grade === "number" ? detailed.grade : Math.round((detailed.score_percentage / 10) * 10) / 10);
-            setScorePct(typeof detailed.score_percentage === "number" ? detailed.score_percentage : Math.round(((detailed.grade || 0) * 10) * 10) / 10);
-          }
-        } catch (e) {
-          console.log('⚠️ Todos os métodos falharam, mantendo sem nota');
-          // Ignorar, manter sem nota (em processamento)
+        // Se não encontrou resultados mas completou, iniciar polling
+        if (!resultsFound && test?.student_status?.has_completed && (grade === null && scorePct === null)) {
+          // Polling será iniciado no próximo useEffect
         }
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : "Erro ao carregar resultado";
@@ -296,6 +319,40 @@ export default function StudentResult() {
     };
     load();
   }, [id, user.id]);
+
+  // Polling automático para verificar resultados quando completado mas sem nota
+  useEffect(() => {
+    if (!id || !user?.id || !test) return;
+    
+    const hasCompleted = test.student_status?.has_completed;
+    const hasResults = grade !== null || scorePct !== null;
+    
+    // Iniciar polling apenas se completou mas ainda não tem resultados
+    if (!hasCompleted || hasResults) return;
+
+    console.log('🔄 Iniciando polling para verificar resultados...');
+    
+    let attempts = 0;
+    const maxAttempts = 24; // 24 tentativas * 5 segundos = 2 minutos
+    const pollInterval = 5000; // 5 segundos
+
+    const intervalId = setInterval(async () => {
+      attempts++;
+      console.log(`🔄 Polling tentativa ${attempts}/${maxAttempts}...`);
+      
+      const resultsFound = await fetchResults();
+      
+      if (resultsFound || attempts >= maxAttempts) {
+        console.log(resultsFound ? '✅ Resultados encontrados via polling' : '⏱️ Polling encerrado após 2 minutos');
+        clearInterval(intervalId);
+      }
+    }, pollInterval);
+
+    // Limpar intervalo quando componente desmontar ou quando resultados forem encontrados
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [id, user.id, test, grade, scorePct]);
 
   const headerSubjects = useMemo(() => {
     if (test?.subjects_info && test.subjects_info.length > 0) {

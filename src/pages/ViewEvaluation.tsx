@@ -27,6 +27,10 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import StartEvaluationModal from "@/components/evaluations/StartEvaluationModal";
+import { convertDateTimeLocalToISO } from "@/utils/date";
+import { Evaluation, Subject, Grade, Municipality, SchoolInfo, AppliedClass, Author, Question, getEvaluationSubjects, getEvaluationSubjectsCount } from "@/types/evaluation-types";
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/components/evaluations/results/constants";
+import { useEvaluations } from "@/hooks/use-cache";
 
 // Função para processar HTML e adicionar classes CSS para imagens
 const processHtmlWithImages = (html: string): string => {
@@ -56,102 +60,11 @@ const processHtmlWithImages = (html: string): string => {
     .replace(/<u([^>]*)>/gi, '<u$1 class="underline">');
 };
 
-// Interfaces based on the provided JSON structure
-interface Author {
-  id: string;
-  name: string;
-}
-
+// Interfaces locais para questões (estendem a interface base)
 interface QuestionOption {
   id: string;
   text: string;
   isCorrect: boolean;
-}
-
-interface Question {
-  id: string;
-  number: number;
-  text: string;
-  formattedText?: string;
-  secondStatement?: string; // Campo para segundo enunciado
-  type: string;
-  value: number;
-  difficulty: string;
-  skills: string[];
-  options?: QuestionOption[];
-  alternatives?: QuestionOption[]; // Campo alternativo da API
-  solution: string;
-  subjectId?: string; // ID da matéria da questão
-  subject?: { id: string; name: string }; // Adicionado para compatibilidade com backend
-}
-
-interface Subject {
-  id: string;
-  name: string;
-}
-
-interface Municipality {
-  id: string;
-  name: string;
-}
-
-interface SchoolInfo {
-  id: string;
-  name: string;
-}
-
-interface AppliedClass {
-  class_test_id: string | null;
-  class: {
-    id: string;
-    name: string;
-    students_count: number;
-    school: {
-      id: string;
-      name: string;
-    };
-    grade: {
-      id: string;
-      name: string;
-    };
-  };
-  application: string | null;
-  expiration: string | null;
-}
-
-interface Evaluation {
-  id: string;
-  title: string;
-  description: string | null;
-  course: {
-    id: string;
-    name: string;
-  } | null;
-  model: string;
-  subject: {
-    id: string;
-    name: string;
-  };
-  subjects?: Subject[]; // Array de matérias da avaliação (campo oficial)
-  subjects_count?: number; // Quantidade de disciplinas
-  subjects_info?: Subject[]; // Array de matérias da avaliação (fallback)
-  grade: {
-    id: string;
-    name: string;
-  } | null;
-  max_score: number | null;
-  createdBy: Author;
-  createdAt: string;
-  questions: Question[];
-  municipalities?: Municipality[];
-  schools?: SchoolInfo[];
-  municipalities_count?: number;
-  schools_count?: number;
-  total_students?: number;
-  applied_classes_count?: number;
-  status?: string;
-  is_applied?: boolean;
-  applied_classes?: AppliedClass[];
 }
 
 // Interface para questões agrupadas por matéria
@@ -166,6 +79,7 @@ export default function ViewEvaluation() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { invalidateAfterCRUD } = useEvaluations();
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -240,7 +154,7 @@ export default function ViewEvaluation() {
         console.error("Erro ao buscar avaliação:", error);
         toast({
           title: "Erro",
-          description: "Não foi possível carregar a avaliação",
+          description: ERROR_MESSAGES.EVALUATION_LOAD_FAILED,
           variant: "destructive",
         });
       } finally {
@@ -266,9 +180,12 @@ export default function ViewEvaluation() {
       setIsDeleting(true);
       await api.delete(`/test/${id}`);
 
+      // Invalidar cache após exclusão
+      await invalidateAfterCRUD();
+
       toast({
-        title: "Sucesso",
-        description: "Avaliação excluída com sucesso!",
+        title: SUCCESS_MESSAGES.EVALUATION_DELETED,
+        description: SUCCESS_MESSAGES.EVALUATION_DELETED,
       });
 
       navigate("/app/avaliacoes");
@@ -276,7 +193,7 @@ export default function ViewEvaluation() {
       console.error("Erro ao excluir avaliação:", error);
       toast({
         title: "Erro",
-        description: "Não foi possível excluir a avaliação",
+        description: ERROR_MESSAGES.EVALUATION_DELETE_FAILED,
         variant: "destructive",
       });
     } finally {
@@ -299,31 +216,84 @@ export default function ViewEvaluation() {
     // Capturar timezone do usuário automaticamente
     const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+    // ✅ CORREÇÃO: Verificar se já está em formato ISO com timezone antes de converter
+    // O StartEvaluationModal já converte para ISO, então só precisamos converter se ainda não estiver
+    const isISOFormat = (dateStr: string) => {
+      // Verifica se tem timezone offset (formato +/-HH:MM no final)
+      const timezonePattern = /[+-]\d{2}:\d{2}$/;
+      return timezonePattern.test(dateStr);
+    };
+
+    const startDateTimeISO = isISOFormat(startDateTime)
+      ? startDateTime
+      : convertDateTimeLocalToISO(startDateTime);
+    const endDateTimeISO = isISOFormat(endDateTime)
+      ? endDateTime
+      : convertDateTimeLocalToISO(endDateTime);
+
+    console.log("🚀 Aplicando avaliação (ViewEvaluation):", {
+      evaluationId: evaluation.id,
+      classIds,
+      original: { startDateTime, endDateTime },
+      converted: { startDateTimeISO, endDateTimeISO },
+      timezone: userTimezone
+    });
+
     try {
-      // Aqui seria chamada a API para ativar a avaliação com as datas
-      await api.put(`/test/${evaluation.id}/start`, {
-        startDateTime,
-        endDateTime,
-        timezone: userTimezone,
-        status: 'active'
+      // ✅ CORREÇÃO: Usar o mesmo endpoint e formato que ReadyEvaluations.tsx
+      // Mudar de PUT /test/${id}/start para POST /test/${id}/apply
+      const classesData = classIds.map(classId => ({
+        class_id: classId,
+        application: startDateTimeISO,
+        expiration: endDateTimeISO
+      }));
+
+      console.log("📡 Enviando dados para API:", {
+        url: `/test/${evaluation.id}/apply`,
+        data: { classes: classesData, timezone: userTimezone }
       });
 
+      const applyResponse = await api.post(`/test/${evaluation.id}/apply`, {
+        classes: classesData,
+        timezone: userTimezone
+      });
+
+      console.log("✅ Resposta da API:", applyResponse.data);
+
+      // Invalidar cache após aplicar avaliação
+      await invalidateAfterCRUD();
+
       toast({
-        title: "Avaliação iniciada!",
-        description: `A avaliação "${evaluation.title}" foi ativada e agora está disponível na agenda dos alunos.`,
+        title: SUCCESS_MESSAGES.EVALUATION_APPLIED,
+        description: `A avaliação "${evaluation.title}" foi aplicada para ${classIds.length} turma(s) e ficará disponível no horário configurado.`,
       });
 
       setShowStartEvaluationModal(false);
       
       // Recarregar os dados da avaliação para refletir o novo status
-      const response = await api.get(`/test/${evaluation.id}`);
-      setEvaluation(response.data);
+      const evaluationResponse = await api.get(`/test/${evaluation.id}`);
+      setEvaluation(evaluationResponse.data);
       
-    } catch (error) {
-      console.error("Erro ao aplicar avaliação:", error);
+    } catch (error: unknown) {
+      console.error("❌ Erro ao aplicar avaliação:", error);
+
+      let errorMessage: string = ERROR_MESSAGES.EVALUATION_APPLY_FAILED;
+
+      const apiError = error as { response?: { status?: number; data?: { error?: string } } };
+      
+      if (apiError.response?.status === 404) {
+        errorMessage = ERROR_MESSAGES.EVALUATION_NOT_FOUND;
+      } else if (apiError.response?.status === 403) {
+        errorMessage = ERROR_MESSAGES.FORBIDDEN;
+      } else if (apiError.response?.status === 400) {
+        errorMessage = apiError.response.data?.error || ERROR_MESSAGES.EVALUATION_INVALID_DATA;
+      } else if (apiError.response?.data?.error) {
+        errorMessage = apiError.response.data.error;
+      }
+
       toast({
-        title: "Erro",
-        description: "Não foi possível iniciar a avaliação. Tente novamente.",
+        title: ERROR_MESSAGES.EVALUATION_APPLY_FAILED,
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -391,49 +361,37 @@ export default function ViewEvaluation() {
 
     const questionsBySubject: QuestionsBySubject = {};
 
-    // Prioridade 1: usar subjects (campo oficial)
-    if (evaluation.subjects && evaluation.subjects.length > 0) {
-      evaluation.subjects.forEach(subject => {
-        questionsBySubject[subject.id] = {
-          subject,
-          questions: []
-        };
-      });
-    } 
-    // Fallback: usar subjects_info se subjects não existir
-    else if (evaluation.subjects_info && evaluation.subjects_info.length > 0) {
-      evaluation.subjects_info.forEach(subject => {
-        questionsBySubject[subject.id] = {
-          subject,
-          questions: []
-        };
-      });
-    }
+    // Usar função helper padronizada para obter disciplinas
+    const subjects = getEvaluationSubjects(evaluation);
 
-    // Se existe alguma estrutura de disciplinas, distribuir questões pelas matérias
-    if (Object.keys(questionsBySubject).length > 0) {
-      evaluation.questions?.forEach((question) => {
-        const subjId = question.subject?.id;
-        
-        if (subjId && questionsBySubject[subjId]) {
-          questionsBySubject[subjId].questions.push(question);
-        } else {
-          // Se não tem subject ou não encontrou a matéria, coloca na primeira
-          const firstSubjectId = Object.keys(questionsBySubject)[0];
-          if (firstSubjectId) {
-            questionsBySubject[firstSubjectId].questions.push(question);
-          }
-        }
+    // Criar estrutura para cada disciplina
+    if (subjects.length > 0) {
+      subjects.forEach(subject => {
+        questionsBySubject[subject.id] = {
+          subject,
+          questions: []
+        };
       });
     } else {
-      // Fallback para avaliações antigas com apenas uma matéria
-      if (evaluation.subject) {
-        questionsBySubject[evaluation.subject.id] = {
-          subject: evaluation.subject,
-          questions: evaluation.questions || []
-        };
-      }
+      // Fallback: se não há disciplinas, criar uma estrutura vazia
+      return {};
     }
+
+    // Distribuir questões pelas matérias
+    evaluation.questions?.forEach((question) => {
+      const q = question as Question & { value?: number; solution?: string; skills?: string[] };
+      const subjId = q.subject?.id;
+      
+      if (subjId && questionsBySubject[subjId]) {
+        questionsBySubject[subjId].questions.push(q);
+      } else {
+        // Se não tem subject ou não encontrou a matéria, coloca na primeira
+        const firstSubjectId = Object.keys(questionsBySubject)[0];
+        if (firstSubjectId) {
+          questionsBySubject[firstSubjectId].questions.push(q);
+        }
+      }
+    });
 
     return questionsBySubject;
   };
@@ -526,7 +484,7 @@ export default function ViewEvaluation() {
 
   const questionsBySubject = groupQuestionsBySubject();
   const totalQuestions = evaluation.questions.length;
-  const subjectsCount = evaluation.subjects_count || evaluation.subjects?.length || evaluation.subjects_info?.length || 1;
+  const subjectsCount = getEvaluationSubjectsCount(evaluation);
   const municipalitiesCount = evaluation.municipalities_count || evaluation.municipalities?.length || 0;
   const schoolsCount = evaluation.schools_count || evaluation.schools?.length || 0;
   const totalStudents = evaluation.total_students || 0;
@@ -691,28 +649,30 @@ export default function ViewEvaluation() {
             <div>
               <label className="text-sm font-medium text-muted-foreground">Disciplinas</label>
               <div className="flex flex-wrap gap-2 mt-1">
-                {evaluation.subjects && evaluation.subjects.length > 0 ? (
-                  evaluation.subjects.map((subject) => (
-                    <Badge key={subject.id} variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-                      {subject.name}
+                {(() => {
+                  const subjects = getEvaluationSubjects(evaluation);
+                  if (subjects.length > 0) {
+                    return (
+                      <>
+                        {subjects.map((subject) => (
+                          <Badge key={subject.id} variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                            {subject.name}
+                          </Badge>
+                        ))}
+                        {evaluation.subjects_count && evaluation.subjects_count > subjects.length && (
+                          <Badge variant="outline" className="text-xs bg-gray-50 text-gray-600 border-gray-300">
+                            +{evaluation.subjects_count - subjects.length} outras
+                          </Badge>
+                        )}
+                      </>
+                    );
+                  }
+                  return (
+                    <Badge variant="outline" className="text-xs">
+                      Não informado
                     </Badge>
-                  ))
-                ) : evaluation.subjects_info && evaluation.subjects_info.length > 0 ? (
-                  evaluation.subjects_info.map((subject) => (
-                    <Badge key={subject.id} variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-                      {subject.name}
-                    </Badge>
-                  ))
-                ) : (
-                  <Badge variant="outline" className="text-xs">
-                    {evaluation.subject?.name || 'Não informado'}
-                  </Badge>
-                )}
-                {evaluation.subjects_count && evaluation.subjects_count > (evaluation.subjects?.length || 0) && (
-                  <Badge variant="outline" className="text-xs bg-gray-50 text-gray-600 border-gray-300">
-                    +{evaluation.subjects_count - (evaluation.subjects?.length || 0)} outras
-                  </Badge>
-                )}
+                  );
+                })()}
               </div>
             </div>
             <div>
@@ -1059,20 +1019,21 @@ export default function ViewEvaluation() {
               <CardContent className="p-6">
                 <div className="space-y-8">
                   {subjectData.questions.map((question, index) => {
+                    const q = question as Question & { value?: number; solution?: string; skills?: string[]; secondStatement?: string };
                     const questionData = {
-                      id: question.id,
-                      text: question.text,
-                      type: question.type,
-                      difficulty: question.difficulty,
-                      value: question.value,
-                      options: question.options || [],
-                      solution: question.solution || '',
-                      subject: question.subject,
-                      skills: question.skills || []
+                      id: q.id,
+                      text: q.text,
+                      type: q.type,
+                      difficulty: q.difficulty,
+                      value: q.value,
+                      options: q.options || [],
+                      solution: q.solution || '',
+                      subject: q.subject,
+                      skills: q.skills || []
                     };
                     
                     return (
-                    <div key={question.id} className="question-preview-content bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div key={q.id} className="question-preview-content bg-white rounded-xl border border-gray-200 overflow-hidden">
                       {/* Header da questão */}
                       <div className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200 p-6">
                         <div className="flex items-start justify-between gap-4">
@@ -1081,8 +1042,8 @@ export default function ViewEvaluation() {
                               Questão {index + 1}
                             </h3>
                             <div className="flex flex-wrap gap-2">
-                              {Array.isArray(question.skills) && question.skills.length > 0 && (
-                                question.skills.map((skill, skillIndex) => {
+                              {Array.isArray(q.skills) && q.skills.length > 0 && (
+                                q.skills.map((skill, skillIndex) => {
                                   const skillCode = getSkillCode(skill);
                                   const skillDescription = getSkillDescription(skill);
                                   return (
@@ -1119,30 +1080,30 @@ export default function ViewEvaluation() {
                         <div className="prose prose-sm max-w-none question-statement">
                           <div
                             className="text-base leading-relaxed text-gray-700 p-4 bg-gray-50 rounded-lg border"
-                            dangerouslySetInnerHTML={{ __html: processHtmlWithImages(question.formattedText || question.text) }}
+                            dangerouslySetInnerHTML={{ __html: processHtmlWithImages(q.formattedText || q.text) }}
                           />
                         </div>
 
                         {/* Segundo Enunciado (se houver) */}
-                        {(question.secondStatement || (question.formattedText && question.formattedText !== question.text)) && (
+                        {(q.secondStatement || (q.formattedText && q.formattedText !== q.text)) && (
                           <div className="prose prose-sm max-w-none question-continuation">
                             <div
                               className="text-base leading-relaxed text-gray-700 p-4 bg-blue-50 rounded-lg border border-blue-200"
-                              dangerouslySetInnerHTML={{ __html: processHtmlWithImages(question.secondStatement || question.formattedText || '') }}
+                              dangerouslySetInnerHTML={{ __html: processHtmlWithImages(q.secondStatement || q.formattedText || '') }}
                             />
                           </div>
                         )}
 
 
                         {/* Alternativas para questões de múltipla escolha */}
-                        {(question.type === 'multipleChoice' || question.type === 'multiple_choice') && (question.options || question.alternatives) && (question.options?.length > 0 || question.alternatives?.length > 0) && (
+                        {(q.type === 'multipleChoice' || q.type === 'multiple_choice') && (q.options || q.alternatives) && (q.options?.length > 0 || q.alternatives?.length > 0) && (
                           <div className="space-y-4">
                             <h4 className="font-semibold text-lg text-gray-700 flex items-center gap-2">
                               <span className="w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-sm">🔢</span>
                               Alternativas
                             </h4>
                             <div className="space-y-3">
-                              {(question.options || question.alternatives || []).map((option, optionIndex) => (
+                              {(q.options || q.alternatives || []).map((option, optionIndex) => (
                                 <div
                                   key={optionIndex}
                                   className={`alternative-item flex items-start gap-4 p-5 rounded-xl border transition-all duration-200 ${
@@ -1179,7 +1140,7 @@ export default function ViewEvaluation() {
                         )}
 
                         {/* Área de resposta para questões dissertativas */}
-                        {question.type === 'open' && (
+                        {q.type === 'open' && (
                           <div className="space-y-4">
                             <h4 className="font-semibold text-lg text-gray-700 flex items-center gap-2">
                               <span className="w-6 h-6 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-sm">✍️</span>
@@ -1202,7 +1163,7 @@ export default function ViewEvaluation() {
                         )}
 
                         {/* Resolução/Gabarito (se houver) */}
-                        {question.solution && question.solution.trim() !== '' && (
+                        {q.solution && q.solution.trim() !== '' && (
                           <div className="space-y-4 border-t border-gray-200 pt-6">
                             <h4 className="font-semibold text-lg text-gray-700 flex items-center gap-2">
                               <span className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm">💡</span>
@@ -1213,7 +1174,7 @@ export default function ViewEvaluation() {
                               <div className="prose prose-sm max-w-none">
                                 <div
                                   className="text-base leading-relaxed text-gray-700"
-                                  dangerouslySetInnerHTML={{ __html: processHtmlWithImages(question.solution) }}
+                                  dangerouslySetInnerHTML={{ __html: processHtmlWithImages(q.solution) }}
                                 />
                               </div>
                             </div>
@@ -1226,19 +1187,19 @@ export default function ViewEvaluation() {
                             <div className="flex items-center gap-2">
                               <span className="w-2 h-2 bg-blue-400 rounded-full"></span>
                               <span className="font-medium text-gray-600">Dificuldade:</span> 
-                              <span className="text-gray-700">{question.difficulty}</span>
+                              <span className="text-gray-700">{q.difficulty}</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <span className="w-2 h-2 bg-green-400 rounded-full"></span>
                               <span className="font-medium text-gray-600">Valor:</span> 
-                              <span className="text-gray-700">{question.value} pontos</span>
+                              <span className="text-gray-700">{q.value || q.points || 0} pontos</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <span className="w-2 h-2 bg-purple-400 rounded-full"></span>
                               <span className="font-medium text-gray-600">Habilidades:</span> 
                               <span className="text-gray-700">
-                                {Array.isArray(question.skills) && question.skills.length > 0
-                                  ? `${question.skills.length} habilidade${question.skills.length > 1 ? 's' : ''}`
+                                {Array.isArray(q.skills) && q.skills.length > 0
+                                  ? `${q.skills.length} habilidade${q.skills.length > 1 ? 's' : ''}`
                                   : 'Nenhuma habilidade definida'}
                               </span>
                             </div>

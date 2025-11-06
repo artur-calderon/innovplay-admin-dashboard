@@ -21,20 +21,20 @@ interface CacheHookOptions {
   enabled?: boolean;
   staleTime?: number;
   cacheKey?: string;
-  onError?: (error: any) => void;
+  onError?: (error: unknown) => void;
 }
 
 // Cache global em memória
-const cache = new Map<string, CacheItem<any>>();
+const cache = new Map<string, CacheItem<unknown>>();
 
 // Utilitário para gerar chave de cache
-const generateCacheKey = (url: string, params?: any): string => {
+const generateCacheKey = (url: string, params?: unknown): string => {
   const paramString = params ? JSON.stringify(params) : '';
   return `${url}${paramString}`;
 };
 
 // Verificar se o cache está válido
-const isCacheValid = (cacheItem: CacheItem<any>): boolean => {
+const isCacheValid = (cacheItem: CacheItem<unknown>): boolean => {
   return Date.now() - cacheItem.timestamp < cacheItem.ttl;
 };
 
@@ -66,7 +66,7 @@ export function useCache<T>(
   } = options;
 
   // Função para fazer fetch dos dados
-  const fetchData = useCallback(async (params?: any, forceRefresh = false) => {
+  const fetchData = useCallback(async (params?: unknown, forceRefresh = false) => {
     if (!enabled) return;
 
     const cacheKey = customCacheKey || generateCacheKey(url, params);
@@ -74,15 +74,15 @@ export function useCache<T>(
 
     // Se há cache válido e não é refresh forçado, usar cache
     if (cachedItem && isCacheValid(cachedItem) && !forceRefresh) {
-      setData(cachedItem.data);
+      setData(cachedItem.data as T);
       setIsLoading(false);
       setError(null);
-      return cachedItem.data;
+      return cachedItem.data as T;
     }
 
     // Se há cache, mas está stale, mostrar dados stale enquanto revalida
     if (cachedItem && !forceRefresh) {
-      setData(cachedItem.data);
+      setData(cachedItem.data as T);
       setIsValidating(true);
     } else {
       setIsLoading(true);
@@ -103,13 +103,14 @@ export function useCache<T>(
       setData(newData);
       setError(null);
       return newData;
-    } catch (err: any) {
-      setError(err);
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      setError(error);
       if (onError) onError(err);
 
       // Se há cache, mesmo expirado, usar em caso de erro
       if (cachedItem) {
-        setData(cachedItem.data);
+        setData(cachedItem.data as T);
       }
 
       throw err;
@@ -139,12 +140,12 @@ export function useCache<T>(
   }, []);
 
   // Função para refetch
-  const refetch = useCallback((params?: any) => {
+  const refetch = useCallback((params?: unknown) => {
     return fetchData(params, true);
   }, [fetchData]);
 
   // Função para mutate (atualizar cache diretamente)
-  const mutate = useCallback((newData: T, params?: any) => {
+  const mutate = useCallback((newData: T, params?: unknown) => {
     const cacheKey = customCacheKey || generateCacheKey(url, params);
     const ttl = getTTL(url);
 
@@ -185,11 +186,12 @@ export function useEvaluations(params: {
   type?: string;
   model?: string;
   grade_id?: string;
+  created_by?: string;
 } = {}) {
   const cacheKey = `evaluations-${JSON.stringify(params)}`;
 
   const result = useCache<{
-    data: any[];
+    data: unknown[];
     pagination: {
       page: number;
       per_page: number;
@@ -204,6 +206,13 @@ export function useEvaluations(params: {
     cacheKey,
     staleTime: 2 * 60 * 1000 // 2 minutos
   });
+
+  // ✅ NOVO: Fazer fetch com parâmetros quando mudarem (incluindo montagem inicial)
+  useEffect(() => {
+    // Garantir que o fetch inicial inclua os parâmetros
+    result.refetch(params);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(params)]);
 
   // ✅ MELHORADO: Função para invalidar cache de avaliações de forma mais abrangente
   const invalidateEvaluationsCache = useCallback(() => {

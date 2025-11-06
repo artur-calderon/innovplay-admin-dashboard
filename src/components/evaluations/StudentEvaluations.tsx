@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -117,7 +117,7 @@ interface StudentEvaluation {
 interface EvaluationTaking {
   evaluationId: string;
   currentQuestion: number;
-  answers: { [questionId: string]: any };
+  answers: { [questionId: string]: string | string[] };
   timeRemaining: number;
   startedAt: string;
 }
@@ -151,6 +151,26 @@ interface StudentClass {
   };
 }
 
+interface MyClassTestItem {
+  test_id: string;
+  title: string;
+  subjects_info?: { id: string; name: string }[];
+  subject?: { id: string; name: string };
+  application_info?: {
+    application?: string;
+    expiration?: string;
+  };
+  duration?: number;
+  total_questions?: number;
+  max_score?: number;
+  type?: string;
+  model?: string;
+  grade?: { id: string; name: string };
+  description?: string;
+  availability: Availability;
+  student_status: StudentStatus;
+}
+
 export default function StudentEvaluations() {
   const [evaluations, setEvaluations] = useState<StudentEvaluation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -165,20 +185,80 @@ export default function StudentEvaluations() {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    fetchStudentEvaluations();
-    checkInProgressEvaluation();
-  }, []);
+  const checkInProgressEvaluation = useCallback(() => {
+    const inProgress = localStorage.getItem("evaluation_in_progress");
+    if (inProgress) {
+      try {
+        const data = JSON.parse(inProgress);
+        if (data && data.evaluationId && typeof data.evaluationId === 'string') {
+          const evaluation = evaluations.find(e => e.id === data.evaluationId);
+          if (evaluation && evaluation.student_status.has_completed) {
+            localStorage.removeItem("evaluation_in_progress");
+            localStorage.removeItem("current_evaluation_data");
+            setCurrentTaking(null);
+          } else {
+            setCurrentTaking(data);
+          }
+        } else {
+          localStorage.removeItem("evaluation_in_progress");
+        }
+      } catch (error) {
+        console.error("Erro ao carregar avaliação em progresso:", error);
+        localStorage.removeItem("evaluation_in_progress");
+      }
+    }
+  }, [evaluations]);
 
+  // Função de retry com backoff exponencial
+  const retryWithBackoff = async <T,>(
+    fn: () => Promise<T>,
+    maxAttempts: number = 3,
+    baseDelay: number = 1000
+  ): Promise<T> => {
+    let lastError: unknown;
+    
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await fn();
+      } catch (error: unknown) {
+        lastError = error;
+        
+        const apiError = error as { response?: { status?: number } };
+        
+        // Verificar se é erro de rede que deve ter retry
+        const isNetworkError = 
+          !apiError.response || 
+          apiError.response.status === 500 || 
+          apiError.response.status === 502 || 
+          apiError.response.status === 503 || 
+          apiError.response.status === 504;
+        
+        // Se não é erro de rede ou já foi a última tentativa, lançar erro
+        if (!isNetworkError || attempt >= maxAttempts) {
+          throw error;
+        }
+        
+        // Calcular delay com backoff exponencial: 1s, 2s, 4s
+        const delay = baseDelay * Math.pow(2, attempt - 1);
+        console.log(`🔄 Retry ${attempt}/${maxAttempts} após ${delay}ms...`);
+        
+        // Aguardar antes da próxima tentativa
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+    
+    throw lastError;
+  };
 
-
-  const fetchStudentEvaluations = async () => {
+  const fetchStudentEvaluations = useCallback(async () => {
     console.log('🚀 Iniciando busca de avaliações...');
     try {
       setIsLoading(true);
 
-      // ✅ NOVO: Usar o endpoint /test/my-class/tests
-      const response = await api.get('/test/my-class/tests');
+      // Usar retry com backoff exponencial para erros de rede
+      await retryWithBackoff(async () => {
+        // ✅ NOVO: Usar o endpoint /test/my-class/tests
+        const response = await api.get('/test/my-class/tests');
       console.log('Resposta da API de avaliações:', response);
 
       const testsData = response.data.tests || [];
@@ -191,7 +271,7 @@ export default function StudentEvaluations() {
       }
 
       // ✅ CORRIGIDO: Log para debug - verificar estrutura dos dados
-      testsData.forEach((testData: any, index: number) => {
+      testsData.forEach((testData: MyClassTestItem, index: number) => {
         console.log(`📋 Avaliação ${index}:`, {
           testId: testData.test_id,
           title: testData.title,
@@ -207,7 +287,7 @@ export default function StudentEvaluations() {
       });
 
       // ✅ CORRIGIDO: Mostrar todas as avaliações (incluindo as já realizadas)
-      const filteredTests = testsData.filter((testData: any) => {
+      const filteredTests = testsData.filter((testData: MyClassTestItem) => {
         // ✅ CORRIGIDO: Verificar se os campos obrigatórios existem
         if (!testData.availability || !testData.student_status) {
           console.warn('Dados de avaliação incompletos:', testData);
@@ -220,7 +300,7 @@ export default function StudentEvaluations() {
       console.log('Avaliações filtradas:', filteredTests.length, 'de', testsData.length);
 
       // Transformar e adicionar as avaliações encontradas
-      const evaluationsWithStatus = filteredTests.map((testData: any) => {
+      const evaluationsWithStatus = filteredTests.map((testData: MyClassTestItem) => {
         console.log('📊 Dados da avaliação da API:', {
           id: testData.test_id,
           title: testData.title,
@@ -257,59 +337,55 @@ export default function StudentEvaluations() {
         return evaluation;
       });
 
-      console.log('🔍 Avaliações processadas:', evaluationsWithStatus);
-      setEvaluations(evaluationsWithStatus);
+        console.log('🔍 Avaliações processadas:', evaluationsWithStatus);
+        setEvaluations(evaluationsWithStatus);
+        
+        return evaluationsWithStatus; // Retornar para retryWithBackoff
+      }, 3, 1000); // 3 tentativas, começando com 1 segundo
 
-    } catch (error) {
-      console.error("❌ Erro ao buscar avaliações do aluno:", error);
+    } catch (error: unknown) {
+      const apiError = error as { message?: string; response?: { data?: unknown; status?: number }; stack?: string };
+      
+      console.error("❌ Erro ao buscar avaliações do aluno após retries:", error);
       console.error("Detalhes do erro:", {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        stack: error.stack
+        message: apiError.message,
+        response: apiError.response?.data,
+        status: apiError.response?.status,
+        stack: apiError.stack
       });
       
-      toast({
-        title: "Erro",
-        description: ERROR_MESSAGES.NETWORK_ERROR,
-        variant: "destructive",
-      });
+      // Verificar se é erro de rede após todas as tentativas
+      const isNetworkError = 
+        !apiError.response || 
+        apiError.response.status === 500 || 
+        apiError.response.status === 502 || 
+        apiError.response.status === 503 || 
+        apiError.response.status === 504;
+      
+      if (isNetworkError) {
+        toast({
+          title: "Erro",
+          description: ERROR_MESSAGES.RETRY_FAILED,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Erro ao carregar avaliações",
+          description: ERROR_MESSAGES.EVALUATION_LOAD_FAILED,
+          variant: "destructive",
+        });
+      }
 
       setEvaluations([]);
-
-      toast({
-        title: "Erro ao carregar avaliações",
-        description: "Não foi possível carregar suas avaliações. Tente novamente.",
-        variant: "destructive",
-      });
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [toast]);
 
-  const checkInProgressEvaluation = () => {
-    const inProgress = localStorage.getItem("evaluation_in_progress");
-    if (inProgress) {
-      try {
-        const data = JSON.parse(inProgress);
-        if (data && data.evaluationId && typeof data.evaluationId === 'string') {
-          const evaluation = evaluations.find(e => e.id === data.evaluationId);
-          if (evaluation && evaluation.student_status.has_completed) {
-            localStorage.removeItem("evaluation_in_progress");
-            localStorage.removeItem("current_evaluation_data");
-            setCurrentTaking(null);
-          } else {
-            setCurrentTaking(data);
-          }
-        } else {
-          localStorage.removeItem("evaluation_in_progress");
-        }
-      } catch (error) {
-        console.error("Erro ao carregar avaliação em progresso:", error);
-        localStorage.removeItem("evaluation_in_progress");
-      }
-    }
-  };
+  useEffect(() => {
+    fetchStudentEvaluations();
+    checkInProgressEvaluation();
+  }, [fetchStudentEvaluations, checkInProgressEvaluation]);
 
   const handleStartEvaluation = async (evaluation: StudentEvaluation) => {
     setSelectedEvaluation(evaluation);
@@ -359,21 +435,23 @@ export default function StudentEvaluations() {
           variant: "destructive",
         });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const apiError = error as { message?: string; response?: { data?: { error?: string; message?: string }; status?: number }; config?: { url?: string } };
+      
       console.error("Erro ao verificar se pode iniciar:", error);
       console.error("Detalhes do erro:", {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        url: error.config?.url
+        message: apiError.message,
+        response: apiError.response?.data,
+        status: apiError.response?.status,
+        url: apiError.config?.url
       });
 
       let errorMessage = "Erro ao verificar disponibilidade da avaliação";
 
-      if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
+      if (apiError.response?.data?.error) {
+        errorMessage = apiError.response.data.error;
+      } else if (apiError.response?.data?.message) {
+        errorMessage = apiError.response.data.message;
       }
 
       toast({
@@ -453,34 +531,36 @@ export default function StudentEvaluations() {
       // Redirecionar para tela de avaliação
       window.location.href = `/app/avaliacao/${testId}/fazer`;
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const apiError = error as { message?: string; response?: { data?: { error?: string; message?: string }; status?: number }; config?: { url?: string; method?: string }; stack?: string };
+      
       console.error("❌ Erro ao iniciar avaliação:", error);
       console.error("Detalhes completos do erro:", {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        url: error.config?.url,
-        method: error.config?.method,
-        stack: error.stack
+        message: apiError.message,
+        response: apiError.response?.data,
+        status: apiError.response?.status,
+        url: apiError.config?.url,
+        method: apiError.config?.method,
+        stack: apiError.stack
       });
 
       let errorMessage = "Não foi possível iniciar a avaliação";
 
       // ✅ MELHORADO: Tratamento específico para diferentes tipos de erro
-      if (error.response?.status === 403) {
+      if (apiError.response?.status === 403) {
         errorMessage = "Você não tem permissão para acessar esta avaliação";
-      } else if (error.response?.status === 404) {
+      } else if (apiError.response?.status === 404) {
         errorMessage = "Avaliação não encontrada";
-      } else if (error.response?.status === 400) {
-        errorMessage = error.response.data?.error || "Dados inválidos para iniciar a avaliação";
-      } else if (error.response?.status === 422) {
-        errorMessage = error.response.data?.error || "Avaliação expirada ou indisponível";
-      } else if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      } else if (error.message) {
-        errorMessage = error.message;
+      } else if (apiError.response?.status === 400) {
+        errorMessage = apiError.response.data?.error || "Dados inválidos para iniciar a avaliação";
+      } else if (apiError.response?.status === 422) {
+        errorMessage = apiError.response.data?.error || "Avaliação expirada ou indisponível";
+      } else if (apiError.response?.data?.error) {
+        errorMessage = apiError.response.data.error;
+      } else if (apiError.response?.data?.message) {
+        errorMessage = apiError.response.data.message;
+      } else if (apiError.message) {
+        errorMessage = apiError.message;
       }
 
       console.log("🚨 Mensagem de erro final:", errorMessage);
@@ -509,17 +589,19 @@ export default function StudentEvaluations() {
       // Redirecionar para tela de avaliação
       window.location.href = `/app/avaliacao/${evaluation.id}/fazer`;
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const apiError = error as { response?: { data?: { error?: string }; status?: number } };
+      
       console.error("❌ Erro ao continuar avaliação:", error);
 
       let errorMessage = "Não foi possível continuar a avaliação";
 
-      if (error.response?.status === 403) {
-        errorMessage = "Você não tem permissão para acessar esta avaliação";
-      } else if (error.response?.status === 404) {
-        errorMessage = "Avaliação não encontrada";
-      } else if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
+      if (apiError.response?.status === 403) {
+        errorMessage = ERROR_MESSAGES.FORBIDDEN;
+      } else if (apiError.response?.status === 404) {
+        errorMessage = ERROR_MESSAGES.EVALUATION_NOT_FOUND;
+      } else if (apiError.response?.data?.error) {
+        errorMessage = apiError.response.data.error;
       }
 
       toast({
@@ -557,7 +639,7 @@ export default function StudentEvaluations() {
     }
 
     // ✅ NOVO: Verificar se está agendada (not_started)
-    if (availability.status === 'not_started' as any) {
+    if (availability.status === 'not_started') {
       return (
         <Badge variant="outline" className="flex items-center gap-1 bg-blue-50 text-blue-700 border-blue-300">
           <Calendar className="h-3 w-3" />
@@ -716,7 +798,7 @@ export default function StudentEvaluations() {
               <div>
                 <p className="text-sm text-muted-foreground">Disponíveis</p>
                 <p className="text-2xl font-bold text-blue-600">
-                  {evaluations.filter(e => e.availability.is_available && !e.student_status.has_completed && e.student_status.can_start && e.availability.status !== 'not_started' as any).length}
+                  {evaluations.filter(e => e.availability.is_available && !e.student_status.has_completed && e.student_status.can_start && e.availability.status !== 'not_started').length}
                 </p>
               </div>
               <Play className="h-8 w-8 text-blue-600" />
@@ -730,7 +812,7 @@ export default function StudentEvaluations() {
               <div>
                 <p className="text-sm text-muted-foreground">Agendadas</p>
                 <p className="text-2xl font-bold text-indigo-600">
-                  {evaluations.filter(e => e.availability.status === 'not_started' as any).length}
+                  {evaluations.filter(e => e.availability.status === 'not_started').length}
                 </p>
               </div>
               <Calendar className="h-8 w-8 text-indigo-600" />
@@ -805,7 +887,7 @@ export default function StudentEvaluations() {
                   } else {
                     toast({
                       title: "Erro",
-                      description: "Avaliação não encontrada. Tente atualizar a página.",
+                      description: ERROR_MESSAGES.EVALUATION_NOT_FOUND,
                       variant: "destructive",
                     });
                   }
@@ -879,7 +961,7 @@ export default function StudentEvaluations() {
               {/* Ações */}
               <div className="flex gap-2">
                 {/* ✅ NOVO: Botão "Agendada" se status === "not_started" */}
-                {evaluation.availability.status === 'not_started' as any && (
+                {evaluation.availability.status === 'not_started' && (
                   <Button
                     className="flex-1 bg-blue-600 hover:bg-blue-700"
                     disabled
@@ -895,7 +977,7 @@ export default function StudentEvaluations() {
                   evaluation.student_status.can_start &&
                   evaluation.student_status.status !== "expirada" &&
                   evaluation.student_status.status !== "em_andamento" &&
-                  evaluation.availability.status !== 'not_started' as any && (
+                  evaluation.availability.status !== 'not_started' && (
                     <Button
                       className="flex-1 bg-green-600 hover:bg-green-700"
                       onClick={() => handleStartEvaluation(evaluation)}
@@ -943,7 +1025,7 @@ export default function StudentEvaluations() {
                   evaluation.student_status.status !== "expirada" &&
                   evaluation.student_status.status !== "em_andamento" &&
                   evaluation.availability.status !== "expired" &&
-                  evaluation.availability.status !== 'not_started' as any && (
+                  evaluation.availability.status !== 'not_started' && (
                     <Button className="flex-1 bg-muted text-muted-foreground hover:bg-muted/80" disabled>
                       <AlertCircle className="h-4 w-4 mr-2" />
                       Indisponível

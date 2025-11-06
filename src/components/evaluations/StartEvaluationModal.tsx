@@ -26,31 +26,76 @@ import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
+import { convertDateTimeLocalToISO } from "@/utils/date";
+import { Evaluation, Subject, getEvaluationSubjects } from "@/types/evaluation-types";
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
 
-// Schema de validação
+// Schema de validação melhorado
 const startEvaluationSchema = z.object({
   startDateTime: z.string().min(1, "Selecione a data e hora de início"),
   endDateTime: z.string().min(1, "Selecione a data e hora de término"),
-}).refine((data) => {
+}).superRefine((data, ctx) => {
   if (data.startDateTime && data.endDateTime) {
     const startDate = new Date(data.startDateTime);
     const endDate = new Date(data.endDateTime);
     const now = new Date();
     
-    // Início e fim não podem ser no passado
-    if (startDate < now || endDate < now) {
-      return false;
+    // Verificar se as datas são válidas
+    if (isNaN(startDate.getTime())) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Data de início inválida",
+        path: ["startDateTime"],
+      });
+      return;
     }
+    
+    if (isNaN(endDate.getTime())) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Data de término inválida",
+        path: ["endDateTime"],
+      });
+      return;
+    }
+    
+    // Início não pode ser no passado
+    if (startDate < now) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A data de início não pode ser no passado",
+        path: ["startDateTime"],
+      });
+    }
+    
+    // Término não pode ser no passado
+    if (endDate < now) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A data de término não pode ser no passado",
+        path: ["endDateTime"],
+      });
+    }
+    
     // Fim deve ser posterior ao início
     if (endDate <= startDate) {
-      return false;
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A data de término deve ser posterior à data de início",
+        path: ["endDateTime"],
+      });
     }
-    return true;
+    
+    // Verificar se há pelo menos 1 minuto de diferença
+    const diffMinutes = (endDate.getTime() - startDate.getTime()) / (1000 * 60);
+    if (diffMinutes < 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "O período deve ter pelo menos 1 minuto de duração",
+        path: ["endDateTime"],
+      });
+    }
   }
-  return true;
-}, {
-  message: "Verifique as datas: início e término devem ser no futuro e o término deve ser posterior ao início.",
-  path: ["endDateTime"],
 });
 
 type StartEvaluationFormValues = z.infer<typeof startEvaluationSchema>;
@@ -71,17 +116,7 @@ interface StartEvaluationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (startDateTime: string, endDateTime: string, classIds: string[]) => Promise<void>;
-  evaluation: {
-    id: string;
-    title: string;
-    subject: { id: string; name: string };
-    subjects?: Array<{ id: string; name: string }>;
-    questions: Array<any>; // Aceitar qualquer tipo de questão
-    duration?: number;
-    schools?: Array<{ id: string; name: string }>;
-    municipalities?: Array<{ id: string; name: string }>;
-    grade?: { id: string; name: string };
-  } | null;
+  evaluation: Evaluation | null;
 }
 
 export default function StartEvaluationModal({
@@ -122,6 +157,7 @@ export default function StartEvaluationModal({
       // Buscar turmas que receberão esta avaliação
       fetchEvaluationClasses();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, evaluation]);
 
   const fetchEvaluationClasses = async () => {
@@ -206,7 +242,7 @@ export default function StartEvaluationModal({
     if (evaluationClasses.length === 0) {
       toast({
         title: "Erro",
-        description: "Esta avaliação não possui turmas configuradas",
+        description: ERROR_MESSAGES.EVALUATION_NOT_AVAILABLE,
         variant: "destructive",
       });
       return;
@@ -215,12 +251,27 @@ export default function StartEvaluationModal({
     try {
       setIsLoading(true);
       
+      // ✅ CORREÇÃO: Converter datetime-local para ISO com timezone antes de enviar
+      const startDateTimeISO = convertDateTimeLocalToISO(values.startDateTime);
+      const endDateTimeISO = convertDateTimeLocalToISO(values.endDateTime);
+      
+      console.log("🕐 Conversão de datas:", {
+        original: {
+          start: values.startDateTime,
+          end: values.endDateTime
+        },
+        converted: {
+          start: startDateTimeISO,
+          end: endDateTimeISO
+        }
+      });
+      
       // Aplicar para todas as turmas configuradas
       const classIds = evaluationClasses.map(c => c.id);
-      await onConfirm(values.startDateTime, values.endDateTime, classIds);
+      await onConfirm(startDateTimeISO, endDateTimeISO, classIds);
       
       toast({
-        title: "✅ Avaliação aplicada com sucesso!",
+        title: SUCCESS_MESSAGES.EVALUATION_APPLIED,
         description: `A avaliação "${evaluation?.title}" foi aplicada para ${evaluationClasses.length} turma(s) e ficará disponível no horário configurado.`,
       });
       
@@ -229,8 +280,8 @@ export default function StartEvaluationModal({
     } catch (error) {
       console.error("Erro ao aplicar avaliação:", error);
       toast({
-        title: "Erro ao aplicar avaliação",
-        description: "Ocorreu um erro. Tente novamente.",
+        title: ERROR_MESSAGES.EVALUATION_APPLY_FAILED,
+        description: ERROR_MESSAGES.EVALUATION_APPLY_FAILED,
         variant: "destructive",
       });
     } finally {
@@ -277,9 +328,12 @@ export default function StartEvaluationModal({
                   <div>
                     <span className="font-medium">Disciplina(s):</span>
                     <p className="mt-1">{
-                      evaluation.subjects && evaluation.subjects.length > 0 
-                        ? evaluation.subjects.map(s => s.name).join(", ")
-                        : evaluation.subject.name
+                      (() => {
+                        const subjects = getEvaluationSubjects(evaluation);
+                        return subjects.length > 0 
+                          ? subjects.map(s => s.name).join(", ")
+                          : "Não informado";
+                      })()
                     }</p>
                   </div>
                   <div>

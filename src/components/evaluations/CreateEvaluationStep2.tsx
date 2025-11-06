@@ -21,6 +21,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/context/authContext";
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
 import { scrollToFirstError, getFieldLabel } from "@/utils/formValidation";
+import { useEvaluations } from "@/hooks/use-cache";
 
 interface CreateEvaluationStep2Props {
   data: {
@@ -71,6 +72,7 @@ export const CreateEvaluationStep2 = ({
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { invalidateAfterCRUD } = useEvaluations();
 
   // Usar o store para criação de avaliação
   const { createEvaluation } = useEvaluationActions();
@@ -101,9 +103,10 @@ export const CreateEvaluationStep2 = ({
       const updatedQuestionsBySubject: QuestionsBySubject = {};
       data.subjects.forEach(subject => {
         const subjectQuestions = allQuestions.filter(q => {
-          return q.subjectId === subject.id || 
-                 q.subject?.id === subject.id ||
-                 (q as any).subject_id === subject.id;
+          const questionWithSubjectId = q as { subjectId?: string; subject?: { id?: string }; subject_id?: string };
+          return questionWithSubjectId.subjectId === subject.id || 
+                 questionWithSubjectId.subject?.id === subject.id ||
+                 questionWithSubjectId.subject_id === subject.id;
         });
         
         updatedQuestionsBySubject[subject.id] = subjectQuestions;
@@ -195,7 +198,7 @@ export const CreateEvaluationStep2 = ({
         
         toast({
           title: "Erro",
-          description: "Adicione pelo menos uma questão à avaliação",
+          description: ERROR_MESSAGES.INVALID_QUESTIONS,
           variant: "destructive",
         });
         return;
@@ -220,7 +223,7 @@ export const CreateEvaluationStep2 = ({
         
         toast({
           title: "Erro de Validação",
-          description: `${invalidQuestions.length} questão(ões) não têm alternativas ou resposta correta definida`,
+          description: `${invalidQuestions.length} questão(ões): ${ERROR_MESSAGES.INVALID_QUESTIONS}`,
           variant: "destructive",
         });
         return;
@@ -296,6 +299,9 @@ export const CreateEvaluationStep2 = ({
       const response = await api.post("/test", backendEvaluationData);
       
       if (response.status === 201 || response.status === 200) {
+        // Invalidar cache após criar avaliação
+        await invalidateAfterCRUD();
+
         toast({
           title: SUCCESS_MESSAGES.EVALUATION_CREATED,
           description: `Avaliação "${data.title}" criada com sucesso!`,
@@ -306,20 +312,22 @@ export const CreateEvaluationStep2 = ({
         // 🔧 CORREÇÃO: Sempre redirecionar para página inicial
         navigate("/app/avaliacoes");
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const apiError = error as { response?: { data?: { message?: string; error?: string } }; message?: string };
+      
       console.error("Erro ao criar avaliação:", error);
       
-      let errorMessage = ERROR_MESSAGES.EVALUATION_CREATE_FAILED;
-      if (error?.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      } else if (error?.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      } else if (error?.message) {
-        errorMessage = error.message;
+      let errorMessage: string = ERROR_MESSAGES.EVALUATION_CREATE_FAILED;
+      if (apiError?.response?.data?.message) {
+        errorMessage = apiError.response.data.message;
+      } else if (apiError?.response?.data?.error) {
+        errorMessage = apiError.response.data.error;
+      } else if (apiError?.message) {
+        errorMessage = apiError.message;
       }
 
       toast({
-        title: "Erro ao criar avaliação",
+        title: ERROR_MESSAGES.EVALUATION_CREATE_FAILED,
         description: errorMessage,
         variant: "destructive",
       });
@@ -334,9 +342,10 @@ export const CreateEvaluationStep2 = ({
 
   const getQuestionsForSubject = (subjectId: string) => {
     return allQuestions.filter(q => {
-      return q.subjectId === subjectId || 
-             q.subject?.id === subjectId ||
-             (q as any).subject_id === subjectId;
+      const questionWithSubjectId = q as { subjectId?: string; subject?: { id?: string }; subject_id?: string };
+      return questionWithSubjectId.subjectId === subjectId || 
+             questionWithSubjectId.subject?.id === subjectId ||
+             questionWithSubjectId.subject_id === subjectId;
     });
   };
 

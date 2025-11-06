@@ -45,6 +45,10 @@ const step1Schema = z.object({
   selectedClasses: z.array(z.object({
     id: z.string(),
     name: z.string(),
+    school: z.object({
+      id: z.string(),
+      name: z.string(),
+    }).optional(),
   })).min(1, "Selecione pelo menos uma turma"),
   duration: z.string().min(1, "Informe a duração em minutos").regex(/^\d+$/, "Duração deve ser um número")
 });
@@ -95,6 +99,14 @@ interface School {
   id: string;
   name: string;
   address?: string;
+}
+
+interface ApiClassItem {
+  id: string;
+  name: string;
+  grade_id?: string;
+  school_id?: string;
+  [key: string]: unknown;
 }
 
 export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationStep1Props) {
@@ -298,15 +310,16 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
       
       const loadClassesForInitialSchools = async () => {
         try {
-          const allClasses: any[] = [];
+          const allClasses: ClassInfo[] = [];
 
           for (const school of initialData.selectedSchools) {
             try {
               const response = await api.get(`/classes/school/${school.id}`);
-              const schoolClasses = response.data || [];
+              const schoolClasses = (response.data || []) as ApiClassItem[];
               
-              const classesWithSchool = schoolClasses.map((classItem: any) => ({
-                ...classItem,
+              const classesWithSchool = schoolClasses.map((classItem: ApiClassItem): ClassInfo => ({
+                id: classItem.id,
+                name: classItem.name,
                 school: { id: school.id, name: school.name }
               }));
               allClasses.push(...classesWithSchool);
@@ -316,8 +329,9 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
           }
 
           // Filtrar turmas por série
-          const filteredClasses = allClasses.filter((classItem: any) =>
-            String(classItem.grade_id) === String(initialData.grade)
+          const filteredClasses = allClasses.filter((classItem: ClassInfo) =>
+            String(classItem.id) === String(initialData.grade) || 
+            (classItem as { grade_id?: string }).grade_id === String(initialData.grade)
           );
 
           setClasses(filteredClasses);
@@ -328,7 +342,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
 
       loadClassesForInitialSchools();
     }
-  }, [loadingData, initialData?.selectedSchools, initialData?.grade]);
+  }, [loadingData, initialData?.selectedSchools, initialData?.grade, initialData?.municipality]);
 
   // Carregar séries quando curso mudar
   useEffect(() => {
@@ -367,11 +381,17 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
       try {
         const schoolId = selectedSchools[0].id;
         const response = await api.get(`/classes/school/${schoolId}`);
-        const allClasses = response.data || [];
+        const allClasses = (response.data || []) as ApiClassItem[];
 
-        const filteredClasses = allClasses.filter((classItem: any) =>
-          String(classItem.grade_id).trim() === String(selectedGrade).trim()
-        );
+        const filteredClasses = allClasses
+          .filter((classItem: ApiClassItem) =>
+            String(classItem.grade_id || '').trim() === String(selectedGrade).trim()
+          )
+          .map((classItem: ApiClassItem): ClassInfo => ({
+            id: classItem.id,
+            name: classItem.name,
+            school: { id: schoolId, name: selectedSchools[0].name }
+          }));
 
         setClasses(filteredClasses);
 
@@ -518,15 +538,16 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
 
       const fetchAllClasses = async () => {
         try {
-          const allClasses: any[] = [];
+          const allClasses: ClassInfo[] = [];
 
           for (const school of selectedSchools) {
             try {
               const response = await api.get(`/classes/school/${school.id}`);
-              const schoolClasses = response.data || [];
+              const schoolClasses = (response.data || []) as ApiClassItem[];
               
-              const classesWithSchool = schoolClasses.map((classItem: any) => ({
-                ...classItem,
+              const classesWithSchool = schoolClasses.map((classItem: ApiClassItem): ClassInfo => ({
+                id: classItem.id,
+                name: classItem.name,
                 school: { id: school.id, name: school.name }
               }));
               allClasses.push(...classesWithSchool);
@@ -535,9 +556,10 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
             }
           }
 
-          const filteredClasses = allClasses.filter((classItem: any) =>
-            String(classItem.grade_id) === String(selectedGrade)
-          );
+          const filteredClasses = allClasses.filter((classItem: ClassInfo) => {
+            const classWithGradeId = classItem as ClassInfo & { grade_id?: string };
+            return String(classWithGradeId.grade_id || '') === String(selectedGrade);
+          });
 
           setClasses(filteredClasses);
           
@@ -565,7 +587,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
 
       fetchAllClasses();
     }
-  }, [user?.role, selectedSchools, selectedGrade, selectedMunicipality, initialData?.selectedClasses]);
+  }, [user?.role, selectedSchools, selectedGrade, selectedMunicipality, initialData?.selectedClasses, form]);
 
   // Limpar turmas quando série muda
   useEffect(() => {
@@ -674,7 +696,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
       scrollToFirstError(errors);
       
       toast({
-        title: "Campo obrigatório não preenchido",
+        title: ERROR_MESSAGES.VALIDATION_REQUIRED_FIELD,
         description: `Por favor, preencha o campo "${getFieldLabel(firstErrorField)}"`,
         variant: "destructive",
       });
@@ -683,6 +705,39 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
 
     try {
       setIsLoading(true);
+
+      // Validação cruzada: verificar se todas as turmas selecionadas pertencem às escolas selecionadas
+      const selectedSchoolIds = values.selectedSchools.map(s => s.id);
+      const invalidClasses = values.selectedClasses.filter(classItem => {
+        // Se a turma não tem escola definida, não pode validar, então considerar inválida
+        if (!classItem.school || !classItem.school.id) {
+          return true;
+        }
+        // Verificar se a escola da turma está na lista de escolas selecionadas
+        return !selectedSchoolIds.includes(classItem.school.id);
+      });
+
+      if (invalidClasses.length > 0) {
+        // Limpar turmas inválidas automaticamente
+        const validClasses = values.selectedClasses.filter(classItem => {
+          if (!classItem.school || !classItem.school.id) {
+            return false;
+          }
+          return selectedSchoolIds.includes(classItem.school.id);
+        });
+
+        // Atualizar o formulário com apenas turmas válidas
+        form.setValue("selectedClasses", validClasses, { shouldValidate: true, shouldDirty: true });
+
+        // Mostrar erro informando sobre as turmas removidas
+        const invalidClassNames = invalidClasses.map(c => c.name).join(", ");
+        toast({
+          title: SUCCESS_MESSAGES.INVALID_CLASSES_REMOVED,
+          description: `${ERROR_MESSAGES.INVALID_CLASSES_SCHOOLS}: ${invalidClassNames}`,
+          variant: "destructive",
+        });
+        return;
+      }
 
       const evaluationData: EvaluationFormData = {
         title: values.title,
@@ -712,7 +767,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
       console.error("Erro no Step 1:", error);
       toast({
         title: "Erro",
-        description: "Erro ao processar dados do formulário",
+        description: ERROR_MESSAGES.EVALUATION_INVALID_DATA,
         variant: "destructive",
       });
     } finally {
