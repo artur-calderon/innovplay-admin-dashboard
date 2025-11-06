@@ -151,18 +151,56 @@ export function BulkUploadStudentsModal({
     } catch (error: any) {
       console.error('Erro no upload:', error);
       
-      let errorMessage = "Erro ao fazer upload do arquivo";
-      if (error.response?.data?.erro) {
-        errorMessage = error.response.data.erro;
-      } else if (error.response?.data?.mensagem) {
-        errorMessage = error.response.data.mensagem;
+      // Se a resposta contém dados estruturados de erro (erros, resumo, mensagem)
+      // isso significa que o servidor processou o arquivo mas encontrou erros
+      if (error.response?.data?.erros && error.response?.data?.resumo) {
+        const erros = error.response.data.erros || [];
+        
+        setUploadResult({
+          mensagem: error.response.data.mensagem || "Nenhum aluno foi criado. Verifique os erros abaixo.",
+          resumo: error.response.data.resumo,
+          alunos_criados: error.response.data.alunos_criados || [],
+          erros: erros,
+        });
+        
+        // Construir mensagem de erro detalhada a partir do array de erros
+        let errorDescription = "";
+        if (erros.length > 0) {
+          const primeiroErro = erros[0];
+          errorDescription = `Linha ${primeiroErro.linha}: ${primeiroErro.campo} - ${primeiroErro.erro}`;
+          if (primeiroErro.valor) {
+            errorDescription += ` (Valor: ${primeiroErro.valor})`;
+          }
+          // Se houver mais erros, adicionar informação
+          if (erros.length > 1) {
+            errorDescription += ` e mais ${erros.length - 1} erro(s). Verifique os detalhes abaixo.`;
+          }
+        } else {
+          errorDescription = error.response.data.mensagem || "Nenhum aluno foi criado. Verifique os erros abaixo.";
+        }
+        
+        toast({
+          title: "Upload concluído com erros",
+          description: errorDescription,
+          variant: "destructive",
+        });
+      } else {
+        // Erro genérico (404, 500, etc.)
+        let errorMessage = "Erro ao fazer upload do arquivo";
+        if (error.response?.data?.erro) {
+          errorMessage = error.response.data.erro;
+        } else if (error.response?.data?.mensagem) {
+          errorMessage = error.response.data.mensagem;
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+        
+        toast({
+          title: "Erro no upload",
+          description: errorMessage,
+          variant: "destructive",
+        });
       }
-      
-      toast({
-        title: "Erro no upload",
-        description: errorMessage,
-        variant: "destructive",
-      });
     } finally {
       setIsUploading(false);
     }
