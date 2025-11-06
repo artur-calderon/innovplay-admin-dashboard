@@ -218,8 +218,8 @@ export default function StudentResult() {
   };
 
   // Função auxiliar para buscar resultados
-  const fetchResults = async () => {
-    if (!id || !user?.id) return false;
+  const fetchResults = async (): Promise<{ found: boolean; hasResults: boolean }> => {
+    if (!id || !user?.id) return { found: false, hasResults: false };
 
     try {
       // Buscar avaliações da turma do aluno (autenticado)
@@ -228,7 +228,7 @@ export default function StudentResult() {
       const found = tests.find(t => String(t.test_id) === String(id)) || null;
       
       if (!found) {
-        return false;
+        return { found: false, hasResults: false };
       }
 
       setTest(found);
@@ -237,7 +237,7 @@ export default function StudentResult() {
       const hasCompleted = found.student_status?.has_completed;
 
       if (!hasCompleted) {
-        return false;
+        return { found: true, hasResults: false };
       }
 
       // Tentar usar nova API primeiro
@@ -248,14 +248,45 @@ export default function StudentResult() {
         if (apiData.success && apiData.data) {
           console.log('✅ Dados obtidos via nova API:', apiData.data);
           setEvaluationData(apiData);
-          setGrade(apiData.data.grade);
-          setScorePct(apiData.data.score_percentage);
-          setProficiency(apiData.data.proficiency);
-          setClassification(apiData.data.classification);
-          setCorrectAnswers(apiData.data.correct_answers);
-          setTotalQuestions(apiData.data.total_questions);
+          
+          // ✅ CORRIGIDO: Validar e converter valores antes de definir
+          const apiGrade = typeof apiData.data.grade === "number" && !isNaN(apiData.data.grade) 
+            ? apiData.data.grade 
+            : null;
+          
+          const apiScorePct = typeof apiData.data.score_percentage === "number" && !isNaN(apiData.data.score_percentage)
+            ? apiData.data.score_percentage
+            : null;
+          
+          const apiProficiency = typeof apiData.data.proficiency === "number" && !isNaN(apiData.data.proficiency)
+            ? apiData.data.proficiency
+            : null;
+          
+          const apiCorrectAnswers = typeof apiData.data.correct_answers === "number" && !isNaN(apiData.data.correct_answers)
+            ? apiData.data.correct_answers
+            : null;
+          
+          const apiTotalQuestions = typeof apiData.data.total_questions === "number" && !isNaN(apiData.data.total_questions)
+            ? apiData.data.total_questions
+            : null;
+          
+          console.log('📊 Valores validados da API:', {
+            grade: apiGrade,
+            scorePct: apiScorePct,
+            proficiency: apiProficiency,
+            correctAnswers: apiCorrectAnswers,
+            totalQuestions: apiTotalQuestions,
+            classification: apiData.data.classification
+          });
+          
+          setGrade(apiGrade);
+          setScorePct(apiScorePct);
+          setProficiency(apiProficiency);
+          setClassification(apiData.data.classification || null);
+          setCorrectAnswers(apiCorrectAnswers);
+          setTotalQuestions(apiTotalQuestions);
           setRankings(apiData.data.rankings);
-          return true; // Resultados encontrados
+          return { found: true, hasResults: true }; // Resultados encontrados
         }
       } catch (apiError) {
         console.log('⚠️ Nova API falhou, usando fallback:', apiError);
@@ -269,7 +300,7 @@ export default function StudentResult() {
         console.log('📊 Usando dados diretos da avaliação');
         setGrade(directGrade != null ? directGrade : Math.round(((directScore || 0) / 10) * 10) / 10);
         setScorePct(directScore != null ? directScore : Math.round(((directGrade || 0) * 10) * 10) / 10);
-        return true; // Resultados encontrados
+        return { found: true, hasResults: true }; // Resultados encontrados
       }
 
       // Fallback final: buscar resultado detalhado
@@ -277,18 +308,57 @@ export default function StudentResult() {
         console.log('🔄 Usando fallback final...');
         const detailed = await EvaluationResultsApiService.getStudentDetailedResults(String(id), String(user.id));
         if (detailed) {
-          setGrade(typeof detailed.grade === "number" ? detailed.grade : Math.round((detailed.score_percentage / 10) * 10) / 10);
-          setScorePct(typeof detailed.score_percentage === "number" ? detailed.score_percentage : Math.round(((detailed.grade || 0) * 10) * 10) / 10);
-          return true; // Resultados encontrados
+          // ✅ CORRIGIDO: Usar dados do StudentDetailedResult corretamente
+          const detailedGrade = typeof detailed.grade === "number" && !isNaN(detailed.grade) 
+            ? detailed.grade 
+            : (typeof detailed.score_percentage === "number" && !isNaN(detailed.score_percentage)
+              ? Math.round((detailed.score_percentage / 10) * 10) / 10
+              : null);
+          
+          const detailedScorePct = typeof detailed.score_percentage === "number" && !isNaN(detailed.score_percentage)
+            ? detailed.score_percentage
+            : (typeof detailed.grade === "number" && !isNaN(detailed.grade)
+              ? Math.round(((detailed.grade || 0) * 10) * 10) / 10
+              : null);
+          
+          const detailedProficiency = typeof detailed.proficiencia === "number" && !isNaN(detailed.proficiencia)
+            ? detailed.proficiencia
+            : null;
+          
+          const detailedCorrectAnswers = typeof detailed.correct_answers === "number" && !isNaN(detailed.correct_answers)
+            ? detailed.correct_answers
+            : null;
+          
+          const detailedTotalQuestions = typeof detailed.total_questions === "number" && !isNaN(detailed.total_questions)
+            ? detailed.total_questions
+            : null;
+          
+          console.log('📊 Dados do StudentDetailedResult:', {
+            grade: detailedGrade,
+            scorePct: detailedScorePct,
+            proficiency: detailedProficiency,
+            correctAnswers: detailedCorrectAnswers,
+            totalQuestions: detailedTotalQuestions,
+            classificacao: detailed.classificacao
+          });
+          
+          setGrade(detailedGrade);
+          setScorePct(detailedScorePct);
+          setProficiency(detailedProficiency);
+          setClassification(detailed.classificacao || null);
+          setCorrectAnswers(detailedCorrectAnswers);
+          setTotalQuestions(detailedTotalQuestions);
+          
+          return { found: true, hasResults: true }; // Resultados encontrados
         }
       } catch (e) {
         console.log('⚠️ Todos os métodos falharam, mantendo sem nota');
       }
 
-      return false; // Resultados ainda não disponíveis
+      return { found: true, hasResults: false }; // Avaliação encontrada mas resultados ainda não disponíveis
     } catch (e) {
       console.error('Erro ao buscar resultados:', e);
-      return false;
+      return { found: false, hasResults: false };
     }
   };
 
@@ -299,17 +369,16 @@ export default function StudentResult() {
       setError(null);
       
       try {
-        const resultsFound = await fetchResults();
+        const { found, hasResults } = await fetchResults();
         
-        if (!test) {
+        if (!found) {
           setError("Avaliação não encontrada");
+          setLoading(false);
           return;
         }
 
-        // Se não encontrou resultados mas completou, iniciar polling
-        if (!resultsFound && test?.student_status?.has_completed && (grade === null && scorePct === null)) {
-          // Polling será iniciado no próximo useEffect
-        }
+        // Se encontrou a avaliação mas não tem resultados ainda, o polling será iniciado no próximo useEffect
+        // Não definir erro aqui, apenas aguardar o polling
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : "Erro ao carregar resultado";
         setError(message);
@@ -318,7 +387,7 @@ export default function StudentResult() {
       }
     };
     load();
-  }, [id, user.id]);
+  }, [id, user?.id]);
 
   // Polling automático para verificar resultados quando completado mas sem nota
   useEffect(() => {
@@ -340,10 +409,10 @@ export default function StudentResult() {
       attempts++;
       console.log(`🔄 Polling tentativa ${attempts}/${maxAttempts}...`);
       
-      const resultsFound = await fetchResults();
+      const { found, hasResults: foundResults } = await fetchResults();
       
-      if (resultsFound || attempts >= maxAttempts) {
-        console.log(resultsFound ? '✅ Resultados encontrados via polling' : '⏱️ Polling encerrado após 2 minutos');
+      if (foundResults || attempts >= maxAttempts) {
+        console.log(foundResults ? '✅ Resultados encontrados via polling' : '⏱️ Polling encerrado após 2 minutos');
         clearInterval(intervalId);
       }
     }, pollInterval);
@@ -352,7 +421,7 @@ export default function StudentResult() {
     return () => {
       clearInterval(intervalId);
     };
-  }, [id, user.id, test, grade, scorePct]);
+  }, [id, user?.id, test, grade, scorePct]);
 
   const headerSubjects = useMemo(() => {
     if (test?.subjects_info && test.subjects_info.length > 0) {
@@ -371,31 +440,54 @@ export default function StudentResult() {
     );
   }
 
-  if (error) {
+  // Se há erro e não há test, mostrar erro
+  // Mas se há test mesmo com erro, continuar renderizando (pode ser erro temporário)
+  if (error && !test) {
     return (
       <div className="container mx-auto px-4 py-8 space-y-4">
         <Button variant="ghost" onClick={() => navigate(-1)} className="inline-flex items-center gap-2">
           <ArrowLeft className="h-4 w-4" /> Voltar
         </Button>
         <Card>
-          <CardContent className="p-6 text-red-600">{error}</CardContent>
+          <CardContent className="p-6 text-red-600 dark:text-red-400">{error}</CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Se não há test e não está carregando, verificar se temos dados da API
+  // Se temos dados da API, podemos renderizar mesmo sem test
+  if (!test && !loading && !evaluationData) {
+    return (
+      <div className="container mx-auto px-4 py-8 space-y-4">
+        <Button variant="ghost" onClick={() => navigate(-1)} className="inline-flex items-center gap-2">
+          <ArrowLeft className="h-4 w-4" /> Voltar
+        </Button>
+        <Card>
+          <CardContent className="p-6 text-red-600 dark:text-red-400">
+            {error || "Avaliação não encontrada"}
+          </CardContent>
         </Card>
       </div>
     );
   }
 
   // ✅ MODIFICADO: Bloqueio baseado apenas em ter completado a avaliação
-  const locked = !test?.student_status?.has_completed;
+  // Se temos dados da API, considerar como desbloqueado
+  const locked = !test?.student_status?.has_completed && !evaluationData;
   const scoreRounded = typeof scorePct === "number" ? Math.round(scorePct) : null;
   const gradeRounded = typeof grade === "number" ? Math.round(grade * 10) / 10 : null;
   const passedGood = (gradeRounded ?? (scoreRounded != null ? scoreRounded / 10 : 0)) >= 7;
+
+  // Usar título da avaliação de test ou evaluationData
+  const evaluationTitle = test?.title || evaluationData?.data?.evaluation_name || "Resultado da Avaliação";
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Resultado da Avaliação</h1>
-          <p className="text-muted-foreground">{test?.title}</p>
+          <h1 className="text-2xl font-bold dark:text-gray-100">Resultado da Avaliação</h1>
+          <p className="text-muted-foreground">{evaluationTitle}</p>
         </div>
         <Button variant="ghost" onClick={() => navigate("/aluno/avaliacoes")}>Minhas Avaliações</Button>
       </div>
@@ -415,7 +507,7 @@ export default function StudentResult() {
             )}
           </div>
           <div className="text-sm text-white/90 mt-2">
-            {headerSubjects}
+            {headerSubjects || (evaluationData?.data && "Avaliação concluída")}
           </div>
         </CardHeader>
         <CardContent className="p-6">
@@ -471,10 +563,10 @@ export default function StudentResult() {
                   {/* Grid de Cards Informativos */}
                   <div className="grid gap-4 md:grid-cols-2">
                     {/* Proficiência */}
-                    {proficiency !== null && (
+                    {proficiency !== null && !isNaN(proficiency) && proficiency >= 0 && (
                       <StatCard
                         title="Proficiência"
-                        value={(Math.ceil(proficiency * 10) / 10).toString().replace('.', ',')}
+                        value={Math.round(proficiency).toString()}
                         icon={TrendingUp}
                         color="bg-green-500"
                         subtitle="pontos"
@@ -482,7 +574,9 @@ export default function StudentResult() {
                     )}
 
                     {/* Acertos */}
-                    {correctAnswers !== null && totalQuestions !== null && (
+                    {correctAnswers !== null && totalQuestions !== null && 
+                     !isNaN(correctAnswers) && !isNaN(totalQuestions) && 
+                     correctAnswers >= 0 && totalQuestions > 0 && (
                       <StatCard
                         title="Acertos"
                         value={`${correctAnswers}/${totalQuestions}`}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Eye, Pencil, Trash2, ChevronLeft, ChevronRight, Filter, RefreshCw, Play, MoreVertical, FileText } from "lucide-react";
@@ -618,19 +618,26 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
   // ✅ NOVO: Hook para gerenciar atualizações de avaliações
   const { updateAfterCRUD, isUpdating } = useEvaluationsManager();
 
-  // ✅ Hook para todas as avaliações (mesma rota para todos)
-  // ✅ CORREÇÃO: Quando showMyEvaluations é true, buscar todas as avaliações sem paginação
-  // para aplicar paginação local no frontend após filtrar
+  // ✅ NOVO: Hooks para dados de filtros (cache longo) - DEVE SER CHAMADO ANTES DE useEvaluations
+  // para manter a ordem dos hooks consistente
   const {
-    data: evaluationsData,
-    isLoading,
-    error: evaluationsError,
-    refetch,
-    invalidateCache,
-    invalidateEvaluationsCache,
-    forceRefresh,
-    invalidateAfterCRUD
-  } = useEvaluations({
+    data: subjects = [],
+    isLoading: isLoadingSubjects
+  } = useCache<Subject[]>('/subjects', {
+    staleTime: 30 * 60 * 1000 // 30 minutos
+  });
+
+  const {
+    data: grades = [],
+    isLoading: isLoadingGrades
+  } = useCache<Grade[]>('/grades/', {
+    staleTime: 30 * 60 * 1000 // 30 minutos
+  });
+
+  // ✅ CORREÇÃO: Preparar parâmetros de forma estável antes de chamar useEvaluations
+  // para garantir que os hooks sejam sempre chamados na mesma ordem
+  // Usar valores individuais dos filtros em vez do objeto inteiro para evitar mudanças desnecessárias
+  const evaluationParams = useMemo(() => ({
     // Quando showMyEvaluations é true, buscar todas as avaliações (sem paginação no backend)
     // para aplicar paginação local após filtrar
     ...(showMyEvaluations && user?.id 
@@ -648,27 +655,57 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
     ...(filters.type !== 'all' && { type: filters.type }),
     ...(filters.model !== 'all' && { model: filters.model }),
     ...(filters.grade !== 'all' && { grade_id: filters.grade })
-  });
+  }), [showMyEvaluations, user?.id, currentPage, itemsPerPage, filters.subject, filters.type, filters.model, filters.grade]);
+
+  // ✅ Hook para todas as avaliações (mesma rota para todos)
+  // ✅ CORREÇÃO: Quando showMyEvaluations é true, buscar todas as avaliações sem paginação
+  // para aplicar paginação local no frontend após filtrar
+  const {
+    data: evaluationsData,
+    isLoading,
+    error: evaluationsError,
+    refetch,
+    invalidateCache,
+    invalidateEvaluationsCache,
+    forceRefresh,
+    invalidateAfterCRUD
+  } = useEvaluations(evaluationParams);
 
   // ✅ Preparar dados das avaliações com verificações de segurança
   const rawEvaluations = Array.isArray(evaluationsData?.data) ? evaluationsData.data : [];
   
   // ✅ Filtrar avaliações ativas (não deletadas/arquivadas)
-  const allEvaluations = rawEvaluations.filter((evaluation: Evaluation & { deleted_at?: string | null; archived?: boolean; is_active?: boolean }) => 
-    !evaluation.deleted_at && 
-    !evaluation.archived && 
-    evaluation.is_active !== false
-  ) as Evaluation[];
+  const allEvaluations = rawEvaluations
+    .filter((evaluation: Record<string, unknown>) => {
+      // Verificar se tem propriedades básicas de Evaluation
+      if (!evaluation || typeof evaluation !== 'object' || !evaluation.id) {
+        return false;
+      }
+      // Verificar se não está deletada/arquivada
+      const deletedAt = evaluation.deleted_at;
+      const archived = evaluation.archived;
+      const isActive = evaluation.is_active;
+      return !deletedAt && !archived && isActive !== false;
+    })
+    .map(evaluation => evaluation as unknown as Evaluation);
   
   // ✅ CORREÇÃO: Aplicar filtro no frontend sempre que showMyEvaluations é true
   // como fallback caso o backend não aplique corretamente
   const filteredEvaluations = showMyEvaluations && user?.id
     ? allEvaluations.filter(evaluation => {
         // Verificar tanto createdBy quanto created_by para compatibilidade
-        const createdById = evaluation.createdBy?.id || 
-                           (evaluation as { created_by?: { id?: string } | string }).created_by?.id || 
-                           ((evaluation as { created_by?: string }).created_by);
-        return createdById === user.id;
+        const createdByObj = evaluation.createdBy;
+        const createdById = createdByObj?.id;
+        
+        // Verificar created_by como objeto ou string
+        const createdByFallback = (evaluation as unknown as { created_by?: { id?: string } | string }).created_by;
+        const createdByFallbackId = typeof createdByFallback === 'object' && createdByFallback !== null
+          ? createdByFallback.id
+          : typeof createdByFallback === 'string'
+          ? createdByFallback
+          : undefined;
+        
+        return (createdById || createdByFallbackId) === user.id;
       })
     : allEvaluations;
   
@@ -688,21 +725,6 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
 
   // ✅ CORREÇÃO: Usar avaliações filtradas
   const evaluations = filteredEvaluations;
-
-  // ✅ NOVO: Hooks para dados de filtros (cache longo)
-  const {
-    data: subjects = [],
-    isLoading: isLoadingSubjects
-  } = useCache<Subject[]>('/subjects', {
-    staleTime: 30 * 60 * 1000 // 30 minutos
-  });
-
-  const {
-    data: grades = [],
-    isLoading: isLoadingGrades
-  } = useCache<Grade[]>('/grades/', {
-    staleTime: 30 * 60 * 1000 // 30 minutos
-  });
 
   // ✅ MELHORADO: Função robusta para atualizar dados
   const refreshData = useCallback(async () => {
@@ -745,10 +767,25 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
     setCurrentPage(pageNumber);
   };
 
-  // ✅ NOVO: Resetar para primeira página quando filtros ou showMyEvaluations mudarem
+  // ✅ CORREÇÃO: Resetar para primeira página apenas quando filtros realmente mudarem
+  // Usar useMemo para estabilizar a string de filtros usando valores individuais
+  const filtersString = useMemo(() => {
+    return JSON.stringify({
+      subject: filters.subject,
+      type: filters.type,
+      model: filters.model,
+      grade: filters.grade
+    });
+  }, [
+    filters.subject,
+    filters.type,
+    filters.model,
+    filters.grade
+  ]);
+  
   useEffect(() => {
     setCurrentPage(1);
-  }, [filters, showMyEvaluations]);
+  }, [filtersString, showMyEvaluations]);
 
   // ✅ NOVO: Forçar atualização quando forceUpdate mudar
   useEffect(() => {

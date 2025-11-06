@@ -21,7 +21,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/context/authContext";
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
 import { scrollToFirstError, getFieldLabel } from "@/utils/formValidation";
-import { useEvaluations } from "@/hooks/use-cache";
+import { useEvaluationsManager } from "@/hooks/use-cache";
 
 interface CreateEvaluationStep2Props {
   data: {
@@ -72,7 +72,7 @@ export const CreateEvaluationStep2 = ({
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { invalidateAfterCRUD } = useEvaluations();
+  const { updateAfterCRUD } = useEvaluationsManager();
 
   // Usar o store para criação de avaliação
   const { createEvaluation } = useEvaluationActions();
@@ -237,6 +237,21 @@ export const CreateEvaluationStep2 = ({
       }
 
       // ✅ CORREÇÃO: Fluxo de criação (apenas quando não estiver editando)
+      // ✅ CORREÇÃO: Log dos dados que serão enviados ao backend
+      const classesToSend = data.selectedClasses?.map(c => c.id) || data.classes || [];
+      const schoolsToSend = data.selectedSchools?.map(s => s.id) || data.schools || [];
+      
+      console.log('📤 CreateEvaluationStep2 - Dados que serão enviados ao backend:', {
+        selectedClasses: data.selectedClasses?.map(c => ({ id: c.id, name: c.name, school: c.school?.name })),
+        classes: data.classes,
+        classesToSend,
+        classesCount: classesToSend.length,
+        selectedSchools: data.selectedSchools?.map(s => ({ id: s.id, name: s.name })),
+        schools: data.schools,
+        schoolsToSend,
+        schoolsCount: schoolsToSend.length
+      });
+      
       const backendEvaluationData = {
         title: data.title,
         description: data.description || "",
@@ -250,8 +265,8 @@ export const CreateEvaluationStep2 = ({
         duration: data.duration ? parseInt(data.duration, 10) : 60,
         evaluation_mode: "virtual",
         municipalities: data.municipalities || [],
-        schools: data.selectedSchools?.map(s => s.id) || data.schools || [],
-        classes: data.selectedClasses?.map(c => c.id) || data.classes || [],
+        schools: schoolsToSend, // ✅ CORREÇÃO: Usar apenas escolas selecionadas
+        classes: classesToSend, // ✅ CORREÇÃO: Usar apenas turmas selecionadas
         subjects: data.subjects.map(subject => subject.id),
         subjects_info: data.subjects.map(subject => ({
           subject: subject.id,
@@ -300,7 +315,7 @@ export const CreateEvaluationStep2 = ({
       
       if (response.status === 201 || response.status === 200) {
         // Invalidar cache após criar avaliação
-        await invalidateAfterCRUD();
+        await updateAfterCRUD();
 
         toast({
           title: SUCCESS_MESSAGES.EVALUATION_CREATED,

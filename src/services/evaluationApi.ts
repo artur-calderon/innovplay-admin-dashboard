@@ -5,7 +5,6 @@ import {
     SessionStatusResponse,
     StartSessionRequest,
     StartSessionResponse,
-    SavePartialRequest,
     SubmitTestRequest,
     SubmitTestResponse
 } from '@/types/evaluation-types';
@@ -50,9 +49,10 @@ export class EvaluationApiService {
             const response = await api.get(`/test/${testId}/session-info`);
             console.log('Resposta da API getTestSessionInfo:', response.data);
             return response.data;
-        } catch (error: any) {
+        } catch (error: unknown) {
             // ✅ CORRIGIDO: Tratar erro 404 como caso normal (sem sessão ativa)
-            if (error.response?.status === 404) {
+            const apiError = error as { response?: { status?: number; data?: unknown } };
+            if (apiError.response?.status === 404) {
                 console.log('Nenhuma sessão ativa encontrada para este teste');
 
                 // Retornar resposta estruturada indicando que não há sessão
@@ -80,7 +80,7 @@ export class EvaluationApiService {
 
             // Para outros erros, continuar lançando exceção
             console.error('Erro ao buscar informações da sessão:', error);
-            console.error('Detalhes do erro:', error.response?.data);
+            console.error('Detalhes do erro:', apiError.response?.data);
             throw error;
         }
     }
@@ -153,16 +153,17 @@ export class EvaluationApiService {
     }
 
     // ✅ NOVO: Verificar status da sessão
-    static async getSessionStatus(sessionId: string): Promise<any> {
+    static async getSessionStatus(sessionId: string): Promise<SessionStatusResponse> {
         console.log('Verificando status da sessão:', sessionId);
 
         try {
             const response = await api.get(`/student-answers/sessions/${sessionId}/status`);
             console.log('Status da sessão:', response.data);
             return response.data;
-        } catch (error) {
+        } catch (error: unknown) {
+            const apiError = error as { response?: { data?: unknown } };
             console.error('Erro ao verificar status da sessão:', error);
-            console.error('Detalhes do erro:', error.response?.data);
+            console.error('Detalhes do erro:', apiError.response?.data);
             throw error;
         }
     }
@@ -177,7 +178,7 @@ export class EvaluationApiService {
         
         // ✅ MELHORADO: Implementar retry automático com timeout progressivo
         const maxRetries = 3;
-        let lastError: any;
+        let lastError: unknown;
         
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
             try {
@@ -203,24 +204,36 @@ export class EvaluationApiService {
                 });
                 return response.data;
                 
-            } catch (error) {
+            } catch (error: unknown) {
                 lastError = error;
+                const apiError = error as { 
+                    code?: string; 
+                    message?: string; 
+                    response?: { 
+                        status?: number; 
+                        statusText?: string; 
+                        data?: unknown 
+                    } 
+                };
                 console.error(`❌ Erro na tentativa ${attempt + 1}:`, {
                     error: error,
-                    response: error.response?.data,
-                    status: error.response?.status,
-                    statusText: error.response?.statusText,
-                    code: error.code,
-                    message: error.message
+                    response: apiError.response?.data,
+                    status: apiError.response?.status,
+                    statusText: apiError.response?.statusText,
+                    code: apiError.code,
+                    message: apiError.message
                 });
                 
                 // ✅ NOVO: Só tentar novamente se for erro de rede/timeout
+                // Não tentar novamente para erros 410 (sessão expirada) ou 400 (validação)
                 const shouldRetry = attempt < maxRetries && (
-                    error.code === 'ECONNABORTED' ||
-                    error.code === 'ERR_NETWORK' ||
-                    error.message?.includes('timeout') ||
-                    error.message?.includes('Timeout') ||
-                    error.response?.status >= 500
+                    (apiError.code === 'ECONNABORTED' ||
+                    apiError.code === 'ERR_NETWORK' ||
+                    apiError.message?.includes('timeout') ||
+                    apiError.message?.includes('Timeout') ||
+                    (apiError.response?.status !== undefined && apiError.response.status >= 500)) &&
+                    apiError.response?.status !== 410 && // ✅ NOVO: Não retry para sessão expirada
+                    apiError.response?.status !== 400    // ✅ NOVO: Não retry para erro de validação
                 );
                 
                 if (shouldRetry) {

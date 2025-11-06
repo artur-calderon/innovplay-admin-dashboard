@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { api } from '@/lib/api';
 
 // Configurações de cache
@@ -21,14 +21,15 @@ interface CacheHookOptions {
   enabled?: boolean;
   staleTime?: number;
   cacheKey?: string;
-  onError?: (error: unknown) => void;
+  onError?: (error: Error | unknown) => void;
+  skipInitialFetch?: boolean; // ✅ NOVO: Pular fetch inicial
 }
 
 // Cache global em memória
 const cache = new Map<string, CacheItem<unknown>>();
 
 // Utilitário para gerar chave de cache
-const generateCacheKey = (url: string, params?: unknown): string => {
+const generateCacheKey = (url: string, params?: Record<string, unknown>): string => {
   const paramString = params ? JSON.stringify(params) : '';
   return `${url}${paramString}`;
 };
@@ -62,11 +63,12 @@ export function useCache<T>(
     enabled = true,
     staleTime = 0,
     cacheKey: customCacheKey,
-    onError
+    onError,
+    skipInitialFetch = false // ✅ NOVO: Por padrão, fazer fetch inicial
   } = options;
 
   // Função para fazer fetch dos dados
-  const fetchData = useCallback(async (params?: unknown, forceRefresh = false) => {
+  const fetchData = useCallback(async (params?: Record<string, unknown>, forceRefresh = false) => {
     if (!enabled) return;
 
     const cacheKey = customCacheKey || generateCacheKey(url, params);
@@ -140,12 +142,12 @@ export function useCache<T>(
   }, []);
 
   // Função para refetch
-  const refetch = useCallback((params?: unknown) => {
+  const refetch = useCallback((params?: Record<string, unknown>) => {
     return fetchData(params, true);
   }, [fetchData]);
 
   // Função para mutate (atualizar cache diretamente)
-  const mutate = useCallback((newData: T, params?: unknown) => {
+  const mutate = useCallback((newData: T, params?: Record<string, unknown>) => {
     const cacheKey = customCacheKey || generateCacheKey(url, params);
     const ttl = getTTL(url);
 
@@ -158,12 +160,12 @@ export function useCache<T>(
     setData(newData);
   }, [url, customCacheKey]);
 
-  // Fetch inicial
+  // ✅ CORREÇÃO: Fetch inicial apenas se não for pulado
   useEffect(() => {
-    if (enabled) {
+    if (enabled && !skipInitialFetch) {
       fetchData();
     }
-  }, [fetchData, enabled]);
+  }, [fetchData, enabled, skipInitialFetch]);
 
   return {
     data,
@@ -188,10 +190,39 @@ export function useEvaluations(params: {
   grade_id?: string;
   created_by?: string;
 } = {}) {
-  const cacheKey = `evaluations-${JSON.stringify(params)}`;
+  // ✅ CORREÇÃO: Usar useRef para rastrear os parâmetros anteriores (deve ser chamado antes de useCache)
+  const prevParamsRef = useRef<string>('');
+  
+  // ✅ CORREÇÃO: Calcular paramsString de forma estável usando dependências explícitas
+  // IMPORTANTE: useMemo deve ser chamado antes de useCache para manter a ordem dos hooks
+  const paramsString = useMemo(() => {
+    return JSON.stringify({
+      page: params.page,
+      per_page: params.per_page,
+      status: params.status,
+      subject_id: params.subject_id,
+      type: params.type,
+      model: params.model,
+      grade_id: params.grade_id,
+      created_by: params.created_by
+    });
+  }, [
+    params.page,
+    params.per_page,
+    params.status,
+    params.subject_id,
+    params.type,
+    params.model,
+    params.grade_id,
+    params.created_by
+  ]);
+  
+  // ✅ CORREÇÃO: Calcular cacheKey de forma estável
+  const cacheKey = useMemo(() => `evaluations-${paramsString}`, [paramsString]);
 
+  // ✅ CORREÇÃO: useCache deve ser chamado sempre na mesma posição
   const result = useCache<{
-    data: unknown[];
+    data: Array<Record<string, unknown>>;
     pagination: {
       page: number;
       per_page: number;
@@ -204,15 +235,23 @@ export function useEvaluations(params: {
     };
   }>('/test/', {
     cacheKey,
-    staleTime: 2 * 60 * 1000 // 2 minutos
+    staleTime: 2 * 60 * 1000, // 2 minutos
+    skipInitialFetch: true // ✅ CORREÇÃO: Pular fetch inicial do useCache, fazer manualmente com parâmetros
   });
-
-  // ✅ NOVO: Fazer fetch com parâmetros quando mudarem (incluindo montagem inicial)
+  
+  // ✅ CORREÇÃO: useEffect deve ser chamado sempre na mesma posição após useCache
+  // Fazer fetch inicial e quando os parâmetros mudarem
   useEffect(() => {
-    // Garantir que o fetch inicial inclua os parâmetros
-    result.refetch(params);
+    // Fazer fetch inicial (quando prevParamsRef está vazio) ou quando os parâmetros mudarem
+    if (prevParamsRef.current === '' || prevParamsRef.current !== paramsString) {
+      prevParamsRef.current = paramsString;
+      // Usar refetch com os parâmetros corretos
+      result.refetch(params as Record<string, unknown>).catch((error: unknown) => {
+        console.error('Erro ao buscar avaliações:', error);
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(params)]);
+  }, [paramsString]);
 
   // ✅ MELHORADO: Função para invalidar cache de avaliações de forma mais abrangente
   const invalidateEvaluationsCache = useCallback(() => {

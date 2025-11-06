@@ -185,30 +185,6 @@ export default function StudentEvaluations() {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  const checkInProgressEvaluation = useCallback(() => {
-    const inProgress = localStorage.getItem("evaluation_in_progress");
-    if (inProgress) {
-      try {
-        const data = JSON.parse(inProgress);
-        if (data && data.evaluationId && typeof data.evaluationId === 'string') {
-          const evaluation = evaluations.find(e => e.id === data.evaluationId);
-          if (evaluation && evaluation.student_status.has_completed) {
-            localStorage.removeItem("evaluation_in_progress");
-            localStorage.removeItem("current_evaluation_data");
-            setCurrentTaking(null);
-          } else {
-            setCurrentTaking(data);
-          }
-        } else {
-          localStorage.removeItem("evaluation_in_progress");
-        }
-      } catch (error) {
-        console.error("Erro ao carregar avaliação em progresso:", error);
-        localStorage.removeItem("evaluation_in_progress");
-      }
-    }
-  }, [evaluations]);
-
   // Função de retry com backoff exponencial
   const retryWithBackoff = async <T,>(
     fn: () => Promise<T>,
@@ -384,8 +360,42 @@ export default function StudentEvaluations() {
 
   useEffect(() => {
     fetchStudentEvaluations();
-    checkInProgressEvaluation();
-  }, [fetchStudentEvaluations, checkInProgressEvaluation]);
+  }, [fetchStudentEvaluations]);
+
+  // Verificar avaliação em progresso separadamente, apenas quando evaluations mudar
+  useEffect(() => {
+    const inProgress = localStorage.getItem("evaluation_in_progress");
+    if (inProgress && evaluations.length > 0) {
+      try {
+        const data = JSON.parse(inProgress);
+        if (data && data.evaluationId && typeof data.evaluationId === 'string') {
+          const evaluation = evaluations.find(e => e.id === data.evaluationId);
+          if (evaluation && evaluation.student_status.has_completed) {
+            localStorage.removeItem("evaluation_in_progress");
+            localStorage.removeItem("current_evaluation_data");
+            setCurrentTaking(null);
+          } else {
+            setCurrentTaking(data);
+          }
+        } else {
+          localStorage.removeItem("evaluation_in_progress");
+        }
+      } catch (error) {
+        console.error("Erro ao carregar avaliação em progresso:", error);
+        localStorage.removeItem("evaluation_in_progress");
+      }
+    } else if (inProgress && evaluations.length === 0) {
+      // Se não há avaliações ainda, apenas definir o currentTaking se houver dados no localStorage
+      try {
+        const data = JSON.parse(inProgress);
+        if (data && data.evaluationId) {
+          setCurrentTaking(data);
+        }
+      } catch (error) {
+        console.error("Erro ao carregar avaliação em progresso:", error);
+      }
+    }
+  }, [evaluations]);
 
   const handleStartEvaluation = async (evaluation: StudentEvaluation) => {
     setSelectedEvaluation(evaluation);
@@ -1041,49 +1051,49 @@ export default function StudentEvaluations() {
       <Dialog open={showInstructions} onOpenChange={setShowInstructions}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Info className="h-5 w-5 text-blue-600" />
+            <DialogTitle className="flex items-center gap-2 dark:text-gray-100">
+              <Info className="h-5 w-5 text-blue-600 dark:text-blue-400" />
               Instruções da Avaliação
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="dark:text-gray-400">
               Leia atentamente antes de iniciar a avaliação
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             {/* Informações da Avaliação */}
-            <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
-              <h4 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
-                <BookOpen className="h-4 w-4" />
+            <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 p-4 rounded-lg">
+              <h4 className="font-semibold text-blue-900 dark:text-blue-300 mb-3 flex items-center gap-2">
+                <BookOpen className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                 {selectedEvaluation?.title}
               </h4>
-              <div className="grid grid-cols-2 gap-3 text-sm text-blue-800">
+              <div className="grid grid-cols-2 gap-3 text-sm text-blue-800 dark:text-blue-300">
                 <div>
                   <span className="font-medium">Disciplina{selectedEvaluation?.subjects_info && selectedEvaluation.subjects_info.length > 1 ? 's' : ''}:</span>
-                  <p>{selectedEvaluation ? getAllSubjects(selectedEvaluation) : ''}</p>
+                  <p className="dark:text-blue-200">{selectedEvaluation ? getAllSubjects(selectedEvaluation) : ''}</p>
                 </div>
                 <div>
                   <span className="font-medium">Duração:</span>
-                  <p>{selectedEvaluation?.duration} minutos</p>
+                  <p className="dark:text-blue-200">{selectedEvaluation?.duration} minutos</p>
                 </div>
                 <div>
                   <span className="font-medium">Questões:</span>
-                  <p>{selectedEvaluation?.totalQuestions}</p>
+                  <p className="dark:text-blue-200">{selectedEvaluation?.totalQuestions}</p>
                 </div>
                 <div>
                   <span className="font-medium">Tipo:</span>
-                  <p>{selectedEvaluation?.type}</p>
+                  <p className="dark:text-blue-200">{selectedEvaluation?.type}</p>
                 </div>
               </div>
             </div>
 
             {/* Como Funciona - SIMPLIFICADO */}
-            <div className="bg-green-50 border border-green-200 p-4 rounded-lg">
-              <h5 className="font-semibold text-green-900 mb-2 flex items-center gap-2">
-                <CheckCircle className="h-4 w-4" />
+            <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 p-4 rounded-lg">
+              <h5 className="font-semibold text-green-900 dark:text-green-300 mb-2 flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
                 Como funciona
               </h5>
-              <div className="space-y-1 text-sm text-green-800">
+              <div className="space-y-1 text-sm text-green-800 dark:text-green-300">
                 <p>✔️ Leia as questões com atenção</p>
                 <p>✔️ Suas respostas são salvas automaticamente</p>
                 <p>✔️ Você pode revisar antes de finalizar</p>
@@ -1091,12 +1101,12 @@ export default function StudentEvaluations() {
             </div>
 
             {/* Importante - SIMPLIFICADO */}
-            <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
-              <h5 className="font-semibold text-yellow-900 mb-2 flex items-center gap-2">
-                <AlertCircle className="h-4 w-4" />
+            <div className="bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 p-4 rounded-lg">
+              <h5 className="font-semibold text-yellow-900 dark:text-yellow-300 mb-2 flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
                 Importante
               </h5>
-              <div className="space-y-1 text-sm text-yellow-800">
+              <div className="space-y-1 text-sm text-yellow-800 dark:text-yellow-300">
                 <p>⚠️ Mantenha conexão estável com a internet</p>
                 <p>⚠️ Não feche a aba/janela durante a avaliação</p>
               </div>
@@ -1104,12 +1114,12 @@ export default function StudentEvaluations() {
 
             {/* Tempo Disponível - SIMPLIFICADO */}
             {selectedEvaluation && (
-              <div className="bg-purple-50 border border-purple-200 p-4 rounded-lg">
-                <h5 className="font-semibold text-purple-900 mb-2 flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
+              <div className="bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 p-4 rounded-lg">
+                <h5 className="font-semibold text-purple-900 dark:text-purple-300 mb-2 flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-purple-600 dark:text-purple-400" />
                   Tempo disponível
                 </h5>
-                <p className="text-sm text-purple-800">
+                <p className="text-sm text-purple-800 dark:text-purple-300">
                   De {selectedEvaluation.startDateTime ?
                     format(new Date(selectedEvaluation.startDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) :
                     "data não definida"

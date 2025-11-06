@@ -81,7 +81,7 @@ export const useSkillsStore = create<SkillsStore>((set, get) => ({
                     ? Promise.resolve(skillsByGrade[gradeId])
                     : api.get(`/skills/grade/${gradeId}`).then(res => {
                         const list: Skill[] = Array.isArray(res.data)
-                            ? res.data.map((skill: any) => ({
+                            ? res.data.map((skill: { id: string; code: string; description: string }) => ({
                                 id: skill.id,
                                 code: skill.code,
                                 description: skill.description,
@@ -98,7 +98,7 @@ export const useSkillsStore = create<SkillsStore>((set, get) => ({
                     ? Promise.resolve(skillsBySubject[subjectId])
                     : api.get(`/skills/subject/${subjectId}`).then(res => {
                         const list: Skill[] = Array.isArray(res.data)
-                            ? res.data.map((skill: any) => ({
+                            ? res.data.map((skill: { id: string; code: string; description: string }) => ({
                                 id: skill.id,
                                 code: skill.code,
                                 description: skill.description,
@@ -176,7 +176,7 @@ export const useSkillsStore = create<SkillsStore>((set, get) => ({
         try {
             const response = await api.get(`/skills/subject/${subjectId}`);
             const skills = Array.isArray(response.data) 
-                ? response.data.map((skill: any) => ({
+                ? response.data.map((skill: { id: string; code: string; description: string }) => ({
                     id: skill.id,
                     code: skill.code,
                     description: skill.description,
@@ -241,8 +241,12 @@ export const useSkillsStore = create<SkillsStore>((set, get) => ({
             }));
 
             return skills;
-        } catch (error) {
-            console.error('Erro ao buscar skills por série:', error);
+        } catch (error: unknown) {
+            // ✅ CORREÇÃO: Não logar erro se for 404 (caso válido - pode não haver skills)
+            const apiError = error as { response?: { status?: number } };
+            if (apiError.response?.status !== 404) {
+                console.error('Erro ao buscar skills por série:', error);
+            }
             set(state => ({
                 isLoading: { ...state.isLoading, [`grade:${gradeId}`]: false }
             }));

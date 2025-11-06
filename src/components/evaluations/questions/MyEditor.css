@@ -497,6 +497,35 @@
   }
 }
 
+/* Dark mode support using Tailwind dark: classes */
+.dark .ProseMirror {
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+}
+
+.dark .ProseMirror p {
+  color: hsl(var(--foreground));
+}
+
+.dark .ProseMirror h1,
+.dark .ProseMirror h2,
+.dark .ProseMirror h3,
+.dark .ProseMirror h4,
+.dark .ProseMirror h5,
+.dark .ProseMirror h6 {
+  color: hsl(var(--foreground));
+}
+
+.dark .ProseMirror code {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+
+.dark .ProseMirror pre {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+
 .remirror-editor sup {
   vertical-align: super;
   font-size: smaller;

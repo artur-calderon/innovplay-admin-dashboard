@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { EvaluationApiService } from '@/services/evaluationApi';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/authContext';
-import { TestData, TestSession, StudentAnswer, TestResults, EvaluationState } from '@/types/evaluation-types';
+import { TestData, TestSession, StudentAnswer, TestResults, EvaluationState, SubmitTestResponse } from '@/types/evaluation-types';
 import { api } from '@/lib/api';
 
 interface UseEvaluationProps {
@@ -368,7 +368,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
         });
 
         // ✅ NOVO: Declarar results fora do try para evitar problemas de escopo
-        let results: any = null;
+        let results: SubmitTestResponse | null = null;
 
         try {
             console.log('🚀 Iniciando submissão da avaliação...', {
@@ -430,14 +430,17 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             }
 
             // ✅ NOVO: Criar resultados padrão se não existirem
+            // O backend retorna dados diretamente no objeto, não dentro de results
             let finalResults = results.results;
             if (!finalResults) {
-                console.log('⚠️ Campo results não encontrado, criando resultados padrão');
+                console.log('⚠️ Campo results não encontrado, criando resultados padrão a partir dos dados diretos');
+                // O backend retorna os dados diretamente no objeto (compatibilidade)
+                const responseData = results as SubmitTestResponse & Record<string, unknown>;
                 finalResults = {
-                    total_questions: results.total_questions || 0,
-                    correct_answers: results.correct_answers || 0,
-                    score_percentage: results.score_percentage || 0,
-                    grade: results.grade || 'N/A',
+                    total_questions: (responseData.total_questions as number) ?? 0,
+                    correct_answers: (responseData.correct_answers as number) ?? 0,
+                    score_percentage: (responseData.score_percentage as number) ?? 0,
+                    grade: String((responseData.grade as string | number) ?? 'N/A'),
                     answers_saved: Object.keys(answers).length
                 };
             }
@@ -499,14 +502,40 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             }
 
             // ✅ MELHORADO: Verificar tipos de erro mais específicos
-            const isNetworkError = !error.response || error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED';
+            // Verificar se o erro tem response (erro do axios) ou é um erro genérico
+            const hasResponse = 'response' in error && error.response !== undefined;
+            const errorStatus = hasResponse ? error.response?.status : undefined;
+            const errorData = hasResponse ? error.response?.data : undefined;
+            
+            const isNetworkError = !hasResponse || error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED';
             const isTimeoutError = error.code === 'ECONNABORTED' || error.message?.includes('timeout') || error.message?.includes('Timeout');
-            const isValidationError = error.response?.status === 400;
-            const isServerError = error.response?.status >= 500;
-            const isNotFoundError = error.response?.status === 404;
-            const isForbiddenError = error.response?.status === 403;
+            const isValidationError = errorStatus === 400;
+            const isServerError = errorStatus !== undefined && errorStatus >= 500;
+            const isNotFoundError = errorStatus === 404;
+            const isForbiddenError = errorStatus === 403;
+            const isGoneError = errorStatus === 410; // ✅ NOVO: Sessão expirada ou tempo limite excedido
+            
+            // ✅ NOVO: Verificar se é erro genérico do interceptor (sem response mas com mensagem específica)
+            const isGenericServerError = !hasResponse && error.message?.includes('Erro interno do servidor');
 
-            if (isNetworkError || isTimeoutError) {
+            if (isGoneError) {
+                // ✅ NOVO: Tratamento específico para erro 410 (sessão expirada)
+                console.log('⚠️ Sessão expirada (410) - avaliação ou tempo limite expirado');
+                const errorMessage = (errorData as { error?: string })?.error || 
+                    "A sessão expirou. O tempo limite foi excedido ou a avaliação expirou.";
+                
+                toast({
+                    title: "⏰ Tempo esgotado",
+                    description: errorMessage,
+                    variant: "destructive",
+                });
+                
+                // Marcar como expirada e não permitir nova tentativa
+                setIsTimeUp(true);
+                setEvaluationState('expired');
+                return;
+            } else if (isNetworkError || isTimeoutError) {
+                // ✅ Verificar erros de rede/timeout antes de erros genéricos do servidor
                 console.log('⚠️ Erro de rede/timeout - permitindo nova tentativa');
                 const errorMessage = isTimeoutError 
                     ? "A requisição demorou muito para responder. O servidor pode estar processando muitos dados."
@@ -515,6 +544,20 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 toast({
                     title: "❌ Erro de conexão",
                     description: errorMessage,
+                    variant: "destructive",
+                });
+            } else if (isGenericServerError || isServerError) {
+                // ✅ NOVO: Tratamento para erro genérico do servidor (500+)
+                console.log('⚠️ Erro do servidor (500+) - pode ser temporário');
+                const serverErrorMessage = hasResponse && errorData 
+                    ? (errorData as { error?: string; message?: string })?.error || 
+                      (errorData as { error?: string; message?: string })?.message ||
+                      "Erro interno do servidor. Tente novamente em alguns instantes."
+                    : error.message || "Erro interno do servidor. Tente novamente em alguns instantes.";
+                
+                toast({
+                    title: "❌ Erro do servidor",
+                    description: serverErrorMessage,
                     variant: "destructive",
                 });
             } else if (isValidationError) {
@@ -539,13 +582,6 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 toast({
                     title: "❌ Sem permissão",
                     description: "Você não tem permissão para enviar esta avaliação.",
-                    variant: "destructive",
-                });
-            } else if (isServerError) {
-                console.log('⚠️ Erro do servidor - permitindo nova tentativa');
-                toast({
-                    title: "❌ Erro do servidor",
-                    description: "Erro interno do servidor. Tente novamente em alguns instantes.",
                     variant: "destructive",
                 });
             } else {
