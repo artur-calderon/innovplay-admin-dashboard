@@ -12,6 +12,7 @@ import { ManageClassModal } from "./ManageClassModal";
 import { LinkDirectorCoordinatorModal } from "./LinkDirectorCoordinatorModal";
 import { ManageSchoolLinksModal } from "./ManageSchoolLinksModal";
 import { BulkUploadStudentsModal } from "./BulkUploadStudentsModal";
+import { PasswordReportModal } from "./PasswordReportModal";
 import {
   Table,
   TableBody,
@@ -102,6 +103,7 @@ export default function SchoolDetails() {
   const [showManageSchoolLinksModal, setShowManageSchoolLinksModal] = useState(false);
   const [showLinkTeacherModal, setShowLinkTeacherModal] = useState(false);
   const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
+  const [showPasswordReportModal, setShowPasswordReportModal] = useState(false);
 
   useEffect(() => {
     const fetchSchool = async () => {
@@ -587,7 +589,7 @@ export default function SchoolDetails() {
                   Diretores e coordenadores responsáveis pela gestão da instituição
                 </CardDescription>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && (
                   <Button
                     variant="outline"
@@ -606,6 +608,16 @@ export default function SchoolDetails() {
                   >
                     <Users className="h-4 w-4 mr-2" />
                     Gerenciar
+                  </Button>
+                )}
+                {(user.role === 'admin' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador' || user.role === 'professor') && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowPasswordReportModal(true)}
+                  >
+                    <FileSpreadsheet className="h-4 w-4 mr-2" />
+                    Relatório de Senhas
                   </Button>
                 )}
               </div>
@@ -985,6 +997,18 @@ export default function SchoolDetails() {
             // Recarregar dados da escola
             window.location.reload();
           }}
+        />
+      )}
+
+      {/* Password Report Modal */}
+      {showPasswordReportModal && school && (
+        <PasswordReportModal
+          isOpen={showPasswordReportModal}
+          onClose={() => setShowPasswordReportModal(false)}
+          schoolId={school.id}
+          schoolName={school.name}
+          cityId={school.city_id}
+          classes={classes}
         />
       )}
     </div>
