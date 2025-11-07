@@ -2,13 +2,13 @@ import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/authContext";
 
-interface Settings {
+export interface Settings {
   theme: "light" | "dark";
   fontFamily: string;
   fontSize: string;
 }
 
-const DEFAULT_SETTINGS: Settings = {
+export const DEFAULT_SETTINGS: Settings = {
   theme: "light",
   fontFamily: "Inter",
   fontSize: "100%",
@@ -46,7 +46,7 @@ const setToStorage = (key: string, value: string): void => {
 };
 
 // Carregar configurações do localStorage com fallback para valores padrão
-const loadSettings = (userId: string | null): Settings => {
+export const loadSettings = (userId: string | null): Settings => {
   const storageKey = getStorageKey(userId);
   const stored = getFromStorage(storageKey, "");
   
@@ -92,7 +92,7 @@ const settingsApi = {
   // Buscar configurações do usuário
   getUserSettings: async (userId: string): Promise<Settings | null> => {
     try {
-      const response = await api.get<UserSettingsResponse>(`/user-settings/${userId}`);
+      const response = await api.get<UserSettingsResponse>(`/users/user-settings/${userId}`);
       return response.data.settings || null;
     } catch (error: any) {
       if (error.response?.status === 404) {
@@ -107,7 +107,7 @@ const settingsApi = {
   // Salvar configurações do usuário
   saveUserSettings: async (userId: string, settings: Settings): Promise<void> => {
     try {
-      await api.post(`/user-settings/${userId}`, { settings });
+      await api.post(`/users/user-settings/${userId}`, { settings });
     } catch (error) {
       console.warn("Erro ao salvar configurações no servidor:", error);
       throw error;
@@ -116,7 +116,7 @@ const settingsApi = {
 };
 
 // Aplicar tema no DOM
-const applyTheme = (theme: "light" | "dark"): void => {
+export const applyTheme = (theme: "light" | "dark"): void => {
   try {
     const root = document.documentElement;
     if (theme === "dark") {
@@ -163,110 +163,83 @@ const applyFontSize = (fontSize: string): void => {
   }
 };
 
+export const loadAndApplySettings = async (targetUserId: string | null): Promise<Settings> => {
+  let loadedSettings: Settings = DEFAULT_SETTINGS;
+
+  try {
+    if (targetUserId) {
+      const serverSettings = await settingsApi.getUserSettings(targetUserId);
+      if (serverSettings) {
+        loadedSettings = serverSettings;
+        saveSettings(targetUserId, loadedSettings);
+      } else {
+        const localSettings = loadSettings(targetUserId);
+        if (localSettings && JSON.stringify(localSettings) !== JSON.stringify(DEFAULT_SETTINGS)) {
+          loadedSettings = localSettings;
+          try {
+            await settingsApi.saveUserSettings(targetUserId, localSettings);
+          } catch (error) {
+            console.warn("Erro ao sincronizar configurações locais com servidor:", error);
+          }
+        } else {
+          const currentDarkMode = document.documentElement.classList.contains('dark');
+          if (currentDarkMode) {
+            loadedSettings = { ...DEFAULT_SETTINGS, theme: 'dark' };
+            saveSettings(targetUserId, loadedSettings);
+          }
+        }
+      }
+    } else {
+      const localSettings = loadSettings(null);
+      if (localSettings && JSON.stringify(localSettings) !== JSON.stringify(DEFAULT_SETTINGS)) {
+        loadedSettings = localSettings;
+      } else {
+        const currentDarkMode = document.documentElement.classList.contains('dark');
+        if (currentDarkMode) {
+          loadedSettings = { ...DEFAULT_SETTINGS, theme: 'dark' };
+          saveSettings(null, loadedSettings);
+        }
+      }
+    }
+  } catch (error) {
+    console.warn("Erro ao carregar configurações:", error);
+    const localSettings = loadSettings(targetUserId);
+    if (localSettings && JSON.stringify(localSettings) !== JSON.stringify(DEFAULT_SETTINGS)) {
+      loadedSettings = localSettings;
+    }
+  }
+
+  const currentDarkMode = document.documentElement.classList.contains('dark');
+  if (loadedSettings.theme === 'dark' && !currentDarkMode) {
+    applyTheme(loadedSettings.theme);
+  } else if (loadedSettings.theme === 'light' && currentDarkMode) {
+    applyTheme(loadedSettings.theme);
+  } else if (loadedSettings.theme === 'dark') {
+    applyTheme(loadedSettings.theme);
+  }
+  applyFontFamily(loadedSettings.fontFamily);
+  applyFontSize(loadedSettings.fontSize);
+
+  return loadedSettings;
+};
+
 export const useSettings = () => {
   const { user } = useAuth();
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [isLoading, setIsLoading] = useState(true);
   const userId = user?.id || null;
 
-  // Carregar e aplicar configurações ao montar ou quando userId mudar
+  const loadSettingsFromSources = useCallback(async (targetUserId: string | null) => {
+    setIsLoading(true);
+    const loaded = await loadAndApplySettings(targetUserId);
+    setSettings(loaded);
+    setIsLoading(false);
+    return loaded;
+  }, []);
+
   useEffect(() => {
-    const loadAndApplySettings = async () => {
-      setIsLoading(true);
-
-      // Primeiro, tentar carregar do servidor se userId estiver disponível
-      let loadedSettings: Settings = DEFAULT_SETTINGS;
-      
-      if (userId) {
-        try {
-          const serverSettings = await settingsApi.getUserSettings(userId);
-          if (serverSettings) {
-            // Se encontrou no servidor, usar essas configurações
-            loadedSettings = serverSettings;
-            // Sincronizar com localStorage para manter consistência
-            saveSettings(userId, loadedSettings);
-          } else {
-            // Se não existe no servidor, carregar do localStorage
-            // Se não existir no localStorage também, usar DEFAULT_SETTINGS
-            const localSettings = loadSettings(userId);
-            if (localSettings && JSON.stringify(localSettings) !== JSON.stringify(DEFAULT_SETTINGS)) {
-              loadedSettings = localSettings;
-              // Sincronizar com servidor para manter backup
-              try {
-                await settingsApi.saveUserSettings(userId, localSettings);
-              } catch (error) {
-                console.warn("Erro ao sincronizar configurações locais com servidor:", error);
-              }
-            } else {
-              // Se não há configurações salvas, verificar se já há tema aplicado no DOM
-              // para evitar remover o modo escuro se já estiver aplicado
-              const currentDarkMode = document.documentElement.classList.contains('dark');
-              if (currentDarkMode) {
-                // Se já está em modo escuro, manter as configurações padrão mas com dark mode
-                loadedSettings = { ...DEFAULT_SETTINGS, theme: 'dark' };
-                // Salvar essa preferência para manter consistência
-                saveSettings(userId, loadedSettings);
-              } else {
-                loadedSettings = DEFAULT_SETTINGS;
-              }
-            }
-          }
-        } catch (error) {
-          // Em caso de erro ao buscar do servidor, usar localStorage como fallback
-          console.warn("Erro ao buscar configurações do servidor, usando localStorage:", error);
-          const localSettings = loadSettings(userId);
-          if (localSettings && JSON.stringify(localSettings) !== JSON.stringify(DEFAULT_SETTINGS)) {
-            loadedSettings = localSettings;
-          } else {
-            // Se não há configurações salvas, verificar se já há tema aplicado no DOM
-            const currentDarkMode = document.documentElement.classList.contains('dark');
-            if (currentDarkMode) {
-              loadedSettings = { ...DEFAULT_SETTINGS, theme: 'dark' };
-              saveSettings(userId, loadedSettings);
-            } else {
-              loadedSettings = DEFAULT_SETTINGS;
-            }
-          }
-        }
-      } else {
-        // Se não tem userId, usar localStorage padrão
-        const localSettings = loadSettings(null);
-        if (localSettings && JSON.stringify(localSettings) !== JSON.stringify(DEFAULT_SETTINGS)) {
-          loadedSettings = localSettings;
-        } else {
-          // Verificar se já há tema aplicado no DOM
-          const currentDarkMode = document.documentElement.classList.contains('dark');
-          if (currentDarkMode) {
-            loadedSettings = { ...DEFAULT_SETTINGS, theme: 'dark' };
-            saveSettings(null, loadedSettings);
-          } else {
-            loadedSettings = DEFAULT_SETTINGS;
-          }
-        }
-      }
-
-      setSettings(loadedSettings);
-
-      // Aplicar configurações no DOM apenas se forem diferentes das atuais
-      // Isso evita remover o modo escuro se já estiver aplicado
-      const currentDarkMode = document.documentElement.classList.contains('dark');
-      if (loadedSettings.theme === 'dark' && !currentDarkMode) {
-        applyTheme(loadedSettings.theme);
-      } else if (loadedSettings.theme === 'light' && currentDarkMode) {
-        applyTheme(loadedSettings.theme);
-      } else if (loadedSettings.theme === 'dark') {
-        // Garantir que o modo escuro está aplicado mesmo se já estava
-        applyTheme(loadedSettings.theme);
-      }
-      
-      applyFontFamily(loadedSettings.fontFamily);
-      applyFontSize(loadedSettings.fontSize);
-
-      setIsLoading(false);
-    };
-
-    loadAndApplySettings();
-  }, [userId]);
+    loadSettingsFromSources(userId);
+  }, [loadSettingsFromSources, userId]);
 
   // Função para atualizar tema
   const updateTheme = useCallback(async (theme: "light" | "dark") => {
@@ -274,15 +247,6 @@ export const useSettings = () => {
     setSettings(newSettings);
     saveSettings(userId, newSettings);
     applyTheme(theme);
-
-    // Salvar no servidor se userId estiver disponível
-    if (userId) {
-      try {
-        await settingsApi.saveUserSettings(userId, newSettings);
-      } catch (error) {
-        console.warn("Erro ao salvar tema no servidor:", error);
-      }
-    }
   }, [settings, userId]);
 
   // Função para atualizar fonte
@@ -291,15 +255,6 @@ export const useSettings = () => {
     setSettings(newSettings);
     saveSettings(userId, newSettings);
     applyFontFamily(fontFamily);
-
-    // Salvar no servidor se userId estiver disponível
-    if (userId) {
-      try {
-        await settingsApi.saveUserSettings(userId, newSettings);
-      } catch (error) {
-        console.warn("Erro ao salvar fonte no servidor:", error);
-      }
-    }
   }, [settings, userId]);
 
   // Função para atualizar tamanho de fonte
@@ -308,15 +263,6 @@ export const useSettings = () => {
     setSettings(newSettings);
     saveSettings(userId, newSettings);
     applyFontSize(fontSize);
-
-    // Salvar no servidor se userId estiver disponível
-    if (userId) {
-      try {
-        await settingsApi.saveUserSettings(userId, newSettings);
-      } catch (error) {
-        console.warn("Erro ao salvar tamanho de fonte no servidor:", error);
-      }
-    }
   }, [settings, userId]);
 
   // Função para resetar para valores padrão
@@ -327,16 +273,20 @@ export const useSettings = () => {
     applyTheme(DEFAULT_SETTINGS.theme);
     applyFontFamily(DEFAULT_SETTINGS.fontFamily);
     applyFontSize(DEFAULT_SETTINGS.fontSize);
-
-    // Salvar no servidor se userId estiver disponível
-    if (userId) {
-      try {
-        await settingsApi.saveUserSettings(userId, DEFAULT_SETTINGS);
-      } catch (error) {
-        console.warn("Erro ao resetar configurações no servidor:", error);
-      }
-    }
   }, [userId]);
+
+  const persistSettings = useCallback(async () => {
+    if (!userId) {
+      throw new Error("Usuário não autenticado");
+    }
+
+    try {
+      await settingsApi.saveUserSettings(userId, settings);
+    } catch (error) {
+      console.warn("Erro ao salvar configurações no servidor:", error);
+      throw error;
+    }
+  }, [settings, userId]);
 
   return {
     settings,
@@ -345,6 +295,8 @@ export const useSettings = () => {
     updateFontFamily,
     updateFontSize,
     resetToDefaults,
+    persistSettings,
+    loadSettingsFromSources,
   };
 };
 
@@ -394,22 +346,11 @@ export const applyStoredSettings = (): void => {
     }
 
     // Só aplicar configurações se userId for válido
-    if (userId) {
-      const loadedSettings = loadSettings(userId);
-      // Só aplicar se as configurações forem diferentes dos padrões
-      if (loadedSettings && JSON.stringify(loadedSettings) !== JSON.stringify(DEFAULT_SETTINGS)) {
-        applyTheme(loadedSettings.theme);
-        applyFontFamily(loadedSettings.fontFamily);
-        applyFontSize(loadedSettings.fontSize);
-      }
-    } else {
-      // Se não há userId válido, tentar carregar do localStorage padrão
-      const fallbackSettings = loadSettings(null);
-      if (fallbackSettings && JSON.stringify(fallbackSettings) !== JSON.stringify(DEFAULT_SETTINGS)) {
-        applyTheme(fallbackSettings.theme);
-        applyFontFamily(fallbackSettings.fontFamily);
-        applyFontSize(fallbackSettings.fontSize);
-      }
+    const settingsToApply = loadSettings(userId);
+    if (settingsToApply && JSON.stringify(settingsToApply) !== JSON.stringify(DEFAULT_SETTINGS)) {
+      applyTheme(settingsToApply.theme);
+      applyFontFamily(settingsToApply.fontFamily);
+      applyFontSize(settingsToApply.fontSize);
     }
   } catch (error) {
     console.warn("Erro ao aplicar configurações salvas:", error);

@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { api } from '@/lib/api'
 import { toast } from 'react-toastify'
 import { AxiosError } from 'axios'
+import { loadAndApplySettings } from '@/hooks/useSettings'
 
 export interface AvatarConfig {
     seed?: string;
@@ -117,6 +118,10 @@ export const useAuth = create<AuthContext>((set) => ({
 
             set({ user: response.data.user })
 
+            if (response.data.user?.id) {
+                await loadAndApplySettings(response.data.user.id)
+            }
+
             return response;
         } catch (error: unknown) {
             console.error("Erro no login automático:", error);
@@ -149,6 +154,10 @@ export const useAuth = create<AuthContext>((set) => ({
             api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`
 
             set({ user: response.data.user })
+
+            if (response.data.user?.id) {
+                await loadAndApplySettings(response.data.user.id)
+            }
 
             // Adicionar um pequeno delay para o toast ser visível
             await new Promise(resolve => setTimeout(resolve, 1000));
@@ -232,6 +241,10 @@ export const useAuth = create<AuthContext>((set) => ({
                         ...response.data.user,
                     }
                 }));
+
+                if (response.data.user?.id) {
+                    await loadAndApplySettings(response.data.user.id)
+                }
                 return true;
             }
             return false;

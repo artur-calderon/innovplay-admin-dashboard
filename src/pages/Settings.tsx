@@ -9,6 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Settings as SettingsIcon, Moon, Sun, Type, ZoomIn, Info } from "lucide-react";
 import { useSettings } from "@/hooks/useSettings";
 import { toast } from "react-toastify";
+import { useState } from "react";
 
 const FONT_OPTIONS = [
   { value: "Inter", label: "Inter" },
@@ -31,7 +32,8 @@ const FONT_SIZE_OPTIONS = [
 ];
 
 export default function Settings() {
-  const { settings, updateTheme, updateFontFamily, updateFontSize, resetToDefaults, isLoading } = useSettings();
+  const { settings, updateTheme, updateFontFamily, updateFontSize, resetToDefaults, persistSettings, isLoading } = useSettings();
+  const [isSaving, setIsSaving] = useState(false);
 
   const handleThemeToggle = (checked: boolean) => {
     const newTheme = checked ? "dark" : "light";
@@ -54,8 +56,22 @@ export default function Settings() {
     toast.success("Configurações restauradas para os valores padrão");
   };
 
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await persistSettings();
+      toast.success("Configurações salvas com sucesso");
+    } catch (error: any) {
+      const backendMessage = error?.response?.data?.erro || error?.message || "Não foi possível salvar as configurações";
+      toast.error(backendMessage);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   // Converter fontSize string para número para o slider
-  const fontSizeNumber = parseInt(settings.fontSize.replace("%", "")) || 100;
+  const fontSizeValue = settings.fontSize ?? "100%";
+  const fontSizeNumber = parseInt(fontSizeValue.replace("%", "")) || 100;
 
   if (isLoading) {
     return (
@@ -178,7 +194,7 @@ export default function Settings() {
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">90%</span>
                   <div className="text-center">
-                    <span className="font-medium">{settings.fontSize}</span>
+                    <span className="font-medium">{fontSizeValue}</span>
                     <p className="text-xs text-muted-foreground mt-1">
                       {FONT_SIZE_OPTIONS.find((opt) => opt.value === fontSizeNumber)?.display || "Personalizado"}
                     </p>
@@ -189,7 +205,7 @@ export default function Settings() {
                 {/* Preview */}
                 <div className="mt-4 p-4 rounded-lg border bg-muted/50">
                   <p className="text-xs text-muted-foreground mb-2">Preview:</p>
-                  <p style={{ fontSize: settings.fontSize }}>
+                  <p style={{ fontSize: fontSizeValue }}>
                     Esta é uma amostra de texto com o tamanho selecionado. O tamanho será aplicado em todo o sistema.
                   </p>
                 </div>
@@ -200,7 +216,7 @@ export default function Settings() {
 
         {/* Botão de Reset */}
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="pt-6 space-y-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="space-y-0.5">
                 <h3 className="text-base font-medium">Restaurar Padrões</h3>
@@ -214,6 +230,22 @@ export default function Settings() {
                 aria-label="Restaurar configurações padrão"
               >
                 Restaurar Padrões
+              </Button>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="space-y-0.5">
+                <h3 className="text-base font-medium">Salvar Configurações</h3>
+                <p className="text-sm text-muted-foreground">
+                  Aplica as configurações atuais para o seu usuário no servidor
+                </p>
+              </div>
+              <Button
+                onClick={handleSave}
+                disabled={isSaving}
+                aria-label="Salvar configurações do usuário"
+              >
+                {isSaving ? "Salvando..." : "Salvar Configurações"}
               </Button>
             </div>
           </CardContent>
