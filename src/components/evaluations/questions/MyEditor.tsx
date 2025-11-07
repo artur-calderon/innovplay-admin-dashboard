@@ -81,7 +81,7 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
     },
     editorProps: {
       attributes: {
-        class: 'prose prose-lg max-w-none focus:outline-none min-h-[300px] p-4',
+        class: 'prose prose-lg dark:prose-invert max-w-none focus:outline-none min-h-[300px] p-4 prose-headings:text-foreground prose-p:text-foreground prose-strong:text-foreground prose-em:text-foreground prose-code:text-foreground prose-pre:bg-muted dark:prose-pre:bg-muted/50 prose-pre:text-foreground',
       },
     },
   });
@@ -112,18 +112,12 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
 
   const handleInsertImage = () => {
     if (currentImageConfig.src) {
-      const imageAttributes: any = {
+      const imageAttributes = {
         src: currentImageConfig.src,
         alt: currentImageConfig.caption || 'Imagem inserida',
+        ...(currentImageConfig.width && { width: currentImageConfig.width }),
+        ...(currentImageConfig.height && { height: currentImageConfig.height }),
       };
-
-      if (currentImageConfig.width) {
-        imageAttributes.width = currentImageConfig.width;
-      }
-
-      if (currentImageConfig.height) {
-        imageAttributes.height = currentImageConfig.height;
-      }
 
       // Inserir imagem com configurações
       editor.chain().focus().setResizableImage(imageAttributes).run();
@@ -219,9 +213,9 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
   ];
 
   return (
-    <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
+    <div className="border rounded-lg overflow-hidden bg-white dark:bg-card shadow-sm">
       {/* Toolbar */}
-      <div className="border-b bg-gray-50/50 px-4 py-3">
+      <div className="border-b bg-gray-50/50 dark:bg-muted/50 px-4 py-3">
         <div className="flex flex-wrap items-center gap-1">
           {/* Formatação básica */}
           <div className="flex items-center gap-1">
@@ -233,7 +227,7 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
                     variant="ghost"
                     size="sm"
                     onClick={cmd.action}
-                    className={`h-9 w-9 p-0 ${cmd.isActive ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'}`}
+                    className={`h-9 w-9 p-0 ${cmd.isActive ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' : 'hover:bg-gray-100 dark:hover:bg-muted'}`}
                   >
                     <cmd.icon className="h-4 w-4" />
                   </Button>
@@ -257,7 +251,7 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
                     variant="ghost"
                     size="sm"
                     onClick={cmd.action}
-                    className={`h-9 w-9 p-0 ${cmd.isActive ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'}`}
+                    className={`h-9 w-9 p-0 ${cmd.isActive ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' : 'hover:bg-gray-100 dark:hover:bg-muted'}`}
                   >
                     <cmd.icon className="h-4 w-4" />
                   </Button>
@@ -337,7 +331,7 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
                     variant="ghost"
                     size="sm"
                     onClick={cmd.action}
-                    className={`h-9 w-9 p-0 ${cmd.isActive ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'}`}
+                    className={`h-9 w-9 p-0 ${cmd.isActive ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' : 'hover:bg-gray-100 dark:hover:bg-muted'}`}
                   >
                     <cmd.icon className="h-4 w-4" />
                   </Button>
@@ -359,7 +353,7 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
                 variant="ghost"
                 size="sm"
                 onClick={openImageDialog}
-                className="h-9 px-3 gap-2 font-medium text-blue-600 hover:bg-blue-50"
+                className="h-9 px-3 gap-2 font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30"
               >
                 <ImageIcon className="h-4 w-4" />
                 Inserir Imagem
@@ -392,7 +386,7 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
             <div className="space-y-4">
               <div>
                 <Label className="text-sm font-medium mb-2 block">Selecionar Imagem</Label>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
+                <div className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg p-6 text-center hover:border-gray-400 dark:hover:border-gray-600 transition-colors bg-gray-50 dark:bg-muted/30">
                   <input
                     type="file"
                     accept="image/*"
@@ -401,11 +395,11 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
                     id="image-upload"
                   />
                   <label htmlFor="image-upload" className="cursor-pointer">
-                    <Upload className="h-8 w-8 mx-auto text-gray-400 mb-2" />
-                    <p className="text-sm text-gray-600">
+                    <Upload className="h-8 w-8 mx-auto text-gray-400 dark:text-gray-500 mb-2" />
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
                       Clique para selecionar uma imagem
                     </p>
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
                       PNG, JPG, GIF até 10MB
                     </p>
                   </label>
@@ -416,7 +410,7 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
               {imagePreview && (
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Preview</Label>
-                  <div className="border rounded-lg p-4 bg-gray-50">
+                  <div className="border rounded-lg p-4 bg-gray-50 dark:bg-muted/30 border-border">
                     <img
                       src={imagePreview}
                       alt="Preview"
@@ -440,7 +434,7 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
                 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs text-gray-600">Largura (px)</Label>
+                    <Label className="text-xs text-gray-600 dark:text-gray-400">Largura (px)</Label>
                     <Input
                       type="number"
                       value={currentImageConfig.width || ''}
@@ -453,7 +447,7 @@ const MyEditor = ({ value, onChange }: MyEditorProps) => {
                     />
                   </div>
                   <div>
-                    <Label className="text-xs text-gray-600">Altura (px)</Label>
+                    <Label className="text-xs text-gray-600 dark:text-gray-400">Altura (px)</Label>
                     <Input
                       type="number"
                       value={currentImageConfig.height || ''}

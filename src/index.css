@@ -911,9 +911,20 @@
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
+.dark .evaluation-question-card {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+}
+
 .evaluation-question-header {
   background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);
   border-bottom: 1px solid #c084fc;
+}
+
+.dark .evaluation-question-header {
+  background: hsl(var(--card));
+  border-bottom: 1px solid hsl(var(--border));
 }
 
 .evaluation-navigation-button {

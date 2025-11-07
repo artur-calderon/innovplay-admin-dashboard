@@ -178,6 +178,15 @@ export function calculateGrade(
 
 /**
  * Determina a classificação baseada na proficiência
+ * Faixas exatas conforme especificação:
+ * 
+ * Educação Infantil, Anos Iniciais, Educação Especial, EJA:
+ * - Outras Disciplinas (PM: 350): Abaixo do Básico: 0-149, Básico: 150-199, Adequado: 200-249, Avançado: 250-350
+ * - Matemática (PM: 375): Abaixo do Básico: 0-174, Básico: 175-224, Adequado: 225-274, Avançado: 275-375
+ * 
+ * Anos Finais e Ensino Médio:
+ * - Outras Disciplinas (PM: 400): Abaixo do Básico: 0-199, Básico: 200-274.99, Adequado: 275-324.99, Avançado: 325-400
+ * - Matemática (PM: 425): Abaixo do Básico: 0-224.99, Básico: 225-299.99, Adequado: 300-349.99, Avançado: 350-425
  */
 export function determineClassification(
   proficiency: number,
@@ -187,31 +196,36 @@ export function determineClassification(
   const courseLevel = determineCourseLevel(courseName);
   const subjectType = determineSubjectType(subjectName);
   
-  // Faixas específicas por nível e disciplina
+  // ✅ CORRIGIDO: Faixas exatas conforme especificação
   if (courseLevel === 'anos_finais' || courseLevel === 'ensino_medio') {
+    // Anos Finais e Ensino Médio
     if (subjectType === 'matematica') {
-      if (proficiency >= 350) return 'Avançado';
-      if (proficiency >= 300) return 'Adequado';
-      if (proficiency >= 225) return 'Básico';
-      return 'Abaixo do Básico';
+      // Matemática (PM: 425)
+      if (proficiency >= 350) return 'Avançado'; // 350 - 425
+      if (proficiency >= 300) return 'Adequado'; // 300 - 349.99
+      if (proficiency >= 225) return 'Básico'; // 225 - 299.99
+      return 'Abaixo do Básico'; // 0 - 224.99
     } else {
-      if (proficiency >= 325) return 'Avançado';
-      if (proficiency >= 275) return 'Adequado';
-      if (proficiency >= 200) return 'Básico';
-      return 'Abaixo do Básico';
+      // Outras Disciplinas (PM: 400)
+      if (proficiency >= 325) return 'Avançado'; // 325 - 400
+      if (proficiency >= 275) return 'Adequado'; // 275 - 324.99
+      if (proficiency >= 200) return 'Básico'; // 200 - 274.99
+      return 'Abaixo do Básico'; // 0 - 199
     }
   } else {
-    // Anos Iniciais, Educação Infantil, EJA, Educação Especial
+    // Educação Infantil, Anos Iniciais, Educação Especial, EJA
     if (subjectType === 'matematica') {
-      if (proficiency >= 275) return 'Avançado';
-      if (proficiency >= 225) return 'Adequado';
-      if (proficiency >= 175) return 'Básico';
-      return 'Abaixo do Básico';
+      // Matemática (PM: 375)
+      if (proficiency >= 275) return 'Avançado'; // 275 - 375
+      if (proficiency >= 225) return 'Adequado'; // 225 - 274
+      if (proficiency >= 175) return 'Básico'; // 175 - 224
+      return 'Abaixo do Básico'; // 0 - 174
     } else {
-      if (proficiency >= 250) return 'Avançado';
-      if (proficiency >= 200) return 'Adequado';
-      if (proficiency >= 150) return 'Básico';
-      return 'Abaixo do Básico';
+      // Outras Disciplinas (PM: 350)
+      if (proficiency >= 250) return 'Avançado'; // 250 - 350
+      if (proficiency >= 200) return 'Adequado'; // 200 - 249
+      if (proficiency >= 150) return 'Básico'; // 150 - 199
+      return 'Abaixo do Básico'; // 0 - 149
     }
   }
 }

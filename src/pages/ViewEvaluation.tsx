@@ -27,131 +27,46 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import StartEvaluationModal from "@/components/evaluations/StartEvaluationModal";
+import { convertDateTimeLocalToISO } from "@/utils/date";
+import { Evaluation, Subject, Grade, Municipality, SchoolInfo, AppliedClass, Author, Question, getEvaluationSubjects, getEvaluationSubjectsCount } from "@/types/evaluation-types";
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/components/evaluations/results/constants";
+import { useEvaluations } from "@/hooks/use-cache";
 
 // Função para processar HTML e adicionar classes CSS para imagens
 const processHtmlWithImages = (html: string): string => {
   if (!html) return '';
   
-  // Adiciona classes CSS para imagens
+  // Adiciona classes CSS para imagens e elementos HTML com suporte a dark mode
   return html
-    .replace(/<img([^>]*)>/gi, '<img$1 class="max-w-full h-auto rounded-lg shadow-sm border border-gray-200">')
-    .replace(/<p([^>]*)>/gi, '<p$1 class="mb-4">')
-    .replace(/<h1([^>]*)>/gi, '<h1$1 class="text-2xl font-bold mb-4">')
-    .replace(/<h2([^>]*)>/gi, '<h2$1 class="text-xl font-bold mb-3">')
-    .replace(/<h3([^>]*)>/gi, '<h3$1 class="text-lg font-bold mb-2">')
-    .replace(/<h4([^>]*)>/gi, '<h4$1 class="text-base font-bold mb-2">')
-    .replace(/<h5([^>]*)>/gi, '<h5$1 class="text-sm font-bold mb-2">')
-    .replace(/<h6([^>]*)>/gi, '<h6$1 class="text-xs font-bold mb-2">')
-    .replace(/<ul([^>]*)>/gi, '<ul$1 class="list-disc list-inside mb-4 space-y-1">')
-    .replace(/<ol([^>]*)>/gi, '<ol$1 class="list-decimal list-inside mb-4 space-y-1">')
-    .replace(/<li([^>]*)>/gi, '<li$1 class="mb-1">')
-    .replace(/<blockquote([^>]*)>/gi, '<blockquote$1 class="border-l-4 border-blue-500 pl-4 italic text-gray-600 mb-4">')
-    .replace(/<code([^>]*)>/gi, '<code$1 class="bg-gray-100 px-2 py-1 rounded text-sm font-mono">')
-    .replace(/<pre([^>]*)>/gi, '<pre$1 class="bg-gray-100 p-4 rounded-lg overflow-x-auto text-sm font-mono mb-4">')
-    .replace(/<table([^>]*)>/gi, '<table$1 class="w-full border-collapse border border-gray-300 mb-4">')
-    .replace(/<th([^>]*)>/gi, '<th$1 class="border border-gray-300 px-4 py-2 bg-gray-100 font-bold">')
-    .replace(/<td([^>]*)>/gi, '<td$1 class="border border-gray-300 px-4 py-2">')
-    .replace(/<strong([^>]*)>/gi, '<strong$1 class="font-bold">')
-    .replace(/<em([^>]*)>/gi, '<em$1 class="italic">')
-    .replace(/<u([^>]*)>/gi, '<u$1 class="underline">');
+    .replace(/<img([^>]*)>/gi, '<img$1 class="max-w-full h-auto rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">')
+    .replace(/<p([^>]*)>/gi, '<p$1 class="mb-4 dark:text-gray-100">')
+    .replace(/<h1([^>]*)>/gi, '<h1$1 class="text-2xl font-bold mb-4 dark:text-gray-100">')
+    .replace(/<h2([^>]*)>/gi, '<h2$1 class="text-xl font-bold mb-3 dark:text-gray-100">')
+    .replace(/<h3([^>]*)>/gi, '<h3$1 class="text-lg font-bold mb-2 dark:text-gray-100">')
+    .replace(/<h4([^>]*)>/gi, '<h4$1 class="text-base font-bold mb-2 dark:text-gray-100">')
+    .replace(/<h5([^>]*)>/gi, '<h5$1 class="text-sm font-bold mb-2 dark:text-gray-100">')
+    .replace(/<h6([^>]*)>/gi, '<h6$1 class="text-xs font-bold mb-2 dark:text-gray-100">')
+    .replace(/<ul([^>]*)>/gi, '<ul$1 class="list-disc list-inside mb-4 space-y-1 dark:text-gray-100">')
+    .replace(/<ol([^>]*)>/gi, '<ol$1 class="list-decimal list-inside mb-4 space-y-1 dark:text-gray-100">')
+    .replace(/<li([^>]*)>/gi, '<li$1 class="mb-1 dark:text-gray-100">')
+    .replace(/<blockquote([^>]*)>/gi, '<blockquote$1 class="border-l-4 border-blue-500 dark:border-blue-400 pl-4 italic text-gray-600 dark:text-gray-200 mb-4">')
+    .replace(/<code([^>]*)>/gi, '<code$1 class="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-sm font-mono dark:text-gray-100">')
+    .replace(/<pre([^>]*)>/gi, '<pre$1 class="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg overflow-x-auto text-sm font-mono mb-4 dark:text-gray-100">')
+    .replace(/<table([^>]*)>/gi, '<table$1 class="w-full border-collapse border border-gray-300 dark:border-gray-700 mb-4">')
+    .replace(/<th([^>]*)>/gi, '<th$1 class="border border-gray-300 dark:border-gray-700 px-4 py-2 bg-gray-100 dark:bg-gray-800 font-bold dark:text-gray-100">')
+    .replace(/<td([^>]*)>/gi, '<td$1 class="border border-gray-300 dark:border-gray-700 px-4 py-2 dark:text-gray-100">')
+    .replace(/<strong([^>]*)>/gi, '<strong$1 class="font-bold dark:text-gray-100">')
+    .replace(/<em([^>]*)>/gi, '<em$1 class="italic dark:text-gray-100">')
+    .replace(/<u([^>]*)>/gi, '<u$1 class="underline dark:text-gray-100">')
+    .replace(/<span([^>]*)>/gi, '<span$1 class="dark:text-gray-100">')
+    .replace(/<div([^>]*)>/gi, '<div$1 class="dark:text-gray-100">');
 };
 
-// Interfaces based on the provided JSON structure
-interface Author {
-  id: string;
-  name: string;
-}
-
+// Interfaces locais para questões (estendem a interface base)
 interface QuestionOption {
   id: string;
   text: string;
   isCorrect: boolean;
-}
-
-interface Question {
-  id: string;
-  number: number;
-  text: string;
-  formattedText?: string;
-  secondStatement?: string; // Campo para segundo enunciado
-  type: string;
-  value: number;
-  difficulty: string;
-  skills: string[];
-  options?: QuestionOption[];
-  alternatives?: QuestionOption[]; // Campo alternativo da API
-  solution: string;
-  subjectId?: string; // ID da matéria da questão
-  subject?: { id: string; name: string }; // Adicionado para compatibilidade com backend
-}
-
-interface Subject {
-  id: string;
-  name: string;
-}
-
-interface Municipality {
-  id: string;
-  name: string;
-}
-
-interface SchoolInfo {
-  id: string;
-  name: string;
-}
-
-interface AppliedClass {
-  class_test_id: string | null;
-  class: {
-    id: string;
-    name: string;
-    students_count: number;
-    school: {
-      id: string;
-      name: string;
-    };
-    grade: {
-      id: string;
-      name: string;
-    };
-  };
-  application: string | null;
-  expiration: string | null;
-}
-
-interface Evaluation {
-  id: string;
-  title: string;
-  description: string | null;
-  course: {
-    id: string;
-    name: string;
-  } | null;
-  model: string;
-  subject: {
-    id: string;
-    name: string;
-  };
-  subjects?: Subject[]; // Array de matérias da avaliação (campo oficial)
-  subjects_count?: number; // Quantidade de disciplinas
-  subjects_info?: Subject[]; // Array de matérias da avaliação (fallback)
-  grade: {
-    id: string;
-    name: string;
-  } | null;
-  max_score: number | null;
-  createdBy: Author;
-  createdAt: string;
-  questions: Question[];
-  municipalities?: Municipality[];
-  schools?: SchoolInfo[];
-  municipalities_count?: number;
-  schools_count?: number;
-  total_students?: number;
-  applied_classes_count?: number;
-  status?: string;
-  is_applied?: boolean;
-  applied_classes?: AppliedClass[];
 }
 
 // Interface para questões agrupadas por matéria
@@ -166,6 +81,7 @@ export default function ViewEvaluation() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { invalidateAfterCRUD } = useEvaluations();
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -240,7 +156,7 @@ export default function ViewEvaluation() {
         console.error("Erro ao buscar avaliação:", error);
         toast({
           title: "Erro",
-          description: "Não foi possível carregar a avaliação",
+          description: ERROR_MESSAGES.EVALUATION_LOAD_FAILED,
           variant: "destructive",
         });
       } finally {
@@ -266,9 +182,12 @@ export default function ViewEvaluation() {
       setIsDeleting(true);
       await api.delete(`/test/${id}`);
 
+      // Invalidar cache após exclusão
+      await invalidateAfterCRUD();
+
       toast({
-        title: "Sucesso",
-        description: "Avaliação excluída com sucesso!",
+        title: SUCCESS_MESSAGES.EVALUATION_DELETED,
+        description: SUCCESS_MESSAGES.EVALUATION_DELETED,
       });
 
       navigate("/app/avaliacoes");
@@ -276,7 +195,7 @@ export default function ViewEvaluation() {
       console.error("Erro ao excluir avaliação:", error);
       toast({
         title: "Erro",
-        description: "Não foi possível excluir a avaliação",
+        description: ERROR_MESSAGES.EVALUATION_DELETE_FAILED,
         variant: "destructive",
       });
     } finally {
@@ -299,31 +218,84 @@ export default function ViewEvaluation() {
     // Capturar timezone do usuário automaticamente
     const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+    // ✅ CORREÇÃO: Verificar se já está em formato ISO com timezone antes de converter
+    // O StartEvaluationModal já converte para ISO, então só precisamos converter se ainda não estiver
+    const isISOFormat = (dateStr: string) => {
+      // Verifica se tem timezone offset (formato +/-HH:MM no final)
+      const timezonePattern = /[+-]\d{2}:\d{2}$/;
+      return timezonePattern.test(dateStr);
+    };
+
+    const startDateTimeISO = isISOFormat(startDateTime)
+      ? startDateTime
+      : convertDateTimeLocalToISO(startDateTime);
+    const endDateTimeISO = isISOFormat(endDateTime)
+      ? endDateTime
+      : convertDateTimeLocalToISO(endDateTime);
+
+    console.log("🚀 Aplicando avaliação (ViewEvaluation):", {
+      evaluationId: evaluation.id,
+      classIds,
+      original: { startDateTime, endDateTime },
+      converted: { startDateTimeISO, endDateTimeISO },
+      timezone: userTimezone
+    });
+
     try {
-      // Aqui seria chamada a API para ativar a avaliação com as datas
-      await api.put(`/test/${evaluation.id}/start`, {
-        startDateTime,
-        endDateTime,
-        timezone: userTimezone,
-        status: 'active'
+      // ✅ CORREÇÃO: Usar o mesmo endpoint e formato que ReadyEvaluations.tsx
+      // Mudar de PUT /test/${id}/start para POST /test/${id}/apply
+      const classesData = classIds.map(classId => ({
+        class_id: classId,
+        application: startDateTimeISO,
+        expiration: endDateTimeISO
+      }));
+
+      console.log("📡 Enviando dados para API:", {
+        url: `/test/${evaluation.id}/apply`,
+        data: { classes: classesData, timezone: userTimezone }
       });
 
+      const applyResponse = await api.post(`/test/${evaluation.id}/apply`, {
+        classes: classesData,
+        timezone: userTimezone
+      });
+
+      console.log("✅ Resposta da API:", applyResponse.data);
+
+      // Invalidar cache após aplicar avaliação
+      await invalidateAfterCRUD();
+
       toast({
-        title: "Avaliação iniciada!",
-        description: `A avaliação "${evaluation.title}" foi ativada e agora está disponível na agenda dos alunos.`,
+        title: SUCCESS_MESSAGES.EVALUATION_APPLIED,
+        description: `A avaliação "${evaluation.title}" foi aplicada para ${classIds.length} turma(s) e ficará disponível no horário configurado.`,
       });
 
       setShowStartEvaluationModal(false);
       
       // Recarregar os dados da avaliação para refletir o novo status
-      const response = await api.get(`/test/${evaluation.id}`);
-      setEvaluation(response.data);
+      const evaluationResponse = await api.get(`/test/${evaluation.id}`);
+      setEvaluation(evaluationResponse.data);
       
-    } catch (error) {
-      console.error("Erro ao aplicar avaliação:", error);
+    } catch (error: unknown) {
+      console.error("❌ Erro ao aplicar avaliação:", error);
+
+      let errorMessage: string = ERROR_MESSAGES.EVALUATION_APPLY_FAILED;
+
+      const apiError = error as { response?: { status?: number; data?: { error?: string } } };
+      
+      if (apiError.response?.status === 404) {
+        errorMessage = ERROR_MESSAGES.EVALUATION_NOT_FOUND;
+      } else if (apiError.response?.status === 403) {
+        errorMessage = ERROR_MESSAGES.FORBIDDEN;
+      } else if (apiError.response?.status === 400) {
+        errorMessage = apiError.response.data?.error || ERROR_MESSAGES.EVALUATION_INVALID_DATA;
+      } else if (apiError.response?.data?.error) {
+        errorMessage = apiError.response.data.error;
+      }
+
       toast({
-        title: "Erro",
-        description: "Não foi possível iniciar a avaliação. Tente novamente.",
+        title: ERROR_MESSAGES.EVALUATION_APPLY_FAILED,
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -391,49 +363,37 @@ export default function ViewEvaluation() {
 
     const questionsBySubject: QuestionsBySubject = {};
 
-    // Prioridade 1: usar subjects (campo oficial)
-    if (evaluation.subjects && evaluation.subjects.length > 0) {
-      evaluation.subjects.forEach(subject => {
-        questionsBySubject[subject.id] = {
-          subject,
-          questions: []
-        };
-      });
-    } 
-    // Fallback: usar subjects_info se subjects não existir
-    else if (evaluation.subjects_info && evaluation.subjects_info.length > 0) {
-      evaluation.subjects_info.forEach(subject => {
-        questionsBySubject[subject.id] = {
-          subject,
-          questions: []
-        };
-      });
-    }
+    // Usar função helper padronizada para obter disciplinas
+    const subjects = getEvaluationSubjects(evaluation);
 
-    // Se existe alguma estrutura de disciplinas, distribuir questões pelas matérias
-    if (Object.keys(questionsBySubject).length > 0) {
-      evaluation.questions?.forEach((question) => {
-        const subjId = question.subject?.id;
-        
-        if (subjId && questionsBySubject[subjId]) {
-          questionsBySubject[subjId].questions.push(question);
-        } else {
-          // Se não tem subject ou não encontrou a matéria, coloca na primeira
-          const firstSubjectId = Object.keys(questionsBySubject)[0];
-          if (firstSubjectId) {
-            questionsBySubject[firstSubjectId].questions.push(question);
-          }
-        }
+    // Criar estrutura para cada disciplina
+    if (subjects.length > 0) {
+      subjects.forEach(subject => {
+        questionsBySubject[subject.id] = {
+          subject,
+          questions: []
+        };
       });
     } else {
-      // Fallback para avaliações antigas com apenas uma matéria
-      if (evaluation.subject) {
-        questionsBySubject[evaluation.subject.id] = {
-          subject: evaluation.subject,
-          questions: evaluation.questions || []
-        };
-      }
+      // Fallback: se não há disciplinas, criar uma estrutura vazia
+      return {};
     }
+
+    // Distribuir questões pelas matérias
+    evaluation.questions?.forEach((question) => {
+      const q = question as Question & { value?: number; solution?: string; skills?: string[] };
+      const subjId = q.subject?.id;
+      
+      if (subjId && questionsBySubject[subjId]) {
+        questionsBySubject[subjId].questions.push(q);
+      } else {
+        // Se não tem subject ou não encontrou a matéria, coloca na primeira
+        const firstSubjectId = Object.keys(questionsBySubject)[0];
+        if (firstSubjectId) {
+          questionsBySubject[firstSubjectId].questions.push(q);
+        }
+      }
+    });
 
     return questionsBySubject;
   };
@@ -513,8 +473,8 @@ export default function ViewEvaluation() {
     return (
       <div className="container mx-auto px-2 md:px-4 py-4 md:py-6">
         <div className="text-center py-12">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Avaliação não encontrada</h2>
-          <p className="text-gray-600 mb-4">A avaliação que você está procurando não foi encontrada.</p>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Avaliação não encontrada</h2>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">A avaliação que você está procurando não foi encontrada.</p>
           <Button onClick={handleBack}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Voltar para Avaliações
@@ -526,7 +486,7 @@ export default function ViewEvaluation() {
 
   const questionsBySubject = groupQuestionsBySubject();
   const totalQuestions = evaluation.questions.length;
-  const subjectsCount = evaluation.subjects_count || evaluation.subjects?.length || evaluation.subjects_info?.length || 1;
+  const subjectsCount = getEvaluationSubjectsCount(evaluation);
   const municipalitiesCount = evaluation.municipalities_count || evaluation.municipalities?.length || 0;
   const schoolsCount = evaluation.schools_count || evaluation.schools?.length || 0;
   const totalStudents = evaluation.total_students || 0;
@@ -563,7 +523,7 @@ export default function ViewEvaluation() {
               Voltar
             </Button>
           </div>
-          <h1 className="text-xl md:text-2xl font-bold">{evaluation.title}</h1>
+          <h1 className="text-xl md:text-2xl font-bold dark:text-gray-100">{evaluation.title}</h1>
           <p className="text-muted-foreground">
             Visualize os detalhes e questões da avaliação
           </p>
@@ -606,7 +566,7 @@ export default function ViewEvaluation() {
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalQuestions}</div>
+            <div className="text-2xl font-bold dark:text-gray-100">{totalQuestions}</div>
             <p className="text-xs text-muted-foreground">
               Total de questões
             </p>
@@ -621,7 +581,7 @@ export default function ViewEvaluation() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{totalStudents}</div>
+            <div className="text-2xl font-bold text-green-600 dark:text-green-400">{totalStudents}</div>
             <p className="text-xs text-muted-foreground">
               {appliedClassesCount > 0 ? `Em ${appliedClassesCount} turmas` : 'Prova entregue'}
             </p>
@@ -636,7 +596,7 @@ export default function ViewEvaluation() {
             <BookOpen className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{subjectsCount}</div>
+            <div className="text-2xl font-bold dark:text-gray-100">{subjectsCount}</div>
             <p className="text-xs text-muted-foreground">
               Disciplinas envolvidas
             </p>
@@ -651,7 +611,7 @@ export default function ViewEvaluation() {
             <MapPin className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{municipalitiesCount}</div>
+            <div className="text-2xl font-bold dark:text-gray-100">{municipalitiesCount}</div>
             <p className="text-xs text-muted-foreground">
               {municipalitiesCount === 1 ? 'Município selecionado' : 'Municípios selecionados'}
             </p>
@@ -666,7 +626,7 @@ export default function ViewEvaluation() {
             <School className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{schoolsCount}</div>
+            <div className="text-2xl font-bold dark:text-gray-100">{schoolsCount}</div>
             <p className="text-xs text-muted-foreground">
               {schoolsCount === 1 ? 'Escola participante' : 'Escolas participantes'}
             </p>
@@ -686,44 +646,46 @@ export default function ViewEvaluation() {
           <CardContent className="space-y-4">
             <div>
               <label className="text-sm font-medium text-muted-foreground">Curso</label>
-              <p className="text-sm">{evaluation.course?.name || 'Não informado'}</p>
+              <p className="text-sm dark:text-gray-300">{evaluation.course?.name || 'Não informado'}</p>
             </div>
             <div>
               <label className="text-sm font-medium text-muted-foreground">Disciplinas</label>
               <div className="flex flex-wrap gap-2 mt-1">
-                {evaluation.subjects && evaluation.subjects.length > 0 ? (
-                  evaluation.subjects.map((subject) => (
-                    <Badge key={subject.id} variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-                      {subject.name}
+                {(() => {
+                  const subjects = getEvaluationSubjects(evaluation);
+                  if (subjects.length > 0) {
+                    return (
+                      <>
+                        {subjects.map((subject) => (
+                          <Badge key={subject.id} variant="outline" className="text-xs bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">
+                            {subject.name}
+                          </Badge>
+                        ))}
+                        {evaluation.subjects_count && evaluation.subjects_count > subjects.length && (
+                          <Badge variant="outline" className="text-xs bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-700">
+                            +{evaluation.subjects_count - subjects.length} outras
+                          </Badge>
+                        )}
+                      </>
+                    );
+                  }
+                  return (
+                    <Badge variant="outline" className="text-xs">
+                      Não informado
                     </Badge>
-                  ))
-                ) : evaluation.subjects_info && evaluation.subjects_info.length > 0 ? (
-                  evaluation.subjects_info.map((subject) => (
-                    <Badge key={subject.id} variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-                      {subject.name}
-                    </Badge>
-                  ))
-                ) : (
-                  <Badge variant="outline" className="text-xs">
-                    {evaluation.subject?.name || 'Não informado'}
-                  </Badge>
-                )}
-                {evaluation.subjects_count && evaluation.subjects_count > (evaluation.subjects?.length || 0) && (
-                  <Badge variant="outline" className="text-xs bg-gray-50 text-gray-600 border-gray-300">
-                    +{evaluation.subjects_count - (evaluation.subjects?.length || 0)} outras
-                  </Badge>
-                )}
+                  );
+                })()}
               </div>
             </div>
             <div>
               <label className="text-sm font-medium text-muted-foreground">Série</label>
-              <p className="text-sm">{evaluation.grade?.name || 'Não informada'}</p>
+              <p className="text-sm dark:text-gray-300">{evaluation.grade?.name || 'Não informada'}</p>
             </div>
             <div>
               <label className="text-sm font-medium text-muted-foreground">Modelo</label>
-              <p className="text-sm">{evaluation.model || 'Não informado'}</p>
+              <p className="text-sm dark:text-gray-300">{evaluation.model || 'Não informado'}</p>
             </div>
-            <div className="flex items-center gap-4 pt-2 border-t">
+            <div className="flex items-center gap-4 pt-2 border-t dark:border-gray-800">
               <div className="flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm text-muted-foreground">
@@ -753,8 +715,8 @@ export default function ViewEvaluation() {
                              <Badge 
                  variant={evaluation.is_applied ? "default" : "secondary"}
                  className={evaluation.is_applied 
-                   ? "bg-green-100 text-green-800 border-green-200" 
-                   : "bg-yellow-100 text-yellow-800 border-yellow-200"
+                   ? "bg-green-100 dark:bg-green-950/30 text-green-800 dark:text-green-300 border-green-200 dark:border-green-800" 
+                   : "bg-yellow-100 dark:bg-yellow-950/30 text-yellow-800 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800"
                  }
                >
                  {evaluation.is_applied ? "✅ Aplicada" : "❌ Não aplicada"}
@@ -768,36 +730,36 @@ export default function ViewEvaluation() {
 
             {/* Informações de aplicação */}
             {evaluation.is_applied && evaluation.applied_classes && evaluation.applied_classes.length > 0 && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Users className="h-5 w-5 text-green-600" />
-                  <span className="font-semibold text-green-800">
+                  <Users className="h-5 w-5 text-green-600 dark:text-green-400" />
+                  <span className="font-semibold text-green-800 dark:text-green-300">
                     {totalStudents} alunos receberam a prova
                   </span>
                 </div>
-                <p className="text-sm text-green-700 mb-4">
+                <p className="text-sm text-green-700 dark:text-green-400 mb-4">
                   Distribuída em {appliedClassesCount} turmas de {schoolsCount} escolas
                 </p>
                 
                 {/* Turmas aplicadas */}
                 <div>
-                  <label className="text-sm font-medium text-green-700 mb-2 block">
+                  <label className="text-sm font-medium text-green-700 dark:text-green-400 mb-2 block">
                     Turmas onde foi aplicada:
                   </label>
                   <div className="space-y-2 max-h-48 overflow-y-auto">
                     {evaluation.applied_classes
                       .filter(appliedClass => appliedClass.class_test_id !== null)
                       .map((appliedClass, idx) => (
-                        <div key={appliedClass.class.id || idx} className="bg-white/80 rounded-lg p-3 border border-green-200">
+                        <div key={appliedClass.class.id || idx} className="bg-white/80 dark:bg-card/80 rounded-lg p-3 border border-green-200 dark:border-green-800">
                           <div className="flex items-center justify-between mb-2">
-                            <span className="font-medium text-green-800">
+                            <span className="font-medium text-green-800 dark:text-green-300">
                               {appliedClass.class.name}
                             </span>
-                            <Badge variant="outline" className="text-xs bg-green-50 text-green-700">
+                            <Badge variant="outline" className="text-xs bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800">
                               {appliedClass.class.students_count} alunos
                             </Badge>
                           </div>
-                          <div className="text-xs text-green-600 space-y-1">
+                          <div className="text-xs text-green-600 dark:text-green-400 space-y-1">
                             <div className="flex items-center gap-1">
                               <School className="h-3 w-3" />
                               <span>{appliedClass.class.school.name}</span>
@@ -820,33 +782,33 @@ export default function ViewEvaluation() {
 
             {/* Turmas pendentes */}
             {!evaluation.is_applied && evaluation.applied_classes && evaluation.applied_classes.length > 0 && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <div className="bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Users className="h-5 w-5 text-yellow-600" />
-                  <span className="font-semibold text-yellow-800">
+                  <Users className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+                  <span className="font-semibold text-yellow-800 dark:text-yellow-300">
                     {totalStudents} alunos agendados para receber a prova
                   </span>
                 </div>
-                <p className="text-sm text-yellow-700 mb-4">
+                <p className="text-sm text-yellow-700 dark:text-yellow-400 mb-4">
                   Agendada para {appliedClassesCount} turmas de {schoolsCount} escolas
                 </p>
                 
                 <div>
-                  <label className="text-sm font-medium text-yellow-700 mb-2 block">
+                  <label className="text-sm font-medium text-yellow-700 dark:text-yellow-400 mb-2 block">
                     Turmas agendadas:
                   </label>
                   <div className="space-y-2 max-h-48 overflow-y-auto">
                     {evaluation.applied_classes.map((appliedClass, idx) => (
-                      <div key={appliedClass.class.id || idx} className="bg-white/80 rounded-lg p-3 border border-yellow-200">
+                      <div key={appliedClass.class.id || idx} className="bg-white/80 dark:bg-card/80 rounded-lg p-3 border border-yellow-200 dark:border-yellow-800">
                         <div className="flex items-center justify-between mb-2">
-                          <span className="font-medium text-yellow-800">
+                          <span className="font-medium text-yellow-800 dark:text-yellow-300">
                             {appliedClass.class.name}
                           </span>
-                          <Badge variant="outline" className="text-xs bg-yellow-50 text-yellow-700">
+                          <Badge variant="outline" className="text-xs bg-yellow-50 dark:bg-yellow-950/30 text-yellow-700 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800">
                             {appliedClass.class.students_count} alunos
                           </Badge>
                         </div>
-                        <div className="text-xs text-yellow-600">
+                        <div className="text-xs text-yellow-600 dark:text-yellow-400">
                           <div className="flex items-center gap-1">
                             <School className="h-3 w-3" />
                             <span>{appliedClass.class.school.name}</span>
@@ -861,14 +823,14 @@ export default function ViewEvaluation() {
 
             {/* Quando não há turmas aplicadas ou agendadas */}
             {(!evaluation.applied_classes || evaluation.applied_classes.length === 0) && (
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <div className="bg-gray-50 dark:bg-muted/50 border border-gray-200 dark:border-gray-800 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <Users className="h-5 w-5 text-gray-500" />
-                  <span className="font-semibold text-gray-700">
+                  <Users className="h-5 w-5 text-gray-500 dark:text-gray-400" />
+                  <span className="font-semibold text-gray-700 dark:text-gray-300">
                     Nenhuma turma selecionada
                   </span>
                 </div>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
                   Esta avaliação ainda não foi agendada para nenhuma turma.
                 </p>
               </div>
@@ -882,9 +844,9 @@ export default function ViewEvaluation() {
                 {(evaluation.municipalities && evaluation.municipalities.length > 0) ? (
                   <ul className="space-y-1">
                     {evaluation.municipalities.map((m: Municipality, idx: number) => (
-                      <li key={m.id || m.name || idx} className="text-sm bg-blue-50 px-3 py-2 rounded border border-blue-200 flex items-center gap-2">
-                        <MapPin className="h-4 w-4 text-blue-600" />
-                        <span className="font-medium">{m.name}</span>
+                      <li key={m.id || m.name || idx} className="text-sm bg-blue-50 dark:bg-blue-950/30 px-3 py-2 rounded border border-blue-200 dark:border-blue-800 flex items-center gap-2">
+                        <MapPin className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                        <span className="font-medium dark:text-gray-300">{m.name}</span>
                       </li>
                     ))}
                   </ul>
@@ -902,9 +864,9 @@ export default function ViewEvaluation() {
                 {(evaluation.schools && evaluation.schools.length > 0) ? (
                   <ul className="space-y-1">
                     {evaluation.schools.map((s: SchoolInfo, idx: number) => (
-                      <li key={s.id || s.name || idx} className="text-sm bg-gray-50 px-3 py-2 rounded border border-gray-200 flex items-center gap-2">
-                        <School className="h-4 w-4 text-gray-600" />
-                        <span className="font-medium">{s.name}</span>
+                      <li key={s.id || s.name || idx} className="text-sm bg-gray-50 dark:bg-muted/50 px-3 py-2 rounded border border-gray-200 dark:border-gray-800 flex items-center gap-2">
+                        <School className="h-4 w-4 text-gray-600 dark:text-gray-400" />
+                        <span className="font-medium dark:text-gray-300">{s.name}</span>
                       </li>
                     ))}
                   </ul>
@@ -937,23 +899,23 @@ export default function ViewEvaluation() {
                 return (
                   <div className="space-y-4">
                     <div className="flex items-center gap-2 mb-4">
-                      <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                      <Badge variant="outline" className="bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">
                         {selectedClasses.length} turma{selectedClasses.length > 1 ? 's' : ''} selecionada{selectedClasses.length > 1 ? 's' : ''}
                       </Badge>
                     </div>
                     
                     <div className="max-h-64 overflow-y-auto space-y-3">
                       {selectedClasses.map((classItem, idx) => (
-                        <div key={classItem.id || idx} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                        <div key={classItem.id || idx} className="bg-gray-50 dark:bg-muted/50 rounded-lg p-4 border border-gray-200 dark:border-gray-800">
                           <div className="flex items-center justify-between mb-2">
-                            <span className="font-medium text-gray-800">
+                            <span className="font-medium text-gray-800 dark:text-gray-200">
                               {classItem.name}
                             </span>
-                            <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                            <Badge variant="outline" className="text-xs bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800">
                               {classItem.students_count} alunos
                             </Badge>
                           </div>
-                          <div className="text-sm text-gray-600 space-y-1">
+                          <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
                             <div className="flex items-center gap-2">
                               <School className="h-4 w-4" />
                               <span>{classItem.school.name}</span>
@@ -971,17 +933,17 @@ export default function ViewEvaluation() {
               } else if (evaluation.classes && evaluation.classes.length > 0) {
                 // Fallback: mostrar contagem de turmas pelos IDs
                 return (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <div className="bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-2">
-                      <Users className="h-5 w-5 text-yellow-600" />
-                      <span className="font-semibold text-yellow-800">
+                      <Users className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+                      <span className="font-semibold text-yellow-800 dark:text-yellow-300">
                         {evaluation.classes.length} turma{evaluation.classes.length > 1 ? 's' : ''} selecionada{evaluation.classes.length > 1 ? 's' : ''}
                       </span>
                     </div>
-                    <p className="text-sm text-yellow-700">
+                    <p className="text-sm text-yellow-700 dark:text-yellow-400">
                       IDs das turmas: {evaluation.classes.join(', ')}
                     </p>
-                    <p className="text-xs text-yellow-600 mt-2">
+                    <p className="text-xs text-yellow-600 dark:text-yellow-500 mt-2">
                       Detalhes completos das turmas serão exibidos após a aplicação da avaliação.
                     </p>
                   </div>
@@ -989,14 +951,14 @@ export default function ViewEvaluation() {
               } else {
                 // Nenhuma turma selecionada
                 return (
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <div className="bg-gray-50 dark:bg-muted/50 border border-gray-200 dark:border-gray-800 rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-2">
-                      <Users className="h-5 w-5 text-gray-500" />
-                      <span className="font-semibold text-gray-700">
+                      <Users className="h-5 w-5 text-gray-500 dark:text-gray-400" />
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">
                         Nenhuma turma selecionada
                       </span>
                     </div>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
                       Esta avaliação ainda não foi associada a nenhuma turma.
                     </p>
                   </div>
@@ -1019,14 +981,14 @@ export default function ViewEvaluation() {
             </CardHeader>
             <CardContent className="text-center py-12">
               <div className="space-y-4">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto">
-                  <FileText className="h-8 w-8 text-gray-400" />
+                <div className="w-16 h-16 bg-gray-100 dark:bg-muted rounded-full flex items-center justify-center mx-auto">
+                  <FileText className="h-8 w-8 text-gray-400 dark:text-gray-500" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
                     Nenhuma questão encontrada
                   </h3>
-                  <p className="text-gray-600 mb-4">
+                  <p className="text-gray-600 dark:text-gray-400 mb-4">
                     Esta avaliação ainda não possui questões cadastradas.
                   </p>
                   <Button onClick={handleEdit} variant="outline">
@@ -1040,18 +1002,18 @@ export default function ViewEvaluation() {
         ) : (
           Object.entries(questionsBySubject).map(([subjectId, subjectData]) => (
             <Card key={subjectId} className="overflow-hidden">
-              <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+              <CardHeader className="bg-gradient-to-r from-blue-50 dark:from-blue-950/30 to-indigo-50 dark:to-indigo-950/30 border-b dark:border-gray-800">
                 <CardTitle className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-blue-500 text-white rounded-lg flex items-center justify-center">
+                  <div className="w-10 h-10 bg-blue-500 dark:bg-blue-600 text-white rounded-lg flex items-center justify-center">
                     <BookOpen className="h-5 w-5" />
                   </div>
                   <div className="flex-1">
-                    <h2 className="text-xl font-bold text-gray-800">{subjectData.subject.name}</h2>
+                    <h2 className="text-xl font-bold text-gray-800 dark:text-gray-200">{subjectData.subject.name}</h2>
                     <p className="text-sm text-muted-foreground mt-1">
                       {subjectData.questions.length} questões cadastradas
                     </p>
                   </div>
-                  <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                  <Badge variant="secondary" className="bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300">
                     {subjectData.questions.length} questões
                   </Badge>
                 </CardTitle>
@@ -1059,49 +1021,50 @@ export default function ViewEvaluation() {
               <CardContent className="p-6">
                 <div className="space-y-8">
                   {subjectData.questions.map((question, index) => {
+                    const q = question as Question & { value?: number; solution?: string; skills?: string[]; secondStatement?: string };
                     const questionData = {
-                      id: question.id,
-                      text: question.text,
-                      type: question.type,
-                      difficulty: question.difficulty,
-                      value: question.value,
-                      options: question.options || [],
-                      solution: question.solution || '',
-                      subject: question.subject,
-                      skills: question.skills || []
+                      id: q.id,
+                      text: q.text,
+                      type: q.type,
+                      difficulty: q.difficulty,
+                      value: q.value,
+                      options: q.options || [],
+                      solution: q.solution || '',
+                      subject: q.subject,
+                      skills: q.skills || []
                     };
                     
                     return (
-                    <div key={question.id} className="question-preview-content bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div key={q.id} className="question-preview-content bg-white dark:bg-card rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
                       {/* Header da questão */}
-                      <div className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200 p-6">
+                      <div className="bg-gradient-to-r from-gray-50 dark:from-muted/50 to-gray-100 dark:to-muted/70 border-b border-gray-200 dark:border-gray-800 p-6">
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex-1">
-                            <h3 className="text-xl font-bold text-gray-800 mb-3">
+                            <h3 className="text-xl font-bold text-gray-800 dark:text-gray-200 mb-3">
                               Questão {index + 1}
                             </h3>
                             <div className="flex flex-wrap gap-2">
-                              {Array.isArray(question.skills) && question.skills.length > 0 && (
-                                question.skills.map((skill, skillIndex) => {
+                              {Array.isArray(q.skills) && q.skills.length > 0 && (
+                                q.skills.map((skill, skillIndex) => {
                                   const skillCode = getSkillCode(skill);
                                   const skillDescription = getSkillDescription(skill);
                                   return (
                                     <div key={skillIndex} className="group relative">
                                       <Badge 
                                         variant="outline" 
-                                        className="text-xs bg-blue-50 text-blue-700 font-medium cursor-help hover:bg-blue-100 transition-colors"
+                                        className="text-xs bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 font-medium cursor-help hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
                                         title={skillDescription || skillCode}
                                       >
                                         {skillCode}
                                         {skillDescription && (
-                                          <span className="ml-1 text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity">ℹ️</span>
+                                          <span className="ml-1 text-blue-400 dark:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">ℹ️</span>
                                         )}
                                       </Badge>
                                       {skillDescription && (
-                                        <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-10 bg-gray-900 text-white text-xs rounded-lg p-3 max-w-xs shadow-lg">
-                                          <div className="font-bold text-blue-200 mb-1">{skillCode}</div>
+                                        <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-10 bg-gray-900 dark:bg-gray-800 text-white dark:text-gray-100 text-xs rounded-lg p-3 max-w-xs shadow-lg border dark:border-gray-700">
+                                          <div className="font-bold text-blue-200 dark:text-blue-300 mb-1">{skillCode}</div>
                                           <div className="leading-relaxed">{skillDescription}</div>
-                                          <div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                                          <div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900 dark:border-t-gray-800"></div>
                                         </div>
                                       )}
                                     </div>
@@ -1116,58 +1079,58 @@ export default function ViewEvaluation() {
                       {/* Conteúdo da questão */}
                       <div className="p-6 space-y-6">
                         {/* Enunciado */}
-                        <div className="prose prose-sm max-w-none question-statement">
+                        <div className="prose prose-sm dark:prose-invert max-w-none question-statement">
                           <div
-                            className="text-base leading-relaxed text-gray-700 p-4 bg-gray-50 rounded-lg border"
-                            dangerouslySetInnerHTML={{ __html: processHtmlWithImages(question.formattedText || question.text) }}
+                            className="text-base leading-relaxed text-gray-700 dark:text-gray-100 p-4 bg-gray-50 dark:bg-muted/50 rounded-lg border border-gray-200 dark:border-gray-800 [&_*]:dark:text-gray-100 [&_p]:dark:text-gray-100 [&_h1]:dark:text-gray-100 [&_h2]:dark:text-gray-100 [&_h3]:dark:text-gray-100 [&_h4]:dark:text-gray-100 [&_h5]:dark:text-gray-100 [&_h6]:dark:text-gray-100 [&_li]:dark:text-gray-100 [&_span]:dark:text-gray-100 [&_strong]:dark:text-gray-100 [&_em]:dark:text-gray-100"
+                            dangerouslySetInnerHTML={{ __html: processHtmlWithImages(q.formattedText || q.text) }}
                           />
                         </div>
 
                         {/* Segundo Enunciado (se houver) */}
-                        {(question.secondStatement || (question.formattedText && question.formattedText !== question.text)) && (
-                          <div className="prose prose-sm max-w-none question-continuation">
+                        {(q.secondStatement || (q.formattedText && q.formattedText !== q.text)) && (
+                          <div className="prose prose-sm dark:prose-invert max-w-none question-continuation">
                             <div
-                              className="text-base leading-relaxed text-gray-700 p-4 bg-blue-50 rounded-lg border border-blue-200"
-                              dangerouslySetInnerHTML={{ __html: processHtmlWithImages(question.secondStatement || question.formattedText || '') }}
+                              className="text-base leading-relaxed text-gray-700 dark:text-gray-100 p-4 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800 [&_*]:dark:text-gray-100 [&_p]:dark:text-gray-100 [&_h1]:dark:text-gray-100 [&_h2]:dark:text-gray-100 [&_h3]:dark:text-gray-100 [&_h4]:dark:text-gray-100 [&_h5]:dark:text-gray-100 [&_h6]:dark:text-gray-100 [&_li]:dark:text-gray-100 [&_span]:dark:text-gray-100 [&_strong]:dark:text-gray-100 [&_em]:dark:text-gray-100"
+                              dangerouslySetInnerHTML={{ __html: processHtmlWithImages(q.secondStatement || q.formattedText || '') }}
                             />
                           </div>
                         )}
 
 
                         {/* Alternativas para questões de múltipla escolha */}
-                        {(question.type === 'multipleChoice' || question.type === 'multiple_choice') && (question.options || question.alternatives) && (question.options?.length > 0 || question.alternatives?.length > 0) && (
+                        {(q.type === 'multipleChoice' || q.type === 'multiple_choice') && (q.options || q.alternatives) && (q.options?.length > 0 || q.alternatives?.length > 0) && (
                           <div className="space-y-4">
-                            <h4 className="font-semibold text-lg text-gray-700 flex items-center gap-2">
-                              <span className="w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-sm">🔢</span>
+                            <h4 className="font-semibold text-lg text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                              <span className="w-6 h-6 bg-green-100 dark:bg-green-900/50 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center text-sm">🔢</span>
                               Alternativas
                             </h4>
                             <div className="space-y-3">
-                              {(question.options || question.alternatives || []).map((option, optionIndex) => (
+                              {(q.options || q.alternatives || []).map((option, optionIndex) => (
                                 <div
                                   key={optionIndex}
                                   className={`alternative-item flex items-start gap-4 p-5 rounded-xl border transition-all duration-200 ${
                                     option.isCorrect
-                                      ? "bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 shadow-sm"
-                                      : "bg-white border-gray-200 hover:border-gray-300 hover:shadow-sm"
+                                      ? "bg-gradient-to-r from-green-50 dark:from-green-950/30 to-emerald-50 dark:to-emerald-950/30 border-green-200 dark:border-green-800 shadow-sm"
+                                      : "bg-white dark:bg-card border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 hover:shadow-sm"
                                   }`}
                                 >
                                   <div
                                     className={`w-9 h-9 rounded-full border-2 flex items-center justify-center text-sm font-bold shrink-0 transition-all duration-200 ${
                                       option.isCorrect 
-                                        ? 'bg-green-500 text-white border-green-500 shadow-lg' 
-                                        : 'bg-gray-50 border-gray-300 text-gray-600'
+                                        ? 'bg-green-500 dark:bg-green-600 text-white border-green-500 dark:border-green-600 shadow-lg' 
+                                        : 'bg-gray-50 dark:bg-muted border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400'
                                     }`}
                                   >
                                     {option.id || String.fromCharCode(65 + optionIndex)}
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                    <div className={`text-base leading-relaxed ${
-                                      option.isCorrect ? 'font-medium text-green-800' : 'text-gray-700'
+                                    <div className={`text-base leading-relaxed prose prose-sm dark:prose-invert ${
+                                      option.isCorrect ? 'font-medium text-green-800 dark:text-green-300' : 'text-gray-700 dark:text-gray-300'
                                     }`}>
                                       <div dangerouslySetInnerHTML={{ __html: processHtmlWithImages(option.text) }} />
                                     </div>
                                     {option.isCorrect && (
-                                      <Badge variant="outline" className="mt-3 text-xs bg-green-50 text-green-700 border-green-200">
+                                      <Badge variant="outline" className="mt-3 text-xs bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800">
                                         ✓ Resposta Correta
                                       </Badge>
                                     )}
@@ -1179,20 +1142,20 @@ export default function ViewEvaluation() {
                         )}
 
                         {/* Área de resposta para questões dissertativas */}
-                        {question.type === 'open' && (
+                        {q.type === 'open' && (
                           <div className="space-y-4">
-                            <h4 className="font-semibold text-lg text-gray-700 flex items-center gap-2">
-                              <span className="w-6 h-6 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-sm">✍️</span>
+                            <h4 className="font-semibold text-lg text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                              <span className="w-6 h-6 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 rounded-full flex items-center justify-center text-sm">✍️</span>
                               Área de Resposta
                             </h4>
-                            <div className="answer-area bg-gradient-to-br from-gray-50 to-gray-100 border-2 border-dashed border-gray-300 rounded-xl p-6 relative overflow-hidden">
-                              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-400 to-purple-600 opacity-60"></div>
+                            <div className="answer-area bg-gradient-to-br from-gray-50 dark:from-muted/50 to-gray-100 dark:to-muted/70 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-6 relative overflow-hidden">
+                              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-400 dark:from-purple-500 to-purple-600 dark:to-purple-700 opacity-60"></div>
                               <div className="space-y-3">
-                                <p className="text-sm font-medium text-gray-600">
+                                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
                                   Espaço destinado para a resposta do estudante
                                 </p>
-                                <div className="bg-white/80 backdrop-blur-sm border border-gray-200 rounded-lg p-4 min-h-[120px] flex items-center justify-center">
-                                  <p className="text-gray-400 text-sm leading-relaxed text-center">
+                                <div className="bg-white/80 dark:bg-card/80 backdrop-blur-sm border border-gray-200 dark:border-gray-800 rounded-lg p-4 min-h-[120px] flex items-center justify-center">
+                                  <p className="text-gray-400 dark:text-gray-500 text-sm leading-relaxed text-center">
                                     📝 O estudante desenvolverá sua resposta neste espaço durante a avaliação, demonstrando conhecimento e raciocínio sobre o tema abordado.
                                   </p>
                                 </div>
@@ -1202,18 +1165,18 @@ export default function ViewEvaluation() {
                         )}
 
                         {/* Resolução/Gabarito (se houver) */}
-                        {question.solution && question.solution.trim() !== '' && (
-                          <div className="space-y-4 border-t border-gray-200 pt-6">
-                            <h4 className="font-semibold text-lg text-gray-700 flex items-center gap-2">
-                              <span className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm">💡</span>
+                        {q.solution && q.solution.trim() !== '' && (
+                          <div className="space-y-4 border-t border-gray-200 dark:border-gray-800 pt-6">
+                            <h4 className="font-semibold text-lg text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                              <span className="w-6 h-6 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center text-sm">💡</span>
                               Resolução
                             </h4>
-                            <div className="resolution-content bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6 relative overflow-hidden">
-                              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-400 to-indigo-600"></div>
-                              <div className="prose prose-sm max-w-none">
+                            <div className="resolution-content bg-gradient-to-br from-blue-50 dark:from-blue-950/30 to-indigo-50 dark:to-indigo-950/30 border border-blue-200 dark:border-blue-800 rounded-xl p-6 relative overflow-hidden">
+                              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-400 dark:from-blue-500 to-indigo-600 dark:to-indigo-700"></div>
+                              <div className="prose prose-sm dark:prose-invert max-w-none">
                                 <div
-                                  className="text-base leading-relaxed text-gray-700"
-                                  dangerouslySetInnerHTML={{ __html: processHtmlWithImages(question.solution) }}
+                                  className="text-base leading-relaxed text-gray-700 dark:text-gray-300"
+                                  dangerouslySetInnerHTML={{ __html: processHtmlWithImages(q.solution) }}
                                 />
                               </div>
                             </div>
@@ -1221,24 +1184,24 @@ export default function ViewEvaluation() {
                         )}
 
                         {/* Metadados da questão */}
-                        <div className="bg-gray-50 rounded-lg p-4 border-t border-gray-200">
+                        <div className="bg-gray-50 dark:bg-muted/50 rounded-lg p-4 border-t border-gray-200 dark:border-gray-800">
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
                             <div className="flex items-center gap-2">
-                              <span className="w-2 h-2 bg-blue-400 rounded-full"></span>
-                              <span className="font-medium text-gray-600">Dificuldade:</span> 
-                              <span className="text-gray-700">{question.difficulty}</span>
+                              <span className="w-2 h-2 bg-blue-400 dark:bg-blue-500 rounded-full"></span>
+                              <span className="font-medium text-gray-600 dark:text-gray-400">Dificuldade:</span> 
+                              <span className="text-gray-700 dark:text-gray-300">{q.difficulty}</span>
                             </div>
                             <div className="flex items-center gap-2">
-                              <span className="w-2 h-2 bg-green-400 rounded-full"></span>
-                              <span className="font-medium text-gray-600">Valor:</span> 
-                              <span className="text-gray-700">{question.value} pontos</span>
+                              <span className="w-2 h-2 bg-green-400 dark:bg-green-500 rounded-full"></span>
+                              <span className="font-medium text-gray-600 dark:text-gray-400">Valor:</span> 
+                              <span className="text-gray-700 dark:text-gray-300">{q.value || q.points || 0} pontos</span>
                             </div>
                             <div className="flex items-center gap-2">
-                              <span className="w-2 h-2 bg-purple-400 rounded-full"></span>
-                              <span className="font-medium text-gray-600">Habilidades:</span> 
-                              <span className="text-gray-700">
-                                {Array.isArray(question.skills) && question.skills.length > 0
-                                  ? `${question.skills.length} habilidade${question.skills.length > 1 ? 's' : ''}`
+                              <span className="w-2 h-2 bg-purple-400 dark:bg-purple-500 rounded-full"></span>
+                              <span className="font-medium text-gray-600 dark:text-gray-400">Habilidades:</span> 
+                              <span className="text-gray-700 dark:text-gray-300">
+                                {Array.isArray(q.skills) && q.skills.length > 0
+                                  ? `${q.skills.length} habilidade${q.skills.length > 1 ? 's' : ''}`
                                   : 'Nenhuma habilidade definida'}
                               </span>
                             </div>

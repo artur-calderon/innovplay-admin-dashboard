@@ -130,13 +130,15 @@ export function QuestionBank({
       fetchSubjects();
       fetchGrades();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
     if (open) {
       fetchQuestions();
     }
-  }, [filters, subjectId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, subjectId, open]);
 
   const fetchQuestions = async () => {
     try {
@@ -163,7 +165,7 @@ export function QuestionBank({
       }
 
       const convertedQuestions: Question[] = questionsData.map((apiQuestion) => {
-        const getQuestionType = (type: string | undefined): "multipleChoice" | "open" | "trueFalse" => {
+        const getQuestionType = (type: string | undefined): "multipleChoice" | "dissertativa" | "trueFalse" => {
           switch (type) {
             case "multipleChoice":
             case "multiple_choice":
@@ -171,7 +173,7 @@ export function QuestionBank({
             case "open":
             case "essay":
             case "dissertativa":
-              return "open";
+              return "dissertativa";
             case "trueFalse":
             case "true_false":
               return "trueFalse";
@@ -213,7 +215,7 @@ export function QuestionBank({
           text: apiQuestion.text || apiQuestion.formatted_text || "",
           title: apiQuestion.title || "",
           type: getQuestionType(apiQuestion.question_type),
-          difficulty: mapDifficulty(apiQuestion.difficulty || apiQuestion.difficulty_level),
+          difficulty: mapDifficulty(apiQuestion.difficulty_level),
           subjectId: apiQuestion.subject_id || "",
           subject: apiQuestion.subject ? {
             id: apiQuestion.subject.id,
@@ -224,17 +226,19 @@ export function QuestionBank({
             name: apiQuestion.grade.name
           } : undefined,
           value: apiQuestion.value || 1,
-          options: apiQuestion.options || apiQuestion.alternatives?.map(alt => ({
+          options: apiQuestion.alternatives?.map(alt => ({
             id: alt.id || "",
             text: alt.text,
             isCorrect: alt.isCorrect || false
           })) || [],
           created_by: apiQuestion.created_by || "",
-          skills: Array.isArray(apiQuestion.skill) ? apiQuestion.skill : (apiQuestion.skill ? [apiQuestion.skill] : []),
-          solution: apiQuestion.formatted_solution || apiQuestion.solution || "",
-          formattedText: apiQuestion.formatted_text || apiQuestion.formattedText,
-          formattedSolution: apiQuestion.formatted_solution || apiQuestion.formattedSolution,
-          secondStatement: apiQuestion.secondStatement || apiQuestion.second_statement || "",
+          skills: Array.isArray(apiQuestion.skill) && apiQuestion.skill.length > 0 
+            ? apiQuestion.skill[0] 
+            : (apiQuestion.skill && typeof apiQuestion.skill === 'string' ? apiQuestion.skill : undefined),
+          solution: apiQuestion.formatted_solution || apiQuestion.correct_answer || "",
+          formattedText: apiQuestion.formatted_text || "",
+          formattedSolution: apiQuestion.formatted_solution || "",
+          secondStatement: apiQuestion.second_statement || "",
         };
         return question;
       });
@@ -363,10 +367,10 @@ export function QuestionBank({
 
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty) {
-      case 'Avançado': return 'bg-green-800 text-green-100';
-      case 'Adequado': return 'bg-green-100 text-green-800';
-      case 'Básico': return 'bg-yellow-100 text-yellow-800';
-      case 'Abaixo do Básico': return 'bg-red-100 text-red-800';
+      case 'Avançado': return 'bg-green-800 dark:bg-green-900 text-green-100 dark:text-green-200';
+      case 'Adequado': return 'bg-green-100 dark:bg-green-950/30 text-green-800 dark:text-green-400';
+      case 'Básico': return 'bg-yellow-100 dark:bg-yellow-950/30 text-yellow-800 dark:text-yellow-400';
+      case 'Abaixo do Básico': return 'bg-red-100 dark:bg-red-950/30 text-red-800 dark:text-red-400';
       default: return 'bg-muted text-foreground';
     }
   };
@@ -549,7 +553,7 @@ export function QuestionBank({
               <div className="space-y-3">
                 {paginatedQuestions.length > 0 ? (
                   <>
-                    <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
+                    <div className="flex items-center gap-2 p-3 bg-muted dark:bg-muted/50 rounded-lg border border-border">
                       <Checkbox
                         checked={selectedQuestions.length === paginatedQuestions.length && paginatedQuestions.length > 0}
                         onCheckedChange={handleSelectAll}
@@ -561,8 +565,8 @@ export function QuestionBank({
 
                     {paginatedQuestions.map((question, index) => (
                       <Card key={question.id} className={cn(
-                        "transition-all duration-200 hover:shadow-md",
-                        selectedQuestions.includes(question.id) && "ring-2 ring-blue-500 bg-blue-50"
+                        "transition-all duration-200 hover:shadow-md dark:hover:shadow-lg",
+                        selectedQuestions.includes(question.id) && "ring-2 ring-blue-500 dark:ring-blue-400 bg-blue-50 dark:bg-blue-950/30"
                       )}>
                         <CardContent className="p-4">
                           <div className="flex items-start gap-3">
@@ -609,7 +613,7 @@ export function QuestionBank({
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleQuickAdd(question)}
-                                className="transition-colors hover:bg-green-50 hover:text-green-700"
+                                className="transition-colors hover:bg-green-50 dark:hover:bg-green-950/30 hover:text-green-700 dark:hover:text-green-400"
                                 title="Adicionar questão"
                               >
                                 <Plus className="h-4 w-4" />
@@ -618,7 +622,7 @@ export function QuestionBank({
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => setViewQuestion(question)}
-                                className="transition-colors hover:bg-blue-50 hover:text-blue-700"
+                                className="transition-colors hover:bg-blue-50 dark:hover:bg-blue-950/30 hover:text-blue-700 dark:hover:text-blue-400"
                                 title="Visualizar questão"
                               >
                                 <Eye className="h-4 w-4" />
@@ -633,7 +637,7 @@ export function QuestionBank({
                   <Card>
                     <CardContent className="py-12 text-center">
                       <div className="flex flex-col items-center gap-4">
-                        <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center">
+                        <div className="w-16 h-16 bg-muted dark:bg-muted/50 rounded-full flex items-center justify-center border border-border">
                           <Search className="h-8 w-8 text-muted-foreground" />
                         </div>
                         <div className="space-y-2">

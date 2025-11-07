@@ -45,6 +45,10 @@ const step1Schema = z.object({
   selectedClasses: z.array(z.object({
     id: z.string(),
     name: z.string(),
+    school: z.object({
+      id: z.string(),
+      name: z.string(),
+    }).optional(),
   })).min(1, "Selecione pelo menos uma turma"),
   duration: z.string().min(1, "Informe a duração em minutos").regex(/^\d+$/, "Duração deve ser um número")
 });
@@ -95,6 +99,14 @@ interface School {
   id: string;
   name: string;
   address?: string;
+}
+
+interface ApiClassItem {
+  id: string;
+  name: string;
+  grade_id?: string;
+  school_id?: string;
+  [key: string]: unknown;
 }
 
 export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationStep1Props) {
@@ -205,7 +217,8 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
     loadInitialData();
   }, [toast]);
 
-  // Processar dados iniciais após carregamento
+  // ✅ CORREÇÃO: Processar dados iniciais após carregamento
+  // IMPORTANTE: Preservar turmas selecionadas originalmente sem adicionar outras
   useEffect(() => {
     if (!loadingData && initialData) {
       if (initialData.state) {
@@ -220,8 +233,25 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
       if (initialData.subjects && initialData.subjects.length > 0) {
         form.setValue("subjects", initialData.subjects);
       }
+      // ✅ CORREÇÃO CRÍTICA: Preservar apenas as turmas selecionadas originalmente
+      // Não adicionar outras turmas da mesma escola automaticamente
       if (initialData.selectedClasses && initialData.selectedClasses.length > 0) {
-        form.setValue("selectedClasses", initialData.selectedClasses);
+        // ✅ CORREÇÃO: Usar comparação rigorosa de IDs para garantir que apenas as turmas corretas sejam preservadas
+        const validSelectedClasses = initialData.selectedClasses.filter(selectedClass => {
+          // Verificar se a turma tem um ID válido
+          return selectedClass && selectedClass.id;
+        });
+        
+        // ✅ CORREÇÃO: Só atualizar se ainda não tiver turmas selecionadas ou se forem diferentes
+        const currentSelectedClasses = form.getValues("selectedClasses");
+        const currentSelectedIds = currentSelectedClasses.map(c => String(c.id)).sort();
+        const validSelectedIds = validSelectedClasses.map(c => String(c.id)).sort();
+        
+        // Só atualizar se ainda não tiver turmas selecionadas ou se forem diferentes
+        if (currentSelectedClasses.length === 0 || 
+            JSON.stringify(currentSelectedIds) !== JSON.stringify(validSelectedIds)) {
+          form.setValue("selectedClasses", validSelectedClasses, { shouldValidate: true, shouldDirty: true });
+        }
       }
     }
   }, [loadingData, initialData, form]);
@@ -287,7 +317,8 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
     }
   }, [loadingData, initialData?.municipality, municipalities, initialData?.selectedSchools, form, selectedState, initialData?.state, initialData?.grade]);
 
-  // Carregar turmas quando escolas iniciais forem definidas
+  // ✅ CORREÇÃO: Carregar turmas quando escolas iniciais forem definidas (modo de edição)
+  // IMPORTANTE: Este useEffect deve preservar as turmas selecionadas originalmente
   useEffect(() => {
     if (!loadingData && 
         initialData?.selectedSchools && 
@@ -298,29 +329,72 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
       
       const loadClassesForInitialSchools = async () => {
         try {
-          const allClasses: any[] = [];
+          const allClasses: ClassInfo[] = [];
 
           for (const school of initialData.selectedSchools) {
             try {
               const response = await api.get(`/classes/school/${school.id}`);
-              const schoolClasses = response.data || [];
+              const schoolClasses = (response.data || []) as ApiClassItem[];
               
-              const classesWithSchool = schoolClasses.map((classItem: any) => ({
-                ...classItem,
-                school: { id: school.id, name: school.name }
-              }));
+              // ✅ CORREÇÃO: Preservar grade_id do item original para filtro posterior
+              const classesWithSchool = schoolClasses.map((classItem: ApiClassItem) => {
+                const classWithGrade = classItem as ApiClassItem & { grade_id?: string; grade?: { id?: string } };
+                const gradeId = classWithGrade.grade_id || classWithGrade.grade?.id;
+                return {
+                  id: classItem.id,
+                  name: classItem.name,
+                  school: { id: school.id, name: school.name },
+                  grade_id: gradeId
+                } as ClassInfo & { grade_id?: string };
+              });
               allClasses.push(...classesWithSchool);
             } catch (err) {
               console.error(`Erro ao buscar turmas da escola ${school.name}:`, err);
             }
           }
 
-          // Filtrar turmas por série
-          const filteredClasses = allClasses.filter((classItem: any) =>
-            String(classItem.grade_id) === String(initialData.grade)
-          );
+          // ✅ CORREÇÃO: Filtrar turmas por série
+          const filteredClasses = allClasses.filter((classItem: ClassInfo) => {
+            const classWithGradeId = classItem as ClassInfo & { grade_id?: string; grade?: { id?: string } };
+            const classGradeId = classWithGradeId.grade_id || classWithGradeId.grade?.id;
+            return String(classGradeId || '') === String(initialData.grade);
+          });
 
           setClasses(filteredClasses);
+          
+          // ✅ CORREÇÃO CRÍTICA: Preservar apenas as turmas selecionadas originalmente
+          // Não adicionar outras turmas da mesma escola automaticamente
+          if (initialData.selectedClasses && initialData.selectedClasses.length > 0) {
+            // ✅ CORREÇÃO: Validar que as turmas selecionadas ainda são válidas (existem na lista filtrada)
+            // E garantir que apenas essas turmas sejam preservadas (não adicionar outras)
+            const validSelectedClasses = initialData.selectedClasses.filter(selectedClass => {
+              // Verificar se a turma tem um ID válido
+              if (!selectedClass || !selectedClass.id) return false;
+              
+              // Verificar se a turma existe na lista filtrada de turmas disponíveis
+              return filteredClasses.some(filteredClass => String(filteredClass.id) === String(selectedClass.id));
+            });
+            
+            // ✅ CORREÇÃO: Só atualizar se as turmas selecionadas forem diferentes das atuais
+            // Isso evita sobrescrever seleções do usuário e garante que apenas as turmas corretas sejam preservadas
+            const currentSelectedClasses = form.getValues("selectedClasses");
+            const currentSelectedIds = currentSelectedClasses.map(c => String(c.id)).sort();
+            const validSelectedIds = validSelectedClasses.map(c => String(c.id)).sort();
+            
+            // ✅ CORREÇÃO: Só atualizar se ainda não tiver turmas selecionadas ou se forem diferentes
+            // IMPORTANTE: Não adicionar outras turmas da mesma escola automaticamente
+            if (currentSelectedClasses.length === 0 || 
+                JSON.stringify(currentSelectedIds) !== JSON.stringify(validSelectedIds)) {
+              // ✅ CORREÇÃO: Garantir que apenas as turmas selecionadas originalmente sejam preservadas
+              form.setValue("selectedClasses", validSelectedClasses, { shouldValidate: true, shouldDirty: true });
+            }
+          } else {
+            // ✅ CORREÇÃO: Se não houver turmas selecionadas no initialData, limpar seleções
+            const currentSelectedClasses = form.getValues("selectedClasses");
+            if (currentSelectedClasses.length > 0) {
+              form.setValue("selectedClasses", [], { shouldValidate: true, shouldDirty: true });
+            }
+          }
         } catch (error) {
           console.error("Erro ao carregar turmas das escolas iniciais:", error);
         }
@@ -328,7 +402,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
 
       loadClassesForInitialSchools();
     }
-  }, [loadingData, initialData?.selectedSchools, initialData?.grade]);
+  }, [loadingData, initialData?.selectedSchools, initialData?.grade, initialData?.municipality, initialData?.selectedClasses, form]);
 
   // Carregar séries quando curso mudar
   useEffect(() => {
@@ -355,8 +429,14 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
     }
   }, [selectedCourse, form]);
 
-  // Carregar turmas filtradas da API quando série, escola ou município mudar
+  // ✅ CORREÇÃO: Carregar turmas filtradas da API quando série, escola ou município mudar
+  // Este useEffect é apenas para não-admin (admin usa o useEffect específico abaixo)
   useEffect(() => {
+    // Se for admin, não executar este useEffect (admin tem seu próprio useEffect)
+    if (user?.role === "admin") {
+      return;
+    }
+
     const fetchFilteredClasses = async () => {
       if (!selectedGrade || selectedSchools.length === 0 || !selectedMunicipality) {
         setClasses([]);
@@ -364,63 +444,84 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
         return;
       }
 
+      setClassesLoading(true);
+      setNoClassesMessage("");
+
       try {
         const schoolId = selectedSchools[0].id;
         const response = await api.get(`/classes/school/${schoolId}`);
-        const allClasses = response.data || [];
+        const allClasses = (response.data || []) as ApiClassItem[];
 
-        const filteredClasses = allClasses.filter((classItem: any) =>
-          String(classItem.grade_id).trim() === String(selectedGrade).trim()
-        );
+        const filteredClasses = allClasses
+          .filter((classItem: ApiClassItem) => {
+            // ✅ CORREÇÃO: Verificar grade_id diretamente ou dentro de grade
+            const classGradeId = classItem.grade_id || (classItem as { grade?: { id?: string } }).grade?.id;
+            return String(classGradeId || '').trim() === String(selectedGrade).trim();
+          })
+          .map((classItem: ApiClassItem): ClassInfo => ({
+            id: classItem.id,
+            name: classItem.name,
+            school: { id: schoolId, name: selectedSchools[0].name }
+          }));
 
         setClasses(filteredClasses);
 
+        // ✅ CORREÇÃO: Não modificar turmas selecionadas automaticamente
+        // Apenas validar se as turmas selecionadas ainda são válidas
         const currentClasses = form.getValues("selectedClasses");
         if (currentClasses.length > 0) {
-          const validClasses = currentClasses.filter(c =>
-            filteredClasses.find((cl: { id: string }) => cl.id === c.id)
-          );
-          form.setValue("selectedClasses", validClasses, { shouldValidate: true, shouldDirty: true });
-        } else {
-          form.setValue("selectedClasses", [], { shouldValidate: true, shouldDirty: true });
+          const validClasses = currentClasses.filter(c => {
+            // ✅ CORREÇÃO: Comparação mais rigorosa de IDs usando String para evitar problemas de tipo
+            return filteredClasses.some((cl: ClassInfo) => String(cl.id) === String(c.id));
+          });
+          // ✅ CORREÇÃO: Só atualizar se houver diferença (evitar loops e seleções indesejadas)
+          if (validClasses.length !== currentClasses.length) {
+            form.setValue("selectedClasses", validClasses, { shouldValidate: true, shouldDirty: true });
+          }
+        }
+
+        if (filteredClasses.length === 0) {
+          setNoClassesMessage("Não existe turma cadastrada para essa escola, curso e série.");
         }
       } catch (error) {
         console.error("Erro ao buscar turmas da escola:", error);
         setClasses([]);
         form.setValue("selectedClasses", []);
+        setNoClassesMessage("Erro ao buscar turmas da escola.");
+      } finally {
+        setClassesLoading(false);
       }
     };
 
-    if (!loadingData) {
+    // ✅ CORREÇÃO: Não executar este useEffect se houver initialData (modo de edição)
+    // O useEffect específico para initialData já cuida do carregamento de turmas
+    if (!loadingData && !initialData) {
       fetchFilteredClasses();
     }
-  }, [selectedGrade, selectedSchools, selectedMunicipality, form, loadingData, initialData]);
+  }, [selectedGrade, selectedSchools, selectedMunicipality, form, loadingData, initialData, user?.role]);
 
-  // Carregar municípios quando estado mudar
+  // ✅ CORREÇÃO: Carregar municípios quando estado mudar
+  // ✅ GARANTIDO: Reset completo de municípios, escolas e turmas quando estado muda
   useEffect(() => {
     // Reset da flag de inicialização quando estado muda
     didInitSchools.current = false;
     
+    // ✅ CORREÇÃO: Sempre resetar municípios, escolas e turmas quando estado mudar
+    // (antes de carregar novos dados)
+    setMunicipalities([]);
+    setFilteredMunicipalities([]);
+    setSchools([]);
+    setFilteredSchools([]);
+    setClasses([]);
+    setNoSchoolsMessage("");
+    setNoClassesMessage("");
+    form.setValue("selectedSchools", [], { shouldValidate: true, shouldDirty: true });
+    form.setValue("selectedClasses", [], { shouldValidate: true, shouldDirty: true });
+    
     if (selectedState === 'all') {
-      setMunicipalities([]);
-      setFilteredMunicipalities([]);
       form.setValue("municipality", "all");
-      setSchools([]);
-      setFilteredSchools([]);
-      setClasses([]);
-      setNoSchoolsMessage("");
-      setNoClassesMessage("");
-      form.setValue("selectedSchools", [], { shouldValidate: true, shouldDirty: true });
-      form.setValue("selectedClasses", [], { shouldValidate: true, shouldDirty: true });
     } else if (selectedState) {
       form.setValue("municipality", "");
-      setSchools([]);
-      setFilteredSchools([]);
-      setClasses([]);
-      setNoSchoolsMessage("");
-      setNoClassesMessage("");
-      form.setValue("selectedSchools", [], { shouldValidate: true, shouldDirty: true });
-      form.setValue("selectedClasses", [], { shouldValidate: true, shouldDirty: true });
       
       // Carregar municípios do novo estado
       api.get(`/city/municipalities/state/${selectedState}`)
@@ -434,9 +535,16 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
           setFilteredMunicipalities([]);
         });
     } else if (!selectedState) {
-      setMunicipalities([]);
-      setFilteredMunicipalities([]);
       form.setValue("municipality", "");
+    }
+  }, [selectedState, form, initialData?.state]);
+
+  // ✅ CORREÇÃO: Carregar escolas quando município OU série mudar
+  // ✅ NOVO: Resetar escolas e turmas quando município mudar
+  useEffect(() => {
+    const loadSchools = async () => {
+      // ✅ CORREÇÃO: Resetar escolas e turmas quando município mudar (antes de carregar novos dados)
+      // Limpar escolas e turmas selecionadas
       setSchools([]);
       setFilteredSchools([]);
       setClasses([]);
@@ -444,14 +552,11 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
       setNoClassesMessage("");
       form.setValue("selectedSchools", [], { shouldValidate: true, shouldDirty: true });
       form.setValue("selectedClasses", [], { shouldValidate: true, shouldDirty: true });
-    }
-  }, [selectedState, form, initialData?.state]);
-
-  // ✅ NOVO: Carregar escolas quando município OU série mudar
-  useEffect(() => {
-    const loadSchools = async () => {
       // Não carregar se não houver município ou se for 'all'
       if (!selectedMunicipality || selectedMunicipality === 'all') {
+        setSchools([]);
+        setFilteredSchools([]);
+        setClasses([]);
         return;
       }
 
@@ -505,50 +610,83 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
     loadSchools();
   }, [selectedMunicipality, selectedGrade, form]);
 
-  // Buscar turmas válidas para admin
+  // ✅ CORREÇÃO: Buscar turmas válidas para admin (todas as escolas selecionadas)
+  // ✅ CORREÇÃO: Não executar se houver initialData (modo de edição) - o useEffect específico já cuida disso
   useEffect(() => {
     if (
       user?.role === "admin" &&
       selectedSchools.length > 0 &&
       selectedGrade &&
-      selectedMunicipality
+      selectedMunicipality &&
+      !loadingData &&
+      !initialData // ✅ CORREÇÃO: Não executar em modo de edição
     ) {
       setClassesLoading(true);
       setNoClassesMessage("");
 
       const fetchAllClasses = async () => {
         try {
-          const allClasses: any[] = [];
+          const allClasses: ClassInfo[] = [];
 
           for (const school of selectedSchools) {
             try {
               const response = await api.get(`/classes/school/${school.id}`);
-              const schoolClasses = response.data || [];
+              const schoolClasses = (response.data || []) as ApiClassItem[];
               
-              const classesWithSchool = schoolClasses.map((classItem: any) => ({
-                ...classItem,
-                school: { id: school.id, name: school.name }
-              }));
+              // ✅ CORREÇÃO: Preservar grade_id do item original para filtro posterior
+              const classesWithSchool = schoolClasses.map((classItem: ApiClassItem) => {
+                const classWithGrade = classItem as ApiClassItem & { grade_id?: string; grade?: { id?: string } };
+                const gradeId = classWithGrade.grade_id || classWithGrade.grade?.id;
+                return {
+                  id: classItem.id,
+                  name: classItem.name,
+                  school: { id: school.id, name: school.name },
+                  grade_id: gradeId
+                } as ClassInfo & { grade_id?: string };
+              });
               allClasses.push(...classesWithSchool);
             } catch (err) {
               console.error(`Erro ao buscar turmas da escola ${school.name}:`, err);
             }
           }
 
-          const filteredClasses = allClasses.filter((classItem: any) =>
-            String(classItem.grade_id) === String(selectedGrade)
-          );
+          const filteredClasses = allClasses.filter((classItem: ClassInfo) => {
+            // ✅ CORREÇÃO: Verificar grade_id diretamente ou dentro de grade
+            const classWithGradeId = classItem as ClassInfo & { grade_id?: string; grade?: { id?: string } };
+            const classGradeId = classWithGradeId.grade_id || classWithGradeId.grade?.id;
+            return String(classGradeId || '') === String(selectedGrade);
+          });
 
           setClasses(filteredClasses);
           
+          // ✅ CORREÇÃO: Não modificar turmas selecionadas automaticamente
+          // Apenas validar se as turmas selecionadas ainda são válidas
           const currentClasses = form.getValues("selectedClasses");
+          console.log('🔍 Admin - Turmas carregadas:', {
+            totalFiltered: filteredClasses.length,
+            currentSelected: currentClasses.length,
+            filteredIds: filteredClasses.map(c => c.id),
+            selectedIds: currentClasses.map(c => c.id)
+          });
+          
           if (currentClasses.length > 0) {
-            const validClasses = currentClasses.filter(c =>
-              filteredClasses.find((cl: { id: string }) => cl.id === c.id)
-            );
-            form.setValue("selectedClasses", validClasses, { shouldValidate: true, shouldDirty: true });
+            const validClasses = currentClasses.filter(c => {
+              // ✅ CORREÇÃO: Comparação mais rigorosa de IDs usando String para evitar problemas de tipo
+              return filteredClasses.some((cl: ClassInfo) => String(cl.id) === String(c.id));
+            });
+            // ✅ CORREÇÃO: Só atualizar se houver diferença (evitar loops e seleções indesejadas)
+            if (validClasses.length !== currentClasses.length) {
+              console.log('⚠️ Removendo turmas inválidas:', {
+                before: currentClasses.length,
+                after: validClasses.length,
+                removed: currentClasses.length - validClasses.length
+              });
+              form.setValue("selectedClasses", validClasses, { shouldValidate: true, shouldDirty: true });
+            } else {
+              console.log('✅ Todas as turmas selecionadas são válidas');
+            }
           } else {
-            form.setValue("selectedClasses", [], { shouldValidate: true, shouldDirty: true });
+            console.log('ℹ️ Nenhuma turma selecionada anteriormente');
           }
           
           if (filteredClasses.length === 0) {
@@ -564,8 +702,13 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
       };
 
       fetchAllClasses();
+    } else if (user?.role === "admin" && (!selectedSchools.length || !selectedGrade || !selectedMunicipality)) {
+      // ✅ CORREÇÃO: Limpar turmas se condições não forem satisfeitas
+      setClasses([]);
+      form.setValue("selectedClasses", []);
+      setNoClassesMessage("");
     }
-  }, [user?.role, selectedSchools, selectedGrade, selectedMunicipality, initialData?.selectedClasses]);
+  }, [user?.role, selectedSchools, selectedGrade, selectedMunicipality, initialData?.selectedClasses, form, loadingData]);
 
   // Limpar turmas quando série muda
   useEffect(() => {
@@ -574,12 +717,34 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
     }
   }, [selectedGrade, loadingData, initialData?.selectedClasses, form]);
 
-  // Limpar turmas quando escolas mudam
+  // ✅ CORREÇÃO: Limpar turmas quando escolas mudam, mas apenas se realmente mudou
+  // Não limpar se apenas as turmas foram carregadas (evitar limpar seleções do usuário)
   useEffect(() => {
-    if (!loadingData) {
-      form.setValue("selectedClasses", [], { shouldValidate: true, shouldDirty: true });
+    if (!loadingData && !initialData) {
+      // ✅ CORREÇÃO: Verificar se as turmas selecionadas pertencem às escolas selecionadas
+      // Se não pertencerem, limpar apenas essas turmas inválidas
+      const currentClasses = form.getValues("selectedClasses");
+      if (currentClasses.length > 0 && selectedSchools.length > 0) {
+        const selectedSchoolIds = selectedSchools.map(s => s.id);
+        const validClasses = currentClasses.filter(c => {
+          // Se a turma não tem escola associada, manter (pode ser de carregamento anterior)
+          if (!c.school || !c.school.id) {
+            return true;
+          }
+          // Manter apenas turmas que pertencem às escolas selecionadas
+          return selectedSchoolIds.includes(c.school.id);
+        });
+        
+        // ✅ CORREÇÃO: Só atualizar se houver diferença (evitar loops)
+        if (validClasses.length !== currentClasses.length) {
+          form.setValue("selectedClasses", validClasses, { shouldValidate: true, shouldDirty: true });
+        }
+      } else if (currentClasses.length > 0 && selectedSchools.length === 0) {
+        // Se não há escolas selecionadas, limpar todas as turmas
+        form.setValue("selectedClasses", [], { shouldValidate: true, shouldDirty: true });
+      }
     }
-  }, [selectedSchools, loadingData, form]);
+  }, [selectedSchools, loadingData, initialData, form]);
 
   // Limpar turmas quando município muda
   useEffect(() => {
@@ -606,21 +771,38 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
     form.setValue("subjects", updated);
   };
 
-  const handleClassToggle = (classItem: ClassInfo) => {
-    const current = selectedClasses;
-    const exists = current.find(c => c.id === classItem.id);
+  const handleClassToggle = (classItem: ClassInfo, checked?: boolean) => {
+    const current = form.getValues("selectedClasses"); // ✅ CORREÇÃO: Usar getValues para garantir valor atualizado
+    // ✅ CORREÇÃO: Comparação mais rigorosa de IDs usando String para evitar problemas de tipo
+    const exists = current.find(c => String(c.id) === String(classItem.id));
 
-    if (exists) {
-      const updated = current.filter(c => c.id !== classItem.id);
-      form.setValue("selectedClasses", updated);
-    } else {
+    // ✅ CORREÇÃO: Usar o valor booleano do Checkbox se fornecido, senão usar a lógica de toggle
+    const shouldSelect = checked !== undefined ? checked : !exists;
+
+    console.log('🔍 handleClassToggle:', {
+      classItem: { id: classItem.id, name: classItem.name, school: classItem.school?.name },
+      currentSelected: current.map(c => ({ id: c.id, name: c.name })),
+      exists,
+      shouldSelect,
+      checked
+    });
+
+    if (shouldSelect && !exists) {
+      // ✅ CORREÇÃO: Adicionar apenas esta turma específica (não outras turmas da mesma escola)
       const updated = [...current, classItem];
-      form.setValue("selectedClasses", updated);
+      console.log('✅ Adicionando turma:', { classId: classItem.id, totalSelected: updated.length });
+      form.setValue("selectedClasses", updated, { shouldValidate: true, shouldDirty: true });
+    } else if (!shouldSelect && exists) {
+      // ✅ CORREÇÃO: Remover apenas esta turma específica (não outras turmas da mesma escola)
+      const updated = current.filter(c => String(c.id) !== String(classItem.id));
+      console.log('❌ Removendo turma:', { classId: classItem.id, totalSelected: updated.length });
+      form.setValue("selectedClasses", updated, { shouldValidate: true, shouldDirty: true });
     }
   };
 
   const handleRemoveClass = (classId: string) => {
-    const updated = selectedClasses.filter(c => c.id !== classId);
+    // ✅ CORREÇÃO: Comparação mais rigorosa de IDs usando String para evitar problemas de tipo
+    const updated = selectedClasses.filter(c => String(c.id) !== String(classId));
     form.setValue("selectedClasses", updated);
   };
 
@@ -674,7 +856,7 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
       scrollToFirstError(errors);
       
       toast({
-        title: "Campo obrigatório não preenchido",
+        title: ERROR_MESSAGES.VALIDATION_REQUIRED_FIELD,
         description: `Por favor, preencha o campo "${getFieldLabel(firstErrorField)}"`,
         variant: "destructive",
       });
@@ -683,6 +865,51 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
 
     try {
       setIsLoading(true);
+
+      // Validação cruzada: verificar se todas as turmas selecionadas pertencem às escolas selecionadas
+      const selectedSchoolIds = values.selectedSchools.map(s => s.id);
+      const invalidClasses = values.selectedClasses.filter(classItem => {
+        // Se a turma não tem escola definida, não pode validar, então considerar inválida
+        if (!classItem.school || !classItem.school.id) {
+          return true;
+        }
+        // Verificar se a escola da turma está na lista de escolas selecionadas
+        return !selectedSchoolIds.includes(classItem.school.id);
+      });
+
+      if (invalidClasses.length > 0) {
+        // Limpar turmas inválidas automaticamente
+        const validClasses = values.selectedClasses.filter(classItem => {
+          if (!classItem.school || !classItem.school.id) {
+            return false;
+          }
+          return selectedSchoolIds.includes(classItem.school.id);
+        });
+
+        // Atualizar o formulário com apenas turmas válidas
+        form.setValue("selectedClasses", validClasses, { shouldValidate: true, shouldDirty: true });
+
+        // Mostrar erro informando sobre as turmas removidas
+        const invalidClassNames = invalidClasses.map(c => c.name).join(", ");
+        toast({
+          title: SUCCESS_MESSAGES.INVALID_CLASSES_REMOVED,
+          description: `${ERROR_MESSAGES.INVALID_CLASSES_SCHOOLS}: ${invalidClassNames}`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // ✅ CORREÇÃO: Log dos dados que serão enviados para debug
+      console.log('📤 Dados que serão enviados no onSubmit:', {
+        selectedSchools: values.selectedSchools.map(s => ({ id: s.id, name: s.name })),
+        selectedClasses: values.selectedClasses.map(c => ({ 
+          id: c.id, 
+          name: c.name, 
+          school: c.school ? { id: c.school.id, name: c.school.name } : null 
+        })),
+        classesIds: values.selectedClasses.map(c => c.id),
+        schoolsIds: values.selectedSchools.map(s => s.id)
+      });
 
       const evaluationData: EvaluationFormData = {
         title: values.title,
@@ -700,19 +927,25 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
           ? []
           : [values.municipality],
         schools: values.selectedSchools.map(s => s.id),
-        classes: values.selectedClasses.map(c => c.id),
+        classes: values.selectedClasses.map(c => c.id), // ✅ CORREÇÃO: Enviar apenas IDs das turmas selecionadas
         selectedSchools: values.selectedSchools as { id: string; name: string; }[],
-        selectedClasses: values.selectedClasses as ClassInfo[],
+        selectedClasses: values.selectedClasses as ClassInfo[], // ✅ CORREÇÃO: Enviar apenas turmas selecionadas
         classId: values.selectedClasses[0]?.id || "",
         questions: initialData?.questions || [],
       };
+
+      console.log('✅ EvaluationData final:', {
+        classes: evaluationData.classes,
+        classesCount: evaluationData.classes.length,
+        selectedClasses: evaluationData.selectedClasses.map(c => ({ id: c.id, name: c.name }))
+      });
 
       onNext(evaluationData);
     } catch (error) {
       console.error("Erro no Step 1:", error);
       toast({
         title: "Erro",
-        description: "Erro ao processar dados do formulário",
+        description: ERROR_MESSAGES.EVALUATION_INVALID_DATA,
         variant: "destructive",
       });
     } finally {
@@ -1189,8 +1422,8 @@ export function CreateEvaluationStep1({ onNext, initialData }: CreateEvaluationS
                   <div key={classItem.id} className="flex items-center space-x-2">
                     <Checkbox
                       id={`class-${classItem.id}`}
-                      checked={selectedClasses.some(c => c.id === classItem.id)}
-                      onCheckedChange={() => handleClassToggle(classItem)}
+                      checked={selectedClasses.some(c => String(c.id) === String(classItem.id))}
+                      onCheckedChange={(checked) => handleClassToggle(classItem, checked as boolean)}
                     />
                     <Label
                       htmlFor={`class-${classItem.id}`}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -45,8 +45,6 @@ import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { EvaluationApiService } from "@/services/evaluationApi";
 
-import { format, isAfter, isBefore, parseISO } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
 
 interface DetailedAnswer {
@@ -82,6 +80,8 @@ interface DetailedResults {
 interface Availability {
   is_available: boolean;
   status: "available" | "not_available" | "not_yet_available" | "expired" | "completed" | "not_started";
+  timezone?: string;
+  time_zone?: string;
 }
 
 interface StudentStatus {
@@ -112,12 +112,14 @@ interface StudentEvaluation {
   availability: Availability;
   student_status: StudentStatus;
   detailedResults?: DetailedResults; // Resultados detalhados com respostas
+  timeZone?: string;
+  applicationTimeZone?: string;
 }
 
 interface EvaluationTaking {
   evaluationId: string;
   currentQuestion: number;
-  answers: { [questionId: string]: any };
+  answers: { [questionId: string]: string | string[] };
   timeRemaining: number;
   startedAt: string;
 }
@@ -151,6 +153,28 @@ interface StudentClass {
   };
 }
 
+interface MyClassTestItem {
+  test_id: string;
+  title: string;
+  subjects_info?: { id: string; name: string }[];
+  subject?: { id: string; name: string };
+  application_info?: {
+    application?: string;
+    expiration?: string;
+    timezone?: string;
+    time_zone?: string;
+  };
+  duration?: number;
+  total_questions?: number;
+  max_score?: number;
+  type?: string;
+  model?: string;
+  grade?: { id: string; name: string };
+  description?: string;
+  availability: Availability;
+  student_status: StudentStatus;
+}
+
 export default function StudentEvaluations() {
   const [evaluations, setEvaluations] = useState<StudentEvaluation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -165,20 +189,122 @@ export default function StudentEvaluations() {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    fetchStudentEvaluations();
-    checkInProgressEvaluation();
-  }, []);
+const DEFAULT_TIME_ZONE = (() => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Sao_Paulo";
+  } catch (error) {
+    return "America/Sao_Paulo";
+  }
+})();
 
+function resolveTimeZone(candidate?: string): string {
+  if (!candidate) {
+    return DEFAULT_TIME_ZONE;
+  }
 
+  try {
+    // Validar timezone usando Intl
+    new Intl.DateTimeFormat("pt-BR", { timeZone: candidate });
+    return candidate;
+  } catch (error) {
+    return DEFAULT_TIME_ZONE;
+  }
+}
 
-  const fetchStudentEvaluations = async () => {
+function getEvaluationTimeZone(evaluation?: StudentEvaluation): string {
+  if (!evaluation) {
+    return DEFAULT_TIME_ZONE;
+  }
+
+  const candidate =
+    evaluation.applicationTimeZone ||
+    evaluation.timeZone ||
+    evaluation.availability?.time_zone ||
+    evaluation.availability?.timezone;
+
+  return resolveTimeZone(candidate);
+}
+
+function formatDateTimeForDisplay(value?: string, timeZone?: string): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  const safeTimeZone = resolveTimeZone(timeZone);
+
+  const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: safeTimeZone,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric"
+  });
+
+  const timeFormatter = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: safeTimeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  });
+
+  return `${dateFormatter.format(date)} às ${timeFormatter.format(date)}`;
+}
+
+  // Função de retry com backoff exponencial
+  const retryWithBackoff = async <T,>(
+    fn: () => Promise<T>,
+    maxAttempts: number = 3,
+    baseDelay: number = 1000
+  ): Promise<T> => {
+    let lastError: unknown;
+    
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await fn();
+      } catch (error: unknown) {
+        lastError = error;
+        
+        const apiError = error as { response?: { status?: number } };
+        
+        // Verificar se é erro de rede que deve ter retry
+        const isNetworkError = 
+          !apiError.response || 
+          apiError.response.status === 500 || 
+          apiError.response.status === 502 || 
+          apiError.response.status === 503 || 
+          apiError.response.status === 504;
+        
+        // Se não é erro de rede ou já foi a última tentativa, lançar erro
+        if (!isNetworkError || attempt >= maxAttempts) {
+          throw error;
+        }
+        
+        // Calcular delay com backoff exponencial: 1s, 2s, 4s
+        const delay = baseDelay * Math.pow(2, attempt - 1);
+        console.log(`🔄 Retry ${attempt}/${maxAttempts} após ${delay}ms...`);
+        
+        // Aguardar antes da próxima tentativa
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+    
+    throw lastError;
+  };
+
+  const fetchStudentEvaluations = useCallback(async () => {
     console.log('🚀 Iniciando busca de avaliações...');
     try {
       setIsLoading(true);
 
-      // ✅ NOVO: Usar o endpoint /test/my-class/tests
-      const response = await api.get('/test/my-class/tests');
+      // Usar retry com backoff exponencial para erros de rede
+      await retryWithBackoff(async () => {
+        // ✅ NOVO: Usar o endpoint /test/my-class/tests
+        const response = await api.get('/test/my-class/tests');
       console.log('Resposta da API de avaliações:', response);
 
       const testsData = response.data.tests || [];
@@ -191,7 +317,7 @@ export default function StudentEvaluations() {
       }
 
       // ✅ CORRIGIDO: Log para debug - verificar estrutura dos dados
-      testsData.forEach((testData: any, index: number) => {
+      testsData.forEach((testData: MyClassTestItem, index: number) => {
         console.log(`📋 Avaliação ${index}:`, {
           testId: testData.test_id,
           title: testData.title,
@@ -207,7 +333,7 @@ export default function StudentEvaluations() {
       });
 
       // ✅ CORRIGIDO: Mostrar todas as avaliações (incluindo as já realizadas)
-      const filteredTests = testsData.filter((testData: any) => {
+      const filteredTests = testsData.filter((testData: MyClassTestItem) => {
         // ✅ CORRIGIDO: Verificar se os campos obrigatórios existem
         if (!testData.availability || !testData.student_status) {
           console.warn('Dados de avaliação incompletos:', testData);
@@ -220,7 +346,7 @@ export default function StudentEvaluations() {
       console.log('Avaliações filtradas:', filteredTests.length, 'de', testsData.length);
 
       // Transformar e adicionar as avaliações encontradas
-      const evaluationsWithStatus = filteredTests.map((testData: any) => {
+      const evaluationsWithStatus = filteredTests.map((testData: MyClassTestItem) => {
         console.log('📊 Dados da avaliação da API:', {
           id: testData.test_id,
           title: testData.title,
@@ -231,6 +357,14 @@ export default function StudentEvaluations() {
           availability: testData.availability,
           student_status: testData.student_status
         });
+
+        const applicationTimeZone =
+          testData.application_info?.timezone ||
+          testData.application_info?.time_zone ||
+          testData.availability?.time_zone ||
+          testData.availability?.timezone;
+
+        const resolvedTimeZone = resolveTimeZone(applicationTimeZone);
 
         // Mapear os dados da API para o formato esperado pelo componente
         const evaluation: StudentEvaluation = {
@@ -251,45 +385,67 @@ export default function StudentEvaluations() {
           model: testData.model || 'SAEB',
           // ✅ NOVO: Usar os novos campos
           availability: testData.availability,
-          student_status: testData.student_status
+          student_status: testData.student_status,
+          timeZone: resolvedTimeZone,
+          applicationTimeZone
         };
 
         return evaluation;
       });
 
-      console.log('🔍 Avaliações processadas:', evaluationsWithStatus);
-      setEvaluations(evaluationsWithStatus);
+        console.log('🔍 Avaliações processadas:', evaluationsWithStatus);
+        setEvaluations(evaluationsWithStatus);
+        
+        return evaluationsWithStatus; // Retornar para retryWithBackoff
+      }, 3, 1000); // 3 tentativas, começando com 1 segundo
 
-    } catch (error) {
-      console.error("❌ Erro ao buscar avaliações do aluno:", error);
+    } catch (error: unknown) {
+      const apiError = error as { message?: string; response?: { data?: unknown; status?: number }; stack?: string };
+      
+      console.error("❌ Erro ao buscar avaliações do aluno após retries:", error);
       console.error("Detalhes do erro:", {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        stack: error.stack
+        message: apiError.message,
+        response: apiError.response?.data,
+        status: apiError.response?.status,
+        stack: apiError.stack
       });
       
-      toast({
-        title: "Erro",
-        description: ERROR_MESSAGES.NETWORK_ERROR,
-        variant: "destructive",
-      });
+      // Verificar se é erro de rede após todas as tentativas
+      const isNetworkError = 
+        !apiError.response || 
+        apiError.response.status === 500 || 
+        apiError.response.status === 502 || 
+        apiError.response.status === 503 || 
+        apiError.response.status === 504;
+      
+      if (isNetworkError) {
+        toast({
+          title: "Erro",
+          description: ERROR_MESSAGES.RETRY_FAILED,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Erro ao carregar avaliações",
+          description: ERROR_MESSAGES.EVALUATION_LOAD_FAILED,
+          variant: "destructive",
+        });
+      }
 
       setEvaluations([]);
-
-      toast({
-        title: "Erro ao carregar avaliações",
-        description: "Não foi possível carregar suas avaliações. Tente novamente.",
-        variant: "destructive",
-      });
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [toast]);
 
-  const checkInProgressEvaluation = () => {
+  useEffect(() => {
+    fetchStudentEvaluations();
+  }, [fetchStudentEvaluations]);
+
+  // Verificar avaliação em progresso separadamente, apenas quando evaluations mudar
+  useEffect(() => {
     const inProgress = localStorage.getItem("evaluation_in_progress");
-    if (inProgress) {
+    if (inProgress && evaluations.length > 0) {
       try {
         const data = JSON.parse(inProgress);
         if (data && data.evaluationId && typeof data.evaluationId === 'string') {
@@ -308,8 +464,18 @@ export default function StudentEvaluations() {
         console.error("Erro ao carregar avaliação em progresso:", error);
         localStorage.removeItem("evaluation_in_progress");
       }
+    } else if (inProgress && evaluations.length === 0) {
+      // Se não há avaliações ainda, apenas definir o currentTaking se houver dados no localStorage
+      try {
+        const data = JSON.parse(inProgress);
+        if (data && data.evaluationId) {
+          setCurrentTaking(data);
+        }
+      } catch (error) {
+        console.error("Erro ao carregar avaliação em progresso:", error);
+      }
     }
-  };
+  }, [evaluations]);
 
   const handleStartEvaluation = async (evaluation: StudentEvaluation) => {
     setSelectedEvaluation(evaluation);
@@ -359,21 +525,23 @@ export default function StudentEvaluations() {
           variant: "destructive",
         });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const apiError = error as { message?: string; response?: { data?: { error?: string; message?: string }; status?: number }; config?: { url?: string } };
+      
       console.error("Erro ao verificar se pode iniciar:", error);
       console.error("Detalhes do erro:", {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        url: error.config?.url
+        message: apiError.message,
+        response: apiError.response?.data,
+        status: apiError.response?.status,
+        url: apiError.config?.url
       });
 
       let errorMessage = "Erro ao verificar disponibilidade da avaliação";
 
-      if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
+      if (apiError.response?.data?.error) {
+        errorMessage = apiError.response.data.error;
+      } else if (apiError.response?.data?.message) {
+        errorMessage = apiError.response.data.message;
       }
 
       toast({
@@ -453,34 +621,36 @@ export default function StudentEvaluations() {
       // Redirecionar para tela de avaliação
       window.location.href = `/app/avaliacao/${testId}/fazer`;
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const apiError = error as { message?: string; response?: { data?: { error?: string; message?: string }; status?: number }; config?: { url?: string; method?: string }; stack?: string };
+      
       console.error("❌ Erro ao iniciar avaliação:", error);
       console.error("Detalhes completos do erro:", {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        url: error.config?.url,
-        method: error.config?.method,
-        stack: error.stack
+        message: apiError.message,
+        response: apiError.response?.data,
+        status: apiError.response?.status,
+        url: apiError.config?.url,
+        method: apiError.config?.method,
+        stack: apiError.stack
       });
 
       let errorMessage = "Não foi possível iniciar a avaliação";
 
       // ✅ MELHORADO: Tratamento específico para diferentes tipos de erro
-      if (error.response?.status === 403) {
+      if (apiError.response?.status === 403) {
         errorMessage = "Você não tem permissão para acessar esta avaliação";
-      } else if (error.response?.status === 404) {
+      } else if (apiError.response?.status === 404) {
         errorMessage = "Avaliação não encontrada";
-      } else if (error.response?.status === 400) {
-        errorMessage = error.response.data?.error || "Dados inválidos para iniciar a avaliação";
-      } else if (error.response?.status === 422) {
-        errorMessage = error.response.data?.error || "Avaliação expirada ou indisponível";
-      } else if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      } else if (error.message) {
-        errorMessage = error.message;
+      } else if (apiError.response?.status === 400) {
+        errorMessage = apiError.response.data?.error || "Dados inválidos para iniciar a avaliação";
+      } else if (apiError.response?.status === 422) {
+        errorMessage = apiError.response.data?.error || "Avaliação expirada ou indisponível";
+      } else if (apiError.response?.data?.error) {
+        errorMessage = apiError.response.data.error;
+      } else if (apiError.response?.data?.message) {
+        errorMessage = apiError.response.data.message;
+      } else if (apiError.message) {
+        errorMessage = apiError.message;
       }
 
       console.log("🚨 Mensagem de erro final:", errorMessage);
@@ -509,17 +679,19 @@ export default function StudentEvaluations() {
       // Redirecionar para tela de avaliação
       window.location.href = `/app/avaliacao/${evaluation.id}/fazer`;
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const apiError = error as { response?: { data?: { error?: string }; status?: number } };
+      
       console.error("❌ Erro ao continuar avaliação:", error);
 
       let errorMessage = "Não foi possível continuar a avaliação";
 
-      if (error.response?.status === 403) {
-        errorMessage = "Você não tem permissão para acessar esta avaliação";
-      } else if (error.response?.status === 404) {
-        errorMessage = "Avaliação não encontrada";
-      } else if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
+      if (apiError.response?.status === 403) {
+        errorMessage = ERROR_MESSAGES.FORBIDDEN;
+      } else if (apiError.response?.status === 404) {
+        errorMessage = ERROR_MESSAGES.EVALUATION_NOT_FOUND;
+      } else if (apiError.response?.data?.error) {
+        errorMessage = apiError.response.data.error;
       }
 
       toast({
@@ -557,7 +729,7 @@ export default function StudentEvaluations() {
     }
 
     // ✅ NOVO: Verificar se está agendada (not_started)
-    if (availability.status === 'not_started' as any) {
+    if (availability.status === 'not_started') {
       return (
         <Badge variant="outline" className="flex items-center gap-1 bg-blue-50 text-blue-700 border-blue-300">
           <Calendar className="h-3 w-3" />
@@ -716,7 +888,7 @@ export default function StudentEvaluations() {
               <div>
                 <p className="text-sm text-muted-foreground">Disponíveis</p>
                 <p className="text-2xl font-bold text-blue-600">
-                  {evaluations.filter(e => e.availability.is_available && !e.student_status.has_completed && e.student_status.can_start && e.availability.status !== 'not_started' as any).length}
+                  {evaluations.filter(e => e.availability.is_available && !e.student_status.has_completed && e.student_status.can_start && e.availability.status !== 'not_started').length}
                 </p>
               </div>
               <Play className="h-8 w-8 text-blue-600" />
@@ -730,7 +902,7 @@ export default function StudentEvaluations() {
               <div>
                 <p className="text-sm text-muted-foreground">Agendadas</p>
                 <p className="text-2xl font-bold text-indigo-600">
-                  {evaluations.filter(e => e.availability.status === 'not_started' as any).length}
+                  {evaluations.filter(e => e.availability.status === 'not_started').length}
                 </p>
               </div>
               <Calendar className="h-8 w-8 text-indigo-600" />
@@ -805,7 +977,7 @@ export default function StudentEvaluations() {
                   } else {
                     toast({
                       title: "Erro",
-                      description: "Avaliação não encontrada. Tente atualizar a página.",
+                      description: ERROR_MESSAGES.EVALUATION_NOT_FOUND,
                       variant: "destructive",
                     });
                   }
@@ -864,13 +1036,12 @@ export default function StudentEvaluations() {
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <span>
-                    Disponível em: {evaluation.startDateTime ?
-                      format(new Date(evaluation.startDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) :
-                      "Data não definida"
-                    } até {evaluation.endDateTime ?
-                      format(new Date(evaluation.endDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) :
-                      "Sem prazo definido"
-                    }
+                    {(() => {
+                      const timeZone = getEvaluationTimeZone(evaluation);
+                      const start = formatDateTimeForDisplay(evaluation.startDateTime, timeZone) || "Data não definida";
+                      const end = formatDateTimeForDisplay(evaluation.endDateTime, timeZone) || "Sem prazo definido";
+                      return `Disponível em: ${start} até ${end}`;
+                    })()}
                   </span>
                 </div>
               </div>
@@ -879,7 +1050,7 @@ export default function StudentEvaluations() {
               {/* Ações */}
               <div className="flex gap-2">
                 {/* ✅ NOVO: Botão "Agendada" se status === "not_started" */}
-                {evaluation.availability.status === 'not_started' as any && (
+                {evaluation.availability.status === 'not_started' && (
                   <Button
                     className="flex-1 bg-blue-600 hover:bg-blue-700"
                     disabled
@@ -895,7 +1066,7 @@ export default function StudentEvaluations() {
                   evaluation.student_status.can_start &&
                   evaluation.student_status.status !== "expirada" &&
                   evaluation.student_status.status !== "em_andamento" &&
-                  evaluation.availability.status !== 'not_started' as any && (
+                  evaluation.availability.status !== 'not_started' && (
                     <Button
                       className="flex-1 bg-green-600 hover:bg-green-700"
                       onClick={() => handleStartEvaluation(evaluation)}
@@ -916,8 +1087,12 @@ export default function StudentEvaluations() {
                   </Button>
                 )}
 
-                {/* ✅ Botão "Ver Resultado" aparece quando concluída */}
-                                 {evaluation.student_status.has_completed && (
+                {/* ✅ Botão "Ver Resultado" aparece apenas quando concluída E entregue (tem score ou status finalizado) */}
+                {evaluation.student_status.has_completed && 
+                 (evaluation.student_status.score !== undefined || 
+                  evaluation.student_status.status === "finalizada" || 
+                  evaluation.student_status.status === "corrigida" || 
+                  evaluation.student_status.status === "revisada") && (
                   <Button
                     className="flex-1 bg-purple-600 hover:bg-purple-700"
                     onClick={() => navigate(`/aluno/avaliacao/${evaluation.id}/resultado`)}
@@ -943,7 +1118,7 @@ export default function StudentEvaluations() {
                   evaluation.student_status.status !== "expirada" &&
                   evaluation.student_status.status !== "em_andamento" &&
                   evaluation.availability.status !== "expired" &&
-                  evaluation.availability.status !== 'not_started' as any && (
+                  evaluation.availability.status !== 'not_started' && (
                     <Button className="flex-1 bg-muted text-muted-foreground hover:bg-muted/80" disabled>
                       <AlertCircle className="h-4 w-4 mr-2" />
                       Indisponível
@@ -959,49 +1134,49 @@ export default function StudentEvaluations() {
       <Dialog open={showInstructions} onOpenChange={setShowInstructions}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Info className="h-5 w-5 text-blue-600" />
+            <DialogTitle className="flex items-center gap-2 dark:text-gray-100">
+              <Info className="h-5 w-5 text-blue-600 dark:text-blue-400" />
               Instruções da Avaliação
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="dark:text-gray-400">
               Leia atentamente antes de iniciar a avaliação
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             {/* Informações da Avaliação */}
-            <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
-              <h4 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
-                <BookOpen className="h-4 w-4" />
+            <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 p-4 rounded-lg">
+              <h4 className="font-semibold text-blue-900 dark:text-blue-300 mb-3 flex items-center gap-2">
+                <BookOpen className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                 {selectedEvaluation?.title}
               </h4>
-              <div className="grid grid-cols-2 gap-3 text-sm text-blue-800">
+              <div className="grid grid-cols-2 gap-3 text-sm text-blue-800 dark:text-blue-300">
                 <div>
                   <span className="font-medium">Disciplina{selectedEvaluation?.subjects_info && selectedEvaluation.subjects_info.length > 1 ? 's' : ''}:</span>
-                  <p>{selectedEvaluation ? getAllSubjects(selectedEvaluation) : ''}</p>
+                  <p className="dark:text-blue-200">{selectedEvaluation ? getAllSubjects(selectedEvaluation) : ''}</p>
                 </div>
                 <div>
                   <span className="font-medium">Duração:</span>
-                  <p>{selectedEvaluation?.duration} minutos</p>
+                  <p className="dark:text-blue-200">{selectedEvaluation?.duration} minutos</p>
                 </div>
                 <div>
                   <span className="font-medium">Questões:</span>
-                  <p>{selectedEvaluation?.totalQuestions}</p>
+                  <p className="dark:text-blue-200">{selectedEvaluation?.totalQuestions}</p>
                 </div>
                 <div>
                   <span className="font-medium">Tipo:</span>
-                  <p>{selectedEvaluation?.type}</p>
+                  <p className="dark:text-blue-200">{selectedEvaluation?.type}</p>
                 </div>
               </div>
             </div>
 
             {/* Como Funciona - SIMPLIFICADO */}
-            <div className="bg-green-50 border border-green-200 p-4 rounded-lg">
-              <h5 className="font-semibold text-green-900 mb-2 flex items-center gap-2">
-                <CheckCircle className="h-4 w-4" />
+            <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 p-4 rounded-lg">
+              <h5 className="font-semibold text-green-900 dark:text-green-300 mb-2 flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
                 Como funciona
               </h5>
-              <div className="space-y-1 text-sm text-green-800">
+              <div className="space-y-1 text-sm text-green-800 dark:text-green-300">
                 <p>✔️ Leia as questões com atenção</p>
                 <p>✔️ Suas respostas são salvas automaticamente</p>
                 <p>✔️ Você pode revisar antes de finalizar</p>
@@ -1009,12 +1184,12 @@ export default function StudentEvaluations() {
             </div>
 
             {/* Importante - SIMPLIFICADO */}
-            <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
-              <h5 className="font-semibold text-yellow-900 mb-2 flex items-center gap-2">
-                <AlertCircle className="h-4 w-4" />
+            <div className="bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 p-4 rounded-lg">
+              <h5 className="font-semibold text-yellow-900 dark:text-yellow-300 mb-2 flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
                 Importante
               </h5>
-              <div className="space-y-1 text-sm text-yellow-800">
+              <div className="space-y-1 text-sm text-yellow-800 dark:text-yellow-300">
                 <p>⚠️ Mantenha conexão estável com a internet</p>
                 <p>⚠️ Não feche a aba/janela durante a avaliação</p>
               </div>
@@ -1022,19 +1197,18 @@ export default function StudentEvaluations() {
 
             {/* Tempo Disponível - SIMPLIFICADO */}
             {selectedEvaluation && (
-              <div className="bg-purple-50 border border-purple-200 p-4 rounded-lg">
-                <h5 className="font-semibold text-purple-900 mb-2 flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
+              <div className="bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 p-4 rounded-lg">
+                <h5 className="font-semibold text-purple-900 dark:text-purple-300 mb-2 flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-purple-600 dark:text-purple-400" />
                   Tempo disponível
                 </h5>
-                <p className="text-sm text-purple-800">
-                  De {selectedEvaluation.startDateTime ?
-                    format(new Date(selectedEvaluation.startDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) :
-                    "data não definida"
-                  } até {selectedEvaluation.endDateTime ?
-                    format(new Date(selectedEvaluation.endDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) :
-                    "sem prazo definido"
-                  }
+                <p className="text-sm text-purple-800 dark:text-purple-300">
+                  {(() => {
+                    const timeZone = getEvaluationTimeZone(selectedEvaluation || undefined);
+                    const start = formatDateTimeForDisplay(selectedEvaluation?.startDateTime, timeZone) || "data não definida";
+                    const end = formatDateTimeForDisplay(selectedEvaluation?.endDateTime, timeZone) || "sem prazo definido";
+                    return `De ${start} até ${end}`;
+                  })()}
                 </p>
               </div>
             )}

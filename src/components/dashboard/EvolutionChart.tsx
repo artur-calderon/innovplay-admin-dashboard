@@ -296,7 +296,16 @@ const EvolutionChart: React.FC<EvolutionChartProps> = ({ data, isLoading = false
   }, [data, selectedMetric, selectedDiscipline]);
 
   // Componente para desenhar apenas as linhas de conexão
-  const ConnectionLines = (props: any) => {
+  interface ConnectionLinesProps {
+    formattedGraphicalItems?: Array<{
+      props?: {
+        points?: Array<{ x: number; y: number }>;
+        children?: unknown | unknown[];
+      };
+    }>;
+  }
+
+  const ConnectionLines = (props: ConnectionLinesProps) => {
     if (!chartData || chartData.variations.length === 0) {
       return null;
     }
@@ -309,15 +318,16 @@ const EvolutionChart: React.FC<EvolutionChartProps> = ({ data, isLoading = false
     }
     
     // Procurar pelos pontos do Scatter
-    const findScatterPoints = (items: any[]): any[] => {
-      const result: any[] = [];
+    const findScatterPoints = (items: Array<{ props?: { points?: Array<{ x: number; y: number }>; children?: unknown | unknown[] } }>): Array<{ x: number; y: number }> => {
+      const result: Array<{ x: number; y: number }> = [];
       items.forEach(item => {
         if (item.props) {
           if (item.props.points) {
             result.push(...item.props.points);
           }
           if (item.props.children) {
-            result.push(...findScatterPoints(Array.isArray(item.props.children) ? item.props.children : [item.props.children]));
+            const childrenArray = Array.isArray(item.props.children) ? item.props.children : [item.props.children];
+            result.push(...findScatterPoints(childrenArray as Array<{ props?: { points?: Array<{ x: number; y: number }>; children?: unknown | unknown[] } }>));
           }
         }
       });
@@ -374,7 +384,13 @@ const EvolutionChart: React.FC<EvolutionChartProps> = ({ data, isLoading = false
   };
 
   // Tooltip personalizado
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  interface CustomTooltipProps {
+    active?: boolean;
+    payload?: Array<{ payload: { value: number; color: string } }>;
+    label?: string;
+  }
+
+  const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
@@ -535,7 +551,7 @@ const EvolutionChart: React.FC<EvolutionChartProps> = ({ data, isLoading = false
               />
               <YAxis 
                 domain={selectedMetric === 'classification' ? [0, 6] : [0, 'dataMax + 1']}
-                tickFormatter={(value) => {
+                tickFormatter={(value: number) => {
                   if (selectedMetric === 'classification') {
                     const classificationMap: Record<number, string> = {
                       1: 'Muito Abaixo',
@@ -552,7 +568,6 @@ const EvolutionChart: React.FC<EvolutionChartProps> = ({ data, isLoading = false
                 tick={{ fill: 'hsl(var(--foreground))' }}
                 axisLine={{ stroke: 'hsl(var(--border))' }}
                 tickLine={{ stroke: 'hsl(var(--border))' }}
-                gridLine={{ stroke: 'hsl(var(--border))' }}
               />
               <Tooltip content={<CustomTooltip />} />
               
@@ -560,12 +575,48 @@ const EvolutionChart: React.FC<EvolutionChartProps> = ({ data, isLoading = false
                 dataKey="value" 
                 radius={[6, 6, 0, 0]}
                 maxBarSize={80}
-                shape={(props: any) => {
-                  const { payload, fill, ...rest } = props;
+                shape={(props: {
+                  payload?: { color?: string };
+                  fill?: string;
+                  tooltipPayload?: unknown;
+                  tooltipPosition?: unknown;
+                  dataKey?: unknown;
+                  x?: number;
+                  y?: number;
+                  width?: number;
+                  height?: number;
+                  rx?: number;
+                  ry?: number;
+                  className?: string;
+                  style?: React.CSSProperties;
+                  onClick?: () => void;
+                  onMouseEnter?: () => void;
+                  onMouseLeave?: () => void;
+                }) => {
+                  const { 
+                    payload, 
+                    fill, 
+                    tooltipPayload, 
+                    tooltipPosition, 
+                    dataKey,
+                    // Filtrar todas as props do Recharts que não são válidas para elementos DOM
+                    ...rest 
+                  } = props;
+                  
+                  // Criar um objeto limpo apenas com props válidas para SVG rect
+                  const validProps: Record<string, string | number | React.CSSProperties | (() => void) | undefined> = {};
+                  const validSvgProps = ['x', 'y', 'width', 'height', 'rx', 'ry', 'className', 'style', 'onClick', 'onMouseEnter', 'onMouseLeave'];
+                  
+                  Object.keys(rest).forEach(key => {
+                    if (validSvgProps.includes(key) || key.startsWith('data-') || key.startsWith('aria-')) {
+                      validProps[key] = rest[key as keyof typeof rest];
+                    }
+                  });
+                  
                   return (
                     <rect
-                      {...rest}
-                      fill={payload.color}
+                      {...validProps}
+                      fill={payload?.color || fill}
                     />
                   );
                 }}
@@ -581,10 +632,23 @@ const EvolutionChart: React.FC<EvolutionChartProps> = ({ data, isLoading = false
               {/* Pontos no topo das barras usando Scatter */}
               <Scatter 
                 dataKey="value" 
-                fill={(entry: any) => entry.color}
+                fill="#8884d8"
                 r={4}
                 stroke="white"
                 strokeWidth={2}
+                shape={(props: { payload?: { color?: string }; cx?: number; cy?: number }) => {
+                  const color = props.payload?.color || '#8884d8';
+                  return (
+                    <circle
+                      cx={props.cx}
+                      cy={props.cy}
+                      r={4}
+                      fill={color}
+                      stroke="white"
+                      strokeWidth={2}
+                    />
+                  );
+                }}
               />
               
               <Customized component={ConnectionLines} />
@@ -598,3 +662,4 @@ const EvolutionChart: React.FC<EvolutionChartProps> = ({ data, isLoading = false
 };
 
 export default EvolutionChart;
+

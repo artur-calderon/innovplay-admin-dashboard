@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { useQuestionActions } from "@/stores/useEvaluationStore";
 import { useEvaluations } from "@/hooks/use-cache";
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/components/evaluations/results/constants";
 
 interface Municipality {
     id: string;
@@ -174,7 +175,7 @@ const EditEvaluation = () => {
                 console.error("Erro ao buscar avaliação:", error);
                 toast({
                     title: "Erro",
-                    description: "Não foi possível carregar os dados da avaliação",
+                    description: ERROR_MESSAGES.EVALUATION_LOAD_FAILED,
                     variant: "destructive",
                 });
                 navigate("/app/avaliacoes");
@@ -295,7 +296,7 @@ const EditEvaluation = () => {
                     if (!deletionConfirmed) {
                         toast({
                             title: "Erro",
-                            description: "Não foi possível confirmar a exclusão da avaliação. Operação cancelada para evitar duplicação.",
+                            description: ERROR_MESSAGES.EVALUATION_DELETE_FAILED,
                             variant: "destructive",
                         });
                         return;
@@ -311,8 +312,8 @@ const EditEvaluation = () => {
                     await invalidateAfterCRUD();
                     
                     toast({
-                        title: "Sucesso",
-                        description: "Avaliação atualizada com sucesso! Questões foram atualizadas.",
+                        title: SUCCESS_MESSAGES.EVALUATION_UPDATED,
+                        description: SUCCESS_MESSAGES.QUESTIONS_SAVED,
                     });
 
                     navigate(`/app/avaliacao/${newEvalId}`);
@@ -324,8 +325,8 @@ const EditEvaluation = () => {
             await invalidateAfterCRUD();
             
             toast({
-                title: "Sucesso",
-                description: "Avaliação atualizada com sucesso!",
+                title: SUCCESS_MESSAGES.EVALUATION_UPDATED,
+                description: SUCCESS_MESSAGES.EVALUATION_UPDATED,
             });
 
             navigate(`/app/avaliacao/${id}`);
@@ -333,7 +334,7 @@ const EditEvaluation = () => {
             console.error("Erro ao atualizar avaliação:", error);
             toast({
                 title: "Erro",
-                description: "Não foi possível atualizar a avaliação",
+                description: ERROR_MESSAGES.EVALUATION_UPDATE_FAILED,
                 variant: "destructive",
             });
         } finally {

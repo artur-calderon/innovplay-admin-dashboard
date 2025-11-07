@@ -26,31 +26,76 @@ import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
+import { convertDateTimeLocalToISO } from "@/utils/date";
+import { Evaluation, Subject, getEvaluationSubjects } from "@/types/evaluation-types";
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
 
-// Schema de validação
+// Schema de validação melhorado
 const startEvaluationSchema = z.object({
   startDateTime: z.string().min(1, "Selecione a data e hora de início"),
   endDateTime: z.string().min(1, "Selecione a data e hora de término"),
-}).refine((data) => {
+}).superRefine((data, ctx) => {
   if (data.startDateTime && data.endDateTime) {
     const startDate = new Date(data.startDateTime);
     const endDate = new Date(data.endDateTime);
     const now = new Date();
     
-    // Início e fim não podem ser no passado
-    if (startDate < now || endDate < now) {
-      return false;
+    // Verificar se as datas são válidas
+    if (isNaN(startDate.getTime())) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Data de início inválida",
+        path: ["startDateTime"],
+      });
+      return;
     }
+    
+    if (isNaN(endDate.getTime())) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Data de término inválida",
+        path: ["endDateTime"],
+      });
+      return;
+    }
+    
+    // Início não pode ser no passado
+    if (startDate < now) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A data de início não pode ser no passado",
+        path: ["startDateTime"],
+      });
+    }
+    
+    // Término não pode ser no passado
+    if (endDate < now) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A data de término não pode ser no passado",
+        path: ["endDateTime"],
+      });
+    }
+    
     // Fim deve ser posterior ao início
     if (endDate <= startDate) {
-      return false;
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A data de término deve ser posterior à data de início",
+        path: ["endDateTime"],
+      });
     }
-    return true;
+    
+    // Verificar se há pelo menos 1 minuto de diferença
+    const diffMinutes = (endDate.getTime() - startDate.getTime()) / (1000 * 60);
+    if (diffMinutes < 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "O período deve ter pelo menos 1 minuto de duração",
+        path: ["endDateTime"],
+      });
+    }
   }
-  return true;
-}, {
-  message: "Verifique as datas: início e término devem ser no futuro e o término deve ser posterior ao início.",
-  path: ["endDateTime"],
 });
 
 type StartEvaluationFormValues = z.infer<typeof startEvaluationSchema>;
@@ -71,17 +116,7 @@ interface StartEvaluationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (startDateTime: string, endDateTime: string, classIds: string[]) => Promise<void>;
-  evaluation: {
-    id: string;
-    title: string;
-    subject: { id: string; name: string };
-    subjects?: Array<{ id: string; name: string }>;
-    questions: Array<any>; // Aceitar qualquer tipo de questão
-    duration?: number;
-    schools?: Array<{ id: string; name: string }>;
-    municipalities?: Array<{ id: string; name: string }>;
-    grade?: { id: string; name: string };
-  } | null;
+  evaluation: Evaluation | null;
 }
 
 export default function StartEvaluationModal({
@@ -122,6 +157,7 @@ export default function StartEvaluationModal({
       // Buscar turmas que receberão esta avaliação
       fetchEvaluationClasses();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, evaluation]);
 
   const fetchEvaluationClasses = async () => {
@@ -130,6 +166,12 @@ export default function StartEvaluationModal({
     try {
       setIsLoadingClasses(true);
       console.log("🔍 Buscando turmas para avaliação:", evaluation.id);
+      console.log("📋 Dados da avaliação recebidos:", {
+        id: evaluation.id,
+        title: evaluation.title,
+        classes: evaluation.classes,
+        hasClasses: !!evaluation.classes && Array.isArray(evaluation.classes)
+      });
       
       // Buscar turmas já aplicadas para esta avaliação
       const response = await api.get(`/test/${evaluation.id}/classes`);
@@ -137,7 +179,7 @@ export default function StartEvaluationModal({
       
       if (response.data && Array.isArray(response.data) && response.data.length > 0) {
         // Mapear dados do backend para o formato esperado pelo componente
-        const classes = response.data.map((item: Record<string, unknown>) => ({
+        let mappedClasses = response.data.map((item: Record<string, unknown>) => ({
           id: (item.class as Record<string, unknown>).id as string,
           name: (item.class as Record<string, unknown>).name as string,
           school_name: ((item.class as Record<string, unknown>).school as Record<string, unknown>)?.name as string || "Escola não informada",
@@ -150,8 +192,20 @@ export default function StartEvaluationModal({
           status: ((item.status as string) || "configured") as "applied" | "configured"  // "applied" ou "configured"
         }));
         
-        setEvaluationClasses(classes);
-        console.log("✅ Turmas processadas:", classes);
+        // ✅ CORREÇÃO: Filtrar apenas as turmas selecionadas durante a criação da avaliação
+        // O backend pode retornar todas as turmas da escola, mas devemos mostrar apenas as selecionadas
+        if (evaluation.classes && Array.isArray(evaluation.classes) && evaluation.classes.length > 0) {
+          const selectedClassIds = evaluation.classes.map(id => String(id));
+          mappedClasses = mappedClasses.filter(cls => selectedClassIds.includes(String(cls.id)));
+          console.log("🔍 Filtrando turmas selecionadas:", {
+            totalFromBackend: response.data.length,
+            selectedClassIds,
+            filteredCount: mappedClasses.length
+          });
+        }
+        
+        setEvaluationClasses(mappedClasses);
+        console.log("✅ Turmas processadas:", mappedClasses);
         
         // Se chegou aqui e tem turmas, limpar qualquer erro anterior
         setError(null);
@@ -206,7 +260,7 @@ export default function StartEvaluationModal({
     if (evaluationClasses.length === 0) {
       toast({
         title: "Erro",
-        description: "Esta avaliação não possui turmas configuradas",
+        description: ERROR_MESSAGES.EVALUATION_NOT_AVAILABLE,
         variant: "destructive",
       });
       return;
@@ -215,12 +269,27 @@ export default function StartEvaluationModal({
     try {
       setIsLoading(true);
       
+      // ✅ CORREÇÃO: Converter datetime-local para ISO com timezone antes de enviar
+      const startDateTimeISO = convertDateTimeLocalToISO(values.startDateTime);
+      const endDateTimeISO = convertDateTimeLocalToISO(values.endDateTime);
+      
+      console.log("🕐 Conversão de datas:", {
+        original: {
+          start: values.startDateTime,
+          end: values.endDateTime
+        },
+        converted: {
+          start: startDateTimeISO,
+          end: endDateTimeISO
+        }
+      });
+      
       // Aplicar para todas as turmas configuradas
       const classIds = evaluationClasses.map(c => c.id);
-      await onConfirm(values.startDateTime, values.endDateTime, classIds);
+      await onConfirm(startDateTimeISO, endDateTimeISO, classIds);
       
       toast({
-        title: "✅ Avaliação aplicada com sucesso!",
+        title: SUCCESS_MESSAGES.EVALUATION_APPLIED,
         description: `A avaliação "${evaluation?.title}" foi aplicada para ${evaluationClasses.length} turma(s) e ficará disponível no horário configurado.`,
       });
       
@@ -229,8 +298,8 @@ export default function StartEvaluationModal({
     } catch (error) {
       console.error("Erro ao aplicar avaliação:", error);
       toast({
-        title: "Erro ao aplicar avaliação",
-        description: "Ocorreu um erro. Tente novamente.",
+        title: ERROR_MESSAGES.EVALUATION_APPLY_FAILED,
+        description: ERROR_MESSAGES.EVALUATION_APPLY_FAILED,
         variant: "destructive",
       });
     } finally {
@@ -256,7 +325,7 @@ export default function StartEvaluationModal({
       <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Play className="h-5 w-5 text-green-600" />
+            <Play className="h-5 w-5 text-green-600 dark:text-green-400" />
             Aplicar Avaliação
           </DialogTitle>
           <DialogDescription>
@@ -267,19 +336,22 @@ export default function StartEvaluationModal({
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
             {/* Informações da Avaliação */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h4 className="text-sm font-semibold text-blue-800 mb-3 flex items-center gap-2">
+            <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <h4 className="text-sm font-semibold text-blue-800 dark:text-blue-300 mb-3 flex items-center gap-2">
                 <Info className="h-4 w-4" />
                 Informações da Avaliação
               </h4>
-              <div className="space-y-2 text-sm text-blue-700">
+              <div className="space-y-2 text-sm text-blue-700 dark:text-blue-400">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <span className="font-medium">Disciplina(s):</span>
                     <p className="mt-1">{
-                      evaluation.subjects && evaluation.subjects.length > 0 
-                        ? evaluation.subjects.map(s => s.name).join(", ")
-                        : evaluation.subject.name
+                      (() => {
+                        const subjects = getEvaluationSubjects(evaluation);
+                        return subjects.length > 0 
+                          ? subjects.map(s => s.name).join(", ")
+                          : "Não informado";
+                      })()
                     }</p>
                   </div>
                   <div>
@@ -299,19 +371,19 @@ export default function StartEvaluationModal({
             </div>
 
             {/* Informações das Turmas */}
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-              <h4 className="text-sm font-semibold text-green-800 mb-3 flex items-center gap-2">
+            <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg p-4">
+              <h4 className="text-sm font-semibold text-green-800 dark:text-green-300 mb-3 flex items-center gap-2">
                 <Users className="h-4 w-4" />
                 Turmas para aplicação
               </h4>
               
               {isLoadingClasses ? (
-                <div className="flex items-center gap-2 text-sm text-green-600">
+                <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Carregando turmas...
                 </div>
               ) : error ? (
-                <Alert variant="destructive" className="bg-red-50 border-red-200">
+                <Alert variant="destructive" className="bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800">
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
@@ -319,12 +391,12 @@ export default function StartEvaluationModal({
                 <div className="space-y-3">
                   {/* Verificar se há turmas já aplicadas */}
                   {evaluationClasses.some(cls => cls.status === "applied") && (
-                    <div className="bg-blue-50 border border-blue-200 rounded p-3">
-                      <p className="text-xs text-blue-800 mb-2">
+                    <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded p-3">
+                      <p className="text-xs text-blue-800 dark:text-blue-300 mb-2">
                         ⚠️ Esta avaliação já foi aplicada anteriormente. Você pode reaplicar com novos horários.
                       </p>
-                      <div className="flex items-center gap-4 text-sm text-blue-700">
-                        <Badge variant="outline" className="bg-blue-100 text-blue-800">
+                      <div className="flex items-center gap-4 text-sm text-blue-700 dark:text-blue-400">
+                        <Badge variant="outline" className="bg-blue-100 dark:bg-blue-950/50 text-blue-800 dark:text-blue-300">
                           Reaplicação
                         </Badge>
                       </div>
@@ -333,51 +405,51 @@ export default function StartEvaluationModal({
                   
                   {/* Verificar se há turmas apenas configuradas */}
                   {evaluationClasses.some(cls => cls.status === "configured") && (
-                    <div className="bg-green-100 border border-green-300 rounded p-3">
-                      <p className="text-xs text-green-800 mb-2">
+                    <div className="bg-green-100 dark:bg-green-950/50 border border-green-300 dark:border-green-700 rounded p-3">
+                      <p className="text-xs text-green-800 dark:text-green-300 mb-2">
                         ✅ Turmas configuradas durante a criação da avaliação. Primeira aplicação.
                       </p>
-                      <div className="flex items-center gap-4 text-sm text-green-700">
-                        <Badge variant="outline" className="bg-green-200 text-green-800">
+                      <div className="flex items-center gap-4 text-sm text-green-700 dark:text-green-400">
+                        <Badge variant="outline" className="bg-green-200 dark:bg-green-950/50 text-green-800 dark:text-green-300">
                           Primeira aplicação
                         </Badge>
                       </div>
                     </div>
                   )}
                   
-                  <div className="flex items-center gap-4 text-sm text-gray-700 mb-3">
-                    <Badge variant="outline" className="bg-gray-100 text-gray-800">
+                  <div className="flex items-center gap-4 text-sm text-gray-700 dark:text-gray-300 mb-3">
+                    <Badge variant="outline" className="bg-gray-100 dark:bg-gray-950/50 text-gray-800 dark:text-gray-300">
                       {evaluationClasses.length} turma{evaluationClasses.length > 1 ? 's' : ''}
                     </Badge>
-                    <Badge variant="outline" className="bg-gray-100 text-gray-800">
+                    <Badge variant="outline" className="bg-gray-100 dark:bg-gray-950/50 text-gray-800 dark:text-gray-300">
                       {evaluationClasses.reduce((total, cls) => total + cls.students_count, 0)} alunos
                     </Badge>
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-32 overflow-y-auto">
                     {evaluationClasses.map((cls) => (
-                      <div key={cls.id} className="bg-white border border-green-200 rounded p-2">
-                        <div className="text-sm font-medium text-green-800 flex items-center gap-2">
+                      <div key={cls.id} className="bg-white dark:bg-card border border-green-200 dark:border-green-800 rounded p-2">
+                        <div className="text-sm font-medium text-green-800 dark:text-green-300 flex items-center gap-2">
                           {cls.name}
                           {cls.status === "applied" && (
-                            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-600">
+                            <Badge variant="outline" className="text-xs bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400">
                               Aplicada
                             </Badge>
                           )}
                           {cls.status === "configured" && (
-                            <Badge variant="outline" className="text-xs bg-green-50 text-green-600">
+                            <Badge variant="outline" className="text-xs bg-green-50 dark:bg-green-950/50 text-green-600 dark:text-green-400">
                               Nova
                             </Badge>
                           )}
                         </div>
-                        <div className="text-xs text-green-600">
+                        <div className="text-xs text-green-600 dark:text-green-400">
                           {cls.school_name} • {cls.grade_name}
                         </div>
-                        <div className="text-xs text-gray-500 mt-1">
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                           {cls.students_count} aluno{cls.students_count !== 1 ? 's' : ''}
                         </div>
                         {cls.current_application && (
-                          <div className="text-xs text-gray-500 mt-1">
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                             Aplicação anterior: {new Date(cls.current_application).toLocaleDateString('pt-BR')}
                           </div>
                         )}
@@ -386,7 +458,7 @@ export default function StartEvaluationModal({
                   </div>
                 </div>
               ) : (
-                <Alert className="bg-yellow-50 border-yellow-200">
+                <Alert className="bg-yellow-50 dark:bg-yellow-950/30 border-yellow-200 dark:border-yellow-800">
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
                     Esta avaliação ainda não foi aplicada para nenhuma turma. Configure as turmas no processo de criação da avaliação primeiro.
@@ -441,14 +513,14 @@ export default function StartEvaluationModal({
 
               {/* Resumo do Período */}
               {calculateTotalPeriod() && (
-                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                <div className="bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
                   <div className="flex items-center gap-2 mb-2">
-                    <CheckCircle className="h-4 w-4 text-purple-600" />
-                    <span className="text-sm font-medium text-purple-800">
+                    <CheckCircle className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                    <span className="text-sm font-medium text-purple-800 dark:text-purple-300">
                       Período de disponibilidade: {calculateTotalPeriod()}
                     </span>
                   </div>
-                  <div className="text-xs text-purple-600 space-y-1">
+                  <div className="text-xs text-purple-600 dark:text-purple-400 space-y-1">
                     <p>• <strong>Timezone:</strong> {Intl.DateTimeFormat().resolvedOptions().timeZone}</p>
                     <p>• A avaliação ficará disponível na agenda dos alunos</p>
                     <p>• Status será "Agendada" até o horário de início</p>

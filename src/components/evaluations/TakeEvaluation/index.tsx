@@ -53,10 +53,28 @@ export default function TakeEvaluation() {
             return textToMap; // Fallback para resposta direta
         }
         
-        // Encontrar a posição embaralhada da opção selecionada
-        const selectedOption = shuffledQuestion.options?.find(opt => opt.text === textToMap);
+        // ✅ CORRIGIDO: Tentar encontrar a opção primeiro pelo ID (letra A, B, C, D)
+        // Se textToMap for uma letra (A, B, C, D), procurar pelo ID
+        let selectedOption = null;
+        if (textToMap && textToMap.length === 1 && /^[A-Z]$/.test(textToMap)) {
+            // É uma letra, procurar pelo ID
+            selectedOption = shuffledQuestion.options?.find(opt => opt.id === textToMap);
+        }
+        
+        // Se não encontrou pelo ID, tentar pelo texto
         if (!selectedOption) {
-            console.warn('⚠️ Opção selecionada não encontrada:', textToMap);
+            selectedOption = shuffledQuestion.options?.find(opt => opt.text === textToMap);
+        }
+        
+        // Se ainda não encontrou, tentar pelo ID mesmo que não seja uma letra única
+        if (!selectedOption) {
+            selectedOption = shuffledQuestion.options?.find(opt => opt.id === textToMap);
+        }
+        
+        if (!selectedOption) {
+            console.warn('⚠️ Opção selecionada não encontrada:', textToMap, {
+                availableOptions: shuffledQuestion.options?.map(opt => ({ id: opt.id, text: opt.text?.substring(0, 50) }))
+            });
             return textToMap; // Fallback para resposta direta
         }
         
@@ -77,6 +95,7 @@ export default function TakeEvaluation() {
         console.log('✅ Mapeamento de resposta para letra original:', {
             questionId,
             selectedText: textToMap,
+            selectedOptionId: selectedOption.id,
             shuffledIndex,
             originalIndex: mapping.originalIndex,
             shuffledLetter: mapping.shuffledLetter, // A, B, C, D... (posição no frontend)
@@ -465,7 +484,7 @@ export default function TakeEvaluation() {
         return (
             <div className="flex items-center justify-center h-screen w-screen bg-background">
                 <div className="max-w-lg w-full mx-4 text-center">
-                    <Card className="p-8 shadow-xl border-0 bg-white/80 backdrop-blur-sm">
+                    <Card className="p-8 shadow-xl border-0 bg-white/80 dark:bg-card/80 backdrop-blur-sm">
                         <div className="space-y-8">
                             {/* Ícone animado */}
                             <div className="flex justify-center">
@@ -481,19 +500,19 @@ export default function TakeEvaluation() {
 
                             {/* Título */}
                             <div className="space-y-2">
-                                <h2 className="text-2xl font-bold text-gray-800">
+                                <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100">
                                     Preparando sua avaliação...
                                 </h2>
                             </div>
 
                             {/* Barra de progresso animada */}
                             <div className="space-y-3">
-                                <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
                                     <div className="bg-gradient-to-r from-purple-500 to-blue-600 h-full rounded-full animate-pulse" style={{ width: '60%' }}></div>
                                 </div>
                                 <div className="flex items-center justify-center gap-3">
-                                    <Loader2 className="h-5 w-5 animate-spin text-purple-600" />
-                                    <span className="text-sm font-medium text-gray-700">
+                                    <Loader2 className="h-5 w-5 animate-spin text-purple-600 dark:text-purple-400" />
+                                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                                         Carregando...
                                     </span>
                                 </div>
@@ -501,7 +520,7 @@ export default function TakeEvaluation() {
 
                             {/* Dicas animadas */}
                             <div className="space-y-2">
-                                <div className="text-xs text-gray-500 space-y-1">
+                                <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
                                     <div className="flex items-center justify-center gap-2">
                                         <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"></div>
                                         <span>Preparando questões...</span>
@@ -867,7 +886,7 @@ export default function TakeEvaluation() {
 
 
                 {/* Header fixo */}
-                <div className="bg-white border-b shadow-sm flex-shrink-0">
+                <div className="bg-white dark:bg-card border-b border-border shadow-sm flex-shrink-0">
                     <div className="px-2 sm:px-4 py-2">
                         <div className="flex items-center justify-between gap-2">
                             {/* Botão menu mobile (só aparece em mobile) */}
@@ -887,7 +906,7 @@ export default function TakeEvaluation() {
                             
                             {/* Conteúdo centralizado */}
                             <div className="flex-1 flex flex-col items-center text-center min-w-0">
-                                <h1 className="text-xs sm:text-sm md:text-base font-semibold truncate w-full px-1">
+                                <h1 className="text-xs sm:text-sm md:text-base font-semibold truncate w-full px-1 dark:text-gray-100">
                                     {testData.title}
                                 </h1>
                                 <div className="text-xs text-muted-foreground">
@@ -1007,17 +1026,17 @@ export default function TakeEvaluation() {
                         {/* ✅ Área principal - MAIS VISÍVEL e PROFISSIONAL */}
                         <div className="flex-1 overflow-y-auto bg-background">
                             <div className="max-w-4xl mx-2 sm:mx-4 md:mx-auto p-3 sm:p-4 md:p-6">
-                                <Card className="evaluation-question-card question-fade-in">
-                                    <CardHeader className="evaluation-question-header p-4 sm:p-5 md:p-6">
+                                <Card className="evaluation-question-card question-fade-in dark:bg-card dark:border-border">
+                                    <CardHeader className="evaluation-question-header p-4 sm:p-5 md:p-6 dark:bg-card dark:border-border">
                                         <div className="flex items-center justify-between gap-2">
                                             <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
                                                 <div className="flex items-center gap-1 sm:gap-2">
-                                                    <Badge variant="outline" className="bg-white border-purple-300 text-purple-700 text-xs sm:text-sm">
+                                                    <Badge variant="outline" className="bg-white dark:bg-purple-950/30 border-purple-300 dark:border-purple-800 text-purple-700 dark:text-purple-300 text-xs sm:text-sm">
                                                         <span className="hidden sm:inline">Questão </span>
                                                         {currentQuestionIndex + 1}
                                                     </Badge>
                                                     {currentQuestion?.subject?.name && (
-                                                        <Badge variant="outline" className="bg-white border-blue-300 text-blue-700 text-xs sm:text-sm truncate max-w-[120px] sm:max-w-none">
+                                                        <Badge variant="outline" className="bg-white dark:bg-blue-950/30 border-blue-300 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-xs sm:text-sm truncate max-w-[120px] sm:max-w-none">
                                                             {currentQuestion.subject.name}
                                                         </Badge>
                                                     )}
@@ -1038,12 +1057,12 @@ export default function TakeEvaluation() {
                                             </Button>
                                         </div>
                                     </CardHeader>
-                                    <CardContent className="p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8 md:space-y-10">
+                                    <CardContent className="p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8 md:space-y-10 dark:bg-card">
                                         {/* Conteúdo da Questão */}
                                         <div className="evaluation-question-content space-y-4 sm:space-y-6">
                                             {/* Primeiro Enunciado */}
                                             {(currentQuestion?.formattedText || currentQuestion?.text) && (
-                                                <div className="prose max-w-none text-foreground text-sm sm:text-base md:text-lg leading-relaxed">
+                                                <div className="prose dark:prose-invert max-w-none text-foreground dark:text-gray-100 text-sm sm:text-base md:text-lg leading-relaxed [&_*]:dark:text-gray-100">
                                                     <div
                                                         dangerouslySetInnerHTML={{
                                                             __html: currentQuestion?.formattedText || currentQuestion?.text || '',
@@ -1054,7 +1073,7 @@ export default function TakeEvaluation() {
 
                                             {/* Segundo Enunciado */}
                                             {currentQuestion?.secondStatement?.trim() && (
-                                                <div className="prose max-w-none text-foreground text-sm sm:text-base md:text-lg leading-relaxed">
+                                                <div className="prose dark:prose-invert max-w-none text-foreground dark:text-gray-100 text-sm sm:text-base md:text-lg leading-relaxed [&_*]:dark:text-gray-100">
                                                     <div
                                                         dangerouslySetInnerHTML={{
                                                             __html: currentQuestion.secondStatement.trim(),
@@ -1136,7 +1155,7 @@ export default function TakeEvaluation() {
                                         <span className="xs:hidden">←</span>
                                     </Button>
 
-                                    <div className="text-xs sm:text-sm md:text-base lg:text-lg font-bold text-purple-600 bg-purple-50 px-3 sm:px-4 md:px-6 py-2 sm:py-2.5 md:py-3 rounded-full whitespace-nowrap">
+                                    <div className="text-xs sm:text-sm md:text-base lg:text-lg font-bold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/30 px-3 sm:px-4 md:px-6 py-2 sm:py-2.5 md:py-3 rounded-full whitespace-nowrap">
                                         {currentQuestionIndex + 1} <span className="hidden xs:inline">de</span><span className="xs:hidden">/</span> {shuffledQuestions.length}
                                     </div>
 
@@ -1453,20 +1472,20 @@ export default function TakeEvaluation() {
                          
                          {/* Modal na FRENTE */}
                          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 pointer-events-none">
-                             <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-md w-full mx-2 sm:mx-4 border border-gray-200 pointer-events-auto">
+                             <div className="bg-white dark:bg-card rounded-xl sm:rounded-2xl shadow-2xl max-w-md w-full mx-2 sm:mx-4 border border-gray-200 dark:border-border pointer-events-auto">
                                  <div className="p-4 sm:p-6 pb-3 sm:pb-4">
                                      <div className="text-center space-y-3 sm:space-y-4">
                                          <div className="flex items-center justify-center">
-                                             <CheckCircle2 className="h-12 w-12 sm:h-14 sm:w-14 md:h-16 md:w-16 text-green-600" />
+                                             <CheckCircle2 className="h-12 w-12 sm:h-14 sm:w-14 md:h-16 md:w-16 text-green-600 dark:text-green-400" />
                                          </div>
                                          <div className="space-y-2">
-                                             <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-green-700">
+                                             <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-green-700 dark:text-green-400">
                                                  Avaliação Concluída
                                              </h2>
-                                             <p className="text-sm sm:text-base md:text-lg font-semibold text-gray-800 leading-relaxed px-2">
+                                             <p className="text-sm sm:text-base md:text-lg font-semibold text-gray-800 dark:text-gray-200 leading-relaxed px-2">
                                                  Todas as questões foram respondidas com sucesso.
                                              </p>
-                                             <p className="text-xs sm:text-sm text-gray-600 px-2">
+                                             <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 px-2">
                                                  Deseja enviar sua avaliação agora para finalização?
                                              </p>
                                          </div>
@@ -1551,7 +1570,7 @@ export default function TakeEvaluation() {
                                    {currentQuestionIndex + 1}<span className="hidden xs:inline"> de {shuffledQuestions.length}</span>
                                </h2>
                                {currentQuestion?.subject?.name && (
-                                   <Badge variant="outline" className="bg-purple-50 border-purple-300 text-purple-700 text-xs sm:text-sm truncate max-w-[100px] sm:max-w-[150px] md:max-w-none">
+                                   <Badge variant="outline" className="bg-purple-50 dark:bg-purple-950/30 border-purple-300 dark:border-purple-800 text-purple-700 dark:text-purple-300 text-xs sm:text-sm truncate max-w-[100px] sm:max-w-[150px] md:max-w-none">
                                        {currentQuestion.subject.name}
                                    </Badge>
                                )}
@@ -1597,7 +1616,7 @@ export default function TakeEvaluation() {
                                        {/* Primeiro Enunciado */}
                                        {(currentQuestion?.formattedText || currentQuestion?.text) && (
                                            <div 
-                                               className="prose prose-sm sm:prose-base md:prose-lg lg:prose-xl max-w-none text-foreground"
+                                               className="prose dark:prose-invert prose-sm sm:prose-base md:prose-lg lg:prose-xl max-w-none text-foreground dark:text-gray-100 [&_*]:dark:text-gray-100"
                                                style={{ 
                                                    fontSize: 'clamp(0.875rem, 1.5vw + 0.5rem, 1.375rem)', 
                                                    lineHeight: '1.75' 
@@ -1614,7 +1633,7 @@ export default function TakeEvaluation() {
                                        {/* Segundo Enunciado */}
                                        {currentQuestion?.secondStatement?.trim() && (
                                            <div 
-                                               className="prose prose-sm sm:prose-base md:prose-lg lg:prose-xl max-w-none text-foreground pt-3 sm:pt-4 md:pt-6 mt-3 sm:mt-4 md:mt-6 border-t-2 border-border"
+                                               className="prose dark:prose-invert prose-sm sm:prose-base md:prose-lg lg:prose-xl max-w-none text-foreground dark:text-gray-100 pt-3 sm:pt-4 md:pt-6 mt-3 sm:mt-4 md:mt-6 border-t-2 border-border [&_*]:dark:text-gray-100"
                                                style={{ 
                                                    fontSize: 'clamp(0.875rem, 1.5vw + 0.5rem, 1.375rem)', 
                                                    lineHeight: '1.75' 
@@ -1715,7 +1734,7 @@ export default function TakeEvaluation() {
                                        e.stopPropagation();
                                        setShowFullscreenQuestion(false);
                                    }}
-                                   className="text-xs sm:text-sm text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                                   className="text-xs sm:text-sm text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/30"
                                >
                                    <X className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
                                    <span className="hidden sm:inline">Fechar</span>
