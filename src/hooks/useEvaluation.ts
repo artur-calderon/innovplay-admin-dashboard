@@ -639,8 +639,12 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             const errorStatus = hasResponse ? error.response?.status : undefined;
             const errorData = hasResponse ? error.response?.data : undefined;
             
-            const isNetworkError = !hasResponse || error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED';
-            const isTimeoutError = error.code === 'ECONNABORTED' || error.message?.includes('timeout') || error.message?.includes('Timeout');
+            const isNetworkError = !hasResponse || error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED' || error.code === 'ERR_CANCELED';
+            const isTimeoutError =
+                error.code === 'ECONNABORTED' ||
+                error.code === 'ERR_CANCELED' ||
+                error.message?.toLowerCase().includes('timeout') ||
+                error.message?.toLowerCase().includes('canceled');
             const isValidationError = errorStatus === 400;
             const isServerError = errorStatus !== undefined && errorStatus >= 500;
             const isNotFoundError = errorStatus === 404;

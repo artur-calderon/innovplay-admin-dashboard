@@ -1,6 +1,6 @@
 // Gera ISO com offset local (+/-HH:MM) a partir de um Date
 export function toLocalOffsetISO(date: Date): string {
-  const pad = (n: number) => String(Math.floor(Math.abs(n))).padStart(2, '0');
+  const pad = (value: number) => String(Math.floor(Math.abs(value))).padStart(2, '0');
   const tzOffsetMin = date.getTimezoneOffset(); // minutos atrás de UTC
   const sign = tzOffsetMin > 0 ? '-' : '+'; // ex.: Brasília (UTC-3) -> getTimezoneOffset() = 180 -> '-'
   const hh = pad(tzOffsetMin / 60);
@@ -26,9 +26,23 @@ export function convertDateTimeLocalToISO(dateTimeString: string): string {
     throw new Error("Data/hora não fornecida");
   }
 
-  // Criar um objeto Date a partir da string datetime-local
-  // O JavaScript interpreta isso como hora local
-  const localDate = new Date(dateTimeString);
+  const [datePart, timePart] = dateTimeString.split('T');
+
+  if (!datePart || !timePart) {
+    throw new Error(`Formato inválido: ${dateTimeString}`);
+  }
+
+  const [year, month, day] = datePart.split('-').map(Number);
+  const [hour, minute] = timePart.split(':').map(Number);
+
+  if (
+    [year, month, day, hour, minute].some((segment) => Number.isNaN(segment))
+  ) {
+    throw new Error(`Data/hora inválida: ${dateTimeString}`);
+  }
+
+  // Construir a data manualmente para evitar ajustes implícitos
+  const localDate = new Date(year, month - 1, day, hour, minute, 0, 0);
   
   // Verificar se a data é válida
   if (isNaN(localDate.getTime())) {

@@ -45,8 +45,6 @@ import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { EvaluationApiService } from "@/services/evaluationApi";
 
-import { format, isAfter, isBefore, parseISO } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
 
 interface DetailedAnswer {
@@ -82,6 +80,8 @@ interface DetailedResults {
 interface Availability {
   is_available: boolean;
   status: "available" | "not_available" | "not_yet_available" | "expired" | "completed" | "not_started";
+  timezone?: string;
+  time_zone?: string;
 }
 
 interface StudentStatus {
@@ -112,6 +112,8 @@ interface StudentEvaluation {
   availability: Availability;
   student_status: StudentStatus;
   detailedResults?: DetailedResults; // Resultados detalhados com respostas
+  timeZone?: string;
+  applicationTimeZone?: string;
 }
 
 interface EvaluationTaking {
@@ -159,6 +161,8 @@ interface MyClassTestItem {
   application_info?: {
     application?: string;
     expiration?: string;
+    timezone?: string;
+    time_zone?: string;
   };
   duration?: number;
   total_questions?: number;
@@ -184,6 +188,72 @@ export default function StudentEvaluations() {
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+
+const DEFAULT_TIME_ZONE = (() => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Sao_Paulo";
+  } catch (error) {
+    return "America/Sao_Paulo";
+  }
+})();
+
+function resolveTimeZone(candidate?: string): string {
+  if (!candidate) {
+    return DEFAULT_TIME_ZONE;
+  }
+
+  try {
+    // Validar timezone usando Intl
+    new Intl.DateTimeFormat("pt-BR", { timeZone: candidate });
+    return candidate;
+  } catch (error) {
+    return DEFAULT_TIME_ZONE;
+  }
+}
+
+function getEvaluationTimeZone(evaluation?: StudentEvaluation): string {
+  if (!evaluation) {
+    return DEFAULT_TIME_ZONE;
+  }
+
+  const candidate =
+    evaluation.applicationTimeZone ||
+    evaluation.timeZone ||
+    evaluation.availability?.time_zone ||
+    evaluation.availability?.timezone;
+
+  return resolveTimeZone(candidate);
+}
+
+function formatDateTimeForDisplay(value?: string, timeZone?: string): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  const safeTimeZone = resolveTimeZone(timeZone);
+
+  const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: safeTimeZone,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric"
+  });
+
+  const timeFormatter = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: safeTimeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  });
+
+  return `${dateFormatter.format(date)} às ${timeFormatter.format(date)}`;
+}
 
   // Função de retry com backoff exponencial
   const retryWithBackoff = async <T,>(
@@ -288,6 +358,14 @@ export default function StudentEvaluations() {
           student_status: testData.student_status
         });
 
+        const applicationTimeZone =
+          testData.application_info?.timezone ||
+          testData.application_info?.time_zone ||
+          testData.availability?.time_zone ||
+          testData.availability?.timezone;
+
+        const resolvedTimeZone = resolveTimeZone(applicationTimeZone);
+
         // Mapear os dados da API para o formato esperado pelo componente
         const evaluation: StudentEvaluation = {
           id: testData.test_id,
@@ -307,7 +385,9 @@ export default function StudentEvaluations() {
           model: testData.model || 'SAEB',
           // ✅ NOVO: Usar os novos campos
           availability: testData.availability,
-          student_status: testData.student_status
+          student_status: testData.student_status,
+          timeZone: resolvedTimeZone,
+          applicationTimeZone
         };
 
         return evaluation;
@@ -956,13 +1036,12 @@ export default function StudentEvaluations() {
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <span>
-                    Disponível em: {evaluation.startDateTime ?
-                      format(new Date(evaluation.startDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) :
-                      "Data não definida"
-                    } até {evaluation.endDateTime ?
-                      format(new Date(evaluation.endDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) :
-                      "Sem prazo definido"
-                    }
+                    {(() => {
+                      const timeZone = getEvaluationTimeZone(evaluation);
+                      const start = formatDateTimeForDisplay(evaluation.startDateTime, timeZone) || "Data não definida";
+                      const end = formatDateTimeForDisplay(evaluation.endDateTime, timeZone) || "Sem prazo definido";
+                      return `Disponível em: ${start} até ${end}`;
+                    })()}
                   </span>
                 </div>
               </div>
@@ -1124,13 +1203,12 @@ export default function StudentEvaluations() {
                   Tempo disponível
                 </h5>
                 <p className="text-sm text-purple-800 dark:text-purple-300">
-                  De {selectedEvaluation.startDateTime ?
-                    format(new Date(selectedEvaluation.startDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) :
-                    "data não definida"
-                  } até {selectedEvaluation.endDateTime ?
-                    format(new Date(selectedEvaluation.endDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) :
-                    "sem prazo definido"
-                  }
+                  {(() => {
+                    const timeZone = getEvaluationTimeZone(selectedEvaluation || undefined);
+                    const start = formatDateTimeForDisplay(selectedEvaluation?.startDateTime, timeZone) || "data não definida";
+                    const end = formatDateTimeForDisplay(selectedEvaluation?.endDateTime, timeZone) || "sem prazo definido";
+                    return `De ${start} até ${end}`;
+                  })()}
                 </p>
               </div>
             )}

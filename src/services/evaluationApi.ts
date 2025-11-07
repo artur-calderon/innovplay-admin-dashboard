@@ -218,26 +218,29 @@ export class EvaluationApiService {
             answersCount: data.answers?.length || 0,
             endpoint: '/student-answers/submit'
         });
-        
-        // ✅ MELHORADO: Implementar retry automático com timeout progressivo
+
         const maxRetries = 3;
         let lastError: unknown;
-        
+
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            let abortController: AbortController | null = null;
+            let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
             try {
                 console.log(`🔄 Tentativa ${attempt + 1}/${maxRetries + 1} de envio da avaliação`);
-                
-                // ✅ NOVO: Timeout progressivo (15s, 30s, 45s)
-                const timeout = 15000 + (attempt * 15000);
-                const timeoutPromise = new Promise<never>((_, reject) => {
-                    setTimeout(() => {
-                        reject(new Error(`Timeout de ${timeout}ms excedido na tentativa ${attempt + 1}`));
-                    }, timeout);
+
+                abortController = new AbortController();
+                const timeoutMs = 15000 + attempt * 15000; // 15s, 30s, 45s, 60s
+
+                timeoutId = setTimeout(() => {
+                    abortController?.abort();
+                }, timeoutMs);
+
+                const response = await api.post('/student-answers/submit', data, {
+                    signal: abortController.signal,
+                    timeout: timeoutMs
                 });
-                
-                const requestPromise = api.post('/student-answers/submit', data);
-                const response = await Promise.race([requestPromise, timeoutPromise]);
-                
+
                 console.log('✅ Resposta da API submitTest recebida:', {
                     status: response.status,
                     statusText: response.statusText,
@@ -245,53 +248,55 @@ export class EvaluationApiService {
                     hasResults: !!response.data?.results,
                     attempt: attempt + 1
                 });
+
                 return response.data;
-                
             } catch (error: unknown) {
                 lastError = error;
-                const apiError = error as { 
-                    code?: string; 
-                    message?: string; 
-                    response?: { 
-                        status?: number; 
-                        statusText?: string; 
-                        data?: unknown 
-                    } 
+                const apiError = error as {
+                    code?: string;
+                    message?: string;
+                    response?: {
+                        status?: number;
+                        statusText?: string;
+                        data?: unknown;
+                    };
                 };
+
                 console.error(`❌ Erro na tentativa ${attempt + 1}:`, {
-                    error: error,
+                    error,
                     response: apiError.response?.data,
                     status: apiError.response?.status,
                     statusText: apiError.response?.statusText,
                     code: apiError.code,
                     message: apiError.message
                 });
-                
-                // ✅ NOVO: Só tentar novamente se for erro de rede/timeout
-                // Não tentar novamente para erros 410 (sessão expirada) ou 400 (validação)
-                const shouldRetry = attempt < maxRetries && (
-                    (apiError.code === 'ECONNABORTED' ||
-                    apiError.code === 'ERR_NETWORK' ||
-                    apiError.message?.includes('timeout') ||
-                    apiError.message?.includes('Timeout') ||
-                    (apiError.response?.status !== undefined && apiError.response.status >= 500)) &&
-                    apiError.response?.status !== 410 && // ✅ NOVO: Não retry para sessão expirada
-                    apiError.response?.status !== 400    // ✅ NOVO: Não retry para erro de validação
-                );
-                
+
+                const status = apiError.response?.status;
+                const wasAborted = apiError.code === 'ERR_CANCELED';
+                const isTimeout = apiError.code === 'ECONNABORTED' || wasAborted || apiError.message?.toLowerCase().includes('timeout');
+                const isNetworkIssue = apiError.code === 'ERR_NETWORK' || !apiError.response;
+                const isServerError = status !== undefined && status >= 500;
+
+                const shouldRetry = attempt < maxRetries &&
+                    (isTimeout || isNetworkIssue || isServerError) &&
+                    status !== 400 &&
+                    status !== 410;
+
                 if (shouldRetry) {
                     const delay = 2000 * (attempt + 1); // 2s, 4s, 6s
                     console.log(`⏳ Aguardando ${delay}ms antes da próxima tentativa...`);
                     await new Promise(resolve => setTimeout(resolve, delay));
                     continue;
                 }
-                
-                // Se não deve tentar novamente, quebrar o loop
+
                 break;
+            } finally {
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                }
             }
         }
-        
-        // Se chegou aqui, todas as tentativas falharam
+
         console.error('❌ Todas as tentativas de envio falharam:', lastError);
         throw lastError;
     }
