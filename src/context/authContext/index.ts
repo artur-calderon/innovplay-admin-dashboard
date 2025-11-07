@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { api } from '@/lib/api'
 import { toast } from 'react-toastify'
 import { AxiosError } from 'axios'
+import { loadAndApplySettings } from '@/hooks/useSettings'
 
 export interface AvatarConfig {
     seed?: string;
@@ -76,10 +77,11 @@ interface AuthContext {
     logout: () => Promise<void>,
     setUser: (user: User) => void,
     persistUser: () => Promise<boolean>,
-    updateAvatarConfig: (config: AvatarConfig) => Promise<void>
+    updateAvatarConfig: (config: AvatarConfig) => Promise<void>,
+    fetchUserDetails: (userId: string) => Promise<void>,
 }
 
-export const useAuth = create<AuthContext>((set) => ({
+export const useAuth = create<AuthContext>((set, get) => ({
     loading: false,
     user: {
         id: '',
@@ -100,6 +102,26 @@ export const useAuth = create<AuthContext>((set) => ({
     setUser: (user) => {
         set({ user })
     },
+    fetchUserDetails: async (userId: string) => {
+        if (!userId) {
+            return;
+        }
+
+        try {
+            const response = await api.get(`/users/${userId}`);
+            const detailedUser = response.data?.user ?? response.data;
+            if (detailedUser) {
+                set((state) => ({
+                    user: {
+                        ...state.user,
+                        ...detailedUser,
+                    }
+                }));
+            }
+        } catch (error) {
+            console.error('Erro ao buscar detalhes completos do usuário:', error);
+        }
+    },
     autoLogin: async () => {
         set({ loading: true })
         try {
@@ -114,8 +136,12 @@ export const useAuth = create<AuthContext>((set) => ({
 
             // ✅ CORRIGIDO: Usar a instância da API corretamente
             api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`
-
             set({ user: response.data.user })
+
+            if (response.data.user?.id) {
+                await loadAndApplySettings(response.data.user.id)
+                await get().fetchUserDetails(response.data.user.id)
+            }
 
             return response;
         } catch (error: unknown) {
@@ -149,6 +175,11 @@ export const useAuth = create<AuthContext>((set) => ({
             api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`
 
             set({ user: response.data.user })
+
+            if (response.data.user?.id) {
+                await loadAndApplySettings(response.data.user.id)
+                await get().fetchUserDetails(response.data.user.id)
+            }
 
             // Adicionar um pequeno delay para o toast ser visível
             await new Promise(resolve => setTimeout(resolve, 1000));
@@ -220,19 +251,29 @@ export const useAuth = create<AuthContext>((set) => ({
             api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
             const response = await api.get('/persist-user/');
-            if (response.data && response.data.user) {
+            if (response.data) {
+                const persistedUser = response.data.user ?? response.data;
+
                 if (response.data.token) {
                     localStorage.setItem('token', response.data.token);
                     api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
                 }
 
-                set((state) => ({
-                    user: {
-                        ...state.user,
-                        ...response.data.user,
+                if (persistedUser) {
+                    set((state) => ({
+                        user: {
+                            ...state.user,
+                            ...persistedUser,
+                        }
+                    }));
+
+                    const targetId = persistedUser.id;
+                    if (targetId) {
+                        await loadAndApplySettings(targetId)
+                        await get().fetchUserDetails(targetId)
                     }
-                }));
-                return true;
+                    return true;
+                }
             }
             return false;
         } catch (error: unknown) {
@@ -244,7 +285,7 @@ export const useAuth = create<AuthContext>((set) => ({
     },
     updateAvatarConfig: async (config: AvatarConfig) => {
         try {
-            const currentUser = useAuth.getState().user;
+            const currentUser = get().user;
             if (!currentUser.id) {
                 throw new Error('Usuário não autenticado');
             }

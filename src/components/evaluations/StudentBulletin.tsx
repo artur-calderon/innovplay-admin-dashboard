@@ -227,6 +227,23 @@ const combineQuestionsAndAnswers = (
     const selectedAlt = getSelectedAlternative(question, studentAnswerValue);
     const correctAlt = question.alternatives?.find(alt => alt.isCorrect) || null;
     
+    // Determinar se a resposta está correta
+    // Prioridade 1: Usar is_correct da API se disponível
+    // Prioridade 2: Comparar a alternativa selecionada com a correta
+    let isCorrect: boolean | null = null;
+    if (studentAnswer?.is_correct !== undefined && studentAnswer?.is_correct !== null) {
+      isCorrect = studentAnswer.is_correct;
+    } else if (studentAnswerValue && selectedAlt && correctAlt) {
+      // Comparar IDs das alternativas
+      isCorrect = selectedAlt.id === correctAlt.id;
+    } else if (studentAnswerValue && !selectedAlt) {
+      // Se há resposta mas não encontramos a alternativa, marcar como incorreta
+      isCorrect = false;
+    } else if (!studentAnswerValue) {
+      // Se não há resposta, marcar como null
+      isCorrect = null;
+    }
+    
     // Se tem números válidos e únicos nas questões, usar o número da questão quando disponível
     // Senão, sempre usar índice sequencial baseado em 1 para garantir Q1, Q2, Q3...
     const questionNumber = hasValidUniqueNumbers && question.number && question.number > 0
@@ -236,7 +253,7 @@ const combineQuestionsAndAnswers = (
     return {
       question,
       studentAnswer: studentAnswerValue,
-      isCorrect: studentAnswer?.is_correct ?? (studentAnswerValue ? false : null),
+      isCorrect,
       selectedAlternative: selectedAlt,
       correctAlternative: correctAlt,
       questionNumber,
@@ -352,6 +369,12 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
         let studentAnswers: StudentDetailedResult | null = null;
         if (answersData.status === 'fulfilled' && answersData.value) {
           studentAnswers = answersData.value;
+          
+          // Tentar obter nome do aluno dos dados de resposta se disponível
+          if (!studentNameRef.current && studentAnswers.student_name) {
+            studentNameRef.current = studentAnswers.student_name;
+            setStudentName(studentAnswers.student_name);
+          }
         }
 
         // Buscar relatório detalhado para obter série/curso
@@ -398,6 +421,8 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
         }
 
         // Prioridade 3: Tentar buscar alunos da avaliação para obter série, turma e nome do aluno
+        // ⚠️ Esta chamada requer permissões de admin/professor, então é opcional
+        // Se falhar, continuamos com os dados já obtidos do detailedReport
         if (!detectedCourse || !studentNameRef.current || !studentGradeRef.current || !studentClassRef.current) {
           try {
             const studentsData = await EvaluationResultsApiService.getStudentsByEvaluation(testId);
@@ -439,8 +464,15 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
                 }
               }
             }
-          } catch (error) {
-            console.error('Erro ao buscar alunos para detectar série:', error);
+          } catch (error: unknown) {
+            // ⚠️ Erro 403 (Forbidden) é esperado para alunos - não é um erro crítico
+            const axiosError = error as { response?: { status?: number } };
+            if (axiosError.response?.status === 403) {
+              console.log('ℹ️ Acesso negado ao endpoint de alunos (esperado para alunos) - usando dados alternativos');
+            } else {
+              console.warn('⚠️ Erro ao buscar alunos para detectar série:', error);
+            }
+            // Continuar sem esses dados - não é crítico
           }
         }
 
@@ -448,12 +480,75 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
           courseName = detectedCourse;
         }
 
+        // ✅ MELHORADO: Fallback mais robusto se ainda não encontrou o curso
+        if (!courseName || courseName === 'Anos Iniciais') {
+          // Tentar extrair das questões se tiverem informações de série/curso
+          if (questions.length > 0) {
+            const firstQuestion = questions[0];
+            const questionObj = firstQuestion as Question & Record<string, unknown>;
+            
+            // Verificar se a questão tem informações de curso/série
+            if (questionObj.grade && typeof questionObj.grade === 'string') {
+              const mappedFromQuestion = mapGradeToCourse(questionObj.grade);
+              if (mappedFromQuestion) {
+                courseName = mappedFromQuestion;
+                console.log(`📚 CourseName detectado da questão: "${courseName}"`);
+              }
+            } else if (questionObj.course && typeof questionObj.course === 'string') {
+              courseName = questionObj.course;
+              console.log(`📚 CourseName detectado do campo course da questão: "${courseName}"`);
+            }
+          }
+        }
+
+        // ✅ ÚLTIMO FALLBACK: Se ainda não encontrou, tentar inferir das disciplinas
+        // Se tiver questões de Ensino Médio (ex: Física, Química), provavelmente é Ensino Médio
+        if (!courseName || courseName === 'Anos Iniciais') {
+          const subjectNames = questions
+            .map(q => q.subject?.name?.toLowerCase() || '')
+            .filter(Boolean);
+          
+          const hasHighSchoolSubjects = subjectNames.some(name => 
+            ['física', 'fisica', 'química', 'quimica', 'biologia', 'filosofia', 'sociologia'].includes(name)
+          );
+          
+          if (hasHighSchoolSubjects) {
+            courseName = 'Ensino Médio';
+            console.log(`📚 CourseName inferido das disciplinas: "${courseName}"`);
+          } else if (subjectNames.some(name => 
+            ['matemática', 'matematica', 'português', 'portugues', 'história', 'historia', 'geografia'].includes(name)
+          )) {
+            // Se tiver disciplinas básicas, pode ser Anos Finais ou Ensino Médio
+            // Por padrão, vamos usar Anos Finais se não tiver certeza
+            if (courseName === 'Anos Iniciais') {
+              courseName = 'Anos Finais';
+              console.log(`📚 CourseName inferido como Anos Finais (padrão): "${courseName}"`);
+            }
+          }
+        }
+
+        console.log(`📚 CourseName final detectado: "${courseName}"`, {
+          detectedCourse,
+          testDataCourse: (testData as TestData & Record<string, unknown>).course,
+          questionsCount: questions.length,
+          hasDetailedReport: !!detailedReport,
+          hasStudentAnswers: !!studentAnswers
+        });
+
         if (questions.length === 0) {
           setError('Não foi possível carregar as questões da avaliação. Verifique se a avaliação existe e tente novamente.');
           return;
         }
 
         const combined = combineQuestionsAndAnswers(questions, studentAnswers);
+        
+        console.log(`📊 Questões combinadas:`, {
+          total: combined.length,
+          withAnswers: combined.filter(q => q.hasAnswer).length,
+          correct: combined.filter(q => q.isCorrect === true).length,
+          incorrect: combined.filter(q => q.isCorrect === false).length,
+          unanswered: combined.filter(q => !q.hasAnswer).length
+        });
 
         setBulletinQuestions(combined);
 
@@ -463,42 +558,213 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
         // Agrupar questões por disciplina
         const questionsByDiscipline: Record<string, BulletinQuestion[]> = {};
         combined.forEach(bq => {
-          const subjectName = bq.question.subject?.name || 'Sem disciplina';
-          if (!questionsByDiscipline[subjectName]) {
-            questionsByDiscipline[subjectName] = [];
+          // ✅ MELHORADO: Identificação robusta de disciplina
+          const subjectNameRaw = bq.question.subject?.name || 
+                             (bq.question as Question & Record<string, unknown>).subject_name ||
+                             (bq.question as Question & Record<string, unknown>).disciplina ||
+                             'Sem disciplina';
+          
+          // Normalizar nome da disciplina (remover espaços extras)
+          const subjectName = typeof subjectNameRaw === 'string' ? subjectNameRaw.trim() : String(subjectNameRaw).trim();
+          const normalizedSubjectName = subjectName;
+          
+          if (!questionsByDiscipline[normalizedSubjectName]) {
+            questionsByDiscipline[normalizedSubjectName] = [];
           }
-          questionsByDiscipline[subjectName].push(bq);
+          questionsByDiscipline[normalizedSubjectName].push(bq);
+        });
+        
+        console.log(`📚 Disciplinas identificadas:`, {
+          disciplines: Object.keys(questionsByDiscipline),
+          courseName,
+          totalQuestions: combined.length,
+          questionsPerDiscipline: Object.entries(questionsByDiscipline).map(([name, qs]) => ({
+            name,
+            count: qs.length
+          }))
         });
 
-        // Calcular nota e proficiência para cada disciplina usando as fórmulas oficiais
+        // ✅ NOVO: Verificar se temos dados do backend (grade e proficiência já calculados)
+        const hasBackendData = studentAnswers && 
+          (studentAnswers.grade !== undefined && studentAnswers.grade !== null) &&
+          (studentAnswers.proficiencia !== undefined && studentAnswers.proficiencia !== null);
+        
+        console.log(`📊 Dados do backend disponíveis:`, {
+          hasBackendData,
+          backendGrade: studentAnswers?.grade,
+          backendProficiencia: studentAnswers?.proficiencia,
+          backendClassificacao: studentAnswers?.classificacao
+        });
+
+        // Calcular nota e proficiência para cada disciplina
         Object.entries(questionsByDiscipline).forEach(([subjectName, questions]) => {
           const totalQuestions = questions.length;
           const correctAnswers = questions.filter(q => q.isCorrect === true).length;
           
-          // Calcular proficiência usando a fórmula oficial
-          const proficiencia = calculateProficiency(
-            correctAnswers,
+          console.log(`📊 Calculando estatísticas para disciplina: ${subjectName}`, {
             totalQuestions,
+            correctAnswers,
             courseName,
-            subjectName
-          );
+            hasBackendData
+          });
+          
+          // ✅ VALIDAÇÃO: Verificar se temos dados válidos antes de calcular
+          if (totalQuestions === 0) {
+            console.warn(`⚠️ Nenhuma questão encontrada para ${subjectName}`);
+            statsByDiscipline[subjectName] = {
+              nota: 0,
+              proficiencia: 0,
+              totalQuestions: 0,
+              correctAnswers: 0
+            };
+            return; // Pular esta disciplina
+          }
 
-          // Calcular nota usando a fórmula oficial baseada na proficiência
-          const nota = calculateGrade(
+          // ✅ NOVO: Priorizar dados do backend quando disponíveis
+          // Como o backend retorna dados gerais (não por disciplina), vamos usar como referência
+          // e calcular por disciplina localmente, mas validar com os dados do backend
+          let nota = 0;
+          let proficiencia = 0;
+          
+          if (hasBackendData && studentAnswers) {
+            // ✅ Usar dados do backend como base e calcular proporcionalmente por disciplina
+            // Se temos dados gerais do backend, podemos usar como referência
+            const totalQuestionsAll = studentAnswers.total_questions || totalQuestions;
+            const correctAnswersAll = studentAnswers.correct_answers || correctAnswers;
+            
+            // Calcular proporção desta disciplina em relação ao total
+            const disciplineProportion = totalQuestionsAll > 0 ? totalQuestions / totalQuestionsAll : 1;
+            const disciplineCorrectProportion = correctAnswersAll > 0 ? correctAnswers / correctAnswersAll : 0;
+            
+            // Se a proporção for próxima de 1 (é a única disciplina), usar dados do backend diretamente
+            if (disciplineProportion >= 0.95 || Object.keys(questionsByDiscipline).length === 1) {
+              console.log(`📊 Usando dados do backend diretamente para ${subjectName} (única disciplina ou proporção >= 95%)`);
+              nota = studentAnswers.grade || 0;
+              proficiencia = studentAnswers.proficiencia || 0;
+            } else {
+              // Calcular localmente, mas usar dados do backend como validação
+              console.log(`📊 Calculando localmente para ${subjectName} (múltiplas disciplinas)`);
+              
+              // ✅ VALIDAÇÃO: Verificar se courseName é válido
+              if (!courseName || courseName.trim() === '') {
+                console.warn(`⚠️ CourseName inválido para ${subjectName}, usando padrão "Anos Iniciais"`);
+                courseName = 'Anos Iniciais';
+              }
+
+              // Calcular proficiência usando a fórmula oficial
+              try {
+                proficiencia = calculateProficiency(
+                  correctAnswers,
+                  totalQuestions,
+                  courseName,
+                  subjectName
+                );
+                
+                // ✅ VALIDAÇÃO: Verificar se proficiência é válida
+                if (isNaN(proficiencia) || !isFinite(proficiencia)) {
+                  console.warn(`⚠️ Proficiência inválida calculada para ${subjectName}:`, proficiencia);
+                  proficiencia = 0;
+                }
+              } catch (error) {
+                console.error(`❌ Erro ao calcular proficiência para ${subjectName}:`, error);
+                proficiencia = 0;
+              }
+
+              // Calcular nota usando a fórmula oficial baseada na proficiência
+              try {
+                nota = calculateGrade(
+                  proficiencia,
+                  courseName,
+                  subjectName,
+                  false // Não usar cálculo simples
+                );
+                
+                // ✅ VALIDAÇÃO: Verificar se nota é válida
+                if (isNaN(nota) || !isFinite(nota)) {
+                  console.warn(`⚠️ Nota inválida calculada para ${subjectName}:`, nota);
+                  // Fallback: calcular nota simples baseada em acertos
+                  nota = totalQuestions > 0 ? (correctAnswers / totalQuestions) * 10 : 0;
+                }
+              } catch (error) {
+                console.error(`❌ Erro ao calcular nota para ${subjectName}:`, error);
+                // Fallback: calcular nota simples baseada em acertos
+                nota = totalQuestions > 0 ? (correctAnswers / totalQuestions) * 10 : 0;
+              }
+            }
+          } else {
+            // ✅ FALLBACK: Calcular localmente se dados do backend não estiverem disponíveis
+            console.log(`📊 Dados do backend não disponíveis, calculando localmente para ${subjectName}`);
+            
+            // ✅ VALIDAÇÃO: Verificar se courseName é válido
+            if (!courseName || courseName.trim() === '') {
+              console.warn(`⚠️ CourseName inválido para ${subjectName}, usando padrão "Anos Iniciais"`);
+              courseName = 'Anos Iniciais';
+            }
+
+            // Calcular proficiência usando a fórmula oficial
+            try {
+              proficiencia = calculateProficiency(
+                correctAnswers,
+                totalQuestions,
+                courseName,
+                subjectName
+              );
+              
+              // ✅ VALIDAÇÃO: Verificar se proficiência é válida
+              if (isNaN(proficiencia) || !isFinite(proficiencia)) {
+                console.warn(`⚠️ Proficiência inválida calculada para ${subjectName}:`, proficiencia);
+                proficiencia = 0;
+              }
+            } catch (error) {
+              console.error(`❌ Erro ao calcular proficiência para ${subjectName}:`, error);
+              proficiencia = 0;
+            }
+
+            // Calcular nota usando a fórmula oficial baseada na proficiência
+            try {
+              nota = calculateGrade(
+                proficiencia,
+                courseName,
+                subjectName,
+                false // Não usar cálculo simples
+              );
+              
+              // ✅ VALIDAÇÃO: Verificar se nota é válida
+              if (isNaN(nota) || !isFinite(nota)) {
+                console.warn(`⚠️ Nota inválida calculada para ${subjectName}:`, nota);
+                // Fallback: calcular nota simples baseada em acertos
+                nota = totalQuestions > 0 ? (correctAnswers / totalQuestions) * 10 : 0;
+              }
+            } catch (error) {
+              console.error(`❌ Erro ao calcular nota para ${subjectName}:`, error);
+              // Fallback: calcular nota simples baseada em acertos
+              nota = totalQuestions > 0 ? (correctAnswers / totalQuestions) * 10 : 0;
+            }
+          }
+
+          console.log(`📊 Estatísticas finais para ${subjectName}:`, {
+            nota,
             proficiencia,
-            courseName,
-            subjectName,
-            false // Não usar cálculo simples
-          );
+            totalQuestions,
+            correctAnswers,
+            source: hasBackendData && (Object.keys(questionsByDiscipline).length === 1 || (totalQuestions / (studentAnswers?.total_questions || totalQuestions)) >= 0.95) ? 'backend' : 'local'
+          });
 
+          // ✅ VALIDAÇÃO FINAL: Garantir valores dentro dos limites
+          const finalNota = isNaN(nota) || nota < 0 ? 0 : Math.max(0, Math.min(10, parseFloat(nota.toFixed(1))));
+          const finalProficiencia = isNaN(proficiencia) || proficiencia < 0 ? 0 : parseFloat(proficiencia.toFixed(2));
+          
           statsByDiscipline[subjectName] = {
-            nota: parseFloat(nota.toFixed(1)),
-            proficiencia: parseFloat(proficiencia.toFixed(2)),
+            nota: finalNota,
+            proficiencia: finalProficiencia,
             totalQuestions,
             correctAnswers
           };
+          
+          console.log(`✅ Estatísticas salvas para ${subjectName}:`, statsByDiscipline[subjectName]);
         });
 
+        console.log(`📊 Todas as estatísticas calculadas:`, statsByDiscipline);
         setDisciplineStats(statsByDiscipline);
 
       } catch (err) {
@@ -535,8 +801,12 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
 
   // Função para encontrar estatísticas de uma disciplina
   const getDisciplineStats = (subjectName: string): DisciplineStats | null => {
+    console.log(`🔍 Buscando estatísticas para disciplina: "${subjectName}"`);
+    console.log(`📊 Estatísticas disponíveis:`, Object.keys(disciplineStats));
+    
     // Primeiro tentar match exato
     if (disciplineStats[subjectName]) {
+      console.log(`✅ Match exato encontrado para "${subjectName}"`);
       return disciplineStats[subjectName];
     }
 
@@ -546,7 +816,13 @@ export default function StudentBulletin({ testId, studentId }: StudentBulletinPr
       normalizeDisciplineName(key) === normalized
     );
 
-    return statsKey ? disciplineStats[statsKey] : null;
+    if (statsKey) {
+      console.log(`✅ Match case-insensitive encontrado: "${subjectName}" -> "${statsKey}"`);
+      return disciplineStats[statsKey];
+    }
+    
+    console.warn(`⚠️ Nenhuma estatística encontrada para "${subjectName}"`);
+    return null;
   };
 
   const getStatusIcon = (question: BulletinQuestion) => {
