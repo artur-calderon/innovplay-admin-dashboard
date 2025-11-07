@@ -139,8 +139,9 @@ const Profile = () => {
         // Carregar características do usuário
         try {
           const userResponse = await api.get(`/users/${user.id}`);
-          if (userResponse.data?.user) {
-            const traits = userResponse.data.user.traits || userResponse.data.user.characteristics || [];
+          const detailedUser = userResponse.data?.user ?? userResponse.data;
+          if (detailedUser) {
+            const traits = detailedUser.traits || detailedUser.characteristics || [];
             setUserTraits(Array.isArray(traits) ? traits : []);
           }
         } catch (error) {

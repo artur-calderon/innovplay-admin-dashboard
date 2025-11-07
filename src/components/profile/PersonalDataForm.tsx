@@ -43,6 +43,7 @@ export const PersonalDataForm = () => {
         nationality: user?.nationality || '',
         phone: user?.phone || '',
         gender: user?.gender || '',
+        address: user?.address || '',
         traits: [] as string[],
     });
 
@@ -51,13 +52,14 @@ export const PersonalDataForm = () => {
         const loadUserTraits = async () => {
             try {
                 const response = await api.get(`/users/${user.id}`);
-                if (response.data && response.data.user) {
-                    const userData = response.data.user;
+                if (response.data) {
+                    const userData = response.data.user ?? response.data;
                     setFormData({
                         birth_date: userData.birth_date || '',
                         nationality: userData.nationality || '',
                         phone: userData.phone || '',
                         gender: userData.gender || '',
+                        address: userData.address || '',
                         traits: userData.traits || userData.characteristics || [],
                     });
                 } else {
@@ -67,6 +69,7 @@ export const PersonalDataForm = () => {
                         nationality: user?.nationality || '',
                         phone: user?.phone || '',
                         gender: user?.gender || '',
+                        address: user?.address || '',
                         traits: [],
                     });
                 }
@@ -77,6 +80,7 @@ export const PersonalDataForm = () => {
                     nationality: user?.nationality || '',
                     phone: user?.phone || '',
                     gender: user?.gender || '',
+                    address: user?.address || '',
                     traits: [],
                 });
             }
@@ -91,10 +95,11 @@ export const PersonalDataForm = () => {
                 nationality: user?.nationality || '',
                 phone: user?.phone || '',
                 gender: user?.gender || '',
+                address: user?.address || '',
                 traits: [],
             });
         }
-    }, [user?.id, user?.birth_date, user?.nationality, user?.phone, user?.gender]);
+    }, [user?.id, user?.birth_date, user?.nationality, user?.phone, user?.gender, user?.address]);
 
     const handleInputChange = (field: string, value: string) => {
         setFormData(prev => ({
@@ -139,24 +144,26 @@ export const PersonalDataForm = () => {
                 nationality: formData.nationality || null,
                 phone: formData.phone.replace(/\D/g, '') || null,
                 gender: formData.gender || null,
+                address: formData.address || null,
                 traits: formData.traits.length > 0 ? formData.traits : null,
             };
 
             const response = await api.put(`/users/${user.id}`, dataToSend);
 
-            if (response.data && response.data.user) {
+            if (response.data) {
+                const updatedUser = response.data.user ?? response.data;
                 setUser({
                     ...user,
-                    ...response.data.user,
+                    ...updatedUser,
                 });
                 
                 // Atualizar formData com os dados retornados
-                const updatedUser = response.data.user;
                 setFormData({
                     birth_date: updatedUser.birth_date || '',
                     nationality: updatedUser.nationality || '',
                     phone: updatedUser.phone || '',
                     gender: updatedUser.gender || '',
+                    address: updatedUser.address || '',
                     traits: updatedUser.traits || updatedUser.characteristics || [],
                 });
                 
@@ -253,6 +260,17 @@ export const PersonalDataForm = () => {
                                 maxLength={15}
                             />
                         </div>
+
+                        <div className="space-y-2 md:col-span-2">
+                            <Label htmlFor="address">Endereço</Label>
+                            <Input
+                                id="address"
+                                type="text"
+                                value={formData.address}
+                                onChange={(e) => handleInputChange('address', e.target.value)}
+                                placeholder="Rua, número, complemento"
+                            />
+                        </div>
                     </div>
 
                     <div className="space-y-3">
@@ -295,13 +313,14 @@ export const PersonalDataForm = () => {
                             onClick={async () => {
                                 try {
                                     const response = await api.get(`/users/${user.id}`);
-                                    if (response.data && response.data.user) {
-                                        const userData = response.data.user;
+                            if (response.data) {
+                                const userData = response.data.user ?? response.data;
                                         setFormData({
                                             birth_date: userData.birth_date || '',
                                             nationality: userData.nationality || '',
                                             phone: userData.phone || '',
                                             gender: userData.gender || '',
+                                        address: userData.address || '',
                                             traits: userData.traits || userData.characteristics || [],
                                         });
                                     }
@@ -311,6 +330,7 @@ export const PersonalDataForm = () => {
                                         nationality: user?.nationality || '',
                                         phone: user?.phone || '',
                                         gender: user?.gender || '',
+                                    address: user?.address || '',
                                         traits: [],
                                     });
                                 }
