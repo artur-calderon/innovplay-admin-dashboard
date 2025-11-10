@@ -258,40 +258,41 @@ export default function UserForm({ user, onSubmit, allowedRoles, showCitySelect 
           )}
         />
 
-        {!isEditing && (
-          <FormField
-            control={form.control}
-            name="confirmPassword"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Confirmar Senha</FormLabel>
-                <FormControl>
-                  <div className="relative">
-                    <Input 
-                      type={showConfirmPassword ? "text" : "password"} 
-                      placeholder="Confirme sua senha" 
-                      {...field} 
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    >
-                      {showConfirmPassword ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        )}
+        <FormField
+          control={form.control}
+          name="confirmPassword"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{isEditing ? "Confirmar nova senha" : "Confirmar Senha"}</FormLabel>
+              <FormControl>
+                <div className="relative">
+                  <Input 
+                    type={showConfirmPassword ? "text" : "password"} 
+                    placeholder={isEditing ? "Repita a nova senha" : "Confirme sua senha"}
+                    {...field} 
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </FormControl>
+              {isEditing && (
+                <p className="text-xs text-muted-foreground">Necessário apenas se desejar atualizar a senha.</p>
+              )}
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         <FormField
           control={form.control}

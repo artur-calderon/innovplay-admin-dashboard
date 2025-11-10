@@ -44,6 +44,7 @@ interface LinkDirectorCoordinatorModalProps {
   onClose: () => void;
   schoolId: string;
   schoolName: string;
+  schoolCityId?: string;
   userType: 'diretor' | 'coordenador';
   onSuccess: () => void;
 }
@@ -53,6 +54,7 @@ export function LinkDirectorCoordinatorModal({
   onClose,
   schoolId,
   schoolName,
+  schoolCityId,
   userType,
   onSuccess,
 }: LinkDirectorCoordinatorModalProps) {
@@ -206,6 +208,10 @@ export function LinkDirectorCoordinatorModal({
         birth_date: formData.birth_date
       };
 
+      if (user?.role === 'admin' && schoolCityId) {
+        userData.city_id = schoolCityId;
+      }
+
       const response = await api.post("/managers", userData);
 
       toast({
@@ -250,17 +256,17 @@ export function LinkDirectorCoordinatorModal({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="w-[95vw] max-w-6xl h-[95vh] max-h-[95vh] overflow-hidden flex flex-col p-0">
-        <DialogHeader className="px-4 sm:px-6 py-3 border-b bg-gradient-to-r from-orange-50 to-amber-50">
-          <DialogTitle className="flex flex-col sm:flex-row sm:items-center gap-2 text-lg sm:text-xl">
+        <DialogHeader className="px-4 sm:px-6 py-3 border-b bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/40 dark:to-amber-950/30">
+          <DialogTitle className="flex flex-col sm:flex-row sm:items-center gap-2 text-lg sm:text-xl text-foreground">
             <div className="flex items-center gap-2">
-              <Building className="h-5 w-5 sm:h-6 sm:w-6 text-orange-600" />
+              <Building className="h-5 w-5 sm:h-6 sm:w-6 text-orange-600 dark:text-orange-400" />
               <span className="font-semibold">Gerenciar {userTypeLabel}</span>
             </div>
-            <span className="text-base sm:text-lg font-medium text-orange-700 sm:ml-2">
+            <span className="text-base sm:text-lg font-medium text-orange-700 dark:text-orange-300 sm:ml-2">
               {schoolName}
             </span>
           </DialogTitle>
-          <DialogDescription className="text-sm sm:text-base text-gray-600 mt-1">
+          <DialogDescription className="text-sm sm:text-base text-muted-foreground mt-1">
             <div className="flex flex-col gap-1">
               <span>Vincule {userTypeLabel.toLowerCase()} existentes ou crie novos para a escola</span>
             </div>
@@ -269,10 +275,10 @@ export function LinkDirectorCoordinatorModal({
 
         <div className="flex-1 overflow-hidden px-4 sm:px-6 pb-4">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-            <TabsList className="grid w-full grid-cols-2 h-auto sm:h-10 p-1 bg-gray-100 rounded-lg mt-3 mb-2">
+            <TabsList className="grid w-full grid-cols-2 h-auto sm:h-10 p-1 bg-gray-100 dark:bg-muted rounded-lg mt-3 mb-2">
               <TabsTrigger 
                 value="link" 
-                className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
               >
                 <Building className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                 <span className="hidden xs:inline">Vincular Usuários</span>
@@ -280,7 +286,7 @@ export function LinkDirectorCoordinatorModal({
               </TabsTrigger>
               <TabsTrigger 
                 value="create" 
-                className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
               >
                 <Plus className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                 <span className="hidden xs:inline">Criar Novo {userTypeSingular}</span>
@@ -301,21 +307,21 @@ export function LinkDirectorCoordinatorModal({
               </div>
 
               {/* Users List */}
-              <div className="flex-1 overflow-hidden border rounded-lg bg-white min-h-[400px] max-h-[500px]">
+              <div className="flex-1 overflow-hidden border border-border rounded-lg bg-card min-h-[400px] max-h-[500px]">
                 {isLoading ? (
                   <div className="flex flex-col items-center justify-center p-8 h-full">
                     <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
-                    <span className="text-sm sm:text-base text-gray-600">Carregando {userTypeLabel.toLowerCase()}...</span>
+                    <span className="text-sm sm:text-base text-muted-foreground">Carregando {userTypeLabel.toLowerCase()}...</span>
                   </div>
                 ) : filteredUsers.length === 0 ? (
                   <div className="flex flex-col items-center justify-center p-6 sm:p-8 h-full">
-                    <div className={`${userType === 'diretor' ? 'bg-red-50' : 'bg-orange-50'} p-4 rounded-full mb-4`}>
-                      <Building className={`h-8 w-8 sm:h-12 sm:w-12 ${userType === 'diretor' ? 'text-red-400' : 'text-orange-400'}`} />
+                    <div className={`${userType === 'diretor' ? 'bg-red-50 dark:bg-red-950/40' : 'bg-orange-50 dark:bg-orange-950/40'} p-4 rounded-full mb-4`}>
+                      <Building className={`h-8 w-8 sm:h-12 sm:w-12 ${userType === 'diretor' ? 'text-red-400 dark:text-red-300' : 'text-orange-400 dark:text-orange-300'}`} />
                     </div>
-                    <h3 className="text-base sm:text-lg font-semibold mb-2 text-center">
+                    <h3 className="text-base sm:text-lg font-semibold mb-2 text-center text-foreground">
                       {searchTerm ? "Nenhum usuário encontrado" : `Nenhum ${userTypeSingular.toLowerCase()} disponível`}
                     </h3>
-                    <p className="text-sm sm:text-base text-gray-500 text-center max-w-sm">
+                    <p className="text-sm sm:text-base text-muted-foreground text-center max-w-sm">
                       {searchTerm 
                         ? "Tente ajustar os termos de busca ou criar um novo usuário"
                         : `Não há ${userTypeLabel.toLowerCase()} cadastrados no sistema ou crie um novo`
@@ -344,34 +350,34 @@ export function LinkDirectorCoordinatorModal({
                           <div className="flex-shrink-0">
                             <div 
                               className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center ${
-                                userType === 'diretor' ? 'bg-red-100' : 'bg-orange-100'
+                                userType === 'diretor' ? 'bg-red-100 dark:bg-red-950/30' : 'bg-orange-100 dark:bg-orange-950/30'
                               }`}
                             >
                               <Building 
                                 className={`h-4 w-4 sm:h-5 sm:w-5 ${
-                                  userType === 'diretor' ? 'text-red-600' : 'text-orange-600'
+                                  userType === 'diretor' ? 'text-red-600 dark:text-red-300' : 'text-orange-600 dark:text-orange-300'
                                 }`} 
                               />
                             </div>
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mb-1">
-                              <span className="font-medium text-sm sm:text-base truncate text-gray-900">{user.name}</span>
+                              <span className="font-medium text-sm sm:text-base truncate text-foreground">{user.name}</span>
                               <Badge 
                                 variant="secondary" 
                                 className={`text-xs w-fit ${
                                   userType === 'diretor' 
-                                    ? 'bg-red-50 text-red-700 border-red-200' 
-                                    : 'bg-orange-50 text-orange-700 border-orange-200'
+                                    ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-200 dark:border-red-900' 
+                                    : 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/30 dark:text-orange-200 dark:border-orange-900'
                                 }`}
                               >
                                 {userTypeSingular}
                               </Badge>
                             </div>
-                            <div className="text-xs sm:text-sm text-gray-500 space-y-1">
+                            <div className="text-xs sm:text-sm text-muted-foreground space-y-1">
                               <div className="truncate">{user.email}</div>
                               {user.registration && (
-                                <div className="text-gray-400">Matrícula: {user.registration}</div>
+                                <div className="text-muted-foreground/75">Matrícula: {user.registration}</div>
                               )}
                             </div>
                           </div>
@@ -382,8 +388,8 @@ export function LinkDirectorCoordinatorModal({
                 )}
               </div>
 
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4 pt-4 border-t bg-gray-50/50 px-4 py-3 rounded-b-lg">
-                <div className="text-xs sm:text-sm text-gray-600 order-2 sm:order-1">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4 pt-4 border-t bg-gray-50/50 dark:bg-muted px-4 py-3 rounded-b-lg">
+                <div className="text-xs sm:text-sm text-muted-foreground order-2 sm:order-1">
                   <span className="font-medium">{selectedUsers.length}</span> {userTypeSingular.toLowerCase()}(es) selecionado(s)
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 order-1 sm:order-2">
@@ -400,8 +406,8 @@ export function LinkDirectorCoordinatorModal({
                     disabled={selectedUsers.length === 0 || isLinking}
                     className={`h-10 order-1 sm:order-2 ${
                       userType === 'diretor' 
-                        ? 'bg-red-600 hover:bg-red-700' 
-                        : 'bg-orange-600 hover:bg-orange-700'
+                        ? 'bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-400' 
+                        : 'bg-orange-600 hover:bg-orange-700 dark:bg-orange-500 dark:hover:bg-orange-400'
                     }`}
                   >
                     {isLinking && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -412,32 +418,32 @@ export function LinkDirectorCoordinatorModal({
               </div>
             </TabsContent>
 
-            <TabsContent value="create" className="flex-1 mt-0 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400 pr-2 scroll-smooth">
+            <TabsContent value="create" className="flex-1 mt-0 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 dark:scrollbar-thumb-gray-700 dark:scrollbar-track-gray-900 hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-600 pr-2 scroll-smooth">
               <div className="space-y-4 pb-4">
                 {/* Header */}
                 <div className={`bg-gradient-to-r ${
                   userType === 'diretor' 
-                    ? 'from-red-50 via-red-25 to-pink-50' 
-                    : 'from-orange-50 via-yellow-25 to-amber-50'
+                    ? 'from-red-50 via-red-25 to-pink-50 dark:from-red-950/40 dark:via-red-900/30 dark:to-pink-950/20' 
+                    : 'from-orange-50 via-yellow-25 to-amber-50 dark:from-orange-950/40 dark:via-amber-900/30 dark:to-amber-950/20'
                 } p-3 rounded-lg border-l-4 ${
-                  userType === 'diretor' ? 'border-red-500' : 'border-orange-500'
+                  userType === 'diretor' ? 'border-red-500 dark:border-red-600' : 'border-orange-500 dark:border-orange-600'
                 }`}>
                   <div className="flex items-center gap-3">
                     <div className={`p-2 rounded-full ${
-                      userType === 'diretor' ? 'bg-red-100' : 'bg-orange-100'
+                      userType === 'diretor' ? 'bg-red-100 dark:bg-red-950/40' : 'bg-orange-100 dark:bg-orange-950/40'
                     }`}>
                       <Plus className={`h-5 w-5 ${
-                        userType === 'diretor' ? 'text-red-600' : 'text-orange-600'
+                        userType === 'diretor' ? 'text-red-600 dark:text-red-300' : 'text-orange-600 dark:text-orange-300'
                       }`} />
                     </div>
                     <div>
                       <h3 className={`font-semibold text-lg ${
-                        userType === 'diretor' ? 'text-red-900' : 'text-orange-900'
+                        userType === 'diretor' ? 'text-red-900 dark:text-red-200' : 'text-orange-900 dark:text-orange-200'
                       }`}>
                         Criar Novo {userTypeSingular}
                       </h3>
                       <p className={`text-sm ${
-                        userType === 'diretor' ? 'text-red-700' : 'text-orange-700'
+                        userType === 'diretor' ? 'text-red-700 dark:text-red-300' : 'text-orange-700 dark:text-orange-300'
                       }`}>
                         Preencha as informações para criar um novo {userTypeSingular.toLowerCase()}
                       </p>
@@ -446,18 +452,18 @@ export function LinkDirectorCoordinatorModal({
                 </div>
 
                 {/* Formulário */}
-                <div className="bg-white rounded-lg border shadow-sm p-4">
+                <div className="bg-card rounded-lg border border-border shadow-sm p-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Nome Completo */}
                     <div className="space-y-2">
-                      <Label htmlFor="name" className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                      <Label htmlFor="name" className="text-sm font-medium text-foreground flex items-center gap-1">
                         Nome Completo
                         <span className="text-red-500">*</span>
                       </Label>
                       <Input
                         id="name"
                         placeholder="Digite o nome completo"
-                        className={`h-11 transition-all duration-200 border-gray-300 focus:border-transparent focus:ring-2 ${
+                        className={`h-11 transition-all duration-200 border-input bg-background focus:border-transparent focus:ring-2 ${
                           userType === 'diretor' 
                             ? 'focus:ring-red-500 focus:ring-opacity-50' 
                             : 'focus:ring-orange-500 focus:ring-opacity-50'
@@ -469,7 +475,7 @@ export function LinkDirectorCoordinatorModal({
 
                     {/* Email */}
                     <div className="space-y-2">
-                      <Label htmlFor="email" className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                      <Label htmlFor="email" className="text-sm font-medium text-foreground flex items-center gap-1">
                         Email
                         <span className="text-red-500">*</span>
                       </Label>
@@ -477,7 +483,7 @@ export function LinkDirectorCoordinatorModal({
                         id="email"
                         type="email"
                         placeholder="exemplo@email.com"
-                        className={`h-11 transition-all duration-200 border-gray-300 focus:border-transparent focus:ring-2 ${
+                        className={`h-11 transition-all duration-200 border-input bg-background focus:border-transparent focus:ring-2 ${
                           userType === 'diretor' 
                             ? 'focus:ring-red-500 focus:ring-opacity-50' 
                             : 'focus:ring-orange-500 focus:ring-opacity-50'
@@ -489,7 +495,7 @@ export function LinkDirectorCoordinatorModal({
 
                     {/* Senha */}
                     <div className="space-y-2">
-                      <Label htmlFor="password" className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                      <Label htmlFor="password" className="text-sm font-medium text-foreground flex items-center gap-1">
                         Senha
                         <span className="text-red-500">*</span>
                       </Label>
@@ -497,7 +503,7 @@ export function LinkDirectorCoordinatorModal({
                         id="password"
                         type="password"
                         placeholder="Digite uma senha segura"
-                        className={`h-11 transition-all duration-200 border-gray-300 focus:border-transparent focus:ring-2 ${
+                        className={`h-11 transition-all duration-200 border-input bg-background focus:border-transparent focus:ring-2 ${
                           userType === 'diretor' 
                             ? 'focus:ring-red-500 focus:ring-opacity-50' 
                             : 'focus:ring-orange-500 focus:ring-opacity-50'
@@ -509,14 +515,14 @@ export function LinkDirectorCoordinatorModal({
 
                     {/* Matrícula */}
                     <div className="space-y-2">
-                      <Label htmlFor="registration" className="text-sm font-medium text-gray-700">
+                      <Label htmlFor="registration" className="text-sm font-medium text-foreground">
                         Matrícula
-                        <span className="text-gray-400 ml-1">(Opcional)</span>
+                        <span className="text-muted-foreground ml-1">(Opcional)</span>
                       </Label>
                       <Input
                         id="registration"
                         placeholder="Digite a matrícula"
-                        className={`h-11 transition-all duration-200 border-gray-300 focus:border-transparent focus:ring-2 ${
+                        className={`h-11 transition-all duration-200 border-input bg-background focus:border-transparent focus:ring-2 ${
                           userType === 'diretor' 
                             ? 'focus:ring-red-500 focus:ring-opacity-50' 
                             : 'focus:ring-orange-500 focus:ring-opacity-50'
@@ -529,14 +535,14 @@ export function LinkDirectorCoordinatorModal({
 
                   {/* Data de Nascimento */}
                   <div className="mt-4 space-y-2">
-                    <Label htmlFor="birth_date" className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                    <Label htmlFor="birth_date" className="text-sm font-medium text-foreground flex items-center gap-1">
                       Data de Nascimento
                       <span className="text-red-500">*</span>
                     </Label>
                     <Input
                       id="birth_date"
                       type="date"
-                      className={`h-11 w-full max-w-xs transition-all duration-200 border-gray-300 focus:border-transparent focus:ring-2 ${
+                      className={`h-11 w-full max-w-xs transition-all duration-200 border-input bg-background focus:border-transparent focus:ring-2 ${
                         userType === 'diretor' 
                           ? 'focus:ring-red-500 focus:ring-opacity-50' 
                           : 'focus:ring-orange-500 focus:ring-opacity-50'
@@ -547,7 +553,7 @@ export function LinkDirectorCoordinatorModal({
                   </div>
                   
                   {/* Botões */}
-                  <div className="flex flex-col sm:flex-row gap-3 mt-6 pt-4 border-t border-gray-200">
+                  <div className="flex flex-col sm:flex-row gap-3 mt-6 pt-4 border-t border-border/60">
                     <Button 
                       variant="outline" 
                       onClick={onClose} 
@@ -561,8 +567,8 @@ export function LinkDirectorCoordinatorModal({
                       disabled={isCreating}
                       className={`order-1 sm:order-2 flex-1 h-11 text-white font-medium shadow-sm transition-all duration-200 ${
                         userType === 'diretor' 
-                          ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500' 
-                          : 'bg-orange-600 hover:bg-orange-700 focus:ring-orange-500'
+                          ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500 dark:bg-red-500 dark:hover:bg-red-400' 
+                          : 'bg-orange-600 hover:bg-orange-700 focus:ring-orange-500 dark:bg-orange-500 dark:hover:bg-orange-400'
                       } focus:ring-2 focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed`}
                     >
                       {isCreating ? (

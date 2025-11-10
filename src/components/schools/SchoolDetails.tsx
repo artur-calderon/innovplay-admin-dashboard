@@ -243,15 +243,26 @@ export default function SchoolDetails() {
         console.log('👨‍🏫 Vínculos encontrados:', vinculos);
         
         // Mapear os vínculos para o formato esperado pelo componente
-        const allTeachers = vinculos.map(vinculo => ({
-          id: vinculo.professor.id,
-          name: vinculo.professor.name,
-          email: vinculo.professor.email,
-          registration: vinculo.registration,
-          school_id: vinculo.school_id,
-          teacher_id: vinculo.teacher_id,
-          role: 'professor' // Assumindo que todos são professores
-        }));
+        const allTeachers = vinculos.reduce((acc: any[], vinculo: any) => {
+          const professor = vinculo?.professor;
+
+          if (!professor) {
+            console.warn("Vínculo de professor sem dados do professor encontrado:", vinculo);
+            return acc;
+          }
+
+          acc.push({
+            id: professor.id,
+            name: professor.name,
+            email: professor.email,
+            registration: vinculo.registration,
+            school_id: vinculo.school_id,
+            teacher_id: vinculo.teacher_id,
+            role: "professor",
+          });
+
+          return acc;
+        }, []);
         
         console.log('👨‍🏫 Todos os professores mapeados:', allTeachers);
         
@@ -951,6 +962,7 @@ export default function SchoolDetails() {
         onClose={() => setShowLinkDirectorModal(false)}
         schoolId={school.id}
         schoolName={school.name}
+        schoolCityId={school.city_id}
         userType="diretor"
         onSuccess={() => {
           // Recarregar dados da escola
@@ -964,6 +976,7 @@ export default function SchoolDetails() {
         onClose={() => setShowLinkCoordinatorModal(false)}
         schoolId={school.id}
         schoolName={school.name}
+        schoolCityId={school.city_id}
         userType="coordenador"
         onSuccess={() => {
           // Recarregar dados da escola

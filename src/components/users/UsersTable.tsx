@@ -465,7 +465,7 @@ export default function UsersTable() {
           requestBody.city_id = userData.city_id;
         }
 
-        const response = await api.post('/manager', requestBody);
+        const response = await api.post('/managers', requestBody);
 
         if (response.status === 200 || response.status === 201) {
           toast.success('Usuário criado com sucesso!');
