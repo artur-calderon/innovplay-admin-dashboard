@@ -404,23 +404,23 @@ export function ManageClassModal({
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent className="w-[95vw] max-w-7xl h-[95vh] max-h-[95vh] overflow-hidden flex flex-col p-0">
-          <DialogHeader className="px-4 sm:px-6 py-4 border-b bg-gradient-to-r from-blue-50 to-green-50">
-            <DialogTitle className="flex flex-col sm:flex-row sm:items-center gap-2 text-lg sm:text-xl">
+          <DialogHeader className="px-4 sm:px-6 py-4 border-b bg-gradient-to-r from-blue-50 to-green-50 dark:from-blue-950/40 dark:via-sky-950/30 dark:to-emerald-950/25">
+            <DialogTitle className="font-semibold tracking-tight flex flex-col sm:flex-row sm:items-center gap-2 text-lg sm:text-xl text-foreground">
               <div className="flex items-center gap-2">
-                <Users className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600" />
+                <Users className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600 dark:text-blue-400" />
                 <span className="font-semibold">Gerenciar Turma</span>
               </div>
-              <span className="text-base sm:text-lg font-medium text-blue-700 sm:ml-2">
+              <span className="text-base sm:text-lg font-medium text-blue-700 dark:text-blue-300 sm:ml-2">
                 {classData.name}
               </span>
             </DialogTitle>
-            <DialogDescription className="text-sm sm:text-base text-gray-600 mt-2">
+            <DialogDescription className="text-sm sm:text-base text-muted-foreground mt-2">
               <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
                 <span>Visualize e gerencie professores e alunos da turma</span>
                 {classData.grade && (
                   <span className="flex items-center gap-1">
                     <span className="hidden sm:inline">•</span>
-                    <span className="text-xs sm:text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded-full font-medium">
+                    <span className="text-xs sm:text-sm bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200 px-2 py-1 rounded-full font-medium">
                       Série: {typeof classData.grade === 'object' && classData.grade !== null ? (classData.grade as GradeObject).name : String(classData.grade)}
                     </span>
                   </span>
@@ -431,10 +431,10 @@ export function ManageClassModal({
 
           <div className="flex-1 overflow-hidden px-4 sm:px-6">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-              <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-0 h-auto sm:h-10 p-1 bg-gray-100 rounded-lg my-4">
+              <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-0 h-auto sm:h-10 p-1 bg-gray-100 dark:bg-muted rounded-lg my-4">
                 <TabsTrigger 
                   value="manage" 
-                  className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                  className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
                 >
                   <Users className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                   <span className="hidden xs:inline">Gerenciar</span>
@@ -442,7 +442,7 @@ export function ManageClassModal({
                 </TabsTrigger>
                 <TabsTrigger 
                   value="create-student" 
-                  className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                  className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
                 >
                   <UserPlus className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                   <span className="hidden xs:inline">Novo Aluno</span>
@@ -450,7 +450,7 @@ export function ManageClassModal({
                 </TabsTrigger>
                 <TabsTrigger 
                   value="create-teacher" 
-                  className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                  className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
                 >
                   <GraduationCap className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                   <span className="hidden xs:inline">Novo Professor</span>
@@ -462,7 +462,7 @@ export function ManageClassModal({
                 {isLoading ? (
                   <div className="flex flex-col items-center justify-center p-8 h-full">
                     <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
-                    <span className="text-sm sm:text-base text-gray-600">Carregando dados da turma...</span>
+                    <span className="text-sm sm:text-base text-muted-foreground">Carregando dados da turma...</span>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6 h-full overflow-y-auto pr-2 pb-4 scroll-smooth">
@@ -487,16 +487,16 @@ export function ManageClassModal({
                         </Button>
                       </div>
 
-                      <div className="border rounded-lg flex-1 overflow-hidden bg-white">
+                      <div className="border rounded-lg flex-1 overflow-hidden bg-card border-border">
                         {teachers.length === 0 ? (
                           <div className="flex flex-col items-center justify-center p-6 sm:p-8 h-full min-h-[200px]">
-                            <div className="bg-blue-50 p-4 rounded-full mb-4">
-                              <GraduationCap className="h-6 w-6 sm:h-8 sm:w-8 text-blue-400" />
+                            <div className="bg-blue-50 dark:bg-blue-950/40 p-4 rounded-full mb-4">
+                              <GraduationCap className="h-6 w-6 sm:h-8 sm:w-8 text-blue-400 dark:text-blue-300" />
                             </div>
-                            <p className="text-sm sm:text-base text-gray-500 text-center">
+                            <p className="text-sm sm:text-base text-muted-foreground text-center">
                               Nenhum professor vinculado
                             </p>
-                            <p className="text-xs sm:text-sm text-gray-400 text-center mt-1">
+                            <p className="text-xs sm:text-sm text-muted-foreground/80 text-center mt-1">
                               Clique em "Adicionar Professor" para vincular
                             </p>
                           </div>
@@ -509,15 +509,15 @@ export function ManageClassModal({
                                   className="flex items-center gap-3 p-3 sm:p-4 border rounded-lg hover:bg-muted transition-colors border-border"
                                 >
                                   <div className="flex-shrink-0">
-                                    <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                                      <GraduationCap className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
+                                    <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-100 dark:bg-blue-950/30 rounded-full flex items-center justify-center">
+                                      <GraduationCap className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 dark:text-blue-300" />
                                     </div>
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                    <div className="font-medium text-sm sm:text-base truncate text-gray-900">
+                                    <div className="font-medium text-sm sm:text-base truncate text-foreground">
                                       {teacher.name}
                                     </div>
-                                    <div className="text-xs sm:text-sm text-gray-500 truncate">
+                                    <div className="text-xs sm:text-sm text-muted-foreground truncate">
                                       {teacher.email}
                                     </div>
                                   </div>
@@ -525,15 +525,15 @@ export function ManageClassModal({
                                     <Button
                                       variant="ghost"
                                       size="sm"
-                                      className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-blue-50"
+                                      className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-blue-50 dark:hover:bg-blue-950/30"
                                       onClick={() => {/* TODO: Ver detalhes do professor */}}
                                     >
-                                      <Eye className="h-3 w-3 sm:h-4 sm:w-4 text-blue-600" />
+                                      <Eye className="h-3 w-3 sm:h-4 sm:w-4 text-blue-600 dark:text-blue-300" />
                                     </Button>
                                     <Button
                                       variant="ghost"
                                       size="sm"
-                                      className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-red-50"
+                                      className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-red-50 dark:hover:bg-red-950/30"
                                       onClick={() => handleRemoveTeacher(teacher.id)}
                                       disabled={isRemoving === `teacher-${teacher.id}`}
                                     >
@@ -573,16 +573,16 @@ export function ManageClassModal({
                         </Button>
                       </div>
 
-                      <div className="border rounded-lg flex-1 overflow-hidden bg-white">
+                      <div className="border rounded-lg flex-1 overflow-hidden bg-card border-border">
                         {students.length === 0 ? (
                           <div className="flex flex-col items-center justify-center p-6 sm:p-8 h-full min-h-[200px]">
-                            <div className="bg-green-50 p-4 rounded-full mb-4">
-                              <Users className="h-6 w-6 sm:h-8 sm:w-8 text-green-400" />
+                            <div className="bg-green-50 dark:bg-green-950/40 p-4 rounded-full mb-4">
+                              <Users className="h-6 w-6 sm:h-8 sm:w-8 text-green-400 dark:text-green-300" />
                             </div>
-                            <p className="text-sm sm:text-base text-gray-500 text-center">
+                            <p className="text-sm sm:text-base text-muted-foreground text-center">
                               Nenhum aluno vinculado
                             </p>
-                            <p className="text-xs sm:text-sm text-gray-400 text-center mt-1">
+                            <p className="text-xs sm:text-sm text-muted-foreground/80 text-center mt-1">
                               Clique em "Adicionar Aluno" para vincular
                             </p>
                           </div>
@@ -595,15 +595,15 @@ export function ManageClassModal({
                                   className="flex items-center gap-3 p-3 sm:p-4 border rounded-lg hover:bg-muted transition-colors border-border"
                                 >
                                   <div className="flex-shrink-0">
-                                    <div className="w-8 h-8 sm:w-10 sm:h-10 bg-green-100 rounded-full flex items-center justify-center">
-                                      <Users className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
+                                    <div className="w-8 h-8 sm:w-10 sm:h-10 bg-green-100 dark:bg-green-950/30 rounded-full flex items-center justify-center">
+                                      <Users className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 dark:text-green-300" />
                                     </div>
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                    <div className="font-medium text-sm sm:text-base truncate text-gray-900">
+                                    <div className="font-medium text-sm sm:text-base truncate text-foreground">
                                       {student.name}
                                     </div>
-                                    <div className="text-xs sm:text-sm text-gray-500 truncate">
+                                    <div className="text-xs sm:text-sm text-muted-foreground truncate">
                                       {student.email || student.user?.email}
                                     </div>
                                   </div>
@@ -611,15 +611,15 @@ export function ManageClassModal({
                                     <Button
                                       variant="ghost"
                                       size="sm"
-                                      className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-green-50"
+                                      className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-green-50 dark:hover:bg-green-950/30"
                                       onClick={() => {/* TODO: Ver detalhes do aluno */}}
                                     >
-                                      <Eye className="h-3 w-3 sm:h-4 sm:w-4 text-green-600" />
+                                      <Eye className="h-3 w-3 sm:h-4 sm:w-4 text-green-600 dark:text-green-300" />
                                     </Button>
                                     <Button
                                       variant="ghost"
                                       size="sm"
-                                      className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-red-50"
+                                      className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-red-50 dark:hover:bg-red-950/30"
                                       onClick={() => handleRemoveStudent(student.id)}
                                       disabled={isRemoving === `student-${student.id}`}
                                     >
@@ -641,43 +641,43 @@ export function ManageClassModal({
                 )}
               </TabsContent>
 
-              <TabsContent value="create-student" className="flex-1 mt-0 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400 pr-2 pb-4 scroll-smooth">
+              <TabsContent value="create-student" className="flex-1 mt-0 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 dark:scrollbar-thumb-gray-700 dark:scrollbar-track-gray-900 hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-600 pr-2 pb-4 scroll-smooth">
                 <Card className="mx-auto max-w-4xl">
                   <CardHeader className="pb-4">
                     <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
-                      <UserPlus className="h-5 w-5 sm:h-6 sm:w-6 text-green-600" />
+                      <UserPlus className="h-5 w-5 sm:h-6 sm:w-6 text-green-600 dark:text-green-300" />
                       Criar Novo Aluno
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-6">
-                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 sm:p-6 rounded-xl border border-blue-200">
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:via-indigo-950/30 dark:to-indigo-950/20 p-4 sm:p-6 rounded-xl border border-blue-200 dark:border-blue-900/60">
                       <div className="flex items-start gap-3 mb-4">
-                        <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                          <span className="text-blue-600 text-lg">📧</span>
+                        <div className="flex-shrink-0 w-8 h-8 bg-blue-100 dark:bg-blue-900/50 rounded-full flex items-center justify-center">
+                          <span className="text-blue-600 dark:text-blue-300 text-lg">📧</span>
                         </div>
                         <div className="flex-1">
-                          <p className="font-semibold text-blue-800 text-sm sm:text-base mb-2">
+                          <p className="font-semibold text-blue-800 dark:text-blue-200 text-sm sm:text-base mb-2">
                             Credenciais Automáticas
                           </p>
                           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs sm:text-sm">
-                            <div className="bg-white/70 p-3 rounded-lg">
-                              <p className="font-medium text-gray-800 mb-1">
+                            <div className="bg-white/70 dark:bg-white/10 p-3 rounded-lg">
+                              <p className="font-medium text-foreground mb-1">
                                 <strong>Email:</strong> Iniciais do nome + "@innovplay.com"
                               </p>
-                              <p className="text-blue-600 font-mono text-xs">
+                              <p className="text-blue-600 dark:text-blue-300 font-mono text-xs">
                                 Ex: "João Silva" → js@innovplay.com
                               </p>
                             </div>
-                            <div className="bg-white/70 p-3 rounded-lg">
-                              <p className="font-medium text-gray-800 mb-1">
+                            <div className="bg-white/70 dark:bg-white/10 p-3 rounded-lg">
+                              <p className="font-medium text-foreground mb-1">
                                 <strong>Senha:</strong> Primeiro nome + "@innovplay"
                               </p>
-                              <p className="text-blue-600 font-mono text-xs">
+                              <p className="text-blue-600 dark:text-blue-300 font-mono text-xs">
                                 Ex: "João Silva" → joão@innovplay
                               </p>
                             </div>
                           </div>
-                          <p className="text-xs sm:text-sm mt-3 text-blue-700 font-medium flex items-center gap-1">
+                          <p className="text-xs sm:text-sm mt-3 text-blue-700 dark:text-blue-300 font-medium flex items-center gap-1">
                             <span>✨</span>
                             As credenciais aparecerão automaticamente conforme você digita o nome
                           </p>
@@ -687,7 +687,7 @@ export function ManageClassModal({
 
                     <div className="space-y-6">
                       <div className="space-y-3">
-                        <Label htmlFor="student-name" className="text-sm sm:text-base font-medium">
+                        <Label htmlFor="student-name" className="text-sm sm:text-base font-medium text-foreground">
                           Nome Completo *
                         </Label>
                         <Input
@@ -701,25 +701,25 @@ export function ManageClassModal({
 
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                         <div className="space-y-3">
-                          <Label htmlFor="student-email" className="text-sm font-medium text-gray-600">
+                          <Label htmlFor="student-email" className="text-sm font-medium text-muted-foreground">
                             Email (Gerado automaticamente)
                           </Label>
                           <Input
                             id="student-email"
                             placeholder="Email será gerado automaticamente"
-                            className="bg-gray-50 border-gray-200 font-mono text-sm h-11 cursor-not-allowed"
+                            className="bg-muted border-border font-mono text-sm h-11 cursor-not-allowed"
                             value={formData.email}
                             readOnly
                           />
                         </div>
                         <div className="space-y-3">
-                          <Label htmlFor="student-password" className="text-sm font-medium text-gray-600">
+                          <Label htmlFor="student-password" className="text-sm font-medium text-muted-foreground">
                             Senha (Gerada automaticamente)
                           </Label>
                           <Input
                             id="student-password"
                             placeholder="Senha será gerada automaticamente"
-                            className="bg-gray-50 border-gray-200 font-mono text-sm h-11 cursor-not-allowed"
+                            className="bg-muted border-border font-mono text-sm h-11 cursor-not-allowed"
                             value={formData.password}
                             readOnly
                           />
@@ -728,7 +728,7 @@ export function ManageClassModal({
 
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                         <div className="space-y-3">
-                          <Label htmlFor="student-registration" className="text-sm sm:text-base font-medium">
+                          <Label htmlFor="student-registration" className="text-sm sm:text-base font-medium text-foreground">
                             Matrícula (Opcional)
                           </Label>
                           <Input
@@ -740,7 +740,7 @@ export function ManageClassModal({
                           />
                         </div>
                         <div className="space-y-3">
-                          <Label htmlFor="student-birthdate" className="text-sm sm:text-base font-medium">
+                          <Label htmlFor="student-birthdate" className="text-sm sm:text-base font-medium text-foreground">
                             Data de Nascimento *
                           </Label>
                           <Input
@@ -754,7 +754,7 @@ export function ManageClassModal({
                       </div>
                     </div>
 
-                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-6 border-t">
+                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-6 border-t border-border/60">
                       <Button 
                         variant="outline" 
                         onClick={onClose} 
@@ -766,7 +766,7 @@ export function ManageClassModal({
                       <Button 
                         onClick={handleCreateStudent} 
                         disabled={isCreating}
-                        className="order-1 sm:order-2 flex-1 h-11 bg-green-600 hover:bg-green-700"
+                        className="order-1 sm:order-2 flex-1 h-11 bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-400"
                       >
                         {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         <UserPlus className="mr-2 h-4 w-4" />
@@ -777,25 +777,25 @@ export function ManageClassModal({
                 </Card>
               </TabsContent>
 
-              <TabsContent value="create-teacher" className="flex-1 mt-0 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400 pr-2 pb-4 scroll-smooth">
+              <TabsContent value="create-teacher" className="flex-1 mt-0 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 dark:scrollbar-thumb-gray-700 dark:scrollbar-track-gray-900 hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-600 pr-2 pb-4 scroll-smooth">
                 <Card className="mx-auto max-w-4xl">
                   <CardHeader className="pb-4">
                     <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
-                      <UserPlus className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600" />
+                      <UserPlus className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600 dark:text-blue-300" />
                       Criar Novo Professor
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-6">
-                    <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 sm:p-6 rounded-xl border border-blue-200">
+                    <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/40 dark:via-indigo-950/30 dark:to-purple-950/20 p-4 sm:p-6 rounded-xl border border-blue-200 dark:border-blue-900/60">
                       <div className="flex items-start gap-3">
-                        <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                          <GraduationCap className="h-4 w-4 text-blue-600" />
+                        <div className="flex-shrink-0 w-8 h-8 bg-blue-100 dark:bg-blue-900/50 rounded-full flex items-center justify-center">
+                          <GraduationCap className="h-4 w-4 text-blue-600 dark:text-blue-300" />
                         </div>
                         <div className="flex-1">
-                          <p className="font-semibold text-blue-800 text-sm sm:text-base mb-2">
+                          <p className="font-semibold text-blue-800 dark:text-blue-200 text-sm sm:text-base mb-2">
                             Informações do Professor
                           </p>
-                          <p className="text-xs sm:text-sm text-blue-700">
+                          <p className="text-xs sm:text-sm text-blue-700 dark:text-blue-300">
                             Preencha os dados do novo professor que será vinculado à escola e poderá ser associado a esta turma.
                           </p>
                         </div>
@@ -805,7 +805,7 @@ export function ManageClassModal({
                     <div className="space-y-6">
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                         <div className="space-y-3">
-                          <Label htmlFor="teacher-nome" className="text-sm sm:text-base font-medium">
+                          <Label htmlFor="teacher-nome" className="text-sm sm:text-base font-medium text-foreground">
                             Nome Completo *
                           </Label>
                           <Input
@@ -817,7 +817,7 @@ export function ManageClassModal({
                           />
                         </div>
                         <div className="space-y-3">
-                          <Label htmlFor="teacher-email" className="text-sm sm:text-base font-medium">
+                          <Label htmlFor="teacher-email" className="text-sm sm:text-base font-medium text-foreground">
                             Email *
                           </Label>
                           <Input
@@ -833,7 +833,7 @@ export function ManageClassModal({
                       
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                         <div className="space-y-3">
-                          <Label htmlFor="teacher-senha" className="text-sm sm:text-base font-medium">
+                          <Label htmlFor="teacher-senha" className="text-sm sm:text-base font-medium text-foreground">
                             Senha *
                           </Label>
                           <Input
@@ -846,7 +846,7 @@ export function ManageClassModal({
                           />
                         </div>
                         <div className="space-y-3">
-                          <Label htmlFor="teacher-matricula" className="text-sm sm:text-base font-medium">
+                          <Label htmlFor="teacher-matricula" className="text-sm sm:text-base font-medium text-foreground">
                             Matrícula (Opcional)
                           </Label>
                           <Input
@@ -860,7 +860,7 @@ export function ManageClassModal({
                       </div>
                       
                       <div className="space-y-3">
-                        <Label htmlFor="teacher-birth_date" className="text-sm sm:text-base font-medium">
+                        <Label htmlFor="teacher-birth_date" className="text-sm sm:text-base font-medium text-foreground">
                           Data de Nascimento *
                         </Label>
                         <Input
@@ -873,7 +873,7 @@ export function ManageClassModal({
                       </div>
                     </div>
                     
-                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-6 border-t">
+                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-6 border-t border-border/60">
                       <Button 
                         variant="outline" 
                         onClick={onClose} 
@@ -885,10 +885,10 @@ export function ManageClassModal({
                       <Button 
                         onClick={handleCreateTeacher} 
                         disabled={isCreating}
-                        className="order-1 sm:order-2 flex-1 h-11 bg-blue-600 hover:bg-blue-700"
+                        className="order-1 sm:order-2 flex-1 h-11 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400"
                       >
                         {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        <GraduationCap className="mr-2 h-4 w-4" />
+                        <UserPlus className="mr-2 h-4 w-4" />
                         Criar Professor
                       </Button>
                     </div>
@@ -898,7 +898,7 @@ export function ManageClassModal({
             </Tabs>
           </div>
 
-          <DialogFooter className="px-4 sm:px-6 py-4 border-t bg-gray-50/50">
+          <DialogFooter className="px-4 sm:px-6 py-4 border-t bg-gray-50/50 dark:bg-muted">
             <Button 
               variant="outline" 
               onClick={onClose}

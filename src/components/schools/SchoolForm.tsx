@@ -70,6 +70,16 @@ export default function SchoolForm({ school, onClose, onSave, onDelete, isLoadin
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!formData.name.trim() || !formData.address.trim() || !formData.city_id) {
+      toast({
+        title: "Campos obrigatórios",
+        description: "Preencha nome, endereço e município antes de salvar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsDeleting(true);
 
     try {
@@ -135,13 +145,11 @@ export default function SchoolForm({ school, onClose, onSave, onDelete, isLoadin
             <div className="space-y-2">
               <Label htmlFor="domain" className="flex items-center gap-1">
                 Domínio
-                <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="domain"
                 value={formData.domain}
                 onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
-                required
                 disabled={isLoading || isDeleting}
                 autoComplete="off"
                 className="h-11"
