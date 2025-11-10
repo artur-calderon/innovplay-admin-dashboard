@@ -178,6 +178,16 @@ export default function Instituicao() {
   const handleSaveInstituicao = async (instituicao: Partial<Instituicao>) => {
     setIsSaving(true);
     try {
+      if (!instituicao.name?.trim() || !instituicao.address?.trim() || !instituicao.city_id) {
+        toast({
+          title: "Campos obrigatórios",
+          description: "Informe nome, endereço e município antes de salvar.",
+          variant: "destructive",
+        });
+        setIsSaving(false);
+        return;
+      }
+
       if (selectedInstituicao) {
         // Atualizar instituição existente
         const response = await api.put(`/school/${selectedInstituicao.id}`, instituicao);

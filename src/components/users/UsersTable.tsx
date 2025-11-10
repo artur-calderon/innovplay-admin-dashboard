@@ -334,25 +334,39 @@ export default function UsersTable() {
     setCurrentPage(1);
   }, [debouncedSearchTerm, filters]);
 
-  // Fetch users from API
   const fetchUsers = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
-      
+
       const response = await api.get('/users/list');
-      
-      // Get users from response data
       const usersData = response.data?.users || [];
-      
-      // Transform the roles to display format (city names will be added separately)
+
       const formattedUsers = usersData.map((user: User) => ({
         ...user,
-                        role: getRoleDisplayName(user.role),
-        city_name: '' // Will be populated by separate effect
+        role: getRoleDisplayName(user.role),
+        city_id: user.city_id ? String(user.city_id) : null,
+        city_name: ''
       }));
-      
+
       setUsers(formattedUsers);
+
+      if (Array.isArray(municipios) && municipios.length > 0) {
+        setUsers(prevUsers =>
+          prevUsers.map(user => {
+            const cityId = user.city_id ? String(user.city_id) : null;
+            const cityName = cityId
+              ? municipios.find(m => m.id.toString() === cityId)?.name || ''
+              : '';
+
+            return {
+              ...user,
+              city_id: cityId,
+              city_name: cityName,
+            };
+          })
+        );
+      }
     } catch (error) {
       console.error('Error fetching users:', error);
       setError('Erro ao carregar usuários');
@@ -360,7 +374,7 @@ export default function UsersTable() {
     } finally {
       setIsLoading(false);
     }
-  }, []); // No dependencies to prevent infinite loops
+  }, [municipios]);
 
   // Load users only once on mount
   useEffect(() => {
@@ -368,18 +382,25 @@ export default function UsersTable() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run on mount
 
-  // Update city names when municipios data is available
+  // Update city names whenever both users and municipios are ready
   useEffect(() => {
     if (Array.isArray(municipios) && municipios.length > 0 && users.length > 0) {
-      setUsers(prevUsers => 
-        prevUsers.map(user => ({
-          ...user,
-          city_name: municipios.find(m => m.id.toString() === user.city_id)?.name || ''
-        }))
+      setUsers(prevUsers =>
+        prevUsers.map(user => {
+          const cityId = user.city_id ? String(user.city_id) : null;
+          const cityName = cityId
+            ? municipios.find(m => m.id.toString() === cityId)?.name || ''
+            : '';
+
+          return {
+            ...user,
+            city_id: cityId,
+            city_name: cityName,
+          };
+        })
       );
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [municipios]); // Update city names when municipios change
+  }, [municipios, users.length]);
 
   // Event handlers
   const handleFilterChange = (key: keyof Filters, value: string) => {
@@ -465,7 +486,7 @@ export default function UsersTable() {
           requestBody.city_id = userData.city_id;
         }
 
-        const response = await api.post('/manager', requestBody);
+        const response = await api.post('/managers', requestBody);
 
         if (response.status === 200 || response.status === 201) {
           toast.success('Usuário criado com sucesso!');
