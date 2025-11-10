@@ -268,7 +268,8 @@ export default function AnaliseAvaliacoes() {
       
       // Buscar o relatório PDF diretamente do backend
       const response = await api.get(apiUrl, {
-        responseType: 'blob' // Importante: receber como blob
+        responseType: 'blob', // Importante: receber como blob
+        timeout: 120000 // Aumenta o tempo limite especificamente para geração do PDF (2 minutos)
       });
       
       // Criar URL do blob
