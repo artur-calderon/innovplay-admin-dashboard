@@ -9,7 +9,7 @@ variables:
     DOCKER_BUILDKIT: 0
 
 default:
-    image: docker:24.0
+    image: docker:23.0
 
 workflow:
     rules:
