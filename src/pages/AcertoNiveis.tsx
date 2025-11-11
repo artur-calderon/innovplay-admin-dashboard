@@ -110,7 +110,159 @@ type TabelaDetalhadaPorDisciplina = {
       proficiencia: number;
     }>;
   }>;
+  geral?: {
+    alunos: Array<{
+      id: string;
+      nome: string;
+      escola?: string;
+      serie?: string;
+      turma?: string;
+      nota_geral?: number;
+      proficiencia_geral?: number;
+      nivel_proficiencia_geral?: string;
+      total_acertos_geral?: number;
+      total_em_branco_geral?: number;
+      total_questoes_geral?: number;
+      total_respondidas_geral?: number;
+      status_geral?: string;
+      [key: string]: unknown;
+    }>;
+  };
 } | null;
+
+const mapDetailedStudentsToResults = (alunos: DetailedReport['alunos'] | undefined): StudentResult[] => {
+  if (!alunos) return [];
+
+  return alunos.map((aluno) => {
+    const respostasMap: Record<string, boolean | null> = {};
+    aluno.respostas?.forEach((resp) => {
+      const key = `q${resp.questao_numero}`;
+      if (resp.resposta_em_branco) {
+        respostasMap[key] = null;
+      } else {
+        respostasMap[key] = resp.resposta_correta;
+      }
+    });
+
+    return {
+      id: aluno.id,
+      nome: aluno.nome,
+      turma: aluno.turma,
+      nota: aluno.nota_final,
+      proficiencia: aluno.proficiencia,
+      classificacao: aluno.classificacao,
+      acertos: aluno.total_acertos,
+      erros: aluno.total_erros,
+      questoes_respondidas: aluno.total_acertos + aluno.total_erros + aluno.total_em_branco,
+      status: aluno.status === 'concluida' ? 'concluida' : 'pendente',
+      respostas: respostasMap
+    } as StudentResult;
+  });
+};
+
+const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult[] => {
+  const studentsMap = new Map<string, StudentResult>();
+
+  tabela?.geral?.alunos?.forEach((aluno) => {
+    const totalQuestoes = aluno.total_questoes_geral ?? aluno.total_respondidas_geral ?? 0;
+    const totalRespondidas = aluno.total_respondidas_geral ?? totalQuestoes;
+    const totalAcertos = aluno.total_acertos_geral ?? 0;
+    const totalEmBranco = aluno.total_em_branco_geral ?? Math.max(0, totalQuestoes - totalRespondidas);
+    const totalErros = Math.max(0, totalRespondidas - totalAcertos - totalEmBranco);
+
+    studentsMap.set(aluno.id, {
+      id: aluno.id,
+      nome: aluno.nome,
+      turma: aluno.turma || '',
+      nota: Number(aluno.nota_geral ?? 0),
+      proficiencia: Number(aluno.proficiencia_geral ?? 0),
+      classificacao: (aluno.nivel_proficiencia_geral || 'Abaixo do Básico') as StudentResult['classificacao'],
+      acertos: totalAcertos,
+      erros: totalErros,
+      questoes_respondidas: totalRespondidas || totalQuestoes,
+      status: (aluno.status_geral ?? 'pendente') === 'concluida' ? 'concluida' : 'pendente',
+      respostas: {}
+    });
+  });
+
+  const geralIds = new Set(tabela?.geral?.alunos?.map((aluno) => aluno.id) ?? []);
+
+  tabela?.disciplinas?.forEach((disciplina) => {
+    disciplina.alunos?.forEach((aluno) => {
+      let student = studentsMap.get(aluno.id);
+
+      if (!student) {
+        const totalQuestoesDisciplina =
+          aluno.total_questoes_disciplina ?? aluno.respostas_por_questao?.length ?? 0;
+        const totalRespondidas = aluno.total_respondidas ?? totalQuestoesDisciplina;
+        const totalAcertos = aluno.total_acertos ?? 0;
+        const totalEmBranco = aluno.total_em_branco ?? Math.max(0, totalQuestoesDisciplina - totalRespondidas);
+        const totalErros = aluno.total_erros ?? Math.max(0, totalRespondidas - totalAcertos - totalEmBranco);
+
+        student = {
+          id: aluno.id,
+          nome: aluno.nome,
+          turma: aluno.turma || '',
+          nota: Number(aluno.nota ?? 0),
+          proficiencia: Number(aluno.proficiencia ?? 0),
+          classificacao: (aluno.nivel_proficiencia || 'Abaixo do Básico') as StudentResult['classificacao'],
+          acertos: totalAcertos,
+          erros: totalErros,
+          questoes_respondidas: totalRespondidas,
+          status: (aluno.status ?? 'pendente') === 'concluida' ? 'concluida' : 'pendente',
+          respostas: {}
+        };
+        studentsMap.set(aluno.id, student);
+      }
+
+      const respostasMap = student.respostas || (student.respostas = {});
+
+      aluno.respostas_por_questao?.forEach((resp) => {
+        const numeroQuestao = Number(resp.questao);
+        if (Number.isNaN(numeroQuestao) || numeroQuestao <= 0) return;
+        const key = `q${numeroQuestao}`;
+
+        if (!resp.respondeu) {
+          if (!(key in respostasMap)) {
+            respostasMap[key] = null;
+          }
+        } else {
+          respostasMap[key] = Boolean(resp.acertou);
+        }
+      });
+
+      if (!geralIds.has(aluno.id)) {
+        const totalQuestoesDisciplina =
+          aluno.total_questoes_disciplina ?? aluno.respostas_por_questao?.length ?? 0;
+        const totalRespondidas = aluno.total_respondidas ?? totalQuestoesDisciplina;
+        const totalAcertos = aluno.total_acertos ?? 0;
+        const totalEmBranco = aluno.total_em_branco ?? Math.max(0, totalQuestoesDisciplina - totalRespondidas);
+        const totalErros = aluno.total_erros ?? Math.max(0, totalRespondidas - totalAcertos - totalEmBranco);
+
+        student.acertos += totalAcertos;
+        student.erros += totalErros;
+        student.questoes_respondidas += totalRespondidas || totalQuestoesDisciplina;
+        if (student.status !== 'concluida' && (aluno.status ?? '') === 'concluida') {
+          student.status = 'concluida';
+        }
+        if (!student.classificacao || student.classificacao === 'Abaixo do Básico') {
+          student.classificacao = (aluno.nivel_proficiencia ||
+            'Abaixo do Básico') as StudentResult['classificacao'];
+        }
+        if (!student.nota) {
+          student.nota = Number(aluno.nota ?? 0);
+        }
+        if (!student.proficiencia) {
+          student.proficiencia = Number(aluno.proficiencia ?? 0);
+        }
+      }
+    });
+  });
+
+  return Array.from(studentsMap.values()).sort((a, b) =>
+    a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' })
+  );
+};
 
 export default function AcertoNiveis() {
   const { user } = useAuth();
@@ -149,6 +301,95 @@ export default function AcertoNiveis() {
     // Exemplos aceitos: LP9L1.2, 9N1.2, CN9L1.3, GE9L1.4, 9L1.1, 9S1.2, 9M1.1, 9 L 1.1, 9 N 1.2
     return /^(LP\d+L\d+\.\d+|\d+N\d\.\d+|[A-Z]{2}\d+L\d+\.\d+|\d+[LMSN]\d+\.\d+|\d+\s+[LMSN]\s+\d+\.\d+)$/.test(v);
   };
+
+  const getStateFilterValue = () => {
+    if (!selectedState) return undefined;
+    const stateObj = states.find((state) => state.id === selectedState);
+    return stateObj?.nome || selectedState;
+  };
+
+  const buildUnifiedFilters = React.useCallback((
+    evaluationId: string,
+    overrides: { schoolId?: string; gradeId?: string; classId?: string } = {}
+  ) => {
+    const filters: {
+      estado?: string;
+      municipio?: string;
+      avaliacao?: string;
+      escola?: string;
+      serie?: string;
+      turma?: string;
+    } = {};
+
+    const estadoValor = getStateFilterValue();
+    if (estadoValor) filters.estado = estadoValor;
+    if (selectedMunicipality) filters.municipio = selectedMunicipality;
+    filters.avaliacao = evaluationId;
+    if (overrides.schoolId) filters.escola = overrides.schoolId;
+    if (overrides.gradeId) filters.serie = overrides.gradeId;
+    if (overrides.classId) filters.turma = overrides.classId;
+
+    return filters;
+  }, [selectedMunicipality, selectedState, states]);
+
+  const fetchEvaluationData = React.useCallback(
+    async (
+      evaluationId: string,
+      overrides: { schoolId?: string; gradeId?: string; classId?: string } = {}
+    ) => {
+      const filters = buildUnifiedFilters(evaluationId, overrides);
+
+      try {
+        const unifiedResponse = await EvaluationResultsApiService.getEvaluationsList(1, 1, filters);
+
+      const tabelaDetalhada =
+        unifiedResponse?.tabela_detalhada &&
+        Array.isArray(unifiedResponse.tabela_detalhada.disciplinas)
+          ? {
+              ...unifiedResponse.tabela_detalhada,
+              disciplinas: unifiedResponse.tabela_detalhada.disciplinas.map((disciplina) => ({
+                ...disciplina,
+                alunos: [...(disciplina.alunos || [])].sort((a, b) =>
+                  a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' })
+                )
+              })),
+              geral: unifiedResponse.tabela_detalhada.geral
+                ? {
+                    alunos: [...(unifiedResponse.tabela_detalhada.geral.alunos || [])].sort((a, b) =>
+                      a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' })
+                    )
+                  }
+                : undefined
+            }
+          : null;
+
+        const studentsMapped = tabelaDetalhada ? mapUnifiedStudents(tabelaDetalhada) : [];
+
+        const detailedReport = await EvaluationResultsApiService.getDetailedReport(evaluationId).catch(
+          () => null
+        );
+
+        return {
+          students: studentsMapped,
+          report: detailedReport,
+          tabelaDetalhada,
+          estatisticas: unifiedResponse?.estatisticas_gerais || null
+        };
+      } catch (error) {
+        console.error('Erro ao carregar dados unificados:', error);
+        const detailedReport = await EvaluationResultsApiService.getDetailedReport(evaluationId).catch(
+          () => null
+        );
+        return {
+          students: mapDetailedStudentsToResults(detailedReport?.alunos),
+          report: detailedReport,
+          tabelaDetalhada: null,
+          estatisticas: null
+        };
+      }
+    },
+    [buildUnifiedFilters]
+  );
 
   // ✅ MODIFICADO: Usar apenas a proficiência do backend (tabela evaluation_results)
   // Removidas as funções de cálculo de proficiência por disciplina do frontend
@@ -454,50 +695,14 @@ export default function AcertoNiveis() {
       });
       setGrades(series);
       
-      // Recarregar dados dos alunos filtrados por escola
-      const { studentsResp, report } = await loadFilteredData(selectedEvaluationId, schoolId);
-      
-      // Atualizar dados dos alunos
-      if (report && report.alunos) {
-        const processedStudents = report.alunos.map((aluno: {
-          id: string;
-          nome: string;
-          turma: string;
-          serie?: string;
-          respostas?: Array<{ questao_numero: number; resposta_correta: boolean }>;
-          total_acertos: number;
-          total_erros: number;
-          total_em_branco: number;
-          nota_final: number;
-          proficiencia: number;
-          classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
-          status: string;
-        }) => {
-          const respostasMap: Record<string, boolean | null> = {};
-          aluno.respostas?.forEach((resp) => {
-            respostasMap[`q${resp.questao_numero}`] = resp.resposta_correta;
-          });
+      const { students: fetchedStudents, report, tabelaDetalhada: tabela } = await fetchEvaluationData(
+        selectedEvaluationId,
+        { schoolId }
+      );
 
-          return {
-            id: aluno.id,
-            nome: aluno.nome,
-            turma: aluno.turma,
-            nota: aluno.nota_final,
-            proficiencia: aluno.proficiencia,
-            classificacao: aluno.classificacao,
-            acertos: aluno.total_acertos,
-            erros: aluno.total_erros,
-            questoes_respondidas: aluno.total_acertos + aluno.total_erros + aluno.total_em_branco,
-            status: aluno.status === 'concluida' ? 'concluida' : 'pendente',
-            respostas: respostasMap
-          } as StudentResult;
-        });
-        setStudents(processedStudents);
-      } else if (studentsResp) {
-        setStudents(studentsResp as unknown as StudentResult[]);
-      }
-      
+      setStudents(fetchedStudents);
       setDetailedReport(report || null);
+      setTabelaDetalhada(tabela || null);
       
     } catch (e) {
       toast({ title: "Erro", description: "Não foi possível carregar dados da escola", variant: "destructive" });
@@ -521,6 +726,14 @@ export default function AcertoNiveis() {
         serie: gradeId
       });
       setClasses(turmas);
+
+      const { students: fetchedStudents, report, tabelaDetalhada: tabela } = await fetchEvaluationData(
+        selectedEvaluationId,
+        { schoolId: selectedSchoolId, gradeId }
+      );
+      setStudents(fetchedStudents);
+      setDetailedReport(report || null);
+      setTabelaDetalhada(tabela || null);
     } catch (e) {
       toast({ title: "Erro", description: "Não foi possível carregar turmas", variant: "destructive" });
     } finally {
@@ -529,66 +742,6 @@ export default function AcertoNiveis() {
   };
 
   // Removida lógica de proficiência por disciplina (manter apenas proficiência geral do backend)
-
-  // Função para carregar dados filtrados por escola
-  const loadFilteredData = async (evaluationId: string, schoolId?: string, gradeId?: string, classId?: string) => {
-    try {
-      let report, studentsResp;
-      
-      if (schoolId) {
-        // Carregar relatório completo primeiro para obter as questões
-        const [fullReport, filteredReport] = await Promise.all([
-          EvaluationResultsApiService.getDetailedReport(evaluationId),
-          EvaluationResultsApiService.getDetailedReportFiltered(
-            evaluationId,
-            ['alunos', 'nota', 'proficiencia', 'classificacao', 'respostas'],
-            'proficiencia',
-            'desc'
-          )
-        ]);
-        
-        // Combinar dados: questões do relatório completo + alunos filtrados
-        if (fullReport && filteredReport) {
-          report = {
-            ...fullReport,
-            alunos: filteredReport.alunos.map(aluno => ({
-              id: aluno.id,
-              nome: aluno.nome,
-              turma: aluno.turma,
-              respostas: [], // Será preenchido se necessário
-              total_acertos: 0,
-              total_erros: 0,
-              total_em_branco: 0,
-              nota_final: aluno.nota,
-              proficiencia: aluno.proficiencia,
-              classificacao: aluno.classificacao,
-              status: aluno.status
-            }))
-          };
-        } else {
-          report = fullReport;
-        }
-        
-        studentsResp = filteredReport?.alunos || [];
-      } else {
-        // Carregar dados de todas as escolas quando nenhuma escola específica for selecionada
-        [studentsResp, report] = await Promise.all([
-          EvaluationResultsApiService.getStudentsByEvaluation(evaluationId),
-          EvaluationResultsApiService.getDetailedReport(evaluationId)
-        ]);
-      }
-      
-      return { studentsResp, report };
-    } catch (error) {
-      console.error('Erro ao carregar dados filtrados:', error);
-      // Fallback para dados não filtrados
-      const [studentsResp, report] = await Promise.all([
-        EvaluationResultsApiService.getStudentsByEvaluation(evaluationId),
-        EvaluationResultsApiService.getDetailedReport(evaluationId)
-      ]);
-      return { studentsResp, report };
-    }
-  };
 
   const handleSelectEvaluation = async (evaluationId: string) => {
     setSelectedEvaluationId(evaluationId);
@@ -608,8 +761,8 @@ export default function AcertoNiveis() {
         EvaluationResultsApiService.getSkillsByEvaluation(evaluationId).catch(() => [])
       ]);
 
-      // Carregar dados de todas as escolas (sem filtro)
-      const { studentsResp, report } = await loadFilteredData(evaluationId);
+      const { students: unifiedStudents, report, tabelaDetalhada: tabelaDetalhadaUnificada } =
+        await fetchEvaluationData(evaluationId);
 
       if (!info) throw new Error("Avaliação não encontrada");
 
@@ -702,82 +855,30 @@ export default function AcertoNiveis() {
         logo_url: evaluationData.logo_url as string | undefined
       });
 
-      // Processar dados dos alunos
-      if (report && report.alunos) {
-        // Usar dados do relatório detalhado se disponível
-        const processedStudents = report.alunos.map((aluno: {
-          id: string;
-          nome: string;
-          turma: string;
-          serie?: string;
-          respostas?: Array<{ questao_numero: number; resposta_correta: boolean }>;
-          total_acertos: number;
-          total_erros: number;
-          total_em_branco: number;
-          nota_final: number;
-          proficiencia: number;
-          classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
-          status: string;
-        }) => {
-          // Criar mapa de respostas por questão
-          const respostasMap: Record<string, boolean | null> = {};
-          aluno.respostas?.forEach((resp) => {
-            respostasMap[`q${resp.questao_numero}`] = resp.resposta_correta;
-          });
-
-          return {
-            id: aluno.id,
-            nome: aluno.nome,
-            turma: aluno.turma,
-            nota: aluno.nota_final,
-            proficiencia: aluno.proficiencia,
-            classificacao: aluno.classificacao,
-            acertos: aluno.total_acertos,
-            erros: aluno.total_erros,
-            questoes_respondidas: aluno.total_acertos + aluno.total_erros + aluno.total_em_branco,
-            status: aluno.status === 'concluida' ? 'concluida' : 'pendente',
-            respostas: respostasMap
-          } as StudentResult;
-        });
-        setStudents(processedStudents);
-        
-        // Tentar extrair série dos alunos se não estiver na avaliação
-        if (serieExtraida === 'N/A') {
-          const alunosComSerie = processedStudents.filter(s => s.turma && s.turma.includes('º') || s.turma.includes('ano'));
-          if (alunosComSerie.length > 0) {
-            const turma = alunosComSerie[0].turma;
-            const serieMatch = turma.match(/(\d+º|\d+º ano|\d+ ano)/i);
-            if (serieMatch) {
-              console.log('Série extraída da turma:', serieMatch[1]);
-              setEvaluationInfo(prev => prev ? {
-                ...prev,
-                serie: serieMatch[1]
-              } : null);
-            }
+      setStudents(unifiedStudents);
+      setDetailedReport(report || null);
+      setTabelaDetalhada(tabelaDetalhadaUnificada || null);
+      
+      // Tentar extrair série dos alunos se não estiver na avaliação
+      if (serieExtraida === 'N/A' && unifiedStudents.length > 0) {
+        const alunosComSerie = unifiedStudents.filter(
+          (s) => s.turma && (s.turma.includes('º') || s.turma.includes('ano'))
+        );
+        if (alunosComSerie.length > 0) {
+          const turma = alunosComSerie[0].turma;
+          const serieMatch = turma.match(/(\d+º|\d+º ano|\d+ ano)/i);
+          if (serieMatch) {
+            console.log('Série extraída da turma:', serieMatch[1]);
+            setEvaluationInfo((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    serie: serieMatch[1]
+                  }
+                : null
+            );
           }
         }
-      } else if (studentsResp) {
-        // Fallback para dados básicos
-        setStudents(studentsResp as unknown as StudentResult[]);
-      }
-
-      setDetailedReport(report || null);
-
-      // Carregar tabela detalhada por disciplina da API unificada (sem recálculo)
-      try {
-        const resp = await EvaluationResultsApiService.getEvaluationsList(1, 10, {
-          estado: selectedState,
-          municipio: selectedMunicipality,
-          avaliacao: evaluationId
-        });
-        // Alguns backends retornam {} quando não há disciplinas; normalizar para null
-        const tdResp = resp as unknown as { tabela_detalhada?: TabelaDetalhadaPorDisciplina };
-        const td = (tdResp && tdResp.tabela_detalhada && Array.isArray(tdResp.tabela_detalhada.disciplinas))
-          ? tdResp.tabela_detalhada
-          : null;
-        setTabelaDetalhada(td);
-      } catch (_) {
-        setTabelaDetalhada(null);
       }
     } catch (e) {
       console.error('Erro ao carregar dados:', e);
@@ -1185,14 +1286,29 @@ export default function AcertoNiveis() {
             2: { cellWidth: otherWidth, halign: 'center' },
             3: { cellWidth: otherWidth, halign: 'center' }
           },
-          didParseCell: (data: CellHookData) => {
-            // Colorir coluna de nível
-            if (data.section === 'body' && data.column.index === 3) {
-              const color = generateClassificationColor(data.cell.text[0]);
-              data.cell.styles.fillColor = color;
-              data.cell.styles.textColor = [255, 255, 255];
-              data.cell.styles.fontStyle = 'bold';
-            }
+          didDrawCell: (data: CellHookData) => {
+            if (data.section !== 'body' || data.column.index !== 3) return;
+
+            const textValue = (Array.isArray(data.cell.text) ? data.cell.text[0] : data.cell.text || '')
+              .toString()
+              .trim();
+            const [r, g, b] = generateClassificationColor(textValue);
+
+            data.doc.setFillColor(r, g, b);
+            data.doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+
+            data.doc.setTextColor(255, 255, 255);
+            data.doc.setFont('helvetica', 'bold');
+            data.doc.setFontSize(9);
+            data.doc.text(
+              textValue,
+              data.cell.x + data.cell.width / 2,
+              data.cell.y + data.cell.height / 2 + 2.5,
+              { align: 'center' }
+            );
+
+            data.doc.setDrawColor(200, 200, 200);
+            data.doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height);
           }
         });
         
@@ -1389,12 +1505,19 @@ export default function AcertoNiveis() {
             }
 
             if (section === 'body' && column.index === questoes.length + 3) {
-              const textValue = Array.isArray(cell.text) ? cell.text[0] : cell.text;
-              const color = generateClassificationColor(textValue);
-              cell.styles.fillColor = color;
-              cell.styles.textColor = [255, 255, 255];
-              cell.styles.fontStyle = 'bold';
-              cell.styles.fontSize = 5;
+              const textValue = (Array.isArray(cell.text) ? cell.text[0] : cell.text || '').toString().trim();
+              const [r, g, b] = generateClassificationColor(textValue);
+
+              doc.setFillColor(r, g, b);
+              doc.rect(cell.x, cell.y, cell.width, cell.height, 'F');
+
+              doc.setTextColor(255, 255, 255);
+              doc.setFont('helvetica', 'bold');
+              doc.setFontSize(6);
+              doc.text(textValue, cell.x + cell.width / 2, cell.y + cell.height / 2 + 1.5, { align: 'center' });
+
+              doc.setDrawColor(200, 200, 200);
+              doc.rect(cell.x, cell.y, cell.width, cell.height);
             }
           },
         });
@@ -1643,12 +1766,19 @@ export default function AcertoNiveis() {
 
               // Colorir coluna de nível
               if (section === 'body' && column.index === qs.length + 4) {
-                const textValue = Array.isArray(cell.text) ? cell.text[0] : cell.text;
-                const color = generateClassificationColor(textValue);
-                cell.styles.fillColor = color;
-                cell.styles.textColor = [255, 255, 255];
-                cell.styles.fontStyle = 'bold';
-                cell.styles.fontSize = 5;
+                const textValue = (Array.isArray(cell.text) ? cell.text[0] : cell.text || '').toString().trim();
+                const [r, g, b] = generateClassificationColor(textValue);
+
+                doc.setFillColor(r, g, b);
+                doc.rect(cell.x, cell.y, cell.width, cell.height, 'F');
+
+                doc.setTextColor(255, 255, 255);
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(6);
+                doc.text(textValue, cell.x + cell.width / 2, cell.y + cell.height / 2 + 1.5, { align: 'center' });
+
+                doc.setDrawColor(200, 200, 200);
+                doc.rect(cell.x, cell.y, cell.width, cell.height);
               }
 
               // Linha de habilidades (segunda linha do head)
@@ -1814,59 +1944,21 @@ export default function AcertoNiveis() {
                          setSelectedClassId("");
                          
                          // Recarregar dados de todas as escolas
-                         if (selectedEvaluationId) {
-                           try {
-                             setIsLoading(true);
-                             const { studentsResp, report } = await loadFilteredData(selectedEvaluationId);
-                             
-                             // Atualizar dados dos alunos
-                             if (report && report.alunos) {
-                               const processedStudents = report.alunos.map((aluno: {
-                                 id: string;
-                                 nome: string;
-                                 turma: string;
-                                 serie?: string;
-                                 respostas?: Array<{ questao_numero: number; resposta_correta: boolean }>;
-                                 total_acertos: number;
-                                 total_erros: number;
-                                 total_em_branco: number;
-                                 nota_final: number;
-                                 proficiencia: number;
-                                 classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
-                                 status: string;
-                               }) => {
-                                 const respostasMap: Record<string, boolean | null> = {};
-                                 aluno.respostas?.forEach((resp) => {
-                                   respostasMap[`q${resp.questao_numero}`] = resp.resposta_correta;
-                                 });
-
-                                 return {
-                                   id: aluno.id,
-                                   nome: aluno.nome,
-                                   turma: aluno.turma,
-                                   nota: aluno.nota_final,
-                                   proficiencia: aluno.proficiencia,
-                                   classificacao: aluno.classificacao,
-                                   acertos: aluno.total_acertos,
-                                   erros: aluno.total_erros,
-                                   questoes_respondidas: aluno.total_acertos + aluno.total_erros + aluno.total_em_branco,
-                                   status: aluno.status === 'concluida' ? 'concluida' : 'pendente',
-                                   respostas: respostasMap,
-                                   
-                                 } as StudentResult;
-                               });
-                               setStudents(processedStudents);
-                             } else if (studentsResp) {
-                               setStudents(studentsResp as unknown as StudentResult[]);
-                             }
-                             
-                             setDetailedReport(report || null);
-                           } catch (error) {
-                             toast({ title: "Erro", description: "Não foi possível recarregar os dados", variant: "destructive" });
-                           } finally {
-                             setIsLoading(false);
-                           }
-                         }
+                        if (selectedEvaluationId) {
+                          try {
+                            setIsLoading(true);
+                            const { students: fetchedStudents, report, tabelaDetalhada: tabela } = await fetchEvaluationData(
+                              selectedEvaluationId
+                            );
+                            setStudents(fetchedStudents);
+                            setDetailedReport(report || null);
+                            setTabelaDetalhada(tabela || null);
+                          } catch (error) {
+                            toast({ title: "Erro", description: "Não foi possível recarregar os dados", variant: "destructive" });
+                          } finally {
+                            setIsLoading(false);
+                          }
+                        }
                        }}
                        className="text-xs"
                      >
