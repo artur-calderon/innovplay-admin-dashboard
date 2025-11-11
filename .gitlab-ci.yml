@@ -8,6 +8,9 @@ variables:
     CONTAINER_PORT: 80
     DOCKER_BUILDKIT: 0
 
+default:
+    image: docker:24.0
+
 workflow:
     rules:
         - if: "$CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME != 'dev'"
