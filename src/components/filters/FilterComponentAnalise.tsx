@@ -41,6 +41,7 @@ interface FilterComponentAnaliseProps {
   onStateChange: (state: string) => void;
   onMunicipalityChange: (municipality: string) => void;
   onSchoolChange: (school: string) => void;
+  onSchoolSelectDetail?: (school: { id: string; name: string } | null) => void;
   onEvaluationChange: (evaluation: string) => void;
   isLoadingFilters: boolean;
   onLoadingChange: (loading: boolean) => void;
@@ -59,6 +60,7 @@ export function FilterComponentAnalise({
   onStateChange,
   onMunicipalityChange,
   onSchoolChange,
+  onSchoolSelectDetail,
   onEvaluationChange,
   isLoadingFilters,
   onLoadingChange,
@@ -118,6 +120,7 @@ export function FilterComponentAnalise({
           setEvaluationsByMunicipality([]);
           onMunicipalityChange('all');
           onSchoolChange('all');
+          onSchoolSelectDetail?.(null);
           onEvaluationChange('all');
         } catch (error) {
           console.error("Erro ao carregar municípios:", error);
@@ -130,12 +133,13 @@ export function FilterComponentAnalise({
         setEvaluationsByMunicipality([]);
         onMunicipalityChange('all');
         onSchoolChange('all');
+        onSchoolSelectDetail?.(null);
         onEvaluationChange('all');
       }
     };
 
     loadMunicipalities();
-  }, [selectedState, onLoadingChange, onMunicipalityChange, onSchoolChange, onEvaluationChange]);
+  }, [selectedState, onLoadingChange, onMunicipalityChange, onSchoolChange, onSchoolSelectDetail, onEvaluationChange]);
 
   // Carregar escolas quando município for selecionado
   useEffect(() => {
@@ -151,6 +155,7 @@ export function FilterComponentAnalise({
           })));
           setEvaluationsByMunicipality([]);
           onSchoolChange('all');
+          onSchoolSelectDetail?.(null);
           onEvaluationChange('all');
         } catch (error) {
           console.error("Erro ao carregar escolas:", error);
@@ -162,12 +167,13 @@ export function FilterComponentAnalise({
         setSchools([]);
         setEvaluationsByMunicipality([]);
         onSchoolChange('all');
+        onSchoolSelectDetail?.(null);
         onEvaluationChange('all');
       }
     };
 
     loadSchools();
-  }, [selectedMunicipality, onLoadingChange, onSchoolChange, onEvaluationChange]);
+  }, [selectedMunicipality, onLoadingChange, onSchoolChange, onSchoolSelectDetail, onEvaluationChange]);
 
   // Carregar avaliações quando escola for selecionada OU quando escola for "Todas"
   useEffect(() => {
@@ -182,14 +188,21 @@ export function FilterComponentAnalise({
             municipio: selectedMunicipality,
             escola: selectedSchool !== 'all' ? selectedSchool : undefined
           });
-          setEvaluationsByMunicipality(evaluationsData.map(evaluation => ({
+          const mappedEvaluations = evaluationsData.map(evaluation => ({
             id: evaluation.id,
             titulo: evaluation.titulo,
             disciplina: '',
             status: 'concluida',
             data_aplicacao: new Date().toISOString()
-          })));
-          onEvaluationChange('all');
+          }));
+          setEvaluationsByMunicipality(mappedEvaluations);
+
+          if (
+            selectedEvaluation !== 'all' &&
+            !mappedEvaluations.some(evaluation => evaluation.id === selectedEvaluation)
+          ) {
+            onEvaluationChange('all');
+          }
         } catch (error) {
           console.error("Erro ao carregar avaliações:", error);
           setEvaluationsByMunicipality([]);
@@ -203,7 +216,7 @@ export function FilterComponentAnalise({
     };
 
     loadEvaluations();
-  }, [selectedState, selectedMunicipality, selectedSchool, onLoadingChange, onEvaluationChange]);
+  }, [selectedState, selectedMunicipality, selectedSchool, selectedEvaluation, onLoadingChange, onEvaluationChange]);
 
   return (
     <Card>
@@ -279,7 +292,15 @@ export function FilterComponentAnalise({
             </label>
             <Select
               value={selectedSchool}
-              onValueChange={onSchoolChange}
+              onValueChange={(value) => {
+                onSchoolChange(value);
+                if (value === 'all') {
+                  onSchoolSelectDetail?.(null);
+                } else {
+                  const school = schools.find(item => item.id === value);
+                  onSchoolSelectDetail?.(school ? { id: school.id, name: school.name } : null);
+                }
+              }}
               disabled={isLoadingFilters || selectedMunicipality === 'all' || !canSelectSchool}
             >
               <SelectTrigger>
