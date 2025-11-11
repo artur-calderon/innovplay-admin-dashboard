@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Eye, Pencil, Trash2, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown, Copy, AlertTriangle } from "lucide-react";
+import { Plus, Eye, Pencil, Trash2, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown, Copy } from "lucide-react";
 import { Question } from "@/components/evaluations/types";
 import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
@@ -56,7 +56,7 @@ interface QuestionApiResponse {
   topics: string[] | string;
   subject?: { id: string; name: string };
   grade?: { id: string; name: string };
-  createdBy: { id: string; name: string }; // Changed from created_by: string to match API response
+  createdBy?: string | { id: string; name?: string }; // API pode retornar string ou objeto
   solution?: string;
   formattedText?: string;
   formattedSolution?: string;
@@ -80,6 +80,22 @@ interface SortOption {
   key: keyof Question | 'difficulty' | 'subjectName' | 'gradeName';
   direction: 'asc' | 'desc';
 }
+
+const getQuestionCreatorId = (question: Question): string => {
+  if (!question) return "";
+  const rawCreator = (question as any).created_by ?? (question as any).createdBy ?? (question as any).creator;
+
+  if (typeof rawCreator === "string") {
+    return rawCreator;
+  }
+
+  if (rawCreator && typeof rawCreator === "object") {
+    if (typeof rawCreator.id === "string") return rawCreator.id;
+    if (typeof rawCreator.user_id === "string") return rawCreator.user_id;
+  }
+
+  return question.created_by || "";
+};
 
 const DIFFICULTIES = ['Abaixo do Básico', 'Básico', 'Adequado', 'Avançado'];
 const QUESTION_TYPES = [
@@ -523,6 +539,33 @@ const QuestionsPage = () => {
           // Fallback: se tem opções, é múltipla escolha, senão é dissertativa
           normalizedType = (q.options && q.options.length > 0) ? "multipleChoice" : "dissertativa";
         }
+
+        const resolveCreatorId = (): string => {
+          if (!q) return "";
+
+          const candidate = q.createdBy;
+
+          if (typeof candidate === "string") {
+            return candidate;
+          }
+
+          if (candidate && typeof candidate === "object") {
+            if (typeof candidate.id === "string") {
+              return candidate.id;
+            }
+          }
+
+          const alt = (q as any);
+          return (
+            (typeof alt.created_by === "string" && alt.created_by) ||
+            (typeof alt.created_by_id === "string" && alt.created_by_id) ||
+            (typeof alt.creator_id === "string" && alt.creator_id) ||
+            (alt.creator && typeof alt.creator.id === "string" && alt.creator.id) ||
+            ""
+          );
+        };
+
+        const creatorId = resolveCreatorId();
         
         return {
           id: q.id,
@@ -540,7 +583,7 @@ const QuestionsPage = () => {
           formattedSolution: q.formattedSolution,
           options: q.options || [],
           skills: Array.isArray(q.skills) ? q.skills : (q.skills && typeof q.skills === 'string' ? q.skills.split(',').map(s => s.trim()) : []),
-          created_by: q.createdBy || (q as any).created_by || (q as any).created_by_id || 'unknown',
+          created_by: creatorId,
           educationStage: null
         };
       });
@@ -824,57 +867,6 @@ const QuestionsPage = () => {
     }
   };
 
-  // ✅ NOVA: Função para identificar questões com dados corrompidos
-  const identifyProblematicQuestions = () => {
-    const problematic = questions.filter(q => {
-      // Verificar problemas conhecidos de dados corrompidos
-      const hasMultipleCorrectOptions = q.options && q.options.filter(opt => opt.isCorrect).length > 1;
-      const hasTooManyOptions = q.options && q.options.length > 10;
-      const hasStrangeIds = q.options && q.options.some(opt => 
-        opt.id && (opt.id.includes('option-') && parseInt(opt.id.replace('option-', ''), 10) > 100)
-      );
-      const hasInvalidText = q.options && q.options.some(opt => 
-        opt.text && (opt.text.length === 1 && /[^\w\s]/.test(opt.text))
-      );
-      
-      return hasMultipleCorrectOptions || hasTooManyOptions || hasStrangeIds || hasInvalidText;
-    });
-
-    if (problematic.length > 0) {
-      // console.warn(`🚨 Encontradas ${problematic.length} questões com possíveis problemas:`, 
-      //   problematic.map(q => ({
-      //     id: q.id,
-      //     title: q.title,
-      //     optionsCount: q.options?.length || 0,
-      //     correctOptionsCount: q.options?.filter(opt => opt.isCorrect).length || 0,
-      //     issues: {
-      //       multipleCorrect: q.options && q.options.filter(opt => opt.isCorrect).length > 1,
-      //       tooManyOptions: q.options && q.options.length > 10,
-      //       strangeIds: q.options && q.options.some(opt => 
-      //         opt.id && opt.id.includes('option-') && parseInt(opt.id.replace('option-', ''), 10) > 100
-      //       ),
-      //       invalidText: q.options && q.options.some(opt => 
-      //         opt.text && opt.text.length === 1 && /[^\w\s]/.test(opt.text)
-      //       )
-      //     }
-      //   }))
-      // );
-      
-      toast({
-        title: `${problematic.length} questões problemáticas detectadas`,
-        description: "Verifique o console para detalhes. Essas questões podem ter problemas na exclusão.",
-        variant: "destructive",
-      });
-    } else {
-      toast({
-        title: "Nenhum problema detectado",
-        description: "Todas as questões parecem ter dados consistentes.",
-      });
-    }
-
-    return problematic;
-  };
-
   const handleDuplicate = async (question: Question) => {
     try {
       // Criar uma cópia da questão sem o ID e com título modificado
@@ -1148,7 +1140,8 @@ const QuestionsPage = () => {
     const handleSelect = useCallback((checked: boolean) => handleSelectOne(question.id, checked), [question.id]);
     
     // Verificar se usuário pode editar/deletar (se é o criador ou admin)
-    const canEditDelete = user?.id === question.created_by || user?.role === 'admin';
+    const creatorId = getQuestionCreatorId(question);
+    const canEditDelete = !!user && (user.role === 'admin' || (!!creatorId && creatorId === user.id));
     
    
 
@@ -1299,18 +1292,6 @@ const QuestionsPage = () => {
               <span className="sm:hidden">({selectedIds.length})</span>
             </Button>
           )}
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={identifyProblematicQuestions}
-            className="flex-1 sm:flex-none"
-            title="Identificar questões com dados corrompidos"
-          >
-            <AlertTriangle className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">Diagnóstico</span>
-            <span className="sm:hidden">Diagnóstico</span>
-          </Button>
 
           <Button
             size="sm"
@@ -1485,8 +1466,9 @@ const QuestionsPage = () => {
               </thead>
               <tbody>
                 {paginatedQuestions.map((question, index) => {
-                 
-                  
+                  const creatorId = getQuestionCreatorId(question);
+                  const canEditDeleteDesktop = !!user && (user.role === 'admin' || (!!creatorId && creatorId === user.id));
+
                   return (
                     <tr 
                       key={question.id} 
@@ -1534,7 +1516,7 @@ const QuestionsPage = () => {
                           >
                             <Copy className="h-3 w-3" />
                           </Button>
-                                                                                                           {(user?.id === question.created_by || user?.role === 'admin') && (
+                          {canEditDeleteDesktop && (
                             <>
                               <Button 
                                 variant="ghost" 
