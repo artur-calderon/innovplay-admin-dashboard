@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,8 @@ import { api } from "@/lib/api";
 import { format, isAfter, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
-import StudentBulletin from "@/components/evaluations/StudentBulletin";
+import StudentBulletin, { type DisciplineStatsMap } from "@/components/evaluations/StudentBulletin";
+import { saveBulletinStatsToStorage, loadBulletinStatsFromStorage } from "@/components/evaluations/utils/bulletinStorage";
 
 // Interface para resposta da nova API de avaliação
 interface EvaluationGradesResponse {
@@ -18,8 +19,12 @@ interface EvaluationGradesResponse {
   data: {
     user_id: string;
     student_id: string;
+    student_name: string;
+    student_registration?: string;
     evaluation_id: string;
     evaluation_name: string;
+    school_name?: string;
+    class_name?: string;
     proficiency: number;
     grade: number;
     classification: string;
@@ -58,6 +63,16 @@ interface EvaluationGradesResponse {
         }>;
       };
     };
+    subject_results?: Array<{
+      subject_id: string;
+      subject_name: string;
+      correct_answers: number;
+      total_questions: number;
+      score_percentage: number;
+      grade: number;
+      proficiency: number;
+      classification: string;
+    }>;
   };
   message: string;
 }
@@ -198,6 +213,7 @@ export default function StudentResult() {
   const [correctAnswers, setCorrectAnswers] = useState<number | null>(null);
   const [totalQuestions, setTotalQuestions] = useState<number | null>(null);
   const [rankings, setRankings] = useState<EvaluationGradesResponse['data']['rankings'] | null>(null);
+  const [disciplineStats, setDisciplineStats] = useState<DisciplineStatsMap | null>(null);
 
   const endDate = useMemo(() => {
     const raw = test?.application_info?.expiration;
@@ -216,6 +232,28 @@ export default function StudentResult() {
     console.log('📊 Resposta da API de avaliação:', response.data);
     return response.data;
   };
+
+  const buildDisciplineStats = useCallback((data: EvaluationGradesResponse["data"]): DisciplineStatsMap => {
+    const stats: DisciplineStatsMap = {};
+
+    (data.subject_results || []).forEach((subject) => {
+      stats[subject.subject_name] = {
+        nota: subject.grade ?? 0,
+        proficiencia: subject.proficiency ?? 0,
+        totalQuestions: subject.total_questions ?? 0,
+        correctAnswers: subject.correct_answers ?? 0,
+      };
+    });
+
+    stats.GERAL = {
+      nota: data.grade ?? 0,
+      proficiencia: data.proficiency ?? 0,
+      totalQuestions: data.total_questions ?? 0,
+      correctAnswers: data.correct_answers ?? 0,
+    };
+
+    return stats;
+  }, []);
 
   // Função auxiliar para buscar resultados
   const fetchResults = async (): Promise<{ found: boolean; hasResults: boolean }> => {
@@ -248,6 +286,10 @@ export default function StudentResult() {
         if (apiData.success && apiData.data) {
           console.log('✅ Dados obtidos via nova API:', apiData.data);
           setEvaluationData(apiData);
+
+          const apiDisciplineStats = buildDisciplineStats(apiData.data);
+          setDisciplineStats(apiDisciplineStats);
+          saveBulletinStatsToStorage(String(id), String(user.id), apiDisciplineStats);
           
           // ✅ CORRIGIDO: Validar e converter valores antes de definir
           const apiGrade = typeof apiData.data.grade === "number" && !isNaN(apiData.data.grade) 
@@ -290,6 +332,10 @@ export default function StudentResult() {
         }
       } catch (apiError) {
         console.log('⚠️ Nova API falhou, usando fallback:', apiError);
+        const storedStats = loadBulletinStatsFromStorage<DisciplineStatsMap>(String(id), String(user.id));
+        if (storedStats) {
+          setDisciplineStats(storedStats);
+        }
       }
 
       // Fallback: tentar pegar diretamente da avaliação do aluno
@@ -300,6 +346,12 @@ export default function StudentResult() {
         console.log('📊 Usando dados diretos da avaliação');
         setGrade(directGrade != null ? directGrade : Math.round(((directScore || 0) / 10) * 10) / 10);
         setScorePct(directScore != null ? directScore : Math.round(((directGrade || 0) * 10) * 10) / 10);
+        if (!disciplineStats) {
+          const storedStats = loadBulletinStatsFromStorage<DisciplineStatsMap>(String(id), String(user.id));
+          if (storedStats) {
+            setDisciplineStats(storedStats);
+          }
+        }
         return { found: true, hasResults: true }; // Resultados encontrados
       }
 
@@ -348,6 +400,12 @@ export default function StudentResult() {
           setClassification(detailed.classificacao || null);
           setCorrectAnswers(detailedCorrectAnswers);
           setTotalQuestions(detailedTotalQuestions);
+          if (!disciplineStats) {
+            const storedStats = loadBulletinStatsFromStorage<DisciplineStatsMap>(String(id), String(user.id));
+            if (storedStats) {
+              setDisciplineStats(storedStats);
+            }
+          }
           
           return { found: true, hasResults: true }; // Resultados encontrados
         }
@@ -564,14 +622,14 @@ export default function StudentResult() {
                   <div className="grid gap-4 md:grid-cols-2">
                     {/* Proficiência */}
                     {proficiency !== null && !isNaN(proficiency) && proficiency >= 0 && (
-                      <StatCard
-                        title="Proficiência"
-                        value={Math.round(proficiency).toString()}
-                        icon={TrendingUp}
-                        color="bg-green-500"
-                        subtitle="pontos"
-                      />
-                    )}
+                       <StatCard
+                         title="Proficiência"
+                         value={proficiency.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                         icon={TrendingUp}
+                         color="bg-green-500"
+                         subtitle="pontos"
+                       />
+                     )}
 
                     {/* Acertos */}
                     {correctAnswers !== null && totalQuestions !== null && 
@@ -642,7 +700,11 @@ export default function StudentResult() {
               {/* Boletim de Questões */}
               {id && user.id && (
                 <div className="mt-8">
-                  <StudentBulletin testId={id} studentId={String(user.id)} />
+                  <StudentBulletin
+                    testId={id}
+                    studentId={String(user.id)}
+                    initialDisciplineStats={disciplineStats || undefined}
+                  />
                 </div>
               )}
             </div>
