@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,10 +16,11 @@ import {
     GraduationCap,
     School
 } from "lucide-react";
-import { useParams } from "react-router-dom";
+import { useLocation, useParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
-import StudentBulletin from "./StudentBulletin";
+import StudentBulletin, { type DisciplineStatsMap } from "./StudentBulletin";
+import { loadBulletinStatsFromStorage } from "./utils/bulletinStorage";
 
 interface StudentDetailedResultsProps {
     onBack: () => void;
@@ -110,6 +111,7 @@ class ErrorBoundary extends React.Component<
 // Componente interno que contém a lógica principal
 function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) {
     const { id: evaluationId, studentId } = useParams<{ id: string; studentId: string }>();
+    const location = useLocation<{ disciplineStats?: DisciplineStatsMap }>();
     const { toast } = useToast();
 
     const [studentData, setStudentData] = useState<StudentData | null>(null);
@@ -118,6 +120,19 @@ function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) 
     const [error, setError] = useState<string | null>(null);
     const [studentName, setStudentName] = useState<string | null>(null);
     const [testSubjects, setTestSubjects] = useState<string[]>([]);
+
+    const initialDisciplineStats = useMemo<DisciplineStatsMap | undefined>(() => {
+        if (!evaluationId || !studentId) {
+            return undefined;
+        }
+
+        const stateStats = location.state?.disciplineStats;
+        if (stateStats && Object.keys(stateStats).length > 0) {
+            return stateStats;
+        }
+
+        return loadBulletinStatsFromStorage<DisciplineStatsMap | undefined>(evaluationId, studentId) || undefined;
+    }, [evaluationId, studentId, location.state]);
 
     const loadStudentData = useCallback(async () => {
         if (!evaluationId || !studentId) {
@@ -580,7 +595,11 @@ function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) 
 
             {/* Boletim de Questões */}
             {evaluationId && studentId && (
-                <StudentBulletin testId={evaluationId} studentId={studentId} />
+                <StudentBulletin
+                    testId={evaluationId}
+                    studentId={studentId}
+                    initialDisciplineStats={initialDisciplineStats}
+                />
             )}
 
             {/* Botão de Atualização */}

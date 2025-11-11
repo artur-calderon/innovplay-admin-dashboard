@@ -31,6 +31,8 @@ import { ResultsCharts } from "@/components/evaluations/ResultsCharts";
 import { ClassStatistics } from "@/components/evaluations/ClassStatistics";
 import { StudentRanking } from "@/components/evaluations/StudentRanking";
 import { ResultsTable } from "@/components/evaluations/results-table/ResultsTable";
+import type { DisciplineStatsMap } from "@/components/evaluations/StudentBulletin";
+import { saveBulletinStatsToStorage } from "@/components/evaluations/utils/bulletinStorage";
 
 import { DisciplineTables } from "@/components/evaluations/DisciplineTables";
 import { StudentCard } from "@/components/evaluations/StudentCard";
@@ -1356,9 +1358,39 @@ export default function Results() {
     return transformedStudents.sort((a, b) => a.nome.localeCompare(b.nome));
   }, [transformedStudents]);
 
+  const buildDisciplineStatsForStudent = useCallback((studentId: string): DisciplineStatsMap | null => {
+    const tabelaDetalhada = apiData?.tabela_detalhada;
+    if (!tabelaDetalhada?.disciplinas?.length) {
+      return null;
+    }
 
+    const stats: DisciplineStatsMap = {};
 
+    tabelaDetalhada.disciplinas.forEach((disciplina) => {
+      if (!disciplina?.nome) return;
+      const aluno = disciplina.alunos?.find((item) => item.id === studentId);
+      if (!aluno) return;
 
+      stats[disciplina.nome] = {
+        nota: Number(aluno.nota ?? 0),
+        proficiencia: Number(aluno.proficiencia ?? 0),
+        totalQuestions: Number(aluno.total_questoes_disciplina ?? disciplina.questoes?.length ?? 0),
+        correctAnswers: Number(aluno.total_acertos ?? 0)
+      };
+    });
+
+    const geralAluno = tabelaDetalhada.geral?.alunos?.find((item) => item.id === studentId);
+    if (geralAluno) {
+      stats.GERAL = {
+        nota: Number(geralAluno.nota_geral ?? 0),
+        proficiencia: Number(geralAluno.proficiencia_geral ?? 0),
+        totalQuestions: Number(geralAluno.total_questoes_geral ?? 0),
+        correctAnswers: Number(geralAluno.total_acertos_geral ?? 0)
+      };
+    }
+
+    return Object.keys(stats).length > 0 ? stats : null;
+  }, [apiData]);
 
   // ✅ NOVO: Função para carregar respostas detalhadas de um aluno
   const handleLoadStudentAnswers = useCallback(async (studentId: string) => {
@@ -1391,15 +1423,28 @@ export default function Results() {
   // Função para visualizar detalhes do estudante (adaptada)
   const handleViewStudentDetails = (studentId: string) => {
     if (selectedEvaluation && selectedEvaluation !== 'all') {
+      const stats = buildDisciplineStatsForStudent(studentId);
+      if (stats && Object.keys(stats).length > 0) {
+        saveBulletinStatsToStorage(selectedEvaluation, studentId, stats);
+      }
       // Carregar respostas detalhadas antes de navegar
       handleLoadStudentAnswers(studentId);
-      navigate(`/app/avaliacao/${selectedEvaluation}/aluno/${studentId}/resultados`);
+      const path = `/app/avaliacao/${selectedEvaluation}/aluno/${studentId}/resultados`;
+      if (stats && Object.keys(stats).length > 0) {
+        navigate(path, { state: { disciplineStats: stats } });
+      } else {
+        navigate(path);
+      }
     }
   };
 
   // ✅ NOVO: Função para abrir página detalhada em nova guia
   const handleOpenInNewTab = (studentId: string) => {
     if (selectedEvaluation && selectedEvaluation !== 'all') {
+      const stats = buildDisciplineStatsForStudent(studentId);
+      if (stats && Object.keys(stats).length > 0) {
+        saveBulletinStatsToStorage(selectedEvaluation, studentId, stats);
+      }
       const url = `/app/avaliacao/${selectedEvaluation}/aluno/${studentId}/resultados`;
       window.open(url, '_blank', 'noopener,noreferrer');
     }
