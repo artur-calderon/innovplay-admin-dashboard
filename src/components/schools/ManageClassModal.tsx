@@ -73,6 +73,7 @@ interface ClassData {
   name: string;
   school_id?: string;
   grade?: string | GradeObject;
+  grade_id?: string;
 }
 
 interface ManageClassModalProps {
@@ -268,13 +269,28 @@ export function ManageClassModal({
 
     setIsCreating(true);
     try {
+      const gradeId =
+        classData.grade_id ||
+        (typeof classData.grade === "object" && classData.grade !== null ? classData.grade.id : undefined);
+
+      if (!gradeId) {
+        toast({
+          title: "Erro",
+          description: "Não foi possível identificar a série da turma. Tente novamente mais tarde.",
+          variant: "destructive",
+        });
+        setIsCreating(false);
+        return;
+      }
+
       const studentData = {
         name: formData.name,
         email: formData.email,
         password: formData.password,
         registration: formData.registration || undefined,
         birth_date: formData.birth_date,
-        class_id: classData.id
+        class_id: classData.id,
+        grade_id: gradeId
       };
 
       const response = await api.post("/students", studentData);
