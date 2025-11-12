@@ -40,6 +40,11 @@ interface StudentEvaluationResults {
   classificacao: string; // Campo com acento da API
   calculated_at: string;
   answers: unknown[];
+  rankings?: {
+    class?: ApiRankingGroup;
+    school?: ApiRankingGroup;
+    municipality?: ApiRankingGroup;
+  };
 }
 
 // Interface para avaliações completadas do aluno
@@ -182,6 +187,40 @@ interface EvolutionData {
   direction: 'increase' | 'decrease' | 'stable';
 }
 
+interface ApiRankingEntry {
+  position: number;
+  student_id: string;
+  student_name: string;
+  proficiency: number | string;
+}
+
+interface ApiRankingGroup {
+  position?: number;
+  total_students?: number;
+  current_student?: ApiRankingEntry;
+  ranking?: ApiRankingEntry[];
+}
+
+interface RankingCardData {
+  posicaoAtual: number;
+  pontos: number;
+  mudancaPosicao: number;
+  lista: Array<{
+    id: number;
+    nome: string;
+    acertos: number;
+    total: number;
+    posicao: number;
+    pontos: number;
+    avatar?: string;
+  }>;
+  proximoObjetivo: {
+    posicao: number;
+    pontosNecessarios: number;
+    progresso: number;
+  };
+}
+
 interface StudentStats {
   proficiencia: { value: number; change: number; trend: 'up' | 'down' };
   nota: { value: number; change: number; trend: 'up' | 'down' };
@@ -255,6 +294,67 @@ interface StudentStats {
 
 type ChartType = 'bar' | 'line' | 'area' | 'pie';
 type PeriodType = 'week' | 'month' | 'year';
+
+const emptyRankingCardData: RankingCardData = {
+  posicaoAtual: 0,
+  pontos: 0,
+  mudancaPosicao: 0,
+  lista: [],
+  proximoObjetivo: {
+    posicao: 1,
+    pontosNecessarios: 0,
+    progresso: 0
+  }
+};
+
+const normalizeNumber = (value: unknown): number => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (typeof value === 'string') {
+    const parsed = parseFloat(value.replace(',', '.'));
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+};
+
+const transformRankingGroupToCardData = (group?: ApiRankingGroup): RankingCardData => {
+  if (!group || !group.current_student) {
+    return { ...emptyRankingCardData };
+  }
+
+  const rankingList = (group.ranking ?? []).map((item) => ({
+    id: item.position,
+    nome: item.student_name,
+    acertos: 0,
+    total: 0,
+    posicao: item.position,
+    pontos: normalizeNumber(item.proficiency)
+  }));
+
+  const currentPosition = group.current_student?.position ?? group.position ?? 0;
+  const currentProficiency = normalizeNumber(group.current_student?.proficiency);
+  const previousRank = rankingList.find((item) => item.posicao === currentPosition - 1);
+  const pontosNecessarios = previousRank
+    ? Math.max(0, normalizeNumber(previousRank.pontos) - currentProficiency)
+    : 0;
+
+  const progresso = group.total_students && currentPosition
+    ? Math.round(((group.total_students - currentPosition + 1) / group.total_students) * 100)
+    : 0;
+
+  return {
+    posicaoAtual: currentPosition,
+    pontos: currentProficiency,
+    mudancaPosicao: 0,
+    lista: rankingList,
+    proximoObjetivo: {
+      posicao: Math.max(1, currentPosition - 1),
+      pontosNecessarios,
+      progresso: Math.min(100, Math.max(0, progresso))
+    }
+  };
+};
 
 const StudentDashboard = () => {
   const { user } = useAuth();
@@ -437,35 +537,28 @@ const StudentDashboard = () => {
 
   // Função para obter dados do ranking baseado no filtro
   const getCurrentRankingData = () => {
-    if (!stats) {
-      console.log('⚠️ Stats não disponível, retornando dados vazios');
-      return {
-        posicaoAtual: 0,
-        pontos: 0,
-        mudancaPosicao: 0,
-        lista: [],
-        proximoObjetivo: {
-          posicao: 1,
-          pontosNecessarios: 0,
-          progresso: 0
-        }
-      };
+    const rankings = evaluationResults?.rankings;
+    const rankingKeyMap: Record<typeof rankingFilter, keyof NonNullable<StudentEvaluationResults['rankings']>> = {
+      turma: 'class',
+      escola: 'school',
+      municipio: 'municipality'
+    };
+
+    if (rankings) {
+      const apiGroup = rankings[rankingKeyMap[rankingFilter]];
+      const transformed = transformRankingGroupToCardData(apiGroup);
+
+      if (transformed.lista.length > 0 || transformed.posicaoAtual > 0) {
+        return transformed;
+      }
     }
 
-    console.log('🎯 Filtro de ranking selecionado:', rankingFilter);
-    console.log('📊 Stats disponíveis:', stats);
+    if (stats?.ranking) {
+      return stats.ranking;
+    }
 
-    // Por enquanto, sempre usar dados da turma (que são os únicos mapeados)
-    // Quando implementarmos as outras abas, usar os dados específicos
-    const currentRanking = stats.ranking;
-    
-    return {
-      posicaoAtual: currentRanking.posicaoAtual,
-      pontos: currentRanking.pontos,
-      mudancaPosicao: currentRanking.mudancaPosicao,
-      lista: currentRanking.lista, // Sempre usar a lista real, mesmo se vazia
-      proximoObjetivo: currentRanking.proximoObjetivo
-    };
+    console.log('⚠️ Dados de ranking indisponíveis, retornando estrutura vazia');
+    return emptyRankingCardData;
   };
 
   // Função para alterar filtro do ranking
@@ -512,6 +605,7 @@ const StudentDashboard = () => {
     console.log('🔍 Buscando resultados da avaliação:', `/evaluation-results/${testId}/student/${studentId}/results`);
     const response = await api.get(`/evaluation-results/${testId}/student/${studentId}/results`);
     console.log('📊 Resultados da avaliação:', response.data);
+    console.log('🏆 Rankings retornados pela API:', response.data?.rankings);
     return response.data;
   };
 
@@ -556,8 +650,22 @@ const StudentDashboard = () => {
     console.log('📊 Classificação encontrada:', classification);
     
     // Usar proficiencia (com acento) se disponível, senão usar proficiency
-    const proficiency = evaluationResults.proficiencia || evaluationResults.proficiency || 0;
+    const proficiency = normalizeNumber(evaluationResults.proficiencia ?? evaluationResults.proficiency);
     console.log('📊 Proficiência encontrada:', proficiency);
+
+    const gradeValue = normalizeNumber(evaluationResults.grade);
+    const correctAnswers = normalizeNumber(evaluationResults.correct_answers);
+
+    const rankingFromApi =
+      [
+        evaluationResults.rankings?.class,
+        evaluationResults.rankings?.school,
+        evaluationResults.rankings?.municipality,
+      ]
+        .map((group) => transformRankingGroupToCardData(group))
+        .find((data) => data.lista.length > 0 || data.posicaoAtual > 0) ?? emptyRankingCardData;
+
+    const rankingData = rankingFromApi.lista.length > 0 ? rankingFromApi : mockStats.ranking;
     
     return {
       proficiencia: { 
@@ -566,7 +674,7 @@ const StudentDashboard = () => {
         trend: 'up' 
       },
       nota: { 
-        value: evaluationResults.grade, 
+        value: gradeValue, 
         change: 0, 
         trend: 'up' 
       },
@@ -576,24 +684,14 @@ const StudentDashboard = () => {
         trend: 'up' 
       },
       acertos: { 
-        value: evaluationResults.correct_answers, 
+        value: correctAnswers, 
         change: 0, 
         trend: 'up' 
       },
       // Manter dados gamificados como mockados
       medalhas: mockStats.medalhas,
       moedas: mockStats.moedas,
-      ranking: {
-        posicaoAtual: 1, // Será substituído pelos dados gerais
-        pontos: evaluationResults.proficiency,
-        mudancaPosicao: 0,
-        lista: [], // Será substituído pelos dados gerais
-        proximoObjetivo: {
-          posicao: 1,
-          pontosNecessarios: 0,
-          progresso: 100
-        }
-      },
+      ranking: rankingData,
       estatisticas: {
         semana: [
           { day: 'Seg', nota: 7.2, avaliacao: 'Matemática' },
