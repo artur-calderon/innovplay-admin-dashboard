@@ -111,6 +111,17 @@ const getStatusConfig = (status: 'concluida' | 'em_andamento' | 'pendente' | str
   return config;
 };
 
+const formatDecimal = (value?: number | null) => {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+    return "0,0";
+  }
+
+  return Number(value).toLocaleString("pt-BR", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1
+  });
+};
+
 export default function AnaliseAvaliacoes() {
   const { autoLogin, user } = useAuth();
   const [apiData, setApiData] = useState<RelatorioCompleto | null>(null);
@@ -663,23 +674,23 @@ export default function AnaliseAvaliacoes() {
                              ? dadosDisciplina.por_escola?.map((escola, index: number) => (
                                  <tr key={index} className="hover:bg-muted transition-colors">
                                    <td className="border border-border px-4 py-2 font-medium">{escola.escola}</td>
-                                   <td className="border border-border px-4 py-2 text-center">{((escola.proficiencia ?? escola.media) || 0).toFixed(2)}</td>
+                                   <td className="border border-border px-4 py-2 text-center">{formatDecimal(escola.proficiencia ?? escola.media)}</td>
                                  </tr>
                                ))
                              : dadosDisciplina.por_turma?.map((turma, index: number) => (
                                  <tr key={index} className="hover:bg-muted transition-colors">
                                    <td className="border border-border px-4 py-2 font-medium">{turma.turma}</td>
-                                   <td className="border border-border px-4 py-2 text-center">{turma.proficiencia.toFixed(2)}</td>
+                                   <td className="border border-border px-4 py-2 text-center">{formatDecimal(turma.proficiencia)}</td>
                                  </tr>
                                ))}
                            <tr className="bg-blue-50 dark:bg-blue-950/30 font-semibold">
                              <td className="border border-border px-4 py-2">MÉDIA GERAL</td>
-                             <td className="border border-border px-4 py-2 text-center">{dadosDisciplina.media_geral.toFixed(2)}</td>
+                             <td className="border border-border px-4 py-2 text-center">{formatDecimal(dadosDisciplina.media_geral)}</td>
                            </tr>
                            {disciplina !== 'GERAL' && renderMode === 'turma' && apiData.proficiencia.media_municipal_por_disciplina && apiData.proficiencia.media_municipal_por_disciplina[disciplina] !== undefined && (
                              <tr className="bg-green-50 dark:bg-green-950/30 font-semibold">
                                <td className="border border-border px-4 py-2">MÉDIA MUNICIPAL</td>
-                               <td className="border border-border px-4 py-2 text-center">{apiData.proficiencia.media_municipal_por_disciplina[disciplina].toFixed(2)}</td>
+                               <td className="border border-border px-4 py-2 text-center">{formatDecimal(apiData.proficiencia.media_municipal_por_disciplina[disciplina])}</td>
                              </tr>
                            )}
                          </tbody>
@@ -721,23 +732,23 @@ export default function AnaliseAvaliacoes() {
                              ? dadosDisciplina.por_escola?.map((escola, index: number) => (
                                  <tr key={index} className="hover:bg-muted transition-colors">
                                    <td className="border border-border px-4 py-2 font-medium">{escola.escola}</td>
-                                   <td className="border border-border px-4 py-2 text-center">{((escola.nota ?? escola.media) || 0).toFixed(2)}</td>
+                                   <td className="border border-border px-4 py-2 text-center">{formatDecimal(escola.nota ?? escola.media)}</td>
                                  </tr>
                                ))
                              : dadosDisciplina.por_turma?.map((turma, index: number) => (
                                  <tr key={index} className="hover:bg-muted transition-colors">
                                    <td className="border border-border px-4 py-2 font-medium">{turma.turma}</td>
-                                   <td className="border border-border px-4 py-2 text-center">{turma.nota.toFixed(2)}</td>
+                                   <td className="border border-border px-4 py-2 text-center">{formatDecimal(turma.nota)}</td>
                                  </tr>
                                ))}
                            <tr className="bg-blue-50 dark:bg-blue-950/30 font-semibold">
                              <td className="border border-border px-4 py-2">MÉDIA GERAL</td>
-                             <td className="border border-border px-4 py-2 text-center">{dadosDisciplina.media_geral.toFixed(2)}</td>
+                             <td className="border border-border px-4 py-2 text-center">{formatDecimal(dadosDisciplina.media_geral)}</td>
                            </tr>
                            {disciplina !== 'GERAL' && renderMode === 'turma' && apiData.nota_geral.media_municipal_por_disciplina && apiData.nota_geral.media_municipal_por_disciplina[disciplina] !== undefined && (
                              <tr className="bg-green-50 dark:bg-green-950/30 font-semibold">
                                <td className="border border-border px-4 py-2">MÉDIA MUNICIPAL</td>
-                               <td className="border border-border px-4 py-2 text-center">{apiData.nota_geral.media_municipal_por_disciplina[disciplina].toFixed(2)}</td>
+                               <td className="border border-border px-4 py-2 text-center">{formatDecimal(apiData.nota_geral.media_municipal_por_disciplina[disciplina])}</td>
                              </tr>
                            )}
                          </tbody>
