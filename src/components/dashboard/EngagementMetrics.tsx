@@ -49,130 +49,102 @@ export default function EngagementMetrics() {
         setIsLoading(true);
         setError(null);
 
-        // Buscar métricas de engajamento da API usando endpoints existentes
-        try {
-          // Buscar dados de usuários ativos
-          const usersResponse = await api.get('/users/list');
-          const evaluationsResponse = await api.get('/test/', {
-            params: { per_page: 100 }
-          });
-          const schoolsResponse = await api.get('/schools/recent');
-          
-          // Processar dados para criar métricas de engajamento
-          const users = usersResponse.data?.users || usersResponse.data || [];
-          const evaluations = evaluationsResponse.data?.data || evaluationsResponse.data?.tests || [];
-          const schools = schoolsResponse.data || [];
-          
-          // Calcular métricas baseadas nos dados reais
-          const totalUsers = users.length;
-          const totalEvaluations = evaluations.length;
-          const totalSchools = schools.length;
-          
-          // Calcular usuários ativos baseado em dados reais
-          const today = new Date();
-          const thisWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-          const thisMonth = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-          
-          // Filtrar usuários por data de criação (simulação de atividade)
-          const activeToday = users.filter((user: any) => {
-            const userDate = new Date(user.created_at || user.last_login);
-            return userDate >= today;
-          }).length;
-          
-          const activeThisWeek = users.filter((user: any) => {
-            const userDate = new Date(user.created_at || user.last_login);
-            return userDate >= thisWeek;
-          }).length;
-          
-          const activeThisMonth = users.filter((user: any) => {
-            const userDate = new Date(user.created_at || user.last_login);
-            return userDate >= thisMonth;
-          }).length;
-          
-          // Calcular tempo médio de sessão baseado em avaliações
-          const totalSessions = evaluations.reduce((sum: number, evaluation: any) => {
-            return sum + (evaluation.total_students || 0);
-          }, 0);
-          
-          const averageSessionTime = totalSessions > 0 ? Math.floor(totalSessions / totalEvaluations) : 0;
-          
-          // Avaliações mais populares baseadas em dados reais
-          const popularEvaluations = evaluations
-            .sort((a: any, b: any) => (b.total_students || 0) - (a.total_students || 0))
-            .slice(0, 3)
-            .map((evaluation: any) => ({
-              id: evaluation.id,
-              title: evaluation.title || 'Avaliação sem título',
-              views: evaluation.total_students || 0,
-              completions: evaluation.completed_students || Math.floor((evaluation.total_students || 0) * 0.8)
-            }));
-          
-          const engagementData = {
-            activeUsers: {
-              today: activeToday || Math.floor(totalUsers * 0.1),
-              thisWeek: activeThisWeek || Math.floor(totalUsers * 0.3),
-              thisMonth: activeThisMonth || Math.floor(totalUsers * 0.6),
-              growth: totalUsers > 0 ? Math.floor((activeThisMonth / totalUsers) * 100) : 0
-            },
-            sessionTime: {
-              average: averageSessionTime || 25,
-              total: Math.floor(totalSessions * 0.5), // Estimativa de horas
-              growth: totalEvaluations > 0 ? Math.floor((totalSessions / totalEvaluations) * 10) : 0
-            },
-            popularEvaluations,
-            returnRate: {
-              percentage: totalUsers > 0 ? Math.floor((activeThisMonth / totalUsers) * 100) : 0,
-              totalUsers,
-              returningUsers: activeThisMonth,
-              growth: totalUsers > 0 ? Math.floor((activeThisWeek / totalUsers) * 100) : 0
-            }
-          };
-          
-          setMetrics(engagementData);
-        } catch (apiError) {
-          // Se não houver endpoints disponíveis, usar dados mockados
-          console.warn('Endpoints de métricas de engajamento não disponíveis, usando dados mockados');
-          
-          setMetrics({
-            activeUsers: {
-              today: 245,
-              thisWeek: 1847,
-              thisMonth: 7234,
-              growth: 12.5
-            },
-            sessionTime: {
-              average: 28, // minutos
-              total: 1247, // horas totais
-              growth: 8.3
-            },
-            popularEvaluations: [
-              {
-                id: '1',
-                title: 'Avaliação de Matemática - 9º Ano',
-                views: 1250,
-                completions: 980
-              },
-              {
-                id: '2',
-                title: 'Prova de Português - 8º Ano',
-                views: 1100,
-                completions: 850
-              },
-              {
-                id: '3',
-                title: 'Avaliação de Ciências - 7º Ano',
-                views: 950,
-                completions: 720
-              }
-            ],
-            returnRate: {
-              percentage: 78.5,
-              totalUsers: 1500,
-              returningUsers: 1178,
-              growth: 5.2
-            }
-          });
+        const [usersOutcome, evaluationsOutcome, schoolsOutcome] = await Promise.allSettled([
+          api.get("/users/list"),
+          api.get("/test/", { params: { per_page: 100 } }),
+          api.get("/schools/recent"),
+        ]);
+
+        const users = usersOutcome.status === "fulfilled" ? usersOutcome.value.data?.users ?? usersOutcome.value.data ?? [] : [];
+        const evaluations =
+          evaluationsOutcome.status === "fulfilled"
+            ? evaluationsOutcome.value.data?.data ?? evaluationsOutcome.value.data?.tests ?? []
+            : [];
+        const schools =
+          schoolsOutcome.status === "fulfilled" ? schoolsOutcome.value.data ?? [] : [];
+
+        if (users.length === 0 && evaluations.length === 0) {
+          setMetrics(null);
+          setError("Métricas de engajamento indisponíveis no momento.");
+          return;
         }
+
+        const totalUsers = users.length;
+        const totalEvaluations = evaluations.length;
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const activeToday = users.filter((user: any) => {
+          const userDate = user.created_at || user.last_login;
+          if (!userDate) {
+            return false;
+          }
+          const date = new Date(userDate);
+          return date >= startOfDay;
+        }).length;
+
+        const activeThisWeek = users.filter((user: any) => {
+          const userDate = user.created_at || user.last_login;
+          if (!userDate) {
+            return false;
+          }
+          const date = new Date(userDate);
+          return date >= sevenDaysAgo;
+        }).length;
+
+        const activeThisMonth = users.filter((user: any) => {
+          const userDate = user.created_at || user.last_login;
+          if (!userDate) {
+            return false;
+          }
+          const date = new Date(userDate);
+          return date >= thirtyDaysAgo;
+        }).length;
+
+        const totalSessions = evaluations.reduce((sum: number, evaluation: any) => {
+          return sum + Number(evaluation.total_students ?? 0);
+        }, 0);
+
+        const averageSessionTime =
+          totalEvaluations > 0 ? Math.floor(totalSessions / totalEvaluations) : 0;
+
+        const popularEvaluations = evaluations
+          .filter((evaluation: any) => evaluation.total_students)
+          .sort((a: any, b: any) => Number(b.total_students ?? 0) - Number(a.total_students ?? 0))
+          .slice(0, 3)
+          .map((evaluation: any) => ({
+            id: evaluation.id,
+            title: evaluation.title || "Avaliação sem título",
+            views: Number(evaluation.total_students ?? 0),
+            completions: Number(evaluation.completed_students ?? 0),
+          }));
+
+        setMetrics({
+          activeUsers: {
+            today: activeToday,
+            thisWeek: activeThisWeek,
+            thisMonth: activeThisMonth,
+            growth: totalUsers > 0 ? Math.floor((activeThisMonth / totalUsers) * 100) : 0,
+          },
+          sessionTime: {
+            average: averageSessionTime,
+            total: totalSessions,
+            growth: totalEvaluations > 0 ? Math.floor((totalSessions / totalEvaluations) * 10) : 0,
+          },
+          popularEvaluations,
+          returnRate: {
+            percentage: totalUsers > 0 ? Math.floor((activeThisMonth / totalUsers) * 100) : 0,
+            totalUsers,
+            returningUsers: activeThisMonth,
+            growth: totalUsers > 0 ? Math.floor((activeThisWeek / totalUsers) * 100) : 0,
+          },
+        });
       } catch (error) {
         console.error('Erro ao buscar métricas de engajamento:', error);
         setError('Erro ao carregar dados');

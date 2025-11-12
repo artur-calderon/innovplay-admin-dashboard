@@ -76,67 +76,19 @@ export default function ProfessorEvaluations() {
           completed_students: evaluation.completed_students || 0,
           created_at: evaluation.created_at,
           due_date: evaluation.due_date || evaluation.deadline,
-          average_score: evaluation.average_score || Math.random() * 10 // Mock se não houver dados reais
+          average_score: Number(evaluation.average_score ?? 0)
         }));
 
         setEvaluations(formattedEvaluations.slice(0, 6)); // Limitar a 6 avaliações mais recentes
 
       } catch (error) {
         console.error('Erro ao buscar avaliações:', error);
-        
-        // Dados mockados como fallback
-        const mockEvaluations: Evaluation[] = [
-          {
-            id: '1',
-            title: 'Avaliação de Matemática - Equações',
-            subject: 'Matemática',
-            class_name: '9º Ano A',
-            status: 'active',
-            total_questions: 20,
-            total_students: 25,
-            completed_students: 18,
-            created_at: '2024-01-15T10:00:00Z',
-            due_date: '2024-01-20T23:59:59Z',
-            average_score: 7.8
-          },
-          {
-            id: '2',
-            title: 'Prova de Português - Literatura',
-            subject: 'Português',
-            class_name: '8º Ano B',
-            status: 'pending',
-            total_questions: 15,
-            total_students: 22,
-            completed_students: 22,
-            created_at: '2024-01-10T14:30:00Z',
-            average_score: 8.2
-          },
-          {
-            id: '3',
-            title: 'Avaliação de Ciências - Sistema Solar',
-            subject: 'Ciências',
-            class_name: '7º Ano C',
-            status: 'completed',
-            total_questions: 18,
-            total_students: 20,
-            completed_students: 20,
-            created_at: '2024-01-08T09:15:00Z',
-            average_score: 6.9
-          },
-          {
-            id: '4',
-            title: 'Teste de História - Brasil Colonial',
-            subject: 'História',
-            class_name: '9º Ano A',
-            status: 'draft',
-            total_questions: 12,
-            total_students: 25,
-            completed_students: 0,
-            created_at: '2024-01-12T16:45:00Z'
-          }
-        ];
-
-        setEvaluations(mockEvaluations);
+        toast({
+          title: "Erro ao buscar avaliações",
+          description: "Não foi possível carregar as avaliações recentes.",
+          variant: "destructive",
+        });
+        setEvaluations([]);
       } finally {
         setIsLoading(false);
       }

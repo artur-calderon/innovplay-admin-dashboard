@@ -20,85 +20,38 @@ export default function SchoolRankingTable() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const getMockData = (): SchoolRanking[] => [
-    {
-      position: 1,
-      schoolName: "Escola Municipal João Silva",
-      municipality: "São Paulo",
-      averageScore: 8.5,
-      completionRate: 95.2,
-      totalStudents: 150,
-      totalEvaluations: 12
-    },
-    {
-      position: 2,
-      schoolName: "Colégio Estadual Maria Santos",
-      municipality: "Rio de Janeiro",
-      averageScore: 8.2,
-      completionRate: 92.8,
-      totalStudents: 200,
-      totalEvaluations: 15
-    },
-    {
-      position: 3,
-      schoolName: "Instituto Educacional Pedro Costa",
-      municipality: "Belo Horizonte",
-      averageScore: 7.9,
-      completionRate: 89.5,
-      totalStudents: 180,
-      totalEvaluations: 10
-    },
-    {
-      position: 4,
-      schoolName: "Centro de Ensino Ana Lima",
-      municipality: "Salvador",
-      averageScore: 7.6,
-      completionRate: 87.3,
-      totalStudents: 120,
-      totalEvaluations: 8
-    },
-    {
-      position: 5,
-      schoolName: "Escola Técnica Carlos Gomes",
-      municipality: "Recife",
-      averageScore: 7.4,
-      completionRate: 85.1,
-      totalStudents: 95,
-      totalEvaluations: 6
-    }
-  ];
-
   useEffect(() => {
-    const fetchSchoolRankings = async () => {
+    async function fetchSchoolRankings() {
       try {
         setIsLoading(true);
         setError(null);
 
-        // Usar endpoint de escolas para buscar dados reais
-        const response = await api.get('/schools/recent', {
+        const response = await api.get("/schools/recent", {
           params: {
             per_page: 50,
-            include_stats: true
-          }
+            include_stats: true,
+          },
         });
 
         const data = response.data;
-        
-        if (data && Array.isArray(data) && data.length > 0) {
-          // Processar dados das escolas para criar ranking
+
+        if (Array.isArray(data) && data.length > 0) {
           const rankingsArray = data
             .map((school: any) => ({
-              position: 0, // Será definido após ordenação
-              schoolName: school.name || 'Escola sem nome',
-              municipality: school.city?.name || school.city_name || 'Não informado',
-              averageScore: school.average_score || school.avg_score || 0,
-              completionRate: school.completion_rate || school.completion_percentage || 0,
-              totalStudents: school.students_count || school.total_students || 0,
-              totalEvaluations: school.evaluations_count || school.total_evaluations || 0
+              position: 0,
+              schoolName: school.name || "Escola sem nome",
+              municipality: school.city?.name || school.city_name || "Não informado",
+              averageScore: Number(school.average_score ?? school.avg_score ?? 0),
+              completionRate: Number(
+                school.completion_rate ?? school.completion_percentage ?? 0,
+              ),
+              totalStudents: Number(school.students_count ?? school.total_students ?? 0),
+              totalEvaluations: Number(
+                school.evaluations_count ?? school.total_evaluations ?? 0,
+              ),
             }))
-            .filter(school => school.schoolName !== 'Escola sem nome') // Filtrar escolas válidas
+            .filter((school) => school.schoolName !== "Escola sem nome")
             .sort((a, b) => {
-              // Ordenar por média de pontuação, depois por taxa de conclusão, depois por número de alunos
               if (b.averageScore !== a.averageScore) {
                 return b.averageScore - a.averageScore;
               }
@@ -110,26 +63,21 @@ export default function SchoolRankingTable() {
             .slice(0, 10)
             .map((school, index) => ({
               ...school,
-              position: index + 1
+              position: index + 1,
             }));
 
-          if (rankingsArray.length > 0) {
-            setRankings(rankingsArray);
-          } else {
-            setRankings(getMockData());
-          }
+          setRankings(rankingsArray);
         } else {
-          setRankings(getMockData());
+          setRankings([]);
         }
-        setError(null); // Limpar erro se dados foram carregados com sucesso
       } catch (error) {
-        console.error('Erro ao buscar ranking de escolas:', error);
-        setRankings(getMockData());
-        setError(null); // Não mostrar erro para o usuário, usar dados mock
+        console.error("Erro ao buscar ranking de escolas:", error);
+        setError("Não foi possível carregar o ranking de escolas.");
+        setRankings([]);
       } finally {
         setIsLoading(false);
       }
-    };
+    }
 
     fetchSchoolRankings();
   }, []);
@@ -191,6 +139,24 @@ export default function SchoolRankingTable() {
         <CardContent>
           <div className="text-center text-red-500 py-8">
             {error}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (rankings.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Trophy className="h-5 w-5 text-yellow-500" />
+            Ranking de Escolas
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center text-muted-foreground py-8">
+            Nenhuma escola encontrada para compor o ranking.
           </div>
         </CardContent>
       </Card>
