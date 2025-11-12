@@ -15,6 +15,7 @@ import {
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/authContext";
 import { useToast } from "@/hooks/use-toast";
+import { fetchDashboardCountsByRole, DashboardCounts } from "@/lib/dashboard/fetch-dashboard-stats-by-role";
 
 interface ProfessorMetrics {
   totalStudents: number;
@@ -35,120 +36,107 @@ export default function ProfessorMetrics() {
 
   useEffect(() => {
     const fetchProfessorMetrics = async () => {
-      if (!user?.id) return;
+      if (!user?.id || !user?.role) {
+        return;
+      }
+
+      setIsLoading(true);
+      let baseCounts: DashboardCounts | null = null;
 
       try {
-        setIsLoading(true);
+        baseCounts = await fetchDashboardCountsByRole({
+          role: user.role,
+          userId: user.id,
+        });
 
-        // Buscar dados de diferentes endpoints para construir as métricas
-        const [studentsRes, evaluationsRes, classesRes, dashboardRes] = await Promise.allSettled([
-          api.get('/students', { params: { per_page: 1000 } }),
-          api.get('/test/', { params: { per_page: 1000 } }),
-          api.get('/classes', { params: { per_page: 1000 } }),
-          api.get('/dashboard/comprehensive-stats')
+        const [studentsRes, evaluationsRes, classesRes] = await Promise.allSettled([
+          api.get("/students", { params: { per_page: 1000 } }),
+          api.get("/test/", { params: { per_page: 1000 } }),
+          api.get("/classes", { params: { per_page: 1000 } }),
         ]);
 
-        let totalStudents = 0;
-        let totalEvaluations = 0;
+        let totalStudents = baseCounts.students;
+        let totalEvaluations = baseCounts.evaluations;
+        let totalClasses = baseCounts.classes;
         let completedEvaluations = 0;
         let pendingCorrections = 0;
-        let totalClasses = 0;
         let averageScore = 0;
         let activeStudentsThisWeek = 0;
         let evaluationsThisMonth = 0;
 
-        // Processar dados do dashboard (preferencial)
-        let dashboardStats: any = null;
-        if (dashboardRes.status === 'fulfilled') {
-          dashboardStats = dashboardRes.value.data;
-        }
+        if (studentsRes.status === "fulfilled") {
+          const studentsPayload = studentsRes.value.data;
+          const studentsList = Array.isArray(studentsPayload)
+            ? studentsPayload
+            : studentsPayload?.data ?? [];
+          totalStudents = studentsList.length || totalStudents;
 
-        // Processar dados dos alunos
-        if (studentsRes.status === 'fulfilled') {
-          const studentsData = studentsRes.value.data;
-          const students = Array.isArray(studentsData) ? studentsData : studentsData?.data || [];
-          totalStudents = students.length;
-
-          // Calcular alunos ativos (baseado em última atividade ou criação recente)
           const weekAgo = new Date();
           weekAgo.setDate(weekAgo.getDate() - 7);
-          
-          activeStudentsThisWeek = students.filter((student: any) => {
+
+          activeStudentsThisWeek = studentsList.filter((student: any) => {
             if (student.last_login) {
               return new Date(student.last_login) > weekAgo;
             }
-            // Fallback: considerar alunos criados recentemente como ativos
             if (student.created_at) {
               return new Date(student.created_at) > weekAgo;
             }
             return false;
           }).length;
-
-          // Se não conseguiu calcular ativos, usar estimativa
-          if (activeStudentsThisWeek === 0 && totalStudents > 0) {
-            activeStudentsThisWeek = Math.floor(totalStudents * 0.7);
-          }
         }
 
-        // Processar dados das avaliações
-        if (evaluationsRes.status === 'fulfilled') {
-          const evaluationsData = evaluationsRes.value.data;
-          const evaluations = Array.isArray(evaluationsData) ? evaluationsData : evaluationsData?.data || [];
-          
-          totalEvaluations = evaluations.length;
-          
-          // Contar avaliações concluídas (mais preciso)
-          completedEvaluations = evaluations.filter((evaluation: any) => {
-            const status = evaluation.status?.toLowerCase();
-            return status === 'completed' || status === 'finalizada' || evaluation.is_active === false;
+        if (evaluationsRes.status === "fulfilled") {
+          const evaluationsPayload = evaluationsRes.value.data;
+          const evaluationsList = Array.isArray(evaluationsPayload)
+            ? evaluationsPayload
+            : evaluationsPayload?.data ?? [];
+
+          if (evaluationsList.length > 0) {
+            totalEvaluations = evaluationsList.length;
+          }
+
+          completedEvaluations = evaluationsList.filter((evaluation: any) => {
+            const status = String(evaluation.status ?? "").toLowerCase();
+            return status === "completed" || status === "finalizada" || evaluation.is_active === false;
           }).length;
-          
-          // Contar correções pendentes
-          pendingCorrections = evaluations.filter((evaluation: any) => {
-            const status = evaluation.status?.toLowerCase();
-            return status === 'pending' || status === 'pendente' || evaluation.needs_correction;
+
+          pendingCorrections = evaluationsList.filter((evaluation: any) => {
+            const status = String(evaluation.status ?? "").toLowerCase();
+            return status === "pending" || status === "pendente" || Boolean(evaluation.needs_correction);
           }).length;
-          
-          // Contar avaliações criadas este mês
-          const thisMonth = new Date();
-          thisMonth.setDate(1); // Primeiro dia do mês
-          
-          evaluationsThisMonth = evaluations.filter((evaluation: any) => {
-            if (!evaluation.created_at) return false;
+
+          const firstDayOfMonth = new Date();
+          firstDayOfMonth.setDate(1);
+
+          evaluationsThisMonth = evaluationsList.filter((evaluation: any) => {
+            if (!evaluation.created_at) {
+              return false;
+            }
             const createdDate = new Date(evaluation.created_at);
-            return createdDate >= thisMonth;
+            return createdDate >= firstDayOfMonth;
           }).length;
-          
-          // Calcular média de notas (mais realista)
-          const evaluationsWithScores = evaluations.filter((evaluation: any) => 
-            evaluation.average_score !== null && evaluation.average_score !== undefined
-          );
-          
+
+          const evaluationsWithScores = evaluationsList.filter((evaluation: any) => {
+            return evaluation.average_score !== null && evaluation.average_score !== undefined;
+          });
+
           if (evaluationsWithScores.length > 0) {
-            const scoresSum = evaluationsWithScores.reduce((sum: number, evaluation: any) => 
-              sum + (evaluation.average_score || 0), 0
-            );
+            const scoresSum = evaluationsWithScores.reduce((sum: number, evaluation: any) => {
+              return sum + Number(evaluation.average_score || 0);
+            }, 0);
             averageScore = scoresSum / evaluationsWithScores.length;
-          } else {
-            // Fallback: usar dados do dashboard se disponível
-            averageScore = dashboardStats?.average_score || 0;
           }
         }
 
-        // Processar dados das turmas
-        if (classesRes.status === 'fulfilled') {
-          const classesData = classesRes.value.data;
-          totalClasses = Array.isArray(classesData) ? classesData.length : classesData?.data?.length || 0;
+        if (classesRes.status === "fulfilled") {
+          const classesPayload = classesRes.value.data;
+          const classesList = Array.isArray(classesPayload)
+            ? classesPayload
+            : classesPayload?.data ?? [];
+          totalClasses = classesList.length || totalClasses;
         }
 
-        // Usar dados do dashboard como fallback se disponível
-        if (dashboardStats) {
-          totalStudents = totalStudents || dashboardStats.students || 0;
-          totalEvaluations = totalEvaluations || dashboardStats.evaluations || 0;
-          totalClasses = totalClasses || dashboardStats.classes || 0;
-        }
-
-        const metricsData: ProfessorMetrics = {
+        setMetrics({
           totalStudents,
           totalEvaluations,
           completedEvaluations,
@@ -156,29 +144,25 @@ export default function ProfessorMetrics() {
           averageScore: Math.round(averageScore * 10) / 10,
           activeStudentsThisWeek,
           totalClasses,
-          evaluationsThisMonth
-        };
-
-        setMetrics(metricsData);
-
+          evaluationsThisMonth,
+        });
       } catch (error) {
-        console.error('Erro ao buscar métricas do professor:', error);
+        console.error("Erro ao buscar métricas do professor:", error);
         toast({
           title: "Erro",
           description: "Não foi possível carregar as métricas.",
           variant: "destructive",
         });
 
-        // Dados mockados como fallback
         setMetrics({
-          totalStudents: 156,
-          totalEvaluations: 24,
-          completedEvaluations: 18,
-          pendingCorrections: 6,
-          averageScore: 7.8,
-          activeStudentsThisWeek: 109,
-          totalClasses: 8,
-          evaluationsThisMonth: 7
+          totalStudents: baseCounts?.students ?? 0,
+          totalEvaluations: baseCounts?.evaluations ?? 0,
+          completedEvaluations: 0,
+          pendingCorrections: 0,
+          averageScore: 0,
+          activeStudentsThisWeek: 0,
+          totalClasses: baseCounts?.classes ?? 0,
+          evaluationsThisMonth: 0,
         });
       } finally {
         setIsLoading(false);
@@ -186,7 +170,7 @@ export default function ProfessorMetrics() {
     };
 
     fetchProfessorMetrics();
-  }, [user?.id, toast]);
+  }, [toast, user?.id, user?.role]);
 
   if (isLoading) {
     return (
@@ -322,4 +306,5 @@ export default function ProfessorMetrics() {
     </div>
   );
 }
+
 

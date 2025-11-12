@@ -43,103 +43,69 @@ export default function RecentEvaluationsTable() {
         const data = response.data;
         
         if (data?.data && Array.isArray(data.data)) {
-          // Filtrar avaliações ativas (não deletadas/arquivadas)
-          const activeEvaluations = data.data.filter((evaluation: any) => 
-            !evaluation.deleted_at && 
-            !evaluation.archived && 
-            evaluation.is_active !== false
-          );
-          
-          const recentEvaluations = activeEvaluations.map((evaluation: any) => ({
-            id: evaluation.id,
-            title: evaluation.title || 'Avaliação sem título',
-            subject: evaluation.subject_rel?.name || evaluation.subject?.name || 'Disciplina não informada',
-            school: evaluation.schools && evaluation.schools.length > 0 ? 
-              (typeof evaluation.schools[0] === 'string' ? evaluation.schools[0] : evaluation.schools[0].name) : 
-              'Escola não informada',
-            status: getEvaluationStatus(evaluation),
-            progress: evaluation.progress_percentage || 0,
-            totalStudents: evaluation.total_students || 0,
-            completedStudents: evaluation.completed_students || 0,
-            averageScore: evaluation.average_score || 0,
-            startDate: evaluation.data_inicio || evaluation.created_at,
-            endDate: evaluation.data_fim || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-            timeRemaining: calculateTimeRemaining(evaluation.data_fim || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString())
-          }));
-          
+          const activeEvaluations = data.data.filter((evaluation: any) => {
+            return !evaluation.deleted_at && !evaluation.archived && evaluation.is_active !== false;
+          });
+
+          const recentEvaluations = activeEvaluations.map((evaluation: any) => {
+            const startDate = evaluation.data_inicio || evaluation.created_at;
+            const endDate = evaluation.data_fim || null;
+
+            return {
+              id: evaluation.id,
+              title: evaluation.title || "Avaliação sem título",
+              subject: evaluation.subject_rel?.name || evaluation.subject?.name || "Disciplina não informada",
+              school:
+                evaluation.schools && evaluation.schools.length > 0
+                  ? typeof evaluation.schools[0] === "string"
+                    ? evaluation.schools[0]
+                    : evaluation.schools[0].name
+                  : "Escola não informada",
+              status: getEvaluationStatus(evaluation),
+              progress: Number(evaluation.progress_percentage ?? 0),
+              totalStudents: Number(evaluation.total_students ?? 0),
+              completedStudents: Number(evaluation.completed_students ?? 0),
+              averageScore: Number(evaluation.average_score ?? 0),
+              startDate: startDate,
+              endDate: endDate,
+              timeRemaining: calculateTimeRemaining(endDate),
+            };
+          });
+
           setEvaluations(recentEvaluations);
         } else if (data?.tests && Array.isArray(data.tests)) {
-          // Filtrar avaliações ativas (não deletadas/arquivadas) - estrutura alternativa
-          const activeTests = data.tests.filter((evaluation: any) => 
-            !evaluation.deleted_at && 
-            !evaluation.archived && 
-            evaluation.is_active !== false
-          );
-          
-          // Tratar estrutura alternativa da API
-          const recentEvaluations = activeTests.map((evaluation: any) => ({
-            id: evaluation.id,
-            title: evaluation.title || 'Avaliação sem título',
-            subject: evaluation.subject_rel?.name || evaluation.subject?.name || 'Disciplina não informada',
-            school: evaluation.schools && evaluation.schools.length > 0 ? 
-              (typeof evaluation.schools[0] === 'string' ? evaluation.schools[0] : evaluation.schools[0].name) : 
-              'Escola não informada',
-            status: getEvaluationStatus(evaluation),
-            progress: evaluation.progress_percentage || 0,
-            totalStudents: evaluation.total_students || 0,
-            completedStudents: evaluation.completed_students || 0,
-            averageScore: evaluation.average_score || 0,
-            startDate: evaluation.data_inicio || evaluation.created_at,
-            endDate: evaluation.data_fim || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-            timeRemaining: calculateTimeRemaining(evaluation.data_fim || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString())
-          }));
-          
+          const activeTests = data.tests.filter((evaluation: any) => {
+            return !evaluation.deleted_at && !evaluation.archived && evaluation.is_active !== false;
+          });
+
+          const recentEvaluations = activeTests.map((evaluation: any) => {
+            const startDate = evaluation.data_inicio || evaluation.created_at;
+            const endDate = evaluation.data_fim || null;
+
+            return {
+              id: evaluation.id,
+              title: evaluation.title || "Avaliação sem título",
+              subject: evaluation.subject_rel?.name || evaluation.subject?.name || "Disciplina não informada",
+              school:
+                evaluation.schools && evaluation.schools.length > 0
+                  ? typeof evaluation.schools[0] === "string"
+                    ? evaluation.schools[0]
+                    : evaluation.schools[0].name
+                  : "Escola não informada",
+              status: getEvaluationStatus(evaluation),
+              progress: Number(evaluation.progress_percentage ?? 0),
+              totalStudents: Number(evaluation.total_students ?? 0),
+              completedStudents: Number(evaluation.completed_students ?? 0),
+              averageScore: Number(evaluation.average_score ?? 0),
+              startDate: startDate,
+              endDate: endDate,
+              timeRemaining: calculateTimeRemaining(endDate),
+            };
+          });
+
           setEvaluations(recentEvaluations);
         } else {
-          // Dados mockados para demonstração
-          setEvaluations([
-            {
-              id: '1',
-              title: 'Avaliação de Matemática - 9º Ano',
-              subject: 'Matemática',
-              school: 'Escola Municipal João Silva',
-              status: 'in_progress',
-              progress: 75,
-              totalStudents: 120,
-              completedStudents: 90,
-              averageScore: 7.8,
-              startDate: '2024-01-15T08:00:00Z',
-              endDate: '2024-01-20T18:00:00Z',
-              timeRemaining: '2 dias restantes'
-            },
-            {
-              id: '2',
-              title: 'Prova de Português - 8º Ano',
-              subject: 'Português',
-              school: 'Colégio Estadual Maria Santos',
-              status: 'completed',
-              progress: 100,
-              totalStudents: 95,
-              completedStudents: 95,
-              averageScore: 8.2,
-              startDate: '2024-01-10T08:00:00Z',
-              endDate: '2024-01-12T18:00:00Z'
-            },
-            {
-              id: '3',
-              title: 'Avaliação de Ciências - 7º Ano',
-              subject: 'Ciências',
-              school: 'Instituto Educacional Pedro Costa',
-              status: 'pending',
-              progress: 0,
-              totalStudents: 80,
-              completedStudents: 0,
-              averageScore: 0,
-              startDate: '2024-01-22T08:00:00Z',
-              endDate: '2024-01-25T18:00:00Z',
-              timeRemaining: 'Inicia em 1 dia'
-            }
-          ]);
+          setEvaluations([]);
         }
       } catch (error) {
         console.error('Erro ao buscar avaliações recentes:', error);
@@ -152,35 +118,46 @@ export default function RecentEvaluationsTable() {
     fetchRecentEvaluations();
   }, []);
 
-  const getEvaluationStatus = (evaluation: any): RecentEvaluation['status'] => {
+  const getEvaluationStatus = (evaluation: any): RecentEvaluation["status"] => {
     const now = new Date();
-    const startDate = new Date(evaluation.data_inicio);
-    const endDate = new Date(evaluation.data_fim);
-    
-    if (evaluation.status === 'finalizada' || evaluation.progress_percentage === 100) {
-      return 'completed';
-    } else if (now < startDate) {
-      return 'pending';
-    } else if (now > endDate) {
-      return 'expired';
-    } else {
-      return 'in_progress';
+    const startValue = evaluation.data_inicio || evaluation.start_date || evaluation.created_at;
+    const endValue = evaluation.data_fim || evaluation.end_date;
+
+    const startDate = startValue ? new Date(startValue) : null;
+    const endDate = endValue ? new Date(endValue) : null;
+
+    if (evaluation.status === "finalizada" || Number(evaluation.progress_percentage ?? 0) === 100) {
+      return "completed";
     }
+
+    if (endDate && now > endDate) {
+      return "expired";
+    }
+
+    if (startDate && now < startDate) {
+      return "pending";
+    }
+
+    return "in_progress";
   };
 
-  const calculateTimeRemaining = (endDate: string): string => {
+  const calculateTimeRemaining = (endDate: string | null | undefined): string => {
+    if (!endDate) {
+      return "Sem prazo definido";
+    }
+
     const now = new Date();
     const end = new Date(endDate);
     const diff = end.getTime() - now.getTime();
-    
-    if (diff <= 0) return 'Expirada';
-    
+
+    if (Number.isNaN(diff) || diff <= 0) return "Expirada";
+
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    
+
     if (days > 0) return `${days} dias restantes`;
     if (hours > 0) return `${hours} horas restantes`;
-    return 'Menos de 1 hora';
+    return "Menos de 1 hora";
   };
 
   const getStatusIcon = (status: RecentEvaluation['status']) => {
@@ -258,6 +235,24 @@ export default function RecentEvaluationsTable() {
         <CardContent>
           <div className="text-center text-red-500 py-4">
             {error}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (evaluations.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Clock className="h-5 w-5 text-blue-500" />
+            Avaliações Recentes
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center text-muted-foreground py-6">
+            Nenhuma avaliação recente encontrada.
           </div>
         </CardContent>
       </Card>

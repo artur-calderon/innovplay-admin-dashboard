@@ -47,13 +47,15 @@ export default function ProfessorNotifications() {
       try {
         setIsLoading(true);
 
-        // Gerar notificações baseadas em dados reais (endpoint de notificações não existe)
         await generateSmartNotifications();
-
       } catch (error) {
-        console.error('Erro ao buscar notificações:', error);
-        // Fallback para notificações mockadas
-        setNotifications(getMockNotifications());
+        console.error("Erro ao buscar notificações:", error);
+        toast({
+          title: "Erro ao carregar notificações",
+          description: "Não foi possível obter notificações atuais.",
+          variant: "destructive",
+        });
+        setNotifications([]);
       } finally {
         setIsLoading(false);
       }
@@ -61,19 +63,16 @@ export default function ProfessorNotifications() {
 
     const generateSmartNotifications = async () => {
       try {
-        // Buscar dados para gerar notificações inteligentes
         const [evaluationsRes, studentsRes] = await Promise.allSettled([
-          api.get('/test/'),
-          api.get('/students')
+          api.get("/test/"),
+          api.get("/students"),
         ]);
 
         const smartNotifications: Notification[] = [];
 
-        // Notificações baseadas em avaliações
-        if (evaluationsRes.status === 'fulfilled') {
+        if (evaluationsRes.status === "fulfilled") {
           const evaluations = evaluationsRes.value.data?.data || evaluationsRes.value.data || [];
-          
-          // Avaliações próximas do prazo
+
           const nearDeadline = evaluations.filter((evaluation: any) => {
             if (!evaluation.due_date) return false;
             const dueDate = new Date(evaluation.due_date);
@@ -82,48 +81,48 @@ export default function ProfessorNotifications() {
             return diffDays <= 2 && diffDays >= 0;
           });
 
-          nearDeadline.forEach((evaluation: any, index: number) => {
+          nearDeadline.forEach((evaluation: any) => {
             smartNotifications.push({
               id: `deadline-${evaluation.id}`,
-              type: 'warning',
-              title: 'Prazo próximo',
+              type: "warning",
+              title: "Prazo próximo",
               message: `A avaliação "${evaluation.title}" vence em breve`,
               created_at: new Date().toISOString(),
               is_read: false,
               action_url: `/app/avaliacoes/${evaluation.id}`,
-              action_text: 'Ver avaliação',
-              priority: 'high',
-              category: 'deadline'
+              action_text: "Ver avaliação",
+              priority: "high",
+              category: "deadline",
             });
           });
 
-          // Avaliações pendentes de correção
-          const pendingCorrections = evaluations.filter((evaluation: any) => 
-            evaluation.status === 'pending' || evaluation.needs_correction
-          );
+          const pendingCorrections = evaluations.filter((evaluation: any) => {
+            return evaluation.status === "pending" || evaluation.needs_correction;
+          });
 
           if (pendingCorrections.length > 0) {
             smartNotifications.push({
-              id: 'pending-corrections',
-              type: 'info',
-              title: 'Correções pendentes',
+              id: "pending-corrections",
+              type: "info",
+              title: "Correções pendentes",
               message: `Você tem ${pendingCorrections.length} avaliação(ões) aguardando correção`,
               created_at: new Date().toISOString(),
               is_read: false,
-              action_url: '/app/avaliacoes?status=pending',
-              action_text: 'Ver pendências',
-              priority: 'medium',
-              category: 'evaluation'
+              action_url: "/app/avaliacoes?status=pending",
+              action_text: "Ver pendências",
+              priority: "medium",
+              category: "evaluation",
             });
           }
         }
 
-        // Notificações baseadas em alunos
-        if (studentsRes.status === 'fulfilled') {
+        if (studentsRes.status === "fulfilled") {
           const students = studentsRes.value.data?.data || studentsRes.value.data || [];
-          
-          // Novos alunos cadastrados
+
           const recentStudents = students.filter((student: any) => {
+            if (!student.created_at) {
+              return false;
+            }
             const createdDate = new Date(student.created_at);
             const weekAgo = new Date();
             weekAgo.setDate(weekAgo.getDate() - 7);
@@ -132,109 +131,34 @@ export default function ProfessorNotifications() {
 
           if (recentStudents.length > 0) {
             smartNotifications.push({
-              id: 'new-students',
-              type: 'success',
-              title: 'Novos alunos',
+              id: "new-students",
+              type: "success",
+              title: "Novos alunos",
               message: `${recentStudents.length} novo(s) aluno(s) foram cadastrados`,
               created_at: new Date().toISOString(),
               is_read: false,
-              action_url: '/app/alunos',
-              action_text: 'Ver alunos',
-              priority: 'low',
-              category: 'student'
+              action_url: "/app/alunos",
+              action_text: "Ver alunos",
+              priority: "low",
+              category: "student",
             });
           }
         }
 
-        // Adicionar algumas notificações do sistema se não houver muitas
-        if (smartNotifications.length < 3) {
-          smartNotifications.push(...getSystemNotifications());
-        }
-
         setNotifications(smartNotifications.slice(0, 5));
-
       } catch (error) {
-        console.error('Erro ao gerar notificações inteligentes:', error);
-        setNotifications(getMockNotifications());
+        console.error("Erro ao gerar notificações inteligentes:", error);
+        toast({
+          title: "Erro ao gerar notificações",
+          description: "Não foi possível calcular notificações inteligentes.",
+          variant: "destructive",
+        });
+        setNotifications([]);
       }
     };
 
     fetchNotifications();
   }, [user?.id]);
-
-  const getSystemNotifications = (): Notification[] => [
-    {
-      id: 'system-update',
-      type: 'info',
-      title: 'Novidades na plataforma',
-      message: 'Confira as novas funcionalidades disponíveis no InnovPlay',
-      created_at: new Date().toISOString(),
-      is_read: false,
-      priority: 'low',
-      category: 'system'
-    },
-    {
-      id: 'backup-reminder',
-      type: 'info',
-      title: 'Backup automático',
-      message: 'Seus dados foram salvos automaticamente',
-      created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-      is_read: true,
-      priority: 'low',
-      category: 'system'
-    }
-  ];
-
-  const getMockNotifications = (): Notification[] => [
-    {
-      id: '1',
-      type: 'warning',
-      title: 'Avaliação próxima do prazo',
-      message: 'A avaliação "Matemática - Equações" vence em 2 dias',
-      created_at: new Date().toISOString(),
-      is_read: false,
-      action_url: '/app/avaliacoes/1',
-      action_text: 'Ver avaliação',
-      priority: 'high',
-      category: 'deadline'
-    },
-    {
-      id: '2',
-      type: 'info',
-      title: 'Correções pendentes',
-      message: 'Você tem 3 avaliações aguardando correção',
-      created_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-      is_read: false,
-      action_url: '/app/avaliacoes?status=pending',
-      action_text: 'Ver pendências',
-      priority: 'medium',
-      category: 'evaluation'
-    },
-    {
-      id: '3',
-      type: 'success',
-      title: 'Novos alunos cadastrados',
-      message: '5 novos alunos foram adicionados às suas turmas',
-      created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-      is_read: false,
-      action_url: '/app/alunos',
-      action_text: 'Ver alunos',
-      priority: 'low',
-      category: 'student'
-    },
-    {
-      id: '4',
-      type: 'info',
-      title: 'Relatório mensal disponível',
-      message: 'O relatório de desempenho de janeiro está pronto',
-      created_at: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
-      is_read: true,
-      action_url: '/app/relatorios',
-      action_text: 'Ver relatório',
-      priority: 'medium',
-      category: 'system'
-    }
-  ];
 
   const getNotificationConfig = (type: Notification['type']) => {
     switch (type) {
