@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { api } from '@/lib/api';
+import { DashboardApiService } from '@/services/dashboardApi';
+import type {
+  AdminDashboard,
+  DiretorDashboard,
+  ProfessorDashboard,
+} from '@/types/dashboard';
 
 // Configurações de cache
 const CACHE_CONFIG = {
@@ -611,4 +617,112 @@ export function useCacheManager() {
     getCacheSize,
     getCacheInfo
   };
+}
+
+// ===== HOOKS PARA DASHBOARDS POR ROLE =====
+
+// Hook base para dashboards
+function useDashboardData<T>(
+  fetchFn: () => Promise<T | null>,
+  cacheKey: string
+) {
+  const [data, setData] = useState<T | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const result = await fetchFn();
+      if (result) {
+        setData(result);
+      } else {
+        setError(new Error("Dados não disponíveis"));
+      }
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      setError(error);
+      console.error(`Erro ao buscar ${cacheKey}:`, error);
+    } finally {
+      setIsLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cacheKey]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const refetch = useCallback(() => {
+    return fetchData();
+  }, [fetchData]);
+
+  return { data, isLoading, error, refetch };
+}
+
+// Hook para dashboard Admin
+export function useAdminDashboard() {
+  return useDashboardData<AdminDashboard>(
+    () => DashboardApiService.getAdminDashboard(),
+    "admin-dashboard"
+  );
+}
+
+// Hook para dashboard TecAdm
+export function useTecAdmDashboard() {
+  return useDashboardData<AdminDashboard>(
+    () => DashboardApiService.getTecAdmDashboard(),
+    "tecadm-dashboard"
+  );
+}
+
+// Hook para dashboard Diretor
+export function useDiretorDashboard() {
+  return useDashboardData<DiretorDashboard>(
+    () => DashboardApiService.getDiretorDashboard(),
+    "diretor-dashboard"
+  );
+}
+
+// Hook para dashboard Coordenador
+export function useCoordenadorDashboard() {
+  return useDashboardData<DiretorDashboard>(
+    () => DashboardApiService.getCoordenadorDashboard(),
+    "coordenador-dashboard"
+  );
+}
+
+// Hook para dashboard Professor
+export function useProfessorDashboard() {
+  return useDashboardData<ProfessorDashboard>(
+    () => DashboardApiService.getProfessorDashboard(),
+    "professor-dashboard"
+  );
+}
+
+// Hook genérico que retorna o dashboard baseado no role
+export function useDashboardByRole(role: string) {
+  const normalizedRole = role.toLowerCase();
+
+  switch (normalizedRole) {
+    case "admin":
+      return useAdminDashboard();
+    case "tecadm":
+      return useTecAdmDashboard();
+    case "diretor":
+      return useDiretorDashboard();
+    case "coordenador":
+      return useCoordenadorDashboard();
+    case "professor":
+      return useProfessorDashboard();
+    default:
+      // Retorna um hook vazio para roles não reconhecidos
+      return {
+        data: null,
+        isLoading: false,
+        error: new Error(`Role não reconhecido: ${role}`),
+        refetch: async () => null,
+      };
+  }
 } 

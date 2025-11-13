@@ -30,12 +30,18 @@ import { useAuth } from "@/context/authContext";
 import { useToast } from "@/hooks/use-toast";
 import ProfessorDashboard from "./ProfessorDashboard";
 import { fetchDashboardCountsByRole, DashboardCounts } from "@/lib/dashboard/fetch-dashboard-stats-by-role";
+import { useDashboardByRole } from "@/hooks/use-cache";
+import type { AdminDashboard, DiretorDashboard } from "@/types/dashboard";
 
 const Index = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [counts, setCounts] = useState<DashboardCounts | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Novo hook para buscar dados do dashboard por role
+  const dashboardData = user?.role ? useDashboardByRole(user.role) : null;
+  const dashboard = dashboardData?.data as AdminDashboard | DiretorDashboard | null;
 
   useEffect(() => {
     if (!user?.id || !user?.role) {
@@ -87,6 +93,10 @@ const Index = () => {
     };
   }, [toast, user?.role, user?.id]);
 
+  // Usar dados da nova API se disponível, senão usar fallback
+  const isLoadingDashboard = dashboardData?.isLoading ?? isLoading;
+  const hasNewDashboardData = dashboard !== null;
+
   // Check user role and render appropriate dashboard
   if (user?.role === "professor") {
     return <ProfessorDashboard />;
@@ -114,68 +124,118 @@ const Index = () => {
         <ModernStatCard
           icon={<Users size={20} className="sm:w-6 sm:h-6" />}
           title="Alunos"
-          value={counts?.students ?? 0}
+          value={
+            hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.students
+              : counts?.students ?? 0
+          }
           subtitle="Total de estudantes"
           performance={
-            counts?.students && counts.students > 1000
+            (hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.students
+              : counts?.students ?? 0) > 1000
               ? "excellent"
-              : counts?.students && counts.students > 500
+              : (hasNewDashboardData && "summary" in dashboard
+                  ? dashboard.summary.students
+                  : counts?.students ?? 0) > 500
               ? "good"
               : "average"
           }
-          isLoading={isLoading}
+          isLoading={isLoadingDashboard}
         />
         <ModernStatCard
           icon={
-            counts?.institution.label.includes("Turma") ? (
+            (hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.classes > 0
+              : counts?.institution.label.includes("Turma")) ? (
               <List size={20} className="sm:w-6 sm:h-6" />
             ) : (
               <School size={20} className="sm:w-6 sm:h-6" />
             )
           }
-          title={counts?.institution.label ?? "Instituições"}
-          value={counts?.institution.count ?? 0}
+          title={
+            hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.classes > 0
+                ? "Turmas"
+                : "Escolas"
+              : counts?.institution.label ?? "Instituições"
+          }
+          value={
+            hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.classes > 0
+                ? dashboard.summary.classes
+                : dashboard.summary.schools
+              : counts?.institution.count ?? 0
+          }
           subtitle={
-            counts?.institution.label.includes("Turma")
+            hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.classes > 0
+                ? "Turmas vinculadas"
+                : "Escolas cadastradas"
+              : counts?.institution.label.includes("Turma")
               ? "Turmas vinculadas"
               : "Instituições cadastradas"
           }
           performance={
-            counts?.institution.count && counts.institution.count > 50
+            (hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.classes > 0
+                ? dashboard.summary.classes
+                : dashboard.summary.schools
+              : counts?.institution.count ?? 0) > 50
               ? "excellent"
-              : counts?.institution.count && counts.institution.count > 20
+              : (hasNewDashboardData && "summary" in dashboard
+                  ? dashboard.summary.classes > 0
+                    ? dashboard.summary.classes
+                    : dashboard.summary.schools
+                  : counts?.institution.count ?? 0) > 20
               ? "good"
               : "average"
           }
-          isLoading={isLoading}
+          isLoading={isLoadingDashboard}
         />
         <ModernStatCard
           icon={<List size={20} className="sm:w-6 sm:h-6" />}
           title="Avaliações"
-          value={counts?.evaluations ?? 0}
+          value={
+            hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.evaluations
+              : counts?.evaluations ?? 0
+          }
           subtitle="Avaliações ativas"
           performance={
-            counts?.evaluations && counts.evaluations > 100
+            (hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.evaluations
+              : counts?.evaluations ?? 0) > 100
               ? "excellent"
-              : counts?.evaluations && counts.evaluations > 50
+              : (hasNewDashboardData && "summary" in dashboard
+                  ? dashboard.summary.evaluations
+                  : counts?.evaluations ?? 0) > 50
               ? "good"
               : "average"
           }
-          isLoading={isLoading}
+          isLoading={isLoadingDashboard}
         />
         <ModernStatCard
           icon={<Gamepad size={20} className="sm:w-6 sm:h-6" />}
           title="Jogos"
-          value={counts?.games ?? 0}
+          value={
+            hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.games ?? 0
+              : counts?.games ?? 0
+          }
           subtitle="Jogos educacionais"
           performance={
-            counts?.games && counts.games > 20
+            (hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.games ?? 0
+              : counts?.games ?? 0) > 20
               ? "excellent"
-              : counts?.games && counts.games > 10
+              : (hasNewDashboardData && "summary" in dashboard
+                  ? dashboard.summary.games ?? 0
+                  : counts?.games ?? 0) > 10
               ? "good"
               : "average"
           }
-          isLoading={isLoading}
+          isLoading={isLoadingDashboard}
         />
       </div>
 
@@ -184,12 +244,20 @@ const Index = () => {
         <PerformanceCard
           icon={<User size={20} className="sm:w-6 sm:h-6" />}
           title="Usuários"
-          value={counts?.users ?? 0}
+          value={
+            hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.users ?? 0
+              : counts?.users ?? 0
+          }
           subtitle="Usuários do sistema"
           performance={
-            counts?.users && counts.users > 500
+            (hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.users ?? 0
+              : counts?.users ?? 0) > 500
               ? "excellent"
-              : counts?.users && counts.users > 200
+              : (hasNewDashboardData && "summary" in dashboard
+                  ? dashboard.summary.users ?? 0
+                  : counts?.users ?? 0) > 200
               ? "good"
               : "average"
           }
@@ -197,12 +265,20 @@ const Index = () => {
         <PerformanceCard
           icon={<Headset size={20} className="sm:w-6 sm:h-6" />}
           title="Questões no Banco"
-          value={counts?.questions ?? 0}
+          value={
+            hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.questions ?? 0
+              : counts?.questions ?? 0
+          }
           subtitle="Banco de questões"
           performance={
-            counts?.questions && counts.questions > 150
+            (hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.questions ?? 0
+              : counts?.questions ?? 0) > 150
               ? "excellent"
-              : counts?.questions && counts.questions > 50
+              : (hasNewDashboardData && "summary" in dashboard
+                  ? dashboard.summary.questions ?? 0
+                  : counts?.questions ?? 0) > 50
               ? "good"
               : "average"
           }
@@ -210,15 +286,35 @@ const Index = () => {
         <PerformanceCard
           icon={<Bell size={20} className="sm:w-6 sm:h-6" />}
           title="Avisos"
-          value="--"
-          subtitle="Em implementação"
+          value={
+            hasNewDashboardData && "secondary_cards" in dashboard
+              ? dashboard.secondary_cards.find((c) => c.id === "notices")?.value ?? "--"
+              : "--"
+          }
+          subtitle={
+            hasNewDashboardData && "secondary_cards" in dashboard
+              ? dashboard.secondary_cards.find((c) => c.id === "notices")?.status === "in_implementation"
+                ? "Em implementação"
+                : "Avisos"
+              : "Em implementação"
+          }
           performance="average"
         />
         <PerformanceCard
           icon={<Award size={20} className="sm:w-6 sm:h-6" />}
           title="Certificados"
-          value="--"
-          subtitle="Em implementação"
+          value={
+            hasNewDashboardData && "secondary_cards" in dashboard
+              ? dashboard.secondary_cards.find((c) => c.id === "certificates")?.value ?? "--"
+              : "--"
+          }
+          subtitle={
+            hasNewDashboardData && "secondary_cards" in dashboard
+              ? dashboard.secondary_cards.find((c) => c.id === "certificates")?.status === "in_implementation"
+                ? "Em implementação"
+                : "Certificados"
+              : "Em implementação"
+          }
           performance="average"
         />
       </div>

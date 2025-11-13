@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -144,8 +144,55 @@ export default function AnaliseAvaliacoes() {
   
   // Estado para determinar o modo de renderização (escola ou turma)
   const [renderMode, setRenderMode] = useState<'escola' | 'turma'>('turma');
+  const normalizedRole = user?.role?.toLowerCase();
+  const roleRequiresSpecificSchool = normalizedRole ? ['diretor', 'coordenador', 'professor'].includes(normalizedRole) : false;
+
+  const handleStateChange = useCallback((stateId: string) => {
+    if (stateId === selectedState) return;
+
+    setSelectedState(stateId);
+    setSelectedMunicipality('all');
+    setSelectedSchool('all');
+    setSelectedEvaluation('all');
+    setApiData(null);
+  }, [selectedState]);
+
+  const handleMunicipalityChange = useCallback((municipalityId: string) => {
+    if (municipalityId === selectedMunicipality) return;
+
+    setSelectedMunicipality(municipalityId);
+    setSelectedSchool('all');
+    setSelectedEvaluation('all');
+    setApiData(null);
+  }, [selectedMunicipality]);
 
   // Estados dos dados dos filtros (movidos para FilterComponentAnalise)
+
+  const fallbackSchools = useMemo(() => {
+    const uniqueSchools = new Map<string, { id: string; name: string; municipalityId?: string }>();
+
+    if (userHierarchyContext?.school?.id) {
+      uniqueSchools.set(userHierarchyContext.school.id, {
+        id: userHierarchyContext.school.id,
+        name: userHierarchyContext.school.name,
+        municipalityId: userHierarchyContext.school.municipality_id,
+      });
+    }
+
+    if (Array.isArray(userHierarchyContext?.classes)) {
+      userHierarchyContext!.classes!.forEach((classe) => {
+        if (classe.school_id) {
+          uniqueSchools.set(classe.school_id, {
+            id: classe.school_id,
+            name: classe.school_name,
+            municipalityId: userHierarchyContext?.municipality?.id,
+          });
+        }
+      });
+    }
+
+    return Array.from(uniqueSchools.values());
+  }, [userHierarchyContext]);
 
   // Verificar se o usuário tem permissão
   useEffect(() => {
@@ -174,6 +221,21 @@ export default function AnaliseAvaliacoes() {
         setUserHierarchyContext(context);
 
         // Pre-selecionar filtros baseado na hierarquia
+        if (context.municipality?.state) {
+          try {
+            const statesList = await EvaluationResultsApiService.getFilterStates();
+            const matchedState = statesList.find(
+              (state) =>
+                state.id === context.municipality!.state ||
+                state.nome?.toLowerCase() === context.municipality!.state.toLowerCase()
+            );
+            setSelectedState(matchedState ? matchedState.id : context.municipality.state);
+          } catch (error) {
+            console.error('Erro ao mapear estado do contexto:', error);
+            setSelectedState(context.municipality.state);
+          }
+        }
+
         if (context.municipality) {
           setSelectedMunicipality(context.municipality.id);
         }
@@ -183,17 +245,13 @@ export default function AnaliseAvaliacoes() {
         }
 
         // Para professor, carregar escolas das suas turmas
-        if (context.classes && context.classes.length > 0) {
-          const uniqueSchools = Array.from(
-            new Set(context.classes.map(c => ({ id: c.school_id, name: c.school_name })))
-              .map(s => s.id)
-          ).map(id => context.classes!.find(c => c.school_id === id))
-            .filter(Boolean)
-            .map(c => ({ id: c!.school_id, nome: c!.school_name }));
-          
-          // Se só tem uma escola, pre-selecionar
-          if (uniqueSchools.length === 1) {
-            setSelectedSchool(uniqueSchools[0].id);
+        if (context.classes && Array.isArray(context.classes) && context.classes.length > 0) {
+          const uniqueSchools = Array.from(new Set(context.classes.map(c => c.school_id)))
+            .map(id => context.classes!.find(c => c.school_id === id))
+            .filter(Boolean);
+
+          if (uniqueSchools.length > 0) {
+            setSelectedSchool(uniqueSchools[0]!.school_id);
           }
         }
 
@@ -237,7 +295,11 @@ export default function AnaliseAvaliacoes() {
 
   // Verificar se todos os filtros obrigatórios estão selecionados
   // Estado e Município são obrigatórios, Escola pode ser "Todas", Avaliação é obrigatória
-  const allRequiredFiltersSelected = selectedState !== 'all' && selectedMunicipality !== 'all' && selectedEvaluation !== 'all';
+  const allRequiredFiltersSelected =
+    selectedState !== 'all' &&
+    selectedMunicipality !== 'all' &&
+    selectedEvaluation !== 'all' &&
+    (!roleRequiresSpecificSchool || selectedSchool !== 'all');
 
 
 
@@ -339,8 +401,6 @@ export default function AnaliseAvaliacoes() {
             : { cityId: selectedMunicipality };
           
           const relatorio = await EvaluationResultsApiService.getRelatorioCompleto(selectedEvaluation, options);
-          console.log("📊 Estrutura completa da resposta da API:", relatorio);
-          console.log("📊 Estrutura de acertos_por_habilidade:", relatorio.acertos_por_habilidade);
           setApiData(relatorio);
           
           // Determinar o modo de renderização baseado nos dados retornados
@@ -405,10 +465,16 @@ export default function AnaliseAvaliacoes() {
         selectedMunicipality={selectedMunicipality}
         selectedSchool={selectedSchool}
         selectedEvaluation={selectedEvaluation}
-        onStateChange={setSelectedState}
-        onMunicipalityChange={setSelectedMunicipality}
-        onSchoolChange={setSelectedSchool}
-        onEvaluationChange={setSelectedEvaluation}
+        onStateChange={handleStateChange}
+        onMunicipalityChange={handleMunicipalityChange}
+        onSchoolChange={(schoolId) => {
+          setSelectedSchool(schoolId);
+          setApiData(null);
+        }}
+        onEvaluationChange={(evaluationId) => {
+          setSelectedEvaluation(evaluationId);
+          setApiData(null);
+        }}
         isLoadingFilters={isLoadingFilters}
         onLoadingChange={setIsLoadingFilters}
         // Props para hierarquia
@@ -416,6 +482,7 @@ export default function AnaliseAvaliacoes() {
         canSelectState={userHierarchyContext?.restrictions.canSelectState}
         canSelectMunicipality={userHierarchyContext?.restrictions.canSelectMunicipality}
         canSelectSchool={userHierarchyContext?.restrictions.canSelectSchool}
+        fallbackSchools={fallbackSchools}
       />
 
       {/* Mensagem quando não há filtros suficientes */}
