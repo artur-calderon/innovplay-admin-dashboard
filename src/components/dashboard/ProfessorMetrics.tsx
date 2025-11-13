@@ -16,6 +16,8 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/context/authContext";
 import { useToast } from "@/hooks/use-toast";
 import { fetchDashboardCountsByRole, DashboardCounts } from "@/lib/dashboard/fetch-dashboard-stats-by-role";
+import { useProfessorDashboard } from "@/hooks/use-cache";
+import type { ProfessorDashboard as ProfessorDashboardType } from "@/types/dashboard";
 
 interface ProfessorMetrics {
   totalStudents: number;
@@ -34,9 +36,31 @@ export default function ProfessorMetrics() {
   const [metrics, setMetrics] = useState<ProfessorMetrics | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Novo hook para buscar dados do dashboard do professor
+  const dashboardData = useProfessorDashboard();
+  const dashboard = dashboardData?.data as ProfessorDashboardType | null;
+  const hasNewDashboardData = dashboard !== null;
+
   useEffect(() => {
     const fetchProfessorMetrics = async () => {
       if (!user?.id || !user?.role) {
+        return;
+      }
+
+      // Se temos dados da nova API, usar eles
+      if (hasNewDashboardData && dashboard) {
+        const newMetrics: ProfessorMetrics = {
+          totalStudents: dashboard.summary.students,
+          totalEvaluations: dashboard.summary.evaluations,
+          completedEvaluations: dashboard.kpis.find((k) => k.id === "completed_evaluations")?.value ?? 0,
+          pendingCorrections: dashboard.kpis.find((k) => k.id === "completed_evaluations")?.pending_corrections ?? 0,
+          averageScore: dashboard.kpis.find((k) => k.id === "average_score")?.value ?? 0,
+          activeStudentsThisWeek: dashboard.kpis.find((k) => k.id === "students")?.active_this_week ?? 0,
+          totalClasses: dashboard.summary.classes,
+          evaluationsThisMonth: dashboard.kpis.find((k) => k.id === "evaluations")?.created_this_month ?? 0,
+        };
+        setMetrics(newMetrics);
+        setIsLoading(false);
         return;
       }
 
@@ -170,7 +194,7 @@ export default function ProfessorMetrics() {
     };
 
     fetchProfessorMetrics();
-  }, [toast, user?.id, user?.role]);
+  }, [toast, user?.id, user?.role, hasNewDashboardData, dashboard]);
 
   if (isLoading) {
     return (
