@@ -154,31 +154,24 @@ export async function getUserHierarchyContext(
       case 'professor':
         // Buscar turmas do professor
         try {
-          console.log('🔍 Buscando turmas para professor:', userId);
           const teacherResponse = await api.get(`/teacher/${userId}`);
           const teacherData = teacherResponse.data;
-          console.log('🔍 Dados do professor:', teacherData);
           
           if (teacherData.turmas && Array.isArray(teacherData.turmas)) {
-            console.log('🔍 Turmas encontradas:', teacherData.turmas);
-            
             // Buscar município da escola do professor
             let municipality = undefined;
             if (teacherData.turmas.length > 0) {
               const firstClass = teacherData.turmas[0];
-              console.log('🔍 Primeira turma:', firstClass);
               
               // Buscar dados da escola para obter city_id
               try {
                 const schoolResponse = await api.get(`/school/${firstClass.school_id}`);
                 const schoolData = schoolResponse.data;
-                console.log('🔍 Dados da escola:', schoolData);
                 
                 if (schoolData.city_id) {
                   // Buscar dados do município
                   const municipalityResponse = await api.get(`/city/${schoolData.city_id}`);
                   const municipalityData = municipalityResponse.data;
-                  console.log('🔍 Dados do município:', municipalityData);
                   
                   municipality = {
                     id: municipalityData.id,
@@ -201,7 +194,6 @@ export async function getUserHierarchyContext(
               municipality,
               restrictions
             };
-            console.log('🔍 Contexto hierárquico retornado (professor):', context);
             return context;
           }
         } catch (error) {

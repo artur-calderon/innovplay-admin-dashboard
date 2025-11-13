@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { api } from '@/lib/api';
+import { DashboardApiService } from '@/services/dashboardApi';
+import type {
+  AdminDashboard,
+  DiretorDashboard,
+  ProfessorDashboard,
+} from '@/types/dashboard';
 
 // Configurações de cache
 const CACHE_CONFIG = {
@@ -614,14 +620,6 @@ export function useCacheManager() {
 }
 
 // ===== HOOKS PARA DASHBOARDS POR ROLE =====
-
-import { useState, useEffect, useCallback } from "react";
-import { DashboardApiService } from "@/services/dashboardApi";
-import type {
-  AdminDashboard,
-  DiretorDashboard,
-  ProfessorDashboard,
-} from "@/types/dashboard";
 
 // Hook base para dashboards
 function useDashboardData<T>(
