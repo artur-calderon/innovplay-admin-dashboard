@@ -64,8 +64,8 @@ const colors = {
 // Paleta de cores personalizada
 const customColors = ['#81338A', '#758E4F', '#F6AE2D', '#33658A', '#86BBD8'];
 
-// Paleta específica para proficiência
-const proficiencyColors = ['#5DD9C1', '#ACFCD9', '#B084CC', '#665687', '#190933'];
+// Paleta específica para proficiência - cores mais fortes e vibrantes
+const proficiencyColors = ['#059669', '#10B981', '#34D399', '#6EE7B7', '#A7F3D0'];
 
 // Função para obter cor baseada no índice
 const getColorByIndex = (index: number): string => {
@@ -285,18 +285,33 @@ function mergeByName(rows: EvolutionData[]): EvolutionData[] {
   for (const r of rows) {
     const key = (r?.name || 'Geral').trim();
     const cur = map.get(key) || { name: key };
-    map.set(key, {
-      name: key,
-      etapa1: safe(r.etapa1) ?? cur.etapa1,
-      etapa2: safe(r.etapa2) ?? cur.etapa2,
-      etapa3: safe(r.etapa3) ?? cur.etapa3,
-      variacao_1_2: safe(r.variacao_1_2) ?? cur.variacao_1_2,
-      variacao_2_3: safe(r.variacao_2_3) ?? cur.variacao_2_3,
-    });
+    const merged: any = { name: key };
+    
+    // Mesclar todas as etapas dinamicamente (até 10 etapas)
+    for (let i = 1; i <= 10; i++) {
+      const etapaKey = `etapa${i}`;
+      merged[etapaKey] = safe((r as any)[etapaKey]) ?? (cur as any)[etapaKey];
+    }
+    
+    // Mesclar todas as variações dinamicamente
+    for (let i = 1; i <= 9; i++) {
+      const variacaoKey = `variacao_${i}_${i + 1}`;
+      merged[variacaoKey] = safe((r as any)[variacaoKey]) ?? (cur as any)[variacaoKey];
+    }
+    
+    map.set(key, merged);
   }
+  
+  // Calcular variações faltantes dinamicamente
   for (const v of map.values()) {
-    if (v.variacao_1_2 === undefined) v.variacao_1_2 = pct(v.etapa1, v.etapa2);
-    if (v.variacao_2_3 === undefined) v.variacao_2_3 = pct(v.etapa2, v.etapa3);
+    for (let i = 1; i <= 9; i++) {
+      const variacaoKey = `variacao_${i}_${i + 1}`;
+      const etapa1Key = `etapa${i}`;
+      const etapa2Key = `etapa${i + 1}`;
+      if ((v as any)[variacaoKey] === undefined) {
+        (v as any)[variacaoKey] = pct((v as any)[etapa1Key], (v as any)[etapa2Key]);
+      }
+    }
   }
   return [...map.values()];
 }
@@ -397,7 +412,15 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
     if (merged.length === 0) return null;
     
     const r = merged[0];
-    const etapas = [safe(r.etapa1), safe(r.etapa2), safe(r.etapa3)].filter(v => v !== undefined) as number[];
+    // Coletar todas as etapas dinamicamente
+    const etapas: number[] = [];
+    for (let i = 1; i <= 10; i++) {
+      const etapaKey = `etapa${i}`;
+      const value = safe((r as any)[etapaKey]);
+      if (value !== undefined) {
+        etapas.push(value);
+      }
+    }
     
     if (etapas.length === 0) return null;
     
@@ -430,33 +453,39 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
       const r = merged[0];
       const chartDataArray: Record<string, unknown>[] = [];
       
-      // Construir dados usando os valores já processados
-      if (data.evaluationNames[0] && !hidden.has(data.evaluationNames[0]) && safe(r.etapa1) !== undefined) {
-        chartDataArray.push({
-          name: data.evaluationNames[0],
-          nota: safe(r.etapa1),
-          variacao: 0, // primeira avaliação sempre 0%
-          color: getColorByIndex(0),
-        });
-      }
-      
-      if (data.evaluationNames[1] && !hidden.has(data.evaluationNames[1]) && safe(r.etapa2) !== undefined) {
-        chartDataArray.push({
-          name: data.evaluationNames[1],
-          nota: safe(r.etapa2),
-          variacao: safe(r.variacao_1_2) || 0,
-          color: getColorByIndex(1),
-        });
-      }
-      
-      if (data.evaluationNames[2] && !hidden.has(data.evaluationNames[2]) && safe(r.etapa3) !== undefined) {
-        chartDataArray.push({
-          name: data.evaluationNames[2],
-          nota: safe(r.etapa3),
-          variacao: safe(r.variacao_2_3) || 0,
-          color: getColorByIndex(2),
-        });
-      }
+      // Construir dados dinamicamente para todas as avaliações
+      data.evaluationNames.forEach((evalName, index) => {
+        if (hidden.has(evalName)) return;
+        
+        const etapaKey = `etapa${index + 1}`;
+        const etapaValue = safe((r as any)[etapaKey]);
+        
+        if (etapaValue !== undefined) {
+          // Calcular variação
+          let variacao = 0;
+          if (index > 0) {
+            const variacaoKey = `variacao_${index}_${index + 1}`;
+            const variacaoValue = safe((r as any)[variacaoKey]);
+            if (variacaoValue !== undefined) {
+              variacao = variacaoValue;
+            } else {
+              // Se não houver variação calculada, calcular manualmente
+              const prevEtapaKey = `etapa${index}`;
+              const prevValue = safe((r as any)[prevEtapaKey]);
+              if (prevValue !== undefined && prevValue > 0) {
+                variacao = ((etapaValue - prevValue) / prevValue) * 100;
+              }
+            }
+          }
+          
+          chartDataArray.push({
+            name: evalName,
+            nota: etapaValue,
+            variacao: variacao,
+            color: getColorByIndex(index),
+          });
+        }
+      });
       
       return chartDataArray;
     } else {
@@ -482,30 +511,21 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
       const r = merged[0];
       const chartDataArray: Record<string, unknown>[] = [];
       
-      // Construir dados de proficiência
-      if (data.evaluationNames[0] && !hidden.has(data.evaluationNames[0]) && safe(r.etapa1) !== undefined) {
-        chartDataArray.push({
-          name: data.evaluationNames[0],
-          proficiencia: safe(r.etapa1),
-          color: proficiencyColors[0],
-        });
-      }
-      
-      if (data.evaluationNames[1] && !hidden.has(data.evaluationNames[1]) && safe(r.etapa2) !== undefined) {
-        chartDataArray.push({
-          name: data.evaluationNames[1],
-          proficiencia: safe(r.etapa2),
-          color: proficiencyColors[1],
-        });
-      }
-      
-      if (data.evaluationNames[2] && !hidden.has(data.evaluationNames[2]) && safe(r.etapa3) !== undefined) {
-        chartDataArray.push({
-          name: data.evaluationNames[2],
-          proficiencia: safe(r.etapa3),
-          color: proficiencyColors[2],
-        });
-      }
+      // Construir dados de proficiência dinamicamente para todas as avaliações
+      data.evaluationNames.forEach((evalName, index) => {
+        if (hidden.has(evalName)) return;
+        
+        const etapaKey = `etapa${index + 1}`;
+        const etapaValue = safe((r as any)[etapaKey]);
+        
+        if (etapaValue !== undefined) {
+          chartDataArray.push({
+            name: evalName,
+            proficiencia: etapaValue,
+            color: proficiencyColors[index % proficiencyColors.length],
+          });
+        }
+      });
       
       return chartDataArray;
     } else {
@@ -544,14 +564,66 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
         return (
           <div className="bg-card p-3 border border-border rounded-lg shadow-sm">
             <p className="text-sm font-medium text-foreground mb-1">{label}</p>
-            <p className="text-sm text-muted-foreground">
-              Nota: <span className="font-semibold">{nota.toFixed(1).replace('.', ',')}</span>
+            <p className="text-sm text-foreground">
+              Nota: <span className="font-semibold text-foreground">{nota.toFixed(1).replace('.', ',')}</span>
             </p>
             <p className={`text-sm font-medium ${
-              variacao > 0 ? 'text-green-600 dark:text-green-400' : variacao < 0 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'
+              variacao > 0 ? 'text-green-600 dark:text-green-400' : variacao < 0 ? 'text-red-600 dark:text-red-400' : 'text-foreground'
             }`}>
               Variação: {sinal}{variacao.toFixed(1)}%
             </p>
+          </div>
+        );
+      }
+    }
+    return null;
+  };
+
+  const CustomProficiencyTooltip = ({ active, payload, label }: { active?: boolean; payload?: TooltipPayload[]; label?: string }) => {
+    if (active && payload && payload.length) {
+      const barData = payload.find((p: TooltipPayload) => p.dataKey === 'proficiencia');
+      if (barData) {
+        const proficiencia = barData.value;
+        const data = barData.payload;
+        
+        // Calcular variação baseada nos dados segmentados
+        let variacao = 0;
+        let variacaoPontos = 0;
+        const currentIndex = payload.findIndex(p => p.payload === data);
+        
+        if (currentIndex > 0) {
+          const prevData = payload[currentIndex - 1]?.payload;
+          if (prevData && prevData.proficiencia !== undefined) {
+            const prevValue = prevData.proficiencia as number;
+            const currentValue = proficiencia as number;
+            variacaoPontos = currentValue - prevValue;
+            variacao = prevValue > 0 ? ((currentValue - prevValue) / prevValue) * 100 : 0;
+          }
+        }
+        
+        const sinal = variacao > 0 ? '+' : '';
+        const sinalPontos = variacaoPontos > 0 ? '+' : '';
+        
+        return (
+          <div className="bg-card p-3 border border-border rounded-lg shadow-sm">
+            <p className="text-sm font-medium text-foreground mb-1">{label}</p>
+            <p className="text-sm text-foreground">
+              Proficiência: <span className="font-semibold text-foreground">{proficiencia.toFixed(1).replace('.', ',')}</span>
+            </p>
+            {variacao !== 0 && (
+              <>
+                <p className={`text-sm font-medium ${
+                  variacao > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                }`}>
+                  Variação: {sinal}{variacao.toFixed(1)}%
+                </p>
+                <p className={`text-xs ${
+                  variacaoPontos > 0 ? 'text-green-600 dark:text-green-400' : variacaoPontos < 0 ? 'text-red-600 dark:text-red-400' : 'text-foreground'
+                }`}>
+                  {sinalPontos}{variacaoPontos.toFixed(1)} pontos
+                </p>
+              </>
+            )}
           </div>
         );
       }
@@ -811,7 +883,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                         label={{ 
                           position: 'center', 
                           fontSize: 12, 
-                          fill: '#ffffff',
+                          fill: '#1f2937',
                           fontWeight: 'bold',
                           formatter: (value: number) => value.toFixed(1).replace('.', ',')
                         }}
@@ -826,7 +898,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                         dataKey="up"
                         name="Crescimento"
                         stroke="#10B981"
-                        strokeWidth={3}
+                        strokeWidth={4}
                         dot={false}
                         isAnimationActive={false}
                       >
@@ -837,7 +909,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                         dataKey="down"
                         name="Queda"
                         stroke="#EF4444"
-                        strokeWidth={3}
+                        strokeWidth={4}
                         dot={false}
                         isAnimationActive={false}
                       >
@@ -848,7 +920,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                         dataKey="flat"
                         name="Permaneceu"
                         stroke="#6B7280"
-                        strokeWidth={3}
+                        strokeWidth={4}
                         dot={false}
                         isAnimationActive={false}
                       >
@@ -881,7 +953,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                         tickFormatter={(value) => value.toFixed(0)}
                         label={{ value: 'Proficiência', angle: -90, position: 'insideLeft', fill: 'hsl(var(--foreground))' }}
                       />
-                      <Tooltip content={<CustomTooltip />} />
+                      <Tooltip content={<CustomProficiencyTooltip />} />
                       <Legend content={createLegendRenderer('general-prof', data.evaluationNames)} />
                       <Bar
                         dataKey="proficiencia"
@@ -893,7 +965,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                         label={{ 
                           position: 'center', 
                           fontSize: 12, 
-                          fill: '#ffffff',
+                          fill: '#1f2937',
                           fontWeight: 'bold',
                           formatter: (value: number) => value.toFixed(1).replace('.', ',')
                         }}
@@ -902,13 +974,13 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                           <Cell key={`cell-${index}`} fill={entry.color as string} />
                         ))}
                       </Bar>
-                      {/* Linhas por segmento */}
+                      {/* Linhas por segmento - mais espessas e com cores mais fortes */}
                       <Line
                         type="linear"
                         dataKey="up"
                         name="Crescimento"
-                        stroke="#10B981"
-                        strokeWidth={3}
+                        stroke="#059669"
+                        strokeWidth={4}
                         dot={false}
                         isAnimationActive={false}
                       >
@@ -918,8 +990,8 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                         type="linear"
                         dataKey="down"
                         name="Queda"
-                        stroke="#EF4444"
-                        strokeWidth={3}
+                        stroke="#DC2626"
+                        strokeWidth={4}
                         dot={false}
                         isAnimationActive={false}
                       >
@@ -929,8 +1001,8 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                         type="linear"
                         dataKey="flat"
                         name="Permaneceu"
-                        stroke="#6B7280"
-                        strokeWidth={3}
+                        stroke="#1f2937"
+                        strokeWidth={4}
                         dot={false}
                         isAnimationActive={false}
                       >
@@ -1003,10 +1075,11 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                 if (merged.length === 0) return false;
                 
                 const r = merged[0];
-                const hasAllEvaluations = 
-                  (data.evaluationNames[0] && safe(r.etapa1) !== undefined) &&
-                  (data.evaluationNames[1] && safe(r.etapa2) !== undefined) &&
-                  (data.evaluationNames[2] && safe(r.etapa3) !== undefined);
+                // Verificar se a disciplina tem dados em todas as avaliações dinamicamente
+                const hasAllEvaluations = data.evaluationNames.every((evalName, index) => {
+                  const etapaKey = `etapa${index + 1}`;
+                  return safe((r as any)[etapaKey]) !== undefined;
+                });
                 
                 return hasAllEvaluations;
               })
@@ -1020,30 +1093,21 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
               const subjectColors = getSubjectColors(subject, subjectIndex);
               const hiddenSubjectNota = getHidden(`subject-${subject}-nota`);
               
-              // Dados de notas
-              if (data.evaluationNames[0] && !hiddenSubjectNota.has(data.evaluationNames[0]) && safe(r.etapa1) !== undefined) {
-                subjectChartData.push({
-                  name: data.evaluationNames[0],
-                  nota: safe(r.etapa1),
-                  color: subjectColors.palette[0],
-                });
-              }
-              
-              if (data.evaluationNames[1] && !hiddenSubjectNota.has(data.evaluationNames[1]) && safe(r.etapa2) !== undefined) {
-                subjectChartData.push({
-                  name: data.evaluationNames[1],
-                  nota: safe(r.etapa2),
-                  color: subjectColors.palette[1],
-                });
-              }
-              
-              if (data.evaluationNames[2] && !hiddenSubjectNota.has(data.evaluationNames[2]) && safe(r.etapa3) !== undefined) {
-                subjectChartData.push({
-                  name: data.evaluationNames[2],
-                  nota: safe(r.etapa3),
-                  color: subjectColors.palette[2],
-                });
-              }
+              // Dados de notas dinamicamente para todas as avaliações
+              data.evaluationNames.forEach((evalName, index) => {
+                if (hiddenSubjectNota.has(evalName)) return;
+                
+                const etapaKey = `etapa${index + 1}`;
+                const etapaValue = safe((r as any)[etapaKey]);
+                
+                if (etapaValue !== undefined) {
+                  subjectChartData.push({
+                    name: evalName,
+                    nota: etapaValue,
+                    color: subjectColors.palette[index % subjectColors.palette.length],
+                  });
+                }
+              });
 
               // Gerar dados segmentados para notas
               const subjectSegmented = segmentLine(subjectChartData as Record<string, unknown>[], 'nota');
@@ -1054,38 +1118,31 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
               const proficiencyChartData: Record<string, unknown>[] = [];
               const hiddenSubjectProf = getHidden(`subject-${subject}-prof`);
               
-              // Verificar se há dados de proficiência em todas as avaliações
+              // Verificar se há dados de proficiência em todas as avaliações dinamicamente
               const hasAllProficiencyEvaluations = mergedProficiency.length > 0 && 
-                (data.evaluationNames[0] && safe(mergedProficiency[0].etapa1) !== undefined) &&
-                (data.evaluationNames[1] && safe(mergedProficiency[0].etapa2) !== undefined) &&
-                (data.evaluationNames[2] && safe(mergedProficiency[0].etapa3) !== undefined);
+                data.evaluationNames.every((evalName, index) => {
+                  const etapaKey = `etapa${index + 1}`;
+                  return safe((mergedProficiency[0] as any)[etapaKey]) !== undefined;
+                });
               
               if (mergedProficiency.length > 0 && hasAllProficiencyEvaluations) {
                 const prof = mergedProficiency[0];
                 
-                if (data.evaluationNames[0] && !hiddenSubjectProf.has(data.evaluationNames[0]) && safe(prof.etapa1) !== undefined) {
-                  proficiencyChartData.push({
-                    name: data.evaluationNames[0],
-                    proficiencia: safe(prof.etapa1),
-                    color: subjectColors.palette[0],
-                  });
-                }
-                
-                if (data.evaluationNames[1] && !hiddenSubjectProf.has(data.evaluationNames[1]) && safe(prof.etapa2) !== undefined) {
-                  proficiencyChartData.push({
-                    name: data.evaluationNames[1],
-                    proficiencia: safe(prof.etapa2),
-                    color: subjectColors.palette[1],
-                  });
-                }
-                
-                if (data.evaluationNames[2] && !hiddenSubjectProf.has(data.evaluationNames[2]) && safe(prof.etapa3) !== undefined) {
-                  proficiencyChartData.push({
-                    name: data.evaluationNames[2],
-                    proficiencia: safe(prof.etapa3),
-                    color: subjectColors.palette[2],
-                  });
-                }
+                // Dados de proficiência dinamicamente para todas as avaliações
+                data.evaluationNames.forEach((evalName, index) => {
+                  if (hiddenSubjectProf.has(evalName)) return;
+                  
+                  const etapaKey = `etapa${index + 1}`;
+                  const etapaValue = safe((prof as any)[etapaKey]);
+                  
+                  if (etapaValue !== undefined) {
+                    proficiencyChartData.push({
+                      name: evalName,
+                      proficiencia: etapaValue,
+                      color: subjectColors.palette[index % subjectColors.palette.length],
+                    });
+                  }
+                });
               }
 
               // Gerar dados segmentados para proficiência
@@ -1141,7 +1198,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                                 dataKey="up"
                                 name="Crescimento"
                                 stroke="#10B981"
-                                strokeWidth={3}
+                                strokeWidth={4}
                                 dot={false}
                                 isAnimationActive={false}
                               >
@@ -1152,7 +1209,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                                 dataKey="down"
                                 name="Queda"
                                 stroke="#EF4444"
-                                strokeWidth={3}
+                                strokeWidth={4}
                                 dot={false}
                                 isAnimationActive={false}
                               >
@@ -1163,7 +1220,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                                 dataKey="flat"
                                 name="Permaneceu"
                                 stroke="#6B7280"
-                                strokeWidth={3}
+                                strokeWidth={4}
                                 dot={false}
                                 isAnimationActive={false}
                               >
@@ -1223,7 +1280,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                                 dataKey="up"
                                 name="Crescimento"
                                 stroke="#10B981"
-                                strokeWidth={3}
+                                strokeWidth={4}
                                 dot={false}
                                 isAnimationActive={false}
                               >
@@ -1234,7 +1291,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                                 dataKey="down"
                                 name="Queda"
                                 stroke="#EF4444"
-                                strokeWidth={3}
+                                strokeWidth={4}
                                 dot={false}
                                 isAnimationActive={false}
                               >
@@ -1245,7 +1302,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                                 dataKey="flat"
                                 name="Permaneceu"
                                 stroke="#6B7280"
-                                strokeWidth={3}
+                                strokeWidth={4}
                                 dot={false}
                                 isAnimationActive={false}
                               >

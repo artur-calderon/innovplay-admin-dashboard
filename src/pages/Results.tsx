@@ -1141,15 +1141,16 @@ export default function Results() {
   // ✅ NOVO: Processar dados do ranking usando tabela_detalhada.geral
   const processRankingData = useCallback(() => {
     // Prioridade 1: Usar dados da tabela_detalhada.geral (mesma fonte da visão geral)
-    if (apiData?.tabela_detalhada?.geral?.alunos?.length) {
-      return apiData.tabela_detalhada.geral.alunos
+    const tabelaDetalhada = apiData?.tabela_detalhada as TabelaDetalhada | undefined;
+    if (tabelaDetalhada?.geral?.alunos?.length) {
+      return tabelaDetalhada.geral.alunos
         .filter(aluno => {
           // Verificar se o aluno respondeu pelo menos uma questão
           if (!apiData?.tabela_detalhada?.disciplinas?.length) {
             return true; // Fallback: incluir todos se não temos dados de disciplinas
           }
           
-          return apiData.tabela_detalhada.disciplinas.some(disciplina => {
+          return tabelaDetalhada.disciplinas.some(disciplina => {
             const disciplinaAluno = disciplina.alunos.find(a => a.id === aluno.id);
             if (!disciplinaAluno) return false;
             return disciplinaAluno.respostas_por_questao.some(resposta => resposta.respondeu);
@@ -1359,7 +1360,7 @@ export default function Results() {
   }, [transformedStudents]);
 
   const buildDisciplineStatsForStudent = useCallback((studentId: string): DisciplineStatsMap | null => {
-    const tabelaDetalhada = apiData?.tabela_detalhada;
+    const tabelaDetalhada = apiData?.tabela_detalhada as TabelaDetalhada | undefined;
     if (!tabelaDetalhada?.disciplinas?.length) {
       return null;
     }

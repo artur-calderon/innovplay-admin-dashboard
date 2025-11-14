@@ -72,15 +72,24 @@ function processGeneralComparison(comparison: ComparisonResponse): EvolutionData
     variations.push(comp.average_grade.evolution.percentage);
   }
   
-  // Criar UM único registro com todas as etapas
-  return [{
+  // Criar UM único registro com todas as etapas dinamicamente
+  const result: any = {
     name: "GERAL",
-    etapa1: values[0],
-    etapa2: values[1],
-    etapa3: values[2],  // undefined se não houver 3ª avaliação
-    variacao_1_2: variations[0],
-    variacao_2_3: variations[1]  // undefined se não houver 2ª variação
-  }];
+  };
+  
+  // Adicionar todas as etapas dinamicamente
+  values.forEach((value, index) => {
+    const etapaKey = `etapa${index + 1}`;
+    result[etapaKey] = value;
+  });
+  
+  // Adicionar todas as variações dinamicamente
+  variations.forEach((variation, index) => {
+    const variacaoKey = `variacao_${index + 1}_${index + 2}`;
+    result[variacaoKey] = variation;
+  });
+  
+  return [result];
 }
 
 /**
@@ -119,15 +128,31 @@ function processProficiencyComparison(comparison: ComparisonResponse): Evolution
     }
   }
   
-  // Criar UM único registro com todas as etapas
-  return [{
+  // Criar UM único registro com todas as etapas dinamicamente
+  const result: any = {
     name: "PROFICIÊNCIA",
-    etapa1: values[0],
-    etapa2: values[1],
-    etapa3: values[2],  // undefined se não houver 3ª avaliação
-    variacao_1_2: variations[0],
-    variacao_2_3: variations[1]  // undefined se não houver 2ª variação
-  }];
+  };
+  
+  // Adicionar todas as etapas dinamicamente
+  values.forEach((value, index) => {
+    const etapaKey = `etapa${index + 1}`;
+    result[etapaKey] = value;
+  });
+  
+  // Adicionar todas as variações dinamicamente
+  variations.forEach((variation, index) => {
+    const variacaoKey = `variacao_${index + 1}_${index + 2}`;
+    result[variacaoKey] = variation;
+  });
+  
+  return [result];
+}
+
+/**
+ * Normaliza nome de disciplina para comparação
+ */
+function normalizeSubjectName(name: string): string {
+  return name.toLowerCase().trim().replace(/\s+/g, ' ');
 }
 
 /**
@@ -140,37 +165,87 @@ function processSubjectComparison(comparison: ComparisonResponse): { [subjectNam
 
   const subjectData: { [subjectName: string]: EvolutionData[] } = {};
   
-  // Agrupar dados por disciplina
-  Object.keys(comparison.comparisons[0].subject_comparison).forEach(subjectName => {
+  // Coletar todas as disciplinas de todas as comparações e normalizar
+  const allSubjectsMap = new Map<string, string>(); // normalized -> original
+  
+  comparison.comparisons.forEach(comp => {
+    Object.keys(comp.subject_comparison).forEach(subjectName => {
+      const normalized = normalizeSubjectName(subjectName);
+      if (!allSubjectsMap.has(normalized)) {
+        allSubjectsMap.set(normalized, subjectName);
+      }
+    });
+  });
+  
+  // Para cada disciplina normalizada, verificar se existe em todas as comparações
+  allSubjectsMap.forEach((originalName, normalizedName) => {
+    // Verificar se a disciplina existe em todas as comparações
+    const existsInAll = comparison.comparisons.every(comp => {
+      return Object.keys(comp.subject_comparison).some(name => 
+        normalizeSubjectName(name) === normalizedName
+      );
+    });
+    
+    if (!existsInAll) {
+      // Pular disciplinas que não existem em todas as comparações
+      return;
+    }
+    
     const values: number[] = [];
     const variations: number[] = [];
     
     // Primeira comparação
     if (comparison.comparisons[0]) {
-      const subj = comparison.comparisons[0].subject_comparison[subjectName];
-      values.push(subj.average_grade.evaluation_1);
-      values.push(subj.average_grade.evaluation_2);
-      variations.push(subj.average_grade.evolution.percentage);
+      // Encontrar a disciplina na primeira comparação (pode ter case diferente)
+      const firstCompSubjectKey = Object.keys(comparison.comparisons[0].subject_comparison).find(
+        name => normalizeSubjectName(name) === normalizedName
+      );
+      
+      if (firstCompSubjectKey) {
+        const subj = comparison.comparisons[0].subject_comparison[firstCompSubjectKey];
+        if (subj && subj.average_grade) {
+          values.push(subj.average_grade.evaluation_1);
+          values.push(subj.average_grade.evaluation_2);
+          variations.push(subj.average_grade.evolution.percentage);
+        }
+      }
     }
     
     // Comparações subsequentes
     for (let i = 1; i < comparison.comparisons.length; i++) {
-      const subj = comparison.comparisons[i].subject_comparison[subjectName];
-      if (subj) {
-        values.push(subj.average_grade.evaluation_2);
-        variations.push(subj.average_grade.evolution.percentage);
+      const compSubjectKey = Object.keys(comparison.comparisons[i].subject_comparison).find(
+        name => normalizeSubjectName(name) === normalizedName
+      );
+      
+      if (compSubjectKey) {
+        const subj = comparison.comparisons[i].subject_comparison[compSubjectKey];
+        if (subj && subj.average_grade) {
+          values.push(subj.average_grade.evaluation_2);
+          variations.push(subj.average_grade.evolution.percentage);
+        }
       }
     }
     
-    // Um registro para NOTA
-    subjectData[subjectName] = [{
-      name: subjectName.toUpperCase(),
-      etapa1: values[0],
-      etapa2: values[1],
-      etapa3: values[2],
-      variacao_1_2: variations[0],
-      variacao_2_3: variations[1]
-    }];
+    // Só adicionar se tiver valores válidos
+    if (values.length > 0) {
+      const result: any = {
+        name: originalName.toUpperCase(),
+      };
+      
+      // Adicionar todas as etapas dinamicamente
+      values.forEach((value, index) => {
+        const etapaKey = `etapa${index + 1}`;
+        result[etapaKey] = value;
+      });
+      
+      // Adicionar todas as variações dinamicamente
+      variations.forEach((variation, index) => {
+        const variacaoKey = `variacao_${index + 1}_${index + 2}`;
+        result[variacaoKey] = variation;
+      });
+      
+      subjectData[originalName] = [result];
+    }
   });
   
   return subjectData;
@@ -186,37 +261,87 @@ function processSubjectProficiencyComparison(comparison: ComparisonResponse): { 
 
   const subjectData: { [subjectName: string]: EvolutionData[] } = {};
   
-  // Agrupar dados por disciplina
-  Object.keys(comparison.comparisons[0].subject_comparison).forEach(subjectName => {
+  // Coletar todas as disciplinas de todas as comparações e normalizar
+  const allSubjectsMap = new Map<string, string>(); // normalized -> original
+  
+  comparison.comparisons.forEach(comp => {
+    Object.keys(comp.subject_comparison).forEach(subjectName => {
+      const normalized = normalizeSubjectName(subjectName);
+      if (!allSubjectsMap.has(normalized)) {
+        allSubjectsMap.set(normalized, subjectName);
+      }
+    });
+  });
+  
+  // Para cada disciplina normalizada, verificar se existe em todas as comparações
+  allSubjectsMap.forEach((originalName, normalizedName) => {
+    // Verificar se a disciplina existe em todas as comparações
+    const existsInAll = comparison.comparisons.every(comp => {
+      return Object.keys(comp.subject_comparison).some(name => 
+        normalizeSubjectName(name) === normalizedName
+      );
+    });
+    
+    if (!existsInAll) {
+      // Pular disciplinas que não existem em todas as comparações
+      return;
+    }
+    
     const values: number[] = [];
     const variations: number[] = [];
     
     // Primeira comparação
     if (comparison.comparisons[0]) {
-      const subj = comparison.comparisons[0].subject_comparison[subjectName];
-      values.push(subj.average_proficiency.evaluation_1);
-      values.push(subj.average_proficiency.evaluation_2);
-      variations.push(subj.average_proficiency.evolution.percentage);
+      // Encontrar a disciplina na primeira comparação (pode ter case diferente)
+      const firstCompSubjectKey = Object.keys(comparison.comparisons[0].subject_comparison).find(
+        name => normalizeSubjectName(name) === normalizedName
+      );
+      
+      if (firstCompSubjectKey) {
+        const subj = comparison.comparisons[0].subject_comparison[firstCompSubjectKey];
+        if (subj && subj.average_proficiency) {
+          values.push(subj.average_proficiency.evaluation_1);
+          values.push(subj.average_proficiency.evaluation_2);
+          variations.push(subj.average_proficiency.evolution.percentage);
+        }
+      }
     }
     
     // Comparações subsequentes
     for (let i = 1; i < comparison.comparisons.length; i++) {
-      const subj = comparison.comparisons[i].subject_comparison[subjectName];
-      if (subj) {
-        values.push(subj.average_proficiency.evaluation_2);
-        variations.push(subj.average_proficiency.evolution.percentage);
+      const compSubjectKey = Object.keys(comparison.comparisons[i].subject_comparison).find(
+        name => normalizeSubjectName(name) === normalizedName
+      );
+      
+      if (compSubjectKey) {
+        const subj = comparison.comparisons[i].subject_comparison[compSubjectKey];
+        if (subj && subj.average_proficiency) {
+          values.push(subj.average_proficiency.evaluation_2);
+          variations.push(subj.average_proficiency.evolution.percentage);
+        }
       }
     }
     
-    // Um registro para PROFICIÊNCIA
-    subjectData[subjectName] = [{
-      name: subjectName.toUpperCase(),
-      etapa1: values[0],
-      etapa2: values[1],
-      etapa3: values[2],
-      variacao_1_2: variations[0],
-      variacao_2_3: variations[1]
-    }];
+    // Só adicionar se tiver valores válidos
+    if (values.length > 0) {
+      const result: any = {
+        name: originalName.toUpperCase(),
+      };
+      
+      // Adicionar todas as etapas dinamicamente
+      values.forEach((value, index) => {
+        const etapaKey = `etapa${index + 1}`;
+        result[etapaKey] = value;
+      });
+      
+      // Adicionar todas as variações dinamicamente
+      variations.forEach((variation, index) => {
+        const variacaoKey = `variacao_${index + 1}_${index + 2}`;
+        result[variacaoKey] = variation;
+      });
+      
+      subjectData[originalName] = [result];
+    }
   });
   
   return subjectData;
@@ -305,15 +430,24 @@ function processApprovalData(comparison: ComparisonResponse): EvolutionData[] {
     variations.push(variation);
   }
   
-  // Criar UM único registro com todas as etapas
-  return [{
+  // Criar UM único registro com todas as etapas dinamicamente
+  const result: any = {
     name: "APROVAÇÃO",
-    etapa1: values[0],
-    etapa2: values[1],
-    etapa3: values[2],  // undefined se não houver 3ª avaliação
-    variacao_1_2: variations[0],
-    variacao_2_3: variations[1]  // undefined se não houver 2ª variação
-  }];
+  };
+  
+  // Adicionar todas as etapas dinamicamente
+  values.forEach((value, index) => {
+    const etapaKey = `etapa${index + 1}`;
+    result[etapaKey] = value;
+  });
+  
+  // Adicionar todas as variações dinamicamente
+  variations.forEach((variation, index) => {
+    const variacaoKey = `variacao_${index + 1}_${index + 2}`;
+    result[variacaoKey] = variation;
+  });
+  
+  return [result];
 }
 
 /**
@@ -326,48 +460,98 @@ function processClassificationData(comparison: ComparisonResponse): { [subjectNa
 
   const classificationData: { [subjectName: string]: EvolutionData[] } = {};
   
-  // Agrupar dados por disciplina
-  Object.keys(comparison.comparisons[0].subject_comparison).forEach(subjectName => {
+  // Coletar todas as disciplinas de todas as comparações e normalizar
+  const allSubjectsMap = new Map<string, string>(); // normalized -> original
+  
+  comparison.comparisons.forEach(comp => {
+    Object.keys(comp.subject_comparison).forEach(subjectName => {
+      const normalized = normalizeSubjectName(subjectName);
+      if (!allSubjectsMap.has(normalized)) {
+        allSubjectsMap.set(normalized, subjectName);
+      }
+    });
+  });
+  
+  // Para cada disciplina normalizada, verificar se existe em todas as comparações
+  allSubjectsMap.forEach((originalName, normalizedName) => {
+    // Verificar se a disciplina existe em todas as comparações
+    const existsInAll = comparison.comparisons.every(comp => {
+      return Object.keys(comp.subject_comparison).some(name => 
+        normalizeSubjectName(name) === normalizedName
+      );
+    });
+    
+    if (!existsInAll) {
+      // Pular disciplinas que não existem em todas as comparações
+      return;
+    }
+    
     const values: number[] = [];
     const variations: number[] = [];
     
     // Primeira comparação
     if (comparison.comparisons[0]) {
-      const subjectData = comparison.comparisons[0].subject_comparison[subjectName];
-      const levels1 = subjectData.classification_distribution.evaluation_1;
-      const levels2 = subjectData.classification_distribution.evaluation_2;
+      // Encontrar a disciplina na primeira comparação (pode ter case diferente)
+      const firstCompSubjectKey = Object.keys(comparison.comparisons[0].subject_comparison).find(
+        name => normalizeSubjectName(name) === normalizedName
+      );
       
-      const approval1 = calculateApprovalRate(levels1);
-      const approval2 = calculateApprovalRate(levels2);
-      
-      values.push(approval1);
-      values.push(approval2);
-      variations.push(approval1 > 0 ? ((approval2 - approval1) / approval1) * 100 : 0);
+      if (firstCompSubjectKey) {
+        const subjectData = comparison.comparisons[0].subject_comparison[firstCompSubjectKey];
+        if (subjectData && subjectData.classification_distribution) {
+          const levels1 = subjectData.classification_distribution.evaluation_1;
+          const levels2 = subjectData.classification_distribution.evaluation_2;
+          
+          const approval1 = calculateApprovalRate(levels1);
+          const approval2 = calculateApprovalRate(levels2);
+          
+          values.push(approval1);
+          values.push(approval2);
+          variations.push(approval1 > 0 ? ((approval2 - approval1) / approval1) * 100 : 0);
+        }
+      }
     }
     
     // Comparações subsequentes
     for (let i = 1; i < comparison.comparisons.length; i++) {
-      const subjectData = comparison.comparisons[i].subject_comparison[subjectName];
-      if (subjectData) {
-        const levels = subjectData.classification_distribution.evaluation_2;
-        const approval = calculateApprovalRate(levels);
-        values.push(approval);
-        
-        const prevApproval = values[values.length - 2];
-        const variation = prevApproval > 0 ? ((approval - prevApproval) / prevApproval) * 100 : 0;
-        variations.push(variation);
+      const compSubjectKey = Object.keys(comparison.comparisons[i].subject_comparison).find(
+        name => normalizeSubjectName(name) === normalizedName
+      );
+      
+      if (compSubjectKey) {
+        const subjectData = comparison.comparisons[i].subject_comparison[compSubjectKey];
+        if (subjectData && subjectData.classification_distribution) {
+          const levels = subjectData.classification_distribution.evaluation_2;
+          const approval = calculateApprovalRate(levels);
+          values.push(approval);
+          
+          const prevApproval = values[values.length - 2];
+          const variation = prevApproval > 0 ? ((approval - prevApproval) / prevApproval) * 100 : 0;
+          variations.push(variation);
+        }
       }
     }
     
-    // Um registro por disciplina
-    classificationData[subjectName] = [{
-      name: subjectName.toUpperCase(),
-      etapa1: values[0],
-      etapa2: values[1],
-      etapa3: values[2],
-      variacao_1_2: variations[0],
-      variacao_2_3: variations[1]
-    }];
+    // Só adicionar se tiver valores válidos
+    if (values.length > 0) {
+      const result: any = {
+        name: originalName.toUpperCase(),
+      };
+      
+      // Adicionar todas as etapas dinamicamente
+      values.forEach((value, index) => {
+        const etapaKey = `etapa${index + 1}`;
+        result[etapaKey] = value;
+      });
+      
+      // Adicionar todas as variações dinamicamente
+      variations.forEach((variation, index) => {
+        const variacaoKey = `variacao_${index + 1}_${index + 2}`;
+        result[variacaoKey] = variation;
+      });
+      
+      classificationData[originalName] = [result];
+    }
   });
   
   return classificationData;
