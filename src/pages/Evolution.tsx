@@ -86,17 +86,33 @@ export default function Evolution() {
   // Ref para evitar chamadas duplicadas de comparação automática
   const lastComparisonIdsRef = useRef<string>('');
 
-  // Carregar filtros iniciais usando nova API unificada
+  // Carregar filtros iniciais usando nova API unificada com fallback
   const loadInitialFilters = useCallback(async () => {
     try {
       setIsLoadingFilters(true);
 
-      const response = await EvaluationComparisonApiService.getComparisonFilterOptions();
-      setStates(response.opcoes.estados?.map(state => ({
+      // Tentar primeiro a API de comparação
+      try {
+        const response = await EvaluationComparisonApiService.getComparisonFilterOptions();
+        if (response.opcoes?.estados?.length > 0) {
+          setStates(response.opcoes.estados.map(state => ({
+            id: state.id,
+            name: state.nome,
+            uf: state.id
+          })));
+          return;
+        }
+      } catch (comparisonError) {
+        console.warn("API de comparação falhou, tentando fallback:", comparisonError);
+      }
+
+      // Fallback: usar API de resultados
+      const statesData = await EvaluationResultsApiService.getFilterStates();
+      setStates(statesData.map(state => ({
         id: state.id,
         name: state.nome,
         uf: state.id
-      })) || []);
+      })));
     } catch (error) {
       console.error("Erro ao carregar filtros iniciais:", error);
       toast({
@@ -218,11 +234,20 @@ export default function Evolution() {
           const response = await EvaluationComparisonApiService.getComparisonFilterOptions({
             estado: selectedState
           });
-          setMunicipalities(response.opcoes.municipios?.map(municipality => ({
+          const newMunicipalities = response.opcoes.municipios?.map(municipality => ({
             id: municipality.id,
             name: municipality.nome,
             state: selectedState
-          })) || []);
+          })) || [];
+          
+          setMunicipalities(newMunicipalities);
+          
+          // Só resetar município se o município atual não existir mais na nova lista
+          const currentMunicipalityExists = newMunicipalities.some(m => m.id === selectedMunicipality);
+          if (!currentMunicipalityExists && selectedMunicipality !== 'all') {
+            setSelectedMunicipality('all');
+            setSelectedSchool('all');
+          }
         } catch (error) {
           console.error("Erro ao carregar municípios:", error);
           toast({
@@ -235,19 +260,19 @@ export default function Evolution() {
         }
       } else {
         setMunicipalities([]);
-        setSelectedMunicipality('all');
-        setSelectedSchool('all');
+        // Só resetar se realmente mudou para 'all'
+        if (selectedMunicipality !== 'all') {
+          setSelectedMunicipality('all');
+        }
+        if (selectedSchool !== 'all') {
+          setSelectedSchool('all');
+        }
       }
     };
 
     loadMunicipalities();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedState, toast]);
-
-  // Resetar município quando estado mudar, mas manter avaliações selecionadas
-  useEffect(() => {
-    setSelectedMunicipality('all');
-    setSelectedSchool('all');
-  }, [selectedState]);
 
   // Carregar avaliações quando município for selecionado
   useEffect(() => {
@@ -412,11 +437,15 @@ export default function Evolution() {
           setIsLoadingFilters(false);
         }
       } else {
-        setAvailableEvaluationsForPicker([]);
+        // Só limpar avaliações se realmente mudou para 'all'
+        if (selectedState === 'all' || selectedMunicipality === 'all') {
+          setAvailableEvaluationsForPicker([]);
+        }
       }
     };
 
     loadEvaluations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedState, selectedMunicipality, toast]);
 
   // Filtrar avaliações por período e busca
