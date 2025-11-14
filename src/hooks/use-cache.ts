@@ -97,8 +97,22 @@ export function useCache<T>(
     }
 
     try {
+      // Log específico para rota de avaliações (lista de avaliações)
+      const isEvaluationsListRoute = url === '/test/' || url === '/test';
+      if (isEvaluationsListRoute) {
+        console.log("📡 [useCache] Fazendo requisição GET para:", url, "com params:", params);
+      }
+      
       const response = await api.get(url, params ? { params } : undefined);
       const newData = response.data;
+
+      // Log específico para rota de avaliações (lista de avaliações)
+      if (isEvaluationsListRoute) {
+        console.log("📋 [useCache] Resposta BRUTA COMPLETA da API para:", url);
+        console.log("📋 [useCache] Response completa:", response);
+        console.log("📋 [useCache] Response.data (JSON completo):", JSON.stringify(response.data, null, 2));
+        console.log("📋 [useCache] Response.data (objeto):", response.data);
+      }
 
       // Atualizar cache
       const ttl = getTTL(url);

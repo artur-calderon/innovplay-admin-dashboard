@@ -955,6 +955,20 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
   };
 
   const handleStartEvaluation = (evaluation: Evaluation) => {
+    console.log("🚀 [ReadyEvaluations] handleStartEvaluation - Avaliação recebida:", {
+      id: evaluation.id,
+      title: evaluation.title,
+      classes: evaluation.classes,
+      classesType: typeof evaluation.classes,
+      classesIsArray: Array.isArray(evaluation.classes),
+      classesLength: Array.isArray(evaluation.classes) ? evaluation.classes.length : 'N/A',
+      classesContent: evaluation.classes,
+      // Verificar outros campos possíveis
+      applied_classes: evaluation.applied_classes,
+      applied_classes_count: evaluation.applied_classes_count,
+      // Log completo do objeto
+      fullEvaluation: JSON.stringify(evaluation, null, 2)
+    });
     setSelectedEvaluationToStart(evaluation);
     setStartModalOpen(true);
   };

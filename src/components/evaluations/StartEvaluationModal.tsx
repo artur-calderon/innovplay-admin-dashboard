@@ -165,17 +165,88 @@ export default function StartEvaluationModal({
     
     try {
       setIsLoadingClasses(true);
-      console.log("🔍 Buscando turmas para avaliação:", evaluation.id);
-      console.log("📋 Dados da avaliação recebidos:", {
+      console.log("🔍 [StartEvaluationModal] Buscando turmas para avaliação:", evaluation.id);
+      console.log("📋 [StartEvaluationModal] Dados COMPLETOS da avaliação recebida:", {
         id: evaluation.id,
         title: evaluation.title,
+        // Verificar classes em diferentes formatos
         classes: evaluation.classes,
-        hasClasses: !!evaluation.classes && Array.isArray(evaluation.classes)
+        classesType: typeof evaluation.classes,
+        classesIsArray: Array.isArray(evaluation.classes),
+        classesLength: Array.isArray(evaluation.classes) ? evaluation.classes.length : 'N/A',
+        classesContent: evaluation.classes,
+        // Verificar outros campos possíveis
+        applied_classes: evaluation.applied_classes,
+        applied_classes_count: evaluation.applied_classes_count,
+        // Verificar se classes está em outro formato (objeto com array)
+        classesAsObject: typeof evaluation.classes === 'object' && !Array.isArray(evaluation.classes) ? evaluation.classes : null,
+        // Log de todas as chaves do objeto
+        allKeys: Object.keys(evaluation),
+        // Log completo do objeto (limitado para não poluir muito)
+        evaluationKeys: Object.keys(evaluation).filter(key => key.toLowerCase().includes('class'))
       });
       
+      // ✅ CORREÇÃO CRÍTICA: Verificar se temos os IDs das turmas selecionadas diretamente na avaliação
+      // classes = classes que a avaliação pertence (selecionadas na criação)
+      // applied_classes = classes que JÁ foram aplicadas (para permitir reaplicação)
+      // Devemos incluir AMBAS para permitir aplicar e reaplicar
+      let selectedClassIds: string[] = [];
+      
+      // 1. Coletar classes da avaliação (classes que a avaliação pertence)
+      // FORMATO ATUAL: classes vem como array de objetos completos { id, name, students_count, school, grade }
+      if (evaluation.classes && Array.isArray(evaluation.classes) && evaluation.classes.length > 0) {
+        const firstItem = evaluation.classes[0];
+        // Verificar se é array de objetos com propriedade id (formato atual)
+        if (typeof firstItem === 'object' && firstItem !== null && 'id' in firstItem) {
+          const classesIds = evaluation.classes.map((item: { id: string | number }) => String(item.id));
+          selectedClassIds.push(...classesIds);
+          console.log("✅ [StartEvaluationModal] Classes da avaliação encontradas (objetos completos):", {
+            total: classesIds.length,
+            ids: classesIds,
+            sample: evaluation.classes[0]
+          });
+        } else {
+          // Array direto de strings/números (formato antigo - compatibilidade)
+          const classesIds = evaluation.classes.map(id => String(id));
+          selectedClassIds.push(...classesIds);
+          console.log("✅ [StartEvaluationModal] Classes da avaliação encontradas (array direto - formato antigo):", classesIds);
+        }
+      }
+      
+      // 2. Coletar classes já aplicadas (para permitir reaplicação)
+      if (evaluation.applied_classes && Array.isArray(evaluation.applied_classes) && evaluation.applied_classes.length > 0) {
+        const appliedClassIds = evaluation.applied_classes
+          .map((ac: { class?: { id?: string | number } }) => ac.class?.id)
+          .filter((id: string | number | undefined): id is string | number => id !== undefined)
+          .map((id: string | number) => String(id));
+        selectedClassIds.push(...appliedClassIds);
+        console.log("✅ [StartEvaluationModal] Classes já aplicadas encontradas (para reaplicação):", appliedClassIds);
+      }
+      
+      // 3. Remover duplicatas (caso uma classe esteja tanto em classes quanto em applied_classes)
+      selectedClassIds = [...new Set(selectedClassIds)];
+      
+      console.log("🔍 [StartEvaluationModal] selectedClassIds final (união de classes + applied_classes):", {
+        selectedClassIds,
+        length: selectedClassIds.length,
+        isEmpty: selectedClassIds.length === 0
+      });
+      
+      if (selectedClassIds.length === 0) {
+        console.error("❌ [StartEvaluationModal] Nenhuma turma selecionada encontrada na avaliação!");
+        console.error("📋 [StartEvaluationModal] Estado completo da avaliação:", JSON.stringify(evaluation, null, 2));
+        setEvaluationClasses([]);
+        setError("Esta avaliação não tem turmas configuradas. Configure as turmas no processo de criação da avaliação primeiro.");
+        return;
+      }
+      
       // Buscar turmas já aplicadas para esta avaliação
+      console.log("📡 [StartEvaluationModal] Fazendo requisição GET para:", `/test/${evaluation.id}/classes`);
       const response = await api.get(`/test/${evaluation.id}/classes`);
-      console.log("📋 Resposta da API de turmas:", response.data);
+      console.log("📋 [StartEvaluationModal] Resposta BRUTA COMPLETA da API de turmas:");
+      console.log("📋 [StartEvaluationModal] Response completa:", response);
+      console.log("📋 [StartEvaluationModal] Response.data (JSON completo):", JSON.stringify(response.data, null, 2));
+      console.log("📋 [StartEvaluationModal] Response.data (objeto):", response.data);
       
       if (response.data && Array.isArray(response.data) && response.data.length > 0) {
         // Mapear dados do backend para o formato esperado pelo componente
@@ -192,20 +263,40 @@ export default function StartEvaluationModal({
           status: ((item.status as string) || "configured") as "applied" | "configured"  // "applied" ou "configured"
         }));
         
-        // ✅ CORREÇÃO: Filtrar apenas as turmas selecionadas durante a criação da avaliação
+        // ✅ CORREÇÃO CRÍTICA: Filtrar APENAS as turmas selecionadas durante a criação da avaliação
         // O backend pode retornar todas as turmas da escola, mas devemos mostrar apenas as selecionadas
-        if (evaluation.classes && Array.isArray(evaluation.classes) && evaluation.classes.length > 0) {
-          const selectedClassIds = evaluation.classes.map(id => String(id));
-          mappedClasses = mappedClasses.filter(cls => selectedClassIds.includes(String(cls.id)));
-          console.log("🔍 Filtrando turmas selecionadas:", {
-            totalFromBackend: response.data.length,
-            selectedClassIds,
-            filteredCount: mappedClasses.length
-          });
+        // Usar comparação rigorosa de IDs convertendo ambos para string
+        mappedClasses = mappedClasses.filter(cls => {
+          const classId = String(cls.id);
+          return selectedClassIds.includes(classId);
+        });
+        
+        console.log("🔍 [StartEvaluationModal] Filtrando turmas selecionadas:", {
+          totalFromBackend: response.data.length,
+          selectedClassIds,
+          selectedClassIdsType: selectedClassIds.map(id => ({ id, type: typeof id })),
+          mappedClassesBeforeFilter: mappedClasses.map(c => ({ id: c.id, idType: typeof c.id, name: c.name })),
+          filteredCount: mappedClasses.length,
+          filteredIds: mappedClasses.map(c => c.id),
+          // Verificar se há algum match
+          matches: mappedClasses.map(c => ({
+            classId: c.id,
+            classIdString: String(c.id),
+            isIncluded: selectedClassIds.includes(String(c.id)),
+            selectedClassIds: selectedClassIds
+          }))
+        });
+        
+        // ✅ CORREÇÃO: Se após filtrar não houver turmas, significa que as turmas selecionadas não foram encontradas
+        if (mappedClasses.length === 0) {
+          console.log("⚠️ Nenhuma turma selecionada encontrada na resposta da API");
+          setEvaluationClasses([]);
+          setError("As turmas selecionadas para esta avaliação não foram encontradas. Verifique se as turmas ainda existem.");
+          return;
         }
         
         setEvaluationClasses(mappedClasses);
-        console.log("✅ Turmas processadas:", mappedClasses);
+        console.log("✅ Turmas processadas e filtradas:", mappedClasses);
         
         // Se chegou aqui e tem turmas, limpar qualquer erro anterior
         setError(null);
