@@ -43,6 +43,7 @@ interface ApiQuestion {
   grade?: { id: string; name: string };
   grade_id?: string;
   difficulty_level?: string;
+  difficulty?: string; // Campo alternativo da API
   question_type?: string;
   value?: number;
   correct_answer?: string;
@@ -215,7 +216,7 @@ export function QuestionBank({
           text: apiQuestion.text || apiQuestion.formatted_text || "",
           title: apiQuestion.title || "",
           type: getQuestionType(apiQuestion.question_type),
-          difficulty: mapDifficulty(apiQuestion.difficulty_level),
+          difficulty: mapDifficulty(apiQuestion.difficulty_level || apiQuestion.difficulty),
           subjectId: apiQuestion.subject_id || "",
           subject: apiQuestion.subject ? {
             id: apiQuestion.subject.id,
