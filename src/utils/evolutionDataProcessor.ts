@@ -14,6 +14,8 @@ export interface ProcessedEvolutionData {
   subjectProficiencyData: Record<string, EvolutionData[]>;
   /** classificação por disciplina (opcional) */
   classificationData: Record<string, EvolutionData[]>;
+  /** dados por nível de proficiência */
+  levelsData: Record<string, EvolutionData[]>;
   /** nomes das avaliações para exibição */
   evaluationNames: string[];
 }
@@ -28,6 +30,7 @@ export function processComparisonData(comparison: ComparisonResponse): Processed
   const subjectProficiencyData = processSubjectProficiencyComparison(comparison);
   const approvalData = processApprovalData(comparison);
   const classificationData = processClassificationData(comparison);
+  const levelsData = processLevelsData(comparison);
   
   // Extrair nomes das avaliações
   const evaluationNames = comparison.evaluations
@@ -41,6 +44,7 @@ export function processComparisonData(comparison: ComparisonResponse): Processed
     subjectProficiencyData,
     approvalData,
     classificationData,
+    levelsData,
     evaluationNames
   };
 }
@@ -555,6 +559,116 @@ function processClassificationData(comparison: ComparisonResponse): { [subjectNa
   });
   
   return classificationData;
+}
+
+/**
+ * Busca valor de um nível na distribuição, tentando diferentes variações do nome
+ */
+function getLevelValue(distribution: Record<string, number>, levelName: string): number {
+  if (!distribution) return 0;
+  
+  // Tentar diferentes variações do nome
+  const variations = [
+    levelName,
+    levelName.toLowerCase(),
+    levelName.toUpperCase(),
+    levelName.replace(/[áàâã]/gi, 'a').replace(/[éê]/gi, 'e').replace(/[íî]/gi, 'i').replace(/[óôõ]/gi, 'o').replace(/[úû]/gi, 'u').replace(/[ç]/gi, 'c'),
+    levelName.replace(/[áàâã]/gi, 'a').replace(/[éê]/gi, 'e').replace(/[íî]/gi, 'i').replace(/[óôõ]/gi, 'o').replace(/[úû]/gi, 'u').replace(/[ç]/gi, 'c').toLowerCase(),
+  ];
+  
+  // Variações específicas por nível
+  if (levelName === 'Abaixo do Básico') {
+    variations.push('abaixo_do_basico', 'Abaixo do básico', 'abaixo do básico', 'Abaixo do Basico');
+  } else if (levelName === 'Básico') {
+    variations.push('basico', 'Basico', 'BÁSICO');
+  } else if (levelName === 'Adequado') {
+    variations.push('adequado', 'ADEQUADO', 'Adequado');
+  } else if (levelName === 'Avançado') {
+    variations.push('avancado', 'Avançado', 'AVANÇADO', 'Avançado');
+  }
+  
+  // Buscar o primeiro valor encontrado
+  for (const variation of variations) {
+    if (distribution[variation] !== undefined) {
+      return distribution[variation];
+    }
+  }
+  
+  return 0;
+}
+
+/**
+ * Processa dados de níveis de proficiência (quantidade de alunos por nível)
+ */
+function processLevelsData(comparison: ComparisonResponse): Record<string, EvolutionData[]> {
+  if (!comparison.comparisons || comparison.comparisons.length === 0) {
+    return {};
+  }
+
+  const levelsData: Record<string, EvolutionData[]> = {};
+  
+  // Níveis esperados
+  const levelNames = ['Abaixo do Básico', 'Básico', 'Adequado', 'Avançado'];
+  
+  // Para cada nível, coletar dados de todas as avaliações
+  levelNames.forEach(levelName => {
+    const values: number[] = [];
+    const variations: number[] = [];
+    
+    // Primeira comparação tem evaluation_1 e evaluation_2
+    if (comparison.comparisons[0]) {
+      const general = comparison.comparisons[0].general_comparison;
+      const dist1 = general.classification_distribution?.evaluation_1 || {};
+      const dist2 = general.classification_distribution?.evaluation_2 || {};
+      
+      const actualValue1 = getLevelValue(dist1, levelName);
+      const actualValue2 = getLevelValue(dist2, levelName);
+      
+      values.push(actualValue1);
+      values.push(actualValue2);
+      
+      // Calcular variação percentual
+      const variation = actualValue1 > 0 ? ((actualValue2 - actualValue1) / actualValue1) * 100 : (actualValue2 > 0 ? 100 : 0);
+      variations.push(variation);
+    }
+    
+    // Comparações subsequentes só adicionam evaluation_2 (evita duplicatas)
+    for (let i = 1; i < comparison.comparisons.length; i++) {
+      const general = comparison.comparisons[i].general_comparison;
+      const dist2 = general.classification_distribution?.evaluation_2 || {};
+      
+      const actualValue = getLevelValue(dist2, levelName);
+      values.push(actualValue);
+      
+      // Calcular variação percentual
+      const prevValue = values[values.length - 2];
+      const variation = prevValue > 0 ? ((actualValue - prevValue) / prevValue) * 100 : (actualValue > 0 ? 100 : 0);
+      variations.push(variation);
+    }
+    
+    // Só adicionar se tiver valores válidos
+    if (values.length > 0) {
+      const result: any = {
+        name: levelName.toUpperCase(),
+      };
+      
+      // Adicionar todas as etapas dinamicamente
+      values.forEach((value, index) => {
+        const etapaKey = `etapa${index + 1}`;
+        result[etapaKey] = value;
+      });
+      
+      // Adicionar todas as variações dinamicamente
+      variations.forEach((variation, index) => {
+        const variacaoKey = `variacao_${index + 1}_${index + 2}`;
+        result[variacaoKey] = variation;
+      });
+      
+      levelsData[levelName] = [result];
+    }
+  });
+  
+  return levelsData;
 }
 
 /**

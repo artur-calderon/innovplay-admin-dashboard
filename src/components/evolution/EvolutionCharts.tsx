@@ -28,6 +28,8 @@ import {
   Target,
   Calendar,
   Users,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { Eye, EyeOff } from 'lucide-react';
 import { EvolutionData } from './EvolutionChart';
@@ -43,6 +45,8 @@ export interface ProcessedEvolutionData {
   subjectData: Record<string, EvolutionData[]>;
   /** por disciplina (proficiência) */
   subjectProficiencyData: Record<string, EvolutionData[]>;
+  /** dados por nível de proficiência */
+  levelsData: Record<string, EvolutionData[]>;
   /** nomes das avaliações para exibição */
   evaluationNames: string[];
 }
@@ -183,7 +187,7 @@ type SegmentedRow<T> = T & {
  */
 function segmentLine<T extends Record<string, unknown>>(
   rows: T[],
-  key: 'nota' | 'proficiencia',
+  key: 'nota' | 'proficiencia' | 'quantidade',
   threshold = 0.1
 ): SegmentedRow<T>[] {
   if (!rows || rows.length === 0) return [];
@@ -235,7 +239,7 @@ function pct(from?: number, to?: number): number | undefined {
  */
 const makeDeltaLabelRenderer = (
   data: Array<Record<string, unknown>>,
-  valueKey: 'nota' | 'proficiencia',
+  valueKey: 'nota' | 'proficiencia' | 'quantidade',
   segmentKey: 'up' | 'down' | 'flat'
 ) => (props: { x?: number; y?: number; index?: number }) => {
   const { x, y, index } = props;
@@ -317,8 +321,9 @@ function mergeByName(rows: EvolutionData[]): EvolutionData[] {
 }
 
 export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProps) {
-  const [activeTab, setActiveTab] = useState<'general' | 'subjects'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'subjects' | 'levels'>('general');
   const [hiddenByChart, setHiddenByChart] = useState<Record<string, Set<string>>>({});
+  const [collapsedCharts, setCollapsedCharts] = useState<Set<string>>(new Set());
 
   function getHidden(chartId: string): Set<string> {
     return hiddenByChart[chartId] ?? new Set<string>();
@@ -338,6 +343,22 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
 
   function handleHideAll(chartId: string, names: string[]) {
     setHiddenByChart(prev => ({ ...prev, [chartId]: new Set(names) }));
+  }
+
+  function toggleChartCollapse(chartId: string) {
+    setCollapsedCharts(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(chartId)) {
+        newSet.delete(chartId);
+      } else {
+        newSet.add(chartId);
+      }
+      return newSet;
+    });
+  }
+
+  function isChartCollapsed(chartId: string): boolean {
+    return collapsedCharts.has(chartId);
   }
 
   // Legenda custom: mantém itens padrão e adiciona toggles minimalistas por avaliação
@@ -760,7 +781,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
 
   return (
     <Tabs defaultValue="general" className="w-full">
-      <TabsList className="grid w-full grid-cols-2">
+      <TabsList className="grid w-full grid-cols-3">
         <TabsTrigger value="general" className="flex items-center gap-2">
           <TrendingUp className="h-4 w-4" />
           Visão Geral
@@ -768,6 +789,10 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
         <TabsTrigger value="subjects" className="flex items-center gap-2">
           <BookOpen className="h-4 w-4" />
           Por Disciplina
+        </TabsTrigger>
+        <TabsTrigger value="levels" className="flex items-center gap-2">
+          <Users className="h-4 w-4" />
+          Por Níveis
         </TabsTrigger>
       </TabsList>
 
@@ -859,12 +884,30 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
           {!!data.generalData?.length && (
             <Card className="border border-border">
               <CardHeader className="bg-muted border-b border-border">
-                <CardTitle className="flex items-center gap-2 text-foreground">
-                  <TrendingUp className="h-5 w-5 text-muted-foreground" />
-                  Nota Geral
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2 text-foreground">
+                    <TrendingUp className="h-5 w-5 text-muted-foreground" />
+                    Nota Geral
+                  </CardTitle>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleChartCollapse('general-nota')}
+                    className="h-8 w-8 p-0"
+                    aria-label={isChartCollapsed('general-nota') ? 'Mostrar gráfico' : 'Ocultar gráfico'}
+                  >
+                    {isChartCollapsed('general-nota') ? (
+                      <ChevronDown className="h-4 w-4 transition-transform duration-300" />
+                    ) : (
+                      <ChevronUp className="h-4 w-4 transition-transform duration-300" />
+                    )}
+                  </Button>
+                </div>
               </CardHeader>
-              <CardContent className="p-6">
+              <div className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                isChartCollapsed('general-nota') ? 'max-h-0' : 'max-h-[500px]'
+              }`}>
+                <CardContent className="p-6">
                 <div className="h-80 w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={segmentedGeneral} margin={{ top: 30, right: 30, left: 20, bottom: 5 }}>
@@ -930,18 +973,37 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                   </ResponsiveContainer>
                 </div>
               </CardContent>
+              </div>
             </Card>
           )}
 
           {!!data.proficiencyData?.length && (
             <Card className="border border-border">
               <CardHeader className="bg-muted border-b border-border">
-                <CardTitle className="flex items-center gap-2 text-foreground">
-                  <Target className="h-5 w-5 text-muted-foreground" />
-                  Proficiência Geral
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2 text-foreground">
+                    <Target className="h-5 w-5 text-muted-foreground" />
+                    Proficiência Geral
+                  </CardTitle>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleChartCollapse('general-prof')}
+                    className="h-8 w-8 p-0"
+                    aria-label={isChartCollapsed('general-prof') ? 'Mostrar gráfico' : 'Ocultar gráfico'}
+                  >
+                    {isChartCollapsed('general-prof') ? (
+                      <ChevronDown className="h-4 w-4 transition-transform duration-300" />
+                    ) : (
+                      <ChevronUp className="h-4 w-4 transition-transform duration-300" />
+                    )}
+                  </Button>
+                </div>
               </CardHeader>
-              <CardContent className="p-6">
+              <div className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                isChartCollapsed('general-prof') ? 'max-h-0' : 'max-h-[500px]'
+              }`}>
+                <CardContent className="p-6">
                 <div className="h-80 w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={segmentedProficiency} margin={{ top: 30, right: 30, left: 20, bottom: 5 }}>
@@ -1012,6 +1074,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                   </ResponsiveContainer>
                 </div>
               </CardContent>
+              </div>
             </Card>
           )}
         </div>
@@ -1159,12 +1222,30 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                     {/* Gráfico de Notas */}
                 <Card className="border border-border">
                   <CardHeader className="bg-muted border-b border-border">
-                    <CardTitle className="flex items-center gap-2 text-foreground">
-                          <TrendingUp className="h-5 w-5 text-muted-foreground" />
-                          Notas - {subject}
-                    </CardTitle>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="flex items-center gap-2 text-foreground">
+                        <TrendingUp className="h-5 w-5 text-muted-foreground" />
+                        Notas - {subject}
+                      </CardTitle>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleChartCollapse(`subject-${subject}-nota`)}
+                        className="h-8 w-8 p-0"
+                        aria-label={isChartCollapsed(`subject-${subject}-nota`) ? 'Mostrar gráfico' : 'Ocultar gráfico'}
+                      >
+                        {isChartCollapsed(`subject-${subject}-nota`) ? (
+                          <ChevronDown className="h-4 w-4 transition-transform duration-300" />
+                        ) : (
+                          <ChevronUp className="h-4 w-4 transition-transform duration-300" />
+                        )}
+                      </Button>
+                    </div>
                   </CardHeader>
-                  <CardContent className="p-6">
+                  <div className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                    isChartCollapsed(`subject-${subject}-nota`) ? 'max-h-0' : 'max-h-[500px]'
+                  }`}>
+                    <CardContent className="p-6">
                     <div className="h-80 w-full">
                       <ResponsiveContainer width="100%" height="100%">
                             <ComposedChart data={subjectSegmented} margin={{ top: 30, right: 30, left: 20, bottom: 5 }}>
@@ -1230,18 +1311,37 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                           </ResponsiveContainer>
                         </div>
                       </CardContent>
+                    </div>
                     </Card>
 
                     {/* Gráfico de Proficiência - apenas se houver dados completos */}
                     {hasAllProficiencyEvaluations && proficiencyChartData.length > 0 && (
                       <Card className="border border-border">
                         <CardHeader className="bg-muted border-b border-border">
-                          <CardTitle className="flex items-center gap-2 text-foreground">
-                            <Target className="h-5 w-5 text-muted-foreground" />
-                            Proficiência - {subject}
-                          </CardTitle>
+                          <div className="flex items-center justify-between">
+                            <CardTitle className="flex items-center gap-2 text-foreground">
+                              <Target className="h-5 w-5 text-muted-foreground" />
+                              Proficiência - {subject}
+                            </CardTitle>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => toggleChartCollapse(`subject-${subject}-prof`)}
+                              className="h-8 w-8 p-0"
+                              aria-label={isChartCollapsed(`subject-${subject}-prof`) ? 'Mostrar gráfico' : 'Ocultar gráfico'}
+                            >
+                              {isChartCollapsed(`subject-${subject}-prof`) ? (
+                                <ChevronDown className="h-4 w-4 transition-transform duration-300" />
+                              ) : (
+                                <ChevronUp className="h-4 w-4 transition-transform duration-300" />
+                              )}
+                            </Button>
+                          </div>
                         </CardHeader>
-                        <CardContent className="p-6">
+                        <div className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                          isChartCollapsed(`subject-${subject}-prof`) ? 'max-h-0' : 'max-h-[500px]'
+                        }`}>
+                          <CardContent className="p-6">
                           <div className="h-80 w-full">
                             <ResponsiveContainer width="100%" height="100%">
                             <ComposedChart data={subjectProfSegmented} margin={{ top: 30, right: 30, left: 20, bottom: 5 }}>
@@ -1312,12 +1412,245 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                       </ResponsiveContainer>
                     </div>
                   </CardContent>
+                </div>
                 </Card>
                     )}
               </div>
                 </div>
               );
             })}
+          </div>
+        )}
+      </TabsContent>
+
+      {/* POR NÍVEIS */}
+      <TabsContent value="levels" className="space-y-6">
+        {/* Header para níveis */}
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-muted rounded-lg">
+            <Users className="w-5 h-5 text-foreground" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-foreground">Análise por Níveis de Proficiência</h3>
+            <p className="text-sm text-muted-foreground">
+              Quantidade de alunos por nível em cada avaliação
+            </p>
+          </div>
+        </div>
+
+        {Object.keys(data.levelsData || {}).length === 0 ? (
+          <Card className="border border-border">
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <div className="w-16 h-16 bg-muted rounded-lg flex items-center justify-center mb-4">
+                <Users className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-medium text-foreground mb-2">Nenhum Dado de Nível Encontrado</h3>
+              <p className="text-sm text-muted-foreground text-center max-w-md">
+                Não há dados de níveis de proficiência para exibir os gráficos.
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-6">
+            {Object.entries(data.levelsData)
+              .filter(([levelName, rows]) => {
+                const merged = mergeByName(rows);
+                if (merged.length === 0) return false;
+                
+                const r = merged[0];
+                // Verificar se o nível tem dados em todas as avaliações dinamicamente
+                const hasAllEvaluations = data.evaluationNames.every((evalName, index) => {
+                  const etapaKey = `etapa${index + 1}`;
+                  return safe((r as any)[etapaKey]) !== undefined;
+                });
+                
+                return hasAllEvaluations;
+              })
+              .map(([levelName, rows]) => {
+                // Construir dados específicos para este nível
+                const merged = mergeByName(rows);
+                if (merged.length === 0) return null;
+                
+                const r = merged[0];
+                const levelChartData: Record<string, unknown>[] = [];
+                const hiddenLevel = getHidden(`level-${levelName}`);
+                
+                // Cores por nível
+                const levelColors: Record<string, string> = {
+                  'Abaixo do Básico': '#DC2626',
+                  'Básico': '#F59E0B',
+                  'Adequado': '#3B82F6',
+                  'Avançado': '#10B981',
+                };
+                
+                const levelColor = levelColors[levelName] || '#6B7280';
+                
+                // Dados dinamicamente para todas as avaliações
+                data.evaluationNames.forEach((evalName, index) => {
+                  if (hiddenLevel.has(evalName)) return;
+                  
+                  const etapaKey = `etapa${index + 1}`;
+                  const etapaValue = safe((r as any)[etapaKey]);
+                  
+                  if (etapaValue !== undefined) {
+                    levelChartData.push({
+                      name: evalName,
+                      quantidade: etapaValue,
+                      color: levelColor,
+                    });
+                  }
+                });
+
+                // Gerar dados segmentados
+                const levelSegmented = segmentLine(levelChartData as Record<string, unknown>[], 'quantidade');
+
+                // Tooltip customizado para níveis
+                const CustomLevelTooltip = ({ active, payload, label }: { active?: boolean; payload?: TooltipPayload[]; label?: string }) => {
+                  if (active && payload && payload.length) {
+                    const barData = payload.find((p: TooltipPayload) => p.dataKey === 'quantidade');
+                    if (barData) {
+                      const quantidade = barData.value as number;
+                      const data = barData.payload;
+                      
+                      // Calcular variação
+                      let variacao = 0;
+                      const currentIndex = payload.findIndex(p => p.payload === data);
+                      
+                      if (currentIndex > 0) {
+                        const prevData = payload[currentIndex - 1]?.payload;
+                        if (prevData && prevData.quantidade !== undefined) {
+                          const prevValue = prevData.quantidade as number;
+                          const currentValue = quantidade;
+                          variacao = prevValue > 0 ? ((currentValue - prevValue) / prevValue) * 100 : (currentValue > 0 ? 100 : 0);
+                        }
+                      }
+                      
+                      const sinal = variacao > 0 ? '+' : '';
+                      
+                      return (
+                        <div className="bg-card p-3 border border-border rounded-lg shadow-sm">
+                          <p className="text-sm font-medium text-foreground mb-1">{label}</p>
+                          <p className="text-sm text-foreground">
+                            Alunos: <span className="font-semibold text-foreground">{quantidade}</span>
+                          </p>
+                          {variacao !== 0 && (
+                            <p className={`text-sm font-medium ${
+                              variacao > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                            }`}>
+                              Variação: {sinal}{variacao.toFixed(1)}%
+                            </p>
+                          )}
+                        </div>
+                      );
+                    }
+                  }
+                  return null;
+                };
+
+                return (
+                  <Card key={levelName} className="border border-border">
+                    <CardHeader className="bg-muted border-b border-border">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="flex items-center gap-2 text-foreground">
+                          <div 
+                            className="w-4 h-4 rounded-full" 
+                            style={{ backgroundColor: levelColor }}
+                          />
+                          {levelName}
+                        </CardTitle>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleChartCollapse(`level-${levelName}`)}
+                          className="h-8 w-8 p-0"
+                          aria-label={isChartCollapsed(`level-${levelName}`) ? 'Mostrar gráfico' : 'Ocultar gráfico'}
+                        >
+                          {isChartCollapsed(`level-${levelName}`) ? (
+                            <ChevronDown className="h-4 w-4 transition-transform duration-300" />
+                          ) : (
+                            <ChevronUp className="h-4 w-4 transition-transform duration-300" />
+                          )}
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <div className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                      isChartCollapsed(`level-${levelName}`) ? 'max-h-0' : 'max-h-[500px]'
+                    }`}>
+                      <CardContent className="p-6">
+                      <div className="h-80 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <ComposedChart data={levelSegmented} margin={{ top: 30, right: 30, left: 20, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                            <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'hsl(var(--foreground))' }} />
+                            <YAxis 
+                              domain={[0, 'dataMax + 5']} 
+                              tick={{ fontSize: 12, fill: 'hsl(var(--foreground))' }} 
+                              allowDecimals={false}
+                              label={{ value: 'Quantidade de Alunos', angle: -90, position: 'insideLeft', fill: 'hsl(var(--foreground))' }}
+                            />
+                            <Tooltip content={<CustomLevelTooltip />} />
+                            <Legend content={createLegendRenderer(`level-${levelName}`, data.evaluationNames)} />
+                            <Bar
+                              dataKey="quantidade"
+                              name="Quantidade de Alunos"
+                              legendType="none"
+                              barSize={60}
+                              radius={[4, 4, 0, 0]}
+                              maxBarSize={80}
+                              label={{ 
+                                position: 'center', 
+                                fontSize: 12, 
+                                fill: '#ffffff',
+                                fontWeight: 'bold',
+                                formatter: (value: number) => value.toFixed(0)
+                              }}
+                            >
+                              {levelChartData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.color as string} />
+                              ))}
+                            </Bar>
+                            {/* Linhas por segmento */}
+                            <Line
+                              type="linear"
+                              dataKey="up"
+                              name="Crescimento"
+                              stroke="#10B981"
+                              strokeWidth={4}
+                              dot={false}
+                              isAnimationActive={false}
+                            >
+                              <LabelList content={makeDeltaLabelRenderer(levelSegmented, 'quantidade', 'up')} />
+                            </Line>
+                            <Line
+                              type="linear"
+                              dataKey="down"
+                              name="Queda"
+                              stroke="#EF4444"
+                              strokeWidth={4}
+                              dot={false}
+                              isAnimationActive={false}
+                            >
+                              <LabelList content={makeDeltaLabelRenderer(levelSegmented, 'quantidade', 'down')} />
+                            </Line>
+                            <Line
+                              type="linear"
+                              dataKey="flat"
+                              name="Permaneceu"
+                              stroke="#6B7280"
+                              strokeWidth={4}
+                              dot={false}
+                              isAnimationActive={false}
+                            >
+                              <LabelList content={makeDeltaLabelRenderer(levelSegmented, 'quantidade', 'flat')} />
+                            </Line>
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </CardContent>
+                    </div>
+                  </Card>
+                );
+              })}
           </div>
         )}
       </TabsContent>
