@@ -729,6 +729,10 @@ const QuestionFormReadOnly = ({
                                                     placeholder="Clique para abrir o seletor de habilidades"
                                                     disabled={skills.length === 0}
                                                     gradeId={evaluationData.grade}
+                                                    gradeName={grades.find(g => g.id === evaluationData.grade)?.name}
+                                                    subjectId={evaluationData.subject}
+                                                    subjectName={subjects.find(s => s.id === evaluationData.subject)?.name}
+                                                    allGrades={grades}
                                                 />
                                             </FormControl>
                                             <FormMessage />

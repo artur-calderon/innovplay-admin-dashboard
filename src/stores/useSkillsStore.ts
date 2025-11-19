@@ -15,6 +15,7 @@ interface SkillsStore {
     isLoading: Record<string, boolean>;
     fetchSkills: (subjectId: string, gradeId?: string) => Promise<Skill[]>;
     fetchSkillsByGrade: (gradeId: string) => Promise<Skill[]>;
+    fetchSkillsByGrades: (gradeIds: string[]) => Promise<Skill[]>;
     getSkillById: (skillId: string, subjectId?: string, gradeId?: string) => Skill | undefined;
     getSkillsByIds: (skillIds: string[], subjectId?: string, gradeId?: string) => Skill[];
 }
@@ -252,6 +253,31 @@ export const useSkillsStore = create<SkillsStore>((set, get) => ({
             }));
             return [];
         }
+    },
+
+    fetchSkillsByGrades: async (gradeIds: string[]) => {
+        const { fetchSkillsByGrade } = get();
+        
+        if (!gradeIds || gradeIds.length === 0) {
+            return [];
+        }
+
+        // Buscar habilidades de todos os anos em paralelo
+        const promises = gradeIds.map(gradeId => fetchSkillsByGrade(gradeId));
+        const results = await Promise.all(promises);
+
+        // Combinar todas as habilidades, removendo duplicatas por código
+        const allSkills = results.flat();
+        const uniqueSkillsMap = new Map<string, Skill>();
+        
+        for (const skill of allSkills) {
+            // Usar código como chave para evitar duplicatas
+            if (!uniqueSkillsMap.has(skill.code)) {
+                uniqueSkillsMap.set(skill.code, skill);
+            }
+        }
+
+        return Array.from(uniqueSkillsMap.values());
     },
 
     getSkillById: (skillId: string, subjectId?: string, gradeId?: string) => {

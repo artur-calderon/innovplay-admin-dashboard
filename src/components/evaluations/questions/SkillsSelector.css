@@ -7,13 +7,10 @@
 }
 
 /* Garantir que o content tenha fundo sólido e seja responsivo */
-[data-radix-dialog-content] {
-  background-color: white !important;
-  border: 1px solid #e5e7eb !important;
-}
-
-/* Dialog responsivo e com melhor z-index */
+.skills-selector-dialog[data-radix-dialog-content],
 .skills-selector-dialog {
+  background-color: hsl(var(--background)) !important;
+  border: 1px solid hsl(var(--border)) !important;
   z-index: 9999 !important;
   display: flex !important;
   flex-direction: column !important;
@@ -33,27 +30,34 @@
 
 /* Headers sticky com fundo sólido e blur */
 .skills-category-header {
-  background-color: rgba(255, 255, 255, 0.95) !important;
+  background-color: hsl(var(--background) / 0.95) !important;
   backdrop-filter: blur(12px) saturate(180%) !important;
   -webkit-backdrop-filter: blur(12px) saturate(180%) !important;
-  border-bottom: 1px solid #e5e7eb !important;
+  border-bottom: 1px solid hsl(var(--border)) !important;
 }
 
 /* Melhorar contraste das habilidades selecionadas */
 .skill-item-selected {
-  background-color: #eff6ff !important;
-  border-color: #3b82f6 !important;
-  box-shadow: 0 0 0 1px #3b82f6, 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+  background-color: hsl(217 91% 60% / 0.1) !important;
+  border-color: hsl(217 91% 60%) !important;
+  box-shadow: 0 0 0 1px hsl(217 91% 60%), 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  .skill-item-selected {
+    background-color: hsl(217 91% 60% / 0.2) !important;
+    border-color: hsl(217 91% 60% / 0.8) !important;
+  }
 }
 
 /* Scroll area com performance otimizada */
 .skills-scroll-area {
-  background-color: white !important;
+  background-color: hsl(var(--background)) !important;
   overflow-x: hidden !important;
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
   scrollbar-width: thin !important;
-  scrollbar-color: #cbd5e1 transparent !important;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent !important;
 }
 
 /* Customizar scrollbar no webkit */
@@ -66,25 +70,25 @@
 }
 
 .skills-scroll-area::-webkit-scrollbar-thumb {
-  background-color: #cbd5e1 !important;
+  background-color: hsl(var(--muted-foreground) / 0.3) !important;
   border-radius: 3px !important;
 }
 
 .skills-scroll-area::-webkit-scrollbar-thumb:hover {
-  background-color: #94a3b8 !important;
+  background-color: hsl(var(--muted-foreground) / 0.5) !important;
 }
 
 /* Sidebar com melhor comportamento */
 .skills-sidebar {
-  background-color: #f9fafb !important;
-  border-right: 1px solid #e5e7eb !important;
+  background-color: hsl(var(--muted) / 0.5) !important;
+  border-right: 1px solid hsl(var(--border)) !important;
   overflow: hidden !important;
 }
 
 /* Footer fixo e responsivo */
 .skills-footer {
-  background-color: rgba(255, 255, 255, 0.98) !important;
-  border-top: 1px solid #e5e7eb !important;
+  background-color: hsl(var(--background) / 0.98) !important;
+  border-top: 1px solid hsl(var(--border)) !important;
   box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1) !important;
   backdrop-filter: blur(8px) !important;
   -webkit-backdrop-filter: blur(8px) !important;
