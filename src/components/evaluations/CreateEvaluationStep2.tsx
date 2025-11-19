@@ -69,6 +69,7 @@ export const CreateEvaluationStep2 = ({
   const [showCreateQuestion, setShowCreateQuestion] = useState(false);
   const [selectedSubjectForQuestion, setSelectedSubjectForQuestion] = useState<string>("");
   const [previewQuestion, setPreviewQuestion] = useState<Question | null>(null);
+  const [gradeName, setGradeName] = useState<string>("");
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -78,6 +79,33 @@ export const CreateEvaluationStep2 = ({
   const { createEvaluation } = useEvaluationActions();
   const allQuestions = useQuestions();
   const { setQuestions, clearQuestions, addQuestion } = useQuestionActions();
+
+  // Carregar nome da série
+  useEffect(() => {
+    const fetchGradeName = async () => {
+      if (data.grade) {
+        try {
+          const response = await api.get(`/grades/${data.grade}`);
+          if (response.data && response.data.name) {
+            setGradeName(response.data.name);
+          } else {
+            // Tentar buscar todas as séries e encontrar pelo ID
+            const gradesResponse = await api.get("/grades/");
+            if (Array.isArray(gradesResponse.data)) {
+              const grade = gradesResponse.data.find((g: { id: string; name: string }) => g.id === data.grade);
+              if (grade) {
+                setGradeName(grade.name);
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Erro ao buscar nome da série:", error);
+          setGradeName("");
+        }
+      }
+    };
+    fetchGradeName();
+  }, [data.grade]);
 
   // Carregar questões existentes quando entrar na edição
   useEffect(() => {
@@ -495,6 +523,10 @@ export const CreateEvaluationStep2 = ({
             subjectId={selectedSubjectForQuestion}
             onQuestionSelected={handleQuestionSelected}
             onClose={() => setShowQuestionBank(false)}
+            gradeId={data.grade}
+            gradeName={gradeName}
+            subjects={data.subjects}
+            selectedSubjectId={selectedSubjectForQuestion}
           />
         </DialogContent>
       </Dialog>

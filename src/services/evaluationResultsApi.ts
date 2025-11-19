@@ -1471,6 +1471,7 @@ export class EvaluationResultsApiService {
   }
 
   // ✅ NOVO: Buscar avaliações baseado nos filtros aplicados
+  // ✅ CORRIGIDO: Usar diretamente a rota de opções de filtros que já filtra por role do usuário (JWT)
   static async getFilterEvaluations(filters: {
     estado: string;
     municipio: string;
@@ -1487,32 +1488,25 @@ export class EvaluationResultsApiService {
         params.append('escola', filters.escola);
       }
 
+      // ✅ CORRIGIDO: Usar diretamente a rota específica que já filtra por role (professor vê apenas suas avaliações)
       const url = `/evaluation-results/opcoes-filtros/avaliacoes?${params}`;
-    
-
-      // ✅ MIGRADO: Tentar usar nova API unificada primeiro
-      try {
-        const unifiedResponse = await this.getEvaluationsList(1, 100, {
-          estado: filters.estado,
-          municipio: filters.municipio
-        });
-        
-        if (unifiedResponse?.opcoes_proximos_filtros?.avaliacoes?.length) {
-          return unifiedResponse.opcoes_proximos_filtros.avaliacoes;
-        }
-        
-        if (unifiedResponse?.resultados_detalhados?.avaliacoes?.length) {
-          return unifiedResponse.resultados_detalhados.avaliacoes.map(av => ({
-            id: av.id,
-            titulo: av.titulo
-          }));
-        }
-        
-        console.log('ℹ️ Nova API não retornou avaliações para os filtros aplicados');
-      } catch (unifiedError) {
-        console.log('ℹ️ Erro na nova API:', unifiedError);
+      const response = await api.get(url);
+      
+      // A resposta pode vir em diferentes formatos
+      if (Array.isArray(response.data)) {
+        return response.data;
       }
-
+      
+      // Se vier em formato de objeto com propriedade 'avaliacoes'
+      if (response.data?.avaliacoes && Array.isArray(response.data.avaliacoes)) {
+        return response.data.avaliacoes;
+      }
+      
+      // Se vier em formato de objeto com propriedade 'data'
+      if (response.data?.data && Array.isArray(response.data.data)) {
+        return response.data.data;
+      }
+      
       return [];
     } catch (error) {
       console.error('❌ LOG - Erro ao buscar avaliações para filtros:', error);
