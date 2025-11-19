@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, X } from 'lucide-react';
+import { Check, X, MousePointer2 } from 'lucide-react';
 
 export const TableLegend: React.FC = () => {
   return (
@@ -40,6 +40,14 @@ export const TableLegend: React.FC = () => {
             <span className="inline-block w-3 h-3 rounded-full bg-green-600 dark:bg-green-700" />
             <span>Avançado</span>
           </div>
+        </div>
+
+        <div className="pt-2 border-t border-border" />
+        <div className="flex items-start gap-2 text-blue-600 dark:text-blue-400">
+          <MousePointer2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <span>
+            <strong>Dica:</strong> Clique com o botão direito no nome do aluno para abrir os detalhes em uma nova guia.
+          </span>
         </div>
       </div>
     </div>

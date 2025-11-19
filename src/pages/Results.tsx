@@ -17,8 +17,7 @@ import {
   Search,
   BarChart3,
   BookOpen,
-  Check,
-  TrendingUp
+  Check
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -351,6 +350,15 @@ export default function Results() {
   const { toast } = useToast();
   const navigate = useNavigate();
 
+  // Chave para persistência dos filtros no localStorage
+  const FILTERS_STORAGE_KEY = 'results_filters';
+  
+  // ✅ NOVO: Ref para controlar se já carregamos os filtros do storage
+  const filtersLoadedFromStorageRef = useRef(false);
+  
+  // ✅ NOVO: Ref para controlar se estamos restaurando filtros (evita resets em cascata)
+  const isRestoringFiltersRef = useRef(false);
+
   // Estados dos filtros
   const [selectedState, setSelectedState] = useState<string>('all');
   const [selectedMunicipality, setSelectedMunicipality] = useState<string>('all');
@@ -486,6 +494,91 @@ export default function Results() {
     return '';
   }, []);
 
+  // ✅ NOVO: Função para salvar filtros no localStorage
+  const saveFiltersToStorage = useCallback(() => {
+    try {
+      const filters = {
+        selectedState,
+        selectedMunicipality,
+        selectedEvaluation,
+        selectedSchool,
+        selectedGrade,
+        selectedClass,
+        timestamp: Date.now()
+      };
+      localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(filters));
+    } catch (error) {
+      console.error('Erro ao salvar filtros no localStorage:', error);
+    }
+  }, [selectedState, selectedMunicipality, selectedEvaluation, selectedSchool, selectedGrade, selectedClass]);
+
+  // ✅ NOVO: Função para carregar e validar filtros do localStorage
+  const loadFiltersFromStorage = useCallback((): {
+    selectedState: string;
+    selectedMunicipality: string;
+    selectedEvaluation: string;
+    selectedSchool: string;
+    selectedGrade: string;
+    selectedClass: string;
+  } | null => {
+    try {
+      const stored = localStorage.getItem(FILTERS_STORAGE_KEY);
+      if (!stored) return null;
+
+      const filters = JSON.parse(stored);
+      
+      // ✅ VALIDAÇÃO: Verificar estrutura básica e valores válidos
+      if (
+        typeof filters.selectedState === 'string' &&
+        typeof filters.selectedMunicipality === 'string' &&
+        typeof filters.selectedEvaluation === 'string' &&
+        typeof filters.selectedSchool === 'string' &&
+        typeof filters.selectedGrade === 'string' &&
+        typeof filters.selectedClass === 'string' &&
+        filters.selectedState !== '' &&
+        filters.selectedMunicipality !== '' &&
+        filters.selectedEvaluation !== '' &&
+        filters.selectedSchool !== '' &&
+        filters.selectedGrade !== '' &&
+        filters.selectedClass !== ''
+      ) {
+        // Retornar filtros validados
+        return {
+          selectedState: filters.selectedState,
+          selectedMunicipality: filters.selectedMunicipality,
+          selectedEvaluation: filters.selectedEvaluation,
+          selectedSchool: filters.selectedSchool,
+          selectedGrade: filters.selectedGrade,
+          selectedClass: filters.selectedClass
+        };
+      }
+      
+      // Se a validação falhar, limpar dados inválidos do localStorage
+      localStorage.removeItem(FILTERS_STORAGE_KEY);
+      return null;
+    } catch (error) {
+      console.error('Erro ao carregar filtros do localStorage:', error);
+      // Limpar dados corrompidos
+      try {
+        localStorage.removeItem(FILTERS_STORAGE_KEY);
+      } catch (cleanupError) {
+        console.error('Erro ao limpar localStorage:', cleanupError);
+      }
+      return null;
+    }
+  }, []);
+
+  // ✅ NOVO: Salvar filtros no localStorage sempre que mudarem
+  useEffect(() => {
+    // Não salvar se ainda não carregamos os filtros do storage (evita salvar na primeira renderização)
+    if (!filtersLoadedFromStorageRef.current) {
+      return;
+    }
+    
+    // Salvar filtros quando mudarem
+    saveFiltersToStorage();
+  }, [selectedState, selectedMunicipality, selectedEvaluation, selectedSchool, selectedGrade, selectedClass, saveFiltersToStorage]);
+
   // Carregar filtros iniciais
   const loadInitialFilters = useCallback(async () => {
     try {
@@ -526,11 +619,40 @@ export default function Results() {
           return;
         }
       }
+      
+      // ✅ NOVO: Carregar filtros salvos do localStorage antes de carregar filtros iniciais
+      const savedFilters = loadFiltersFromStorage();
+      if (savedFilters) {
+        // Marcar que estamos restaurando filtros (evita resets em cascata)
+        isRestoringFiltersRef.current = true;
+        
+        // Definir todos os filtros de uma vez
+        setSelectedState(savedFilters.selectedState);
+        setSelectedMunicipality(savedFilters.selectedMunicipality);
+        setSelectedEvaluation(savedFilters.selectedEvaluation);
+        setSelectedSchool(savedFilters.selectedSchool);
+        setSelectedGrade(savedFilters.selectedGrade);
+        setSelectedClass(savedFilters.selectedClass);
+        
+        // Aguardar todos os useEffects e chamadas assíncronas serem executados antes de desabilitar a flag
+        // Usar múltiplos requestAnimationFrame e timeout para garantir que todas as requisições foram concluídas
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            setTimeout(() => {
+              isRestoringFiltersRef.current = false;
+            }, 1500);
+          });
+        });
+      }
+      
+      // Marcar que os filtros foram carregados do storage
+      filtersLoadedFromStorageRef.current = true;
+      
       await loadInitialFilters();
     };
 
     initializeData();
-  }, [autoLogin, loadInitialFilters, toast]);
+  }, [autoLogin, loadInitialFilters, toast, loadFiltersFromStorage]);
 
   // Helpers de reset em cascata
   const resetAfterGrade = useCallback(() => {
@@ -568,9 +690,11 @@ export default function Results() {
             name: municipality.nome,
             state: selectedState
           })));
-          // Reset em cascata
-          setEvaluationsByMunicipality([]);
-          resetAfterState();
+          // ✅ CORRIGIDO: Não resetar em cascata se estamos restaurando filtros
+          if (!isRestoringFiltersRef.current) {
+            setEvaluationsByMunicipality([]);
+            resetAfterState();
+          }
         } catch (error) {
           console.error("Erro ao carregar municípios:", error);
         } finally {
@@ -579,7 +703,10 @@ export default function Results() {
       } else {
         setMunicipalities([]);
         setEvaluationsByMunicipality([]);
-        resetAfterState();
+        // ✅ CORRIGIDO: Não resetar em cascata se estamos restaurando filtros
+        if (!isRestoringFiltersRef.current) {
+          resetAfterState();
+        }
       }
     };
 
@@ -606,8 +733,10 @@ export default function Results() {
             data_aplicacao: new Date().toISOString()
           })));
 
-          // Reset em cascata
-          resetAfterEvaluation();
+          // ✅ CORRIGIDO: Não resetar em cascata se estamos restaurando filtros
+          if (!isRestoringFiltersRef.current) {
+            resetAfterEvaluation();
+          }
         } catch (error) {
           console.error("Erro ao carregar avaliações:", error);
           setEvaluationsByMunicipality([]);
@@ -616,7 +745,10 @@ export default function Results() {
         }
       } else {
         setEvaluationsByMunicipality([]);
-        resetAfterEvaluation();
+        // ✅ CORRIGIDO: Não resetar em cascata se estamos restaurando filtros
+        if (!isRestoringFiltersRef.current) {
+          resetAfterEvaluation();
+        }
       }
     };
 
@@ -640,8 +772,10 @@ export default function Results() {
             name: school.nome
           })));
 
-          // Reset em cascata
-          resetAfterSchool();
+          // ✅ CORRIGIDO: Não resetar em cascata se estamos restaurando filtros
+          if (!isRestoringFiltersRef.current) {
+            resetAfterSchool();
+          }
         } catch (error) {
           console.error("Erro ao carregar escolas:", error);
           setSchools([]);
@@ -650,7 +784,10 @@ export default function Results() {
         }
       } else {
         setSchools([]);
-        resetAfterSchool();
+        // ✅ CORRIGIDO: Não resetar em cascata se estamos restaurando filtros
+        if (!isRestoringFiltersRef.current) {
+          resetAfterSchool();
+        }
       }
     };
 
@@ -675,8 +812,10 @@ export default function Results() {
             name: grade.nome
           })));
 
-          // Reset em cascata
-          resetAfterGrade();
+          // ✅ CORRIGIDO: Não resetar em cascata se estamos restaurando filtros
+          if (!isRestoringFiltersRef.current) {
+            resetAfterGrade();
+          }
         } catch (error) {
           console.error("Erro ao carregar séries:", error);
           setGrades([]);
@@ -685,7 +824,10 @@ export default function Results() {
         }
       } else {
         setGrades([]);
-        resetAfterGrade();
+        // ✅ CORRIGIDO: Não resetar em cascata se estamos restaurando filtros
+        if (!isRestoringFiltersRef.current) {
+          resetAfterGrade();
+        }
       }
     };
 
@@ -711,8 +853,10 @@ export default function Results() {
             name: classItem.nome
           })));
 
-          // Resetar seleção dependente
-          setSelectedClass('all');
+          // ✅ CORRIGIDO: Não resetar seleção dependente se estamos restaurando filtros
+          if (!isRestoringFiltersRef.current) {
+            setSelectedClass('all');
+          }
         } catch (error) {
           console.error("Erro ao carregar turmas:", error);
           setClasses([]);
@@ -721,7 +865,10 @@ export default function Results() {
         }
       } else {
         setClasses([]);
-        setSelectedClass('all');
+        // ✅ CORRIGIDO: Não resetar seleção dependente se estamos restaurando filtros
+        if (!isRestoringFiltersRef.current) {
+          setSelectedClass('all');
+        }
       }
     };
 
@@ -1141,15 +1288,16 @@ export default function Results() {
   // ✅ NOVO: Processar dados do ranking usando tabela_detalhada.geral
   const processRankingData = useCallback(() => {
     // Prioridade 1: Usar dados da tabela_detalhada.geral (mesma fonte da visão geral)
-    if (apiData?.tabela_detalhada?.geral?.alunos?.length) {
-      return apiData.tabela_detalhada.geral.alunos
+    const tabelaDetalhada = apiData?.tabela_detalhada as TabelaDetalhada | undefined;
+    if (tabelaDetalhada?.geral?.alunos?.length) {
+      return tabelaDetalhada.geral.alunos
         .filter(aluno => {
           // Verificar se o aluno respondeu pelo menos uma questão
           if (!apiData?.tabela_detalhada?.disciplinas?.length) {
             return true; // Fallback: incluir todos se não temos dados de disciplinas
           }
           
-          return apiData.tabela_detalhada.disciplinas.some(disciplina => {
+          return tabelaDetalhada.disciplinas.some(disciplina => {
             const disciplinaAluno = disciplina.alunos.find(a => a.id === aluno.id);
             if (!disciplinaAluno) return false;
             return disciplinaAluno.respostas_por_questao.some(resposta => resposta.respondeu);
@@ -1359,7 +1507,7 @@ export default function Results() {
   }, [transformedStudents]);
 
   const buildDisciplineStatsForStudent = useCallback((studentId: string): DisciplineStatsMap | null => {
-    const tabelaDetalhada = apiData?.tabela_detalhada;
+    const tabelaDetalhada = apiData?.tabela_detalhada as TabelaDetalhada | undefined;
     if (!tabelaDetalhada?.disciplinas?.length) {
       return null;
     }
@@ -1973,11 +2121,10 @@ export default function Results() {
             <>
               {/* Abas com diferentes visualizações */}
               <Tabs defaultValue="charts" className="w-full">
-                <TabsList className={`grid w-full ${selectedEvaluation !== 'all' ? 'grid-cols-5' : 'grid-cols-4'}`}>
+                <TabsList className={`grid w-full ${selectedEvaluation !== 'all' ? 'grid-cols-4' : 'grid-cols-3'}`}>
                   <TabsTrigger value="charts">Gráficos</TabsTrigger>
                   <TabsTrigger value="tables">Tabelas</TabsTrigger>
                   <TabsTrigger value="statistics">Estatísticas</TabsTrigger>
-                  <TabsTrigger value="evolution">Evolução</TabsTrigger>
                   {selectedEvaluation !== 'all' && (
                     <TabsTrigger value="ranking">Ranking</TabsTrigger>
                   )}
@@ -2231,33 +2378,6 @@ export default function Results() {
 
                 <TabsContent value="statistics" className="space-y-6">
                   <ClassStatistics apiData={apiData} />
-                </TabsContent>
-
-                <TabsContent value="evolution" className="space-y-6">
-                  <Card>
-                    <CardContent className="flex flex-col items-center justify-center py-16">
-                      <div className="w-20 h-20 bg-blue-50 dark:bg-blue-950/30 rounded-full flex items-center justify-center mb-6">
-                        <TrendingUp className="h-10 w-10 text-blue-600 dark:text-blue-400" />
-                      </div>
-                      <h3 className="text-xl font-semibold text-foreground mb-3">
-                        Evolução dos Resultados
-                      </h3>
-                      <p className="text-muted-foreground text-center max-w-md mb-6">
-                        Esta funcionalidade será implementada em breve para mostrar a evolução temporal dos resultados das avaliações.
-                      </p>
-                      <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4 max-w-md">
-                        <div className="flex items-start gap-3">
-                          <div className="w-5 h-5 bg-blue-600 dark:bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                            <span className="text-white text-xs font-bold">!</span>
-                          </div>
-                          <div className="text-sm text-blue-800 dark:text-blue-400">
-                            <strong>Em desenvolvimento</strong><br />
-                            Esta aba será utilizada para analisar tendências e evolução dos resultados ao longo do tempo.
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
                 </TabsContent>
 
                 {selectedEvaluation !== 'all' && (

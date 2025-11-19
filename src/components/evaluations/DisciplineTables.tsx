@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Check, X, Minus, Eye, CheckCircle2, Target, Gauge, Award, ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
 import { TableHeader } from './results-table/TableHeader';
 import { TableRow } from './results-table/TableRow';
+import { TableLegend } from './results-table/TableLegend';
 
 interface TabelaDetalhadaQuestao {
   numero: number;
@@ -495,6 +496,10 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                 </div>
               )}
             </div>
+            {/* ✅ NOVO: Legenda após a tabela */}
+            <div className="px-4 pb-4">
+              <TableLegend />
+            </div>
           </CardContent>
         </Card>
       )}
@@ -647,6 +652,10 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                   Janela {getCurrentWindowForDiscipline(disciplina.id) + 1} de {getTotalWindows(disciplina.questoes.length)}
                 </div>
               )}
+            </div>
+            {/* ✅ NOVO: Legenda após a tabela */}
+            <div className="px-4 pb-4">
+              <TableLegend />
             </div>
           </CardContent>
         </Card>
