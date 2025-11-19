@@ -190,6 +190,7 @@ export class EvaluationComparisonApiService {
       console.log('Enviando IDs para comparação:', testIds);
       console.log('Payload sendo enviado:', { test_ids: testIds });
 
+      // Usar o endpoint /test/compare que existe no backend
       const response = await api.post('/test/compare', {
         test_ids: testIds
       });

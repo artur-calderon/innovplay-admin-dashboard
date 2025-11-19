@@ -24,8 +24,24 @@ export interface EvolutionData {
   etapa1?: number | null;
   etapa2?: number | null;
   etapa3?: number | null;
+  etapa4?: number | null;
+  etapa5?: number | null;
+  etapa6?: number | null;
+  etapa7?: number | null;
+  etapa8?: number | null;
+  etapa9?: number | null;
+  etapa10?: number | null;
   variacao_1_2?: number | null;
   variacao_2_3?: number | null;
+  variacao_3_4?: number | null;
+  variacao_4_5?: number | null;
+  variacao_5_6?: number | null;
+  variacao_6_7?: number | null;
+  variacao_7_8?: number | null;
+  variacao_8_9?: number | null;
+  variacao_9_10?: number | null;
+  // Método auxiliar para acessar etapas dinamicamente
+  [key: string]: string | number | null | undefined;
 }
 
 interface EvolutionChartProps {
