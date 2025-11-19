@@ -82,6 +82,10 @@ interface QuestionBankProps {
     grade: string;
     questions: Question[];
   }) => void;
+  gradeId?: string;
+  gradeName?: string;
+  subjects?: Subject[];
+  selectedSubjectId?: string;
 }
 
 const DIFFICULTIES = ["Abaixo do Básico", "Básico", "Adequado", "Avançado"];
@@ -91,11 +95,132 @@ const QUESTION_TYPES = [
   { key: "trueFalse", label: "Verdadeiro/Falso" }
 ];
 
+/**
+ * Função utilitária para mapear períodos EJA para anos equivalentes
+ * 1º Período EJA = 1º Ano, 2º Período EJA = 2º Ano, etc.
+ */
+function getGradeIdsForEJA(
+  currentGradeId: string,
+  currentGradeName: string,
+  allGrades: Array<{ id: string; name: string }>
+): string[] {
+  if (!currentGradeName || !allGrades || allGrades.length === 0) {
+    return [currentGradeId];
+  }
+
+  const normalizedGradeName = currentGradeName.trim().toLowerCase();
+  
+  // Verificar se é EJA
+  const isEJA = normalizedGradeName.includes('período') || 
+                normalizedGradeName.includes('periodo') ||
+                normalizedGradeName.includes('eja') ||
+                allGrades.some(g => {
+                  const gradeLower = g.name.toLowerCase();
+                  return gradeLower.includes('eja') && g.id === currentGradeId;
+                });
+
+  if (!isEJA) {
+    return [currentGradeId];
+  }
+
+  // Extrair número do período (ex: "1º Período" -> 1)
+  const periodoMatch = normalizedGradeName.match(/(\d+)[º°o]?\s*per[ií]odo/i);
+  if (!periodoMatch) {
+    return [currentGradeId];
+  }
+
+  const periodoNum = parseInt(periodoMatch[1], 10);
+  
+  // Tentar múltiplas variações do nome do ano
+  const possibleYearNames = [
+    `${periodoNum}º Ano`,
+    `${periodoNum}° Ano`,
+    `${periodoNum}o Ano`,
+    `${periodoNum} Ano`,
+    `Ano ${periodoNum}`
+  ];
+  
+  // Buscar o ano equivalente nas séries disponíveis
+  // IMPORTANTE: Apenas séries dos Anos Iniciais (1º ao 5º ano)
+  // Excluir: Ensino Médio, Anos Finais (6º ao 9º), e EJA
+  const targetGrade = allGrades.find(g => {
+    const gradeName = g.name.trim().toLowerCase();
+    
+    // Excluir Ensino Médio
+    if (gradeName.includes('em') || gradeName.includes('médio') || gradeName.includes('medio')) {
+      return false;
+    }
+    
+    // Excluir Anos Finais (6º ao 9º ano)
+    if (gradeName.includes('6º') || gradeName.includes('6°') || gradeName.includes('6o') ||
+        gradeName.includes('7º') || gradeName.includes('7°') || gradeName.includes('7o') ||
+        gradeName.includes('8º') || gradeName.includes('8°') || gradeName.includes('8o') ||
+        gradeName.includes('9º') || gradeName.includes('9°') || gradeName.includes('9o')) {
+      return false;
+    }
+    
+    // Excluir EJA
+    if (gradeName.includes('eja') || gradeName.includes('período') || gradeName.includes('periodo')) {
+      return false;
+    }
+    
+    // Garantir que seja apenas Anos Iniciais (1º ao 5º ano)
+    // Verificar se o número do período está entre 1 e 5
+    if (periodoNum < 1 || periodoNum > 5) {
+      return false;
+    }
+    
+    // Verificar se corresponde ao ano dos Anos Iniciais
+    return possibleYearNames.some(name => 
+      gradeName === name.toLowerCase() ||
+      gradeName.includes(`${periodoNum}º ano`) ||
+      gradeName.includes(`${periodoNum}° ano`) ||
+      gradeName.includes(`${periodoNum}o ano`) ||
+      gradeName.includes(`${periodoNum} ano`)
+    );
+  });
+  
+  // Retornar o ID do ano equivalente ou o gradeId atual como fallback
+  if (targetGrade) {
+    return [targetGrade.id];
+  }
+  
+  return [currentGradeId];
+}
+
+/**
+ * Verifica se uma questão deve ser incluída baseado no mapeamento EJA
+ */
+function shouldIncludeQuestionForEJA(
+  question: Question,
+  evaluationGradeId: string | undefined,
+  evaluationGradeName: string | undefined,
+  allGrades: Array<{ id: string; name: string }>
+): boolean {
+  if (!evaluationGradeId || !evaluationGradeName || !question.grade) {
+    return true; // Se não temos informações suficientes, incluir a questão
+  }
+
+  // Obter gradeIds equivalentes para EJA
+  const equivalentGradeIds = getGradeIdsForEJA(
+    evaluationGradeId,
+    evaluationGradeName,
+    allGrades
+  );
+
+  // Se a questão pertence a um dos anos equivalentes, incluir
+  return equivalentGradeIds.includes(question.grade.id);
+}
+
 export function QuestionBank({
   open,
   onClose,
   subjectId,
   onQuestionSelected,
+  gradeId,
+  gradeName,
+  subjects: propsSubjects,
+  selectedSubjectId,
 }: QuestionBankProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -310,10 +435,17 @@ export function QuestionBank({
       const matchesGrade = !filters.grade || filters.grade === "all" || (question.grade && question.grade.id === filters.grade);
       const matchesDifficulty = !filters.difficulty || filters.difficulty === "all" || question.difficulty === filters.difficulty;
       const matchesType = !filters.type || filters.type === "all" || question.type === filters.type;
+
+      // Aplicar mapeamento EJA: se a avaliação é EJA, incluir questões do ano equivalente
+      if (gradeId && gradeName && grades.length > 0) {
+        if (!shouldIncludeQuestionForEJA(question, gradeId, gradeName, grades)) {
+          return false;
+        }
+      }
       
       return matchesSearch && matchesSubjectId && matchesSubject && matchesGrade && matchesDifficulty && matchesType;
     });
-  }, [questions, searchTerm, subjectId, filters]);
+  }, [questions, searchTerm, subjectId, filters, gradeId, gradeName, grades]);
 
   // Paginação
   const totalPages = Math.ceil(filteredQuestions.length / pageSize);

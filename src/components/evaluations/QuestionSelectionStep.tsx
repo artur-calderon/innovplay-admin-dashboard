@@ -84,8 +84,36 @@ export default function QuestionSelectionStep({
   const [difficultyFilter, setDifficultyFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [previewData, setPreviewData] = useState<QuestionPreviewData>({ question: {} as Question, isOpen: false });
+  const [gradeName, setGradeName] = useState<string>("");
   
   const { toast } = useToast();
+
+  // Carregar nome da série
+  useEffect(() => {
+    const fetchGradeName = async () => {
+      if (evaluationData.grade) {
+        try {
+          const response = await api.get(`/grades/${evaluationData.grade}`);
+          if (response.data && response.data.name) {
+            setGradeName(response.data.name);
+          } else {
+            // Tentar buscar todas as séries e encontrar pelo ID
+            const gradesResponse = await api.get("/grades/");
+            if (Array.isArray(gradesResponse.data)) {
+              const grade = gradesResponse.data.find((g: { id: string; name: string }) => g.id === evaluationData.grade);
+              if (grade) {
+                setGradeName(grade.name);
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Erro ao buscar nome da série:", error);
+          setGradeName("");
+        }
+      }
+    };
+    fetchGradeName();
+  }, [evaluationData.grade]);
 
   // Carregar questões baseadas nas disciplinas selecionadas
   useEffect(() => {
@@ -512,6 +540,10 @@ export default function QuestionSelectionStep({
         onClose={() => setShowQuestionBank(false)}
         subjectId={null}
         onQuestionSelected={handleQuestionFromBank}
+        gradeId={evaluationData.grade}
+        gradeName={gradeName}
+        subjects={evaluationData.subjects}
+        selectedSubjectId={undefined}
       />
 
       {/* Question Preview Modal */}

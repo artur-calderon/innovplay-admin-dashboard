@@ -334,7 +334,33 @@ const QuestionForm = ({
       if (currentEducationStageId) {
         try {
           const response = await api.get(`/grades/education-stage/${currentEducationStageId}`);
-          setGrades(response.data);
+          
+          // Ordenar séries alfabeticamente/numericamente
+          const sortedGrades = [...response.data].sort((a, b) => {
+            const nameA = a.name.trim();
+            const nameB = b.name.trim();
+            
+            // Extrair números do início do nome para ordenação numérica
+            const numMatchA = nameA.match(/^(\d+)/);
+            const numMatchB = nameB.match(/^(\d+)/);
+            
+            if (numMatchA && numMatchB) {
+              const numA = parseInt(numMatchA[1], 10);
+              const numB = parseInt(numMatchB[1], 10);
+              if (numA !== numB) {
+                return numA - numB;
+              }
+            } else if (numMatchA && !numMatchB) {
+              return -1; // Números vêm antes de não-números
+            } else if (!numMatchA && numMatchB) {
+              return 1; // Não-números vêm depois de números
+            }
+            
+            // Se ambos têm números iguais ou nenhum tem número, ordenar alfabeticamente
+            return nameA.localeCompare(nameB, 'pt-BR', { numeric: true, sensitivity: 'base' });
+          });
+          
+          setGrades(sortedGrades);
 
           // Aguardar um tick para garantir que setGrades foi aplicado
           await new Promise(resolve => setTimeout(resolve, 0));
@@ -666,9 +692,9 @@ const QuestionForm = ({
           <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-8">
 
             {/* Seção: Informações Básicas */}
-            <div className="bg-blue-50 rounded-xl p-6 border border-blue-200">
+            <div className="bg-blue-50 dark:bg-blue-950/30 rounded-xl p-6 border border-blue-200 dark:border-blue-800">
               <div className="flex items-center gap-2 mb-4">
-                <Book className="h-5 w-5 text-blue-600" />
+                <Book className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                 <h3 className="text-lg font-semibold text-foreground">Informações Básicas</h3>
               </div>
 
@@ -846,9 +872,9 @@ const QuestionForm = ({
                   name="skills"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-semibold text-gray-700">
+                      <FormLabel className="text-sm font-semibold text-foreground">
                         Habilidades (BNCC)
-                        <span className="text-gray-500 font-normal ml-1">
+                        <span className="text-muted-foreground font-normal ml-1">
                           {skills.length > 0 ? `(${skills.length} disponíveis)` : ''}
                         </span>
                       </FormLabel>
@@ -860,12 +886,16 @@ const QuestionForm = ({
                           placeholder={currentSubjectId ? "Clique para abrir o seletor de habilidades" : "Selecione uma disciplina primeiro"}
                           disabled={!currentSubjectId || skills.length === 0}
                           gradeId={form.watch('grade')}
+                          gradeName={grades.find(g => g.id === form.watch('grade'))?.name}
+                          subjectId={currentSubjectId}
+                          subjectName={subjects.find(s => s.id === currentSubjectId)?.name}
+                          allGrades={grades}
                         />
                       </FormControl>
                       <FormMessage />
                       {(field.value || []).length > 0 && (
-                        <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                          <div className="text-sm font-medium text-blue-800 mb-2">
+                        <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+                          <div className="text-sm font-medium text-blue-800 dark:text-blue-300 mb-2">
                             Habilidades Selecionadas ({(field.value || []).length}):
                           </div>
                           <div className="flex flex-wrap gap-1">
@@ -887,9 +917,9 @@ const QuestionForm = ({
             </div>
 
             {/* Seção: Tipo de Questão */}
-            <div className="bg-purple-50 rounded-xl p-6 border border-purple-200">
+            <div className="bg-purple-50 dark:bg-purple-950/30 rounded-xl p-6 border border-purple-200 dark:border-purple-800">
               <div className="flex items-center gap-2 mb-4">
-                <ListIcon className="h-5 w-5 text-purple-600" />
+                <ListIcon className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                 <h3 className="text-lg font-semibold text-foreground">Tipo de Questão</h3>
               </div>
 
@@ -901,7 +931,7 @@ const QuestionForm = ({
                   onClick={() => handleSetQuestionType('multipleChoice')}
                   className={`w-full h-auto min-h-[4rem] p-4 ${questionType === 'multipleChoice'
                     ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg'
-                    : 'hover:bg-purple-50 hover:border-purple-300'
+                    : 'hover:bg-purple-50 dark:hover:bg-purple-950/50 hover:border-purple-300 dark:hover:border-purple-700'
                     }`}
                 >
                   <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3">
@@ -920,7 +950,7 @@ const QuestionForm = ({
                   onClick={() => handleSetQuestionType('dissertativa')}
                   className={`w-full h-auto min-h-[4rem] p-4 ${questionType === 'dissertativa'
                     ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg'
-                    : 'hover:bg-purple-50 hover:border-purple-300'
+                    : 'hover:bg-purple-50 dark:hover:bg-purple-950/50 hover:border-purple-300 dark:hover:border-purple-700'
                     }`}
                 >
                   <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3">
@@ -935,9 +965,9 @@ const QuestionForm = ({
             </div>
 
             {/* Seção: Enunciados */}
-            <div className="bg-green-50 rounded-xl p-6 border border-green-200">
+            <div className="bg-green-50 dark:bg-green-950/30 rounded-xl p-6 border border-green-200 dark:border-green-800">
               <div className="flex items-center gap-2 mb-4">
-                <Type className="h-5 w-5 text-green-600" />
+                <Type className="h-5 w-5 text-green-600 dark:text-green-400" />
                 <h3 className="text-lg font-semibold text-foreground">Enunciados</h3>
               </div>
 
@@ -983,10 +1013,10 @@ const QuestionForm = ({
 
             {/* Seção: Alternativas (apenas para múltipla escolha) */}
             {questionType === 'multipleChoice' && (
-              <div className="bg-orange-50 rounded-xl p-6 border border-orange-200">
+              <div className="bg-orange-50 dark:bg-orange-950/30 rounded-xl p-6 border border-orange-200 dark:border-orange-800">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <Check className="h-5 w-5 text-orange-600" />
+                    <Check className="h-5 w-5 text-orange-600 dark:text-orange-400" />
                     <h3 className="text-lg font-semibold text-foreground">Alternativas</h3>
                   </div>
                   {fields.length < 5 && (
@@ -995,7 +1025,7 @@ const QuestionForm = ({
                       variant="outline"
                       size="sm"
                       onClick={() => append({ text: "", isCorrect: false })}
-                      className="flex items-center gap-2 border-orange-300 text-orange-700 hover:bg-orange-100"
+                      className="flex items-center gap-2 border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900/50"
                     >
                       <Plus className="h-4 w-4" />
                       Adicionar Alternativa
@@ -1049,7 +1079,7 @@ const QuestionForm = ({
                           variant="ghost"
                           size="sm"
                           onClick={() => remove(index)}
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/50"
                           aria-label="Remover alternativa"
                         >
                           <Trash className="w-4 h-4" />
@@ -1060,7 +1090,7 @@ const QuestionForm = ({
                 </div>
 
                 {hasAttemptedSubmit && form.formState.errors.options && (
-                  <p className="text-red-600 text-sm mt-2">
+                  <p className="text-red-600 dark:text-red-400 text-sm mt-2">
                     {form.formState.errors.options.message}
                   </p>
                 )}
@@ -1068,9 +1098,9 @@ const QuestionForm = ({
             )}
 
             {/* Seção: Resolução */}
-            <div className="bg-indigo-50 rounded-xl p-6 border border-indigo-200">
+            <div className="bg-indigo-50 dark:bg-indigo-950/30 rounded-xl p-6 border border-indigo-200 dark:border-indigo-800">
               <div className="flex items-center gap-2 mb-4">
-                <Save className="h-5 w-5 text-indigo-600" />
+                <Save className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
                 <h3 className="text-lg font-semibold text-foreground">
                   Resolução
                   <span className="text-muted-foreground font-normal ml-1">(opcional)</span>
