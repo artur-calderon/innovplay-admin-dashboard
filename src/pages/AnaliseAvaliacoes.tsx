@@ -483,6 +483,8 @@ export default function AnaliseAvaliacoes() {
         canSelectMunicipality={userHierarchyContext?.restrictions.canSelectMunicipality}
         canSelectSchool={userHierarchyContext?.restrictions.canSelectSchool}
         fallbackSchools={fallbackSchools}
+        // Prop para ordenação personalizada: Avaliação antes de Escola
+        loadSchoolsAfterEvaluation={true}
       />
 
       {/* Mensagem quando não há filtros suficientes */}

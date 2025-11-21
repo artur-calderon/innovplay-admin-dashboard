@@ -506,8 +506,11 @@ export default function Evolution() {
             })) || []);
           } else {
             // Carregar escolas do município mesmo sem avaliações selecionadas
-            // Usar a rota específica /opcoes-filtros/escolas/<municipio_id>
-            const schoolsResponse = await EvaluationResultsApiService.getFilterSchools(selectedMunicipality);
+            // Usar a rota unificada /opcoes-filtros?estado={estado}&municipio={municipio}
+            const schoolsResponse = await EvaluationResultsApiService.getFilterSchools({
+              municipio: selectedMunicipality,
+              estado: selectedState
+            });
             setSchools(schoolsResponse.map(school => ({
               id: school.id,
               name: school.nome

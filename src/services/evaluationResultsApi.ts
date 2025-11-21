@@ -350,6 +350,16 @@ interface DetailedReport {
 
 // ===== SERVIÇO PRINCIPAL =====
 
+// ✅ NOVO: Interface para resposta da rota unificada de filtros
+interface FilterOptionsResponse {
+  estados?: Array<{ id: string; nome: string }>;
+  municipios?: Array<{ id: string; nome: string }>;
+  avaliacoes?: Array<{ id: string; titulo: string }>;
+  escolas?: Array<{ id: string; nome: string }>;
+  series?: Array<{ id: string; nome: string }>;
+  turmas?: Array<{ id: string; nome: string }>;
+}
+
 export class EvaluationResultsApiService {
 
   // ✅ NOVO: Buscar turma e série de um aluno (TEMPORARIAMENTE DESABILITADO)
@@ -1378,51 +1388,91 @@ export class EvaluationResultsApiService {
 
   // ===== NOVAS ROTAS DE FILTROS PROGRESSIVOS =====
 
-  // ✅ MIGRADO: Buscar estados usando nova API unificada
+  // ✅ NOVO: Método privado centralizado para buscar opções de filtros
+  private static async getFilterOptions(params: {
+    estado?: string;
+    municipio?: string;
+    avaliacao?: string;
+    escola?: string;
+    serie?: string;
+    turma?: string;
+  }): Promise<FilterOptionsResponse> {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params.estado && params.estado !== 'all') queryParams.append('estado', params.estado);
+      if (params.municipio && params.municipio !== 'all') queryParams.append('municipio', params.municipio);
+      if (params.avaliacao && params.avaliacao !== 'all') queryParams.append('avaliacao', params.avaliacao);
+      if (params.escola && params.escola !== 'all') queryParams.append('escola', params.escola);
+      if (params.serie && params.serie !== 'all') queryParams.append('serie', params.serie);
+      if (params.turma && params.turma !== 'all') queryParams.append('turma', params.turma);
+
+      const url = `/evaluation-results/opcoes-filtros${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+      const response = await api.get(url);
+      return response.data || {};
+    } catch (error) {
+      console.error('Erro ao buscar opções de filtros:', error);
+      return {};
+    }
+  }
+
+  // ✅ REFATORADO: Buscar estados usando rota unificada
   static async getFilterStates(): Promise<Array<{
     id: string;
     nome: string;
   }>> {
     try {
-      // Fallback: manter endpoint específico pois estados são dados mestres
-      const response = await api.get('/evaluation-results/opcoes-filtros/estados');
-      return response.data.estados || [];
+      const response = await this.getFilterOptions({});
+      return response.estados || [];
     } catch (error) {
-              // Erro ao buscar estados para filtros
+      console.error('Erro ao buscar estados para filtros:', error);
+      console.error('Erro ao buscar estados para filtros:', error);
       return [];
     }
   }
 
-  // ✅ MIGRADO: Buscar municípios usando nova API unificada
+  // ✅ REFATORADO: Buscar municípios usando rota unificada
   static async getFilterMunicipalities(stateId: string): Promise<Array<{
     id: string;
     nome: string;
   }>> {
+    // Tentar primeiro o endpoint de opções de filtros
     try {
-      // Fallback: manter endpoint específico pois municípios são dados mestres
-      const response = await api.get(`/evaluation-results/opcoes-filtros/municipios/${stateId}`);
-      return response.data.municipios || [];
+      // stateId pode ser nome (ex: "SP") ou ID
+      const response = await this.getFilterOptions({ estado: stateId });
+      return response.municipios || [];
     } catch (error) {
-              // Erro ao buscar municípios para filtros
+      console.error('Erro ao buscar municípios para filtros:', error);
       return [];
     }
   }
 
-  // ✅ NOVO: Buscar escolas de um município específico
-  static async getFilterSchools(municipalityId: string): Promise<Array<{
+  // ✅ REFATORADO: Buscar escolas usando rota unificada
+  static async getFilterSchools(params: {
+    municipio: string;
+    estado?: string;
+  }): Promise<Array<{
     id: string;
     nome: string;
   }>> {
     try {
-      const response = await api.get(`/evaluation-results/opcoes-filtros/escolas/${municipalityId}`);
-      return response.data.escolas || [];
+      // Se não tiver estado, não podemos usar a nova rota unificada
+      if (!params.estado) {
+        console.warn('getFilterSchools requer estado para usar a nova rota unificada');
+        return [];
+      }
+      
+      const response = await this.getFilterOptions({
+        estado: params.estado,
+        municipio: params.municipio
+      });
+      return response.escolas || [];
     } catch (error) {
-              // Erro ao buscar escolas para filtros
+      console.error('Erro ao buscar escolas para filtros:', error);
       return [];
     }
   }
 
-  // ✅ NOVO: Buscar séries baseado nos filtros aplicados
+  // ✅ REFATORADO: Buscar séries usando rota unificada
   static async getFilterGrades(filters: {
     estado: string;
     municipio?: string;
@@ -1432,20 +1482,19 @@ export class EvaluationResultsApiService {
     nome: string;
   }>> {
     try {
-      const params = new URLSearchParams();
-      params.append('estado', filters.estado);
-      if (filters.municipio) params.append('municipio', filters.municipio);
-      if (filters.escola) params.append('escola', filters.escola);
-
-      const response = await api.get(`/evaluation-results/opcoes-filtros/series?${params}`);
-      return response.data.series || [];
+      const response = await this.getFilterOptions({
+        estado: filters.estado,
+        municipio: filters.municipio,
+        escola: filters.escola
+      });
+      return response.series || [];
     } catch (error) {
-              // Erro ao buscar séries para filtros
+      console.error('Erro ao buscar séries para filtros:', error);
       return [];
     }
   }
 
-  // ✅ NOVO: Buscar turmas baseado nos filtros aplicados
+  // ✅ REFATORADO: Buscar turmas usando rota unificada
   static async getFilterClasses(filters: {
     estado: string;
     municipio?: string;
@@ -1456,22 +1505,20 @@ export class EvaluationResultsApiService {
     nome: string;
   }>> {
     try {
-      const params = new URLSearchParams();
-      params.append('estado', filters.estado);
-      if (filters.municipio) params.append('municipio', filters.municipio);
-      if (filters.escola) params.append('escola', filters.escola);
-      if (filters.serie) params.append('serie', filters.serie);
-
-      const response = await api.get(`/evaluation-results/opcoes-filtros/turmas?${params}`);
-      return response.data.turmas || [];
+      const response = await this.getFilterOptions({
+        estado: filters.estado,
+        municipio: filters.municipio,
+        escola: filters.escola,
+        serie: filters.serie
+      });
+      return response.turmas || [];
     } catch (error) {
-              // Erro ao buscar turmas para filtros
+      console.error('Erro ao buscar turmas para filtros:', error);
       return [];
     }
   }
 
-  // ✅ NOVO: Buscar avaliações baseado nos filtros aplicados
-  // ✅ CORRIGIDO: Usar diretamente a rota de opções de filtros que já filtra por role do usuário (JWT)
+  // ✅ REFATORADO: Buscar avaliações usando rota unificada
   static async getFilterEvaluations(filters: {
     estado: string;
     municipio: string;
@@ -1481,40 +1528,19 @@ export class EvaluationResultsApiService {
     titulo: string;
   }>> {
     try {
-      const params = new URLSearchParams();
-      params.append('estado', filters.estado);
-      params.append('municipio', filters.municipio);
-      if (filters.escola) {
-        params.append('escola', filters.escola);
-      }
-
-      // ✅ CORRIGIDO: Usar diretamente a rota específica que já filtra por role (professor vê apenas suas avaliações)
-      const url = `/evaluation-results/opcoes-filtros/avaliacoes?${params}`;
-      const response = await api.get(url);
-      
-      // A resposta pode vir em diferentes formatos
-      if (Array.isArray(response.data)) {
-        return response.data;
-      }
-      
-      // Se vier em formato de objeto com propriedade 'avaliacoes'
-      if (response.data?.avaliacoes && Array.isArray(response.data.avaliacoes)) {
-        return response.data.avaliacoes;
-      }
-      
-      // Se vier em formato de objeto com propriedade 'data'
-      if (response.data?.data && Array.isArray(response.data.data)) {
-        return response.data.data;
-      }
-      
-      return [];
+      const response = await this.getFilterOptions({
+        estado: filters.estado,
+        municipio: filters.municipio,
+        escola: filters.escola
+      });
+      return response.avaliacoes || [];
     } catch (error) {
-      console.error('❌ LOG - Erro ao buscar avaliações para filtros:', error);
+      console.error('Erro ao buscar avaliações para filtros:', error);
       return [];
     }
   }
 
-  // ✅ MIGRADO: Buscar escolas usando nova API unificada
+  // ✅ REFATORADO: Buscar escolas usando rota unificada
   static async getFilterSchoolsByEvaluation(filters: {
     estado: string;
     municipio: string;
@@ -1524,30 +1550,19 @@ export class EvaluationResultsApiService {
     nome: string;
   }>> {
     try {
-      
-      // Usar nova API unificada
-      const response = await this.getEvaluationsList(1, 100, {
+      const response = await this.getFilterOptions({
         estado: filters.estado,
         municipio: filters.municipio,
         avaliacao: filters.avaliacao
       });
-      
-      if (response?.opcoes_proximos_filtros?.escolas?.length) {
-        return response.opcoes_proximos_filtros.escolas.map(escola => ({
-          id: escola.id,
-          nome: escola.name
-        }));
-      }
-      
-      console.log('ℹ️ Nova API não retornou escolas para os filtros aplicados');
-      return [];
+      return response.escolas || [];
     } catch (error) {
       console.error('Erro ao buscar escolas por avaliação:', error);
       return [];
     }
   }
 
-  // ✅ MIGRADO: Buscar séries usando nova API unificada
+  // ✅ REFATORADO: Buscar séries usando rota unificada
   static async getFilterGradesByEvaluation(filters: {
     estado: string;
     municipio: string;
@@ -1558,31 +1573,20 @@ export class EvaluationResultsApiService {
     nome: string;
   }>> {
     try {
-      
-      // Usar nova API unificada
-      const response = await this.getEvaluationsList(1, 100, {
+      const response = await this.getFilterOptions({
         estado: filters.estado,
         municipio: filters.municipio,
         avaliacao: filters.avaliacao,
         escola: filters.escola
       });
-      
-      if (response?.opcoes_proximos_filtros?.series?.length) {
-        return response.opcoes_proximos_filtros.series.map(serie => ({
-          id: serie.id,
-          nome: serie.name
-        }));
-      }
-      
-      console.log('ℹ️ Nova API não retornou séries para os filtros aplicados');
-      return [];
+      return response.series || [];
     } catch (error) {
       console.error('Erro ao buscar séries por avaliação:', error);
       return [];
     }
   }
 
-  // ✅ MIGRADO: Buscar turmas usando nova API unificada
+  // ✅ REFATORADO: Buscar turmas usando rota unificada
   static async getFilterClassesByEvaluation(filters: {
     estado: string;
     municipio: string;
@@ -1594,23 +1598,14 @@ export class EvaluationResultsApiService {
     nome: string;
   }>> {
     try {
-      // Usar nova API unificada
-      const response = await this.getEvaluationsList(1, 100, {
+      const response = await this.getFilterOptions({
         estado: filters.estado,
         municipio: filters.municipio,
         avaliacao: filters.avaliacao,
         escola: filters.escola,
         serie: filters.serie
       });
-      
-      if (response?.opcoes_proximos_filtros?.turmas?.length) {
-        return response.opcoes_proximos_filtros.turmas.map(turma => ({
-          id: turma.id,
-          nome: turma.name
-        }));
-      }
-      
-      return [];
+      return response.turmas || [];
     } catch (error) {
       console.error('Erro ao buscar turmas por avaliação:', error);
       return [];
