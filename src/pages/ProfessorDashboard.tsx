@@ -34,6 +34,7 @@ import ProfessorMetrics from "@/components/dashboard/ProfessorMetrics";
 import ProfessorEvaluations from "@/components/dashboard/ProfessorEvaluations";
 import ProfessorNotifications from "@/components/dashboard/ProfessorNotifications";
 import EnhancedQuickActions from "@/components/dashboard/EnhancedQuickActions";
+import { AvatarPreview } from "@/components/profile/AvatarPreview";
 
 // Mapeamento de ícones para converter strings em componentes
 const iconMap = {
@@ -205,9 +206,15 @@ const ProfessorDashboard = () => {
         <div className="lg:col-span-1">
           <Card className="h-[20rem] bg-gradient-to-br from-innov-blue to-innov-purple text-white shadow-lg">
             <CardContent className="flex flex-col items-center justify-center h-full">
-              <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center text-3xl font-bold mb-4">
-                {user?.name ? user.name.charAt(0).toUpperCase() : "P"}
-              </div>
+              {user?.avatar_config ? (
+                <div className="mb-4">
+                  <AvatarPreview config={user.avatar_config} size={80} />
+                </div>
+              ) : (
+                <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center text-3xl font-bold mb-4">
+                  {user?.name ? user.name.charAt(0).toUpperCase() : "P"}
+                </div>
+              )}
               <h2 className="text-xl font-bold">{formatDisplayName(user?.name)}</h2>
               <p className="text-sm opacity-80">{formatRole(user?.role)}</p>
               {schoolName && (
