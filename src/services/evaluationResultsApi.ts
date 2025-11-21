@@ -1383,12 +1383,28 @@ export class EvaluationResultsApiService {
     id: string;
     nome: string;
   }>> {
+    // Usar diretamente o endpoint que funciona (/city/states)
     try {
-      // Fallback: manter endpoint específico pois estados são dados mestres
-      const response = await api.get('/evaluation-results/opcoes-filtros/estados');
-      return response.data.estados || [];
+      const response = await api.get('/city/states');
+      
+      // Verificar diferentes formatos de resposta
+      let estadosArray: any[] = [];
+      
+      if (response.data?.estados) {
+        estadosArray = response.data.estados;
+      } else if (Array.isArray(response.data)) {
+        estadosArray = response.data;
+      } else if (response.data?.data) {
+        estadosArray = Array.isArray(response.data.data) ? response.data.data : [];
+      }
+      
+      // Normalizar formato: converter 'name' para 'nome' se necessário
+      return estadosArray.map(estado => ({
+        id: estado.id || estado.uf || estado.name,
+        nome: estado.nome || estado.name || estado.id || estado.uf
+      }));
     } catch (error) {
-              // Erro ao buscar estados para filtros
+      console.error('Erro ao buscar estados para filtros:', error);
       return [];
     }
   }
@@ -1398,13 +1414,47 @@ export class EvaluationResultsApiService {
     id: string;
     nome: string;
   }>> {
+    // Tentar primeiro o endpoint de opções de filtros
     try {
-      // Fallback: manter endpoint específico pois municípios são dados mestres
       const response = await api.get(`/evaluation-results/opcoes-filtros/municipios/${stateId}`);
-      return response.data.municipios || [];
-    } catch (error) {
-              // Erro ao buscar municípios para filtros
+      console.log('Resposta da API getFilterMunicipalities (opcoes-filtros):', response.data);
+      
+      if (response.data?.municipios) {
+        return response.data.municipios;
+      } else if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      
       return [];
+    } catch (firstError: any) {
+      // Se o primeiro endpoint falhar (404 ou outro erro), tentar o endpoint alternativo
+      const is404 = firstError?.response?.status === 404 || 
+                    firstError?.message?.includes('não encontrado') ||
+                    firstError?.message?.includes('Not Found');
+      
+      if (is404) {
+        console.log('Endpoint opcoes-filtros/municipios não encontrado, tentando /city/municipalities/state...');
+        try {
+          const fallbackResponse = await api.get(`/city/municipalities/state/${stateId}`);
+          console.log('Resposta da API getFilterMunicipalities (city/municipalities):', fallbackResponse.data);
+          
+          // Normalizar formato: converter 'name' para 'nome' se necessário
+          const municipiosArray = Array.isArray(fallbackResponse.data) 
+            ? fallbackResponse.data 
+            : (fallbackResponse.data?.municipios || []);
+          
+          return municipiosArray.map((municipio: any) => ({
+            id: municipio.id || municipio.name,
+            nome: municipio.nome || municipio.name || municipio.id
+          }));
+        } catch (fallbackError) {
+          console.error('Erro ao buscar municípios do endpoint alternativo:', fallbackError);
+          return [];
+        }
+      } else {
+        console.error('Erro ao buscar municípios para filtros:', firstError);
+        return [];
+      }
     }
   }
 

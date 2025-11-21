@@ -198,6 +198,9 @@ export const useAuth = create<AuthContext>((set, get) => ({
         try {
             await api.post("/logout/")
             localStorage.removeItem('token')
+            
+            // ✅ NOVO: Limpar filtros da página de resultados ao fazer logout
+            sessionStorage.removeItem('results_filters')
 
             // ✅ CORRIGIDO: Usar a instância da API corretamente
             delete api.defaults.headers.common['Authorization']
