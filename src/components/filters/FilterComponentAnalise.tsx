@@ -219,13 +219,19 @@ export function FilterComponentAnalise({
 
           if (mustSelectSpecificSchool && formattedSchools.length > 0) {
             const alreadySelected = formattedSchools.some(school => school.id === selectedSchool);
-            const schoolToSelect = alreadySelected ? selectedSchool : formattedSchools[0].id;
-            onSchoolChangeRef.current(schoolToSelect);
+            if (!alreadySelected) {
+              // Só chamar se a escola selecionada não existe mais na lista
+              const schoolToSelect = formattedSchools[0].id;
+              onSchoolChangeRef.current(schoolToSelect);
+            }
+            // Se já está selecionada, não precisa chamar o callback novamente
           } else if (!mustSelectSpecificSchool) {
             const alreadySelected = formattedSchools.some(school => school.id === selectedSchool);
-            if (!alreadySelected) {
+            if (!alreadySelected && selectedSchool !== 'all') {
+              // Só chamar se havia uma escola selecionada que não existe mais na lista
               onSchoolChangeRef.current('all');
             }
+            // Se já está como 'all' ou a escola existe, não precisa chamar o callback novamente
           }
         } catch (error) {
           console.error("Erro ao carregar escolas:", error);
@@ -284,17 +290,21 @@ export function FilterComponentAnalise({
 
           if (mustSelectSpecificSchool && formattedSchools.length > 0) {
             const alreadySelected = formattedSchools.some(school => school.id === selectedSchool);
-            const schoolToSelect = alreadySelected ? selectedSchool : formattedSchools[0].id;
-            onSchoolChangeRef.current(schoolToSelect);
             if (!alreadySelected) {
+              // Só chamar se a escola selecionada não existe mais na lista
+              const schoolToSelect = formattedSchools[0].id;
+              onSchoolChangeRef.current(schoolToSelect);
               onEvaluationChangeRef.current('all');
             }
+            // Se já está selecionada, não precisa chamar o callback novamente
           } else if (!mustSelectSpecificSchool) {
             const alreadySelected = formattedSchools.some(school => school.id === selectedSchool);
-            if (!alreadySelected) {
+            if (!alreadySelected && selectedSchool !== 'all') {
+              // Só chamar se havia uma escola selecionada que não existe mais na lista
               onSchoolChangeRef.current('all');
               onEvaluationChangeRef.current('all');
             }
+            // Se já está como 'all' ou a escola existe, não precisa chamar o callback novamente
           }
         } catch (error) {
           console.error("Erro ao carregar escolas:", error);
