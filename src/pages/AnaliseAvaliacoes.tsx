@@ -468,12 +468,18 @@ export default function AnaliseAvaliacoes() {
         onStateChange={handleStateChange}
         onMunicipalityChange={handleMunicipalityChange}
         onSchoolChange={(schoolId) => {
+          // Só limpar dados se a escola realmente mudou
+          if (schoolId !== selectedSchool) {
+            setApiData(null);
+          }
           setSelectedSchool(schoolId);
-          setApiData(null);
         }}
         onEvaluationChange={(evaluationId) => {
+          // Só limpar dados se a avaliação realmente mudou
+          if (evaluationId !== selectedEvaluation) {
+            setApiData(null);
+          }
           setSelectedEvaluation(evaluationId);
-          setApiData(null);
         }}
         isLoadingFilters={isLoadingFilters}
         onLoadingChange={setIsLoadingFilters}
