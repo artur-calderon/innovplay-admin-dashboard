@@ -90,20 +90,20 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
       {isOpen && (
         <div
           ref={contextMenuRef}
-          className="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[180px]"
+          className="fixed z-50 bg-popover border border-border rounded-lg shadow-lg py-1 min-w-[180px]"
           style={{
             left: position.x,
             top: position.y,
           }}
           onClick={(event) => event.stopPropagation()}
         >
-          <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
+          <div className="px-3 py-2 text-xs font-medium text-muted-foreground border-b border-border">
             {studentName}
           </div>
           
           <button
             onClick={(event) => handleMenuItemClick(event, onViewDetails)}
-            className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-muted flex items-center gap-2"
+            className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2 transition-colors"
           >
             <Eye className="h-4 w-4" />
             Ver detalhes
@@ -111,7 +111,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           
           <button
             onClick={(event) => handleMenuItemClick(event, onOpenInNewTab)}
-            className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-muted flex items-center gap-2"
+            className="w-full px-3 py-2 text-left text-sm text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2 transition-colors"
           >
             <ExternalLink className="h-4 w-4" />
             Abrir em nova guia

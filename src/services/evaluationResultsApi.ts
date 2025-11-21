@@ -1425,6 +1425,7 @@ export class EvaluationResultsApiService {
       return response.estados || [];
     } catch (error) {
       console.error('Erro ao buscar estados para filtros:', error);
+      console.error('Erro ao buscar estados para filtros:', error);
       return [];
     }
   }
@@ -1434,6 +1435,7 @@ export class EvaluationResultsApiService {
     id: string;
     nome: string;
   }>> {
+    // Tentar primeiro o endpoint de opções de filtros
     try {
       // stateId pode ser nome (ex: "SP") ou ID
       const response = await this.getFilterOptions({ estado: stateId });

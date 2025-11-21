@@ -494,7 +494,7 @@ export default function Results() {
     return '';
   }, []);
 
-  // ✅ NOVO: Função para salvar filtros no localStorage
+  // ✅ NOVO: Função para salvar filtros no sessionStorage
   const saveFiltersToStorage = useCallback(() => {
     try {
       const filters = {
@@ -506,13 +506,13 @@ export default function Results() {
         selectedClass,
         timestamp: Date.now()
       };
-      localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(filters));
+      sessionStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(filters));
     } catch (error) {
-      console.error('Erro ao salvar filtros no localStorage:', error);
+      console.error('Erro ao salvar filtros no sessionStorage:', error);
     }
   }, [selectedState, selectedMunicipality, selectedEvaluation, selectedSchool, selectedGrade, selectedClass]);
 
-  // ✅ NOVO: Função para carregar e validar filtros do localStorage
+  // ✅ NOVO: Função para carregar e validar filtros do sessionStorage
   const loadFiltersFromStorage = useCallback((): {
     selectedState: string;
     selectedMunicipality: string;
@@ -522,47 +522,57 @@ export default function Results() {
     selectedClass: string;
   } | null => {
     try {
-      const stored = localStorage.getItem(FILTERS_STORAGE_KEY);
+      // Tentar primeiro sessionStorage
+      let stored = sessionStorage.getItem(FILTERS_STORAGE_KEY);
+      
+      // Se não encontrar no sessionStorage, tentar migrar do localStorage (uma vez)
+      if (!stored) {
+        const oldStored = localStorage.getItem(FILTERS_STORAGE_KEY);
+        if (oldStored) {
+          // Migrar do localStorage para sessionStorage
+          sessionStorage.setItem(FILTERS_STORAGE_KEY, oldStored);
+          localStorage.removeItem(FILTERS_STORAGE_KEY);
+          stored = oldStored;
+        }
+      }
+      
       if (!stored) return null;
 
       const filters = JSON.parse(stored);
       
       // ✅ VALIDAÇÃO: Verificar estrutura básica e valores válidos
+      // Aceita "all" como valor válido (é o valor padrão)
       if (
         typeof filters.selectedState === 'string' &&
         typeof filters.selectedMunicipality === 'string' &&
         typeof filters.selectedEvaluation === 'string' &&
         typeof filters.selectedSchool === 'string' &&
         typeof filters.selectedGrade === 'string' &&
-        typeof filters.selectedClass === 'string' &&
-        filters.selectedState !== '' &&
-        filters.selectedMunicipality !== '' &&
-        filters.selectedEvaluation !== '' &&
-        filters.selectedSchool !== '' &&
-        filters.selectedGrade !== '' &&
-        filters.selectedClass !== ''
+        typeof filters.selectedClass === 'string'
       ) {
-        // Retornar filtros validados
+        // Retornar filtros validados (aceita "all" e outros valores)
         return {
-          selectedState: filters.selectedState,
-          selectedMunicipality: filters.selectedMunicipality,
-          selectedEvaluation: filters.selectedEvaluation,
-          selectedSchool: filters.selectedSchool,
-          selectedGrade: filters.selectedGrade,
-          selectedClass: filters.selectedClass
+          selectedState: filters.selectedState || 'all',
+          selectedMunicipality: filters.selectedMunicipality || 'all',
+          selectedEvaluation: filters.selectedEvaluation || 'all',
+          selectedSchool: filters.selectedSchool || 'all',
+          selectedGrade: filters.selectedGrade || 'all',
+          selectedClass: filters.selectedClass || 'all'
         };
       }
       
-      // Se a validação falhar, limpar dados inválidos do localStorage
-      localStorage.removeItem(FILTERS_STORAGE_KEY);
+      // Se a validação falhar, limpar dados inválidos do sessionStorage
+      sessionStorage.removeItem(FILTERS_STORAGE_KEY);
       return null;
     } catch (error) {
-      console.error('Erro ao carregar filtros do localStorage:', error);
+      console.error('Erro ao carregar filtros do sessionStorage:', error);
       // Limpar dados corrompidos
       try {
+        sessionStorage.removeItem(FILTERS_STORAGE_KEY);
+        // Também limpar do localStorage caso exista
         localStorage.removeItem(FILTERS_STORAGE_KEY);
       } catch (cleanupError) {
-        console.error('Erro ao limpar localStorage:', cleanupError);
+        console.error('Erro ao limpar storage:', cleanupError);
       }
       return null;
     }
@@ -585,11 +595,18 @@ export default function Results() {
       setIsLoadingFilters(true);
 
       const statesData = await EvaluationResultsApiService.getFilterStates();
-      setStates(statesData.map(state => ({
-        id: state.id,
-        name: state.nome,
-        uf: state.id
-      })));
+      console.log('Estados carregados:', statesData);
+      
+      if (statesData && statesData.length > 0) {
+        setStates(statesData.map(state => ({
+          id: state.id,
+          name: state.nome,
+          uf: state.id
+        })));
+      } else {
+        console.warn('Nenhum estado foi retornado pela API');
+        setStates([]);
+      }
     } catch (error) {
       console.error("Erro ao carregar filtros iniciais:", error);
       toast({
@@ -597,6 +614,7 @@ export default function Results() {
         description: "Não foi possível carregar os filtros. Tente novamente.",
         variant: "destructive",
       });
+      setStates([]);
     } finally {
       setIsLoadingFilters(false);
       setIsLoading(false);
@@ -620,7 +638,7 @@ export default function Results() {
         }
       }
       
-      // ✅ NOVO: Carregar filtros salvos do localStorage antes de carregar filtros iniciais
+      // ✅ NOVO: Carregar filtros salvos do sessionStorage antes de carregar filtros iniciais
       const savedFilters = loadFiltersFromStorage();
       if (savedFilters) {
         // Marcar que estamos restaurando filtros (evita resets em cascata)
