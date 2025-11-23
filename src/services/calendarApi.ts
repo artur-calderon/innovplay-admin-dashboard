@@ -19,7 +19,7 @@ export interface CreateEventBody {
   all_day: boolean;
   timezone?: string;
   visibility_scope: 'CITY' | 'SCHOOL' | 'GRADE' | 'CLASS';
-  targets: Array<{ target_type: 'CITY' | 'SCHOOL' | 'GRADE' | 'CLASS'; target_id: string }>;
+  targets: Array<{ target_type: 'MUNICIPALITY' | 'SCHOOL' | 'GRADE' | 'CLASS'; target_id: string }>;
   is_published?: boolean;
   recurrence_rule?: string | null;
 }
@@ -33,9 +33,25 @@ export interface UpdateEventBody {
   all_day?: boolean;
   timezone?: string;
   visibility_scope?: 'CITY' | 'SCHOOL' | 'GRADE' | 'CLASS';
-  targets?: Array<{ target_type: 'CITY' | 'SCHOOL' | 'GRADE' | 'CLASS'; target_id: string }>;
+  targets?: Array<{ target_type: 'MUNICIPALITY' | 'SCHOOL' | 'GRADE' | 'CLASS'; target_id: string }>;
   is_published?: boolean;
   recurrence_rule?: string | null;
+}
+
+export interface CalendarTarget {
+  id: string;
+  nome: string;
+  target_type: 'MUNICIPALITY' | 'SCHOOL' | 'GRADE' | 'CLASS';
+  serie_id?: string;
+  serie_nome?: string;
+  escola_id?: string;
+  escola_nome?: string;
+}
+
+export interface CalendarTargetsResponse {
+  municipios?: Array<CalendarTarget>;
+  escolas?: Array<CalendarTarget>;
+  turmas?: Array<CalendarTarget>;
 }
 
 export function mapDtoToFullCalendar(e: CalendarEventDTO): EventInput {
@@ -95,6 +111,11 @@ export const CalendarApi = {
   async markRead(eventId: string): Promise<boolean> {
     const { data } = await api.post(`/calendar/events/${eventId}/read`);
     return !!data?.success;
+  },
+
+  async getTargets(): Promise<CalendarTargetsResponse> {
+    const { data } = await api.get('/calendar/targets/me');
+    return data;
   },
 };
 
