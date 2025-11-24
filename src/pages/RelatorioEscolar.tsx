@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -110,6 +110,51 @@ export default function RelatorioEscolar() {
   const [isLoadingHierarchy, setIsLoadingHierarchy] = useState(true);
 
   const isMunicipalView = selectedSchool === 'all';
+
+  const handleStateChange = useCallback((stateId: string) => {
+    if (stateId === selectedState) return;
+
+    setSelectedState(stateId);
+    setSelectedMunicipality('all');
+    setSelectedSchool('all');
+    setSelectedEvaluation('all');
+    setApiData(null);
+  }, [selectedState]);
+
+  const handleMunicipalityChange = useCallback((municipalityId: string) => {
+    if (municipalityId === selectedMunicipality) return;
+
+    setSelectedMunicipality(municipalityId);
+    setSelectedSchool('all');
+    setSelectedEvaluation('all');
+    setApiData(null);
+  }, [selectedMunicipality]);
+
+  const fallbackSchools = useMemo(() => {
+    const uniqueSchools = new Map<string, { id: string; name: string; municipalityId?: string }>();
+
+    if (userHierarchyContext?.school?.id) {
+      uniqueSchools.set(userHierarchyContext.school.id, {
+        id: userHierarchyContext.school.id,
+        name: userHierarchyContext.school.name,
+        municipalityId: userHierarchyContext.school.municipality_id,
+      });
+    }
+
+    if (Array.isArray(userHierarchyContext?.classes)) {
+      userHierarchyContext!.classes!.forEach((classe) => {
+        if (classe.school_id) {
+          uniqueSchools.set(classe.school_id, {
+            id: classe.school_id,
+            name: classe.school_name,
+            municipalityId: userHierarchyContext?.municipality?.id,
+          });
+        }
+      });
+    }
+
+    return Array.from(uniqueSchools.values());
+  }, [userHierarchyContext]);
 
   const sampleProficiencyDistributions = useMemo<ProficiencyDistribution[]>(() => {
     const scopeLabel = isMunicipalView ? "Total Município" : "Total Escola";
@@ -717,8 +762,8 @@ export default function RelatorioEscolar() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <RefreshCw className="h-8 w-8 animate-spin text-blue-600" />
-        <span className="ml-2">Carregando...</span>
+        <RefreshCw className="h-8 w-8 animate-spin text-blue-600 dark:text-blue-400" />
+        <span className="ml-2 text-foreground">Carregando...</span>
       </div>
     );
   }
@@ -728,12 +773,12 @@ export default function RelatorioEscolar() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Relatório Escolar</h1>
-          <p className="text-gray-600 mt-2">
+          <h1 className="text-3xl font-bold text-foreground">Relatório Escolar</h1>
+          <p className="text-muted-foreground mt-2">
             Relatórios escolares detalhados do seu município
           </p>
           {user?.role && (
-            <p className="text-sm text-blue-600 mt-1">
+            <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">
               {getRestrictionMessage(user.role)}
             </p>
           )}
@@ -754,11 +799,23 @@ export default function RelatorioEscolar() {
         selectedMunicipality={selectedMunicipality}
         selectedSchool={selectedSchool}
         selectedEvaluation={selectedEvaluation}
-        onStateChange={setSelectedState}
-        onMunicipalityChange={setSelectedMunicipality}
-        onSchoolChange={setSelectedSchool}
+        onStateChange={handleStateChange}
+        onMunicipalityChange={handleMunicipalityChange}
+        onSchoolChange={(schoolId) => {
+          // Só limpar dados se a escola realmente mudou
+          if (schoolId !== selectedSchool) {
+            setApiData(null);
+          }
+          setSelectedSchool(schoolId);
+        }}
         onSchoolSelectDetail={setSelectedSchoolInfo}
-        onEvaluationChange={setSelectedEvaluation}
+        onEvaluationChange={(evaluationId) => {
+          // Só limpar dados se a avaliação realmente mudou
+          if (evaluationId !== selectedEvaluation) {
+            setApiData(null);
+          }
+          setSelectedEvaluation(evaluationId);
+        }}
         isLoadingFilters={isLoadingFilters}
         onLoadingChange={setIsLoadingFilters}
         // Props para hierarquia
@@ -766,19 +823,22 @@ export default function RelatorioEscolar() {
         canSelectState={userHierarchyContext?.restrictions.canSelectState}
         canSelectMunicipality={userHierarchyContext?.restrictions.canSelectMunicipality}
         canSelectSchool={userHierarchyContext?.restrictions.canSelectSchool}
+        fallbackSchools={fallbackSchools}
+        // Prop para ordenação personalizada: Avaliação antes de Escola
+        loadSchoolsAfterEvaluation={true}
       />
 
       {/* Mensagem quando não há filtros suficientes */}
       {!allRequiredFiltersSelected && !isLoading && (
       <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-              <Filter className="h-8 w-8 text-gray-400" />
+            <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+              <Filter className="h-8 w-8 text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
+            <h3 className="text-lg font-medium text-foreground mb-2">
               Selecione todos os filtros para continuar
             </h3>
-            <p className="text-gray-600 text-center max-w-md">
+            <p className="text-muted-foreground text-center max-w-md">
               Para visualizar o relatório escolar, você precisa selecionar: <strong>Estado</strong>, <strong>Município</strong> e <strong>Avaliação</strong>. A <strong>Escola</strong> pode ser "Todas" para ver todas as escolas do município.
             </p>
           </CardContent>
@@ -789,8 +849,8 @@ export default function RelatorioEscolar() {
       {allRequiredFiltersSelected && isLoadingData && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mb-4" />
-            <p className="text-gray-600">Carregando dados do relatório...</p>
+            <RefreshCw className="h-8 w-8 animate-spin text-blue-600 dark:text-blue-400 mb-4" />
+            <p className="text-muted-foreground">Carregando dados do relatório...</p>
           </CardContent>
         </Card>
       )}
@@ -800,61 +860,61 @@ export default function RelatorioEscolar() {
         <div className="space-y-6">
           {summaryStats && (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <Card className="shadow-sm border border-slate-100">
+              <Card className="shadow-sm border border-border">
                 <CardContent className="p-5">
-                  <div className="flex items-center justify-between text-sm font-semibold text-purple-600">
-                    <span className="uppercase tracking-wide text-gray-500">Média Geral LP</span>
+                  <div className="flex items-center justify-between text-sm font-semibold text-purple-600 dark:text-purple-400">
+                    <span className="uppercase tracking-wide text-muted-foreground">Média Geral LP</span>
                     <BookOpen className="h-5 w-5" />
                   </div>
-                  <div className="mt-2 text-3xl font-bold text-gray-900">
+                  <div className="mt-2 text-3xl font-bold text-foreground">
                     {formatAverage(summaryStats.mediaLP)}
                   </div>
                   <div className="mt-4">
-                    <span className="inline-flex rounded-md bg-purple-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-purple-700">
+                    <span className="inline-flex rounded-md bg-purple-100 dark:bg-purple-900/30 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-purple-700 dark:text-purple-300">
                       LP
                     </span>
                   </div>
                 </CardContent>
               </Card>
-              <Card className="shadow-sm border border-slate-100">
+              <Card className="shadow-sm border border-border">
                 <CardContent className="p-5">
-                  <div className="flex items-center justify-between text-sm font-semibold text-purple-600">
-                    <span className="uppercase tracking-wide text-gray-500">Média Geral MAT</span>
+                  <div className="flex items-center justify-between text-sm font-semibold text-purple-600 dark:text-purple-400">
+                    <span className="uppercase tracking-wide text-muted-foreground">Média Geral MAT</span>
                     <Calculator className="h-5 w-5" />
                   </div>
-                  <div className="mt-2 text-3xl font-bold text-gray-900">
+                  <div className="mt-2 text-3xl font-bold text-foreground">
                     {formatAverage(summaryStats.mediaMAT)}
                   </div>
                   <div className="mt-4">
-                    <span className="inline-flex rounded-md bg-purple-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-purple-700">
+                    <span className="inline-flex rounded-md bg-purple-100 dark:bg-purple-900/30 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-purple-700 dark:text-purple-300">
                       MAT
                     </span>
                   </div>
                 </CardContent>
               </Card>
-              <Card className="shadow-sm border border-slate-100">
+              <Card className="shadow-sm border border-border">
                 <CardContent className="p-5">
-                  <div className="flex items-center justify-between text-sm font-semibold text-purple-600">
-                    <span className="uppercase tracking-wide text-gray-500">Média Geral</span>
+                  <div className="flex items-center justify-between text-sm font-semibold text-purple-600 dark:text-purple-400">
+                    <span className="uppercase tracking-wide text-muted-foreground">Média Geral</span>
                     <LineChart className="h-5 w-5" />
                   </div>
-                  <div className="mt-2 text-3xl font-bold text-gray-900">
+                  <div className="mt-2 text-3xl font-bold text-foreground">
                     {formatAverage(summaryStats.mediaGeral)}
                   </div>
                   <div className="mt-4">
-                    <span className="inline-flex rounded-md bg-purple-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-purple-700">
+                    <span className="inline-flex rounded-md bg-purple-100 dark:bg-purple-900/30 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-purple-700 dark:text-purple-300">
                       Todas
                     </span>
                   </div>
                 </CardContent>
               </Card>
-              <Card className="shadow-sm border border-slate-100">
+              <Card className="shadow-sm border border-border">
                 <CardContent className="p-5">
-                  <div className="flex items-center justify-between text-sm font-semibold text-purple-600">
-                    <span className="uppercase tracking-wide text-gray-500">Proficiência Média</span>
+                  <div className="flex items-center justify-between text-sm font-semibold text-purple-600 dark:text-purple-400">
+                    <span className="uppercase tracking-wide text-muted-foreground">Proficiência Média</span>
                     <Trophy className="h-5 w-5" />
                   </div>
-                  <div className="mt-2 text-3xl font-bold text-gray-900">
+                  <div className="mt-2 text-3xl font-bold text-foreground">
                     {formatProficiency(summaryStats.proficienciaMedia)}
                   </div>
                   <div className="mt-4">
@@ -862,13 +922,13 @@ export default function RelatorioEscolar() {
                       <span
                         className={cn(
                           'inline-flex rounded-md border px-3 py-1 text-xs font-semibold uppercase tracking-wide',
-                          summaryStats.proficiencyColor ?? 'bg-yellow-100 text-yellow-700 border-yellow-300'
+                          summaryStats.proficiencyColor ?? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-800'
                         )}
                       >
                         {summaryStats.proficiencyLabel}
                       </span>
                     ) : (
-                      <span className="text-xs text-gray-400">Sem classificação</span>
+                      <span className="text-xs text-muted-foreground">Sem classificação</span>
                     )}
           </div>
         </CardContent>
@@ -877,9 +937,9 @@ export default function RelatorioEscolar() {
           )}
 
           <Card className="overflow-hidden shadow-md">
-            <CardHeader className="flex flex-col gap-3 border-b border-slate-100 bg-white md:flex-row md:items-center md:justify-between">
-              <CardTitle className="flex items-center gap-2 text-lg font-semibold text-gray-900">
-                <FileText className="h-5 w-5 text-purple-600" />
+            <CardHeader className="flex flex-col gap-3 border-b border-border md:flex-row md:items-center md:justify-between">
+              <CardTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
+                <FileText className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                 {isMunicipalView ? 'Desempenho por Escola' : 'Desempenho por Turma'}
               </CardTitle>
               <Button
@@ -923,75 +983,75 @@ export default function RelatorioEscolar() {
                         <tr
                           key={row.turma}
                           className={cn(
-                            index % 2 === 0 ? 'bg-white' : 'bg-slate-50'
+                            index % 2 === 0 ? 'bg-card' : 'bg-muted/50'
                           )}
                         >
-                          <td className="px-4 py-3 text-sm font-semibold text-gray-800 border-t border-slate-100">
+                          <td className="px-4 py-3 text-sm font-semibold text-foreground border-t border-border">
                             {row.turma}
                           </td>
-                          <td className="px-4 py-3 text-center text-sm font-semibold text-gray-900 border-t border-slate-100">
+                          <td className="px-4 py-3 text-center text-sm font-semibold text-foreground border-t border-border">
                             {formatAverage(row.mediaLP)}
                           </td>
-                          <td className="px-4 py-3 text-center text-sm font-semibold text-gray-900 border-t border-slate-100">
+                          <td className="px-4 py-3 text-center text-sm font-semibold text-foreground border-t border-border">
                             {formatAverage(row.mediaMAT)}
                           </td>
-                          <td className="px-4 py-3 text-center text-sm font-semibold text-gray-900 border-t border-slate-100">
+                          <td className="px-4 py-3 text-center text-sm font-semibold text-foreground border-t border-border">
                             {formatAverage(row.mediaGeral)}
                           </td>
-                          <td className="px-4 py-3 text-center text-sm font-semibold text-gray-900 border-t border-slate-100">
+                          <td className="px-4 py-3 text-center text-sm font-semibold text-foreground border-t border-border">
                             {formatPercentageValue(row.comparecimento)}
                           </td>
-                          <td className="px-4 py-3 text-center text-sm font-semibold text-gray-900 border-t border-slate-100">
+                          <td className="px-4 py-3 text-center text-sm font-semibold text-foreground border-t border-border">
                             {formatProficiency(row.proficienciaMedia)}
                           </td>
-                          <td className="px-4 py-3 text-center text-sm border-t border-slate-100">
+                          <td className="px-4 py-3 text-center text-sm border-t border-border">
                             {row.proficiencyLabel ? (
                               <span
                                 className={cn(
                                   'inline-flex items-center justify-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide',
-                                  row.proficiencyColor ?? 'bg-gray-100 text-gray-600 border-gray-300'
+                                  row.proficiencyColor ?? 'bg-muted text-muted-foreground border-border'
                                 )}
                               >
                                 {row.proficiencyLabel}
                               </span>
                             ) : (
-                              <span className="text-sm text-gray-400">--</span>
+                              <span className="text-sm text-muted-foreground">--</span>
                             )}
                           </td>
                         </tr>
                       ))}
                       {summaryStats && (
-                        <tr className="bg-gray-100">
-                          <td className="px-4 py-3 text-sm font-semibold text-gray-900 border-t border-slate-200">
+                        <tr className="bg-muted">
+                          <td className="px-4 py-3 text-sm font-semibold text-foreground border-t border-border">
                             {isMunicipalView ? 'Total Município' : 'Total Escola'}
                           </td>
-                          <td className="px-4 py-3 text-center text-sm font-semibold text-gray-900 border-t border-slate-200">
+                          <td className="px-4 py-3 text-center text-sm font-semibold text-foreground border-t border-border">
                             {formatAverage(summaryStats.mediaLP)}
                           </td>
-                          <td className="px-4 py-3 text-center text-sm font-semibold text-gray-900 border-t border-slate-200">
+                          <td className="px-4 py-3 text-center text-sm font-semibold text-foreground border-t border-border">
                             {formatAverage(summaryStats.mediaMAT)}
                           </td>
-                          <td className="px-4 py-3 text-center text-sm font-semibold text-gray-900 border-t border-slate-200">
+                          <td className="px-4 py-3 text-center text-sm font-semibold text-foreground border-t border-border">
                             {formatAverage(summaryStats.mediaGeral)}
                           </td>
-                          <td className="px-4 py-3 text-center text-sm font-semibold text-gray-900 border-t border-slate-200">
+                          <td className="px-4 py-3 text-center text-sm font-semibold text-foreground border-t border-border">
                             {formatPercentageValue(summaryStats.comparecimentoGeral)}
                           </td>
-                          <td className="px-4 py-3 text-center text-sm font-semibold text-gray-900 border-t border-slate-200">
+                          <td className="px-4 py-3 text-center text-sm font-semibold text-foreground border-t border-border">
                             {formatProficiency(summaryStats.proficienciaMedia)}
                           </td>
-                          <td className="px-4 py-3 text-center text-sm border-t border-slate-200">
+                          <td className="px-4 py-3 text-center text-sm border-t border-border">
                             {summaryStats.proficiencyLabel ? (
                               <span
                                 className={cn(
                                   'inline-flex items-center justify-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide',
-                                  summaryStats.proficiencyColor ?? 'bg-gray-100 text-gray-600 border-gray-300'
+                                  summaryStats.proficiencyColor ?? 'bg-muted text-muted-foreground border-border'
                                 )}
                               >
                                 {summaryStats.proficiencyLabel}
                               </span>
                             ) : (
-                              <span className="text-sm text-gray-400">--</span>
+                              <span className="text-sm text-muted-foreground">--</span>
                             )}
                           </td>
                         </tr>
@@ -1000,7 +1060,7 @@ export default function RelatorioEscolar() {
                   </table>
                 </div>
               ) : (
-                <div className="p-8 text-center text-sm text-gray-500">
+                <div className="p-8 text-center text-sm text-muted-foreground">
                   Nenhum dado disponível para os filtros selecionados.
                 </div>
               )}
@@ -1016,8 +1076,8 @@ export default function RelatorioEscolar() {
                   <Card key={chart.title} className="shadow-md">
                     <CardContent className="space-y-6 pt-6">
                       <div className="flex items-center justify-between">
-                        <h3 className="text-base font-semibold uppercase tracking-wide text-gray-900">{chart.title}</h3>
-                        <span className="text-sm font-semibold text-gray-500">Total: {chart.total}</span>
+                        <h3 className="text-base font-semibold uppercase tracking-wide text-foreground">{chart.title}</h3>
+                        <span className="text-sm font-semibold text-muted-foreground">Total: {chart.total}</span>
                       </div>
                       <div className="space-y-4">
                         {chart.segments.map(segment => {
@@ -1026,14 +1086,14 @@ export default function RelatorioEscolar() {
 
                           return (
                             <div key={segment.key} className="flex items-center gap-3">
-                              <div className="flex w-32 items-center gap-2 text-sm font-medium text-gray-700">
+                              <div className="flex w-32 items-center gap-2 text-sm font-medium text-foreground">
                                 <span
                                   className="inline-flex h-2.5 w-2.5 rounded-full"
                                   style={{ backgroundColor: segment.color }}
                                 ></span>
                                 <span className="truncate">{segment.label}</span>
                               </div>
-                              <div className="relative flex flex-1 items-center rounded-full bg-slate-200">
+                              <div className="relative flex flex-1 items-center rounded-full bg-muted">
                                 <div
                                   className="h-3 rounded-full transition-all"
                                   style={{
@@ -1042,20 +1102,20 @@ export default function RelatorioEscolar() {
                                   }}
                                 ></div>
                                 {segment.value > 0 && showValueInside && (
-                                  <span className="absolute right-2 text-xs font-semibold text-black">
+                                  <span className="absolute right-2 text-xs font-semibold text-foreground">
                                     {segment.value}
                                   </span>
                                 )}
                               </div>
                               <span
                                 className={cn(
-                                  'w-10 text-right text-xs font-semibold text-gray-900 transition-opacity',
+                                  'w-10 text-right text-xs font-semibold text-foreground transition-opacity',
                                   showValueInside && 'opacity-0'
                                 )}
                               >
                                 {segment.value}
                               </span>
-                              <span className="w-12 text-right text-xs font-semibold text-gray-800">
+                              <span className="w-12 text-right text-xs font-semibold text-foreground">
                                 {segment.percentage.toFixed(1)}%
                               </span>
                             </div>
@@ -1077,7 +1137,7 @@ export default function RelatorioEscolar() {
                 return (
                   <Card key={distribution.title} className="shadow-md">
                     <CardHeader>
-                      <CardTitle className="text-base font-semibold uppercase tracking-wide text-gray-900">
+                      <CardTitle className="text-base font-semibold uppercase tracking-wide text-foreground">
                         {distribution.title}
                       </CardTitle>
                     </CardHeader>
@@ -1103,10 +1163,10 @@ export default function RelatorioEscolar() {
                           </thead>
                           <tbody>
                             {distribution.rows.map(row => (
-                              <tr key={row.label} className="odd:bg-slate-50">
-                                <td className="px-3 py-2 text-left font-semibold text-slate-700">{row.label}</td>
+                              <tr key={row.label} className="odd:bg-muted/50">
+                                <td className="px-3 py-2 text-left font-semibold text-foreground">{row.label}</td>
                                 {row.data.map((value, index) => (
-                                  <td key={index} className="px-3 py-2 text-center text-slate-600">
+                                  <td key={index} className="px-3 py-2 text-center text-muted-foreground">
                                     {value.toFixed(2)}%
                                   </td>
                                 ))}
@@ -1121,10 +1181,10 @@ export default function RelatorioEscolar() {
                           const heightPercentage = (bar.value / maxValue) * 100;
                           return (
                             <div key={bar.label} className="flex min-w-[56px] flex-col items-center gap-2">
-                              <span className="-rotate-45 text-xs font-semibold text-slate-600">
+                              <span className="-rotate-45 text-xs font-semibold text-muted-foreground">
                                 {bar.value.toFixed(2)}
                               </span>
-                              <div className="flex h-40 w-10 items-end justify-center rounded-t-lg bg-slate-100">
+                              <div className="flex h-40 w-10 items-end justify-center rounded-t-lg bg-muted">
                                 <div
                                   className="w-full rounded-t-lg"
                                   style={{
@@ -1133,7 +1193,7 @@ export default function RelatorioEscolar() {
                                   }}
                                 ></div>
                               </div>
-                              <span className="text-xs font-semibold text-slate-700">{bar.label}</span>
+                              <span className="text-xs font-semibold text-foreground">{bar.label}</span>
                             </div>
                           );
                         })}

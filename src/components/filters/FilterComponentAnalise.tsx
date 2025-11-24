@@ -400,7 +400,7 @@ export function FilterComponentAnalise({
     };
 
     loadEvaluations();
-  }, [selectedState, selectedMunicipality, selectedSchool, selectedEvaluation, mustSelectSpecificSchool, loadSchoolsAfterEvaluation]);
+  }, [selectedState, selectedMunicipality, selectedSchool, mustSelectSpecificSchool, loadSchoolsAfterEvaluation]);
 
   return (
     <Card>
