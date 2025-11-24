@@ -244,7 +244,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
         nota: nota,
         proficiencia: proficiencia
       };
-    });
+    }).sort((a, b) => a.nome.localeCompare(b.nome));
   }, [tabelaDetalhada.disciplinas, tabelaDetalhada.geral?.alunos]);
 
   // ✅ NOVO: Dados consolidados para a visão geral (já memoizados)
@@ -592,7 +592,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                   {disciplina.alunos.filter(aluno => {
                     // ✅ CORRIGIDO: Filtrar apenas alunos que responderam pelo menos uma questão
                     return aluno.respostas_por_questao.some(resposta => resposta.respondeu);
-                  }).map((aluno, studentIndex) => (
+                  }).sort((a, b) => a.nome.localeCompare(b.nome)).map((aluno, studentIndex) => (
                     <TableRow
                       key={`${disciplina.id}-${aluno.id}`}
                       student={{

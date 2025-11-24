@@ -429,7 +429,8 @@ export default function Results() {
           turma: selectedStudent.turma,
           escola: 'Escola não informada', // Propriedade não disponível na interface StudentResult
           serie: 'Série não informada' // Propriedade não disponível na interface StudentResult
-        }));
+        }))
+        .sort((a, b) => a.nome.localeCompare(b.nome));
 
       setAbsentStudents(absentStudentsList);
     } catch (error) {

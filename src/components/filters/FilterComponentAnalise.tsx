@@ -41,6 +41,7 @@ interface FilterComponentAnaliseProps {
   onStateChange: (state: string) => void;
   onMunicipalityChange: (municipality: string) => void;
   onSchoolChange: (school: string) => void;
+  onSchoolSelectDetail?: (school: { id: string; name: string } | null) => void;
   onEvaluationChange: (evaluation: string) => void;
   isLoadingFilters: boolean;
   onLoadingChange: (loading: boolean) => void;
@@ -66,6 +67,7 @@ export function FilterComponentAnalise({
   onStateChange,
   onMunicipalityChange,
   onSchoolChange,
+  onSchoolSelectDetail,
   onEvaluationChange,
   isLoadingFilters,
   onLoadingChange,
@@ -170,7 +172,7 @@ export function FilterComponentAnalise({
     };
 
     loadMunicipalities();
-  }, [selectedState, onLoadingChange]);
+  }, [selectedState]);
 
   // Carregar escolas quando município for selecionado (ou após avaliação se loadSchoolsAfterEvaluation for true)
   useEffect(() => {
@@ -321,7 +323,7 @@ export function FilterComponentAnalise({
     };
 
     loadSchools();
-  }, [selectedMunicipality, selectedState, selectedEvaluation, selectedSchool, onLoadingChange, mustSelectSpecificSchool, fallbackSchools, loadSchoolsAfterEvaluation]);
+  }, [selectedMunicipality, selectedState, selectedEvaluation, selectedSchool, mustSelectSpecificSchool, fallbackSchools, loadSchoolsAfterEvaluation]);
 
   // Carregar avaliações quando município for selecionado (e escola se loadSchoolsAfterEvaluation for false)
   useEffect(() => {
@@ -335,14 +337,19 @@ export function FilterComponentAnalise({
               estado: selectedState,
               municipio: selectedMunicipality
             });
-            setEvaluationsByMunicipality(evaluationsData.map(evaluation => ({
+            const mappedEvaluations = evaluationsData.map(evaluation => ({
               id: evaluation.id,
               titulo: evaluation.titulo,
               disciplina: '',
               status: 'concluida',
               data_aplicacao: new Date().toISOString()
-            })));
+            }));
+            setEvaluationsByMunicipality(mappedEvaluations);
             // Não resetar avaliação se já estiver selecionada
+            const evaluationExists = mappedEvaluations.some(evaluation => evaluation.id === selectedEvaluation);
+            if (!evaluationExists && selectedEvaluation !== 'all') {
+              onEvaluationChangeRef.current('all');
+            }
           } catch (error) {
             console.error("Erro ao carregar avaliações:", error);
             setEvaluationsByMunicipality([]);
@@ -366,14 +373,20 @@ export function FilterComponentAnalise({
             municipio: selectedMunicipality,
             escola: selectedSchool !== 'all' ? selectedSchool : undefined
           });
-          setEvaluationsByMunicipality(evaluationsData.map(evaluation => ({
+          const mappedEvaluations = evaluationsData.map(evaluation => ({
             id: evaluation.id,
             titulo: evaluation.titulo,
             disciplina: '',
             status: 'concluida',
             data_aplicacao: new Date().toISOString()
-          })));
-          onEvaluationChangeRef.current('all');
+          }));
+          setEvaluationsByMunicipality(mappedEvaluations);
+          
+          // Só resetar avaliação se a avaliação selecionada não existir mais na lista
+          const evaluationExists = mappedEvaluations.some(evaluation => evaluation.id === selectedEvaluation);
+          if (!evaluationExists && selectedEvaluation !== 'all') {
+            onEvaluationChangeRef.current('all');
+          }
         } catch (error) {
           console.error("Erro ao carregar avaliações:", error);
           setEvaluationsByMunicipality([]);
@@ -387,7 +400,7 @@ export function FilterComponentAnalise({
     };
 
     loadEvaluations();
-  }, [selectedState, selectedMunicipality, selectedSchool, onLoadingChange, mustSelectSpecificSchool, loadSchoolsAfterEvaluation]);
+  }, [selectedState, selectedMunicipality, selectedSchool, mustSelectSpecificSchool, loadSchoolsAfterEvaluation]);
 
   return (
     <Card>
