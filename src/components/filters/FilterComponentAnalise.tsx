@@ -41,6 +41,7 @@ interface FilterComponentAnaliseProps {
   onStateChange: (state: string) => void;
   onMunicipalityChange: (municipality: string) => void;
   onSchoolChange: (school: string) => void;
+  onSchoolSelectDetail?: (school: { id: string; name: string } | null) => void;
   onEvaluationChange: (evaluation: string) => void;
   isLoadingFilters: boolean;
   onLoadingChange: (loading: boolean) => void;
@@ -66,6 +67,7 @@ export function FilterComponentAnalise({
   onStateChange,
   onMunicipalityChange,
   onSchoolChange,
+  onSchoolSelectDetail,
   onEvaluationChange,
   isLoadingFilters,
   onLoadingChange,
@@ -366,7 +368,7 @@ export function FilterComponentAnalise({
             municipio: selectedMunicipality,
             escola: selectedSchool !== 'all' ? selectedSchool : undefined
           });
-          setEvaluationsByMunicipality(evaluationsData.map(evaluation => ({
+          const mappedEvaluations = evaluationsData.map(evaluation => ({
             id: evaluation.id,
             titulo: evaluation.titulo,
             disciplina: '',

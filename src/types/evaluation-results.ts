@@ -408,6 +408,14 @@ export interface TotalAlunosEscola {
   faltosos: number;
 }
 
+export interface TotalAlunosEscola {
+  escola: string;
+  matriculados: number;
+  avaliados: number;
+  percentual: number;
+  faltosos: number;
+}
+
 export interface TotalAlunosGeral {
   matriculados: number;
   avaliados: number;
@@ -418,11 +426,22 @@ export interface TotalAlunosGeral {
 export interface TotalAlunos {
   por_turma?: TotalAlunosTurma[];
   por_escola?: TotalAlunosEscola[];
+  por_turma?: TotalAlunosTurma[];
+  por_escola?: TotalAlunosEscola[];
   total_geral: TotalAlunosGeral;
 }
 
 export interface NivelAprendizagemTurma {
   turma: string;
+  abaixo_do_basico: number;
+  basico: number;
+  adequado: number;
+  avancado: number;
+  total: number;
+}
+
+export interface NivelAprendizagemEscola {
+  escola: string;
   abaixo_do_basico: number;
   basico: number;
   adequado: number;
@@ -452,6 +471,10 @@ export interface NivelAprendizagemDisciplina {
   por_escola?: NivelAprendizagemEscola[];
   geral?: NivelAprendizagemGeral;
   total_geral?: NivelAprendizagemGeral;
+  por_turma?: NivelAprendizagemTurma[];
+  por_escola?: NivelAprendizagemEscola[];
+  geral?: NivelAprendizagemGeral;
+  total_geral?: NivelAprendizagemGeral;
 }
 
 export interface NiveisAprendizagem {
@@ -471,6 +494,8 @@ export interface ProficienciaEscola {
 }
 
 export interface ProficienciaDisciplina {
+  por_turma?: ProficienciaTurma[];
+  por_escola?: ProficienciaEscola[];
   por_turma?: ProficienciaTurma[];
   por_escola?: ProficienciaEscola[];
   media_geral: number;
@@ -498,6 +523,8 @@ export interface NotaGeralEscola {
 }
 
 export interface NotaGeralDisciplina {
+  por_turma?: NotaGeralTurma[];
+  por_escola?: NotaGeralEscola[];
   por_turma?: NotaGeralTurma[];
   por_escola?: NotaGeralEscola[];
   media_geral: number;
@@ -547,4 +574,10 @@ export interface RelatorioCompleto {
   proficiencia: Proficiencia;
   nota_geral: NotaGeral;
   acertos_por_habilidade: AcertosPorHabilidade;
+  escopo?: {
+    tipo: string;
+    id?: string;
+    school_id?: string | null;
+    city_id?: string | null;
+  };
 } 
