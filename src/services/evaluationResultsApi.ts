@@ -2130,6 +2130,103 @@ export class EvaluationResultsApiService {
     }
   }
 
+  // ✅ NOVO: Buscar tabela detalhada com dados de alunos por disciplina
+  static async getTabelaDetalhada(
+    evaluationId: string,
+    options?: { state?: string; municipality?: string; school?: string }
+  ): Promise<{
+    disciplinas: Array<{
+      nome: string;
+      alunos: Array<{
+        id: string;
+        nome: string;
+        turma: string;
+        serie: string;
+        proficiencia: number;
+      }>;
+    }>;
+    geral: {
+      alunos: Array<{
+        id: string;
+        nome: string;
+        turma: string;
+        serie: string;
+        proficiencia_geral: number;
+      }>;
+    };
+  } | null> {
+    try {
+      const params = new URLSearchParams();
+      
+      // Estado e município são obrigatórios para o endpoint
+      if (!options?.state || options.state === 'all') {
+        console.error('❌ Estado é obrigatório para buscar tabela detalhada', { state: options?.state });
+        return null;
+      }
+      
+      if (!options?.municipality || options.municipality === 'all') {
+        console.error('❌ Município é obrigatório para buscar tabela detalhada', { municipality: options?.municipality });
+        return null;
+      }
+      
+      console.log('📊 Parâmetros para getTabelaDetalhada:', { 
+        evaluationId, 
+        state: options.state, 
+        stateType: typeof options.state,
+        stateValue: options.state,
+        municipality: options.municipality, 
+        school: options.school 
+      });
+      
+      // Garantir que o estado seja uma string válida
+      const estadoValue = String(options.state || '').trim();
+      if (!estadoValue || estadoValue === 'all') {
+        console.error('❌ Estado inválido após conversão:', estadoValue);
+        return null;
+      }
+      
+      params.append('estado', estadoValue);
+      params.append('municipio', options.municipality);
+      params.append('avaliacao', evaluationId);
+      
+      if (options?.school && options.school !== 'all') {
+        params.append('escola', options.school);
+      }
+      
+      const url = `/evaluation-results/avaliacoes?${params.toString()}`;
+      console.log('📊 URL da requisição:', url);
+      console.log('📊 Params.toString():', params.toString());
+      console.log('📊 Params.get("estado"):', params.get('estado'));
+      
+      const response = await api.get(url);
+      
+      console.log('📊 Resposta completa do endpoint avaliacoes:', response.data);
+      console.log('📊 tabela_detalhada:', response.data.tabela_detalhada);
+      
+      const tabelaDetalhada = response.data.tabela_detalhada;
+      
+      if (!tabelaDetalhada) {
+        console.warn('⚠️ tabela_detalhada não encontrada na resposta');
+        return null;
+      }
+      
+      // Verificar se a estrutura está correta
+      if (!tabelaDetalhada.disciplinas || !Array.isArray(tabelaDetalhada.disciplinas)) {
+        console.warn('⚠️ tabela_detalhada.disciplinas não é um array válido');
+        return null;
+      }
+      
+      return tabelaDetalhada;
+    } catch (error) {
+      console.error('❌ Erro ao buscar tabela detalhada:', error);
+      if (error.response) {
+        console.error('❌ Status:', error.response.status);
+        console.error('❌ Data:', error.response.data);
+      }
+      return null;
+    }
+  }
+
 
 
   // ===== NOVOS ENDPOINTS DE DASHBOARD E ESTATÍSTICAS =====

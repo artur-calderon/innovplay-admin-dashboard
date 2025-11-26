@@ -6,8 +6,7 @@ import { Download, FileText, RefreshCw, Filter, BookOpen, Calculator, LineChart,
 
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
-import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
-import { RelatorioCompleto } from "@/types/evaluation-results";
+import { EvaluationResultsApiService, NovaRespostaAPI } from "@/services/evaluationResultsApi";
 import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
 import { FilterComponentAnalise } from "@/components/filters";
@@ -78,7 +77,7 @@ const formatProficiency = (value?: number) => {
   if (value === undefined || value === null || Number.isNaN(value)) {
     return "--";
   }
-  return Math.round(value).toString();
+  return value.toFixed(1);
 };
 
 const formatPercentageValue = (value?: number, decimals = 1) => {
@@ -88,9 +87,118 @@ const formatPercentageValue = (value?: number, decimals = 1) => {
   return `${value.toFixed(decimals)}%`;
 };
 
+// Intervalos de níveis de proficiência por curso e disciplina
+const niveisEscolares = {
+  // Anos Finais e Ensino Médio (Exceto matemática)
+  ANOS_FINAIS_GERAL: [
+    { level: 0, min: 0, max: 199 },
+    { level: 1, min: 200, max: 224 },
+    { level: 2, min: 225, max: 249 },
+    { level: 3, min: 250, max: 274 },
+    { level: 4, min: 275, max: 299 },
+    { level: 5, min: 300, max: 324 },
+    { level: 6, min: 325, max: 349 },
+    { level: 7, min: 350, max: 374 },
+    { level: 8, min: 375, max: null },
+  ],
+
+  // Anos Finais e Ensino Médio (Matemática)
+  ANOS_FINAIS_MAT: [
+    { level: 0, min: 0, max: 199 },
+    { level: 1, min: 200, max: 224 },
+    { level: 2, min: 225, max: 249 },
+    { level: 3, min: 250, max: 274 },
+    { level: 4, min: 275, max: 299 },
+    { level: 5, min: 300, max: 324 },
+    { level: 6, min: 325, max: 349 },
+    { level: 7, min: 350, max: 374 },
+    { level: 8, min: 375, max: 399 },
+    { level: 9, min: 400, max: null },
+  ],
+
+  // Anos Iniciais/Educação Infantil/EJA (Exceto Matemática)
+  ANOS_INICIAIS_GERAL: [
+    { level: 0, min: 0, max: 124 },
+    { level: 1, min: 125, max: 149 },
+    { level: 2, min: 150, max: 174 },
+    { level: 3, min: 175, max: 199 },
+    { level: 4, min: 200, max: 224 },
+    { level: 5, min: 225, max: 249 },
+    { level: 6, min: 250, max: 274 },
+    { level: 7, min: 275, max: 299 },
+    { level: 8, min: 300, max: 324 },
+    { level: 9, min: 325, max: null },
+  ],
+
+  // Anos Iniciais/EDUCAÇÃO INFANTIL/EJA (Apenas Matemática)
+  ANOS_INICIAIS_MAT: [
+    { level: 0, min: 0, max: 124 },
+    { level: 1, min: 125, max: 149 },
+    { level: 2, min: 150, max: 174 },
+    { level: 3, min: 175, max: 199 },
+    { level: 4, min: 200, max: 224 },
+    { level: 5, min: 225, max: 249 },
+    { level: 6, min: 250, max: 274 },
+    { level: 7, min: 275, max: 299 },
+    { level: 8, min: 300, max: 324 },
+    { level: 9, min: 325, max: 349 },
+    { level: 10, min: 350, max: null },
+  ]
+};
+
+// Função para classificar proficiência em nível
+const classificarNivel = (proficiencia: number, niveis: Array<{level: number, min: number, max: number | null}>): number => {
+  for (const nivel of niveis) {
+    if (proficiencia >= nivel.min && (nivel.max === null || proficiencia <= nivel.max)) {
+      return nivel.level;
+    }
+  }
+  return 0; // Fallback
+};
+
+// Função para determinar qual conjunto de intervalos usar
+const obterIntervalosNiveis = (curso: string | undefined, disciplina: string): Array<{level: number, min: number, max: number | null}> => {
+  const disciplinaNormalizada = normalizeText(disciplina);
+  const isMatematica = disciplinaNormalizada.includes('matematica') || disciplinaNormalizada.includes('matemática');
+  const isAnosFinais = curso?.toLowerCase().includes('anos finais') || curso?.toLowerCase().includes('ensino médio') || curso?.toLowerCase().includes('medio');
+  
+  if (isAnosFinais) {
+    return isMatematica ? niveisEscolares.ANOS_FINAIS_MAT : niveisEscolares.ANOS_FINAIS_GERAL;
+  } else {
+    return isMatematica ? niveisEscolares.ANOS_INICIAIS_MAT : niveisEscolares.ANOS_INICIAIS_GERAL;
+  }
+};
+
+// Função para obter cor da disciplina
+const obterCorDisciplina = (nomeDisciplina: string, index: number): string => {
+  const nomeNormalizado = normalizeText(nomeDisciplina);
+  
+  // Cores específicas para disciplinas conhecidas
+  if (nomeNormalizado.includes('portugues') || nomeNormalizado.includes('português') || nomeNormalizado.includes('lingua portuguesa')) {
+    return "#16A34A"; // Verde
+  }
+  if (nomeNormalizado.includes('matematica') || nomeNormalizado.includes('matemática')) {
+    return "#1D4ED8"; // Azul
+  }
+  
+  // Paleta de cores para outras disciplinas
+  const coresPaleta = [
+    "#DC2626", // Vermelho
+    "#EA580C", // Laranja
+    "#CA8A04", // Amarelo
+    "#059669", // Verde esmeralda
+    "#0891B2", // Ciano
+    "#7C3AED", // Roxo
+    "#DB2777", // Rosa
+    "#BE185D", // Rosa escuro
+  ];
+  
+  return coresPaleta[index % coresPaleta.length];
+};
+
 export default function RelatorioEscolar() {
   const { autoLogin, user } = useAuth();
-  const [apiData, setApiData] = useState<RelatorioCompleto | null>(null);
+  const [apiData, setApiData] = useState<NovaRespostaAPI | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingFilters, setIsLoadingFilters] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -156,51 +264,118 @@ export default function RelatorioEscolar() {
     return Array.from(uniqueSchools.values());
   }, [userHierarchyContext]);
 
-  const sampleProficiencyDistributions = useMemo<ProficiencyDistribution[]>(() => {
-    const scopeLabel = isMunicipalView ? "Total Município" : "Total Escola";
+  // Calcular distribuição de níveis de proficiência dinamicamente
+  const proficiencyDistributions = useMemo<ProficiencyDistribution[]>(() => {
+    if (!apiData) {
+      console.log("📊 proficiencyDistributions: apiData não disponível");
+      return [];
+    }
 
-    return [
-      {
-        title: "Distribuição percentual dos estudantes por Nível de Proficiência - Língua Portuguesa",
-        color: "#16A34A",
-        columns: Array.from({ length: 9 }, (_, index) => `Nível ${index}`),
-        rows: [
-          { label: scopeLabel, data: [7.30, 8.56, 15.31, 19.38, 21.22, 15.06, 10.13, 2.85, 0.20] }
-        ],
-        bars: [
-          { label: "Nível 0", value: 7.15 },
-          { label: "Nível 1", value: 9.47 },
-          { label: "Nível 2", value: 16.25 },
-          { label: "Nível 3", value: 16.60 },
-          { label: "Nível 4", value: 20.84 },
-          { label: "Nível 5", value: 15.64 },
-          { label: "Nível 6", value: 11.24 },
-          { label: "Nível 7", value: 3.6 },
-          { label: "Nível 8", value: 0.0 }
-        ]
-      },
-      {
-        title: "Distribuição percentual dos estudantes por Nível de Proficiência - Matemática",
-        color: "#1D4ED8",
-        columns: Array.from({ length: 10 }, (_, index) => `Nível ${index}`),
-        rows: [
-          { label: scopeLabel, data: [6.53, 9.38, 16.59, 19.99, 23.12, 13.80, 5.54, 3.31, 1.73, 0.35] }
-        ],
-        bars: [
-          { label: "Nível 0", value: 5.7 },
-          { label: "Nível 1", value: 6.4 },
-          { label: "Nível 2", value: 12.87 },
-          { label: "Nível 3", value: 21.95 },
-          { label: "Nível 4", value: 27.18 },
-          { label: "Nível 5", value: 17.39 },
-          { label: "Nível 6", value: 5.6 },
-          { label: "Nível 7", value: 2.91 },
-          { label: "Nível 8", value: 0.0 },
-          { label: "Nível 9", value: 0.0 }
-        ]
+    // Se tabela_detalhada não estiver disponível, retornar array vazio (gráficos não aparecerão)
+    if (!apiData.tabela_detalhada) {
+      console.log("📊 proficiencyDistributions: tabela_detalhada não disponível ainda, aguardando carregamento...");
+      return [];
+    }
+
+    // Processar todas as disciplinas que têm dados
+
+    const scopeLabel = isMunicipalView ? "Total Município" : "Total Escola";
+    
+    // Obter curso de apiData.estatisticas_gerais ou inferir
+    let curso = "Anos Iniciais"; // Padrão
+    const serie = apiData.estatisticas_gerais?.serie;
+    if (serie) {
+      const serieLower = serie.toLowerCase();
+      if (serieLower.includes('6') || serieLower.includes('7') || 
+          serieLower.includes('8') || serieLower.includes('9') ||
+          serieLower.includes('em') || serieLower.includes('médio') ||
+          serieLower.includes('medio')) {
+        curso = "Anos Finais";
       }
-    ];
-  }, [isMunicipalView]);
+    } else {
+      // Fallback: tentar inferir da primeira série dos alunos na tabela detalhada
+      if (apiData.tabela_detalhada.disciplinas && apiData.tabela_detalhada.disciplinas.length > 0 && 
+          apiData.tabela_detalhada.disciplinas[0].alunos && apiData.tabela_detalhada.disciplinas[0].alunos.length > 0) {
+        const primeiraSerie = apiData.tabela_detalhada.disciplinas[0].alunos[0]?.serie || "";
+        if (primeiraSerie.includes('6') || primeiraSerie.includes('7') || 
+            primeiraSerie.includes('8') || primeiraSerie.includes('9') ||
+            primeiraSerie.includes('EM') || primeiraSerie.includes('Médio') ||
+            primeiraSerie.includes('Medio')) {
+          curso = "Anos Finais";
+        }
+      }
+    }
+
+    // Processar TODAS as disciplinas que têm dados em apiData.tabela_detalhada
+    // Não usar lista hardcoded - processar todas as disciplinas disponíveis
+    if (!apiData.tabela_detalhada.disciplinas || apiData.tabela_detalhada.disciplinas.length === 0) {
+      return [];
+    }
+
+    return apiData.tabela_detalhada.disciplinas
+      .filter(disciplinaData => disciplinaData.alunos && disciplinaData.alunos.length > 0)
+      .map((disciplinaData, index) => {
+        const nomeDisciplina = disciplinaData.nome;
+        
+        if (!nomeDisciplina) {
+          return null;
+        }
+
+        // Obter intervalos corretos usando o nome exato da disciplina
+        const intervalos = obterIntervalosNiveis(curso, nomeDisciplina);
+        const maxLevel = Math.max(...intervalos.map(i => i.level));
+
+        // Inicializar contagem por nível
+        const contagemPorNivel: Record<number, number> = {};
+        for (let i = 0; i <= maxLevel; i++) {
+          contagemPorNivel[i] = 0;
+        }
+
+        // Classificar cada aluno por nível usando apenas a proficiência
+        disciplinaData.alunos.forEach((aluno) => {
+          if (aluno.proficiencia !== undefined && aluno.proficiencia !== null && !Number.isNaN(aluno.proficiencia)) {
+            const nivel = classificarNivel(aluno.proficiencia, intervalos);
+            contagemPorNivel[nivel] = (contagemPorNivel[nivel] || 0) + 1;
+          }
+        });
+
+        const totalAlunos = disciplinaData.alunos.filter(a => 
+          a.proficiencia !== undefined && a.proficiencia !== null && !Number.isNaN(a.proficiencia)
+        ).length;
+
+        if (totalAlunos === 0) {
+          return null;
+        }
+
+        // Calcular percentuais
+        const percentuaisPorNivel: number[] = [];
+        const bars: Array<{ label: string; value: number }> = [];
+
+        for (let i = 0; i <= maxLevel; i++) {
+          const quantidade = contagemPorNivel[i] || 0;
+          const percentual = totalAlunos > 0 ? (quantidade / totalAlunos) * 100 : 0;
+          percentuaisPorNivel.push(percentual);
+          bars.push({
+            label: `Nível ${i}`,
+            value: percentual
+          });
+        }
+
+        // Obter cor da disciplina
+        const color = obterCorDisciplina(nomeDisciplina, index);
+
+        return {
+          title: `Distribuição percentual dos estudantes por Nível de Proficiência - ${nomeDisciplina}`,
+          color,
+          columns: Array.from({ length: maxLevel + 1 }, (_, i) => `Nível ${i}`),
+          rows: [
+            { label: scopeLabel, data: percentuaisPorNivel }
+          ],
+          bars
+        };
+      })
+      .filter((item): item is ProficiencyDistribution => item !== null);
+  }, [apiData, isMunicipalView]);
 
   // Estados dos dados dos filtros (movidos para FilterComponentAnalise)
 
@@ -319,7 +494,16 @@ export default function RelatorioEscolar() {
         return rowsMap.get(name);
       };
 
-      const processList = (list: any[] | undefined, assign: (row: ClassSummaryRow, item: any) => void) => {
+      interface EscolaItem {
+        escola?: string;
+        nota?: number;
+        matriculados?: number;
+        avaliados?: number;
+        percentual?: number;
+        proficiencia?: number;
+      }
+
+      const processList = (list: EscolaItem[] | undefined, assign: (row: ClassSummaryRow, item: EscolaItem) => void) => {
         if (!list) return;
         list.forEach(item => {
           const row = ensureRow(item?.escola);
@@ -327,7 +511,8 @@ export default function RelatorioEscolar() {
         });
       };
 
-      const notaPorDisciplina = apiData.nota_geral?.por_disciplina ?? {};
+      // TODO: Adaptar para usar dados de NovaRespostaAPI
+      const notaPorDisciplina = (apiData as any).nota_geral?.por_disciplina ?? {};
       const portuguesNotas = findDisciplinaByAliases(notaPorDisciplina, ['lingua portuguesa', 'portugues']);
       const matematicaNotas = findDisciplinaByAliases(notaPorDisciplina, ['matematica', 'matemática']);
       const geralNotas = findDisciplinaByAliases(notaPorDisciplina, ['geral']);
@@ -342,13 +527,15 @@ export default function RelatorioEscolar() {
         row.mediaGeral = item?.nota ?? undefined;
       });
 
-      processList(apiData.total_alunos?.por_escola, (row, item) => {
+      // TODO: Adaptar para usar dados de NovaRespostaAPI
+      processList((apiData as any).total_alunos?.por_escola, (row, item) => {
         row.matriculados = item?.matriculados ?? undefined;
         row.avaliados = item?.avaliados ?? undefined;
         row.comparecimento = item?.percentual ?? undefined;
       });
 
-      const profPorDisciplina = apiData.proficiencia?.por_disciplina ?? {};
+      // TODO: Adaptar para usar dados de NovaRespostaAPI
+      const profPorDisciplina = (apiData as any).proficiencia?.por_disciplina ?? {};
       const geralProficiencia = findDisciplinaByAliases(profPorDisciplina, ['geral']);
 
       processList(geralProficiencia?.por_escola, (row, item) => {
@@ -394,7 +581,8 @@ export default function RelatorioEscolar() {
       return rowsMap.get(turmaName);
     };
 
-    const notaPorDisciplina = apiData.nota_geral?.por_disciplina ?? {};
+    // TODO: Adaptar para usar dados de NovaRespostaAPI
+    const notaPorDisciplina = (apiData as any).nota_geral?.por_disciplina ?? {};
     const portuguesNotas = findDisciplinaByAliases(notaPorDisciplina, ['lingua portuguesa', 'portugues']);
     const matematicaNotas = findDisciplinaByAliases(notaPorDisciplina, ['matematica', 'matemática']);
     const geralNotas = findDisciplinaByAliases(notaPorDisciplina, ['geral']);
@@ -414,7 +602,8 @@ export default function RelatorioEscolar() {
       if (row) row.mediaGeral = turma.nota;
     });
 
-    apiData.total_alunos?.por_turma?.forEach(turma => {
+    // TODO: Adaptar para usar dados de NovaRespostaAPI
+    (apiData as any).total_alunos?.por_turma?.forEach(turma => {
       const row = ensureRow(turma.turma);
       if (row) {
         row.matriculados = turma.matriculados ?? undefined;
@@ -427,7 +616,8 @@ export default function RelatorioEscolar() {
       }
     });
 
-    const profPorDisciplina = apiData.proficiencia?.por_disciplina ?? {};
+    // TODO: Adaptar para usar dados de NovaRespostaAPI
+    const profPorDisciplina = (apiData as any).proficiencia?.por_disciplina ?? {};
     const geralProficiencia = findDisciplinaByAliases(profPorDisciplina, ['geral']);
     const portuguesProficiencia = findDisciplinaByAliases(profPorDisciplina, ['lingua portuguesa', 'portugues']);
     const matematicaProficiencia = findDisciplinaByAliases(profPorDisciplina, ['matematica', 'matemática']);
@@ -489,13 +679,45 @@ export default function RelatorioEscolar() {
 
     return disciplinas
       .map(({ aliases, title }) => {
-        const dadosDisciplina: any = findDisciplinaByAliases(apiData.niveis_aprendizagem, aliases);
+        // TODO: Adaptar para usar dados de NovaRespostaAPI
+        const dadosDisciplina = findDisciplinaByAliases((apiData as any).niveis_aprendizagem, aliases) as {
+          geral?: {
+            abaixo_do_basico?: number;
+            basico?: number;
+            adequado?: number;
+            avancado?: number;
+            total?: number;
+          };
+          total_geral?: {
+            abaixo_do_basico?: number;
+            basico?: number;
+            adequado?: number;
+            avancado?: number;
+            total?: number;
+          };
+          por_escola?: Array<{
+            escola?: string;
+            abaixo_do_basico?: number;
+            basico?: number;
+            adequado?: number;
+            avancado?: number;
+            total?: number;
+          }>;
+          por_turma?: Array<{
+            turma?: string;
+            abaixo_do_basico?: number;
+            basico?: number;
+            adequado?: number;
+            avancado?: number;
+            total?: number;
+          }>;
+        } | undefined;
         if (!dadosDisciplina || !dadosDisciplina.geral) return null;
 
         const buildAggregatedTotals = () => {
           const listaBruta = isMunicipalView
-            ? (dadosDisciplina as any).por_escola
-            : (dadosDisciplina as any).por_turma;
+            ? dadosDisciplina.por_escola
+            : dadosDisciplina.por_turma;
 
           if (!Array.isArray(listaBruta) || listaBruta.length === 0) {
             return null;
@@ -514,7 +736,7 @@ export default function RelatorioEscolar() {
         };
 
         const geralDados =
-          (dadosDisciplina as any).total_geral ??
+          dadosDisciplina.total_geral ??
           dadosDisciplina.geral ??
           buildAggregatedTotals();
 
@@ -547,23 +769,26 @@ export default function RelatorioEscolar() {
         } as DistributionChartData;
       })
       .filter((item): item is DistributionChartData => Boolean(item));
-  }, [apiData]);
+  }, [apiData, isMunicipalView]);
 
   const summaryStats = useMemo(() => {
     if (!apiData) return null;
 
-    const notaPorDisciplina = apiData.nota_geral?.por_disciplina ?? {};
+    // TODO: Adaptar para usar dados de NovaRespostaAPI
+    const notaPorDisciplina = (apiData as any).nota_geral?.por_disciplina ?? {};
     const portuguesNotas = findDisciplinaByAliases(notaPorDisciplina, ['lingua portuguesa', 'portugues']);
     const matematicaNotas = findDisciplinaByAliases(notaPorDisciplina, ['matematica', 'matemática']);
     const geralNotas = findDisciplinaByAliases(notaPorDisciplina, ['geral']);
 
-    const profPorDisciplina = apiData.proficiencia?.por_disciplina ?? {};
+    // TODO: Adaptar para usar dados de NovaRespostaAPI
+    const profPorDisciplina = (apiData as any).proficiencia?.por_disciplina ?? {};
     const geralProficiencia = findDisciplinaByAliases(profPorDisciplina, ['geral']);
 
-    const mediaLP = portuguesNotas?.media_geral ?? null;
-    const mediaMAT = matematicaNotas?.media_geral ?? null;
-    const mediaGeral = geralNotas?.media_geral ?? null;
-    const proficienciaMedia = geralProficiencia?.media_geral ?? null;
+    // TODO: Adaptar para usar dados de NovaRespostaAPI
+    const mediaLP = (portuguesNotas as any)?.media_geral ?? null;
+    const mediaMAT = (matematicaNotas as any)?.media_geral ?? null;
+    const mediaGeral = (geralNotas as any)?.media_geral ?? null;
+    const proficienciaMedia = (geralProficiencia as any)?.media_geral ?? null;
 
     if (
       mediaLP === null &&
@@ -581,11 +806,12 @@ export default function RelatorioEscolar() {
         ? getProficiencyLevel(proficienciaMedia, serieRef, undefined)
         : null;
 
-    const totalMatriculados = apiData.total_alunos?.total_geral?.matriculados ?? null;
-    const totalAvaliados = apiData.total_alunos?.total_geral?.avaliados ?? null;
+    // TODO: Adaptar para usar dados de NovaRespostaAPI
+    const totalMatriculados = (apiData as any).total_alunos?.total_geral?.matriculados ?? apiData.estatisticas_gerais?.total_alunos ?? null;
+    const totalAvaliados = (apiData as any).total_alunos?.total_geral?.avaliados ?? apiData.estatisticas_gerais?.alunos_participantes ?? null;
     const comparecimentoGeral = totalMatriculados && totalMatriculados > 0
       ? (totalAvaliados ?? 0) / totalMatriculados * 100
-      : (apiData.total_alunos?.total_geral?.percentual ?? null);
+      : null;
 
     return {
       mediaLP,
@@ -663,9 +889,9 @@ export default function RelatorioEscolar() {
 
       const payload = {
         evaluation: {
-          id: apiData.avaliacao?.id ?? null,
-          title: apiData.avaliacao?.titulo ?? null,
-          description: apiData.avaliacao?.descricao ?? null
+          id: selectedEvaluation !== 'all' ? selectedEvaluation : null,
+          title: apiData.estatisticas_gerais?.nome ?? null,
+          description: null
         },
         summary: {
           media_lp: summaryStats.mediaLP,
@@ -679,9 +905,11 @@ export default function RelatorioEscolar() {
           comparecimento: summaryStats.comparecimentoGeral
         },
         totals: {
-          matriculados: apiData.total_alunos?.total_geral?.matriculados ?? null,
-          avaliados: apiData.total_alunos?.total_geral?.avaliados ?? null,
-          percentual: apiData.total_alunos?.total_geral?.percentual ?? null
+          matriculados: apiData.estatisticas_gerais?.total_alunos ?? null,
+          avaliados: apiData.estatisticas_gerais?.alunos_participantes ?? null,
+          percentual: apiData.estatisticas_gerais?.total_alunos && apiData.estatisticas_gerais?.alunos_participantes 
+            ? (apiData.estatisticas_gerais.alunos_participantes / apiData.estatisticas_gerais.total_alunos) * 100 
+            : null
         },
         classes: classRowsPayload,
         charts: chartsPayload,
@@ -705,7 +933,7 @@ export default function RelatorioEscolar() {
       const link = document.createElement('a');
       link.href = blobUrl;
 
-      const evaluationName = apiData?.avaliacao?.titulo || 'relatorio_escolar';
+      const evaluationName = apiData?.estatisticas_gerais?.nome || 'relatorio_escolar';
       const sanitizedName = evaluationName.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_').toLowerCase();
       const fileName = `relatorio_escolar_${sanitizedName}_${new Date().toISOString().split('T')[0]}.pdf`;
       link.download = fileName;
@@ -738,11 +966,25 @@ export default function RelatorioEscolar() {
       if (allRequiredFiltersSelected) {
         try {
           setIsLoadingData(true);
-          // Buscar relatório completo da avaliação selecionada
-          const relatorio = await EvaluationResultsApiService.getRelatorioCompleto(selectedEvaluation);
-          console.log("📊 Estrutura completa da resposta da API:", relatorio);
-          console.log("📊 Estrutura de acertos_por_habilidade:", relatorio.acertos_por_habilidade);
-          setApiData(relatorio);
+          
+          // Usar getEvaluationsList como em Results.tsx para obter tabela_detalhada com alunos por disciplina
+          const filters = {
+            estado: selectedState,
+            municipio: selectedMunicipality,
+            avaliacao: selectedEvaluation !== 'all' ? selectedEvaluation : undefined,
+            escola: selectedSchool !== 'all' ? selectedSchool : undefined,
+          };
+
+          const evaluationsResponse = await EvaluationResultsApiService.getEvaluationsList(1, 1, filters);
+          
+          if (evaluationsResponse) {
+            console.log("📊 Estrutura completa da resposta da API:", evaluationsResponse);
+            console.log("📊 tabela_detalhada:", evaluationsResponse.tabela_detalhada);
+            setApiData(evaluationsResponse);
+            // apiData.tabela_detalhada já contém os alunos por disciplina com proficiência
+          } else {
+            setApiData(null);
+          }
         } catch (error) {
           console.error("Erro ao carregar dados:", error);
           toast({
@@ -750,6 +992,7 @@ export default function RelatorioEscolar() {
             description: "Não foi possível carregar os dados do relatório. Tente novamente.",
             variant: "destructive",
           });
+          setApiData(null);
         } finally {
           setIsLoadingData(false);
         }
@@ -758,6 +1001,8 @@ export default function RelatorioEscolar() {
 
     loadData();
   }, [allRequiredFiltersSelected, selectedState, selectedMunicipality, selectedSchool, selectedEvaluation, toast]);
+
+  // Removido: useEffect de getTabelaDetalhada - os dados já vêm de getEvaluationsList em apiData.tabela_detalhada
 
   if (isLoading) {
     return (
@@ -1129,9 +1374,10 @@ export default function RelatorioEscolar() {
             </div>
           )}
 
-          {sampleProficiencyDistributions.length > 0 && (
+          {/* Gráficos de distribuição de níveis de proficiência */}
+          {proficiencyDistributions.length > 0 ? (
             <div className="mt-10 space-y-6">
-              {sampleProficiencyDistributions.map(distribution => {
+              {proficiencyDistributions.map(distribution => {
                 const maxValue = Math.max(...distribution.bars.map(bar => bar.value), 1);
 
                 return (
@@ -1203,7 +1449,36 @@ export default function RelatorioEscolar() {
                 );
               })}
             </div>
-          )}
+          ) : apiData && !apiData.tabela_detalhada ? (
+            <Card className="mt-10">
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <RefreshCw className="h-8 w-8 animate-spin text-blue-600 dark:text-blue-400 mb-4" />
+                <p className="text-muted-foreground text-center">
+                  Carregando dados de proficiência dos alunos...
+                </p>
+              </CardContent>
+            </Card>
+          ) : apiData && apiData.tabela_detalhada && proficiencyDistributions.length === 0 ? (
+            <Card className="mt-10">
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <FileText className="h-8 w-8 text-muted-foreground mb-4" />
+                <p className="text-muted-foreground text-center mb-2">
+                  Não foi possível calcular a distribuição de níveis de proficiência.
+                </p>
+                <p className="text-sm text-muted-foreground text-center">
+                  {apiData.tabela_detalhada.disciplinas?.some(d => d.alunos && d.alunos.length > 0) 
+                    ? "Os dados de proficiência dos alunos não estão disponíveis para os filtros selecionados."
+                    : "O backend não retornou dados de alunos na tabela detalhada. Verifique se há alunos cadastrados para esta avaliação e filtros."}
+                </p>
+                {apiData.tabela_detalhada?.disciplinas && (
+                  <div className="mt-4 text-xs text-muted-foreground">
+                    <p>Disciplinas encontradas: {apiData.tabela_detalhada.disciplinas.length}</p>
+                    <p>Disciplinas com alunos: {apiData.tabela_detalhada.disciplinas.filter(d => d.alunos && d.alunos.length > 0).length}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
       )}
     </div>
