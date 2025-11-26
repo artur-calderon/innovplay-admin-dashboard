@@ -117,20 +117,48 @@ interface CorrectionResult {
   message: string;
   student_id: string;
   test_id: string;
-  class_test_id: string;
+  class_test_id?: string;
   correct_answers: number;
   total_questions: number;
   score_percentage: number;
   grade: number;
-  proficiency: number;
+  proficiency: number | string;
   classification: string;
   answers_detected: number;
-  qr_data: {
+  qr_data?: {
     student_id: string;
     test_id: string;
     class_test_id: string;
     timestamp: string;
   };
+}
+
+// Função para normalizar resposta da API (suporta formato antigo e novo)
+function normalizeCorrectionResult(data: any): CorrectionResult {
+  // Se for a nova resposta (com system: "new_orm")
+  if (data.system === "new_orm") {
+    const answers = data.answers || {};
+    const answersDetected = Object.keys(answers).length;
+    const evaluationResult = data.evaluation_result || {};
+    
+    return {
+      message: data.message || "Correção processada com sucesso",
+      student_id: data.student_id || "",
+      test_id: data.test_id || "",
+      class_test_id: data.class_test_id || "",
+      correct_answers: data.correct || 0,
+      total_questions: data.total || 0,
+      score_percentage: data.percentage || 0,
+      grade: evaluationResult.grade || data.score || 0,
+      proficiency: evaluationResult.proficiency || "",
+      classification: evaluationResult.classification || "",
+      answers_detected: answersDetected,
+      qr_data: data.qr_data
+    };
+  }
+  
+  // Formato antigo (retorna como está)
+  return data;
 }
 
 export default function PhysicalTestPage() {
@@ -290,7 +318,8 @@ export default function PhysicalTestPage() {
       }, 300);
 
       const response = await api.post(`/physical-tests/test/${id}/process-correction`, {
-        image: base64Image
+        image: base64Image,
+        use_new_orm: true
       }, {
         headers: {
           'Content-Type': 'application/json',
@@ -300,12 +329,13 @@ export default function PhysicalTestPage() {
       clearInterval(progressInterval);
       setCorrectionProgress(100);
 
-      // Armazenar resultado da correção
-      setCorrectionResult(response.data);
+      // Normalizar e armazenar resultado da correção
+      const normalizedResult = normalizeCorrectionResult(response.data);
+      setCorrectionResult(normalizedResult);
 
       toast({
         title: "Correção processada!",
-        description: `Prova corrigida com sucesso. Nota: ${response.data.grade}`,
+        description: `Prova corrigida com sucesso. Nota: ${normalizedResult.grade}`,
       });
 
       setShowCorrectionDialog(false);
