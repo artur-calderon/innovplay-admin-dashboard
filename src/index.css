@@ -159,6 +159,15 @@
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* Previne o Radix UI de adicionar padding-right quando modais/selects abrem */
+    padding-right: 0 !important;
+  }
+  
+  html {
+    /* Garante que a largura da scrollbar é reservada - aplicar apenas no html */
+    overflow-y: scroll;
+    /* Previne qualquer scroll horizontal */
+    overflow-x: hidden;
   }
   
   /* Enhanced Typography */
@@ -1044,4 +1053,40 @@
   .field-error-highlight {
     animation: field-error-pulse 0.5s ease-in-out 2;
     border-color: rgb(239, 68, 68) !important;
+  }
+
+  /* Prevenir layout shift nos filtros Select */
+  [data-radix-select-trigger] {
+    min-width: 0 !important;
+  }
+  
+  [data-radix-select-trigger] > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: block;
+  }
+
+  /* Prevenir que Radix UI manipule o body quando portais abrem */
+  body[style*="pointer-events"] {
+    pointer-events: auto !important;
+  }
+  
+  body[style*="overflow"] {
+    overflow: visible !important;
+  }
+  
+  /* Garantir que nenhum elemento adicione padding ao body */
+  body {
+    box-sizing: border-box !important;
+  }
+  
+  /* Prevenir movimento horizontal em qualquer situação */
+  * {
+    box-sizing: border-box;
+  }
+  
+  html, body {
+    width: 100%;
+    max-width: 100vw;
   }
