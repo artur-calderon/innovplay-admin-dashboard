@@ -560,7 +560,7 @@ export interface Habilidade {
 }
 
 export interface AcertosPorHabilidadeDisciplina {
-  questoes: QuestaoHabilidade[];
+  habilidades: Habilidade[];
 }
 
 export interface AcertosPorHabilidade {

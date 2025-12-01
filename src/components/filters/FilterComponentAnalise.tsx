@@ -425,7 +425,7 @@ export function FilterComponentAnalise({
               onValueChange={onStateChange}
               disabled={isLoadingFilters || !canSelectState}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full min-w-0">
                 <SelectValue placeholder="Selecione o estado" />
               </SelectTrigger>
               <SelectContent>
@@ -452,7 +452,7 @@ export function FilterComponentAnalise({
               onValueChange={onMunicipalityChange}
               disabled={isLoadingFilters || selectedState === 'all' || !canSelectMunicipality}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full min-w-0">
                 <SelectValue placeholder="Selecione o município" />
               </SelectTrigger>
               <SelectContent>
@@ -481,7 +481,7 @@ export function FilterComponentAnalise({
                     selectedMunicipality === 'all'
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full min-w-0">
                     <SelectValue placeholder="Selecione a avaliação" />
                   </SelectTrigger>
                   <SelectContent>
@@ -513,7 +513,7 @@ export function FilterComponentAnalise({
                     !canSelectSchool
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full min-w-0">
                     <SelectValue placeholder="Selecione a escola" />
                   </SelectTrigger>
                   <SelectContent>
@@ -544,7 +544,7 @@ export function FilterComponentAnalise({
                   onValueChange={onSchoolChange}
                   disabled={isLoadingFilters || selectedMunicipality === 'all' || !canSelectSchool}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full min-w-0">
                     <SelectValue placeholder="Selecione a escola" />
                   </SelectTrigger>
                   <SelectContent>
@@ -573,7 +573,7 @@ export function FilterComponentAnalise({
                     (mustSelectSpecificSchool && selectedSchool === 'all')
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full min-w-0">
                     <SelectValue placeholder="Selecione a avaliação" />
                   </SelectTrigger>
                   <SelectContent>
@@ -600,8 +600,8 @@ export function FilterComponentAnalise({
           <p className="text-sm text-blue-700 mt-1">
             <strong>Estado</strong> e <strong>Município</strong> são obrigatórios. 
             {loadSchoolsAfterEvaluation 
-              ? ' Selecione uma <strong>Avaliação</strong> para visualizar as escolas disponíveis.'
-              : ' Para diretores, coordenadores e professores, a seleção de <strong>Escola</strong> é sempre obrigatória.'}
+              ? <> Selecione uma <strong>Avaliação</strong> para visualizar as escolas disponíveis.</>
+              : <> Para diretores, coordenadores e professores, a seleção de <strong>Escola</strong> é sempre obrigatória.</>}
           </p>
         </div>
       </CardContent>

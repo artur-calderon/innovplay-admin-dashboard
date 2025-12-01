@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,8 +7,8 @@ import { Download, FileText, RefreshCw, Filter, BookOpen, Calculator, LineChart,
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { EvaluationResultsApiService, NovaRespostaAPI } from "@/services/evaluationResultsApi";
+import { RelatorioCompleto } from "@/types/evaluation-results";
 import { useAuth } from "@/context/authContext";
-import { api } from "@/lib/api";
 import { FilterComponentAnalise } from "@/components/filters";
 import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext } from "@/utils/userHierarchy";
 import { cn } from "@/lib/utils";
@@ -63,7 +63,7 @@ interface ProficiencyDistribution {
   color: string;
   columns: string[];
   rows: Array<{ label: string; data: number[] }>;
-  bars: Array<{ label: string; value: number }>;
+  bars: Array<{ label: string; value: number; quantidade: number }>;
 }
 
 const formatAverage = (value?: number, decimals = 1) => {
@@ -156,6 +156,150 @@ const classificarNivel = (proficiencia: number, niveis: Array<{level: number, mi
   return 0; // Fallback
 };
 
+// ✅ NOVA FUNÇÃO: Validar nível de proficiência por disciplina
+interface ValidacaoNivelResult {
+  nivel: number;
+  valido: boolean;
+  motivo?: string;
+  detalhes?: {
+    proficiencia: number;
+    disciplina: string;
+    curso: string;
+    nivelMaximo: number;
+    proficienciaMaximaEsperada: number;
+    intervaloUsado: { min: number; max: number | null };
+  };
+}
+
+const validarNivelProficiencia = (
+  proficiencia: number,
+  disciplina: string,
+  curso: string,
+  intervalos: Array<{level: number, min: number, max: number | null}>
+): ValidacaoNivelResult => {
+  const disciplinaNormalizada = normalizeText(disciplina);
+  const isMatematica = disciplinaNormalizada.includes('matematica') || disciplinaNormalizada.includes('matemática');
+  const isAnosFinais = curso?.toLowerCase().includes('anos finais') || curso?.toLowerCase().includes('ensino médio') || curso?.toLowerCase().includes('medio');
+  
+  // Determinar proficiência máxima esperada
+  let proficienciaMaximaEsperada: number;
+  if (isAnosFinais) {
+    proficienciaMaximaEsperada = isMatematica ? 425 : 400;
+  } else {
+    proficienciaMaximaEsperada = isMatematica ? 375 : 350;
+  }
+  
+  // Encontrar o nível máximo
+  const maxLevel = Math.max(...intervalos.map(i => i.level));
+  const nivelMaximo = intervalos.find(i => i.level === maxLevel);
+  
+  // Validar se a proficiência está dentro do range esperado
+  if (proficiencia < 0) {
+    return {
+      nivel: 0,
+      valido: false,
+      motivo: `Proficiência negativa: ${proficiencia}`,
+      detalhes: {
+        proficiencia,
+        disciplina,
+        curso,
+        nivelMaximo: maxLevel,
+        proficienciaMaximaEsperada,
+        intervaloUsado: { min: 0, max: null }
+      }
+    };
+  }
+  
+  if (proficiencia > proficienciaMaximaEsperada * 1.1) {
+    return {
+      nivel: maxLevel,
+      valido: false,
+      motivo: `Proficiência acima do máximo esperado: ${proficiencia} (máximo esperado: ${proficienciaMaximaEsperada})`,
+      detalhes: {
+        proficiencia,
+        disciplina,
+        curso,
+        nivelMaximo: maxLevel,
+        proficienciaMaximaEsperada,
+        intervaloUsado: nivelMaximo ? { min: nivelMaximo.min, max: nivelMaximo.max } : { min: 0, max: null }
+      }
+    };
+  }
+  
+  // Classificar o nível
+  const nivel = classificarNivel(proficiencia, intervalos);
+  
+  // Verificar se o nível está correto
+  const intervaloDoNivel = intervalos.find(i => i.level === nivel);
+  if (!intervaloDoNivel) {
+    return {
+      nivel,
+      valido: false,
+      motivo: `Nível ${nivel} não encontrado nos intervalos`,
+      detalhes: {
+        proficiencia,
+        disciplina,
+        curso,
+        nivelMaximo: maxLevel,
+        proficienciaMaximaEsperada,
+        intervaloUsado: { min: 0, max: null }
+      }
+    };
+  }
+  
+  // Validar se a proficiência está dentro do intervalo do nível calculado
+  const dentroDoIntervalo = proficiencia >= intervaloDoNivel.min && 
+    (intervaloDoNivel.max === null || proficiencia <= intervaloDoNivel.max);
+  
+  if (!dentroDoIntervalo) {
+    return {
+      nivel,
+      valido: false,
+      motivo: `Proficiência ${proficiencia} não está dentro do intervalo do nível ${nivel} (${intervaloDoNivel.min} - ${intervaloDoNivel.max ?? '∞'})`,
+      detalhes: {
+        proficiencia,
+        disciplina,
+        curso,
+        nivelMaximo: maxLevel,
+        proficienciaMaximaEsperada,
+        intervaloUsado: { min: intervaloDoNivel.min, max: intervaloDoNivel.max }
+      }
+    };
+  }
+  
+  // Se a proficiência está no máximo ou acima, deve ser o nível máximo
+  if (nivelMaximo && proficiencia >= nivelMaximo.min && (nivelMaximo.max === null || proficiencia <= nivelMaximo.max)) {
+    if (nivel !== maxLevel) {
+      return {
+        nivel: maxLevel,
+        valido: false,
+        motivo: `Proficiência ${proficiencia} está no intervalo do nível máximo (${maxLevel}) mas foi classificada como nível ${nivel}`,
+        detalhes: {
+          proficiencia,
+          disciplina,
+          curso,
+          nivelMaximo: maxLevel,
+          proficienciaMaximaEsperada,
+          intervaloUsado: { min: nivelMaximo.min, max: nivelMaximo.max }
+        }
+      };
+    }
+  }
+  
+  return {
+    nivel,
+    valido: true,
+    detalhes: {
+      proficiencia,
+      disciplina,
+      curso,
+      nivelMaximo: maxLevel,
+      proficienciaMaximaEsperada,
+      intervaloUsado: { min: intervaloDoNivel.min, max: intervaloDoNivel.max }
+    }
+  };
+};
+
 // Função para determinar qual conjunto de intervalos usar
 const obterIntervalosNiveis = (curso: string | undefined, disciplina: string): Array<{level: number, min: number, max: number | null}> => {
   const disciplinaNormalizada = normalizeText(disciplina);
@@ -196,9 +340,19 @@ const obterCorDisciplina = (nomeDisciplina: string, index: number): string => {
   return coresPaleta[index % coresPaleta.length];
 };
 
+const sanitizeFileName = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9-_]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toLowerCase();
+
 export default function RelatorioEscolar() {
   const { autoLogin, user } = useAuth();
   const [apiData, setApiData] = useState<NovaRespostaAPI | null>(null);
+  const [relatorioCompleto, setRelatorioCompleto] = useState<RelatorioCompleto | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingFilters, setIsLoadingFilters] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -267,13 +421,11 @@ export default function RelatorioEscolar() {
   // Calcular distribuição de níveis de proficiência dinamicamente
   const proficiencyDistributions = useMemo<ProficiencyDistribution[]>(() => {
     if (!apiData) {
-      console.log("📊 proficiencyDistributions: apiData não disponível");
       return [];
     }
 
     // Se tabela_detalhada não estiver disponível, retornar array vazio (gráficos não aparecerão)
     if (!apiData.tabela_detalhada) {
-      console.log("📊 proficiencyDistributions: tabela_detalhada não disponível ainda, aguardando carregamento...");
       return [];
     }
 
@@ -353,24 +505,13 @@ export default function RelatorioEscolar() {
 
     // Processar TODAS as disciplinas que têm dados em apiData.tabela_detalhada
     if (!apiData.tabela_detalhada.disciplinas || apiData.tabela_detalhada.disciplinas.length === 0) {
-      console.log("📊 proficiencyDistributions: Nenhuma disciplina encontrada na tabela_detalhada");
       return [];
     }
-
-    console.log("📊 proficiencyDistributions: Processando disciplinas", {
-      totalDisciplinas: apiData.tabela_detalhada.disciplinas.length,
-      disciplinas: apiData.tabela_detalhada.disciplinas.map(d => ({
-        nome: d.nome,
-        totalAlunos: d.alunos?.length || 0,
-        temQuestoes: d.questoes?.length || 0
-      }))
-    });
 
     return apiData.tabela_detalhada.disciplinas
       .filter(disciplinaData => {
         // ✅ VALIDADO: Filtrar disciplinas que têm alunos
         if (!disciplinaData.alunos || disciplinaData.alunos.length === 0) {
-          console.warn(`⚠️ Disciplina "${disciplinaData.nome}" não tem alunos ou array está vazio`);
           return false;
         }
         return true;
@@ -385,7 +526,6 @@ export default function RelatorioEscolar() {
         // ✅ VALIDADO: Obter intervalos corretos usando o nome exato da disciplina
         const intervalos = obterIntervalosNiveis(curso, nomeDisciplina);
         if (!intervalos || intervalos.length === 0) {
-          console.warn(`⚠️ Intervalos não encontrados para curso: ${curso}, disciplina: ${nomeDisciplina}`);
           return null;
         }
 
@@ -399,7 +539,7 @@ export default function RelatorioEscolar() {
 
         // ✅ MELHORADO: Filtrar apenas alunos que participaram da avaliação
         const alunosParticipantes = disciplinaData.alunos.filter((aluno) => {
-          // Verificar se o aluno tem proficiência válida
+          // ✅ VALIDAÇÃO: Garantir que está usando proficiência específica da disciplina (não geral)
           if (aluno.proficiencia === undefined || aluno.proficiencia === null || Number.isNaN(aluno.proficiencia)) {
             return false;
           }
@@ -416,14 +556,23 @@ export default function RelatorioEscolar() {
           return true;
         });
 
-        // Classificar cada aluno participante por nível usando a proficiência
+        // ✅ MELHORADO: Classificar cada aluno participante por nível usando validação rigorosa
         alunosParticipantes.forEach((aluno) => {
           const proficiencia = Number(aluno.proficiencia);
-          if (!Number.isNaN(proficiencia) && proficiencia >= 0) {
-            const nivel = classificarNivel(proficiencia, intervalos);
-            if (nivel >= 0 && nivel <= maxLevel) {
-              contagemPorNivel[nivel] = (contagemPorNivel[nivel] || 0) + 1;
-            }
+          
+          // ✅ VALIDAÇÃO: Garantir que a proficiência é válida
+          if (Number.isNaN(proficiencia) || proficiencia < 0) {
+            return;
+          }
+
+          // ✅ VALIDAÇÃO RIGOROSA: Usar função de validação
+          const validacao = validarNivelProficiencia(proficiencia, nomeDisciplina, curso, intervalos);
+
+          // Usar o nível da validação (que pode ter sido corrigido)
+          const nivel = validacao.nivel;
+          
+          if (nivel >= 0 && nivel <= maxLevel) {
+            contagemPorNivel[nivel] = (contagemPorNivel[nivel] || 0) + 1;
           }
         });
 
@@ -435,7 +584,7 @@ export default function RelatorioEscolar() {
 
         // ✅ VALIDADO: Calcular percentuais corretamente
         const percentuaisPorNivel: number[] = [];
-        const bars: Array<{ label: string; value: number }> = [];
+        const bars: Array<{ label: string; value: number; quantidade: number }> = [];
         let somaPercentuais = 0;
 
         for (let i = 0; i <= maxLevel; i++) {
@@ -448,13 +597,14 @@ export default function RelatorioEscolar() {
           
           bars.push({
             label: `Nível ${i}`,
-            value: percentualArredondado
+            value: percentualArredondado,
+            quantidade: quantidade
           });
         }
 
         // Validar que a soma dos percentuais está próxima de 100% (com tolerância para arredondamento)
         if (Math.abs(somaPercentuais - 100) > 1) {
-          console.warn(`⚠️ Soma de percentuais = ${somaPercentuais.toFixed(2)}% para disciplina ${nomeDisciplina}. Total de alunos: ${totalAlunos}`);
+          // Soma de percentuais não está próxima de 100%, mas não vamos logar
         }
 
         // Obter cor da disciplina
@@ -568,15 +718,121 @@ export default function RelatorioEscolar() {
   const allRequiredFiltersSelected = selectedState !== 'all' && selectedMunicipality !== 'all' && selectedEvaluation !== 'all';
 
   const classSummaryRows = useMemo<ClassSummaryRow[]>(() => {
+    // ✅ PRIORIDADE: Usar dados do relatório completo se disponível (dados agregados corretos)
+    if (relatorioCompleto) {
+      const turmasMap = new Map<string, ClassSummaryRow>();
+      
+      // Processar dados de nota_geral e proficiencia por turma
+      Object.entries(relatorioCompleto.nota_geral.por_disciplina).forEach(([disciplina, dadosDisciplina]) => {
+        const disciplinaLower = disciplina.toLowerCase();
+        const isPortugues = disciplinaLower.includes('português') || disciplinaLower.includes('portugues');
+        const isMatematica = disciplinaLower.includes('matemática') || disciplinaLower.includes('matematica');
+        
+        if (dadosDisciplina.por_turma) {
+          dadosDisciplina.por_turma.forEach(turmaData => {
+            const turmaNome = turmaData.turma;
+            if (!turmasMap.has(turmaNome)) {
+              turmasMap.set(turmaNome, {
+                turma: turmaNome,
+                serie: turmaNome.split(' ')[0] || '-',
+                mediaLP: undefined,
+                mediaMAT: undefined,
+                mediaGeral: undefined,
+                proficienciaMedia: undefined,
+                matriculados: undefined,
+                avaliados: undefined,
+                comparecimento: undefined
+              });
+            }
+            
+            const row = turmasMap.get(turmaNome)!;
+            if (isPortugues) {
+              row.mediaLP = turmaData.nota;
+            } else if (isMatematica) {
+              row.mediaMAT = turmaData.nota;
+            }
+            
+            // Se for GERAL, usar como média geral
+            if (disciplina === 'GERAL') {
+              row.mediaGeral = turmaData.nota;
+            }
+          });
+        }
+      });
+      
+      // Processar proficiência por turma - coletar todas as proficiências primeiro
+      const proficienciasPorTurma = new Map<string, number[]>();
+      Object.entries(relatorioCompleto.proficiencia.por_disciplina).forEach(([disciplina, dadosDisciplina]) => {
+        if (dadosDisciplina.por_turma) {
+          dadosDisciplina.por_turma.forEach(turmaData => {
+            const turmaNome = turmaData.turma;
+            if (!proficienciasPorTurma.has(turmaNome)) {
+              proficienciasPorTurma.set(turmaNome, []);
+            }
+            proficienciasPorTurma.get(turmaNome)!.push(turmaData.proficiencia);
+          });
+        }
+      });
+      
+      // Calcular média de proficiência para cada turma
+      proficienciasPorTurma.forEach((proficiencias, turmaNome) => {
+        const row = turmasMap.get(turmaNome);
+        if (row && proficiencias.length > 0) {
+          row.proficienciaMedia = proficiencias.reduce((sum, p) => sum + p, 0) / proficiencias.length;
+        }
+      });
+      
+      // Se não encontrou proficiência por disciplina, usar GERAL
+      if (relatorioCompleto.proficiencia.por_disciplina['GERAL']?.por_turma) {
+        relatorioCompleto.proficiencia.por_disciplina['GERAL'].por_turma.forEach(turmaData => {
+          const row = turmasMap.get(turmaData.turma);
+          if (row && row.proficienciaMedia === undefined) {
+            row.proficienciaMedia = turmaData.proficiencia;
+          }
+        });
+      }
+      
+      // Processar dados de comparecimento de total_alunos.por_turma
+      if (relatorioCompleto.total_alunos.por_turma) {
+        relatorioCompleto.total_alunos.por_turma.forEach(turmaAlunos => {
+          const row = turmasMap.get(turmaAlunos.turma);
+          if (row) {
+            row.matriculados = turmaAlunos.matriculados;
+            row.avaliados = turmaAlunos.avaliados;
+            row.comparecimento = turmaAlunos.percentual;
+          }
+        });
+      }
+      
+      // Calcular média geral se não foi definida
+      Array.from(turmasMap.values()).forEach(row => {
+        if (row.mediaGeral === undefined && (row.mediaLP !== undefined || row.mediaMAT !== undefined)) {
+          const mediasDisciplinas = [row.mediaLP, row.mediaMAT].filter((m): m is number => m !== undefined);
+          if (mediasDisciplinas.length > 0) {
+            row.mediaGeral = mediasDisciplinas.reduce((sum, m) => sum + m, 0) / mediasDisciplinas.length;
+          }
+        }
+        
+        // Calcular nível de proficiência
+        if (row.proficienciaMedia !== undefined) {
+          const level = getProficiencyLevel(row.proficienciaMedia, row.serie, row.turma);
+          row.proficiencyLevel = level;
+          row.proficiencyLabel = getProficiencyLevelLabel(level);
+          row.proficiencyColor = getProficiencyLevelColor(level);
+        }
+      });
+      
+      const sortedRows = Array.from(turmasMap.values()).sort((a, b) => 
+        a.turma.localeCompare(b.turma, 'pt-BR', { sensitivity: 'base' })
+      );
+      
+      return sortedRows;
+    }
+    
+    // Fallback: usar dados de tabela_detalhada se relatório completo não estiver disponível
     if (!apiData || !apiData.tabela_detalhada) {
-      console.log("📊 classSummaryRows: apiData ou tabela_detalhada não disponível");
       return [];
     }
-
-    console.log("📊 classSummaryRows: Processando dados de tabela_detalhada", {
-      isMunicipalView,
-      totalDisciplinas: apiData.tabela_detalhada.disciplinas?.length || 0
-    });
 
     // ✅ NOVO: Processar dados reais de tabela_detalhada
     if (isMunicipalView) {
@@ -702,7 +958,6 @@ export default function RelatorioEscolar() {
       });
 
       const sortedRows = rows.sort((a, b) => a.turma.localeCompare(b.turma, 'pt-BR', { sensitivity: 'base' }));
-      console.log(`📊 classSummaryRows (municipal): ${sortedRows.length} escolas processadas`);
       return sortedRows;
     }
 
@@ -828,9 +1083,8 @@ export default function RelatorioEscolar() {
     });
 
     const sortedRows = rows.sort((a, b) => a.turma.localeCompare(b.turma, 'pt-BR', { sensitivity: 'base' }));
-    console.log(`📊 classSummaryRows (escola): ${sortedRows.length} turmas processadas`);
     return sortedRows;
-  }, [apiData, isMunicipalView]);
+  }, [apiData, isMunicipalView, relatorioCompleto]);
 
   const distributionCharts = useMemo<DistributionChartData[]>(() => {
     if (!apiData || !apiData.resultados_por_disciplina) return [];
@@ -875,6 +1129,61 @@ export default function RelatorioEscolar() {
   }, [apiData]);
 
   const summaryStats = useMemo(() => {
+    // ✅ PRIORIDADE: Usar dados do relatório completo se disponível
+    if (relatorioCompleto) {
+      const portuguesNota = relatorioCompleto.nota_geral.por_disciplina['Português']?.media_geral 
+        || relatorioCompleto.nota_geral.por_disciplina['Língua Portuguesa']?.media_geral
+        || Object.entries(relatorioCompleto.nota_geral.por_disciplina).find(([key]) => 
+          key.toLowerCase().includes('português') || key.toLowerCase().includes('portugues')
+        )?.[1]?.media_geral;
+      
+      const matematicaNota = relatorioCompleto.nota_geral.por_disciplina['Matemática']?.media_geral
+        || Object.entries(relatorioCompleto.nota_geral.por_disciplina).find(([key]) => 
+          key.toLowerCase().includes('matemática') || key.toLowerCase().includes('matematica')
+        )?.[1]?.media_geral;
+      
+      const geralNota = relatorioCompleto.nota_geral.por_disciplina['GERAL']?.media_geral;
+      
+      const portuguesProf = relatorioCompleto.proficiencia.por_disciplina['Português']?.media_geral
+        || relatorioCompleto.proficiencia.por_disciplina['Língua Portuguesa']?.media_geral
+        || Object.entries(relatorioCompleto.proficiencia.por_disciplina).find(([key]) => 
+          key.toLowerCase().includes('português') || key.toLowerCase().includes('portugues')
+        )?.[1]?.media_geral;
+      
+      const matematicaProf = relatorioCompleto.proficiencia.por_disciplina['Matemática']?.media_geral
+        || Object.entries(relatorioCompleto.proficiencia.por_disciplina).find(([key]) => 
+          key.toLowerCase().includes('matemática') || key.toLowerCase().includes('matematica')
+        )?.[1]?.media_geral;
+      
+      const proficienciasValidas = [portuguesProf, matematicaProf].filter((p): p is number => p !== undefined);
+      const proficienciaMedia = proficienciasValidas.length > 0
+        ? proficienciasValidas.reduce((sum, p) => sum + p, 0) / proficienciasValidas.length
+        : relatorioCompleto.proficiencia.por_disciplina['GERAL']?.media_geral ?? null;
+      
+      const totalGeral = relatorioCompleto.total_alunos.total_geral;
+      const totalMatriculados = totalGeral?.matriculados ?? null;
+      const totalAvaliados = totalGeral?.avaliados ?? null;
+      const comparecimentoGeral = totalGeral?.percentual ?? null;
+      
+      const serieRef = classSummaryRows[0]?.serie;
+      const proficiencyLevel = proficienciaMedia !== null && proficienciaMedia !== undefined
+        ? getProficiencyLevel(proficienciaMedia, serieRef, undefined)
+        : null;
+      
+      return {
+        mediaLP: portuguesNota ?? null,
+        mediaMAT: matematicaNota ?? null,
+        mediaGeral: geralNota ?? null,
+        proficienciaMedia,
+        proficiencyLevel,
+        proficiencyLabel: proficiencyLevel ? getProficiencyLevelLabel(proficiencyLevel) : null,
+        proficiencyColor: proficiencyLevel ? getProficiencyLevelColor(proficiencyLevel) : null,
+        totalMatriculados,
+        totalAvaliados,
+        comparecimentoGeral
+      };
+    }
+    
     if (!apiData) return null;
 
     // ✅ NOVO: Usar dados reais de resultados_por_disciplina e estatisticas_gerais
@@ -939,12 +1248,11 @@ export default function RelatorioEscolar() {
       totalAvaliados,
       comparecimentoGeral
     };
-  }, [apiData, classSummaryRows]);
+  }, [apiData, classSummaryRows, relatorioCompleto]);
 
 
 
-  // Função para baixar relatório PDF
-  const downloadReport = async () => {
+  const handleDownloadReport = useCallback(async () => {
     if (!selectedEvaluation || !apiData) {
       toast({
         title: "Dados insuficientes",
@@ -954,13 +1262,16 @@ export default function RelatorioEscolar() {
       return;
     }
     
-    // Validar acesso baseado na hierarquia
     if (userHierarchyContext && user?.role) {
-      const validation = validateReportAccess(user.role, {
+      const validation = validateReportAccess(
+        user.role,
+        {
         state: selectedState,
         municipality: selectedMunicipality,
         school: selectedSchool
-      }, userHierarchyContext);
+        },
+        userHierarchyContext
+      );
 
       if (!validation.isValid) {
         toast({
@@ -972,105 +1283,585 @@ export default function RelatorioEscolar() {
       }
     }
 
-    try {
       setIsGeneratingReport(true);
 
-      const chartsPayload = distributionCharts.map(chart => {
-        return {
-          title: chart.title,
-          total: chart.total || 0,
-          segments: chart.segments.map(segment => ({
-            label: segment.label,
-            value: segment.value,
-            percentage: segment.percentage,
-            color: segment.color
-          }))
-        };
-      });
+    try {
+      const jsPDF = (await import('jspdf')).default;
+      const autoTable = (await import('jspdf-autotable')).default;
 
-      const classRowsPayload = classSummaryRows.map(row => ({
-        turma: row.turma,
-        media_lp: row.mediaLP ?? null,
-        media_mat: row.mediaMAT ?? null,
-        media_geral: row.mediaGeral ?? null,
-        comparecimento: row.comparecimento ?? null,
-        proficiencia_media: row.proficienciaMedia ?? null,
-        proficiency_label: row.proficiencyLabel ?? null,
-        proficiency_level: row.proficiencyLevel ?? null
-      }));
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      
+      let pageCount = 0;
+      const margin = 15;
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
 
-      const payload = {
-        evaluation: {
-          id: selectedEvaluation !== 'all' ? selectedEvaluation : null,
-          title: apiData.estatisticas_gerais?.nome ?? null,
-          description: null
-        },
-        summary: {
-          media_lp: summaryStats.mediaLP,
-          media_mat: summaryStats.mediaMAT,
-          media_geral: summaryStats.mediaGeral,
-          proficiencia_media: summaryStats.proficienciaMedia,
-          proficiency_label: summaryStats.proficiencyLabel,
-          proficiency_level: summaryStats.proficiencyLevel,
-          total_matriculados: summaryStats.totalMatriculados,
-          total_avaliados: summaryStats.totalAvaliados,
-          comparecimento: summaryStats.comparecimentoGeral
-        },
-        totals: {
-          matriculados: apiData.estatisticas_gerais?.total_alunos ?? null,
-          avaliados: apiData.estatisticas_gerais?.alunos_participantes ?? null,
-          percentual: apiData.estatisticas_gerais?.total_alunos && apiData.estatisticas_gerais?.alunos_participantes 
-            ? (apiData.estatisticas_gerais.alunos_participantes / apiData.estatisticas_gerais.total_alunos) * 100 
-            : null
-        },
-        classes: classRowsPayload,
-        charts: chartsPayload,
-        metadata: {
-          scope: selectedSchool === 'all' ? 'municipio' : 'escola',
-          state_id: selectedState,
-          municipality_id: selectedMunicipality,
-          school_id: selectedSchool,
-          school_name: selectedSchoolInfo?.name ?? null,
-          evaluation_id: selectedEvaluation
-        }
+      // Função auxiliar: Adicionar rodapé
+      const addFooter = (pageNum: number) => {
+        const centerX = pageWidth / 2;
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(156, 163, 175);
+        doc.text('AFIRME EDUCACIONAL', margin, pageHeight - 10);
+        doc.text(`Página ${pageNum}`, centerX, pageHeight - 10, { align: 'center' });
+        doc.text(new Date().toLocaleString('pt-BR'), pageWidth - margin, pageHeight - 10, { align: 'right' });
       };
 
-      const response = await api.post('/reports/relatorios/relatorio-escolar-pdf', payload, {
-        responseType: 'blob'
-      });
+      // Função auxiliar: Obter cor para badges de proficiência
+      const generateClassificationColor = (label: string): [number, number, number] => {
+        const labelLower = label.toLowerCase();
+        if (labelLower.includes('avançado')) return [22, 163, 74]; // Verde escuro
+        if (labelLower.includes('adequado')) return [132, 204, 22]; // Verde lima
+        if (labelLower.includes('básico')) return [251, 191, 36]; // Amarelo
+        if (labelLower.includes('abaixo')) return [239, 68, 68]; // Vermelho
+        return [156, 163, 175]; // Cinza padrão
+      };
 
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      const blobUrl = window.URL.createObjectURL(blob);
+      // Função auxiliar: Adicionar cabeçalho institucional
+      const addHeader = (): number => {
+        let y = 20;
+        const centerX = pageWidth / 2;
 
-      const link = document.createElement('a');
-      link.href = blobUrl;
+        // Município + UF
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(55, 65, 81);
+        const municipalityName = apiData.estatisticas_gerais?.municipio || selectedMunicipality;
+        const stateName = apiData.estatisticas_gerais?.estado || (selectedState !== 'all' ? selectedState : 'AL');
+        const municipalityText = `${municipalityName?.toUpperCase() || 'MUNICÍPIO'} - ${stateName}`;
+        doc.text(municipalityText, centerX, y, { align: 'center', maxWidth: pageWidth - 2 * margin });
+        y += 5;
 
-      const evaluationName = apiData?.estatisticas_gerais?.nome || 'relatorio_escolar';
-      const sanitizedName = evaluationName.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_').toLowerCase();
-      const fileName = `relatorio_escolar_${sanitizedName}_${new Date().toISOString().split('T')[0]}.pdf`;
-      link.download = fileName;
+        // Secretaria
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(107, 114, 128);
+        doc.text('SECRETARIA MUNICIPAL DE EDUCAÇÃO', centerX, y, { align: 'center' });
+        y += 6;
 
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(blobUrl);
+        // Nome da escola ou "RELATÓRIO MUNICIPAL"
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(55, 65, 81);
+        const schoolLabel = isMunicipalView 
+          ? 'RELATÓRIO MUNICIPAL' 
+          : (selectedSchoolInfo?.name || 'ESCOLA SELECIONADA').toUpperCase();
+        doc.text(schoolLabel, centerX, y, { align: 'center', maxWidth: pageWidth - 2 * margin });
+        y += 5;
+
+        // Nome da avaliação
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(107, 114, 128);
+        const evaluationName = apiData.estatisticas_gerais?.nome || 'AVALIAÇÃO';
+        doc.text(evaluationName.toUpperCase(), centerX, y, { align: 'center', maxWidth: pageWidth - 2 * margin });
+        y += 10;
+
+        return y;
+      };
+
+      // ===== PÁGINA 1: Cards de resumo + Tabela de desempenho =====
+      pageCount++;
+      let startY = addHeader();
+
+      // Cards de resumo (grid 2x2)
+      if (summaryStats) {
+        const cardWidth = (pageWidth - 2 * margin - 5) / 2;
+        const cardHeight = 28;
+        const gap = 5;
+
+        const cards = [
+          { 
+            label: 'MÉDIA GERAL LP', 
+            value: formatAverage(summaryStats.mediaLP),
+            badge: 'LP',
+            badgeBg: [237, 233, 254],
+            badgeText: [124, 58, 237]
+          },
+          { 
+            label: 'MÉDIA GERAL MAT', 
+            value: formatAverage(summaryStats.mediaMAT),
+            badge: 'MAT',
+            badgeBg: [254, 243, 199],
+            badgeText: [217, 119, 6]
+          },
+          { 
+            label: 'MÉDIA GERAL', 
+            value: formatAverage(summaryStats.mediaGeral),
+            badge: 'Todas',
+            badgeBg: [224, 231, 255],
+            badgeText: [79, 70, 229]
+          },
+          { 
+            label: 'PROFICIÊNCIA MÉDIA', 
+            value: formatProficiency(summaryStats.proficienciaMedia),
+            badge: summaryStats.proficiencyLabel || '--',
+            badgeBg: summaryStats.proficiencyLabel ? generateClassificationColor(summaryStats.proficiencyLabel) : [229, 231, 235],
+            badgeText: [255, 255, 255]
+          }
+        ];
+
+        cards.forEach((card, index) => {
+          const row = Math.floor(index / 2);
+          const col = index % 2;
+          const x = margin + col * (cardWidth + gap);
+          const y = startY + row * (cardHeight + gap);
+
+          // Card background
+          doc.setFillColor(255, 255, 255);
+          doc.setDrawColor(229, 231, 235);
+          doc.setLineWidth(0.1);
+          doc.roundedRect(x, y, cardWidth, cardHeight, 2, 2, 'FD');
+
+          // Card header
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(8);
+          doc.setTextColor(107, 114, 128);
+          doc.text(card.label, x + 3, y + 5, { maxWidth: cardWidth - 6 });
+
+          // Card value
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(20);
+          doc.setTextColor(17, 24, 39);
+          doc.text(card.value, x + 3, y + 17);
+
+          // Badge
+          const badgeBgColor = Array.isArray(card.badgeBg) ? card.badgeBg : [card.badgeBg];
+          const badgeTextColor = Array.isArray(card.badgeText) ? card.badgeText : [card.badgeText];
+          
+          // Calcular largura do badge baseado no texto
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(8);
+          const badgeTextWidth = doc.getTextWidth(card.badge);
+          const badgeWidth = Math.max(20, badgeTextWidth + 6);
+          
+          doc.setFillColor(badgeBgColor[0], badgeBgColor[1], badgeBgColor[2]);
+          doc.roundedRect(x + 3, y + 20, badgeWidth, 5, 1, 1, 'F');
+          doc.setTextColor(badgeTextColor[0], badgeTextColor[1], badgeTextColor[2]);
+          doc.text(card.badge, x + 3 + badgeWidth / 2, y + 23.5, { align: 'center' });
+        });
+
+        startY += 2 * (cardHeight + gap) + 5;
+      }
+
+      // Título da seção
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.setTextColor(124, 58, 237);
+      const sectionTitle = `Desempenho por ${isMunicipalView ? 'Escola' : 'Turma'}`;
+      doc.text(sectionTitle, margin, startY, { maxWidth: pageWidth - 2 * margin });
+      startY += 8;
+
+      // Tabela de desempenho
+      if (classSummaryRows.length > 0) {
+        const tableData: (string | number)[][] = [];
+        
+        classSummaryRows.forEach(row => {
+          // Truncar nomes muito longos
+          const turmaName = row.turma.length > 35 ? row.turma.substring(0, 32) + '...' : row.turma;
+          tableData.push([
+            turmaName,
+            formatAverage(row.mediaLP),
+            formatAverage(row.mediaMAT),
+            formatAverage(row.mediaGeral),
+            formatPercentageValue(row.comparecimento),
+            formatProficiency(row.proficienciaMedia),
+            row.proficiencyLabel || '--'
+          ]);
+        });
+
+        // Adicionar linha total
+        if (summaryStats) {
+          tableData.push([
+            isMunicipalView ? 'Total Município' : 'Total Escola',
+            formatAverage(summaryStats.mediaLP),
+            formatAverage(summaryStats.mediaMAT),
+            formatAverage(summaryStats.mediaGeral),
+            formatPercentageValue(summaryStats.comparecimentoGeral),
+            formatProficiency(summaryStats.proficienciaMedia),
+            summaryStats.proficiencyLabel || '--'
+          ]);
+        }
+
+        autoTable(doc, {
+          startY: startY,
+          head: [[
+            isMunicipalView ? 'ESCOLA' : 'TURMA',
+            'MÉDIA LP',
+            'MÉDIA MAT',
+            'MÉDIA GERAL',
+            'COMPAREC.',
+            'PROFIC. MÉDIA',
+            'NÍVEL PROFIC.'
+          ]],
+          body: tableData,
+          theme: 'grid',
+          margin: { left: margin, right: margin },
+          styles: {
+            fontSize: 8,
+            cellPadding: 2.5,
+            lineColor: [229, 231, 235],
+            lineWidth: 0.1,
+            valign: 'middle',
+            overflow: 'linebreak'
+          },
+          headStyles: {
+            fillColor: [124, 58, 237],
+            textColor: [255, 255, 255],
+            fontStyle: 'bold',
+            halign: 'center',
+            fontSize: 8
+          },
+          bodyStyles: { textColor: [55, 65, 81] },
+          alternateRowStyles: { fillColor: [248, 250, 252] },
+          columnStyles: {
+            0: { halign: 'left', fontStyle: 'bold', cellWidth: 'auto', minCellWidth: 32 },
+            1: { halign: 'center', cellWidth: 17 },
+            2: { halign: 'center', cellWidth: 17 },
+            3: { halign: 'center', cellWidth: 19 },
+            4: { halign: 'center', cellWidth: 19 },
+            5: { halign: 'center', cellWidth: 20 },
+            6: { halign: 'center', cellWidth: 'auto', minCellWidth: 30 }
+          },
+          didDrawCell: (data) => {
+            // Colorir última coluna (Nível Proficiência)
+            if (data.section === 'body' && data.column.index === 6) {
+              const textValue = (Array.isArray(data.cell.text) ? data.cell.text[0] : data.cell.text || '').toString().trim();
+              
+              if (textValue !== '--') {
+                const [r, g, b] = generateClassificationColor(textValue);
+                
+                doc.setFillColor(r, g, b);
+                doc.roundedRect(data.cell.x + 1.5, data.cell.y + 1.5, data.cell.width - 3, data.cell.height - 3, 2, 2, 'F');
+                
+                doc.setTextColor(255, 255, 255);
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(7);
+                doc.text(
+                  textValue,
+                  data.cell.x + data.cell.width / 2,
+                  data.cell.y + data.cell.height / 2 + 2,
+                  { align: 'center', maxWidth: data.cell.width - 4 }
+                );
+              }
+            }
+
+            // Destacar linha total
+            if (data.section === 'body' && data.row.index === tableData.length - 1) {
+              if (data.column.index < 6) {
+                data.cell.styles.fillColor = [238, 242, 255];
+                data.cell.styles.fontStyle = 'bold';
+              }
+            }
+          }
+        });
+      }
+
+      addFooter(pageCount);
+
+      // ===== PÁGINA 2: Gráficos de distribuição por classificação =====
+      if (distributionCharts.length > 0) {
+        doc.addPage();
+        pageCount++;
+        
+        let yPos = addHeader();
+
+        // Título da seção
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(14);
+        doc.setTextColor(124, 58, 237);
+        doc.text('Distribuição Percentual por Nível de Proficiência', margin, yPos, { maxWidth: pageWidth - 2 * margin });
+        yPos += 10;
+
+        distributionCharts.forEach((chart, chartIndex) => {
+          // Calcular altura necessária para o gráfico
+          const numSegments = chart.segments.length;
+          const barHeight = 14; // Aumentado de 10 para 14 (barras mais robustas)
+          const barGap = 5;
+          const chartHeight = 18 + (numSegments * (barHeight + barGap)) + 12;
+          
+          // Verificar se precisa de nova página
+          if (yPos + chartHeight + 10 > pageHeight - 20) {
+            addFooter(pageCount);
+            doc.addPage();
+            pageCount++;
+            yPos = addHeader() + 10;
+          }
+
+          // Card do gráfico com sombra mais profissional
+          doc.setFillColor(255, 255, 255);
+          doc.setDrawColor(229, 231, 235);
+          doc.setLineWidth(0.2);
+          doc.roundedRect(margin, yPos, pageWidth - 2 * margin, chartHeight, 3, 3, 'FD');
+
+          // Título do gráfico
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(11);
+          doc.setTextColor(17, 24, 39);
+          doc.text(chart.title, pageWidth / 2, yPos + 9, { align: 'center', maxWidth: pageWidth - 2 * margin - 10 });
+
+          let barY = yPos + 18;
+          const maxValue = Math.max(...chart.segments.map(s => s.value), 1);
+
+          chart.segments.forEach((segment) => {
+            const labelWidth = 48;
+            const barStartX = margin + 10 + labelWidth;
+            const barMaxWidth = pageWidth - 2 * margin - labelWidth - 42;
+            const barWidth = (segment.value / maxValue) * barMaxWidth;
+
+            // Label
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            doc.setTextColor(55, 65, 81);
+            const labelText = segment.label.length > 18 ? segment.label.substring(0, 16) + '...' : segment.label;
+            doc.text(labelText, margin + 10, barY + 9);
+
+            // Extrair cor RGB
+            const hexColor = segment.color;
+            const r = parseInt(hexColor.slice(1, 3), 16);
+            const g = parseInt(hexColor.slice(3, 5), 16);
+            const b = parseInt(hexColor.slice(5, 7), 16);
+
+            // Barra com estilo mais profissional
+            if (segment.value > 0) {
+              // Sombra sutil da barra
+              doc.setFillColor(r * 0.8, g * 0.8, b * 0.8);
+              doc.rect(barStartX + 0.5, barY + 0.5, Math.max(barWidth, 3), barHeight, 'F');
+              
+              // Barra principal com bordas retas (mais profissional)
+              doc.setFillColor(r, g, b);
+              doc.rect(barStartX, barY, Math.max(barWidth, 3), barHeight, 'F');
+
+              // Borda da barra
+              doc.setDrawColor(r * 0.7, g * 0.7, b * 0.7);
+              doc.setLineWidth(0.3);
+              doc.rect(barStartX, barY, Math.max(barWidth, 3), barHeight);
+
+              // Valor dentro da barra (se houver espaço)
+              if (barWidth > 25) {
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(9);
+                doc.setTextColor(255, 255, 255);
+                doc.text(segment.value.toString(), barStartX + barWidth - 5, barY + 9, { align: 'right' });
+              }
+            } else {
+              // Barra vazia (apenas contorno)
+              doc.setDrawColor(200, 200, 200);
+              doc.setLineWidth(0.5);
+              doc.rect(barStartX, barY, 3, barHeight);
+            }
+
+            // Quantidade e Percentual fora da barra
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.setTextColor(55, 65, 81);
+            const valueText = segment.value > 0 && barWidth <= 25 ? `${segment.value} ` : '';
+            doc.text(`${valueText}(${segment.percentage.toFixed(1)}%)`, barStartX + barMaxWidth + 5, barY + 9);
+
+            barY += barHeight + barGap;
+          });
+
+          // Total com destaque
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(9);
+          doc.setTextColor(107, 114, 128);
+          doc.text(`Total: ${chart.total} alunos`, pageWidth / 2, yPos + chartHeight - 5, { align: 'center' });
+
+          yPos += chartHeight + 12;
+        });
+
+        // Resumo de totais
+        if (summaryStats) {
+          if (yPos + 15 > pageHeight - 20) {
+            addFooter(pageCount);
+            doc.addPage();
+            pageCount++;
+            yPos = addHeader() + 10;
+          }
+
+          doc.setFillColor(255, 255, 255);
+          doc.setDrawColor(229, 231, 235);
+          doc.roundedRect(margin, yPos, pageWidth - 2 * margin, 12, 2, 2, 'FD');
+          
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(9);
+          doc.setTextColor(107, 114, 128);
+          const totalText = `Matrículas: ${summaryStats.totalMatriculados || 0} · Avaliados: ${summaryStats.totalAvaliados || 0} · Comparecimento: ${formatPercentageValue(summaryStats.comparecimentoGeral)}`;
+          doc.text(totalText, pageWidth / 2, yPos + 7.5, { align: 'center' });
+        }
+
+        addFooter(pageCount);
+      }
+
+      // ===== PÁGINAS 3+: Distribuição por níveis de proficiência =====
+      if (proficiencyDistributions.length > 0) {
+        proficiencyDistributions.forEach((distribution) => {
+          doc.addPage();
+          pageCount++;
+          
+          let yPos = addHeader();
+
+          // Título
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(14);
+          doc.setTextColor(17, 24, 39);
+          doc.text(distribution.title, pageWidth / 2, yPos, { align: 'center', maxWidth: pageWidth - 2 * margin });
+          yPos += 12;
+
+          // Tabela de percentuais
+          const tableBody = distribution.rows.map(row => [
+            row.label,
+            ...row.data.map(v => `${v.toFixed(2)}%`)
+          ]);
+
+          const hexColor = distribution.color;
+          const r = parseInt(hexColor.slice(1, 3), 16);
+          const g = parseInt(hexColor.slice(3, 5), 16);
+          const b = parseInt(hexColor.slice(5, 7), 16);
+
+          // Definir largura da primeira coluna (label)
+          const labelColumnWidth = 50;
+          
+          autoTable(doc, {
+            startY: yPos,
+            head: [['', ...distribution.columns]],
+            body: tableBody,
+            theme: 'grid',
+            margin: { left: margin, right: margin },
+            styles: {
+              fontSize: 9,
+              cellPadding: 2,
+              halign: 'center',
+              valign: 'middle'
+            },
+            headStyles: {
+              fillColor: [r, g, b],
+              textColor: [255, 255, 255],
+              fontStyle: 'bold',
+              fontSize: 9
+            },
+            columnStyles: {
+              0: { halign: 'left', fontStyle: 'bold', cellWidth: labelColumnWidth }
+            },
+            bodyStyles: { textColor: [55, 65, 81] },
+            alternateRowStyles: { fillColor: [248, 250, 252] }
+          });
+
+          const finalY = ((doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || yPos) + 10;
+
+          // Gráfico de barras verticais (verificar espaço disponível)
+          const requiredSpace = 110; // Espaço necessário para o gráfico
+          let chartStartY = finalY;
+          
+          // Se não há espaço suficiente, criar nova página
+          if (finalY + requiredSpace > pageHeight - 20) {
+            addFooter(pageCount);
+            doc.addPage();
+            pageCount++;
+            chartStartY = addHeader() + 10;
+          }
+
+          const chartHeight = 80;
+          const barCount = distribution.bars.length;
+          
+          // Calcular área disponível para as barras (excluindo a primeira coluna de label)
+          const availableWidth = pageWidth - 2 * margin - labelColumnWidth;
+          
+          // Calcular largura de cada barra para alinhar com as colunas da tabela
+          const barWidth = availableWidth / barCount;
+          const barPadding = barWidth * 0.15; // 15% de padding em cada lado
+          const actualBarWidth = barWidth - (2 * barPadding);
+          
+          const maxValue = Math.max(...distribution.bars.map(b => b.value), 1);
+          
+          // Desenhar linha vertical sutil para marcar o início da área de dados (alinhamento visual)
+          doc.setDrawColor(229, 231, 235);
+          doc.setLineWidth(0.5);
+          doc.line(margin + labelColumnWidth, chartStartY - 2, margin + labelColumnWidth, chartStartY + chartHeight + 8);
+          
+          // Label do eixo Y (à esquerda das barras)
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(8);
+          doc.setTextColor(107, 114, 128);
+          doc.text('Percentual', margin + 2, chartStartY + chartHeight / 2, { angle: 90 });
+
+          distribution.bars.forEach((bar, index) => {
+            // Alinhar com as colunas da tabela
+            const barX = margin + labelColumnWidth + (index * barWidth) + barPadding;
+            const barHeight = (bar.value / maxValue) * chartHeight;
+            const barY = chartStartY + chartHeight - barHeight;
+
+            // Quantidade acima da barra
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8);
+            doc.setTextColor(107, 114, 128);
+            const quantityText = `${bar.quantidade || 0}`;
+            doc.text(quantityText, barX + actualBarWidth / 2, Math.max(chartStartY + 5, barY - 2), { align: 'center' });
+
+            // Fundo da barra
+            doc.setFillColor(241, 245, 249);
+            doc.rect(barX, chartStartY, actualBarWidth, chartHeight, 'F');
+
+            // Barra colorida
+            if (barHeight > 0) {
+              doc.setFillColor(r, g, b);
+              doc.rect(barX, barY, actualBarWidth, Math.max(barHeight, 2), 'F');
+            }
+
+            // Label do nível (alinhado com a coluna)
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8);
+            doc.setTextColor(55, 65, 81);
+            doc.text(bar.label, barX + actualBarWidth / 2, chartStartY + chartHeight + 5, { align: 'center' });
+          });
+
+          addFooter(pageCount);
+        });
+      }
+
+      // Salvar PDF
+      const evaluationName = apiData.estatisticas_gerais?.nome || "relatorio_escolar";
+      const scopeLabel = isMunicipalView
+        ? `municipio_${selectedMunicipality !== "all" ? selectedMunicipality : "todos"}`
+        : `escola_${selectedSchoolInfo?.name || selectedSchool || "selecionada"}`;
+
+      const fileName = `relatorio_escolar_${sanitizeFileName(evaluationName)}_${sanitizeFileName(scopeLabel)}_${new Date()
+        .toISOString()
+        .split("T")[0]}.pdf`;
+
+      doc.save(fileName);
 
       toast({
-        title: "Relatório Baixado com Sucesso",
-        description: "O relatório escolar foi salvo no seu dispositivo.",
+        title: "Relatório gerado com sucesso",
+        description: `O PDF "${fileName}" foi criado com sucesso.`
       });
 
     } catch (error) {
-      console.error("Erro ao baixar relatório:", error);
+      console.error("Erro ao gerar relatório:", error);
       toast({
-        title: "Erro ao Baixar Relatório",
-        description: "Não foi possível baixar o relatório. Tente novamente.",
-        variant: "destructive",
+        title: "Erro ao gerar PDF",
+        description: "Não foi possível criar o arquivo. Tente novamente.",
+        variant: "destructive"
       });
     } finally {
       setIsGeneratingReport(false);
     }
-  };
+  }, [
+    apiData,
+    classSummaryRows,
+    distributionCharts,
+    isMunicipalView,
+    proficiencyDistributions,
+    selectedEvaluation,
+    selectedMunicipality,
+    selectedSchool,
+    selectedSchoolInfo,
+    selectedState,
+    summaryStats,
+    toast,
+    user?.role,
+    userHierarchyContext
+  ]);
 
   // Carregar dados quando todos os filtros estiverem selecionados
   useEffect(() => {
@@ -1089,38 +1880,31 @@ export default function RelatorioEscolar() {
 
           const evaluationsResponse = await EvaluationResultsApiService.getEvaluationsList(1, 1, filters);
           
+          // ✅ NOVO: Buscar relatório completo para obter dados agregados por turma
+          let relatorioCompletoData: RelatorioCompleto | null = null;
+          if (selectedEvaluation !== 'all') {
+            try {
+              const options = selectedSchool !== 'all' 
+                ? { schoolId: selectedSchool }
+                : { cityId: selectedMunicipality };
+              relatorioCompletoData = await EvaluationResultsApiService.getRelatorioCompleto(selectedEvaluation, options);
+              setRelatorioCompleto(relatorioCompletoData);
+            } catch (relatorioError) {
+              setRelatorioCompleto(null);
+            }
+          } else {
+            setRelatorioCompleto(null);
+          }
+          
           if (evaluationsResponse) {
-            console.log("📊 Estrutura completa da resposta da API:", evaluationsResponse);
-            console.log("📊 tabela_detalhada:", evaluationsResponse.tabela_detalhada);
-            
-            // ✅ NOVO: Log detalhado da estrutura da tabela_detalhada
+            // ✅ NOVO: Fallback - Se disciplina está vazia quando escola específica está selecionada, buscar dados do município e filtrar
             if (evaluationsResponse.tabela_detalhada) {
               const tabela = evaluationsResponse.tabela_detalhada;
-              const totalDisciplinas = tabela.disciplinas?.length || 0;
               const disciplinasComAlunos = tabela.disciplinas?.filter(
                 d => d.alunos && Array.isArray(d.alunos) && d.alunos.length > 0
               ).length || 0;
-              const totalAlunosGeral = tabela.geral?.alunos?.length || 0;
               
-              console.log("📊 DEBUG tabela_detalhada estrutura:", {
-                temDisciplinas: !!tabela.disciplinas,
-                totalDisciplinas,
-                disciplinasDetalhadas: tabela.disciplinas?.map(d => ({
-                  nome: d.nome,
-                  totalAlunos: d.alunos?.length || 0,
-                  temQuestoes: d.questoes?.length || 0
-                })),
-                temGeral: !!tabela.geral,
-                totalAlunosGeral
-              });
-              
-              console.log(`📊 Resumo: ${totalDisciplinas} disciplinas encontradas, ${disciplinasComAlunos} com alunos, ${totalAlunosGeral} alunos em geral`);
-              
-              // ✅ NOVO: Fallback - Se disciplina está vazia quando escola específica está selecionada, buscar dados do município e filtrar
               if (disciplinasComAlunos === 0 && selectedSchool !== 'all' && filters.escola) {
-                console.warn(`⚠️ PROBLEMA DETECTADO: Disciplinas sem alunos quando escola específica está selecionada.`);
-                console.warn(`⚠️ Tentando buscar dados do município e filtrar por escola...`);
-                
                 try {
                   // Buscar dados do município (sem filtro de escola)
                   const municipioFilters = {
@@ -1137,16 +1921,11 @@ export default function RelatorioEscolar() {
                       d => d.alunos && Array.isArray(d.alunos) && d.alunos.length > 0
                     ).length;
                     
-                    console.log(`📊 Dados do município: ${municipioDisciplinasComAlunos} disciplinas com alunos`);
-                    
                     // Obter nome da escola selecionada das estatísticas gerais
                     const nomeEscolaSelecionada = evaluationsResponse.estatisticas_gerais?.escola;
                     
                     if (municipioDisciplinasComAlunos > 0 && nomeEscolaSelecionada) {
-                      console.log(`📊 Filtrando alunos da escola: "${nomeEscolaSelecionada}"`);
-                      
                       // Filtrar alunos que pertencem à escola selecionada
-                      // Usar o campo 'escola' do aluno em tabela_detalhada.geral.alunos ou das disciplinas
                       const alunosDaEscola = new Set<string>();
                       
                       // Primeiro, identificar IDs dos alunos da escola usando tabela_detalhada.geral
@@ -1169,8 +1948,6 @@ export default function RelatorioEscolar() {
                           });
                         });
                       }
-                      
-                      console.log(`📊 Encontrados ${alunosDaEscola.size} alunos da escola selecionada`);
                       
                       if (alunosDaEscola.size > 0) {
                         // Reconstruir tabela_detalhada com apenas alunos da escola selecionada
@@ -1197,21 +1974,16 @@ export default function RelatorioEscolar() {
                             alunos: alunosGeralFiltrados
                           }
                         };
-                        
-                        console.log(`✅ Fallback aplicado: ${disciplinasComAlunosFiltrados.filter(d => d.alunos.length > 0).length} disciplinas agora têm alunos filtrados da escola`);
-                      } else {
-                        console.warn(`⚠️ Não foi possível encontrar alunos da escola "${nomeEscolaSelecionada}" nos dados do município.`);
                       }
                     }
                   }
                 } catch (fallbackError) {
-                  console.error("❌ Erro ao tentar fallback (buscar dados do município):", fallbackError);
+                  // Erro silencioso no fallback
                 }
               }
             }
             
             setApiData(evaluationsResponse);
-            // apiData.tabela_detalhada já contém os alunos por disciplina com proficiência
           } else {
             setApiData(null);
           }
@@ -1419,10 +2191,12 @@ export default function RelatorioEscolar() {
                 {isMunicipalView ? 'Desempenho por Escola' : 'Desempenho por Turma'}
               </CardTitle>
               <Button
-                onClick={downloadReport}
+                onClick={handleDownloadReport}
                 disabled={isGeneratingReport || !apiData}
                 className="flex items-center gap-2"
                 variant="outline"
+                data-export-hide="true"
+                aria-label="Baixar relatório escolar em PDF"
               >
                 {isGeneratingReport ? (
                   <>
@@ -1558,18 +2332,17 @@ export default function RelatorioEscolar() {
                       <div className="space-y-4">
                         {chart.segments.map(segment => {
                           const width = `${segment.percentage}%`;
-                          const showValueInside = segment.percentage >= Math.max(maxPercentage * 0.3, 18);
 
                           return (
                             <div key={segment.key} className="flex items-center gap-3">
-                              <div className="flex w-32 items-center gap-2 text-sm font-medium text-foreground">
+                              <div className="flex w-32 shrink-0 items-center gap-2 text-sm font-medium text-foreground">
                                 <span
-                                  className="inline-flex h-2.5 w-2.5 rounded-full"
+                                  className="inline-flex h-2.5 w-2.5 shrink-0 rounded-full"
                                   style={{ backgroundColor: segment.color }}
                                 ></span>
                                 <span className="truncate">{segment.label}</span>
                               </div>
-                              <div className="relative flex flex-1 items-center rounded-full bg-muted">
+                              <div className="relative flex flex-1 items-center rounded-full bg-muted overflow-hidden min-w-0">
                                 <div
                                   className="h-3 rounded-full transition-all"
                                   style={{
@@ -1577,21 +2350,11 @@ export default function RelatorioEscolar() {
                                     backgroundColor: segment.color
                                   }}
                                 ></div>
-                                {segment.value > 0 && showValueInside && (
-                                  <span className="absolute right-2 text-xs font-semibold text-foreground">
-                                    {segment.value}
-                                  </span>
-                                )}
                               </div>
-                              <span
-                                className={cn(
-                                  'w-10 text-right text-xs font-semibold text-foreground transition-opacity',
-                                  showValueInside && 'opacity-0'
-                                )}
-                              >
+                              <span className="w-10 shrink-0 text-right text-xs font-semibold text-foreground whitespace-nowrap">
                                 {segment.value}
                               </span>
-                              <span className="w-12 text-right text-xs font-semibold text-foreground">
+                              <span className="w-12 shrink-0 text-right text-xs font-semibold text-foreground whitespace-nowrap">
                                 {segment.percentage.toFixed(1)}%
                               </span>
                             </div>
@@ -1618,79 +2381,143 @@ export default function RelatorioEscolar() {
                         {distribution.title}
                       </CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-8">
-                      <div className="overflow-x-auto">
-                        <table className="w-full border-collapse text-sm">
-                          <colgroup>
-                            <col className="min-w-[120px]" />
-                            {distribution.columns.map((_, index) => (
-                              <col key={index} className="min-w-[80px]" />
-                            ))}
-                          </colgroup>
-                          <thead>
-                            <tr>
-                              <th
-                                className="px-3 py-2 text-left font-semibold text-white"
-                                style={{ backgroundColor: distribution.color }}
-                              ></th>
-                              {distribution.columns.map(column => (
-                                <th
-                                  key={column}
-                                  className="px-3 py-2 text-center font-semibold text-white"
-                                  style={{ backgroundColor: distribution.color }}
-                                >
-                                  {column}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {distribution.rows.map(row => (
-                              <tr key={row.label} className="odd:bg-muted/50">
-                                <td className="px-3 py-2 text-left font-semibold text-foreground whitespace-nowrap">{row.label}</td>
+                    <CardContent className="space-y-6">
+                      {/* Versão Mobile: Layout compacto sem scroll */}
+                      <div className="block md:hidden space-y-4">
+                        {/* Tabela compacta mobile - Grid responsivo */}
+                        <div className="space-y-3">
+                          {distribution.rows.map(row => (
+                            <div key={row.label} className="border rounded-lg p-3 bg-muted/20">
+                              <div className="font-semibold text-sm mb-2.5 text-foreground pb-2 border-b">{row.label}</div>
+                              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                                 {row.data.map((value, index) => (
-                                  <td key={index} className="px-3 py-2 text-center text-muted-foreground">
-                                    {value.toFixed(2)}%
-                                  </td>
+                                  <div key={index} className="flex flex-col items-center p-2 bg-background rounded-md border border-border/50">
+                                    <span className="text-[10px] text-muted-foreground mb-1 font-medium uppercase tracking-wide">
+                                      {distribution.columns[index]}
+                                    </span>
+                                    <span className="text-sm font-bold text-foreground">{value.toFixed(1)}%</span>
+                                  </div>
                                 ))}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Gráfico de barras mobile - Grid compacto */}
+                        <div className="border rounded-lg p-4 bg-muted/20">
+                          <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                            {distribution.bars.map((bar, index) => {
+                              const heightPercentage = (bar.value / maxValue) * 100;
+                              return (
+                                <div key={bar.label} className="flex flex-col items-center gap-1.5">
+                                  <span className="text-[10px] font-bold text-muted-foreground">
+                                    {bar.quantidade || 0} {bar.quantidade === 1 ? 'aluno' : 'alunos'}
+                                  </span>
+                                  <div className="flex h-28 w-full max-w-[70px] items-end justify-center rounded-t-md bg-muted/50">
+                                    <div
+                                      className="w-full rounded-t-md transition-all shadow-sm"
+                                      style={{
+                                        height: `${heightPercentage}%`,
+                                        backgroundColor: distribution.color,
+                                        minHeight: heightPercentage > 0 ? '3px' : '0'
+                                      }}
+                                    ></div>
+                                  </div>
+                                  <span className="text-[10px] font-semibold text-foreground text-center leading-tight">
+                                    {bar.label}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="overflow-x-auto">
-                        <div 
-                          className="grid"
-                          style={{
-                            gridTemplateColumns: `minmax(120px, auto) repeat(${distribution.columns.length}, minmax(80px, 1fr))`,
-                            gap: '12px 16px'
-                          }}
-                        >
-                          {/* Espaço vazio correspondente à primeira coluna (label) */}
-                          <div className="px-3"></div>
-                          
-                          {/* Barras alinhadas com as colunas */}
-                          {distribution.bars.map((bar, index) => {
-                            const heightPercentage = (bar.value / maxValue) * 100;
-                            return (
-                              <div key={bar.label} className="flex flex-col items-center gap-2 px-3">
-                                <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">
-                                  {bar.value.toFixed(2)}%
-                                </span>
-                                <div className="flex h-40 w-full max-w-[60px] items-end justify-center rounded-t-lg bg-muted">
-                                  <div
-                                    className="w-full rounded-t-lg"
-                                    style={{
-                                      height: `${heightPercentage}%`,
-                                      backgroundColor: distribution.color
-                                    }}
-                                  ></div>
-                                </div>
-                                <span className="text-xs font-semibold text-foreground text-center whitespace-nowrap">{bar.label}</span>
-                              </div>
-                            );
-                          })}
+                      {/* Versão Desktop: Tabela e gráfico alinhados */}
+                      <div className="hidden md:block">
+                        {/* Tabela de percentuais */}
+                        <div className="mb-6">
+                          <table className="w-full border-collapse text-sm">
+                            <colgroup>
+                              <col className="w-[150px]" />
+                              {distribution.columns.map((_, index) => (
+                                <col key={index} className="w-[80px]" />
+                              ))}
+                            </colgroup>
+                            <thead>
+                              <tr>
+                                <th
+                                  className="px-3 py-2 text-left font-semibold text-white"
+                                  style={{ backgroundColor: distribution.color }}
+                                ></th>
+                                {distribution.columns.map(column => (
+                                  <th
+                                    key={column}
+                                    className="px-3 py-2 text-center font-semibold text-white text-sm"
+                                    style={{ backgroundColor: distribution.color }}
+                                  >
+                                    {column}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {distribution.rows.map(row => (
+                                <tr key={row.label} className="odd:bg-muted/50">
+                                  <td className="px-3 py-2 text-left font-semibold text-foreground whitespace-nowrap">
+                                    {row.label}
+                                  </td>
+                                  {row.data.map((value, index) => (
+                                    <td key={index} className="px-3 py-2 text-center text-muted-foreground text-sm">
+                                      {value.toFixed(2)}%
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Gráfico de barras alinhado com a tabela */}
+                        <div className="mt-6">
+                          <table className="w-full border-collapse">
+                            <colgroup>
+                              <col className="w-[150px]" />
+                              {distribution.columns.map((_, index) => (
+                                <col key={index} className="w-[80px]" />
+                              ))}
+                            </colgroup>
+                            <tbody>
+                              <tr>
+                                <td className="px-3"></td>
+                                {distribution.bars.map((bar, index) => {
+                                  const heightPercentage = (bar.value / maxValue) * 100;
+                                  return (
+                                    <td key={bar.label} className="px-3 align-bottom">
+                                      <div className="flex flex-col items-center gap-2 w-full">
+                                        <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">
+                                          {bar.quantidade || 0} {bar.quantidade === 1 ? 'aluno' : 'alunos'}
+                                        </span>
+                                        <div className="flex h-40 w-full max-w-[60px] mx-auto items-end justify-center rounded-t-lg bg-muted">
+                                          <div
+                                            className="w-full rounded-t-lg transition-all"
+                                            style={{
+                                              height: `${heightPercentage}%`,
+                                              backgroundColor: distribution.color,
+                                              minHeight: heightPercentage > 0 ? '2px' : '0'
+                                            }}
+                                          ></div>
+                                        </div>
+                                        <span className="text-xs font-semibold text-foreground text-center whitespace-nowrap">
+                                          {bar.label}
+                                        </span>
+                                      </div>
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            </tbody>
+                          </table>
                         </div>
                       </div>
                     </CardContent>
