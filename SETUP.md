@@ -1,6 +1,6 @@
-# Setup do InnovPlay Admin Dashboard
+# Setup do Afirme Play Admin Dashboard
 
-Este documento fornece instruções para configurar e executar o frontend do InnovPlay Admin Dashboard.
+Este documento fornece instruções para configurar e executar o frontend do Afirme Play Admin Dashboard.
 
 ## Pré-requisitos
 

@@ -283,4 +283,4 @@ Para dúvidas ou problemas:
 
 ---
 
-**Desenvolvido para o sistema InnovPlay Admin Dashboard** 
+**Desenvolvido para o sistema Afirme Play Admin Dashboard** 

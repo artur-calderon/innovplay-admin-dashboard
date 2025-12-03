@@ -243,15 +243,28 @@
     background-color: hsl(var(--muted-foreground) / 0.5);
   }
   
-  /* Enhanced Sidebar Gradient */
+  /* Enhanced Sidebar Gradient - Afirme Play (modo claro: azul/lilás suaves) */
   .sidebar-gradient {
-    background: linear-gradient(135deg, 
-      #8B5CF6 0%,
-      #7C3AED 20%,
-      #6D28D9 40%,
-      #5B21B6 60%,
-      #4C1D95 80%,
-      #3730A3 100%
+    background: linear-gradient(
+      135deg,
+      #F3F6FF 0%,
+      #E2ECFF 25%,
+      #E3DFFF 50%,
+      #F1E3FF 75%,
+      #FDF2FF 100%
+    );
+    background-attachment: fixed;
+  }
+
+  /* Modo escuro: mantém degradê mais intenso para contraste */
+  .dark .sidebar-gradient {
+    background: linear-gradient(
+      135deg,
+      #05071A 0%,
+      #101633 30%,
+      #1B1F4A 55%,
+      #3B2D7A 80%,
+      #7B3FE4 100%
     );
     background-attachment: fixed;
   }
