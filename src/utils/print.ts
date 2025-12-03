@@ -518,7 +518,7 @@ export class PrintManager {
   private generateFooter(options: PrintOptions): string {
     return `
       <footer class="print-footer">
-        <div>© ${new Date().getFullYear()} InnovPlay - Sistema de Avaliações</div>
+        <div>© ${new Date().getFullYear()} Afirme Play - Sistema de Avaliações</div>
         ${options.showPageNumbers ? `
           <div>Página <span class="page-number"></span></div>
         ` : ''}

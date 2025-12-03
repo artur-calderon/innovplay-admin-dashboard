@@ -221,9 +221,9 @@ const StudentProfessorIndex = () => {
 
           {/* Comunicados COC - Placeholder for now, can be refined later */}
           <Card className="md:col-span-2">
-            <CardHeader>
-              <CardTitle>Comunicados InnovPlay</CardTitle>
-            </CardHeader>
+          <CardHeader>
+            <CardTitle>Comunicados Afirme Play</CardTitle>
+          </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 <div className="flex items-center gap-4">

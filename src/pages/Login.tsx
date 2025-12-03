@@ -132,9 +132,9 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row dark:bg-white">
-      {/* Lado esquerdo (roxo) */}
-      <div className="bg-[#8257e5] dark:bg-[#8257e5] text-white w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12">
+    <div className="min-h-screen flex flex-col lg:flex-row bg-[linear-gradient(135deg,#05071A_0%,#101633_30%,#1B1F4A_55%,#3B2D7A_80%,#7B3FE4_100%)]">
+      {/* Lado esquerdo (gradiente Afirme Play) */}
+      <div className="text-white w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12">
         <div className="max-w-md flex flex-col items-center text-center">
           {/* Ilustração centralizada */}
           <div className="mb-8 w-32 h-32 md:w-full md:h-full flex items-center justify-center flex-col">
@@ -145,15 +145,16 @@ export default function Login() {
         </div>
       </div>
 
-      {/* Lado direito (branco) */}
-      <div className="bg-white dark:bg-white w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12">
+      {/* Lado direito (card sobre o gradiente) */}
+      <div className="w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12">
         <div className="w-full max-w-md">
-          <h2 className="text-2xl md:text-3xl font-bold text-gray-800 dark:text-gray-800 mb-4">Área Login</h2>
-          <p className="text-gray-600 dark:text-gray-600 mb-8">
-            A educação constrói seres humanos, jogos (diversão) alegra a vida, juntos transformam o mundo.
-          </p>
+          <div className="enhanced-card rounded-2xl p-8 bg-white/90 backdrop-blur-md shadow-xl">
+            <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-4">Área Login</h2>
+            <p className="text-gray-600 mb-8">
+              A educação constrói seres humanos, jogos e diversão alegram a vida, juntos transformam o mundo.
+            </p>
 
-          <form onSubmit={handleLogin} className="space-y-6">
+            <form onSubmit={handleLogin} className="space-y-6">
             <div className="relative">
               <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                 <User className="h-5 w-5 text-gray-400" />
@@ -216,7 +217,7 @@ export default function Login() {
 
             <Button
               type="submit"
-              className="w-full py-6 bg-[#8257e5] hover:bg-[#6d48c2] dark:bg-[#8257e5] dark:hover:bg-[#6d48c2] text-white"
+              className="w-full py-6 bg-[linear-gradient(90deg,#4F8EAD_0%,#5A9FDB_18%,#8F9AFF_38%,#8F81FF_60%,#CB61FC_80%,#FF61FE_100%)] hover:brightness-110 text-white shadow-lg"
               disabled={isLoading}
             >
               {isLoading ? (
@@ -229,9 +230,10 @@ export default function Login() {
               )}
             </Button>
           </form>
+          </div>
 
-          <div className="mt-12 text-center text-sm text-gray-500 dark:text-gray-500">
-            © 2025 Innov Play ❤️
+          <div className="mt-8 text-center text-sm text-white/80">
+            © 2025 Afirme Play ❤️
           </div>
         </div>
       </div>

@@ -195,7 +195,7 @@ export default function ForgotPassword() {
                     </form>
 
                     <div className="mt-12 text-center text-sm text-gray-500">
-                        © 2025 Innov Play ❤️
+                        © 2025 Afirme Play ❤️
                     </div>
                 </div>
             </div>

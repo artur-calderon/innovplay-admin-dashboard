@@ -339,7 +339,7 @@ export const PDFReportGenerator: React.FC<PDFReportGeneratorProps> = ({
                 doc.setPage(i);
                 doc.setFontSize(8);
                 doc.setTextColor(128, 128, 128);
-                doc.text('InnovPlay Soluções Educativas', margin, pageHeight - 10);
+                doc.text('Afirme Play Soluções Educativas', margin, pageHeight - 10);
                 doc.text(`Página ${i}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
                 doc.text(new Date().toLocaleString('pt-BR'), pageWidth - margin, pageHeight - 10, { align: 'right' });
             }
