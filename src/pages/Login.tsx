@@ -6,8 +6,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { User, Lock, Eye, EyeOff, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/authContext";
+import { useSettings } from "@/hooks/useSettings";
 
 import LOGO from "/LOGO-1.png"
+import LOGO_WHITE from "/AFIRME PLAY LOGO branco.png"
 
 export default function Login() {
   const [matricula, setMatricula] = useState("");
@@ -15,42 +17,73 @@ export default function Login() {
   const [lembrar, setLembrar] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isDark, setIsDark] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { settings } = useSettings();
 
   const { login, user } = useAuth();
 
-  // Garantir que a página de login sempre use tema claro
+  // Controlar quando as animações devem começar (pequeno delay para evitar flash)
   useEffect(() => {
-    // Forçar remoção da classe dark ao montar o componente
-    const rootElement = document.documentElement;
-    rootElement.classList.remove('dark');
+    // Forçar que este componente fique por cima durante a transição
+    const timer = setTimeout(() => {
+      setIsMounted(true);
+    }, 10); // Delay mínimo para garantir que o componente está montado
     
-    // Usar MutationObserver para detectar e remover classe dark se for adicionada
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-          if (rootElement.classList.contains('dark')) {
-            rootElement.classList.remove('dark');
-          }
-        }
-      });
+    return () => {
+      clearTimeout(timer);
+      setIsMounted(false);
+    };
+  }, []);
+
+  // Limpar qualquer componente anterior ao montar
+  useEffect(() => {
+    // Forçar remoção de qualquer elemento fixo anterior
+    const previousFixedElements = document.querySelectorAll('[data-auth-page]');
+    previousFixedElements.forEach(el => {
+      if (el !== document.querySelector('[data-auth-page="login"]')) {
+        el.remove();
+      }
     });
-    
-    // Observar mudanças no atributo class do elemento raiz
-    observer.observe(rootElement, {
+  }, []);
+
+  // Verificar tema do sistema e sincronizar
+  useEffect(() => {
+    const checkTheme = () => {
+      const rootElement = document.documentElement;
+      const hasDarkClass = rootElement.classList.contains('dark');
+      setIsDark(hasDarkClass);
+    };
+
+    // Verificar tema inicial
+    checkTheme();
+
+    // Observar mudanças na classe dark
+    const observer = new MutationObserver(checkTheme);
+    observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ['class']
     });
-    
-    // Cleanup: desconectar observer quando sair da página
+
     return () => {
       observer.disconnect();
     };
   }, []);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Sincronizar com settings quando mudar
+  useEffect(() => {
+    if (settings.theme) {
+      setIsDark(settings.theme === "dark");
+    }
+  }, [settings.theme]);
+
+  const handleLogin = async (e?: React.FormEvent<HTMLFormElement>) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
 
     if (!matricula || !senha) {
       toast({
@@ -74,21 +107,48 @@ export default function Login() {
     }
 
     setIsLoading(true);
+    
+    // Limpar o valor da matrícula removendo @ e espaços
+    const matriculaLimpa = matricula.trim().split('@')[0].trim();
+    
     try {
-      await login(matricula, senha);
-      // Se chegou aqui, o login foi bem-sucedido
-      // O contexto já trata o redirecionamento e o toast de sucesso
-    } catch (error: any) {
+      // Tentar primeiro com email completo, depois apenas com matrícula se falhar
+      const emailCompleto = `${matriculaLimpa}@afirmeplay.com.br`;
+      const matriculaApenas = matriculaLimpa;
+      
+      try {
+        // Primeira tentativa: email completo
+        await login(emailCompleto, senha);
+        // Se chegou aqui, o login foi bem-sucedido
+        // O contexto já trata o redirecionamento e o toast de sucesso
+        return; // Retornar para evitar processar o catch externo
+      } catch (firstError: unknown) {
+        // Se falhar com 401 ou 404, tentar apenas com a matrícula
+        if (firstError && typeof firstError === 'object' && 'response' in firstError) {
+          const axiosError = firstError as { response?: { status?: number } };
+          const status = axiosError.response?.status;
+          
+          if (status === 401 || status === 404) {
+            // Segunda tentativa: apenas matrícula
+            await login(matriculaApenas, senha);
+            return; // Sucesso na segunda tentativa
+          }
+        }
+        // Se não for 401 ou 404, lançar o erro
+        throw firstError;
+      }
+    } catch (error: unknown) {
       console.error("Erro ao fazer login:", error);
 
       // Tratamento específico de erros de login
       let errorTitle = "Erro no login";
       let errorDescription = "Ocorreu um erro ao tentar fazer login.";
 
-      if (error.response) {
-        // Erro da API
-        const status = error.response.status;
-        const data = error.response.data;
+      // Type guard para erro com response (axios)
+      if (error && typeof error === 'object' && 'response' in error) {
+        const axiosError = error as { response?: { status?: number; data?: { message?: string; erro?: string; error?: string } } };
+        const status = axiosError.response?.status;
+        const data = axiosError.response?.data;
 
         if (status === 401) {
           errorTitle = "Credenciais inválidas";
@@ -99,21 +159,25 @@ export default function Login() {
         } else if (status === 422) {
           errorTitle = "Dados inválidos";
           errorDescription = data?.message || "Os dados fornecidos são inválidos.";
-        } else if (status >= 500) {
+        } else if (status && status >= 500) {
           errorTitle = "Erro do servidor";
           errorDescription = "O servidor está enfrentando problemas. Tente novamente mais tarde.";
         } else {
           // Outros erros da API
           errorDescription = data?.erro || data?.error || data?.message || "Erro desconhecido.";
         }
-      } else if (error.code === 'ERR_NETWORK') {
-        errorTitle = "Erro de conexão";
-        errorDescription = "Não foi possível conectar ao servidor. Verifique sua conexão com a internet.";
-      } else if (error.code === 'ECONNABORTED') {
-        errorTitle = "Timeout";
-        errorDescription = "A requisição demorou muito para responder. Tente novamente.";
-      } else {
-        // Erro genérico
+      } else if (error && typeof error === 'object' && 'code' in error) {
+        const networkError = error as { code?: string; message?: string };
+        if (networkError.code === 'ERR_NETWORK') {
+          errorTitle = "Erro de conexão";
+          errorDescription = "Não foi possível conectar ao servidor. Verifique sua conexão com a internet.";
+        } else if (networkError.code === 'ECONNABORTED') {
+          errorTitle = "Timeout";
+          errorDescription = "A requisição demorou muito para responder. Tente novamente.";
+        } else {
+          errorDescription = networkError.message || "Ocorreu um erro inesperado.";
+        }
+      } else if (error instanceof Error) {
         errorDescription = error.message || "Ocorreu um erro inesperado.";
       }
 
@@ -137,10 +201,25 @@ export default function Login() {
       <div className="text-white w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12">
         <div className="max-w-md flex flex-col items-center text-center">
           {/* Ilustração centralizada */}
-          <div className="mb-8 w-32 h-32 md:w-full md:h-full flex items-center justify-center flex-col">
-            <img src={LOGO} alt="Logo" className="w-[300px] max-w-full h-auto" />
-
-            <p className="text-lg md:text-xl text-white/80">APRENDIZAGEM E RESULTADO</p>
+          <div className={`mb-8 w-32 h-32 md:w-full md:h-full flex items-center justify-center flex-col transition-opacity duration-300 ${
+            isMounted ? "animate-fade-in-up opacity-100" : "opacity-0"
+          }`}>
+            <div className="relative">
+              <div className="absolute inset-0 bg-white/20 rounded-full blur-2xl animate-pulse"></div>
+              <img 
+                src={isDark ? LOGO_WHITE : LOGO} 
+                alt="Logo" 
+                className="relative w-[300px] max-w-full h-auto animate-logo-float drop-shadow-2xl transition-transform duration-300 hover:scale-105" 
+              />
+            </div>
+            <p className={`text-lg md:text-xl text-white/90 font-medium tracking-wide mt-6 transition-opacity duration-300 ${
+              isMounted ? "animate-fade-in-delay opacity-100" : "opacity-0"
+            }`}>
+              APRENDIZAGEM E RESULTADO
+            </p>
+            <div className={`mt-6 w-24 h-1 rounded-full transition-opacity duration-300 ${
+              isDark ? "bg-purple-400/50" : "bg-white/30"
+            } ${isMounted ? "animate-fade-in-delay-2 opacity-100" : "opacity-0"}`}></div>
           </div>
         </div>
       </div>
@@ -161,8 +240,8 @@ export default function Login() {
               </div>
               <Input
                 type="text"
-                placeholder="Usuário"
-                className="pl-10"
+                placeholder="Matrícula ou e-mail"
+                className="pl-10 bg-gray-50 border-gray-200 focus:border-blue-500 focus:ring-blue-500"
                 value={matricula}
                 onChange={(e) => setMatricula(e.target.value)}
                 disabled={isLoading}
@@ -176,7 +255,7 @@ export default function Login() {
               <Input
                 type={showPassword ? "text" : "password"}
                 placeholder="Senha"
-                className="pl-10"
+                className="pl-10 pr-10 bg-gray-50 border-gray-200 focus:border-blue-500 focus:ring-blue-500"
                 value={senha}
                 onChange={(e) => setSenha(e.target.value)}
                 disabled={isLoading}
@@ -188,9 +267,9 @@ export default function Login() {
                 disabled={isLoading}
               >
                 {showPassword ? (
-                  <EyeOff className="h-5 w-5 text-gray-400" />
+                  <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600" />
                 ) : (
-                  <Eye className="h-5 w-5 text-gray-400" />
+                  <Eye className="h-5 w-5 text-gray-400 hover:text-gray-600" />
                 )}
               </button>
             </div>
@@ -203,15 +282,12 @@ export default function Login() {
                   onCheckedChange={(checked) => setLembrar(checked === true)}
                   disabled={isLoading}
                 />
-                <label
-                  htmlFor="lembrar"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  Lembrar
+                <label htmlFor="lembrar" className="text-sm text-gray-600">
+                  Lembrar-me
                 </label>
               </div>
-              <a href="/forgot-password" className="text-sm text-[#8257e5] dark:text-[#8257e5] hover:underline">
-                Esqueceu sua senha?
+              <a href="/forgot-password" className="text-sm text-blue-600 hover:underline">
+                Esqueceu a senha?
               </a>
             </div>
 

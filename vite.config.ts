@@ -6,7 +6,7 @@ import fs from 'fs';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
-  const apiUrl = process.env.VITE_API_BASE_URL || "https://demo.innovplay.online";
+  const apiUrl = process.env.VITE_API_BASE_URL || "https://demo-api.afirmeplay.com.br/";
   
   return {
     server: {
@@ -18,7 +18,7 @@ export default defineConfig(({ mode }) => {
           target: apiUrl,
           changeOrigin: true,
           secure: apiUrl.startsWith('https'),
-          rewrite: (path) => path.replace(/^\/api/, "/api"),
+          rewrite: (path) => path.replace(/^\/api/, ""),
           configure: (proxy, _options) => {
             proxy.on('error', (err, _req, _res) => {
               console.log('Proxy error:', err.message);

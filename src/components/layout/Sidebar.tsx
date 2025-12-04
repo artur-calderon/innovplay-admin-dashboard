@@ -29,7 +29,23 @@ import {
   ChevronLeft,
   FileText,
   Target,
-  TrendingUp
+  TrendingUp,
+  GraduationCap,
+  BookMarked,
+  Layers,
+  Library,
+  FolderTree,
+  FileCheck,
+  Presentation,
+  PieChart,
+  FileBarChart,
+  ClipboardList,
+  NotebookPen,
+  Users,
+  MapPin,
+  Sparkles,
+  Medal,
+  Star
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useMemo } from "react";
@@ -74,6 +90,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
   const isMobile = useIsMobile();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [avisoIds, setAvisoIds] = useState<string[]>([]);
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
   const navigate = useNavigate();
   const { logout, user } = useAuth();
@@ -123,13 +140,13 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"]
         },
         {
-          icon: List,
+          icon: ClipboardList,
           label: "Avaliações",
           href: `${user.role === 'aluno' ? "/aluno/avaliacoes" : "/app/avaliacoes"}`,
           role: ["aluno"]
         },
         {
-          icon: FileText,
+          icon: NotebookPen,
           label: "Questionário",
           href: `${user.role === 'aluno' ? "/aluno/questionario" : "/app/questionario"}`,
           role: ["professor", "diretor", "aluno"]
@@ -216,16 +233,16 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         { icon: BarChart3, label: "Resultados", href: "/app/resultados", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         { icon: TrendingUp, label: "Evolução", href: "/app/evolucao", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
         {
-          icon: FileText,
+          icon: NotebookPen,
           label: "Questionários",
           role: ["admin", "tecadm"],
           children: [
             { icon: FileText, label: "Cadastro de questionários", href: "/app/questionarios/cadastro", role: ["admin", "tecadm"] },
-            { icon: BarChart3, label: "Relatórios Socio-Econômicos", href: "/app/questionarios/relatorios-socio-economicos", role: ["admin", "tecadm"] },
+            { icon: Presentation, label: "Relatórios Socio-Econômicos", href: "/app/questionarios/relatorios-socio-economicos", role: ["admin", "tecadm"] },
           ]
         },
         {
-          icon: FileText,
+          icon: FileBarChart,
           label: "Relatórios",
           role: ["admin", "professor", "diretor", "coordenador", "tecadm"],
           children: [
@@ -521,11 +538,16 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
   return (
     <div
       className={cn(
-        // ✅ gradiente com fallback no tema claro (pra sidebar não “sumir”)
+        // ✅ gradiente com fallback no tema claro (pra sidebar não "sumir")
         "min-h-screen h-full flex flex-col transition-all duration-300 z-50 relative",
         "bg-gradient-to-b from-slate-50 via-slate-50 to-slate-100 dark:from-[#0B0F2B] dark:via-[#070A1E] dark:to-[#050617]",
         isMobile ? "w-screen" : isCollapsed ? "w-16" : "w-64"
       )}
+      style={{
+        ...(!isDarkMode && {
+          background: 'linear-gradient(to bottom, #f0e8f5, #e8daf0, #dcc5e8, #d0b0e0)'
+        })
+      }}
     >
       <div
         className={cn(
