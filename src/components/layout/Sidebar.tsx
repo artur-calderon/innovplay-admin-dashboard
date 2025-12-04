@@ -110,6 +110,21 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
     if (user.id) loadAvisoIds();
   }, [user.id, user.role]);
 
+  useEffect(() => {
+    const checkDarkMode = () => {
+      setIsDarkMode(document.documentElement.classList.contains('dark'));
+    };
+    
+    checkDarkMode();
+    const observer = new MutationObserver(checkDarkMode);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+    
+    return () => observer.disconnect();
+  }, []);
+
   const unreadAvisosCount = useMemo(() => getUnreadCount(avisoIds), [avisoIds, getUnreadCount]);
 
   function handleLogout() {
@@ -188,7 +203,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           role: ["professor", "diretor", "coordenador"]
         },
         {
-          icon: List,
+          icon: FileCheck,
           label: "Avaliações",
           href: "/app/avaliacoes",
           role: ["professor", "diretor", "coordenador"]
@@ -200,7 +215,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           role: ["professor", "diretor", "coordenador"]
         },
         {
-          icon: List,
+          icon: FolderTree,
           label: "Cadastros",
           role: ["admin", "tecadm"],
           children: [
@@ -210,16 +225,16 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
               role: ["admin", "tecadm"],
               children: [
                 { icon: Building, label: "Instituição", href: "/app/cadastros/instituicao", role: ["admin", "tecadm"] },
-                { icon: BookOpen, label: "Curso", href: "/app/cadastros/curso", role: ["admin", "tecadm"] },
-                { icon: BookOpen, label: "Série", href: "/app/cadastros/serie", role: ["admin", "tecadm"] },
-                { icon: BookOpen, label: "Disciplina", href: "/app/cadastros/disciplina", role: ["admin", "tecadm"] },
+                { icon: GraduationCap, label: "Curso", href: "/app/cadastros/curso", role: ["admin", "tecadm"] },
+                { icon: Layers, label: "Série", href: "/app/cadastros/serie", role: ["admin", "tecadm"] },
+                { icon: BookMarked, label: "Disciplina", href: "/app/cadastros/disciplina", role: ["admin", "tecadm"] },
                 { icon: Users2, label: "Turma", href: "/app/cadastros/turma", role: ["admin", "tecadm"] },
               ]
             },
-            { icon: List, label: "Avaliações", href: "/app/avaliacoes", role: ["admin", "tecadm"] },
-            { icon: LandPlot, label: "Municípios", href: "/app/city", role: ["admin", "tecadm"] },
+            { icon: FileCheck, label: "Avaliações", href: "/app/avaliacoes", role: ["admin", "tecadm"] },
+            { icon: MapPin, label: "Municípios", href: "/app/city", role: ["admin", "tecadm"] },
             { icon: HelpCircle, label: "Questão", href: "/app/cadastros/questao", role: ["admin", "tecadm"] },
-            { icon: User, label: "Usuário", href: "/app/usuarios", role: ["admin", "tecadm"] },
+            { icon: Users, label: "Usuário", href: "/app/usuarios", role: ["admin", "tecadm"] },
           ]
         },
         {
@@ -247,7 +262,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
           role: ["admin", "professor", "diretor", "coordenador", "tecadm"],
           children: [
             { icon: Target, label: "Acerto e Níveis", href: "/app/relatorios/acerto-niveis", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
-            { icon: BarChart3, label: "Análise das Avaliações", href: "/app/relatorios/analise-avaliacoes", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
+            { icon: PieChart, label: "Análise das Avaliações", href: "/app/relatorios/analise-avaliacoes", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] },
             { icon: School, label: "Relatório Escolar", href: "/app/relatorios/relatorio-escolar", role: ["admin", "professor", "diretor", "coordenador", "tecadm"] }
           ]
         },
@@ -259,7 +274,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
       links: [
         { icon: Award, label: "Certificados", href: `${user.role === 'aluno' ? "/aluno/certificados" : "/app/certificados"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
         { icon: Trophy, label: "Competições", href: `${user.role === 'aluno' ? "/aluno/competicoes" : "/app/competicoes"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
-        { icon: Award, label: "Olimpíadas", href: `${user.role === 'aluno' ? "/aluno/olimpiadas" : "/app/olimpiadas"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
+        { icon: Sparkles, label: "Olimpíadas", href: `${user.role === 'aluno' ? "/aluno/olimpiadas" : "/app/olimpiadas"}`, role: ["admin", "professor", "diretor", "coordenador", "aluno", "tecadm"] },
       ]
     },
     {
@@ -286,16 +301,16 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
     };
 
     return (
-      <div className="px-3 pt-3 pb-2">
-        <div className="rounded-xl border bg-white/70 border-slate-200/70 text-slate-900 shadow-sm
+      <div className="px-3 pt-1 pb-0.5">
+        <div className="rounded-xl border bg-white/90 border-[#E5D5EA] text-slate-900 shadow-sm
                         dark:bg-white/5 dark:border-white/10 dark:text-white">
-          <div className="px-3 py-3 flex items-center gap-3">
+          <div className="px-3 py-1.5 flex items-center gap-3">
             {user?.avatar_config ? (
               <div className="flex-shrink-0">
                 <AvatarPreview config={user.avatar_config} size={40} className="flex-shrink-0" />
               </div>
             ) : (
-              <div className="w-10 h-10 rounded-full bg-slate-900/10 text-slate-900 flex items-center justify-center font-semibold flex-shrink-0
+              <div className="w-10 h-10 rounded-full bg-[#EDE9FF] text-slate-900 flex items-center justify-center font-semibold flex-shrink-0
                               dark:bg-white/20 dark:text-white">
                 {user?.name ? user.name.charAt(0).toUpperCase() : "U"}
               </div>
@@ -313,10 +328,10 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
                       <button
                         onClick={handleProfileClick}
                         className="flex-shrink-0 p-1 rounded-full transition-colors
-                                   hover:bg-slate-900/5 dark:hover:bg-white/10"
+                                   hover:bg-[#EDE9FF] dark:hover:bg-white/10"
                         aria-label="Editar perfil"
                       >
-                        <Edit className="h-4 w-4 text-slate-600 hover:text-slate-900 dark:text-white/70 dark:hover:text-white" />
+                        <Edit className="h-4 w-4 text-slate-800 hover:text-[#7B3FE4] dark:text-white/70 dark:hover:text-white" />
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="right">
@@ -326,15 +341,10 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
                 </TooltipProvider>
               </div>
 
-              <div className="mt-1 flex items-center gap-2">
-                <p className="text-xs truncate text-slate-600 dark:text-white/70">
+              <div className="mt-1">
+                <p className="text-xs truncate text-slate-700 dark:text-white/70">
                   {user?.role ? getRoleDisplayName(user.role) : "Usuário"}
                 </p>
-                <span className="text-[11px] px-2 py-0.5 rounded-full truncate
-                                 bg-slate-900/5 text-slate-700
-                                 dark:bg-white/10 dark:text-white/80">
-                  {user?.registration || user?.email || ""}
-                </span>
               </div>
             </div>
           </div>
@@ -379,7 +389,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
             className={cn(
               "flex items-center justify-center rounded-full transition-colors",
               // fundo do ícone ajustado p/ tema claro
-              "bg-slate-900/5 group-hover:bg-slate-900/10",
+              "bg-[#F5F0F7] group-hover:bg-[#EDE9FF]",
               "dark:bg-white/5 dark:group-hover:bg-white/10",
               isCollapsed ? "h-10 w-10" : "h-9 w-9"
             )}
@@ -390,7 +400,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
                 "flex-shrink-0 transition-colors",
                 isActive
                   ? "text-[#7B3FE4]"
-                  : "text-slate-600 group-hover:text-slate-900 dark:text-white/80 dark:group-hover:text-white"
+                  : "text-slate-800 group-hover:text-[#7B3FE4] dark:text-white/80 dark:group-hover:text-white"
               )}
             />
           </div>
@@ -401,7 +411,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
                 "truncate text-sm font-medium transition-colors",
                 isActive
                   ? "text-slate-900 dark:text-[#1B1F4A]"
-                  : "text-slate-700 group-hover:text-slate-900 dark:text-white/80 dark:group-hover:text-white"
+                  : "text-slate-800 group-hover:text-slate-900 dark:text-white/80 dark:group-hover:text-white"
               )}
             >
               {link.label}
@@ -421,7 +431,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
                 size={14}
                 className={cn(
                   "transition-transform duration-200",
-                  "text-slate-500 group-hover:text-slate-900 dark:text-white/70 dark:group-hover:text-white",
+                  "text-slate-700 group-hover:text-[#7B3FE4] dark:text-white/70 dark:group-hover:text-white",
                   isSubmenuOpen && "rotate-180"
                 )}
               />
@@ -443,7 +453,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
       isCollapsed ? "justify-center px-0 py-1" : "px-3 py-2.5 rounded-full text-sm",
 
       // ✅ HOVER: forçado (important) para NÃO virar branco estourado (mesmo que exista CSS externo)
-      "hover:!bg-slate-900/5 dark:hover:!bg-white/10",
+      "hover:!bg-[#EDE9FF]/50 dark:hover:!bg-white/10",
 
       // ✅ Active (tema claro e escuro)
       isActive && !isCollapsed && "bg-[#EDE9FF] text-slate-900 shadow-sm font-semibold dark:bg-[#E3DFFF] dark:text-[#1B1F4A] dark:shadow-lg",
@@ -458,7 +468,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
     );
 
     return (
-      <li className={cn(link.divider && "border-t border-slate-200/60 pt-2 mt-2 dark:border-white/10")}>
+      <li className={cn(link.divider && "border-t border-[#E5D5EA] pt-2 mt-2 dark:border-white/10")}>
         {link.label === "Sair" ? (
           <TooltipProvider>
             <Tooltip>
@@ -507,7 +517,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         )}
 
         {link.children && isSubmenuOpen && !isCollapsed && (
-          <ul className="space-y-1 ml-2 mt-1 border-l border-slate-200/60 pl-3 dark:border-white/10">
+          <ul className="space-y-1 ml-2 mt-1 border-l border-[#E5D5EA] pl-3 dark:border-white/10">
             {link.children.map(child => (
               <RenderMenuItem
                 key={child.href || child.label}
@@ -526,9 +536,9 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
   }
 
   const CategorySeparator = ({ name }: { name: string }) => (
-    <div className={cn("px-3 pt-4 pb-1 first:pt-2", isCollapsed && "px-2")}>
+    <div className={cn("px-3 pt-1.5 pb-0.5 first:pt-0.5", isCollapsed && "px-2")}>
       {!isCollapsed && (
-        <h3 className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500 dark:text-white/40">
+        <h3 className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-700 dark:text-white/40">
           {name}
         </h3>
       )}
@@ -538,9 +548,9 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
   return (
     <div
       className={cn(
-        // ✅ gradiente com fallback no tema claro (pra sidebar não "sumir")
         "min-h-screen h-full flex flex-col transition-all duration-300 z-50 relative",
-        "bg-gradient-to-b from-slate-50 via-slate-50 to-slate-100 dark:from-[#0B0F2B] dark:via-[#070A1E] dark:to-[#050617]",
+        "border-r shadow-xl",
+        "dark:from-[#0B0F2B] dark:via-[#070A1E] dark:to-[#050617] dark:bg-gradient-to-b",
         isMobile ? "w-screen" : isCollapsed ? "w-16" : "w-64"
       )}
       style={{
@@ -549,41 +559,28 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
         })
       }}
     >
-      <div
-        className={cn(
-          "flex h-full flex-col backdrop-blur-md border-r shadow-xl",
-          "bg-white/60 border-slate-200/70 dark:bg-white/5 dark:border-white/10",
-          isMobile ? "w-full" : "mx-2 my-3 rounded-r-3xl"
-        )}
-      >
-        {/* Header */}
-        <div className="border-b px-3 py-3 overflow-hidden border-slate-200/70 dark:border-white/10">
+      {/* Header */}
+      <div className="border-b px-3 py-1 overflow-hidden border-[#E5D5EA] dark:border-white/10">
           <div className={cn("flex items-center justify-between gap-3", isCollapsed && !isMobile && "justify-center")}>
             <div
               className={cn(
-                "flex items-center gap-3 rounded-xl px-3 py-2 shadow-sm border",
-                "bg-white/70 border-slate-200/70 dark:bg-white/10 dark:border-white/20",
-                isCollapsed && !isMobile && "px-2 py-2"
+                "flex items-center gap-2 px-0 py-0",
+                isCollapsed && !isMobile && "px-0 py-0"
               )}
             >
               <img
-                width={isMobile ? "140px" : isCollapsed ? "32px" : "160px"}
-                height={isMobile ? "40px" : isCollapsed ? "32px" : "44px"}
-                src={isCollapsed && !isMobile ? "/ico.png" : "/LOGO-1-menor.png"}
+                width={isMobile ? "120px" : isCollapsed ? "32px" : "130px"}
+                height={isMobile ? "34px" : isCollapsed ? "32px" : "36px"}
+                src={
+                  isCollapsed && !isMobile 
+                    ? "/ico.png" 
+                    : isDarkMode 
+                      ? "/AFIRME PLAY LOGO branco.png" 
+                      : "/LOGO-1-menor-escuro.png"
+                }
                 alt="Afirme Play"
                 className="object-contain"
               />
-
-              {!isCollapsed && !isMobile && (
-                <div className="flex flex-col overflow-hidden">
-                  <span className="text-xs font-semibold tracking-wide truncate text-slate-900 dark:text-white">
-                    Afirme Play
-                  </span>
-                  <span className="text-[11px] leading-tight truncate max-w-[150px] text-slate-600 dark:text-white/60">
-                    Aprendizagem e Resultado
-                  </span>
-                </div>
-              )}
             </div>
 
             {isMobile ? (
@@ -591,7 +588,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
                 variant="ghost"
                 size="icon"
                 className="h-9 w-9 rounded-full border transition-colors
-                           border-slate-200/70 text-slate-700 hover:bg-slate-900/5 hover:text-slate-900
+                           border-[#E5D5EA] text-slate-800 hover:bg-[#EDE9FF] hover:text-[#7B3FE4]
                            dark:border-white/10 dark:text-white/70 dark:hover:text-white dark:hover:bg-white/10"
                 onClick={onMobileMenuClose}
               >
@@ -603,7 +600,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 rounded-full border transition-colors
-                           border-slate-200/70 text-slate-700 hover:bg-slate-900/5 hover:text-slate-900
+                           border-[#E5D5EA] text-slate-800 hover:bg-[#EDE9FF] hover:text-[#7B3FE4]
                            dark:border-white/10 dark:text-white/70 dark:hover:text-white dark:hover:bg-white/10"
                 onClick={handleToggleCollapse}
               >
@@ -619,7 +616,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto custom-scrollbar">
-          <div className={cn("px-2 pb-4", isMobile && "pb-8")}>
+          <div className={cn("px-2 pb-2", isMobile && "pb-4")}>
             {sidebarCategories.map(category => {
               if (!category.role.includes(user.role)) return null;
 
@@ -643,7 +640,6 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
             })}
           </div>
         </nav>
-      </div>
     </div>
   );
 }

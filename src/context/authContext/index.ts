@@ -185,6 +185,7 @@ export const useAuth = create<AuthContext>((set, get) => ({
 
             return response;
         } catch (error: unknown) {
+            console.error("Erro no login:", error);
             // Removido o toast automático para evitar duplicação
             // O componente de Login agora trata os erros especificamente
             throw error;
