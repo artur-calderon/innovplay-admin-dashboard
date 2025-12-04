@@ -378,7 +378,7 @@ export default function PlantaoOnline() {
       // Criar descrição com informações das turmas e alunos
       const description = selectedClasses.length > 0
         ? `Plantão online para ${selectedClasses.length} ${selectedClasses.length === 1 ? 'turma' : 'turmas'}.\nAlunos: ${students.length}`
-        : 'Plantão online criado pelo sistema InnovPlay';
+        : 'Plantão online criado pelo sistema Afirme Play';
 
       // Criar evento no Google Calendar com Meet
       const meetLink = await createGoogleMeetLink(title, description);

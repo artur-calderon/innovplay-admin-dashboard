@@ -238,8 +238,12 @@ export function RelatorioCompletoExample({ evaluationId }: RelatorioCompletoExam
             questoes: [
               {
                 numero: 1,
+                numero_questao: 1,
                 acertos: 42,
-                total: 49
+                total: 49,
+                percentual: 85.7,
+                codigo: "EF69LP01",
+                descricao: "Habilidade EF69LP01"
               }
             ]
           },
@@ -253,8 +257,12 @@ export function RelatorioCompletoExample({ evaluationId }: RelatorioCompletoExam
             questoes: [
               {
                 numero: 2,
+                numero_questao: 2,
                 acertos: 38,
-                total: 49
+                total: 49,
+                percentual: 77.6,
+                codigo: "EF69LP02",
+                descricao: "Habilidade EF69LP02"
               }
             ]
           }
@@ -272,8 +280,12 @@ export function RelatorioCompletoExample({ evaluationId }: RelatorioCompletoExam
             questoes: [
               {
                 numero: 3,
+                numero_questao: 3,
                 acertos: 45,
-                total: 49
+                total: 49,
+                percentual: 91.8,
+                codigo: "EF69MA01",
+                descricao: "Habilidade EF69MA01"
               }
             ]
           },
@@ -287,8 +299,12 @@ export function RelatorioCompletoExample({ evaluationId }: RelatorioCompletoExam
             questoes: [
               {
                 numero: 4,
+                numero_questao: 4,
                 acertos: 41,
-                total: 49
+                total: 49,
+                percentual: 83.7,
+                codigo: "EF69MA02",
+                descricao: "Habilidade EF69MA02"
               }
             ]
           }
@@ -306,8 +322,12 @@ export function RelatorioCompletoExample({ evaluationId }: RelatorioCompletoExam
             questoes: [
               {
                 numero: 3,
+                numero_questao: 3,
                 acertos: 45,
-                total: 49
+                total: 49,
+                percentual: 91.8,
+                codigo: "EF69MA01",
+                descricao: "Habilidade EF69MA01"
               }
             ]
           },
@@ -321,8 +341,12 @@ export function RelatorioCompletoExample({ evaluationId }: RelatorioCompletoExam
             questoes: [
               {
                 numero: 1,
+                numero_questao: 1,
                 acertos: 42,
-                total: 49
+                total: 49,
+                percentual: 85.7,
+                codigo: "EF69LP01",
+                descricao: "Habilidade EF69LP01"
               }
             ]
           },
@@ -336,8 +360,12 @@ export function RelatorioCompletoExample({ evaluationId }: RelatorioCompletoExam
             questoes: [
               {
                 numero: 4,
+                numero_questao: 4,
                 acertos: 41,
-                total: 49
+                total: 49,
+                percentual: 83.7,
+                codigo: "EF69MA02",
+                descricao: "Habilidade EF69MA02"
               }
             ]
           },
@@ -351,8 +379,12 @@ export function RelatorioCompletoExample({ evaluationId }: RelatorioCompletoExam
             questoes: [
               {
                 numero: 2,
+                numero_questao: 2,
                 acertos: 38,
-                total: 49
+                total: 49,
+                percentual: 77.6,
+                codigo: "EF69LP02",
+                descricao: "Habilidade EF69LP02"
               }
             ]
           }

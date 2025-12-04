@@ -59,9 +59,9 @@ const MOCK_AVISOS: Aviso[] = [
   {
     id: '4',
     titulo: 'Nova Plataforma de Jogos Educacionais',
-    mensagem: 'Temos o prazer de anunciar que uma nova plataforma de jogos educacionais foi adicionada ao sistema InnovPlay. Os jogos abordam matemática, português e ciências de forma lúdica e interativa. Acesse o menu "Jogos" para começar!',
+    mensagem: 'Temos o prazer de anunciar que uma nova plataforma de jogos educacionais foi adicionada ao sistema Afirme Play. Os jogos abordam matemática, português e ciências de forma lúdica e interativa. Acesse o menu "Jogos" para começar!',
     data: '2025-10-26',
-    autor: 'Equipe InnovPlay',
+    autor: 'Equipe Afirme Play',
     autor_id: 'admin-002',
     autor_role: 'admin',
     destinatarios: {

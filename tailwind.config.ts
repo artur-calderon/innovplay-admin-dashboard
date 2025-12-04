@@ -75,6 +75,14 @@ export default {
 				innov: {
 					blue: '#5B61F6',
 					purple: '#AA50F2',
+					afirmeBase: '#A69BFF',
+					afirmeDark: '#7C6BFF',
+					afirmeLight: '#D2C9FF',
+					afirmeDeep1: '#005672',
+					afirmeDeep2: '#00669D',
+					afirmeDeep3: '#3E58ED',
+					afirmeDeep4: '#8A1EBB',
+					afirmeDeep5: '#BE00BE',
 				},
 			},
 			borderRadius: {

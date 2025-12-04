@@ -1018,7 +1018,7 @@ export default function AcertoNiveis() {
         doc.setFontSize(8);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(100, 100, 100);
-        doc.text('InnovPlay Soluções Educativas', margin, pageHeight - 10);
+        doc.text('Afirme Play Soluções Educativas', margin, pageHeight - 10);
         doc.text(`Página ${pageNum}`, centerX, pageHeight - 10, { align: 'center' });
         doc.text(new Date().toLocaleString('pt-BR'), pageWidth - margin, pageHeight - 10, { align: 'right' });
       };
@@ -1552,7 +1552,7 @@ export default function AcertoNiveis() {
         // Rodapé
         doc.setFontSize(8);
         doc.setTextColor(100, 100, 100);
-        doc.text('InnovPlay Soluções Educativas', landscapeMargin, landscapeHeight - 8);
+        doc.text('Afirme Play Soluções Educativas', landscapeMargin, landscapeHeight - 8);
         doc.text(`Página ${pageCount}`, landscapeWidth / 2, landscapeHeight - 8, { align: 'center' });
         doc.text(new Date().toLocaleString('pt-BR'), landscapeWidth - landscapeMargin, landscapeHeight - 8, { align: 'right' });
       };
@@ -1810,7 +1810,7 @@ export default function AcertoNiveis() {
           // Rodapé
           doc.setFontSize(8);
           doc.setTextColor(100, 100, 100);
-          doc.text('InnovPlay Soluções Educativas', landscapeMargin, landscapeHeight - 8);
+          doc.text('Afirme Play Soluções Educativas', landscapeMargin, landscapeHeight - 8);
           doc.text(`Página ${pageCount}`, landscapeWidth / 2, landscapeHeight - 8, { align: 'center' });
           doc.text(new Date().toLocaleString('pt-BR'), landscapeWidth - landscapeMargin, landscapeHeight - 8, { align: 'right' });
         });
