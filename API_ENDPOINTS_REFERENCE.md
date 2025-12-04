@@ -1,4 +1,4 @@
-# API Endpoints Reference - InnovPlay Admin Dashboard
+# API Endpoints Reference - Afirme Play Admin Dashboard
 
 ## Endpoints Mapeados e Verificados
 

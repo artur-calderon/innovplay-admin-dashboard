@@ -78,6 +78,24 @@ interface TabelaDetalhada {
       proficiencia: number;
     }>;
   }>;
+  geral?: {
+    alunos: Array<{
+      id: string;
+      nome: string;
+      escola?: string;
+      serie?: string;
+      turma?: string;
+      nota_geral?: number;
+      proficiencia_geral?: number;
+      nivel_proficiencia_geral?: string;
+      total_acertos_geral?: number;
+      total_em_branco_geral?: number;
+      total_questoes_geral?: number;
+      total_respondidas_geral?: number;
+      percentual_acertos_geral?: number;
+      status_geral?: string;
+    }>;
+  };
 }
 
 // ✅ NOVO: Interface para ranking
@@ -1410,7 +1428,19 @@ export class EvaluationResultsApiService {
       const response = await api.get(url);
       return response.data || {};
     } catch (error) {
-      console.error('Erro ao buscar opções de filtros:', error);
+      // ✅ MELHORADO: Log detalhado do erro para debug
+      const axiosError = error as { response?: { status?: number; data?: unknown; config?: { url?: string } } };
+      const status = axiosError.response?.status;
+      const url = axiosError.response?.config?.url;
+      
+      console.error(`❌ Erro ao buscar opções de filtros (status: ${status}):`, {
+        url,
+        params,
+        error: axiosError.response?.data || error
+      });
+      
+      // ✅ AJUSTADO: Retornar objeto vazio em vez de lançar erro
+      // Isso permite que o código que chama possa tentar fallback se necessário
       return {};
     }
   }
@@ -1430,20 +1460,56 @@ export class EvaluationResultsApiService {
     }
   }
 
-  // ✅ REFATORADO: Buscar municípios usando rota unificada
+  // ✅ REFATORADO: Buscar municípios usando rota unificada com fallback
   static async getFilterMunicipalities(stateId: string): Promise<Array<{
     id: string;
     nome: string;
   }>> {
     // Tentar primeiro o endpoint de opções de filtros
     try {
-      // stateId pode ser nome (ex: "SP") ou ID
+      // stateId pode ser nome (ex: "SP", "ALAGOAS") ou ID
       const response = await this.getFilterOptions({ estado: stateId });
-      return response.municipios || [];
+      
+      if (response.municipios && Array.isArray(response.municipios) && response.municipios.length > 0) {
+        return response.municipios;
+      }
+      
+      // Se não retornou municípios, tentar fallback
+      console.warn(`⚠️ Endpoint de opções de filtros não retornou municípios para estado: ${stateId}, tentando fallback...`);
     } catch (error) {
-      console.error('Erro ao buscar municípios para filtros:', error);
-      return [];
+      console.error(`❌ Erro ao buscar municípios via opções de filtros para estado: ${stateId}`, error);
+      
+      // Verificar se é erro 500 (Internal Server Error) do backend
+      const axiosError = error as { response?: { status?: number; data?: unknown } };
+      if (axiosError.response?.status === 500) {
+        console.warn(`⚠️ Erro 500 do backend ao buscar municípios para estado: ${stateId}, tentando fallback...`);
+      }
     }
+    
+    // ✅ FALLBACK: Tentar endpoint alternativo /city/municipalities/state/{stateId}
+    try {
+      console.log(`🔄 Tentando buscar municípios via endpoint alternativo para estado: ${stateId}`);
+      const response = await api.get(`/city/municipalities/state/${stateId}`);
+      
+      if (response.data && Array.isArray(response.data)) {
+        // Converter formato do endpoint alternativo para o formato esperado
+        const municipios = response.data.map((municipality: { id: string; name?: string; nome?: string }) => ({
+          id: municipality.id,
+          nome: municipality.nome || municipality.name || ''
+        })).filter((m: { nome: string }) => m.nome !== '');
+        
+        if (municipios.length > 0) {
+          console.log(`✅ Fallback bem-sucedido: ${municipios.length} municípios encontrados via endpoint alternativo`);
+          return municipios;
+        }
+      }
+    } catch (fallbackError) {
+      console.error(`❌ Erro também no fallback ao buscar municípios para estado: ${stateId}`, fallbackError);
+    }
+    
+    // Retornar array vazio se ambos os métodos falharem
+    console.error(`❌ Não foi possível carregar municípios para o estado: ${stateId} (todos os métodos falharam)`);
+    return [];
   }
 
   // ✅ REFATORADO: Buscar escolas usando rota unificada
@@ -2127,6 +2193,103 @@ export class EvaluationResultsApiService {
       }
       
       throw error;
+    }
+  }
+
+  // ✅ NOVO: Buscar tabela detalhada com dados de alunos por disciplina
+  static async getTabelaDetalhada(
+    evaluationId: string,
+    options?: { state?: string; municipality?: string; school?: string }
+  ): Promise<{
+    disciplinas: Array<{
+      nome: string;
+      alunos: Array<{
+        id: string;
+        nome: string;
+        turma: string;
+        serie: string;
+        proficiencia: number;
+      }>;
+    }>;
+    geral: {
+      alunos: Array<{
+        id: string;
+        nome: string;
+        turma: string;
+        serie: string;
+        proficiencia_geral: number;
+      }>;
+    };
+  } | null> {
+    try {
+      const params = new URLSearchParams();
+      
+      // Estado e município são obrigatórios para o endpoint
+      if (!options?.state || options.state === 'all') {
+        console.error('❌ Estado é obrigatório para buscar tabela detalhada', { state: options?.state });
+        return null;
+      }
+      
+      if (!options?.municipality || options.municipality === 'all') {
+        console.error('❌ Município é obrigatório para buscar tabela detalhada', { municipality: options?.municipality });
+        return null;
+      }
+      
+      console.log('📊 Parâmetros para getTabelaDetalhada:', { 
+        evaluationId, 
+        state: options.state, 
+        stateType: typeof options.state,
+        stateValue: options.state,
+        municipality: options.municipality, 
+        school: options.school 
+      });
+      
+      // Garantir que o estado seja uma string válida
+      const estadoValue = String(options.state || '').trim();
+      if (!estadoValue || estadoValue === 'all') {
+        console.error('❌ Estado inválido após conversão:', estadoValue);
+        return null;
+      }
+      
+      params.append('estado', estadoValue);
+      params.append('municipio', options.municipality);
+      params.append('avaliacao', evaluationId);
+      
+      if (options?.school && options.school !== 'all') {
+        params.append('escola', options.school);
+      }
+      
+      const url = `/evaluation-results/avaliacoes?${params.toString()}`;
+      console.log('📊 URL da requisição:', url);
+      console.log('📊 Params.toString():', params.toString());
+      console.log('📊 Params.get("estado"):', params.get('estado'));
+      
+      const response = await api.get(url);
+      
+      console.log('📊 Resposta completa do endpoint avaliacoes:', response.data);
+      console.log('📊 tabela_detalhada:', response.data.tabela_detalhada);
+      
+      const tabelaDetalhada = response.data.tabela_detalhada;
+      
+      if (!tabelaDetalhada) {
+        console.warn('⚠️ tabela_detalhada não encontrada na resposta');
+        return null;
+      }
+      
+      // Verificar se a estrutura está correta
+      if (!tabelaDetalhada.disciplinas || !Array.isArray(tabelaDetalhada.disciplinas)) {
+        console.warn('⚠️ tabela_detalhada.disciplinas não é um array válido');
+        return null;
+      }
+      
+      return tabelaDetalhada;
+    } catch (error) {
+      console.error('❌ Erro ao buscar tabela detalhada:', error);
+      if (error.response) {
+        console.error('❌ Status:', error.response.status);
+        console.error('❌ Data:', error.response.data);
+      }
+      return null;
     }
   }
 
