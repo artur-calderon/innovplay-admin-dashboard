@@ -196,6 +196,7 @@ export default function Login() {
   };
 
   return (
+<<<<<<< HEAD
     <div 
       data-auth-page="login"
       className={`min-h-screen w-full flex flex-col lg:flex-row transition-all duration-500 fixed inset-0 z-50 ${
@@ -217,6 +218,12 @@ export default function Login() {
         </div>
         
         <div className="max-w-md flex flex-col items-center text-center relative z-10">
+=======
+    <div className="min-h-screen flex flex-col lg:flex-row bg-[linear-gradient(135deg,#05071A_0%,#101633_30%,#1B1F4A_55%,#3B2D7A_80%,#7B3FE4_100%)]">
+      {/* Lado esquerdo (gradiente Afirme Play) */}
+      <div className="text-white w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12">
+        <div className="max-w-md flex flex-col items-center text-center">
+>>>>>>> 6a8e139e6eec2629a1c250b58556e37a186b4ce5
           {/* Ilustração centralizada */}
           <div className={`mb-8 w-32 h-32 md:w-full md:h-full flex items-center justify-center flex-col transition-opacity duration-300 ${
             isMounted ? "animate-fade-in-up opacity-100" : "opacity-0"
@@ -244,6 +251,7 @@ export default function Login() {
       {/* Lado direito (card sobre o gradiente) */}
       <div className="w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12">
         <div className="w-full max-w-md">
+<<<<<<< HEAD
           <div className={`relative flex flex-col transition-all duration-300 ${
             isDark 
               ? "bg-gradient-to-br from-[#240046] to-[#2d0052] shadow-[7px_7px_10px_3px_rgba(36,0,70,0.16)] border border-purple-500/20" 
@@ -271,6 +279,18 @@ export default function Login() {
                 } ${isMounted ? "animate-fade-in-delay opacity-100" : "opacity-0"}`}>
                   Excelência Institucional impulsionada por Resultados e Foco no Aprendizado
                 </p>
+=======
+          <div className="enhanced-card rounded-2xl p-8 bg-white/90 backdrop-blur-md shadow-xl">
+            <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-4">Área Login</h2>
+            <p className="text-gray-600 mb-8">
+              A educação constrói seres humanos, jogos e diversão alegram a vida, juntos transformam o mundo.
+            </p>
+
+            <form onSubmit={handleLogin} className="space-y-6">
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                <User className="h-5 w-5 text-gray-400" />
+>>>>>>> 6a8e139e6eec2629a1c250b58556e37a186b4ce5
               </div>
 
               {/* Divisor */}
@@ -432,10 +452,32 @@ export default function Login() {
             </div>
           </div>
 
+<<<<<<< HEAD
           <div className={`mt-6 text-center text-xs transition-opacity duration-300 ${
             isDark ? "text-white/60" : "text-gray-500"
           } ${isMounted ? "animate-fade-in-delay-3 opacity-100" : "opacity-0"}`}>
             © 2025 Afirme Play - JESUS CRISTO É O SENHOR
+=======
+            <Button
+              type="submit"
+              className="w-full py-6 bg-[linear-gradient(90deg,#4F8EAD_0%,#5A9FDB_18%,#8F9AFF_38%,#8F81FF_60%,#CB61FC_80%,#FF61FE_100%)] hover:brightness-110 text-white shadow-lg"
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processando...
+                </>
+              ) : (
+                "Acessar"
+              )}
+            </Button>
+          </form>
+          </div>
+
+          <div className="mt-8 text-center text-sm text-white/80">
+            © 2025 Afirme Play ❤️
+>>>>>>> 6a8e139e6eec2629a1c250b58556e37a186b4ce5
           </div>
         </div>
       </div>

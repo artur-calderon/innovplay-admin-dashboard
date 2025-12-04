@@ -286,10 +286,54 @@ export default function ForgotPassword() {
                         </div>
                     </div>
 
+<<<<<<< HEAD
                     <div className={`mt-8 text-center text-sm ${
                         isDark ? "text-white/80" : "text-gray-500"
                     }`}>
                         © 2025 Afirme Play - JESUS CRISTO É O SENHOR
+=======
+                    <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-4">
+                        Esqueceu sua senha?
+                    </h2>
+                    <p className="text-gray-600 mb-8">
+                        Digite seu e-mail e enviaremos um link para você redefinir sua senha.
+                    </p>
+
+                    <form onSubmit={handleSubmit} className="space-y-6">
+                        <div className="relative">
+                            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                                <Mail className="h-5 w-5 text-gray-400" />
+                            </div>
+                            <Input
+                                type="email"
+                                placeholder="Seu e-mail"
+                                className="pl-10"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                disabled={isLoading}
+                                required
+                            />
+                        </div>
+
+                        <Button
+                            type="submit"
+                            className="w-full py-6 bg-[#8257e5] hover:bg-[#6d48c2]"
+                            disabled={isLoading}
+                        >
+                            {isLoading ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Enviando...
+                                </>
+                            ) : (
+                                "Enviar link de redefinição"
+                            )}
+                        </Button>
+                    </form>
+
+                    <div className="mt-12 text-center text-sm text-gray-500">
+                        © 2025 Afirme Play ❤️
+>>>>>>> 6a8e139e6eec2629a1c250b58556e37a186b4ce5
                     </div>
                 </div>
             </div>

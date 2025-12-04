@@ -451,10 +451,15 @@ export default function ResetPassword() {
                         </div>
                     </div>
 
+<<<<<<< HEAD
                     <div className={`mt-8 text-center text-sm animate-fade-in-delay-3 transition-opacity duration-300 ${
                         isDark ? "text-white/80" : "text-gray-500"
                     }`}>
                         © 2025 Afirme Play - JESUS CRISTO É O SENHOR
+=======
+                    <div className="mt-12 text-center text-sm text-gray-500">
+                        © 2025 Afirme Play ❤️
+>>>>>>> 6a8e139e6eec2629a1c250b58556e37a186b4ce5
                     </div>
                 </div>
             </div>
