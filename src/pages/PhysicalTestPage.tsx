@@ -397,8 +397,7 @@ export default function PhysicalTestPage() {
       }, 300);
 
       const response = await api.post(`/physical-tests/test/${id}/process-correction`, {
-        image: base64Image,
-        use_new_orm: true
+        image: base64Image
       }, {
         headers: {
           'Content-Type': 'application/json',
