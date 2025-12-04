@@ -132,13 +132,13 @@ const App = () => {
             <Route
               path="/"
               element={
-                user.id ? <Navigate to={getBaseRoute()} /> : <Login />
+                user.id ? <Navigate to={getBaseRoute()} /> : <Login key="login" />
               }
             />
 
             {/* Rotas de autenticação */}
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/forgot-password" element={<ForgotPassword key="forgot-password" />} />
+            <Route path="/reset-password" element={<ResetPassword key="reset-password" />} />
             <Route path="/change-password" element={<PrivateRoute><ChangePassword /></PrivateRoute>} />
 
             {/* Rotas do aluno */}

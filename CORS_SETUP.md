@@ -1,7 +1,7 @@
 # Configuração de CORS - Solução
 
 ## Problema
-A aplicação estava tentando fazer requisições diretamente para `https://demo.innovplay.online` do frontend rodando em `localhost:8080`, causando erros de CORS.
+A aplicação estava tentando fazer requisições diretamente para `https://demo-api.afirmeplay.com.br` do frontend rodando em `localhost:8080`, causando erros de CORS.
 
 ## Solução Implementada
 
@@ -16,10 +16,10 @@ O arquivo `src/lib/api.ts` foi configurado para usar `/api` como base URL, que s
 #### Opção 1: Usar a API externa (recomendado)
 ```bash
 # Definir a variável de ambiente
-export VITE_API_BASE_URL=https://demo.innovplay.online
+export VITE_API_BASE_URL=https://demo-api.afirmeplay.com.br
 
 # Ou criar um arquivo .env.local com:
-echo "VITE_API_BASE_URL=https://demo.innovplay.online" > .env.local
+echo "VITE_API_BASE_URL=https://demo-api.afirmeplay.com.br" > .env.local
 
 # Reiniciar o servidor
 npm run dev
@@ -34,7 +34,7 @@ npm run dev
 
 ### 4. Verificação
 Após reiniciar o servidor, você deve ver no console:
-- `[GET] /api/users/school/... -> https://demo.innovplay.online/api/users/school/...`
+- `[GET] /api/users/school/... -> https://demo-api.afirmeplay.com.br/api/users/school/...`
 - `[200] /api/users/school/...`
 
 ### 5. Fallback
