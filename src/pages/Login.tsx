@@ -196,34 +196,10 @@ export default function Login() {
   };
 
   return (
-<<<<<<< HEAD
-    <div 
-      data-auth-page="login"
-      className={`min-h-screen w-full flex flex-col lg:flex-row transition-all duration-500 fixed inset-0 z-50 ${
-        isDark 
-          ? "bg-[#240046]" 
-          : "bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50"
-      }`}
-    >
-      {/* Lado esquerdo (gradiente Afirme Play) */}
-      <div className={`text-white w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12 relative overflow-hidden transition-all duration-500 ${
-        isDark 
-          ? "bg-[#240046]" 
-          : "bg-gradient-to-br from-purple-600 via-blue-600 to-indigo-600"
-      }`}>
-        {/* Elementos decorativos de fundo */}
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-20 left-20 w-72 h-72 bg-white rounded-full blur-3xl"></div>
-          <div className="absolute bottom-20 right-20 w-96 h-96 bg-purple-300 rounded-full blur-3xl"></div>
-        </div>
-        
-        <div className="max-w-md flex flex-col items-center text-center relative z-10">
-=======
     <div className="min-h-screen flex flex-col lg:flex-row bg-[linear-gradient(135deg,#05071A_0%,#101633_30%,#1B1F4A_55%,#3B2D7A_80%,#7B3FE4_100%)]">
       {/* Lado esquerdo (gradiente Afirme Play) */}
       <div className="text-white w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12">
         <div className="max-w-md flex flex-col items-center text-center">
->>>>>>> 6a8e139e6eec2629a1c250b58556e37a186b4ce5
           {/* Ilustração centralizada */}
           <div className={`mb-8 w-32 h-32 md:w-full md:h-full flex items-center justify-center flex-col transition-opacity duration-300 ${
             isMounted ? "animate-fade-in-up opacity-100" : "opacity-0"
@@ -251,35 +227,6 @@ export default function Login() {
       {/* Lado direito (card sobre o gradiente) */}
       <div className="w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12">
         <div className="w-full max-w-md">
-<<<<<<< HEAD
-          <div className={`relative flex flex-col transition-all duration-300 ${
-            isDark 
-              ? "bg-gradient-to-br from-[#240046] to-[#2d0052] shadow-[7px_7px_10px_3px_rgba(36,0,70,0.16)] border border-purple-500/20" 
-              : "bg-white/95 backdrop-blur-md shadow-2xl border border-white/50"
-          } rounded-2xl overflow-hidden hover:shadow-2xl hover:scale-[1.01] ${
-            isMounted ? "animate-slide-in-right opacity-100" : "opacity-0 translate-x-8"
-          }`}>
-            {/* Gradiente sutil no topo */}
-            <div className={`absolute top-0 left-0 right-0 h-1 ${
-              isDark 
-                ? "bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500" 
-                : "bg-gradient-to-r from-purple-500 via-blue-500 to-indigo-500"
-            }`}></div>
-            
-            <div className="flex flex-col gap-5 p-8">
-              {/* Header */}
-              <div className="text-center space-y-2">
-                <h2 className={`text-3xl md:text-4xl font-bold transition-opacity duration-300 ${
-                  isDark ? "text-white" : "text-gray-900"
-                } ${isMounted ? "animate-fade-in opacity-100" : "opacity-0"}`}>
-                  Bem-vindo
-                </h2>
-                <p className={`text-sm font-medium transition-opacity duration-300 ${
-                  isDark ? "text-white/70" : "text-gray-500"
-                } ${isMounted ? "animate-fade-in-delay opacity-100" : "opacity-0"}`}>
-                  Excelência Institucional impulsionada por Resultados e Foco no Aprendizado
-                </p>
-=======
           <div className="enhanced-card rounded-2xl p-8 bg-white/90 backdrop-blur-md shadow-xl">
             <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-4">Área Login</h2>
             <p className="text-gray-600 mb-8">
@@ -290,174 +237,60 @@ export default function Login() {
             <div className="relative">
               <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                 <User className="h-5 w-5 text-gray-400" />
->>>>>>> 6a8e139e6eec2629a1c250b58556e37a186b4ce5
               </div>
-
-              {/* Divisor */}
-              <div className={`h-px w-full my-2 ${
-                isDark ? "bg-gradient-to-r from-transparent via-purple-500/30 to-transparent" : "bg-gradient-to-r from-transparent via-gray-200 to-transparent"
-              }`}></div>
-
-              <form 
-                onSubmit={(e) => { 
-                  e.preventDefault(); 
-                  e.stopPropagation(); 
-                  handleLogin(e); 
-                  return false;
-                }} 
-                className="flex flex-col gap-4" 
-                noValidate
-              >
-                <div className="space-y-1">
-                  <label className={`text-xs font-semibold uppercase tracking-wider transition-opacity duration-300 delay-75 ${
-                    isDark ? "text-white/70" : "text-gray-600"
-                  } ${isMounted ? "animate-slide-in-up opacity-100" : "opacity-0"}`}>
-                    Usuário
-                  </label>
-                  <div className={`relative group transition-opacity duration-300 delay-75 ${
-                    isMounted ? "animate-slide-in-up opacity-100" : "opacity-0"
-                  }`}>
-                    <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none transition-transform duration-300 group-focus-within:scale-110 z-10">
-                      <User className={`h-5 w-5 transition-colors duration-300 ${isDark ? "text-gray-400 group-focus-within:text-purple-400" : "text-gray-500 group-focus-within:text-purple-600"}`} />
-                    </div>
-                    <div className="relative flex items-center">
-                      <Input
-                        type="text"
-                        placeholder="usuario"
-                        className={`pl-12 pr-32 h-12 bg-[#e0dede] border-none outline-none rounded-lg transition-all duration-300 focus:scale-[1.01] focus:shadow-lg ${
-                          isDark 
-                            ? "bg-gray-700/80 text-white placeholder:text-gray-500 focus:bg-gray-700 focus:ring-2 focus:ring-purple-500/50" 
-                            : "bg-gray-50 text-gray-900 placeholder:text-gray-500 focus:bg-white focus:ring-2 focus:ring-purple-500/50"
-                        }`}
-                        value={matricula}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          // Remove o @ e tudo depois se o usuário tentar digitar
-                          // Também remove espaços e caracteres especiais que não devem estar no email
-                          const cleanValue = value.split('@')[0].trim();
-                          setMatricula(cleanValue);
-                        }}
-                        onKeyDown={(e) => {
-                          // Prevenir que o usuário digite @
-                          if (e.key === '@') {
-                            e.preventDefault();
-                          }
-                        }}
-                        disabled={isLoading}
-                      />
-                      <span className={`absolute right-4 text-sm pointer-events-none ${
-                        isDark ? "text-gray-400" : "text-gray-500"
-                      }`}>
-                        @afirmeplay.com.br
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className={`text-xs font-semibold uppercase tracking-wider transition-opacity duration-300 delay-150 ${
-                    isDark ? "text-white/70" : "text-gray-600"
-                  } ${isMounted ? "animate-slide-in-up opacity-100" : "opacity-0"}`}>
-                    Senha
-                  </label>
-                  <div className={`relative group transition-opacity duration-300 delay-150 ${
-                    isMounted ? "animate-slide-in-up opacity-100" : "opacity-0"
-                  }`}>
-                    <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none transition-transform duration-300 group-focus-within:scale-110">
-                      <Lock className={`h-5 w-5 transition-colors duration-300 ${isDark ? "text-gray-400 group-focus-within:text-purple-400" : "text-gray-500 group-focus-within:text-purple-600"}`} />
-                    </div>
-                    <Input
-                      type={showPassword ? "text" : "password"}
-                      placeholder="Digite sua senha"
-                      className={`pl-12 pr-12 h-12 bg-[#e0dede] border-none outline-none rounded-lg transition-all duration-300 focus:scale-[1.01] focus:shadow-lg ${
-                        isDark 
-                          ? "bg-gray-700/80 text-white placeholder:text-gray-500 focus:bg-gray-700 focus:ring-2 focus:ring-purple-500/50" 
-                          : "bg-gray-50 text-gray-900 placeholder:text-gray-500 focus:bg-white focus:ring-2 focus:ring-purple-500/50"
-                      }`}
-                      value={senha}
-                      onChange={(e) => setSenha(e.target.value)}
-                      disabled={isLoading}
-                    />
-                    <button
-                      type="button"
-                      className="absolute inset-y-0 right-0 flex items-center pr-4 transition-all duration-300 hover:scale-110 active:scale-95"
-                      onClick={() => setShowPassword(!showPassword)}
-                      disabled={isLoading}
-                    >
-                      {showPassword ? (
-                        <EyeOff className={`h-5 w-5 transition-all duration-300 ${isDark ? "text-gray-400 hover:text-purple-400" : "text-gray-500 hover:text-purple-600"}`} />
-                      ) : (
-                        <Eye className={`h-5 w-5 transition-all duration-300 ${isDark ? "text-gray-400 hover:text-purple-400" : "text-gray-500 hover:text-purple-600"}`} />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                <div className={`flex items-center justify-between pt-2 transition-opacity duration-300 ${
-                  isMounted ? "animate-fade-in-delay-2 opacity-100" : "opacity-0"
-                }`}>
-                  <div className="flex items-center space-x-2.5">
-                    <Checkbox
-                      id="lembrar"
-                      checked={lembrar}
-                      onCheckedChange={(checked) => setLembrar(checked === true)}
-                      disabled={isLoading}
-                      className="transition-all duration-300 hover:scale-110"
-                    />
-                    <label
-                      htmlFor="lembrar"
-                      className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 transition-colors duration-300 cursor-pointer ${
-                        isDark ? "text-white/90 hover:text-purple-300" : "text-gray-700 hover:text-purple-600"
-                      }`}
-                    >
-                      Lembrar-me
-                    </label>
-                  </div>
-                  <a 
-                    href="/forgot-password" 
-                    className={`text-sm font-medium transition-all duration-300 hover:underline hover:scale-105 ${
-                      isDark ? "text-purple-300 hover:text-purple-200" : "text-purple-600 hover:text-purple-700"
-                    }`}
-                  >
-                    Esqueceu a senha?
-                  </a>
-                </div>
-
-                <Button
-                  type="button"
-                  onClick={async (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    await handleLogin();
-                  }}
-                  className={`w-full h-12 mt-4 text-white font-semibold text-base border-none rounded-lg cursor-pointer transition-all duration-300 delay-300 shadow-lg ${
-                    isMounted ? "animate-slide-in-up opacity-100" : "opacity-0 translate-y-4"
-                  } ${
-                    isDark 
-                      ? "bg-gradient-to-r from-[#573b8a] to-[#6d44b8] hover:from-[#6d44b8] hover:to-[#7d54c8] hover:scale-[1.02] hover:shadow-xl hover:shadow-purple-500/50 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100" 
-                      : "bg-gradient-to-r from-[#573b8a] to-[#6d44b8] hover:from-[#6d44b8] hover:to-[#7d54c8] hover:scale-[1.02] hover:shadow-xl hover:shadow-purple-500/50 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                  }`}
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                      Processando...
-                    </>
-                  ) : (
-                    <span className="transition-all duration-300">Entrar</span>
-                  )}
-                </Button>
-              </form>
+              <Input
+                type="text"
+                placeholder="Matrícula ou e-mail"
+                className="pl-10 bg-gray-50 border-gray-200 focus:border-blue-500 focus:ring-blue-500"
+                value={matricula}
+                onChange={(e) => setMatricula(e.target.value)}
+                disabled={isLoading}
+              />
             </div>
-          </div>
 
-<<<<<<< HEAD
-          <div className={`mt-6 text-center text-xs transition-opacity duration-300 ${
-            isDark ? "text-white/60" : "text-gray-500"
-          } ${isMounted ? "animate-fade-in-delay-3 opacity-100" : "opacity-0"}`}>
-            © 2025 Afirme Play - JESUS CRISTO É O SENHOR
-=======
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                <Lock className="h-5 w-5 text-gray-400" />
+              </div>
+              <Input
+                type={showPassword ? "text" : "password"}
+                placeholder="Senha"
+                className="pl-10 pr-10 bg-gray-50 border-gray-200 focus:border-blue-500 focus:ring-blue-500"
+                value={senha}
+                onChange={(e) => setSenha(e.target.value)}
+                disabled={isLoading}
+              />
+              <button
+                type="button"
+                className="absolute inset-y-0 right-0 flex items-center pr-3"
+                onClick={() => setShowPassword(!showPassword)}
+                disabled={isLoading}
+              >
+                {showPassword ? (
+                  <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                ) : (
+                  <Eye className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                )}
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="lembrar"
+                  checked={lembrar}
+                  onCheckedChange={(checked) => setLembrar(checked === true)}
+                  disabled={isLoading}
+                />
+                <label htmlFor="lembrar" className="text-sm text-gray-600">
+                  Lembrar-me
+                </label>
+              </div>
+              <a href="/forgot-password" className="text-sm text-blue-600 hover:underline">
+                Esqueceu a senha?
+              </a>
+            </div>
+
             <Button
               type="submit"
               className="w-full py-6 bg-[linear-gradient(90deg,#4F8EAD_0%,#5A9FDB_18%,#8F9AFF_38%,#8F81FF_60%,#CB61FC_80%,#FF61FE_100%)] hover:brightness-110 text-white shadow-lg"
@@ -477,7 +310,6 @@ export default function Login() {
 
           <div className="mt-8 text-center text-sm text-white/80">
             © 2025 Afirme Play ❤️
->>>>>>> 6a8e139e6eec2629a1c250b58556e37a186b4ce5
           </div>
         </div>
       </div>
