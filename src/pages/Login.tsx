@@ -225,7 +225,7 @@ export default function Login() {
               <img 
                 src={isDark ? LOGO_WHITE : LOGO} 
                 alt="Logo" 
-                className="relative w-[300px] max-w-full h-auto animate-logo-float drop-shadow-2xl transition-transform duration-300 hover:scale-105" 
+                className="relative w-[300px] max-w-full h-auto drop-shadow-2xl" 
               />
             </div>
             <p className={`text-lg md:text-xl text-white/90 font-medium tracking-wide mt-6 transition-opacity duration-300 ${
