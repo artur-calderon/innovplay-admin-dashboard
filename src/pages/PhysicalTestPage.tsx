@@ -62,7 +62,8 @@ import {
   XCircle,
   Clock,
   Eye,
-  MoreVertical
+  MoreVertical,
+  Send
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
@@ -159,6 +160,7 @@ export default function PhysicalTestPage() {
   const [formToDelete, setFormToDelete] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isMarkingAsSent, setIsMarkingAsSent] = useState<string | null>(null);
 
   // Estados para alunos
   const [students, setStudents] = useState<any[]>([]);
@@ -179,7 +181,7 @@ export default function PhysicalTestPage() {
   const loadTestData = async () => {
     try {
       setIsLoading(true);
-      
+
       // Carregar status da prova
       const statusResponse = await api.get(`/physical-tests/test/${id}/status`);
       console.log("📊 Resposta da API de status:", statusResponse.data);
@@ -190,7 +192,12 @@ export default function PhysicalTestPage() {
       // Carregar formulários gerados
       const formsResponse = await api.get(`/physical-tests/test/${id}/forms`);
       console.log("📋 Resposta da API de formulários:", formsResponse.data);
-      setGeneratedForms(formsResponse.data.forms || []);
+      // Garantir que o campo answer_sheet_sent_at seja preservado
+      const forms = (formsResponse.data.forms || []).map((form: any) => ({
+        ...form,
+        answer_sheet_sent_at: form.answer_sheet_sent_at || null
+      }));
+      setGeneratedForms(forms);
 
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
@@ -231,7 +238,8 @@ export default function PhysicalTestPage() {
         id: form.form_id || form.id, // Mapear form_id para id (ou usar id se já existir)
         created_at: form.created_at || new Date().toISOString(), // Usar created_at da API ou adicionar timestamp
         updated_at: form.created_at || new Date().toISOString(), // Usar created_at como updated_at se não existir
-        status: 'gerado' // Definir status como gerado
+        status: 'gerado', // Definir status como gerado
+        answer_sheet_sent_at: form.answer_sheet_sent_at || null // Preservar campo de envio se existir
       }));
       setGeneratedForms(mappedForms);
 
@@ -258,13 +266,13 @@ export default function PhysicalTestPage() {
     if (file) {
       setUploadedImage(file);
       setCorrectionResult(null); // Limpar resultado anterior
-      
+
       const reader = new FileReader();
       reader.onload = (e) => {
         setPreviewImage(e.target?.result as string);
       };
       reader.readAsDataURL(file);
-      
+
       console.log("📸 Imagem selecionada:", file.name);
     }
   };
@@ -367,12 +375,12 @@ export default function PhysicalTestPage() {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      
+
       // Nome do arquivo com timestamp
       const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
       const testTitle = testStatus?.test_title?.replace(/\s+/g, '_') || 'Avaliacao';
       link.download = `Avaliacoes_${testTitle}_${timestamp}.zip`;
-      
+
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -403,9 +411,9 @@ export default function PhysicalTestPage() {
     try {
       setIsDeleting(true);
       await api.delete(`/physical-tests/form/${formToDelete}`);
-      
+
       setGeneratedForms(prev => prev.filter(form => form.id !== formToDelete));
-      
+
       toast({
         title: "Avaliação excluída",
         description: "A avaliação foi excluída com sucesso.",
@@ -430,9 +438,9 @@ export default function PhysicalTestPage() {
     try {
       setIsDeleting(true);
       await api.delete(`/physical-tests/test/${id}/forms`);
-      
+
       setGeneratedForms([]);
-      
+
       toast({
         title: "Avaliações excluídas",
         description: "Todas as avaliações foram excluídas com sucesso.",
@@ -447,6 +455,53 @@ export default function PhysicalTestPage() {
     } finally {
       setIsDeleting(false);
       setShowDeleteDialog(false);
+    }
+  };
+
+  const handleMarkAsSent = async (formId: string) => {
+    if (!id) return;
+
+    // Verificar se o formulário já foi corrigido
+    const form = generatedForms.find(f => f.id === formId);
+    if (form?.is_corrected || form?.corrected_at) {
+      toast({
+        title: "Ação não permitida",
+        description: "Não é possível marcar como enviado um formulário que já foi corrigido.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsMarkingAsSent(formId);
+
+      // Chamar API para marcar como enviado
+      await api.post(`/physical-tests/form/${formId}/mark-as-sent`, {}, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      // Atualizar o estado local
+      setGeneratedForms(prev => prev.map(form =>
+        form.id === formId
+          ? { ...form, answer_sheet_sent_at: new Date().toISOString() }
+          : form
+      ));
+
+      toast({
+        title: "Formulário marcado como enviado",
+        description: "O formulário foi marcado como enviado com sucesso.",
+      });
+    } catch (error: any) {
+      console.error("Erro ao marcar como enviado:", error);
+      toast({
+        title: "Erro",
+        description: error.response?.data?.error || "Não foi possível marcar o formulário como enviado.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsMarkingAsSent(null);
     }
   };
 
@@ -486,7 +541,8 @@ export default function PhysicalTestPage() {
       const mappedForms = (response.data.forms || []).map((form: any) => ({
         ...form,
         id: form.form_id, // Mapear form_id para id
-        created_at: new Date().toISOString() // Adicionar timestamp se não existir
+        created_at: new Date().toISOString(), // Adicionar timestamp se não existir
+        answer_sheet_sent_at: form.answer_sheet_sent_at || null // Preservar campo de envio se existir
       }));
       setGeneratedForms(prev => [...prev, ...mappedForms]);
 
@@ -700,6 +756,7 @@ export default function PhysicalTestPage() {
                         <TableHead>Status</TableHead>
                         <TableHead>Gerado em</TableHead>
                         <TableHead>Corrigido em</TableHead>
+                        <TableHead>Formulário Enviado</TableHead>
                         <TableHead className="text-right">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -718,10 +775,23 @@ export default function PhysicalTestPage() {
                             {new Date(form.created_at).toLocaleDateString('pt-BR')}
                           </TableCell>
                           <TableCell>
-                            {form.corrected_at 
+                            {form.corrected_at
                               ? new Date(form.corrected_at).toLocaleDateString('pt-BR')
                               : '-'
                             }
+                          </TableCell>
+                          <TableCell>
+                            {form.answer_sheet_sent_at ? (
+                              <Badge className="bg-green-500/90 text-white border-green-400 flex items-center gap-1 w-fit">
+                                <CheckCircle className="h-3 w-3" />
+                                Enviado {new Date(form.answer_sheet_sent_at).toLocaleDateString('pt-BR')}
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="flex items-center gap-1 w-fit">
+                                <Send className="h-3 w-3" />
+                                Não enviado
+                              </Badge>
+                            )}
                           </TableCell>
                           <TableCell className="text-right">
                             <DropdownMenu>
@@ -735,7 +805,25 @@ export default function PhysicalTestPage() {
                                   <Download className="h-4 w-4 mr-2" />
                                   Baixar PDF
                                 </DropdownMenuItem>
-                                <DropdownMenuItem 
+                                {!form.answer_sheet_sent_at && !form.is_corrected && !form.corrected_at && (
+                                  <DropdownMenuItem
+                                    onClick={() => handleMarkAsSent(form.id)}
+                                    disabled={isMarkingAsSent === form.id}
+                                  >
+                                    {isMarkingAsSent === form.id ? (
+                                      <>
+                                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                                        Marcando...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Send className="h-4 w-4 mr-2" />
+                                        Marcar como Enviado
+                                      </>
+                                    )}
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuItem
                                   onClick={() => handleDeleteForm(form.id)}
                                   className="text-red-600"
                                 >
