@@ -573,7 +573,7 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
                 height={isMobile ? "34px" : isCollapsed ? "32px" : "36px"}
                 src={
                   isCollapsed && !isMobile 
-                    ? "/ico.png" 
+                    ? "/AFIRME-PLAY-ico.png" 
                     : isDarkMode 
                       ? "/AFIRME PLAY LOGO branco.png" 
                       : "/LOGO-1-menor-escuro.png"
