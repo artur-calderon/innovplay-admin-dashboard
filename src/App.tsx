@@ -1,4 +1,4 @@
-import React, { Suspense } from "react";
+import React, { Suspense, useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { ToastContainer } from 'react-toastify'
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -104,7 +104,9 @@ const App = () => {
 
   // Função para determinar a rota baseada no papel do usuário
   const getBaseRoute = () => {
-    if (!user.id) return '/';
+    if (!user.id) {
+      return '/';
+    }
     return user.role === 'aluno' ? '/aluno' : '/app';
   };
 

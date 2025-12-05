@@ -138,7 +138,6 @@ export default function Login() {
         throw firstError;
       }
     } catch (error: unknown) {
-      console.error("Erro ao fazer login:", error);
 
       // Tratamento específico de erros de login
       let errorTitle = "Erro no login";

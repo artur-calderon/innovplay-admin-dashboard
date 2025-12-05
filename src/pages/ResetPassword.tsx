@@ -307,7 +307,7 @@ export default function ResetPassword() {
             }`}>
                 <div className="max-w-md flex flex-col items-center text-center">
                     <div className="mb-8 w-32 h-32 md:w-full md:h-full flex items-center justify-center flex-col animate-fade-in-up">
-                        <img src={LOGO} alt="Logo" className="w-[300px] max-w-full h-auto animate-logo-float drop-shadow-2xl transition-transform duration-300 hover:scale-105" />
+                        <img src={isDark ? LOGO_WHITE : LOGO} alt="Logo" className="w-[300px] max-w-full h-auto animate-logo-float drop-shadow-2xl transition-transform duration-300 hover:scale-105" />
                         <p className="text-lg md:text-xl text-white/80 animate-fade-in-delay mt-4">APRENDIZAGEM E RESULTADO</p>
                     </div>
                 </div>
