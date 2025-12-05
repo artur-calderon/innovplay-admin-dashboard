@@ -62,7 +62,8 @@ import {
   XCircle,
   Clock,
   Eye,
-  MoreVertical
+  MoreVertical,
+  Send
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
@@ -117,48 +118,20 @@ interface CorrectionResult {
   message: string;
   student_id: string;
   test_id: string;
-  class_test_id?: string;
+  class_test_id: string;
   correct_answers: number;
   total_questions: number;
   score_percentage: number;
   grade: number;
-  proficiency: number | string;
+  proficiency: number;
   classification: string;
   answers_detected: number;
-  qr_data?: {
+  qr_data: {
     student_id: string;
     test_id: string;
     class_test_id: string;
     timestamp: string;
   };
-}
-
-// Função para normalizar resposta da API (suporta formato antigo e novo)
-function normalizeCorrectionResult(data: any): CorrectionResult {
-  // Se for a nova resposta (com system: "new_orm")
-  if (data.system === "new_orm") {
-    const answers = data.answers || {};
-    const answersDetected = Object.keys(answers).length;
-    const evaluationResult = data.evaluation_result || {};
-    
-    return {
-      message: data.message || "Correção processada com sucesso",
-      student_id: data.student_id || "",
-      test_id: data.test_id || "",
-      class_test_id: data.class_test_id || "",
-      correct_answers: data.correct || 0,
-      total_questions: data.total || 0,
-      score_percentage: data.percentage || 0,
-      grade: evaluationResult.grade || data.score || 0,
-      proficiency: evaluationResult.proficiency || "",
-      classification: evaluationResult.classification || "",
-      answers_detected: answersDetected,
-      qr_data: data.qr_data
-    };
-  }
-  
-  // Formato antigo (retorna como está)
-  return data;
 }
 
 export default function PhysicalTestPage() {
@@ -176,17 +149,6 @@ export default function PhysicalTestPage() {
   // Estados para geração de formulários
   const [isGenerating, setIsGenerating] = useState(false);
   const [correctionProgress, setCorrectionProgress] = useState(0);
-  const [showGenerateDialog, setShowGenerateDialog] = useState(false);
-  
-  // Estados para configuração de blocos
-  const [useBlocks, setUseBlocks] = useState(false);
-  const [numBlocks, setNumBlocks] = useState(2);
-  const [questionsPerBlock, setQuestionsPerBlock] = useState(5);
-  const [separateBySubject, setSeparateBySubject] = useState(false);
-  
-  // Estados para informações da avaliação (para validação)
-  const [testTotalQuestions, setTestTotalQuestions] = useState<number | null>(null);
-  const [testSubjects, setTestSubjects] = useState<string[]>([]);
 
   // Estados para correção
   const [showCorrectionDialog, setShowCorrectionDialog] = useState(false);
@@ -198,6 +160,7 @@ export default function PhysicalTestPage() {
   const [formToDelete, setFormToDelete] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isMarkingAsSent, setIsMarkingAsSent] = useState<string | null>(null);
 
   // Estados para alunos
   const [students, setStudents] = useState<any[]>([]);
@@ -218,7 +181,7 @@ export default function PhysicalTestPage() {
   const loadTestData = async () => {
     try {
       setIsLoading(true);
-      
+
       // Carregar status da prova
       const statusResponse = await api.get(`/physical-tests/test/${id}/status`);
       console.log("📊 Resposta da API de status:", statusResponse.data);
@@ -229,64 +192,12 @@ export default function PhysicalTestPage() {
       // Carregar formulários gerados
       const formsResponse = await api.get(`/physical-tests/test/${id}/forms`);
       console.log("📋 Resposta da API de formulários:", formsResponse.data);
-      setGeneratedForms(formsResponse.data.forms || []);
-
-      // Buscar informações da avaliação para validação de blocos
-      try {
-        const testDetailsResponse = await api.get(`/test/${id}/details`);
-        const testData = testDetailsResponse.data;
-        console.log("🔍 Dados completos da avaliação:", testData);
-        console.log("🔍 Estrutura das questões:", testData.questions?.[0]);
-        
-        // Extrair número total de questões
-        const totalQuestions = testData.total_questions || testData.totalQuestions || testData.questions?.length || null;
-        setTestTotalQuestions(totalQuestions);
-        
-        // Extrair disciplinas (subjects)
-        let extractedSubjects: string[] = [];
-        
-        // Função auxiliar para extrair nome de disciplina
-        const extractSubjectName = (subject: any): string | null => {
-          if (!subject) return null;
-          if (typeof subject === 'string') return subject;
-          // Tentar vários campos comuns
-          return subject.name || subject.title || subject.label || subject.discipline_name || 
-                 subject.subject_name || subject.id || null;
-        };
-        
-        if (testData.questions && Array.isArray(testData.questions)) {
-          const uniqueSubjects = new Set<string>();
-          testData.questions.forEach((q: any) => {
-            const subjectName = extractSubjectName(q.subject);
-            if (subjectName) uniqueSubjects.add(subjectName);
-            
-            const disciplineName = extractSubjectName(q.discipline);
-            if (disciplineName) uniqueSubjects.add(disciplineName);
-          });
-          extractedSubjects = Array.from(uniqueSubjects);
-          setTestSubjects(extractedSubjects);
-        } else if (testData.subject) {
-          const subjectName = extractSubjectName(testData.subject);
-          if (subjectName) {
-            extractedSubjects = [subjectName];
-            setTestSubjects(extractedSubjects);
-          }
-        } else if (testData.disciplines && Array.isArray(testData.disciplines)) {
-          // Se houver um array de disciplinas
-          extractedSubjects = testData.disciplines
-            .map(extractSubjectName)
-            .filter((name): name is string => name !== null);
-          setTestSubjects(extractedSubjects);
-        }
-        
-        console.log("📚 Informações da avaliação:", {
-          totalQuestions,
-          subjects: extractedSubjects
-        });
-      } catch (error) {
-        console.warn("Não foi possível carregar detalhes da avaliação para validação:", error);
-        // Não é crítico, apenas não teremos validação
-      }
+      // Garantir que o campo answer_sheet_sent_at seja preservado
+      const forms = (formsResponse.data.forms || []).map((form: any) => ({
+        ...form,
+        answer_sheet_sent_at: form.answer_sheet_sent_at || null
+      }));
+      setGeneratedForms(forms);
 
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
@@ -306,24 +217,13 @@ export default function PhysicalTestPage() {
     try {
       setIsGenerating(true);
       setCorrectionProgress(0);
-      setShowGenerateDialog(false); // Fechar dialog ao iniciar geração
 
       // Simular progresso
       const progressInterval = setInterval(() => {
         setCorrectionProgress(prev => Math.min(prev + 10, 90));
       }, 200);
 
-      // Preparar payload com parâmetros de blocos
-      const payload: any = {};
-      
-      if (useBlocks) {
-        payload.use_blocks = true;
-        payload.num_blocks = numBlocks;
-        payload.questions_per_block = questionsPerBlock;
-        payload.separate_by_subject = separateBySubject;
-      }
-
-      const response = await api.post(`/physical-tests/test/${id}/generate-forms`, payload, {
+      const response = await api.post(`/physical-tests/test/${id}/generate-forms`, {}, {
         headers: {
           'Content-Type': 'application/json',
         },
@@ -338,7 +238,8 @@ export default function PhysicalTestPage() {
         id: form.form_id || form.id, // Mapear form_id para id (ou usar id se já existir)
         created_at: form.created_at || new Date().toISOString(), // Usar created_at da API ou adicionar timestamp
         updated_at: form.created_at || new Date().toISOString(), // Usar created_at como updated_at se não existir
-        status: 'gerado' // Definir status como gerado
+        status: 'gerado', // Definir status como gerado
+        answer_sheet_sent_at: form.answer_sheet_sent_at || null // Preservar campo de envio se existir
       }));
       setGeneratedForms(mappedForms);
 
@@ -365,13 +266,13 @@ export default function PhysicalTestPage() {
     if (file) {
       setUploadedImage(file);
       setCorrectionResult(null); // Limpar resultado anterior
-      
+
       const reader = new FileReader();
       reader.onload = (e) => {
         setPreviewImage(e.target?.result as string);
       };
       reader.readAsDataURL(file);
-      
+
       console.log("📸 Imagem selecionada:", file.name);
     }
   };
@@ -407,13 +308,12 @@ export default function PhysicalTestPage() {
       clearInterval(progressInterval);
       setCorrectionProgress(100);
 
-      // Normalizar e armazenar resultado da correção
-      const normalizedResult = normalizeCorrectionResult(response.data);
-      setCorrectionResult(normalizedResult);
+      // Armazenar resultado da correção
+      setCorrectionResult(response.data);
 
       toast({
         title: "Correção processada!",
-        description: `Prova corrigida com sucesso. Nota: ${normalizedResult.grade}`,
+        description: `Prova corrigida com sucesso. Nota: ${response.data.grade}`,
       });
 
       setShowCorrectionDialog(false);
@@ -475,12 +375,12 @@ export default function PhysicalTestPage() {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      
+
       // Nome do arquivo com timestamp
       const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
       const testTitle = testStatus?.test_title?.replace(/\s+/g, '_') || 'Avaliacao';
       link.download = `Avaliacoes_${testTitle}_${timestamp}.zip`;
-      
+
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -511,9 +411,9 @@ export default function PhysicalTestPage() {
     try {
       setIsDeleting(true);
       await api.delete(`/physical-tests/form/${formToDelete}`);
-      
+
       setGeneratedForms(prev => prev.filter(form => form.id !== formToDelete));
-      
+
       toast({
         title: "Avaliação excluída",
         description: "A avaliação foi excluída com sucesso.",
@@ -538,9 +438,9 @@ export default function PhysicalTestPage() {
     try {
       setIsDeleting(true);
       await api.delete(`/physical-tests/test/${id}/forms`);
-      
+
       setGeneratedForms([]);
-      
+
       toast({
         title: "Avaliações excluídas",
         description: "Todas as avaliações foram excluídas com sucesso.",
@@ -555,6 +455,53 @@ export default function PhysicalTestPage() {
     } finally {
       setIsDeleting(false);
       setShowDeleteDialog(false);
+    }
+  };
+
+  const handleMarkAsSent = async (formId: string) => {
+    if (!id) return;
+
+    // Verificar se o formulário já foi corrigido
+    const form = generatedForms.find(f => f.id === formId);
+    if (form?.is_corrected || form?.corrected_at) {
+      toast({
+        title: "Ação não permitida",
+        description: "Não é possível marcar como enviado um formulário que já foi corrigido.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsMarkingAsSent(formId);
+
+      // Chamar API para marcar como enviado
+      await api.post(`/physical-tests/form/${formId}/mark-as-sent`, {}, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      // Atualizar o estado local
+      setGeneratedForms(prev => prev.map(form =>
+        form.id === formId
+          ? { ...form, answer_sheet_sent_at: new Date().toISOString() }
+          : form
+      ));
+
+      toast({
+        title: "Formulário marcado como enviado",
+        description: "O formulário foi marcado como enviado com sucesso.",
+      });
+    } catch (error: any) {
+      console.error("Erro ao marcar como enviado:", error);
+      toast({
+        title: "Erro",
+        description: error.response?.data?.error || "Não foi possível marcar o formulário como enviado.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsMarkingAsSent(null);
     }
   };
 
@@ -594,7 +541,8 @@ export default function PhysicalTestPage() {
       const mappedForms = (response.data.forms || []).map((form: any) => ({
         ...form,
         id: form.form_id, // Mapear form_id para id
-        created_at: new Date().toISOString() // Adicionar timestamp se não existir
+        created_at: new Date().toISOString(), // Adicionar timestamp se não existir
+        answer_sheet_sent_at: form.answer_sheet_sent_at || null // Preservar campo de envio se existir
       }));
       setGeneratedForms(prev => [...prev, ...mappedForms]);
 
@@ -619,84 +567,6 @@ export default function PhysicalTestPage() {
     const matchesClass = selectedClassFilter === "all" || student.class_id === selectedClassFilter;
     return matchesSearch && matchesClass;
   });
-
-  // Função para validar configurações de blocos
-  const validateBlockSettings = (): { isValid: boolean; warnings: string[] } => {
-    const warnings: string[] = [];
-    let hasCriticalError = false;
-    
-    if (!useBlocks) {
-      return { isValid: true, warnings: [] };
-    }
-
-    // Se separar por disciplina, validar número de disciplinas
-    if (separateBySubject) {
-      if (testSubjects.length > 0) {
-        warnings.push(
-          `ℹ️ Será criado 1 bloco por disciplina. A avaliação possui ${testSubjects.length} disciplina(s). ` +
-          `A configuração de quantidade de blocos e questões por bloco será ignorada.`
-        );
-      } else {
-        warnings.push(
-          `⚠️ Não foi possível identificar as disciplinas da avaliação. ` +
-          `Verifique se a avaliação possui disciplinas cadastradas.`
-        );
-      }
-      return { isValid: !hasCriticalError, warnings };
-    }
-
-    // Validar quantidade de blocos vs questões totais
-    if (testTotalQuestions !== null) {
-      const totalQuestionsNeeded = numBlocks * questionsPerBlock;
-      
-      if (numBlocks > testTotalQuestions) {
-        warnings.push(
-          `⚠️ A quantidade de blocos (${numBlocks}) é maior que o número total de questões da avaliação (${testTotalQuestions}). ` +
-          `Isso pode resultar em blocos vazios ou com poucas questões. Considere reduzir a quantidade de blocos.`
-        );
-      }
-      
-      if (questionsPerBlock > testTotalQuestions) {
-        warnings.push(
-          `⚠️ A quantidade de questões por bloco (${questionsPerBlock}) é maior que o número total de questões da avaliação (${testTotalQuestions}). ` +
-          `Cada bloco terá no máximo ${testTotalQuestions} questões. Considere reduzir a quantidade de questões por bloco.`
-        );
-      }
-      
-      if (totalQuestionsNeeded > testTotalQuestions) {
-        warnings.push(
-          `⚠️ A configuração atual (${numBlocks} blocos × ${questionsPerBlock} questões = ${totalQuestionsNeeded} questões) ` +
-          `ultrapassa o número total de questões da avaliação (${testTotalQuestions}). ` +
-          `Os blocos serão ajustados automaticamente para distribuir as questões disponíveis.`
-        );
-      }
-      
-      if (numBlocks > 0 && questionsPerBlock > 0 && totalQuestionsNeeded < testTotalQuestions) {
-        const remainingQuestions = testTotalQuestions - totalQuestionsNeeded;
-        if (remainingQuestions > 0) {
-          warnings.push(
-            `ℹ️ Com a configuração atual, restarão ${remainingQuestions} questão(ões) sem distribuir nos blocos. ` +
-            `Considere ajustar a quantidade de blocos ou questões por bloco para aproveitar todas as questões.`
-          );
-        }
-      }
-
-      // Validações críticas que impedem a geração
-      if (numBlocks <= 0 || questionsPerBlock <= 0) {
-        hasCriticalError = true;
-        warnings.push(
-          `❌ A quantidade de blocos e questões por bloco deve ser maior que zero.`
-        );
-      }
-    } else {
-      warnings.push(
-        `ℹ️ Não foi possível carregar o número total de questões da avaliação. ` +
-        `Verifique se a configuração de blocos está correta antes de gerar.`
-      );
-    }
-
-    return { isValid: !hasCriticalError, warnings };
-  };
 
   if (isLoading) {
     return (
@@ -842,165 +712,23 @@ export default function PhysicalTestPage() {
                       </Button>
                     </>
                   )}
-                  <Dialog open={showGenerateDialog} onOpenChange={setShowGenerateDialog}>
-                    <DialogTrigger asChild>
-                      <Button
-                        disabled={isGenerating}
-                        className="bg-blue-600 hover:bg-blue-700"
-                      >
+                  <Button
+                    onClick={handleGenerateForms}
+                    disabled={isGenerating}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Gerando... {correctionProgress}%
+                      </>
+                    ) : (
+                      <>
                         <Plus className="h-4 w-4 mr-2" />
                         Gerar Avaliações
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-[500px]">
-                      <DialogHeader>
-                        <DialogTitle>Configurar Geração de Avaliações</DialogTitle>
-                        <DialogDescription>
-                          Configure as opções de blocos para a geração das avaliações físicas.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="space-y-6 py-4">
-                        {/* Opção de usar blocos */}
-                        <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id="use-blocks"
-                            checked={useBlocks}
-                            onCheckedChange={(checked) => setUseBlocks(checked === true)}
-                          />
-                          <Label htmlFor="use-blocks" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                            Separar avaliações em blocos
-                          </Label>
-                        </div>
-
-                        {/* Configurações de blocos (apenas se useBlocks estiver ativado) */}
-                        {useBlocks && (
-                          <div className="space-y-4 pl-6 border-l-2 border-gray-200">
-                            {/* Informações sobre a avaliação */}
-                            {(testTotalQuestions !== null || testSubjects.length > 0) && (
-                              <Alert>
-                                <AlertDescription className="text-sm">
-                                  <div className="space-y-1">
-                                    {testTotalQuestions !== null && (
-                                      <p><strong>Total de questões:</strong> {testTotalQuestions}</p>
-                                    )}
-                                    {testSubjects.length > 0 && (
-                                      <p><strong>Disciplinas:</strong> {testSubjects.join(", ")} ({testSubjects.length})</p>
-                                    )}
-                                    <p className="text-xs mt-2 text-muted-foreground">
-                                      Os blocos serão criados de acordo com a quantidade de questões e disciplinas da avaliação.
-                                    </p>
-                                  </div>
-                                </AlertDescription>
-                              </Alert>
-                            )}
-
-                            <div className="space-y-2">
-                              <Label htmlFor="num-blocks">Quantidade de Blocos</Label>
-                              <Input
-                                id="num-blocks"
-                                type="number"
-                                min="1"
-                                value={numBlocks}
-                                onChange={(e) => setNumBlocks(parseInt(e.target.value) || 2)}
-                              />
-                              <p className="text-xs text-muted-foreground">
-                                Número de blocos que serão criados para cada avaliação.
-                              </p>
-                            </div>
-
-                            <div className="space-y-2">
-                              <Label htmlFor="questions-per-block">Questões por Bloco</Label>
-                              <Input
-                                id="questions-per-block"
-                                type="number"
-                                min="1"
-                                value={questionsPerBlock}
-                                onChange={(e) => setQuestionsPerBlock(parseInt(e.target.value) || 5)}
-                              />
-                              <p className="text-xs text-muted-foreground">
-                                Quantidade de questões que cada bloco deve conter.
-                              </p>
-                            </div>
-
-                            <div className="flex items-center space-x-2">
-                              <Checkbox
-                                id="separate-by-subject"
-                                checked={separateBySubject}
-                                onCheckedChange={(checked) => setSeparateBySubject(checked === true)}
-                              />
-                              <Label htmlFor="separate-by-subject" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                                Separar por disciplina (1 bloco por disciplina)
-                              </Label>
-                            </div>
-                            {separateBySubject && (
-                              <p className="text-xs text-muted-foreground pl-6">
-                                Quando ativado, cada disciplina terá seu próprio bloco, ignorando as configurações acima.
-                              </p>
-                            )}
-
-                            {/* Avisos de validação */}
-                            {(() => {
-                              const validation = validateBlockSettings();
-                              if (validation.warnings.length > 0) {
-                                return (
-                                  <Alert variant={validation.isValid ? "default" : "destructive"}>
-                                    <AlertDescription>
-                                      <div className="space-y-2">
-                                        {validation.warnings.map((warning, index) => (
-                                          <p key={index} className="text-sm">
-                                            {warning}
-                                          </p>
-                                        ))}
-                                      </div>
-                                    </AlertDescription>
-                                  </Alert>
-                                );
-                              }
-                              return null;
-                            })()}
-                          </div>
-                        )}
-
-                        {/* Indicador de progresso */}
-                        {isGenerating && (
-                          <div className="space-y-2">
-                            <Progress value={correctionProgress} className="w-full" />
-                            <p className="text-sm text-muted-foreground text-center">
-                              Gerando avaliações... {correctionProgress}%
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Botões de ação */}
-                        <div className="flex justify-end gap-2 pt-4">
-                          <Button
-                            variant="outline"
-                            onClick={() => setShowGenerateDialog(false)}
-                            disabled={isGenerating}
-                          >
-                            Cancelar
-                          </Button>
-                          <Button
-                            onClick={handleGenerateForms}
-                            disabled={isGenerating || (useBlocks && !validateBlockSettings().isValid)}
-                            className="bg-blue-600 hover:bg-blue-700"
-                          >
-                            {isGenerating ? (
-                              <>
-                                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                                Gerando...
-                              </>
-                            ) : (
-                              <>
-                                <CheckCircle className="h-4 w-4 mr-2" />
-                                Gerar Avaliações
-                              </>
-                            )}
-                          </Button>
-                        </div>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
+                      </>
+                    )}
+                  </Button>
                 </div>
               </div>
             </CardHeader>
@@ -1028,6 +756,7 @@ export default function PhysicalTestPage() {
                         <TableHead>Status</TableHead>
                         <TableHead>Gerado em</TableHead>
                         <TableHead>Corrigido em</TableHead>
+                        <TableHead>Formulário Enviado</TableHead>
                         <TableHead className="text-right">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -1046,10 +775,23 @@ export default function PhysicalTestPage() {
                             {new Date(form.created_at).toLocaleDateString('pt-BR')}
                           </TableCell>
                           <TableCell>
-                            {form.corrected_at 
+                            {form.corrected_at
                               ? new Date(form.corrected_at).toLocaleDateString('pt-BR')
                               : '-'
                             }
+                          </TableCell>
+                          <TableCell>
+                            {form.answer_sheet_sent_at ? (
+                              <Badge className="bg-green-500/90 text-white border-green-400 flex items-center gap-1 w-fit">
+                                <CheckCircle className="h-3 w-3" />
+                                Enviado {new Date(form.answer_sheet_sent_at).toLocaleDateString('pt-BR')}
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="flex items-center gap-1 w-fit">
+                                <Send className="h-3 w-3" />
+                                Não enviado
+                              </Badge>
+                            )}
                           </TableCell>
                           <TableCell className="text-right">
                             <DropdownMenu>
@@ -1063,7 +805,25 @@ export default function PhysicalTestPage() {
                                   <Download className="h-4 w-4 mr-2" />
                                   Baixar PDF
                                 </DropdownMenuItem>
-                                <DropdownMenuItem 
+                                {!form.answer_sheet_sent_at && !form.is_corrected && !form.corrected_at && (
+                                  <DropdownMenuItem
+                                    onClick={() => handleMarkAsSent(form.id)}
+                                    disabled={isMarkingAsSent === form.id}
+                                  >
+                                    {isMarkingAsSent === form.id ? (
+                                      <>
+                                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                                        Marcando...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Send className="h-4 w-4 mr-2" />
+                                        Marcar como Enviado
+                                      </>
+                                    )}
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuItem
                                   onClick={() => handleDeleteForm(form.id)}
                                   className="text-red-600"
                                 >

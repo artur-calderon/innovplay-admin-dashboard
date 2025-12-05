@@ -30,7 +30,7 @@ export interface BatchCorrectionResult {
   total_questions: number;
   score_percentage: number;
   grade: number;
-  proficiency: number | string;
+  proficiency: number;
   classification: string;
   answers_detected: number;
   qr_data?: {
@@ -38,44 +38,6 @@ export interface BatchCorrectionResult {
     test_id: string;
     class_test_id: string;
     timestamp: string;
-  };
-}
-
-// Função para normalizar resposta da API (suporta formato antigo e novo)
-function normalizeBatchCorrectionResult(data: any, studentId?: string, studentName?: string): BatchCorrectionResult {
-  // Se for a nova resposta (com system: "new_orm")
-  if (data.system === "new_orm") {
-    const answers = data.answers || {};
-    const answersDetected = Object.keys(answers).length;
-    const evaluationResult = data.evaluation_result || {};
-    
-    return {
-      student_id: data.student_id || studentId || "",
-      student_name: studentName || "",
-      correct_answers: data.correct || 0,
-      total_questions: data.total || 0,
-      score_percentage: data.percentage || 0,
-      grade: evaluationResult.grade || data.score || 0,
-      proficiency: evaluationResult.proficiency || "",
-      classification: evaluationResult.classification || "",
-      answers_detected: answersDetected,
-      qr_data: data.qr_data
-    };
-  }
-  
-  // Formato antigo (retorna como está, mas garante campos obrigatórios)
-  return {
-    student_id: data.student_id || studentId || "",
-    student_name: studentName || data.student_name || "",
-    image_index: data.image_index,
-    correct_answers: data.correct_answers || 0,
-    total_questions: data.total_questions || 0,
-    score_percentage: data.score_percentage || 0,
-    grade: data.grade || 0,
-    proficiency: data.proficiency || 0,
-    classification: data.classification || "",
-    answers_detected: data.answers_detected || 0,
-    qr_data: data.qr_data
   };
 }
 
@@ -171,16 +133,18 @@ class BatchCorrectionService {
           },
         });
 
-        // Normalizar resposta (suporta formato antigo e novo)
-        const normalizedResult = normalizeBatchCorrectionResult(
-          response.data,
-          images[i].studentId || `student-${i}`,
-          images[i].studentName || `Aluno ${i + 1}`
-        );
-        
         job.results!.push({
-          ...normalizedResult,
-          image_index: i
+          student_id: images[i].studentId || `student-${i}`,
+          student_name: images[i].studentName || `Aluno ${i + 1}`,
+          image_index: i,
+          correct_answers: response.data.correct_answers,
+          total_questions: response.data.total_questions,
+          score_percentage: response.data.score_percentage,
+          grade: response.data.grade,
+          proficiency: response.data.proficiency,
+          classification: response.data.classification,
+          answers_detected: response.data.answers_detected,
+          qr_data: response.data.qr_data
         });
 
         job.processed_images++;
