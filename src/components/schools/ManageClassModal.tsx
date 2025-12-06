@@ -391,11 +391,11 @@ export function ManageClassModal({
     if (words.length === 0) return "";
     
     if (words.length === 1) {
-      return `${words[0]}@innovplay.com`;
+      return `${words[0]}@afirmeplay.com.br`;
     }
     
     const initials = words.map(word => word.charAt(0)).join('');
-    return `${initials}@innovplay.com`;
+    return `${initials}@afirmeplay.com.br`;
   };
 
   // Função para gerar senha automática baseada no nome
@@ -403,7 +403,7 @@ export function ManageClassModal({
     if (!name) return "";
     
     const firstName = name.toLowerCase().split(' ')[0];
-    return `${firstName}@innovplay`;
+    return `${firstName}@afirmeplay`;
   };
 
   // Atualizar email e senha quando o nome mudar
@@ -678,18 +678,18 @@ export function ManageClassModal({
                           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs sm:text-sm">
                             <div className="bg-white/70 dark:bg-white/10 p-3 rounded-lg">
                               <p className="font-medium text-foreground mb-1">
-                                <strong>Email:</strong> Iniciais do nome + "@innovplay.com"
+                                <strong>Email:</strong> Iniciais do nome + "@afirmeplay.com.br"
                               </p>
                               <p className="text-blue-600 dark:text-blue-300 font-mono text-xs">
-                                Ex: "João Silva" → js@innovplay.com
+                                Ex: "João Silva" → js@afirmeplay.com.br
                               </p>
                             </div>
                             <div className="bg-white/70 dark:bg-white/10 p-3 rounded-lg">
                               <p className="font-medium text-foreground mb-1">
-                                <strong>Senha:</strong> Primeiro nome + "@innovplay"
+                                <strong>Senha:</strong> Primeiro nome + "@afirmeplay"
                               </p>
                               <p className="text-blue-600 dark:text-blue-300 font-mono text-xs">
-                                Ex: "João Silva" → joão@innovplay
+                                Ex: "João Silva" → joão@afirmeplay
                               </p>
                             </div>
                           </div>

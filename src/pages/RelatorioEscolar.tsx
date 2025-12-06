@@ -1711,7 +1711,10 @@ export default function RelatorioEscolar() {
           // Tabela de percentuais
           const tableBody = distribution.rows.map(row => [
             row.label,
-            ...row.data.map(v => `${v.toFixed(2)}%`)
+            ...row.data.map((v, index) => {
+              const quantidade = distribution.bars[index]?.quantidade || 0;
+              return `${quantidade}\n${v.toFixed(2)}%`;
+            })
           ]);
 
           const hexColor = distribution.color;

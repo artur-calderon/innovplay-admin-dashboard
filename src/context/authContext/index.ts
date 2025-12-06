@@ -126,7 +126,7 @@ export const useAuth = create<AuthContext>((set, get) => ({
         set({ loading: true })
         try {
             const response = await api.post("/login/", {
-                registration: "moises@innovplay.com",
+                registration: "moises@afirmeplay.com.br",
                 password: "12345678"
             })
 

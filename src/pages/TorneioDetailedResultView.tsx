@@ -325,7 +325,7 @@ const Competicoes = () => {
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="bg-yellow-100 text-yellow-800 px-3 py-1">
             <Coins className="w-4 h-4 mr-1" />
-            Ganhe InnovCoins
+            Ganhe AfirmeCoins
           </Badge>
         </div>
       </div>
