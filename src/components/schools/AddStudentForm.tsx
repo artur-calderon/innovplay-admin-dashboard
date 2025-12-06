@@ -76,12 +76,12 @@ export function AddStudentForm({ schoolId, schoolName, onSuccess }: AddStudentFo
   const generateEmail = (fullName: string) => {
     const names = fullName.toLowerCase().split(" ");
     const initials = names.map(name => name[0]).join("");
-    return `${initials}@innovplay.com`;
+    return `${initials}@afirmeplay.com.br`;
   };
 
   const generatePassword = () => {
     const firstName = name.split(" ")[0].toLowerCase();
-    return `${firstName}@innovplay`;
+    return `${firstName}@afirmeplay`;
   };
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -209,12 +209,12 @@ export function AddStudentForm({ schoolId, schoolName, onSuccess }: AddStudentFo
                 <p className="font-semibold text-blue-800 text-sm mb-2">📧 Credenciais Automáticas</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                   <div className="bg-white/70 p-2 rounded">
-                    <p><strong>Email:</strong> Iniciais + "@innovplay.com"</p>
-                    <p className="text-blue-600 font-mono">Ex: "João Silva" → js@innovplay.com</p>
+                    <p><strong>Email:</strong> Iniciais + "@afirmeplay.com.br"</p>
+                    <p className="text-blue-600 font-mono">Ex: "João Silva" → js@afirmeplay.com.br</p>
                   </div>
                   <div className="bg-white/70 p-2 rounded">
-                    <p><strong>Senha:</strong> Primeiro nome + "@innovplay"</p>
-                    <p className="text-blue-600 font-mono">Ex: "João Silva" → joão@innovplay</p>
+                    <p><strong>Senha:</strong> Primeiro nome + "@afirmeplay"</p>
+                    <p className="text-blue-600 font-mono">Ex: "João Silva" → joão@afirmeplay</p>
                   </div>
                 </div>
               </div>
