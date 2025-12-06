@@ -1017,7 +1017,7 @@ const StudentDashboard = () => {
           {/* Medalhas */}
           {stats && <MedalhasCard medalhas={stats.medalhas} />}
 
-          {/* InnovCoins */}
+          {/* AfirmeCoins */}
           {stats && <InnovCoinsCard moedas={stats.moedas} />}
 
           {/* Ranking */}

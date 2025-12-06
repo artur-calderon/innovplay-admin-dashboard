@@ -531,12 +531,12 @@ export default function Turmas() {
   const generateEmail = (fullName: string) => {
     const names = fullName.toLowerCase().split(" ");
     const initials = names.map(name => name[0]).join("");
-    return `${initials}@innovplay.com`;
+    return `${initials}@afirmeplay.com.br`;
   };
 
   const generatePassword = (fullName: string) => {
     const firstName = fullName.split(" ")[0].toLowerCase();
-    return `${firstName}@innovplay`;
+    return `${firstName}@afirmeplay`;
   };
 
   const handleAddStudent = async () => {
@@ -896,12 +896,12 @@ export default function Turmas() {
                         <p className="font-medium text-blue-800 mb-2">📧 Credenciais Automáticas:</p>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                           <div>
-                            <p><strong>Email:</strong> Iniciais do nome + "@innovplay.com"</p>
-                            <p className="text-blue-600 font-mono">Ex: "João Silva" → jss@innovplay.com</p>
+                            <p><strong>Email:</strong> Iniciais do nome + "@afirmeplay.com.br"</p>
+                            <p className="text-blue-600 font-mono">Ex: "João Silva" → jss@afirmeplay.com.br</p>
                           </div>
                           <div>
-                            <p><strong>Senha:</strong> Primeiro nome + "@innovplay"</p>
-                            <p className="text-blue-600 font-mono">Ex: "João Silva" → joão@innovplay</p>
+                            <p><strong>Senha:</strong> Primeiro nome + "@afirmeplay"</p>
+                            <p className="text-blue-600 font-mono">Ex: "João Silva" → joão@afirmeplay</p>
                           </div>
                         </div>
                         <p className="text-xs mt-2 text-blue-600 font-medium">✨ As credenciais aparecerão automaticamente conforme você digita o nome</p>

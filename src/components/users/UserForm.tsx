@@ -121,7 +121,7 @@ export default function UserForm({ user, onSubmit, allowedRoles, showCitySelect 
       .map(n => n.charAt(0).toLowerCase())
       .join("");
     
-    return `${initials}@innovplay.com`;
+    return `${initials}@afirmeplay.com.br`;
   };
 
   // Watch para mudanças no campo nome (apenas para novos usuários)
@@ -217,7 +217,7 @@ export default function UserForm({ user, onSubmit, allowedRoles, showCitySelect 
               </FormControl>
               {!isEditing && (
                 <p className="text-xs text-muted-foreground">
-                  O email é gerado automaticamente baseado nas iniciais do nome + @innovplay.com
+                  O email é gerado automaticamente baseado nas iniciais do nome + @afirmeplay.com.br
                 </p>
               )}
               <FormMessage />

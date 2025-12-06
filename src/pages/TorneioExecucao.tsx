@@ -175,7 +175,7 @@ const TorneioExecucao = () => {
 
     toast({
       title: "Torneio finalizado!",
-      description: `Você acertou ${acertos}/${questoes.length} questões (${percentual.toFixed(1)}%)${recompensa > 0 ? ` e ganhou ${recompensa} InnovCoins!` : ''}`,
+      description: `Você acertou ${acertos}/${questoes.length} questões (${percentual.toFixed(1)}%)${recompensa > 0 ? ` e ganhou ${recompensa} AfirmeCoins!` : ''}`,
     });
   };
 
@@ -256,7 +256,7 @@ const TorneioExecucao = () => {
               <div className="p-4 bg-yellow-50 rounded-lg">
                 <Award className="w-8 h-8 text-yellow-600 mx-auto mb-2" />
                 <div className="text-2xl font-bold text-yellow-600">{torneio?.recompensaOuro}</div>
-                <div className="text-sm text-yellow-700">Max InnovCoins</div>
+                <div className="text-sm text-yellow-700">Max AfirmeCoins</div>
               </div>
             </div>
 
@@ -329,7 +329,7 @@ const TorneioExecucao = () => {
               <div className="text-lg text-gray-600 mb-4">acertos ({percentual.toFixed(1)}%)</div>
               {recompensa > 0 && (
                 <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
-                  <div className="text-2xl font-bold text-yellow-600">+{recompensa} InnovCoins</div>
+                  <div className="text-2xl font-bold text-yellow-600">+{recompensa} AfirmeCoins</div>
                   <div className="text-sm text-yellow-700">Parabéns pela sua performance!</div>
                 </div>
               )}
