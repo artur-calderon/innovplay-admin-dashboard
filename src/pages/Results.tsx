@@ -420,6 +420,19 @@ export default function Results() {
         });
       }
 
+      // ✅ CORRIGIDO: Obter escola e série das fontes disponíveis
+      const escolaNome = 
+        evaluationInfo?.escola || 
+        apiData?.estatisticas_gerais?.escola ||
+        (selectedSchool !== 'all' ? schools.find(s => s.id === selectedSchool)?.name : null) ||
+        'Escola não informada';
+
+      const serieNome = 
+        evaluationInfo?.serie ||
+        apiData?.estatisticas_gerais?.serie ||
+        (selectedGrade !== 'all' ? grades.find(g => g.id === selectedGrade)?.name : null) ||
+        'Série não informada';
+
       // ✅ NOVO: Calcular alunos faltosos = selecionados - participantes
       const absentStudentsList = selectedStudentsResponse
         .filter(selectedStudent => !participatingStudents.has(selectedStudent.id))
@@ -427,8 +440,8 @@ export default function Results() {
           id: selectedStudent.id,
           nome: selectedStudent.nome,
           turma: selectedStudent.turma,
-          escola: 'Escola não informada', // Propriedade não disponível na interface StudentResult
-          serie: 'Série não informada' // Propriedade não disponível na interface StudentResult
+          escola: escolaNome,
+          serie: serieNome
         }))
         .sort((a, b) => a.nome.localeCompare(b.nome));
 
@@ -439,7 +452,7 @@ export default function Results() {
     } finally {
       setIsLoadingAbsentStudents(false);
     }
-  }, [selectedEvaluation, apiData]);
+  }, [selectedEvaluation, apiData, evaluationInfo, schools, grades, selectedSchool, selectedGrade]);
 
   // Handler para mostrar modal de alunos faltosos
   const handleViewAbsent = useCallback(async () => {
@@ -1037,31 +1050,143 @@ export default function Results() {
       const XLSX = await import('xlsx');
       const { saveAs } = await import('file-saver');
 
-      if (!apiData || (!apiData.resultados_detalhados?.avaliacoes?.length)) {
+      // ✅ CORRIGIDO: Usar tabela_detalhada filtrada se disponível, caso contrário usar resultados_detalhados
+      if (!apiData) {
         toast({
           title: "Nenhum dado para exportar",
-          description: "Não há avaliações para gerar a planilha",
+          description: "Não há dados disponíveis para gerar a planilha",
           variant: "destructive",
         });
         return;
       }
 
-      const worksheetData = [
-        ['Avaliação', 'Disciplina', 'Escola', 'Série', 'Turma', 'Município', 'Estado', 'Participantes', 'Média', 'Proficiência', 'Status'],
-        ...(apiData.resultados_detalhados?.avaliacoes || []).map(evaluation => [
-          evaluation.titulo || 'Sem título',
-          evaluation.disciplina || 'Sem disciplina',
-          evaluation.escola || 'Sem escola',
-          evaluation.serie || 'Sem série',
-          evaluation.turma || 'Sem turma',
-          evaluation.municipio || 'Sem município',
-          evaluation.estado || 'Sem estado',
-          `${evaluation.alunos_participantes || 0}/${evaluation.total_alunos || 0}`,
-          (evaluation.media_nota || 0).toFixed(1),
-          (evaluation.media_proficiencia || 0).toFixed(1),
-          'Concluída' // Status padrão para nova estrutura
-        ])
-      ];
+      // Obter nomes correspondentes aos IDs dos filtros
+      const selectedSchoolName = selectedSchool !== 'all' ? schools.find(s => s.id === selectedSchool)?.name : null;
+      const selectedGradeName = selectedGrade !== 'all' ? grades.find(g => g.id === selectedGrade)?.name : null;
+      const selectedClassName = selectedClass !== 'all' ? classes.find(c => c.id === selectedClass)?.name : null;
+
+      let worksheetData: any[][] = [];
+
+      // Se há filtros específicos e tabela_detalhada disponível, usar dados filtrados
+      if ((selectedClassName || selectedGradeName || selectedSchoolName) && apiData.tabela_detalhada?.disciplinas?.length) {
+        // Coletar alunos únicos que atendem aos filtros
+        const alunosMap = new Map<string, {
+          id: string;
+          nome: string;
+          turma: string;
+          serie: string;
+          escola: string;
+          nota: number;
+          proficiencia: number;
+          acertos: number;
+          total_questoes: number;
+        }>();
+
+        apiData.tabela_detalhada.disciplinas.forEach(disciplina => {
+          disciplina.alunos.forEach(aluno => {
+            // Aplicar filtros
+            if (selectedClassName && aluno.turma !== selectedClassName) return;
+            if (selectedGradeName && aluno.serie !== selectedGradeName) return;
+            if (selectedSchoolName && aluno.escola !== selectedSchoolName) return;
+
+            // Verificar se participou
+            const participou = aluno.respostas_por_questao.some(resposta => resposta.respondeu);
+            if (!participou) return;
+
+            if (!alunosMap.has(aluno.id)) {
+              alunosMap.set(aluno.id, {
+                id: aluno.id,
+                nome: aluno.nome,
+                turma: aluno.turma,
+                serie: aluno.serie,
+                escola: aluno.escola,
+                nota: aluno.nota,
+                proficiencia: aluno.proficiencia,
+                acertos: aluno.total_acertos,
+                total_questoes: aluno.total_questoes_disciplina
+              });
+            } else {
+              // Consolidar dados de múltiplas disciplinas
+              const existing = alunosMap.get(aluno.id)!;
+              existing.acertos += aluno.total_acertos;
+              existing.total_questoes += aluno.total_questoes_disciplina;
+            }
+          });
+        });
+
+        const alunosArray = Array.from(alunosMap.values());
+        const totalAlunos = alunosArray.length;
+        const participantes = alunosArray.length; // Todos já são participantes
+        const mediaNota = alunosArray.length > 0
+          ? alunosArray.reduce((sum, a) => sum + a.nota, 0) / alunosArray.length
+          : 0;
+        const mediaProficiencia = alunosArray.length > 0
+          ? alunosArray.reduce((sum, a) => sum + a.proficiencia, 0) / alunosArray.length
+          : 0;
+
+        worksheetData = [
+          ['Avaliação', 'Disciplina', 'Escola', 'Série', 'Turma', 'Município', 'Estado', 'Participantes', 'Média', 'Proficiência', 'Status'],
+          [
+            evaluationInfo?.titulo || 'Avaliação',
+            evaluationInfo?.disciplina || evaluationInfo?.disciplinas?.join(', ') || 'Disciplina',
+            selectedSchoolName || evaluationInfo?.escola || 'Escola',
+            selectedGradeName || evaluationInfo?.serie || 'Série',
+            selectedClassName || 'Turma',
+            evaluationInfo?.municipio || 'Município',
+            apiData.estatisticas_gerais?.estado || 'Estado',
+            `${participantes}/${totalAlunos}`,
+            mediaNota.toFixed(1),
+            mediaProficiencia.toFixed(1),
+            'Concluída'
+          ]
+        ];
+
+        // Adicionar linha por aluno se necessário
+        if (alunosArray.length > 0) {
+          worksheetData.push(['']); // Linha em branco
+          worksheetData.push(['Alunos Detalhados']);
+          worksheetData.push(['Nome', 'Turma', 'Série', 'Escola', 'Nota', 'Proficiência', 'Acertos', 'Total Questões']);
+          alunosArray.forEach(aluno => {
+            worksheetData.push([
+              aluno.nome,
+              aluno.turma,
+              aluno.serie,
+              aluno.escola,
+              aluno.nota.toFixed(1),
+              aluno.proficiencia.toFixed(1),
+              aluno.acertos,
+              aluno.total_questoes
+            ]);
+          });
+        }
+      } else {
+        // Fallback: usar resultados_detalhados se disponível
+        if (!apiData.resultados_detalhados?.avaliacoes?.length) {
+          toast({
+            title: "Nenhum dado para exportar",
+            description: "Não há avaliações para gerar a planilha",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        worksheetData = [
+          ['Avaliação', 'Disciplina', 'Escola', 'Série', 'Turma', 'Município', 'Estado', 'Participantes', 'Média', 'Proficiência', 'Status'],
+          ...(apiData.resultados_detalhados.avaliacoes || []).map(evaluation => [
+            evaluation.titulo || 'Sem título',
+            evaluation.disciplina || 'Sem disciplina',
+            evaluation.escola || 'Sem escola',
+            evaluation.serie || 'Sem série',
+            evaluation.turma || 'Sem turma',
+            evaluation.municipio || 'Sem município',
+            evaluation.estado || 'Sem estado',
+            `${evaluation.alunos_participantes || 0}/${evaluation.total_alunos || 0}`,
+            (evaluation.media_nota || 0).toFixed(1),
+            (evaluation.media_proficiencia || 0).toFixed(1),
+            'Concluída'
+          ])
+        ];
+      }
 
       const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
       const workbook = XLSX.utils.book_new();
@@ -1720,9 +1845,71 @@ export default function Results() {
     };
   }, [detailedReport, normalizedQuestoes, computedTotalQuestions]);
 
-  // ✅ CORRIGIDO: Usar APENAS dados do backend sem cálculos
+  // ✅ CORRIGIDO: Calcular estatísticas respeitando filtros selecionados
   const derivedStats = useMemo(() => {
-    // ✅ Usar dados diretamente do backend
+    // Se há filtros específicos selecionados, calcular estatísticas filtradas
+    const hasSpecificFilters = selectedClass !== 'all' || selectedGrade !== 'all' || selectedSchool !== 'all';
+    
+    if (hasSpecificFilters && apiData?.tabela_detalhada?.disciplinas?.length) {
+      // Obter nomes correspondentes aos IDs dos filtros
+      const selectedSchoolName = selectedSchool !== 'all' ? schools.find(s => s.id === selectedSchool)?.name : null;
+      const selectedGradeName = selectedGrade !== 'all' ? grades.find(g => g.id === selectedGrade)?.name : null;
+      const selectedClassName = selectedClass !== 'all' ? classes.find(c => c.id === selectedClass)?.name : null;
+      
+      // Coletar todos os alunos únicos que atendem aos filtros
+      const alunosMap = new Map<string, {
+        id: string;
+        nome: string;
+        turma: string;
+        serie: string;
+        escola: string;
+        nota: number;
+        proficiencia: number;
+        participou: boolean;
+      }>();
+      
+      apiData.tabela_detalhada.disciplinas.forEach(disciplina => {
+        disciplina.alunos.forEach(aluno => {
+          // Aplicar filtros
+          if (selectedClassName && aluno.turma !== selectedClassName) return;
+          if (selectedGradeName && aluno.serie !== selectedGradeName) return;
+          if (selectedSchoolName && aluno.escola !== selectedSchoolName) return;
+          
+          // Verificar se participou (respondeu pelo menos uma questão)
+          const participou = aluno.respostas_por_questao.some(resposta => resposta.respondeu);
+          
+          if (!alunosMap.has(aluno.id)) {
+            alunosMap.set(aluno.id, {
+              id: aluno.id,
+              nome: aluno.nome,
+              turma: aluno.turma,
+              serie: aluno.serie,
+              escola: aluno.escola,
+              nota: aluno.nota,
+              proficiencia: aluno.proficiencia,
+              participou
+            });
+          }
+        });
+      });
+      
+      const alunosArray = Array.from(alunosMap.values());
+      const participantes = alunosArray.filter(a => a.participou);
+      const totalAlunos = alunosArray.length;
+      const ausentes = totalAlunos - participantes.length;
+      
+      // Calcular médias apenas dos participantes
+      const mediaNota = participantes.length > 0
+        ? participantes.reduce((sum, a) => sum + a.nota, 0) / participantes.length
+        : 0;
+      const mediaProficiencia = participantes.length > 0
+        ? participantes.reduce((sum, a) => sum + a.proficiencia, 0) / participantes.length
+        : 0;
+      
+      return { totalAlunos, participantes: participantes.length, ausentes, mediaNota, mediaProficiencia };
+    }
+    
+    // Fallback: usar dados gerais do backend quando não há filtros específicos
     const totalAlunos = apiData?.estatisticas_gerais?.total_alunos || 0;
     const participantes = apiData?.estatisticas_gerais?.alunos_participantes || 0;
     const ausentes = apiData?.estatisticas_gerais?.alunos_ausentes || 0;
@@ -1730,7 +1917,7 @@ export default function Results() {
     const mediaProficiencia = apiData?.estatisticas_gerais?.media_proficiencia_geral || 0;
 
     return { totalAlunos, participantes, ausentes, mediaNota, mediaProficiencia };
-  }, [apiData]);
+  }, [apiData, selectedClass, selectedGrade, selectedSchool, schools, grades, classes]);
 
   // Disciplinas derivadas unificando múltiplas fontes
   const derivedSubjects = useMemo(() => {
@@ -2038,26 +2225,12 @@ export default function Results() {
                   <div className="space-y-2">
                     <div className="text-sm font-medium text-muted-foreground">Série</div>
                     <div className="font-semibold">
-                      {selectedGrade === 'all' ? (
-                        apiData?.opcoes_proximos_filtros?.series?.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {apiData.opcoes_proximos_filtros.series.slice(0, 3).map((serie, index) => (
-                              <Badge key={serie.id} variant="outline" className="text-xs">
-                                {serie.name}
-                              </Badge>
-                            ))}
-                            {apiData.opcoes_proximos_filtros.series.length > 3 && (
-                              <Badge variant="outline" className="text-xs">
-                                +{apiData.opcoes_proximos_filtros.series.length - 3}
-                              </Badge>
-                            )}
-                          </div>
-                        ) : (
-                          'Série não informada'
-                        )
-                      ) : (
-                        evaluationInfo?.serie || 'Série não informada'
-                      )}
+                      {evaluationInfo?.serie || 
+                       apiData?.estatisticas_gerais?.serie || 
+                       (selectedGrade !== 'all' ? grades.find(g => g.id === selectedGrade)?.name : null) ||
+                       (apiData?.opcoes_proximos_filtros?.series?.length === 1 
+                         ? apiData.opcoes_proximos_filtros.series[0].name 
+                         : 'Série não informada')}
                     </div>
                   </div>
                   <div className="space-y-2">
