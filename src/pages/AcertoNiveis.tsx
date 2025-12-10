@@ -337,6 +337,8 @@ export default function AcertoNiveis() {
     if (estadoValor) filters.estado = estadoValor;
     if (selectedMunicipality) filters.municipio = selectedMunicipality;
     filters.avaliacao = evaluationId;
+    
+    // Passar IDs diretamente (backend espera IDs)
     if (overrides.schoolId) filters.escola = overrides.schoolId;
     if (overrides.gradeId) filters.serie = overrides.gradeId;
     if (overrides.classId) filters.turma = overrides.classId;
@@ -835,14 +837,10 @@ export default function AcertoNiveis() {
     try {
       setIsLoading(true);
       
-      // Obter nome da turma a partir do ID para passar ao filtro
-      const selectedClass = classes.find(c => c.id === classId);
-      const className = selectedClass?.nome || classId;
-      
-      // Recarregar dados com filtro de turma (usando nome da turma)
+      // Recarregar dados com filtro de turma (usando ID da turma)
       const { students: fetchedStudents, report, tabelaDetalhada: tabela, estatisticas, opcoesProximosFiltros: opcoes } = await fetchEvaluationData(
         selectedEvaluationId,
-        { schoolId: selectedSchoolId, gradeId: selectedGradeId, classId: className }
+        { schoolId: selectedSchoolId, gradeId: selectedGradeId, classId: classId }
       );
       
       setStudents(fetchedStudents);
