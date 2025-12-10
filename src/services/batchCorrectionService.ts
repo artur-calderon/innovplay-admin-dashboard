@@ -122,6 +122,31 @@ class BatchCorrectionService {
       errors: []
     };
 
+    // Função auxiliar para formatar mensagens de erro da correção
+    const formatCorrectionError = (error: any): string => {
+      const errorData = error.response?.data;
+      
+      if (!errorData) {
+        return "Erro desconhecido na correção";
+      }
+
+      // Extrair mensagem de erro
+      const errorMessage = errorData.error || "Erro desconhecido na correção";
+      
+      // Adicionar informação do sistema se disponível
+      const system = errorData.system;
+      if (system) {
+        const systemLabels: Record<string, string> = {
+          ai: "Sistema de IA",
+          old: "Sistema Antigo",
+          new_orm: "Sistema OMR"
+        };
+        return `${errorMessage} (${systemLabels[system] || system})`;
+      }
+
+      return errorMessage;
+    };
+
     // Processar imagens individualmente
     for (let i = 0; i < images.length; i++) {
       try {
@@ -151,10 +176,11 @@ class BatchCorrectionService {
         job.progress_percentage = Math.round((job.processed_images / job.total_images) * 100);
         
       } catch (error: any) {
+        const errorMessage = formatCorrectionError(error);
         job.errors!.push({
           image_index: i,
           student_name: images[i].studentName || `Aluno ${i + 1}`,
-          error_message: error.response?.data?.error || "Erro no processamento",
+          error_message: errorMessage,
           retry_count: 0
         });
         job.failed_images++;

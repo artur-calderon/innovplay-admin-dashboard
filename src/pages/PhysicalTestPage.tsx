@@ -361,6 +361,31 @@ export default function PhysicalTestPage() {
     }
   };
 
+  // Função auxiliar para formatar mensagens de erro da correção
+  const formatCorrectionError = (error: any): string => {
+    const errorData = error.response?.data;
+    
+    if (!errorData) {
+      return "Não foi possível processar a correção. Tente novamente.";
+    }
+
+    // Extrair mensagem de erro
+    const errorMessage = errorData.error || "Erro desconhecido na correção";
+    
+    // Adicionar informação do sistema se disponível
+    const system = errorData.system;
+    if (system) {
+      const systemLabels: Record<string, string> = {
+        ai: "Sistema de IA",
+        old: "Sistema Antigo",
+        new_orm: "Sistema OMR"
+      };
+      return `${errorMessage} (${systemLabels[system] || system})`;
+    }
+
+    return errorMessage;
+  };
+
   const handleProcessCorrection = async () => {
     if (!uploadedImage || !id) return;
 
@@ -406,9 +431,25 @@ export default function PhysicalTestPage() {
 
     } catch (error: any) {
       console.error("Erro ao processar correção:", error);
+      
+      const errorMessage = formatCorrectionError(error);
+      const statusCode = error.response?.status;
+      
+      // Determinar título baseado no status
+      let title = "Erro";
+      if (statusCode === 401 || statusCode === 403) {
+        title = "Erro de Autorização";
+      } else if (statusCode === 404) {
+        title = "Prova não encontrada";
+      } else if (statusCode === 400) {
+        title = "Erro de Validação";
+      } else if (statusCode === 500) {
+        title = "Erro do Sistema";
+      }
+
       toast({
-        title: "Erro",
-        description: error.response?.data?.error || "Não foi possível processar a correção.",
+        title,
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
