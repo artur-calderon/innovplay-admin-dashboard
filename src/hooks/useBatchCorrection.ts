@@ -186,9 +186,36 @@ export function useBatchCorrection() {
         isFailed: true,
       }));
       
+      // Formatar mensagem de erro
+      const errorData = error.response?.data;
+      const errorMessage = errorData?.error || error.message || "Não foi possível iniciar a correção em lote.";
+      const system = errorData?.system;
+      
+      let description = errorMessage;
+      if (system) {
+        const systemLabels: Record<string, string> = {
+          ai: "Sistema de IA",
+          old: "Sistema Antigo",
+          new_orm: "Sistema OMR"
+        };
+        description = `${errorMessage} (${systemLabels[system] || system})`;
+      }
+      
+      const statusCode = error.response?.status;
+      let title = "Erro ao iniciar correção";
+      if (statusCode === 401 || statusCode === 403) {
+        title = "Erro de Autorização";
+      } else if (statusCode === 404) {
+        title = "Prova não encontrada";
+      } else if (statusCode === 400) {
+        title = "Erro de Validação";
+      } else if (statusCode === 500) {
+        title = "Erro do Sistema";
+      }
+      
       toast({
-        title: "Erro ao iniciar correção",
-        description: error.message || "Não foi possível iniciar a correção em lote.",
+        title,
+        description,
         variant: "destructive",
       });
     }
