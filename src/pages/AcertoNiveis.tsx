@@ -293,6 +293,18 @@ export default function AcertoNiveis() {
   const fallbackAnswersCache = React.useRef<Map<string, Map<number, boolean>>>(new Map());
   // Nova: tabela detalhada por disciplina do backend
   const [tabelaDetalhada, setTabelaDetalhada] = useState<TabelaDetalhadaPorDisciplina>(null);
+  // Estado para estatísticas gerais (similar ao apiData em Results.tsx)
+  const [estatisticasGerais, setEstatisticasGerais] = useState<{
+    serie?: string;
+    escola?: string;
+    municipio?: string;
+    [key: string]: unknown;
+  } | null>(null);
+  // Estado para opcoes_proximos_filtros (para obter série correta do endpoint)
+  const [opcoesProximosFiltros, setOpcoesProximosFiltros] = useState<{
+    series?: Array<{ id: string; name: string }>;
+    [key: string]: unknown;
+  } | null>(null);
   // Utilitários para tratar habilidades
   const normalizeUUID = (value?: string) => (value || '').replace(/[{}]/g, '').trim().toLowerCase();
   const looksLikeRealSkillCode = (value?: string) => {
@@ -325,6 +337,8 @@ export default function AcertoNiveis() {
     if (estadoValor) filters.estado = estadoValor;
     if (selectedMunicipality) filters.municipio = selectedMunicipality;
     filters.avaliacao = evaluationId;
+    
+    // Passar IDs diretamente (backend espera IDs)
     if (overrides.schoolId) filters.escola = overrides.schoolId;
     if (overrides.gradeId) filters.serie = overrides.gradeId;
     if (overrides.classId) filters.turma = overrides.classId;
@@ -373,7 +387,8 @@ export default function AcertoNiveis() {
           students: studentsMapped,
           report: detailedReport,
           tabelaDetalhada,
-          estatisticas: unifiedResponse?.estatisticas_gerais || null
+          estatisticas: unifiedResponse?.estatisticas_gerais || null,
+          opcoesProximosFiltros: unifiedResponse?.opcoes_proximos_filtros || null
         };
       } catch (error) {
         console.error('Erro ao carregar dados unificados:', error);
@@ -384,7 +399,8 @@ export default function AcertoNiveis() {
           students: mapDetailedStudentsToResults(detailedReport?.alunos),
           report: detailedReport,
           tabelaDetalhada: null,
-          estatisticas: null
+          estatisticas: null,
+          opcoesProximosFiltros: null
         };
       }
     },
@@ -667,7 +683,7 @@ export default function AcertoNiveis() {
 
     // Para diretor/coordenador, validar se pode acessar esta escola
     if (user?.role === 'diretor' || user?.role === 'coordenador') {
-      if (userHierarchyContext?.school && userHierarchyContext.school.id !== schoolId) {
+      if (userHierarchyContext?.school && userHierarchyContext.school.id !== schoolId && schoolId !== "") {
         toast({
           title: "Acesso Negado",
           description: "Você só pode visualizar dados da sua escola.",
@@ -677,12 +693,34 @@ export default function AcertoNiveis() {
       }
     }
 
-    setSelectedSchoolId(schoolId);
+    setSelectedSchoolId(schoolId || "");
     setSelectedGradeId("");
     setSelectedClassId("");
     setGrades([]);
     setClasses([]);
-    if (!selectedState || !selectedMunicipality || !selectedEvaluationId || !schoolId) return;
+    
+    // Se escola foi limpa (valor vazio), recarregar dados sem filtro de escola
+    if (!schoolId || schoolId === "") {
+      if (!selectedState || !selectedMunicipality || !selectedEvaluationId) return;
+      try {
+        setIsLoading(true);
+        const { students: fetchedStudents, report, tabelaDetalhada: tabela, estatisticas, opcoesProximosFiltros: opcoes } = await fetchEvaluationData(
+          selectedEvaluationId
+        );
+        setStudents(fetchedStudents);
+        setDetailedReport(report || null);
+        setTabelaDetalhada(tabela || null);
+        if (estatisticas) setEstatisticasGerais(estatisticas);
+        if (opcoes) setOpcoesProximosFiltros(opcoes);
+      } catch (e) {
+        toast({ title: "Erro", description: "Não foi possível recarregar os dados", variant: "destructive" });
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+    
+    if (!selectedState || !selectedMunicipality || !selectedEvaluationId) return;
     try {
       setIsLoading(true);
       
@@ -695,7 +733,7 @@ export default function AcertoNiveis() {
       });
       setGrades(series);
       
-      const { students: fetchedStudents, report, tabelaDetalhada: tabela } = await fetchEvaluationData(
+      const { students: fetchedStudents, report, tabelaDetalhada: tabela, estatisticas, opcoesProximosFiltros: opcoes } = await fetchEvaluationData(
         selectedEvaluationId,
         { schoolId }
       );
@@ -703,6 +741,8 @@ export default function AcertoNiveis() {
       setStudents(fetchedStudents);
       setDetailedReport(report || null);
       setTabelaDetalhada(tabela || null);
+      if (estatisticas) setEstatisticasGerais(estatisticas);
+      if (opcoes) setOpcoesProximosFiltros(opcoes);
       
     } catch (e) {
       toast({ title: "Erro", description: "Não foi possível carregar dados da escola", variant: "destructive" });
@@ -712,10 +752,33 @@ export default function AcertoNiveis() {
   };
 
   const handleSelectGrade = async (gradeId: string) => {
-    setSelectedGradeId(gradeId);
+    setSelectedGradeId(gradeId || "");
     setSelectedClassId("");
     setClasses([]);
-    if (!selectedState || !selectedMunicipality || !selectedEvaluationId || !selectedSchoolId || !gradeId) return;
+    
+    // Se série foi limpa (valor vazio), recarregar dados sem filtro de série
+    if (!gradeId || gradeId === "") {
+      if (!selectedState || !selectedMunicipality || !selectedEvaluationId || !selectedSchoolId) return;
+      try {
+        setIsLoading(true);
+        const { students: fetchedStudents, report, tabelaDetalhada: tabela, estatisticas, opcoesProximosFiltros: opcoes } = await fetchEvaluationData(
+          selectedEvaluationId,
+          { schoolId: selectedSchoolId }
+        );
+        setStudents(fetchedStudents);
+        setDetailedReport(report || null);
+        setTabelaDetalhada(tabela || null);
+        if (estatisticas) setEstatisticasGerais(estatisticas);
+        if (opcoes) setOpcoesProximosFiltros(opcoes);
+      } catch (e) {
+        toast({ title: "Erro", description: "Não foi possível recarregar os dados", variant: "destructive" });
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+    
+    if (!selectedState || !selectedMunicipality || !selectedEvaluationId || !selectedSchoolId) return;
     try {
       setIsLoading(true);
       const turmas = await EvaluationResultsApiService.getFilterClassesByEvaluation({
@@ -727,13 +790,15 @@ export default function AcertoNiveis() {
       });
       setClasses(turmas);
 
-      const { students: fetchedStudents, report, tabelaDetalhada: tabela } = await fetchEvaluationData(
-        selectedEvaluationId,
-        { schoolId: selectedSchoolId, gradeId }
-      );
-      setStudents(fetchedStudents);
-      setDetailedReport(report || null);
-      setTabelaDetalhada(tabela || null);
+        const { students: fetchedStudents, report, tabelaDetalhada: tabela, estatisticas, opcoesProximosFiltros: opcoes } = await fetchEvaluationData(
+          selectedEvaluationId,
+          { schoolId: selectedSchoolId, gradeId }
+        );
+        setStudents(fetchedStudents);
+        setDetailedReport(report || null);
+        setTabelaDetalhada(tabela || null);
+        if (estatisticas) setEstatisticasGerais(estatisticas);
+        if (opcoes) setOpcoesProximosFiltros(opcoes);
     } catch (e) {
       toast({ title: "Erro", description: "Não foi possível carregar turmas", variant: "destructive" });
     } finally {
@@ -743,6 +808,54 @@ export default function AcertoNiveis() {
 
   // Removida lógica de proficiência por disciplina (manter apenas proficiência geral do backend)
 
+  const handleSelectClass = async (classId: string) => {
+    setSelectedClassId(classId || "");
+    
+    // Se turma foi limpa (valor vazio), recarregar dados sem filtro de turma
+    if (!classId || classId === "") {
+      if (!selectedState || !selectedMunicipality || !selectedEvaluationId || !selectedSchoolId || !selectedGradeId) return;
+      try {
+        setIsLoading(true);
+        const { students: fetchedStudents, report, tabelaDetalhada: tabela, estatisticas, opcoesProximosFiltros: opcoes } = await fetchEvaluationData(
+          selectedEvaluationId,
+          { schoolId: selectedSchoolId, gradeId: selectedGradeId }
+        );
+        setStudents(fetchedStudents);
+        setDetailedReport(report || null);
+        setTabelaDetalhada(tabela || null);
+        if (estatisticas) setEstatisticasGerais(estatisticas);
+        if (opcoes) setOpcoesProximosFiltros(opcoes);
+      } catch (e) {
+        toast({ title: "Erro", description: "Não foi possível recarregar os dados", variant: "destructive" });
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+    
+    if (!selectedState || !selectedMunicipality || !selectedEvaluationId || !selectedSchoolId || !selectedGradeId) return;
+    try {
+      setIsLoading(true);
+      
+      // Recarregar dados com filtro de turma (usando ID da turma)
+      const { students: fetchedStudents, report, tabelaDetalhada: tabela, estatisticas, opcoesProximosFiltros: opcoes } = await fetchEvaluationData(
+        selectedEvaluationId,
+        { schoolId: selectedSchoolId, gradeId: selectedGradeId, classId: classId }
+      );
+      
+      setStudents(fetchedStudents);
+      setDetailedReport(report || null);
+      setTabelaDetalhada(tabela || null);
+      if (estatisticas) setEstatisticasGerais(estatisticas);
+      if (opcoes) setOpcoesProximosFiltros(opcoes);
+      
+    } catch (e) {
+      toast({ title: "Erro", description: "Não foi possível carregar dados da turma", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSelectEvaluation = async (evaluationId: string) => {
     setSelectedEvaluationId(evaluationId);
     setSelectedSchoolId("");
@@ -751,6 +864,8 @@ export default function AcertoNiveis() {
     setSchools([]);
     setGrades([]);
     setClasses([]);
+    setEstatisticasGerais(null);
+    setOpcoesProximosFiltros(null);
     if (!evaluationId) return;
     try {
       setIsLoading(true);
@@ -761,8 +876,16 @@ export default function AcertoNiveis() {
         EvaluationResultsApiService.getSkillsByEvaluation(evaluationId).catch(() => [])
       ]);
 
-      const { students: unifiedStudents, report, tabelaDetalhada: tabelaDetalhadaUnificada } =
+      const { students: unifiedStudents, report, tabelaDetalhada: tabelaDetalhadaUnificada, estatisticas, opcoesProximosFiltros: opcoes } =
         await fetchEvaluationData(evaluationId);
+      
+      // Armazenar estatísticas gerais e opcoes_proximos_filtros para uso na exibição
+      if (estatisticas) {
+        setEstatisticasGerais(estatisticas);
+      }
+      if (opcoes) {
+        setOpcoesProximosFiltros(opcoes);
+      }
 
       if (!info) throw new Error("Avaliação não encontrada");
 
@@ -771,35 +894,63 @@ export default function AcertoNiveis() {
       console.log('Dados da avaliação recebidos:', info);
       console.log('Campo série:', evaluationData.serie);
 
-      // Função para extrair série de diferentes fontes
-      const extractSerie = (data: Record<string, unknown>): string => {
-        // 1. Tentar campo série direto
-        if (data.serie && data.serie !== 'N/A') return data.serie as string;
-        
-        // 2. Tentar campo curso (ex: "Anos Finais" -> "6º ao 9º ano")
-        if (data.curso) {
-          const curso = data.curso as string;
-          if (curso.includes('Anos Finais')) return '6º ao 9º ano';
-          if (curso.includes('Anos Iniciais')) return '1º ao 5º ano';
-          if (curso.includes('Fundamental')) return 'Fundamental';
-        }
-        
-        // 3. Tentar campo grade ou nível
-        if (data.grade && data.grade !== 'N/A') return data.grade as string;
-        if (data.nivel && data.nivel !== 'N/A') return data.nivel as string;
-        
-        // 4. Tentar extrair do título da avaliação
-        if (data.titulo) {
-          const titulo = data.titulo as string;
-          const serieMatch = titulo.match(/(\d+º|\d+º ano|\d+ ano)/i);
-          if (serieMatch) return serieMatch[1];
-        }
-        
-        return 'N/A';
-      };
+      // Priorizar série do endpoint antes de usar extractSerie
+      let serieExtraida = 'N/A';
+      
+      // 1. Tentar obter série das estatísticas gerais do endpoint
+      if (estatisticas?.serie && estatisticas.serie !== 'N/A' && estatisticas.serie !== '') {
+        serieExtraida = estatisticas.serie;
+        console.log('Série obtida de estatisticas_gerais:', serieExtraida);
+      }
+      // 2. Tentar obter série de opcoes_proximos_filtros (se houver apenas uma série)
+      else if (opcoes?.series && opcoes.series.length === 1) {
+        serieExtraida = opcoes.series[0].name;
+        console.log('Série obtida de opcoes_proximos_filtros:', serieExtraida);
+      }
+      // 3. Se não houver série do endpoint, usar extractSerie como fallback
+      else {
+        // Função para extrair série de diferentes fontes (NÃO priorizar título)
+        const extractSerie = (data: Record<string, unknown>): string => {
+          // 1. Tentar campo série direto (prioridade máxima - série específica)
+          if (data.serie && data.serie !== 'N/A' && data.serie !== '') {
+            const serie = data.serie as string;
+            // Se a série contém um número específico (ex: "4º ano"), usar ela
+            if (serie.match(/\d+º|\d+º ano|\d+ ano/i)) {
+              return serie;
+            }
+          }
+          
+          // 2. Tentar campo grade ou nível (prioridade sobre título)
+          if (data.grade && data.grade !== 'N/A' && data.grade !== '') {
+            const grade = data.grade as string;
+            if (grade.match(/\d+º|\d+º ano|\d+ ano/i)) {
+              return grade;
+            }
+          }
+          if (data.nivel && data.nivel !== 'N/A' && data.nivel !== '') {
+            const nivel = data.nivel as string;
+            if (nivel.match(/\d+º|\d+º ano|\d+ ano/i)) {
+              return nivel;
+            }
+          }
+          
+          // 3. Título da avaliação como ÚLTIMO recurso (pode conter números que não correspondem à série real)
+          // Exemplo: "4° avalie teotonio" pode ser para 5° ano
+          if (data.titulo) {
+            const titulo = data.titulo as string;
+            const serieMatch = titulo.match(/(\d+º|\d+º ano|\d+ ano)/i);
+            if (serieMatch) return serieMatch[1];
+          }
+          
+          // 4. NÃO usar campo curso como fallback genérico (retorna "1º ao 5º ano" que é muito genérico)
+          // Retornar 'N/A' para que seja extraído de outras fontes (alunos, escolas, estatisticas_gerais) depois
+          
+          return 'N/A';
+        };
 
-      const serieExtraida = extractSerie(evaluationData);
-      console.log('Série extraída:', serieExtraida);
+        serieExtraida = extractSerie(evaluationData);
+        console.log('Série extraída via extractSerie:', serieExtraida);
+      }
 
       // Criar mapeamento robusto de skills (UUID normalizado -> código real)
       const newSkillsMapping: Record<string, string> = {};
@@ -1947,12 +2098,14 @@ export default function AcertoNiveis() {
                         if (selectedEvaluationId) {
                           try {
                             setIsLoading(true);
-                            const { students: fetchedStudents, report, tabelaDetalhada: tabela } = await fetchEvaluationData(
+                            const { students: fetchedStudents, report, tabelaDetalhada: tabela, estatisticas, opcoesProximosFiltros: opcoes } = await fetchEvaluationData(
                               selectedEvaluationId
                             );
                             setStudents(fetchedStudents);
                             setDetailedReport(report || null);
                             setTabelaDetalhada(tabela || null);
+                            if (estatisticas) setEstatisticasGerais(estatisticas);
+                            if (opcoes) setOpcoesProximosFiltros(opcoes);
                           } catch (error) {
                             toast({ title: "Erro", description: "Não foi possível recarregar os dados", variant: "destructive" });
                           } finally {
@@ -1975,14 +2128,15 @@ export default function AcertoNiveis() {
                        )}
                      </div>
                      <Select 
-                       value={selectedSchoolId} 
-                       onValueChange={handleSelectSchool}
+                       value={selectedSchoolId || "all"} 
+                       onValueChange={(value) => handleSelectSchool(value === "all" ? "" : value)}
                        disabled={userHierarchyContext?.restrictions.canSelectSchool === false}
                      >
                        <SelectTrigger className="w-full">
                          <SelectValue placeholder="Todas as escolas" />
                        </SelectTrigger>
                        <SelectContent>
+                         <SelectItem value="all">Todas</SelectItem>
                          {schools.map(sc => (
                            <SelectItem key={sc.id} value={sc.id}>{sc.nome}</SelectItem>
                          ))}
@@ -1991,30 +2145,32 @@ export default function AcertoNiveis() {
                    </div>
                    <div>
                      <div className="text-sm font-medium mb-2">Série</div>
-                     <Select value={selectedGradeId} onValueChange={handleSelectGrade} disabled={!selectedSchoolId}>
+                     <Select value={selectedGradeId || "all"} onValueChange={(value) => handleSelectGrade(value === "all" ? "" : value)} disabled={!selectedSchoolId}>
                        <SelectTrigger className="w-full">
                          <SelectValue placeholder={selectedSchoolId ? "Todas as séries" : "Primeiro selecione uma escola"} />
                        </SelectTrigger>
                        <SelectContent>
+                         <SelectItem value="all">Todas</SelectItem>
                          {grades.map(gr => (
                            <SelectItem key={gr.id} value={gr.id}>{gr.nome}</SelectItem>
                          ))}
                        </SelectContent>
                      </Select>
                    </div>
-                   <div>
-                     <div className="text-sm font-medium mb-2">Turma</div>
-                     <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={!selectedGradeId}>
-                       <SelectTrigger className="w-full">
-                         <SelectValue placeholder={selectedGradeId ? "Todas as turmas" : "Primeiro selecione uma série"} />
-                       </SelectTrigger>
-                       <SelectContent>
-                         {classes.map(cls => (
-                           <SelectItem key={cls.id} value={cls.id}>{cls.nome}</SelectItem>
-                         ))}
-                       </SelectContent>
-                     </Select>
-                   </div>
+                    <div>
+                      <div className="text-sm font-medium mb-2">Turma</div>
+                      <Select value={selectedClassId || "all"} onValueChange={(value) => handleSelectClass(value === "all" ? "" : value)} disabled={!selectedGradeId}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder={selectedGradeId ? "Todas as turmas" : "Primeiro selecione uma série"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todas</SelectItem>
+                          {classes.map(cls => (
+                            <SelectItem key={cls.id} value={cls.id}>{cls.nome}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                  </div>
                </div>
              )}
@@ -2073,35 +2229,98 @@ export default function AcertoNiveis() {
                 <div className="p-3 bg-muted rounded-lg">
                   <span className="text-muted-foreground text-xs uppercase tracking-wide">Série</span>
                   <div className="font-semibold text-foreground mt-1">
-                    {selectedGradeId ? grades.find(g => g.id === selectedGradeId)?.nome || 'Série Selecionada' : evaluationInfo.serie}
+                    {estatisticasGerais?.serie || 
+                     (opcoesProximosFiltros?.series?.length === 1 
+                       ? opcoesProximosFiltros.series[0].name 
+                       : null) ||
+                     evaluationInfo?.serie || 
+                     (selectedGradeId ? grades.find(g => g.id === selectedGradeId)?.nome : null) ||
+                     'Série não informada'}
                   </div>
                 </div>
              </div>
 
+             {/* Informações Gerais - Mostrar quando escola for selecionada */}
+             {selectedSchoolId && estatisticasGerais && (
+               <div className="border-t pt-6">
+                 <h3 className="text-lg font-semibold mb-4">Informações Gerais</h3>
+                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                   <div className="space-y-2">
+                     <div className="text-sm font-medium text-muted-foreground">Total de Alunos</div>
+                     <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                       {estatisticasGerais.total_alunos || 0}
+                     </div>
+                   </div>
+                   <div className="space-y-2">
+                     <div className="text-sm font-medium text-muted-foreground">Participantes</div>
+                     <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                       {estatisticasGerais.alunos_participantes || 0}
+                     </div>
+                   </div>
+                   <div className="space-y-2">
+                     <div className="text-sm font-medium text-muted-foreground">Faltosos</div>
+                     <div className="text-2xl font-bold text-red-600 dark:text-red-400">
+                       {estatisticasGerais.alunos_ausentes || 0}
+                     </div>
+                   </div>
+                   <div className="space-y-2">
+                     <div className="text-sm font-medium text-muted-foreground">Taxa de Participação</div>
+                     <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                       {estatisticasGerais.total_alunos > 0 
+                         ? ((estatisticasGerais.alunos_participantes || 0) / estatisticasGerais.total_alunos * 100).toFixed(1)
+                         : '0.0'}%
+                     </div>
+                   </div>
+                   <div className="space-y-2">
+                     <div className="text-sm font-medium text-muted-foreground">Nota Geral</div>
+                     <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                       {Number(estatisticasGerais.media_nota_geral || 0).toFixed(1)}
+                     </div>
+                   </div>
+                   <div className="space-y-2">
+                     <div className="text-sm font-medium text-muted-foreground">Proficiência</div>
+                     <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                       {Number(estatisticasGerais.media_proficiencia_geral || 0).toFixed(1)}
+                     </div>
+                   </div>
+                 </div>
+               </div>
+             )}
+
              {/* Estatísticas Detalhadas */}
-             {detailedReport && (
+             {(detailedReport || students.length > 0 || estatisticasGerais) && (
                <div className="border-t pt-6">
                  <h3 className="text-lg font-semibold mb-4">Estatísticas da Avaliação</h3>
                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                    <div className="text-center p-4 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
-                     <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{detailedReport.questoes.length}</div>
+                     <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                       {detailedReport?.questoes?.length || 0}
+                     </div>
                      <div className="text-sm text-muted-foreground mt-1">Total de Questões</div>
                    </div>
                    <div className="text-center p-4 bg-green-50 dark:bg-green-950/30 rounded-lg">
                      <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                       {students.filter(s => s.status === 'concluida').length}
+                       {students.length > 0 
+                         ? students.filter(s => s.status === 'concluida').length
+                         : (estatisticasGerais?.alunos_participantes || 0)}
                      </div>
                      <div className="text-sm text-muted-foreground mt-1">Alunos Concluíram</div>
                    </div>
                    <div className="text-center p-4 bg-yellow-50 dark:bg-yellow-950/30 rounded-lg">
-                     <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{students.length}</div>
+                     <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
+                       {students.length > 0 
+                         ? students.length 
+                         : (estatisticasGerais?.total_alunos || 0)}
+                     </div>
                      <div className="text-sm text-muted-foreground mt-1">Total de Alunos</div>
                    </div>
                    <div className="text-center p-4 bg-purple-50 dark:bg-purple-950/30 rounded-lg">
                      <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
                        {students.length > 0 
                          ? ((students.filter(s => s.status === 'concluida').length / students.length) * 100).toFixed(1)
-                         : '0'}%
+                         : (estatisticasGerais?.total_alunos && estatisticasGerais.total_alunos > 0
+                           ? ((estatisticasGerais.alunos_participantes || 0) / estatisticasGerais.total_alunos * 100).toFixed(1)
+                           : '0')}%
                      </div>
                      <div className="text-sm text-muted-foreground mt-1">Taxa de Participação</div>
                    </div>
