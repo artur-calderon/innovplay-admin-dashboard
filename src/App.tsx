@@ -89,6 +89,7 @@ const PlayTvVideoView = React.lazy(() => import("./pages/PlayTvVideoView"));
 // Lazy loading para Plantão Online
 const PlantaoOnline = React.lazy(() => import("./pages/PlantaoOnline"));
 const PlantaoOnlineStudent = React.lazy(() => import("./pages/PlantaoOnlineStudent"));
+const AnswerSheetGenerator = React.lazy(() => import("./pages/AnswerSheetGenerator"));
 
 // Loading component
 const LoadingSpinner = () => (
@@ -196,7 +197,7 @@ const App = () => {
               <Route path="/app/play-tv" element={<PrivateRoute><PlayTvManagement /></PrivateRoute>} />
               <Route path="/app/play-tv/:id" element={<PrivateRoute><PlayTvVideoView /></PrivateRoute>} />
               <Route path="/app/plantao" element={<PrivateRoute><PlantaoOnline /></PrivateRoute>} />
-              <Route path="/app/cartao-resposta" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/app/cartao-resposta" element={<PrivateRoute><AnswerSheetGenerator /></PrivateRoute>} />
               <Route path="/app/certificados" element={<PrivateRoute><Certificates /></PrivateRoute>} />
               <Route path="/app/competicoes" element={<PrivateRoute><Competicoes /></PrivateRoute>} />
               <Route path="/app/torneio/:torneioId" element={<PrivateRoute><TorneioExecucao /></PrivateRoute>} />
