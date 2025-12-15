@@ -1108,13 +1108,15 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
         ) : Object.entries(data.subjectData).filter(([subject, rows]) => {
           const merged = mergeByName(rows);
           if (merged.length === 0) return false;
-          
+
           const r = merged[0];
-          const hasAllEvaluations = 
-            (data.evaluationNames[0] && safe(r.etapa1) !== undefined) &&
-            (data.evaluationNames[1] && safe(r.etapa2) !== undefined) &&
-            (data.evaluationNames[2] && safe(r.etapa3) !== undefined);
-          
+          // A disciplina é considerada válida se tiver dados em TODAS as avaliações selecionadas,
+          // qualquer que seja a quantidade (2, 3, 4, ...).
+          const hasAllEvaluations = data.evaluationNames.every((_, index) => {
+            const etapaKey = `etapa${index + 1}`;
+            return safe((r as any)[etapaKey]) !== undefined;
+          });
+
           return hasAllEvaluations;
         }).length === 0 ? (
           <Card className="border border-border">
