@@ -13,22 +13,13 @@ import {
   ChevronRight, 
   ChevronLeft, 
   Download, 
-  Eye,
   CheckCircle, 
   AlertCircle,
   Users,
-  FileText,
   School,
-  Plus,
-  Trash2,
-  Book
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { AnswerSheetConfig, StudentAnswerSheet, School as SchoolType, Serie, Turma, Student, Estado, Municipio } from '@/types/answer-sheet';
-import { Question, Subject } from '@/components/evaluations/types';
-import { QuestionBank } from '@/components/evaluations/QuestionBank';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import QuestionPreview from '@/components/evaluations/questions/QuestionPreview';
 
 type Step = 1 | 2 | 3;
 
@@ -60,16 +51,10 @@ export default function AnswerSheetGenerator() {
   const [isLoadingSchools, setIsLoadingSchools] = useState(false);
   const [isLoadingSeries, setIsLoadingSeries] = useState(false);
   const [isLoadingTurmas, setIsLoadingTurmas] = useState(false);
-  
-  // Estados para seleção de questões
-  const [selectedQuestions, setSelectedQuestions] = useState<Question[]>([]);
-  const [showQuestionBank, setShowQuestionBank] = useState(false);
-  const [selectedSubjectForQuestion, setSelectedSubjectForQuestion] = useState<string>("");
-  const [selectedDisciplinas, setSelectedDisciplinas] = useState<Subject[]>([]);
-  const [availableDisciplinas, setAvailableDisciplinas] = useState<Subject[]>([]);
-  const [isLoadingDisciplinas, setIsLoadingDisciplinas] = useState(false);
-  const [previewQuestion, setPreviewQuestion] = useState<Question | null>(null);
-  const [showQuestionPreview, setShowQuestionPreview] = useState(false);
+
+  // Configuração de questões e gabarito manual
+  const [totalQuestoes, setTotalQuestoes] = useState<number>(0);
+  const [gabaritoManual, setGabaritoManual] = useState<Record<number, 'A' | 'B' | 'C' | 'D'>>({});
 
   // Estados da Etapa 2: Seleção de Alunos
   const [students, setStudents] = useState<Student[]>([]);
@@ -87,15 +72,13 @@ export default function AnswerSheetGenerator() {
         setIsLoadingEstados(true);
         setIsLoadingCursos(true);
         
-        const [estadosRes, cursosRes, disciplinasRes] = await Promise.all([
+        const [estadosRes, cursosRes] = await Promise.all([
           api.get('/city/states'),
           api.get('/education_stages'),
-          api.get('/subjects')
         ]);
         
         setEstados(estadosRes.data || []);
         setCursos(cursosRes.data || []);
-        setAvailableDisciplinas(disciplinasRes.data || []);
       } catch (error) {
         console.error('Erro ao carregar dados iniciais:', error);
         toast({
@@ -275,6 +258,45 @@ export default function AnswerSheetGenerator() {
   };
 
 
+  const handleChangeTotalQuestoes = (value: string) => {
+    const parsed = parseInt(value, 10);
+    if (Number.isNaN(parsed) || parsed <= 0) {
+      setTotalQuestoes(0);
+      setGabaritoManual({});
+      return;
+    }
+
+    const safeTotal = Math.min(parsed, 200);
+    setTotalQuestoes(safeTotal);
+
+    setGabaritoManual(prev => {
+      const updated: Record<number, 'A' | 'B' | 'C' | 'D'> = {};
+      for (let i = 1; i <= safeTotal; i += 1) {
+        if (prev[i]) {
+          updated[i] = prev[i];
+        }
+      }
+      return updated;
+    });
+  };
+
+  const handleChangeRespostaQuestao = (numeroQuestao: number, alternativa: string) => {
+    const alternativaUpper = alternativa.toUpperCase();
+    if (!['A', 'B', 'C', 'D'].includes(alternativaUpper)) {
+      return;
+    }
+
+    setGabaritoManual(prev => ({
+      ...prev,
+      [numeroQuestao]: alternativaUpper as 'A' | 'B' | 'C' | 'D',
+    }));
+  };
+
+  const handleClearGabarito = () => {
+    setGabaritoManual({});
+  };
+
+
   const fetchStudents = async () => {
     if (!selectedSchool || !selectedTurma) {
       setStudents([]);
@@ -336,68 +358,31 @@ export default function AnswerSheetGenerator() {
     }
   };
 
-  const handleQuestionSelected = (question: Question) => {
-    // Verificar se a questão já foi adicionada
-    const isDuplicate = selectedQuestions.some(q => q.id === question.id);
-    
-    if (isDuplicate) {
-      toast({
-        title: "Questão já adicionada",
-        description: "Esta questão já está na lista.",
-        variant: "destructive",
-      });
-      return;
+  const isStep1Valid = () => {
+    const hasBaseInfo =
+      selectedEstado &&
+      selectedMunicipio &&
+      selectedCurso &&
+      selectedSerie &&
+      selectedSchool &&
+      selectedTurma &&
+      provaTitulo;
+
+    if (!hasBaseInfo) {
+      return false;
     }
 
-    setSelectedQuestions(prev => [...prev, question]);
-    toast({
-      title: "Questão adicionada",
-      description: `Total: ${selectedQuestions.length + 1} questões`
-    });
-  };
+    if (totalQuestoes <= 0) {
+      return false;
+    }
 
-  const handleRemoveQuestion = (questionId: string) => {
-    setSelectedQuestions(prev => prev.filter(q => q.id !== questionId));
-    toast({
-      title: "Questão removida",
-      description: `Total: ${selectedQuestions.length - 1} questões`
-    });
-  };
-
-  const getQuestionsForSubject = (subjectId: string) => {
-    return selectedQuestions.filter(q => {
-      const questionWithSubjectId = q as { subjectId?: string; subject?: { id?: string }; subject_id?: string };
-      return questionWithSubjectId.subjectId === subjectId || 
-             questionWithSubjectId.subject?.id === subjectId ||
-             questionWithSubjectId.subject_id === subjectId;
-    });
-  };
-
-  const handleViewQuestion = (question: Question) => {
-    setPreviewQuestion(question);
-    setShowQuestionPreview(true);
-  };
-
-  const toggleDisciplina = (disciplina: Subject) => {
-    setSelectedDisciplinas(prev => {
-      const exists = prev.find(d => d.id === disciplina.id);
-      if (exists) {
-        return prev.filter(d => d.id !== disciplina.id);
+    for (let i = 1; i <= totalQuestoes; i += 1) {
+      if (!gabaritoManual[i]) {
+        return false;
       }
-      return [...prev, disciplina];
-    });
-  };
+    }
 
-  const isStep1Valid = () => {
-    return selectedEstado &&
-           selectedMunicipio &&
-           selectedCurso &&
-           selectedSerie &&
-           selectedSchool && 
-           selectedTurma && 
-           provaTitulo && 
-           selectedDisciplinas.length > 0 &&
-           selectedQuestions.length > 0;
+    return true;
   };
 
   const handleNextStep = () => {
@@ -453,19 +438,6 @@ export default function AnswerSheetGenerator() {
     const serieData = series.find(s => s.id === selectedSerie);
     const turmaData = turmas.find(t => t.id === selectedTurma);
 
-    // Gerar gabarito automaticamente das questões
-    const gabaritoAuto: Record<number, 'A' | 'B' | 'C' | 'D'> = {};
-    
-    selectedQuestions.forEach((question, index) => {
-      const correctOption = question.options?.find(opt => opt.isCorrect);
-      if (correctOption) {
-        // Pegar letra da alternativa correta
-        const optionIndex = question.options?.indexOf(correctOption) || 0;
-        const letter = correctOption.id || String.fromCharCode(65 + optionIndex);
-        gabaritoAuto[index + 1] = letter.charAt(0).toUpperCase() as 'A' | 'B' | 'C' | 'D';
-      }
-    });
-
     return {
       estado: selectedEstado || '',
       estado_sigla: estadoData?.id || '',
@@ -478,14 +450,10 @@ export default function AnswerSheetGenerator() {
       turma_id: selectedTurma,
       turma_nome: turmaData?.name || '',
       prova_titulo: provaTitulo,
-      total_questoes: selectedQuestions.length,
-      gabarito: gabaritoAuto,
+      total_questoes: totalQuestoes,
+      gabarito: gabaritoManual,
       data_geracao: new Date().toISOString(),
-      questoes_detalhes: selectedQuestions.map((q, i) => ({
-        numero: i + 1,
-        id: q.id,
-        disciplina: q.subject?.name || selectedDisciplinas.find(d => d.id === q.subjectId)?.name || ''
-      }))
+      questoes_detalhes: []
     };
   };
 
@@ -541,6 +509,13 @@ export default function AnswerSheetGenerator() {
       setGenerationProgress(0);
     }
   };
+
+  const totalQuestoesRespondidas = totalQuestoes
+    ? Array.from({ length: totalQuestoes }, (_, index) => index + 1).filter(
+        numeroQuestao => !!gabaritoManual[numeroQuestao],
+      ).length
+    : 0;
+  const totalQuestoesPendentes = totalQuestoes > 0 ? totalQuestoes - totalQuestoesRespondidas : 0;
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
@@ -759,175 +734,144 @@ export default function AnswerSheetGenerator() {
             </CardContent>
           </Card>
 
+          {/* Card 3: Questões e Gabarito */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Book className="h-5 w-5" />
-                Disciplinas
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+                  Q
+                </span>
+                Questões e Gabarito
               </CardTitle>
               <CardDescription>
-                Selecione as disciplinas para a prova
+                Informe a quantidade de questões da prova e selecione a alternativa correta de cada uma
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {isLoadingDisciplinas ? (
-                <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
-                  {[1, 2, 3].map(i => (
-                    <Skeleton key={i} className="h-10 w-full" />
-                  ))}
+              <div className="grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start">
+                <div className="space-y-2">
+                  <Label htmlFor="total-questoes">Quantidade de Questões *</Label>
+                  <Input
+                    id="total-questoes"
+                    type="number"
+                    min={1}
+                    max={200}
+                    value={totalQuestoes || ''}
+                    onChange={(event) => handleChangeTotalQuestoes(event.target.value)}
+                    placeholder="Ex: 10"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Máximo de 200 questões por prova.
+                  </p>
                 </div>
-              ) : (
-                <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
-                  {availableDisciplinas.map(disciplina => {
-                    const isSelected = selectedDisciplinas.some(d => d.id === disciplina.id);
-                    return (
-                      <div
-                        key={disciplina.id}
-                        className={`flex items-center space-x-2 p-3 border rounded-lg cursor-pointer transition-all duration-200 ${
-                          isSelected 
-                            ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-500 dark:border-blue-400 shadow-sm' 
-                            : 'hover:bg-muted dark:hover:bg-muted/50 border-border hover:border-primary/50 hover:shadow-sm'
+
+                {totalQuestoes > 0 && (
+                  <div className="space-y-2 rounded-md border bg-muted/50 p-3">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Status do gabarito
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="secondary" className="text-xs">
+                        Total: <span className="ml-1 font-semibold">{totalQuestoes}</span>
+                      </Badge>
+                      <Badge variant="default" className="bg-emerald-600 text-xs hover:bg-emerald-600">
+                        Respondidas:{' '}
+                        <span className="ml-1 font-semibold">{totalQuestoesRespondidas}</span>
+                      </Badge>
+                      <Badge
+                        variant={totalQuestoesPendentes === 0 ? 'secondary' : 'outline'}
+                        className={`text-xs ${
+                          totalQuestoesPendentes === 0
+                            ? 'border-emerald-500 text-emerald-600'
+                            : 'border-amber-500 text-amber-600'
                         }`}
-                        onClick={() => toggleDisciplina(disciplina)}
                       >
-                        <Checkbox
-                          id={`disc-${disciplina.id}`}
-                          checked={isSelected}
-                          onCheckedChange={() => toggleDisciplina(disciplina)}
-                        />
-                        <Label
-                          htmlFor={`disc-${disciplina.id}`}
-                          className="flex-1 cursor-pointer"
+                        Pendentes:{' '}
+                        <span className="ml-1 font-semibold">{totalQuestoesPendentes}</span>
+                      </Badge>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={handleClearGabarito}
+                      >
+                        Limpar gabarito
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {totalQuestoes > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">
+                      Gabarito ({totalQuestoes} questão(ões))
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Selecione a alternativa correta (A, B, C ou D) para cada número de questão.
+                    </p>
+                  </div>
+
+                  <div className="max-h-[360px] space-y-3 overflow-y-auto rounded-md border bg-background/40 p-3">
+                    {Array.from({ length: totalQuestoes }, (_, index) => {
+                      const numeroQuestao = index + 1;
+                      const respostaSelecionada = gabaritoManual[numeroQuestao] || '';
+
+                      return (
+                        <div
+                          key={numeroQuestao}
+                          className="flex items-center justify-between gap-3 rounded-md border bg-muted/60 px-3 py-2 shadow-sm transition-colors hover:border-blue-500 hover:bg-muted dark:hover:border-blue-400 dark:hover:bg-slate-800/80"
                         >
-                          {disciplina.name}
-                        </Label>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {selectedDisciplinas.length > 0 && (
-                <div className="flex gap-2 flex-wrap">
-                  {selectedDisciplinas.map(disc => (
-                    <Badge key={disc.id} variant="default">
-                      {disc.name}
-                    </Badge>
-                  ))}
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary">#{numeroQuestao}</Badge>
+                            <span className="text-sm font-medium">
+                              Questão {numeroQuestao}
+                            </span>
+                          </div>
+                          <div className="flex gap-2">
+                            {['A', 'B', 'C', 'D'].map((alternativa) => {
+                              const isAtiva = respostaSelecionada === alternativa;
+                              return (
+                                <button
+                                  key={alternativa}
+                                  type="button"
+                                  onClick={() =>
+                                    handleChangeRespostaQuestao(numeroQuestao, alternativa)
+                                  }
+                                  aria-pressed={isAtiva}
+                                  aria-label={`Marcar alternativa ${alternativa} na questão ${numeroQuestao}`}
+                                  className={`flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+                                    isAtiva
+                                      ? 'border-blue-600 bg-blue-600 text-white shadow-sm dark:border-blue-400 dark:bg-blue-500'
+                                      : 'border-border bg-background text-foreground hover:border-blue-400 hover:bg-blue-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-blue-400 dark:hover:bg-blue-950'
+                                  }`}
+                                >
+                                  {alternativa}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {Array.from({ length: totalQuestoes }, (_, index) => index + 1).some(
+                    (numeroQuestao) => !gabaritoManual[numeroQuestao],
+                  ) && (
+                    <p className="text-xs text-red-500">
+                      Preencha o gabarito de todas as questões para continuar.
+                    </p>
+                  )}
                 </div>
               )}
             </CardContent>
           </Card>
-
-          {/* Questões por disciplina */}
-          <div className="space-y-6">
-            {selectedDisciplinas.length === 0 ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <FileText className="h-5 w-5" />
-                    Questões
-                  </CardTitle>
-                  <CardDescription>
-                    Selecione disciplinas e questões do banco
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-center py-8 text-muted-foreground">
-                    <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <p>Nenhuma disciplina selecionada</p>
-                    <p className="text-sm">Selecione as disciplinas acima para começar</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              selectedDisciplinas.map((subject) => {
-                const subjectQuestions = getQuestionsForSubject(subject.id);
-                
-                return (
-                  <Card key={subject.id}>
-                    <CardContent className="pt-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2">
-                          <Book className="h-5 w-5" />
-                          <h3 className="text-lg font-medium">{subject.name}</h3>
-                          <Badge variant="outline">
-                            {subjectQuestions.length} questão(ões)
-                          </Badge>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedSubjectForQuestion(subject.id);
-                            setShowQuestionBank(true);
-                          }}
-                        >
-                          <Plus className="h-4 w-4 mr-1" />
-                          Banco de Questões
-                        </Button>
-                      </div>
-
-                      {/* Lista de questões */}
-                      <div className="space-y-3">
-                        {subjectQuestions.length === 0 ? (
-                          <div className="text-center py-8 text-muted-foreground">
-                            <Book className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                            <p>Nenhuma questão adicionada para {subject.name}</p>
-                            <p className="text-sm">Use o botão acima para adicionar questões</p>
-                          </div>
-                        ) : (
-                          subjectQuestions.map((question, index) => {
-                            // Calcular número global da questão
-                            const globalIndex = selectedQuestions.findIndex(q => q.id === question.id) + 1;
-                            
-                            return (
-                              <div
-                                key={question.id || index}
-                                className="flex items-center justify-between p-3 border rounded-lg bg-muted"
-                              >
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <Badge variant="secondary">#{globalIndex}</Badge>
-                                    <span className="text-sm font-medium">
-                                      {question.title || `Questão ${globalIndex}`}
-                                    </span>
-                                  </div>
-                                  <p className="text-sm text-muted-foreground line-clamp-2">
-                                    {question.text || "Sem texto disponível"}
-                                  </p>
-                                  {question.options && question.options.length > 0 && (
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                      {question.options.length} alternativas
-                                    </p>
-                                  )}
-                                </div>
-                                <div className="flex gap-2">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleViewQuestion(question)}
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleRemoveQuestion(question.id || "")}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </div>
-                            );
-                          })
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })
-            )}
-          </div>
 
           <div className="flex justify-end">
             <Button
@@ -1082,14 +1026,6 @@ export default function AnswerSheetGenerator() {
                   <Label className="text-muted-foreground">Prova</Label>
                   <p className="font-medium">{provaTitulo}</p>
                 </div>
-                <div className="space-y-2">
-                  <Label className="text-muted-foreground">Questões</Label>
-                  <p className="font-medium">{selectedQuestions.length} questões</p>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-muted-foreground">Disciplinas</Label>
-                  <p className="font-medium">{selectedDisciplinas.map(d => d.name).join(', ')}</p>
-                </div>
               </div>
 
               <div className="border-t pt-4">
@@ -1138,40 +1074,6 @@ export default function AnswerSheetGenerator() {
           </div>
         </div>
       )}
-
-
-      {/* Modal do Banco de Questões */}
-      <QuestionBank
-        open={showQuestionBank}
-        subjectId={selectedSubjectForQuestion || selectedDisciplinas[0]?.id || null}
-        onQuestionSelected={handleQuestionSelected}
-        onClose={() => {
-          setShowQuestionBank(false);
-          setSelectedSubjectForQuestion("");
-        }}
-        gradeId={selectedSerie}
-        gradeName={gradeName}
-        subjects={selectedDisciplinas}
-        selectedSubjectId={selectedSubjectForQuestion || selectedDisciplinas[0]?.id}
-      />
-
-      {/* Modal de Prévia de Questão */}
-      <Dialog open={showQuestionPreview} onOpenChange={setShowQuestionPreview}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Visualizar Questão</DialogTitle>
-            <DialogDescription>
-              Prévia completa da questão com alternativas
-            </DialogDescription>
-          </DialogHeader>
-          {previewQuestion && (
-            <QuestionPreview
-              question={previewQuestion}
-              onClose={() => setShowQuestionPreview(false)}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
