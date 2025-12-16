@@ -16,6 +16,7 @@ import { EvaluationComparisonApiService, ComparisonResponse } from '@/services/e
 import { EvolutionCharts } from '@/components/evolution/EvolutionCharts';
 import type { ProcessedEvolutionData } from '@/components/evolution/EvolutionCharts';
 import { processComparisonData } from '@/utils/evolutionDataProcessor';
+import { generateEvolutionPDFFromHTML } from '@/utils/evolutionPdfService';
 
 // Interfaces para os filtros
 interface State {
@@ -87,6 +88,7 @@ export default function Evolution() {
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingFilters, setIsLoadingFilters] = useState(false);
   const [isLoadingComparison, setIsLoadingComparison] = useState(false);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [comparisonData, setComparisonData] = useState<ComparisonResponse | null>(null);
   const [processedData, setProcessedData] = useState<ProcessedEvolutionData | null>(null);
   const [comparisonError, setComparisonError] = useState<string | null>(null);
@@ -891,13 +893,45 @@ export default function Evolution() {
             </Dialog>
           )}
           
-          {comparisonData && (
+          {comparisonData && processedData && (
             <Button 
-              onClick={() => console.log('Exportar dados')}
+              onClick={async () => {
+                if (!processedData || !comparisonData) {
+                  toast({
+                    title: "Dados insuficientes",
+                    description: "Não há dados disponíveis para gerar o relatório.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+
+                try {
+                  setIsGeneratingPDF(true);
+                  await generateEvolutionPDFFromHTML(
+                    processedData,
+                    comparisonData,
+                    processedData.evaluationNames
+                  );
+                  toast({
+                    title: "PDF gerado com sucesso!",
+                    description: "O relatório foi salvo no seu dispositivo.",
+                  });
+                } catch (error) {
+                  console.error('Erro ao gerar PDF:', error);
+                  toast({
+                    title: "Erro ao gerar PDF",
+                    description: "Não foi possível gerar o relatório. Tente novamente.",
+                    variant: "destructive",
+                  });
+                } finally {
+                  setIsGeneratingPDF(false);
+                }
+              }}
+              disabled={isGeneratingPDF || !processedData || !comparisonData}
               className="w-full sm:w-auto bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
             >
-              <Download className="h-4 w-4 mr-2" />
-              Exportar Relatório
+              <Download className={`h-4 w-4 mr-2 ${isGeneratingPDF ? 'animate-spin' : ''}`} />
+              {isGeneratingPDF ? 'Gerando PDF...' : 'Exportar Relatório'}
             </Button>
           )}
         </div>
