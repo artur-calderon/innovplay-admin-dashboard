@@ -1143,7 +1143,7 @@ export default function Results() {
       const selectedGradeName = selectedGrade !== 'all' ? grades.find(g => g.id === selectedGrade)?.name : null;
       const selectedClassName = selectedClass !== 'all' ? classes.find(c => c.id === selectedClass)?.name : null;
 
-      let worksheetData: any[][] = [];
+      let worksheetData: (string | number)[][] = [];
 
       // Se há filtros específicos e tabela_detalhada disponível, usar dados filtrados
       if ((selectedClassName || selectedGradeName || selectedSchoolName) && apiData.tabela_detalhada?.disciplinas?.length) {
@@ -2618,7 +2618,27 @@ export default function Results() {
                           {viewMode === 'table' ? (
                             isTableReady && !isLoadingStudents && apiData?.tabela_detalhada ? (
                               <DisciplineTables
-                                tabelaDetalhada={apiData.tabela_detalhada}
+                                tabelaDetalhada={{
+                                  disciplinas: apiData.tabela_detalhada.disciplinas,
+                                  geral: apiData.tabela_detalhada.geral ? {
+                                    alunos: apiData.tabela_detalhada.geral.alunos.map(aluno => ({
+                                      id: aluno.id,
+                                      nome: aluno.nome,
+                                      escola: aluno.escola || '',
+                                      serie: aluno.serie || '',
+                                      turma: aluno.turma || '',
+                                      nota_geral: aluno.nota_geral || 0,
+                                      proficiencia_geral: aluno.proficiencia_geral || 0,
+                                      nivel_proficiencia_geral: aluno.nivel_proficiencia_geral || '',
+                                      total_acertos_geral: aluno.total_acertos_geral || 0,
+                                      total_questoes_geral: aluno.total_questoes_geral || 0,
+                                      total_respondidas_geral: aluno.total_respondidas_geral || 0,
+                                      total_em_branco_geral: aluno.total_em_branco_geral || 0,
+                                      percentual_acertos_geral: aluno.percentual_acertos_geral || 0,
+                                      status_geral: aluno.status_geral || ''
+                                    }))
+                                  } : undefined
+                                }}
                                 onViewStudentDetails={handleViewStudentDetails}
                                 onOpenInNewTab={handleOpenInNewTab}
                               />
@@ -2670,7 +2690,25 @@ export default function Results() {
                  </TabsContent>
 
                 <TabsContent value="statistics" className="space-y-6">
-                  <ClassStatistics apiData={apiData} />
+                  <ClassStatistics apiData={apiData ? {
+                    ...apiData,
+                    tabela_detalhada: apiData.tabela_detalhada ? {
+                      ...apiData.tabela_detalhada,
+                      geral: apiData.tabela_detalhada.geral ? {
+                        alunos: apiData.tabela_detalhada.geral.alunos.map(aluno => ({
+                          id: aluno.id,
+                          nome: aluno.nome,
+                          turma: aluno.turma || '',
+                          nivel_proficiencia_geral: aluno.nivel_proficiencia_geral || '',
+                          nota_geral: aluno.nota_geral || 0,
+                          proficiencia_geral: aluno.proficiencia_geral || 0,
+                          total_acertos_geral: aluno.total_acertos_geral || 0,
+                          total_erros_geral: (aluno.total_questoes_geral || 0) - (aluno.total_acertos_geral || 0) - (aluno.total_em_branco_geral || 0),
+                          total_respondidas_geral: aluno.total_respondidas_geral || 0
+                        }))
+                      } : undefined
+                    } : undefined
+                  } : null} />
                 </TabsContent>
 
                 {selectedEvaluation !== 'all' && (
