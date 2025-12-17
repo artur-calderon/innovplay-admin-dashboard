@@ -10,11 +10,13 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { TrendingUp, Users, Target, Award, Filter, RefreshCw, Download, Plus, X, Check, AlertCircle, Search, Calendar, List } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/authContext';
+import { api } from '@/lib/api';
 import { EvaluationResultsApiService } from '@/services/evaluationResultsApi';
-import { EvaluationComparisonApiService, ComparisonResponse, ComparisonFilterOptions } from '@/services/evaluationComparisonApi';
+import { EvaluationComparisonApiService, ComparisonResponse } from '@/services/evaluationComparisonApi';
 import { EvolutionCharts } from '@/components/evolution/EvolutionCharts';
 import type { ProcessedEvolutionData } from '@/components/evolution/EvolutionCharts';
 import { processComparisonData } from '@/utils/evolutionDataProcessor';
+import { generateEvolutionPDFFromHTML } from '@/utils/evolutionPdfService';
 
 // Interfaces para os filtros
 interface State {
@@ -50,6 +52,9 @@ interface Evaluation {
   disciplina: string;
   status: string;
   data_aplicacao: string | null;
+  escola?: string | null;
+  serie?: string | null;
+  turma?: string | null;
 }
 
 export default function Evolution() {
@@ -60,6 +65,8 @@ export default function Evolution() {
   const [selectedState, setSelectedState] = useState<string>('all');
   const [selectedMunicipality, setSelectedMunicipality] = useState<string>('all');
   const [selectedSchool, setSelectedSchool] = useState<string>('all');
+  const [selectedGrade, setSelectedGrade] = useState<string>('all');
+  const [selectedClass, setSelectedClass] = useState<string>('all');
   const [periodStart, setPeriodStart] = useState<string>('');
   const [periodEnd, setPeriodEnd] = useState<string>('');
   const [evaluationSearch, setEvaluationSearch] = useState<string>('');
@@ -74,11 +81,14 @@ export default function Evolution() {
   const [states, setStates] = useState<State[]>([]);
   const [municipalities, setMunicipalities] = useState<Municipality[]>([]);
   const [schools, setSchools] = useState<School[]>([]);
+  const [grades, setGrades] = useState<Grade[]>([]);
+  const [classes, setClasses] = useState<Class[]>([]);
 
   // Estados de loading e dados
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingFilters, setIsLoadingFilters] = useState(false);
   const [isLoadingComparison, setIsLoadingComparison] = useState(false);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [comparisonData, setComparisonData] = useState<ComparisonResponse | null>(null);
   const [processedData, setProcessedData] = useState<ProcessedEvolutionData | null>(null);
   const [comparisonError, setComparisonError] = useState<string | null>(null);
@@ -247,6 +257,8 @@ export default function Evolution() {
           if (!currentMunicipalityExists && selectedMunicipality !== 'all') {
             setSelectedMunicipality('all');
             setSelectedSchool('all');
+            setSelectedGrade('all');
+            setSelectedClass('all');
           }
         } catch (error) {
           console.error("Erro ao carregar municípios:", error);
@@ -267,6 +279,12 @@ export default function Evolution() {
         if (selectedSchool !== 'all') {
           setSelectedSchool('all');
         }
+        if (selectedGrade !== 'all') {
+          setSelectedGrade('all');
+        }
+        if (selectedClass !== 'all') {
+          setSelectedClass('all');
+        }
       }
     };
 
@@ -274,14 +292,36 @@ export default function Evolution() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedState, toast]);
 
-  // Carregar avaliações quando município for selecionado
+  // Carregar avaliações quando município for selecionado (com filtros opcionais de escola, série e turma)
   useEffect(() => {
     const loadEvaluations = async () => {
       if (selectedState !== 'all' && selectedMunicipality !== 'all') {
         try {
           setIsLoadingFilters(true);
           
-          console.log('🔍 Carregando avaliações para:', { estado: selectedState, municipio: selectedMunicipality });
+          // Construir filtros para a API
+          const filters: {
+            estado: string;
+            municipio: string;
+            escola?: string;
+            serie?: string;
+            turma?: string;
+          } = {
+            estado: selectedState,
+            municipio: selectedMunicipality
+          };
+          
+          if (selectedSchool !== 'all') {
+            filters.escola = selectedSchool;
+          }
+          if (selectedGrade !== 'all') {
+            filters.serie = selectedGrade;
+          }
+          if (selectedClass !== 'all') {
+            filters.turma = selectedClass;
+          }
+          
+          console.log('🔍 Carregando avaliações para:', filters);
           
           // Tentar primeiro a API de comparação
           let comparisonResponse;
@@ -300,13 +340,10 @@ export default function Evolution() {
           if (comparisonResponse?.opcoes?.avaliacoes && comparisonResponse.opcoes.avaliacoes.length > 0) {
             console.log(`📊 ${comparisonResponse.opcoes.avaliacoes.length} avaliações encontradas na API de comparação`);
             
-            // Tentar buscar detalhes completos (data_aplicacao) da API de resultados
+            // Tentar buscar detalhes completos (data_aplicacao) da API de resultados com filtros
             let evaluationsWithDetails: Evaluation[] = [];
             try {
-              const detailedResponse = await EvaluationResultsApiService.getEvaluationsList(1, 100, {
-                estado: selectedState,
-                municipio: selectedMunicipality
-              });
+              const detailedResponse = await EvaluationResultsApiService.getEvaluationsList(1, 100, filters);
               
               if (detailedResponse?.resultados_detalhados?.avaliacoes) {
                 // Normalizar IDs para comparação (ambos como string)
@@ -324,7 +361,10 @@ export default function Evolution() {
                     titulo: evaluation.titulo || 'Sem título',
                     disciplina: evaluation.disciplina || '',
                     status: evaluation.status || 'concluida',
-                    data_aplicacao: evaluation.data_aplicacao || new Date().toISOString()
+                    data_aplicacao: evaluation.data_aplicacao || new Date().toISOString(),
+                    escola: evaluation.escola || null,
+                    serie: evaluation.serie || null,
+                    turma: evaluation.turma || null,
                   }));
                 
                 console.log(`✅ ${evaluationsWithDetails.length} avaliações mapeadas com detalhes`);
@@ -356,7 +396,10 @@ export default function Evolution() {
                   titulo: evaluation.titulo || 'Sem título',
                   disciplina: '',
                   status: 'concluida',
-                  data_aplicacao: null as string | null
+                  data_aplicacao: null as string | null,
+                  escola: null,
+                  serie: null,
+                  turma: null,
                 };
               });
               
@@ -391,13 +434,10 @@ export default function Evolution() {
               setAvailableEvaluationsForPicker(evaluationsWithDetails);
             }
           } else {
-            // Se a API de comparação não retornou avaliações, tentar API de resultados diretamente
+            // Se a API de comparação não retornou avaliações, tentar API de resultados diretamente com filtros
             console.log('⚠️ API de comparação não retornou avaliações, tentando API de resultados...');
             try {
-              const detailedResponse = await EvaluationResultsApiService.getEvaluationsList(1, 100, {
-                estado: selectedState,
-                municipio: selectedMunicipality
-              });
+              const detailedResponse = await EvaluationResultsApiService.getEvaluationsList(1, 100, filters);
               
               if (detailedResponse?.resultados_detalhados?.avaliacoes) {
                 // Filtrar apenas avaliações com status concluída/finalizada
@@ -411,7 +451,10 @@ export default function Evolution() {
                     titulo: evaluation.titulo || 'Sem título',
                     disciplina: evaluation.disciplina || '',
                     status: evaluation.status || 'concluida',
-                    data_aplicacao: evaluation.data_aplicacao || new Date().toISOString()
+                    data_aplicacao: evaluation.data_aplicacao || new Date().toISOString(),
+                    escola: evaluation.escola || null,
+                    serie: evaluation.serie || null,
+                    turma: evaluation.turma || null,
                   }));
                 
                 console.log(`✅ ${evaluationsWithResults.length} avaliações encontradas na API de resultados`);
@@ -446,9 +489,10 @@ export default function Evolution() {
 
     loadEvaluations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedState, selectedMunicipality, toast]);
+  }, [selectedState, selectedMunicipality, selectedSchool, selectedGrade, selectedClass, toast]);
 
   // Filtrar avaliações por período e busca
+  // Nota: Os filtros de escola/série/turma já são aplicados pela API em loadEvaluations
   const filteredEvaluations = useMemo(() => {
     let filtered = [...availableEvaluationsForPicker];
 
@@ -485,37 +529,33 @@ export default function Evolution() {
     return filtered;
   }, [availableEvaluationsForPicker, periodStart, periodEnd, evaluationSearch]);
 
-  // Carregar escolas quando município for selecionado (mesmo sem avaliações)
+  // Carregar escolas quando município for selecionado (independente das avaliações)
   useEffect(() => {
     const loadSchoolsForComparison = async () => {
       if (selectedState !== 'all' && selectedMunicipality !== 'all') {
         try {
           setIsLoadingFilters(true);
-          
-          // Se houver avaliações selecionadas, carregar escolas baseado nas avaliações
-          if (selectedEvaluationsForComparison.length >= 2) {
-            const evaluationIds = selectedEvaluationsForComparison.map(e => e.id);
-            const response = await EvaluationComparisonApiService.getComparisonFilterOptions({
-              estado: selectedState,
-              municipio: selectedMunicipality,
-              avaliacoes: evaluationIds.join(',')
-            });
-            setSchools(response.opcoes.escolas?.map(school => ({
+
+          // Buscar todas as escolas e filtrar pelo município selecionado
+          const schoolsResponse = await api.get('/school/');
+          const allSchools = Array.isArray(schoolsResponse.data)
+            ? schoolsResponse.data
+            : (schoolsResponse.data?.data || []);
+
+          const municipalitySchools = allSchools
+            .filter((school: any) => {
+              const cityId =
+                school.city_id ||
+                school.municipio_id ||
+                school.municipio?.id;
+              return String(cityId) === String(selectedMunicipality);
+            })
+            .map((school: any) => ({
               id: school.id,
-              name: school.nome
-            })) || []);
-          } else {
-            // Carregar escolas do município mesmo sem avaliações selecionadas
-            // Usar a rota unificada /opcoes-filtros?estado={estado}&municipio={municipio}
-            const schoolsResponse = await EvaluationResultsApiService.getFilterSchools({
-              municipio: selectedMunicipality,
-              estado: selectedState
-            });
-            setSchools(schoolsResponse.map(school => ({
-              id: school.id,
-              name: school.nome
-            })));
-          }
+              name: school.name || school.nome,
+            }));
+
+          setSchools(municipalitySchools);
         } catch (error) {
           console.error("Erro ao carregar escolas:", error);
           setSchools([]);
@@ -526,12 +566,110 @@ export default function Evolution() {
         setSchools([]);
         if (selectedMunicipality === 'all') {
           setSelectedSchool('all');
+          setSelectedGrade('all');
+          setSelectedClass('all');
         }
       }
     };
 
     loadSchoolsForComparison();
-  }, [selectedState, selectedMunicipality, selectedEvaluationsForComparison, toast]);
+  }, [selectedState, selectedMunicipality]);
+
+  // Carregar séries quando escola for selecionada (usando turmas da escola)
+  useEffect(() => {
+    const loadGrades = async () => {
+      if (selectedSchool !== 'all') {
+        try {
+          setIsLoadingFilters(true);
+          // Buscar turmas da escola para extrair as séries disponíveis
+          const classesResponse = await api.get(`/classes/school/${selectedSchool}`);
+          const classesData = Array.isArray(classesResponse.data)
+            ? classesResponse.data
+            : (classesResponse.data?.data || []);
+
+          const gradeMap = new Map<string, Grade>();
+          classesData.forEach((classItem: any) => {
+            const grade = classItem.grade;
+            if (grade && grade.id && !gradeMap.has(grade.id)) {
+              gradeMap.set(grade.id, {
+                id: grade.id,
+                name: grade.name || grade.nome || '',
+              });
+            }
+          });
+
+          const extractedGrades = Array.from(gradeMap.values());
+          setGrades(extractedGrades);
+
+          // Resetar série e turma se a série atual não existir mais
+          const currentGradeExists = extractedGrades.some(g => g.id === selectedGrade);
+          if (!currentGradeExists && selectedGrade !== 'all') {
+            setSelectedGrade('all');
+            setSelectedClass('all');
+          }
+        } catch (error) {
+          console.error("Erro ao carregar séries:", error);
+          setGrades([]);
+          setSelectedGrade('all');
+          setSelectedClass('all');
+        } finally {
+          setIsLoadingFilters(false);
+        }
+      } else {
+        setGrades([]);
+        setSelectedGrade('all');
+        setSelectedClass('all');
+      }
+    };
+
+    loadGrades();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSchool, toast]);
+
+  // Carregar turmas quando série for selecionada (filtrando turmas da escola pela série)
+  useEffect(() => {
+    const loadClasses = async () => {
+      if (selectedSchool !== 'all' && selectedGrade !== 'all') {
+        try {
+          setIsLoadingFilters(true);
+          const response = await api.get(`/classes/school/${selectedSchool}`);
+          const classesData = Array.isArray(response.data)
+            ? response.data
+            : (response.data?.data || []);
+
+          const filteredClasses = classesData
+            .filter((classItem: any) => {
+              const gradeId = classItem.grade_id || classItem.grade?.id;
+              return String(gradeId) === String(selectedGrade);
+            })
+            .map((classItem: any) => ({
+              id: classItem.id,
+              name: classItem.name || classItem.nome || `Turma ${classItem.id}`,
+            }));
+
+          setClasses(filteredClasses);
+          
+          // Resetar turma se a turma atual não existir mais
+          const currentClassExists = filteredClasses.some(c => c.id === selectedClass);
+          if (!currentClassExists && selectedClass !== 'all') {
+            setSelectedClass('all');
+          }
+        } catch (error) {
+          console.error("Erro ao carregar turmas:", error);
+          setClasses([]);
+          setSelectedClass('all');
+        } finally {
+          setIsLoadingFilters(false);
+        }
+      } else {
+        setClasses([]);
+        setSelectedClass('all');
+      }
+    };
+
+    loadClasses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSchool, selectedGrade, toast]);
 
   // Função para comparar avaliações
   const handleCompareEvaluations = useCallback(async () => {
@@ -755,13 +893,45 @@ export default function Evolution() {
             </Dialog>
           )}
           
-          {comparisonData && (
+          {comparisonData && processedData && (
             <Button 
-              onClick={() => console.log('Exportar dados')}
+              onClick={async () => {
+                if (!processedData || !comparisonData) {
+                  toast({
+                    title: "Dados insuficientes",
+                    description: "Não há dados disponíveis para gerar o relatório.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+
+                try {
+                  setIsGeneratingPDF(true);
+                  await generateEvolutionPDFFromHTML(
+                    processedData,
+                    comparisonData,
+                    processedData.evaluationNames
+                  );
+                  toast({
+                    title: "PDF gerado com sucesso!",
+                    description: "O relatório foi salvo no seu dispositivo.",
+                  });
+                } catch (error) {
+                  console.error('Erro ao gerar PDF:', error);
+                  toast({
+                    title: "Erro ao gerar PDF",
+                    description: "Não foi possível gerar o relatório. Tente novamente.",
+                    variant: "destructive",
+                  });
+                } finally {
+                  setIsGeneratingPDF(false);
+                }
+              }}
+              disabled={isGeneratingPDF || !processedData || !comparisonData}
               className="w-full sm:w-auto bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
             >
-              <Download className="h-4 w-4 mr-2" />
-              Exportar Relatório
+              <Download className={`h-4 w-4 mr-2 ${isGeneratingPDF ? 'animate-spin' : ''}`} />
+              {isGeneratingPDF ? 'Gerando PDF...' : 'Exportar Relatório'}
             </Button>
           )}
         </div>
@@ -780,7 +950,7 @@ export default function Evolution() {
             </CardDescription>
           </CardHeader>
           <CardContent className="p-6">
-            <div className="grid gap-6 grid-cols-1 lg:grid-cols-4">
+            <div className="grid gap-6 grid-cols-1 lg:grid-cols-3 xl:grid-cols-5">
               {/* Estado */}
               <div className="space-y-3">
                 <label className="text-sm font-semibold text-foreground flex items-center gap-2">
@@ -894,6 +1064,96 @@ export default function Evolution() {
                   <div className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
                     <div className="w-1.5 h-1.5 bg-amber-500 rounded-full"></div>
                     Nenhuma escola encontrada para este município
+                  </div>
+                )}
+              </div>
+
+              {/* Série */}
+              <div className="space-y-3">
+                <label className="text-sm font-semibold text-foreground flex items-center gap-2">
+                  <div className="w-2 h-2 bg-teal-500 rounded-full"></div>
+                  Série
+                  <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
+                    Opcional
+                  </span>
+                </label>
+                <Select
+                  value={selectedGrade}
+                  onValueChange={setSelectedGrade}
+                  disabled={isLoadingFilters || selectedSchool === 'all'}
+                >
+                  <SelectTrigger className="h-12 border-2 border-border hover:border-teal-300 dark:hover:border-teal-600 focus:border-teal-500 dark:focus:border-teal-400 transition-colors">
+                    <SelectValue placeholder={
+                      isLoadingFilters ? "Carregando..." : 
+                      selectedSchool === 'all' ? "Selecione a escola primeiro" :
+                      grades.length === 0 ? "Nenhuma série encontrada" :
+                      "Selecione uma série (opcional)"
+                    } />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as séries</SelectItem>
+                    {grades.map(grade => (
+                      <SelectItem key={grade.id} value={grade.id}>
+                        {grade.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedGrade !== 'all' && selectedSchool !== 'all' && (
+                  <div className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                    <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+                    Série selecionada
+                  </div>
+                )}
+                {grades.length === 0 && selectedSchool !== 'all' && !isLoadingFilters && (
+                  <div className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                    <div className="w-1.5 h-1.5 bg-amber-500 rounded-full"></div>
+                    Nenhuma série encontrada para esta escola
+                  </div>
+                )}
+              </div>
+
+              {/* Turma */}
+              <div className="space-y-3">
+                <label className="text-sm font-semibold text-foreground flex items-center gap-2">
+                  <div className="w-2 h-2 bg-cyan-500 rounded-full"></div>
+                  Turma
+                  <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
+                    Opcional
+                  </span>
+                </label>
+                <Select
+                  value={selectedClass}
+                  onValueChange={setSelectedClass}
+                  disabled={isLoadingFilters || selectedGrade === 'all'}
+                >
+                  <SelectTrigger className="h-12 border-2 border-border hover:border-cyan-300 dark:hover:border-cyan-600 focus:border-cyan-500 dark:focus:border-cyan-400 transition-colors">
+                    <SelectValue placeholder={
+                      isLoadingFilters ? "Carregando..." : 
+                      selectedGrade === 'all' ? "Selecione a série primeiro" :
+                      classes.length === 0 ? "Nenhuma turma encontrada" :
+                      "Selecione uma turma (opcional)"
+                    } />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as turmas</SelectItem>
+                    {classes.map(classItem => (
+                      <SelectItem key={classItem.id} value={classItem.id}>
+                        {classItem.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedClass !== 'all' && selectedGrade !== 'all' && (
+                  <div className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                    <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+                    Turma selecionada
+                  </div>
+                )}
+                {classes.length === 0 && selectedGrade !== 'all' && !isLoadingFilters && (
+                  <div className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                    <div className="w-1.5 h-1.5 bg-amber-500 rounded-full"></div>
+                    Nenhuma turma encontrada para esta série
                   </div>
                 )}
               </div>
