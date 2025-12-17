@@ -151,7 +151,8 @@ class BatchCorrectionService {
     for (let i = 0; i < images.length; i++) {
       try {
         const response = await api.post(`/physical-tests/test/${testId}/process-correction`, {
-          image: images[i].image
+          image: images[i].image,
+          use_hybrid: true
         }, {
           headers: {
             'Content-Type': 'application/json',
