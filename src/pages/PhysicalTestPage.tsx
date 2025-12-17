@@ -114,26 +114,6 @@ interface GeneratedForm {
   processed_at?: string | null;
 }
 
-interface CorrectionResult {
-  message: string;
-  student_id: string;
-  test_id: string;
-  class_test_id: string;
-  correct_answers: number;
-  total_questions: number;
-  score_percentage: number;
-  grade: number;
-  proficiency: number;
-  classification: string;
-  answers_detected: number;
-  qr_data: {
-    student_id: string;
-    test_id: string;
-    class_test_id: string;
-    timestamp: string;
-  };
-}
-
 export default function PhysicalTestPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -144,7 +124,6 @@ export default function PhysicalTestPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [testStatus, setTestStatus] = useState<PhysicalTestStatus | null>(null);
   const [generatedForms, setGeneratedForms] = useState<GeneratedForm[]>([]);
-  const [correctionResult, setCorrectionResult] = useState<CorrectionResult | null>(null);
 
   // Estados para geração de formulários
   const [isGenerating, setIsGenerating] = useState(false);
@@ -307,6 +286,9 @@ export default function PhysicalTestPage() {
         payload.separate_by_subject = false;
       }
 
+      // Adicionar use_hybrid ao payload
+      payload.use_hybrid = true;
+
       const response = await api.post(`/physical-tests/test/${id}/generate-forms`, payload, {
         headers: {
           'Content-Type': 'application/json',
@@ -349,7 +331,6 @@ export default function PhysicalTestPage() {
     const file = event.target.files?.[0];
     if (file) {
       setUploadedImage(file);
-      setCorrectionResult(null); // Limpar resultado anterior
 
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -407,7 +388,8 @@ export default function PhysicalTestPage() {
       }, 300);
 
       const response = await api.post(`/physical-tests/test/${id}/process-correction`, {
-        image: base64Image
+        image: base64Image,
+        use_hybrid: true
       }, {
         headers: {
           'Content-Type': 'application/json',
@@ -417,12 +399,9 @@ export default function PhysicalTestPage() {
       clearInterval(progressInterval);
       setCorrectionProgress(100);
 
-      // Armazenar resultado da correção
-      setCorrectionResult(response.data);
-
       toast({
         title: "Correção processada!",
-        description: `Prova corrigida com sucesso. Nota: ${response.data.grade}`,
+        description: "A correção foi realizada com sucesso.",
       });
 
       setShowCorrectionDialog(false);
@@ -1242,92 +1221,6 @@ export default function PhysicalTestPage() {
                       />
                     </div>
                   </div>
-
-                  {/* Resultado da Correção */}
-                  {correctionResult && (
-                    <div className="space-y-4">
-                      <Label>Resultado da Correção</Label>
-                      <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-4">
-                        {/* Informações do Aluno */}
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="flex items-center gap-2">
-                            <Users className="h-4 w-4 text-green-600" />
-                            <span className="text-sm font-medium">Aluno ID:</span>
-                            <span className="text-sm bg-white px-2 py-1 rounded">
-                              {correctionResult.student_id}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <FileText className="h-4 w-4 text-green-600" />
-                            <span className="text-sm font-medium">Teste ID:</span>
-                            <span className="text-sm bg-white px-2 py-1 rounded">
-                              {correctionResult.test_id}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Estatísticas da Prova */}
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="bg-white p-3 rounded border">
-                            <div className="text-center">
-                              <div className="text-2xl font-bold text-green-600">
-                                {correctionResult.correct_answers}/{correctionResult.total_questions}
-                              </div>
-                              <div className="text-sm text-gray-600">Acertos</div>
-                            </div>
-                          </div>
-                          <div className="bg-white p-3 rounded border">
-                            <div className="text-center">
-                              <div className="text-2xl font-bold text-blue-600">
-                                {correctionResult.score_percentage.toFixed(1)}%
-                              </div>
-                              <div className="text-sm text-gray-600">Percentual</div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Nota e Classificação */}
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="bg-white p-3 rounded border">
-                            <div className="text-center">
-                              <div className="text-2xl font-bold text-purple-600">
-                                {correctionResult.grade}
-                              </div>
-                              <div className="text-sm text-gray-600">Nota</div>
-                            </div>
-                          </div>
-                          <div className="bg-white p-3 rounded border">
-                            <div className="text-center">
-                              <div className="text-lg font-bold text-orange-600">
-                                {correctionResult.classification}
-                              </div>
-                              <div className="text-sm text-gray-600">Classificação</div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Proficiência */}
-                        <div className="bg-white p-3 rounded border">
-                          <div className="text-center">
-                            <div className="text-xl font-bold text-indigo-600">
-                              {correctionResult.proficiency}
-                            </div>
-                            <div className="text-sm text-gray-600">Proficiência</div>
-                          </div>
-                        </div>
-
-                        {/* Respostas Detectadas */}
-                        <div className="bg-white p-3 rounded border">
-                          <div className="text-center">
-                            <div className="text-lg font-bold text-gray-700">
-                              {correctionResult.answers_detected} respostas detectadas
-                            </div>
-                            <div className="text-sm text-gray-600">de {correctionResult.total_questions} questões</div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
 
                   <Button
                     onClick={handleProcessCorrection}
