@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Table,
   TableBody,
@@ -63,9 +64,14 @@ import {
   Clock,
   Eye,
   MoreVertical,
-  Send
+  Send,
+  Upload,
+  Images,
+  X,
+  Loader2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useBatchCorrection } from "@/hooks/useBatchCorrection";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/authContext";
 
@@ -140,11 +146,24 @@ export default function PhysicalTestPage() {
   const [testTotalQuestions, setTestTotalQuestions] = useState<number | null>(null);
   const [testSubjects, setTestSubjects] = useState<string[]>([]);
 
-  // Estados para correção
+  // Estados para correção única
   const [showCorrectionDialog, setShowCorrectionDialog] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<File | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Estados para correção em lote
+  const [showBatchCorrectionDialog, setShowBatchCorrectionDialog] = useState(false);
+  const [batchImages, setBatchImages] = useState<{ file: File; preview: string }[]>([]);
+  const batchFileInputRef = useRef<HTMLInputElement>(null);
+  const {
+    isProcessing: isBatchProcessing,
+    isCompleted: isBatchCompleted,
+    progress: batchProgress,
+    error: batchError,
+    startBatchCorrection,
+    reset: resetBatchCorrection,
+  } = useBatchCorrection();
 
   // Estados para gerenciamento de formulários
   const [formToDelete, setFormToDelete] = useState<string | null>(null);
@@ -434,6 +453,74 @@ export default function PhysicalTestPage() {
     } finally {
       setIsProcessing(false);
       setCorrectionProgress(0);
+    }
+  };
+
+  // Funções para correção em lote
+  const handleBatchImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0) return;
+
+    // Limitar a 50 imagens
+    const maxImages = 50;
+    const remainingSlots = maxImages - batchImages.length;
+    const filesToAdd = files.slice(0, remainingSlots);
+
+    if (files.length > remainingSlots) {
+      toast({
+        title: "Limite de imagens",
+        description: `Máximo de ${maxImages} imagens por lote. Apenas ${remainingSlots} imagens foram adicionadas.`,
+        variant: "destructive",
+      });
+    }
+
+    // Converter arquivos para base64 e criar previews
+    const newImages = await Promise.all(
+      filesToAdd.map(async (file) => {
+        const preview = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+        });
+        return { file, preview };
+      })
+    );
+
+    setBatchImages(prev => [...prev, ...newImages]);
+    
+    // Limpar input para permitir selecionar os mesmos arquivos novamente
+    if (batchFileInputRef.current) {
+      batchFileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemoveBatchImage = (index: number) => {
+    setBatchImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleClearBatchImages = () => {
+    setBatchImages([]);
+  };
+
+  const handleStartBatchCorrection = async () => {
+    if (!id || batchImages.length === 0) return;
+
+    try {
+      // Converter imagens para base64
+      const base64Images = batchImages.map(img => img.preview);
+      
+      // Iniciar correção em lote
+      await startBatchCorrection(id, base64Images);
+    } catch (error) {
+      console.error("Erro ao iniciar correção em lote:", error);
+    }
+  };
+
+  const handleCloseBatchDialog = () => {
+    if (!isBatchProcessing) {
+      setShowBatchCorrectionDialog(false);
+      setBatchImages([]);
+      resetBatchCorrection();
     }
   };
 
@@ -1190,9 +1277,13 @@ export default function PhysicalTestPage() {
 
         {/* Tab: Correção */}
         <TabsContent value="correction" className="space-y-6">
+          {/* Correção Única */}
           <Card>
             <CardHeader>
-              <CardTitle>Processar Correção</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Correção Única
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -1250,6 +1341,219 @@ export default function PhysicalTestPage() {
                   )}
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Correção em Lote */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Images className="h-5 w-5" />
+                Correção em Lote
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Processe múltiplas provas de uma vez. Selecione várias imagens de gabaritos preenchidos
+                e o sistema irá corrigir todas automaticamente.
+              </p>
+              
+              <Dialog open={showBatchCorrectionDialog} onOpenChange={(open) => {
+                if (!open && !isBatchProcessing) {
+                  handleCloseBatchDialog();
+                } else if (open) {
+                  setShowBatchCorrectionDialog(true);
+                }
+              }}>
+                <DialogTrigger asChild>
+                  <Button className="w-full bg-purple-600 hover:bg-purple-700">
+                    <Upload className="h-4 w-4 mr-2" />
+                    Iniciar Correção em Lote
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[700px] max-h-[90vh]">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <Images className="h-5 w-5" />
+                      Correção em Lote
+                    </DialogTitle>
+                    <DialogDescription>
+                      Selecione múltiplas imagens de gabaritos para processar de uma vez.
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="space-y-4 py-4">
+                    {/* Upload de imagens */}
+                    {!isBatchProcessing && !isBatchCompleted && (
+                      <>
+                        <div className="space-y-2">
+                          <Label htmlFor="batch-image-upload">Selecionar Imagens</Label>
+                          <div className="flex gap-2">
+                            <Input
+                              id="batch-image-upload"
+                              ref={batchFileInputRef}
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              onChange={handleBatchImageUpload}
+                              className="cursor-pointer flex-1"
+                            />
+                            {batchImages.length > 0 && (
+                              <Button
+                                variant="outline"
+                                onClick={handleClearBatchImages}
+                                className="text-red-600 border-red-600 hover:bg-red-50"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Máximo de 50 imagens por lote. Formatos aceitos: JPG, PNG, GIF, WebP.
+                          </p>
+                        </div>
+
+                        {/* Preview das imagens selecionadas */}
+                        {batchImages.length > 0 && (
+                          <div className="space-y-2">
+                            <Label>{batchImages.length} imagem(ns) selecionada(s)</Label>
+                            <ScrollArea className="h-48 border rounded-lg p-2">
+                              <div className="grid grid-cols-4 gap-2">
+                                {batchImages.map((img, index) => (
+                                  <div key={index} className="relative group">
+                                    <img
+                                      src={img.preview}
+                                      alt={`Preview ${index + 1}`}
+                                      className="w-full h-24 object-cover rounded border"
+                                    />
+                                    <button
+                                      onClick={() => handleRemoveBatchImage(index)}
+                                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                    <span className="absolute bottom-1 left-1 bg-black/70 text-white text-xs px-1 rounded">
+                                      {index + 1}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </ScrollArea>
+                          </div>
+                        )}
+
+                        {/* Botão para iniciar */}
+                        <Button
+                          onClick={handleStartBatchCorrection}
+                          disabled={batchImages.length === 0}
+                          className="w-full bg-purple-600 hover:bg-purple-700"
+                        >
+                          <CheckCircle className="h-4 w-4 mr-2" />
+                          Iniciar Correção ({batchImages.length} provas)
+                        </Button>
+                      </>
+                    )}
+
+                    {/* Erro */}
+                    {batchError && (
+                      <Alert variant="destructive">
+                        <XCircle className="h-4 w-4" />
+                        <AlertDescription>{batchError}</AlertDescription>
+                      </Alert>
+                    )}
+
+                    {/* Progresso */}
+                    {(isBatchProcessing || isBatchCompleted) && batchProgress && (
+                      <div className="space-y-4">
+                        {/* Header de status */}
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center gap-2">
+                            {isBatchCompleted ? (
+                              <>
+                                <CheckCircle className="h-5 w-5 text-green-500" />
+                                <span className="font-medium text-green-600">Concluído!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Loader2 className="h-5 w-5 animate-spin text-purple-600" />
+                                <span className="font-medium">Processando...</span>
+                              </>
+                            )}
+                          </span>
+                          <span className="text-sm text-muted-foreground">
+                            {batchProgress.completed}/{batchProgress.total} ({batchProgress.percentage.toFixed(0)}%)
+                          </span>
+                        </div>
+
+                        {/* Barra de progresso */}
+                        <Progress value={batchProgress.percentage} className="w-full h-3" />
+
+                        {/* Lista de itens */}
+                        <ScrollArea className="h-64 border rounded-lg">
+                          <div className="p-2 space-y-1">
+                            {Object.entries(batchProgress.items || {}).map(([index, item]) => (
+                              <div
+                                key={index}
+                                className={`flex items-center justify-between p-2 rounded text-sm ${
+                                  item.status === 'pending' ? 'bg-gray-100' :
+                                  item.status === 'processing' ? 'bg-yellow-50 border border-yellow-200' :
+                                  item.status === 'done' ? 'bg-green-50 border border-green-200' :
+                                  'bg-red-50 border border-red-200'
+                                }`}
+                              >
+                                <span className="flex items-center gap-2">
+                                  {item.status === 'pending' && <Clock className="h-4 w-4 text-gray-400" />}
+                                  {item.status === 'processing' && <Loader2 className="h-4 w-4 animate-spin text-yellow-500" />}
+                                  {item.status === 'done' && <CheckCircle className="h-4 w-4 text-green-500" />}
+                                  {item.status === 'error' && <XCircle className="h-4 w-4 text-red-500" />}
+                                  <span>
+                                    {item.status === 'pending' && `Prova ${Number(index) + 1} - Aguardando...`}
+                                    {item.status === 'processing' && `Prova ${Number(index) + 1} - Processando...`}
+                                    {item.status === 'done' && (item.student_name || `Prova ${Number(index) + 1}`)}
+                                    {item.status === 'error' && `Prova ${Number(index) + 1} - Erro`}
+                                  </span>
+                                </span>
+                                {item.status === 'done' && (
+                                  <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300">
+                                    {item.correct}/{item.total} ({item.percentage?.toFixed(0)}%)
+                                  </Badge>
+                                )}
+                                {item.status === 'error' && item.error && (
+                                  <span className="text-xs text-red-600 max-w-[200px] truncate">
+                                    {item.error}
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </ScrollArea>
+
+                        {/* Resumo final */}
+                        {isBatchCompleted && (
+                          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                            <div className="space-y-1">
+                              <p className="text-sm font-medium">Resumo da Correção</p>
+                              <div className="flex gap-4 text-sm">
+                                <span className="text-green-600">
+                                  ✅ Sucesso: {batchProgress.successful}
+                                </span>
+                                {batchProgress.failed > 0 && (
+                                  <span className="text-red-600">
+                                    ❌ Falhas: {batchProgress.failed}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <Button onClick={handleCloseBatchDialog}>
+                              Fechar
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
             </CardContent>
           </Card>
         </TabsContent>

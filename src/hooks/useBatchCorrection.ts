@@ -1,88 +1,70 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { 
-  batchCorrectionService, 
-  BatchCorrectionImage, 
-  BatchCorrectionJob, 
-  BatchProgressUpdate,
-  BatchCorrectionResult,
-  BatchCorrectionError
-} from '@/services/batchCorrectionService';
+import { api } from '@/lib/api';
+
+export interface BatchCorrectionItem {
+  status: 'pending' | 'processing' | 'done' | 'error';
+  student_name?: string;
+  correct?: number;
+  total?: number;
+  percentage?: number;
+  error?: string;
+}
+
+export interface BatchCorrectionProgress {
+  job_id: string;
+  total: number;
+  completed: number;
+  successful: number;
+  failed: number;
+  status: 'processing' | 'completed' | 'error';
+  percentage: number;
+  items: Record<string, BatchCorrectionItem>;
+  results?: any[];
+}
 
 export interface BatchCorrectionState {
   // Estado do job
-  job: BatchCorrectionJob | null;
+  jobId: string | null;
   isProcessing: boolean;
   isCompleted: boolean;
   isFailed: boolean;
-  isCancelled: boolean;
   
   // Progresso
-  progressPercentage: number;
-  currentStudentName?: string;
-  processedImages: number;
-  totalImages: number;
-  failedImages: number;
-  
-  // Resultados
-  results: BatchCorrectionResult[];
-  errors: BatchCorrectionError[];
+  progress: BatchCorrectionProgress | null;
   
   // Imagens selecionadas
-  selectedImages: BatchCorrectionImage[];
+  selectedImages: string[];
   
-  // Event source
-  eventSource: EventSource | null;
-}
-
-export interface BatchCorrectionActions {
-  // Gerenciamento de imagens
-  addImages: (images: BatchCorrectionImage[]) => void;
-  removeImage: (index: number) => void;
-  clearImages: () => void;
-  
-  // Processamento
-  startBatchCorrection: (testId: string) => Promise<void>;
-  cancelBatchCorrection: () => Promise<void>;
-  retryImage: (imageIndex: number, image: BatchCorrectionImage) => Promise<void>;
-  
-  // Limpeza
-  cleanup: () => void;
-  reset: () => void;
+  // Erro
+  error: string | null;
 }
 
 export function useBatchCorrection() {
   const { toast } = useToast();
-  // Removido eventSourceRef - não mais necessário
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
   
   const [state, setState] = useState<BatchCorrectionState>({
-    job: null,
+    jobId: null,
     isProcessing: false,
     isCompleted: false,
     isFailed: false,
-    isCancelled: false,
-    progressPercentage: 0,
-    currentStudentName: undefined,
-    processedImages: 0,
-    totalImages: 0,
-    failedImages: 0,
-    results: [],
-    errors: [],
+    progress: null,
     selectedImages: [],
-    eventSource: null,
+    error: null,
   });
 
-  // Adicionar imagens
-  const addImages = useCallback((images: BatchCorrectionImage[]) => {
+  // Adicionar imagens (base64)
+  const addImages = useCallback((images: string[]) => {
     setState(prev => {
       const newImages = [...prev.selectedImages, ...images];
-      // Limitar a 10 imagens
-      const limitedImages = newImages.slice(0, 10);
+      // Limitar a 50 imagens por lote
+      const limitedImages = newImages.slice(0, 50);
       
-      if (newImages.length > 10) {
+      if (newImages.length > 50) {
         toast({
           title: "Limite de imagens excedido",
-          description: "Máximo de 10 imagens por lote. Apenas as primeiras 10 foram selecionadas.",
+          description: "Máximo de 50 imagens por lote. Apenas as primeiras 50 foram selecionadas.",
           variant: "destructive",
         });
       }
@@ -90,7 +72,6 @@ export function useBatchCorrection() {
       return {
         ...prev,
         selectedImages: limitedImages,
-        totalImages: limitedImages.length,
       };
     });
   }, [toast]);
@@ -100,7 +81,6 @@ export function useBatchCorrection() {
     setState(prev => ({
       ...prev,
       selectedImages: prev.selectedImages.filter((_, i) => i !== index),
-      totalImages: prev.selectedImages.length - 1,
     }));
   }, []);
 
@@ -109,19 +89,20 @@ export function useBatchCorrection() {
     setState(prev => ({
       ...prev,
       selectedImages: [],
-      totalImages: 0,
     }));
   }, []);
 
   // Iniciar correção em lote
-  const startBatchCorrection = useCallback(async (testId: string) => {
-    if (state.selectedImages.length === 0) {
+  const startBatchCorrection = useCallback(async (testId: string, images?: string[]) => {
+    const imagesToProcess = images || state.selectedImages;
+    
+    if (imagesToProcess.length === 0) {
       toast({
         title: "Nenhuma imagem selecionada",
         description: "Selecione pelo menos uma imagem para processar.",
         variant: "destructive",
       });
-      return;
+      return null;
     }
 
     try {
@@ -130,166 +111,177 @@ export function useBatchCorrection() {
         isProcessing: true,
         isCompleted: false,
         isFailed: false,
-        isCancelled: false,
-        progressPercentage: 0,
-        processedImages: 0,
-        failedImages: 0,
-        results: [],
-        errors: [],
+        error: null,
+        progress: null,
       }));
 
-      // Iniciar job no backend
-      const job = await batchCorrectionService.startBatchCorrection(testId, state.selectedImages);
-      
-      setState(prev => ({
-        ...prev,
-        job,
-        totalImages: state.selectedImages.length,
-      }));
-
-      // Simular processamento com loading
-      setState(prev => ({
-        ...prev,
-        isProcessing: true,
-        progressPercentage: 0,
-      }));
-
-      // Simular progresso de processamento
-      for (let i = 0; i <= 100; i += 10) {
-        await new Promise(resolve => setTimeout(resolve, 100)); // 100ms de delay
-        setState(prev => ({
-          ...prev,
-          progressPercentage: i,
-        }));
-      }
-
-      // Finalizar processamento
-      setState(prev => ({
-        ...prev,
-        isProcessing: false,
-        isCompleted: true,
-        progressPercentage: 100,
-        results: job.results || [],
-        errors: job.errors || [],
-      }));
-
-      toast({
-        title: "Correção concluída!",
-        description: `${job.results?.length || 0} imagens processadas com sucesso.`,
+      // Enviar imagens para processamento em lote
+      const response = await api.post(`/physical-tests/test/${testId}/process-correction`, {
+        images: imagesToProcess
       });
 
+      // Verificar se retornou job_id (processamento assíncrono)
+      if (response.data.job_id) {
+        const jobId = response.data.job_id;
+        
+        setState(prev => ({
+          ...prev,
+          jobId,
+          progress: {
+            job_id: jobId,
+            total: response.data.total,
+            completed: 0,
+            successful: 0,
+            failed: 0,
+            percentage: 0,
+            status: 'processing',
+            items: {},
+          },
+        }));
+
+        return jobId;
+      } else {
+        // Resposta síncrona (correção única) - não deveria acontecer para múltiplas imagens
+        setState(prev => ({
+          ...prev,
+          isProcessing: false,
+          isCompleted: true,
+        }));
+        
+        toast({
+          title: "Correção processada!",
+          description: "A correção foi realizada com sucesso.",
+        });
+        
+        return null;
+      }
     } catch (error: any) {
       console.error("Erro ao iniciar correção em lote:", error);
+      
+      const errorMessage = error.response?.data?.error || error.message || "Não foi possível iniciar a correção em lote.";
+      
       setState(prev => ({
         ...prev,
         isProcessing: false,
         isFailed: true,
+        error: errorMessage,
       }));
       
-      // Formatar mensagem de erro
-      const errorData = error.response?.data;
-      const errorMessage = errorData?.error || error.message || "Não foi possível iniciar a correção em lote.";
-      const system = errorData?.system;
-      
-      let description = errorMessage;
-      if (system) {
-        const systemLabels: Record<string, string> = {
-          ai: "Sistema de IA",
-          old: "Sistema Antigo",
-          new_orm: "Sistema OMR"
-        };
-        description = `${errorMessage} (${systemLabels[system] || system})`;
-      }
-      
-      const statusCode = error.response?.status;
-      let title = "Erro ao iniciar correção";
-      if (statusCode === 401 || statusCode === 403) {
-        title = "Erro de Autorização";
-      } else if (statusCode === 404) {
-        title = "Prova não encontrada";
-      } else if (statusCode === 400) {
-        title = "Erro de Validação";
-      } else if (statusCode === 500) {
-        title = "Erro do Sistema";
-      }
-      
       toast({
-        title,
-        description,
+        title: "Erro ao iniciar correção",
+        description: errorMessage,
         variant: "destructive",
       });
+      
+      throw error;
     }
   }, [state.selectedImages, toast]);
 
-  // Cancelar correção
-  const cancelBatchCorrection = useCallback(async () => {
-    setState(prev => ({
-      ...prev,
-      isProcessing: false,
-      isCancelled: true,
-    }));
+  // Polling de progresso
+  useEffect(() => {
+    if (!state.jobId || !state.isProcessing) return;
 
-    toast({
-      title: "Correção cancelada",
-      description: "A correção em lote foi cancelada com sucesso.",
-    });
-  }, [toast]);
+    const pollProgress = async () => {
+      try {
+        const response = await api.get(`/physical-tests/correction-progress/${state.jobId}`);
+        const progressData: BatchCorrectionProgress = response.data;
+        
+        setState(prev => ({
+          ...prev,
+          progress: progressData,
+        }));
 
-  // Retry de imagem
-  const retryImage = useCallback(async (imageIndex: number, image: BatchCorrectionImage) => {
-    toast({
-      title: "Imagem reprocessada",
-      description: "A imagem foi enviada para reprocessamento.",
-    });
-  }, [toast]);
+        // Verificar se completou
+        if (progressData.status === 'completed') {
+          setState(prev => ({
+            ...prev,
+            isProcessing: false,
+            isCompleted: true,
+          }));
 
-  // Função de download removida - não é mais necessária
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
 
-  // Limpeza
-  const cleanup = useCallback(() => {
-    // Limpeza simples sem SSE
-  }, []);
+          toast({
+            title: "Correção concluída!",
+            description: `${progressData.successful} correções bem-sucedidas${progressData.failed > 0 ? `, ${progressData.failed} falhas` : ''}.`,
+          });
+        } else if (progressData.status === 'error') {
+          setState(prev => ({
+            ...prev,
+            isProcessing: false,
+            isFailed: true,
+            error: 'Erro durante o processamento',
+          }));
+
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao buscar progresso:', error);
+      }
+    };
+
+    // Primeira consulta imediata
+    pollProgress();
+
+    // Polling a cada 1.5 segundos
+    intervalRef.current = setInterval(pollProgress, 1500);
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [state.jobId, state.isProcessing, toast]);
 
   // Reset completo
   const reset = useCallback(() => {
-    cleanup();
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    
     setState({
-      job: null,
+      jobId: null,
       isProcessing: false,
       isCompleted: false,
       isFailed: false,
-      isCancelled: false,
-      progressPercentage: 0,
-      currentStudentName: undefined,
-      processedImages: 0,
-      totalImages: 0,
-      failedImages: 0,
-      results: [],
-      errors: [],
+      progress: null,
       selectedImages: [],
+      error: null,
     });
-  }, [cleanup]);
+  }, []);
 
-  // Cleanup automático ao desmontar
+  // Cleanup ao desmontar
   useEffect(() => {
     return () => {
-      cleanup();
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
     };
-  }, [cleanup]);
+  }, []);
 
-  const actions: BatchCorrectionActions = {
+  return {
+    // Estado
+    jobId: state.jobId,
+    isProcessing: state.isProcessing,
+    isCompleted: state.isCompleted,
+    isFailed: state.isFailed,
+    progress: state.progress,
+    selectedImages: state.selectedImages,
+    error: state.error,
+    
+    // Ações
     addImages,
     removeImage,
     clearImages,
     startBatchCorrection,
-    cancelBatchCorrection,
-    retryImage,
-    cleanup,
     reset,
-  };
-
-  return {
-    ...state,
-    ...actions,
   };
 }
