@@ -58,13 +58,13 @@ export function useBatchCorrection() {
   const addImages = useCallback((images: string[]) => {
     setState(prev => {
       const newImages = [...prev.selectedImages, ...images];
-      // Limitar a 50 imagens por lote
-      const limitedImages = newImages.slice(0, 50);
+      // Limitar a 5 imagens por lote
+      const limitedImages = newImages.slice(0, 5);
       
-      if (newImages.length > 50) {
+      if (newImages.length > 5) {
         toast({
           title: "Limite de imagens excedido",
-          description: "Máximo de 50 imagens por lote. Apenas as primeiras 50 foram selecionadas.",
+          description: "Máximo de 5 imagens por lote. Apenas as primeiras 5 foram selecionadas.",
           variant: "destructive",
         });
       }

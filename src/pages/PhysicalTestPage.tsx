@@ -461,8 +461,8 @@ export default function PhysicalTestPage() {
     const files = Array.from(event.target.files || []);
     if (files.length === 0) return;
 
-    // Limitar a 50 imagens
-    const maxImages = 50;
+    // Limitar a 5 imagens
+    const maxImages = 5;
     const remainingSlots = maxImages - batchImages.length;
     const filesToAdd = files.slice(0, remainingSlots);
 
@@ -1409,7 +1409,7 @@ export default function PhysicalTestPage() {
                             )}
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            Máximo de 50 imagens por lote. Formatos aceitos: JPG, PNG, GIF, WebP.
+                            Máximo de 5 imagens por lote. Formatos aceitos: JPG, PNG, GIF, WebP.
                           </p>
                         </div>
 
