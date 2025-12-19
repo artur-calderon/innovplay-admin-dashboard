@@ -12,7 +12,7 @@ import { useAuth } from "@/context/authContext";
 import { FilterComponentAnalise } from "@/components/filters";
 import { getUserHierarchyContext, getRestrictionMessage, validateReportAccess, UserHierarchyContext } from "@/utils/userHierarchy";
 import { cn } from "@/lib/utils";
-import { getProficiencyLevel, getProficiencyLevelColor, getProficiencyLevelLabel, ProficiencyLevel } from "@/components/evaluations/results/utils/proficiency";
+import { getProficiencyLevel, getProficiencyLevelColor, getProficiencyLevelLabel, getProficiencyTableInfo, ProficiencyLevel } from "@/components/evaluations/results/utils/proficiency";
 
 const normalizeText = (value: string) =>
   value
@@ -348,6 +348,43 @@ const sanitizeFileName = (value: string) =>
     .replace(/_+/g, "_")
     .replace(/^_+|_+$/g, "")
     .toLowerCase();
+
+// ✅ FUNÇÃO AUXILIAR: Calcular nível de proficiência para dados agregados (escola/turma)
+// Usa apenas curso/série, sem disciplina específica, para usar a tabela geral
+const getProficiencyLevelForAggregatedData = (
+  proficiency: number,
+  grade?: string,
+  course?: string
+): ProficiencyLevel => {
+  if (proficiency === null || proficiency === undefined || isNaN(proficiency)) {
+    return 'abaixo_do_basico';
+  }
+
+  // Inferir curso da grade se não fornecido
+  let inferredCourse = course;
+  if (!inferredCourse && grade) {
+    const gradeLower = grade.toLowerCase();
+    if (gradeLower.includes('6') || gradeLower.includes('7') || 
+        gradeLower.includes('8') || gradeLower.includes('9') ||
+        gradeLower.includes('em') || gradeLower.includes('médio') ||
+        gradeLower.includes('medio') || gradeLower.includes('1º ano') ||
+        gradeLower.includes('2º ano') || gradeLower.includes('3º ano')) {
+      inferredCourse = 'Anos Finais';
+    } else {
+      inferredCourse = 'Anos Iniciais';
+    }
+  }
+
+  // Usar getProficiencyTableInfo com undefined como subject para usar tabela geral
+  // Passar course como terceiro parâmetro (mesmo que não seja usado atualmente, pode ser útil no futuro)
+  const tableInfo = getProficiencyTableInfo(grade, undefined, inferredCourse);
+  const table = tableInfo.table;
+  
+  if (proficiency <= table.abaixo_do_basico.max) return 'abaixo_do_basico';
+  if (proficiency <= table.basico.max) return 'basico';
+  if (proficiency <= table.adequado.max) return 'adequado';
+  return 'avancado';
+};
 
 export default function RelatorioEscolar() {
   const { autoLogin, user } = useAuth();
@@ -722,13 +759,19 @@ export default function RelatorioEscolar() {
     if (relatorioCompleto) {
       const turmasMap = new Map<string, ClassSummaryRow>();
       
-      // Processar dados de nota_geral e proficiencia por turma
+      // ✅ MELHORADO: Verificar se temos dados por_escola ou por_turma
+      // Quando escola está selecionada, pode vir por_escola ou por_turma dependendo da API
+      const hasPorEscola = relatorioCompleto.total_alunos.por_escola && relatorioCompleto.total_alunos.por_escola.length > 0;
+      const hasPorTurma = relatorioCompleto.total_alunos.por_turma && relatorioCompleto.total_alunos.por_turma.length > 0;
+      
+      // Processar dados de nota_geral e proficiencia
       Object.entries(relatorioCompleto.nota_geral.por_disciplina).forEach(([disciplina, dadosDisciplina]) => {
         const disciplinaLower = disciplina.toLowerCase();
         const isPortugues = disciplinaLower.includes('português') || disciplinaLower.includes('portugues');
         const isMatematica = disciplinaLower.includes('matemática') || disciplinaLower.includes('matematica');
         
-        if (dadosDisciplina.por_turma) {
+        // Processar por_turma se disponível
+        if (dadosDisciplina.por_turma && dadosDisciplina.por_turma.length > 0) {
           dadosDisciplina.por_turma.forEach(turmaData => {
             const turmaNome = turmaData.turma;
             if (!turmasMap.has(turmaNome)) {
@@ -758,48 +801,115 @@ export default function RelatorioEscolar() {
             }
           });
         }
-      });
-      
-      // Processar proficiência por turma - coletar todas as proficiências primeiro
-      const proficienciasPorTurma = new Map<string, number[]>();
-      Object.entries(relatorioCompleto.proficiencia.por_disciplina).forEach(([disciplina, dadosDisciplina]) => {
-        if (dadosDisciplina.por_turma) {
-          dadosDisciplina.por_turma.forEach(turmaData => {
-            const turmaNome = turmaData.turma;
-            if (!proficienciasPorTurma.has(turmaNome)) {
-              proficienciasPorTurma.set(turmaNome, []);
+        
+        // ✅ NOVO: Processar por_escola se disponível (quando escola está selecionada mas API retorna por escola)
+        if (dadosDisciplina.por_escola && dadosDisciplina.por_escola.length > 0 && !hasPorTurma) {
+          dadosDisciplina.por_escola.forEach(escolaData => {
+            const escolaNome = escolaData.escola;
+            if (!turmasMap.has(escolaNome)) {
+              turmasMap.set(escolaNome, {
+                turma: escolaNome,
+                serie: escolaNome.split(' ')[0] || '-',
+                mediaLP: undefined,
+                mediaMAT: undefined,
+                mediaGeral: undefined,
+                proficienciaMedia: undefined,
+                matriculados: undefined,
+                avaliados: undefined,
+                comparecimento: undefined
+              });
             }
-            proficienciasPorTurma.get(turmaNome)!.push(turmaData.proficiencia);
+            
+            const row = turmasMap.get(escolaNome)!;
+            if (isPortugues) {
+              row.mediaLP = escolaData.nota ?? escolaData.media;
+            } else if (isMatematica) {
+              row.mediaMAT = escolaData.nota ?? escolaData.media;
+            }
+            
+            // Se for GERAL, usar como média geral
+            if (disciplina === 'GERAL') {
+              row.mediaGeral = escolaData.nota ?? escolaData.media;
+            }
           });
         }
       });
       
-      // Calcular média de proficiência para cada turma
-      proficienciasPorTurma.forEach((proficiencias, turmaNome) => {
-        const row = turmasMap.get(turmaNome);
+      // Processar proficiência - coletar todas as proficiências primeiro
+      const proficienciasPorItem = new Map<string, number[]>();
+      Object.entries(relatorioCompleto.proficiencia.por_disciplina).forEach(([disciplina, dadosDisciplina]) => {
+        // Processar por_turma se disponível
+        if (dadosDisciplina.por_turma && dadosDisciplina.por_turma.length > 0) {
+          dadosDisciplina.por_turma.forEach(turmaData => {
+            const turmaNome = turmaData.turma;
+            if (!proficienciasPorItem.has(turmaNome)) {
+              proficienciasPorItem.set(turmaNome, []);
+            }
+            proficienciasPorItem.get(turmaNome)!.push(turmaData.proficiencia);
+          });
+        }
+        
+        // ✅ NOVO: Processar por_escola se disponível (quando escola está selecionada mas API retorna por escola)
+        if (dadosDisciplina.por_escola && dadosDisciplina.por_escola.length > 0 && !hasPorTurma) {
+          dadosDisciplina.por_escola.forEach(escolaData => {
+            const escolaNome = escolaData.escola;
+            if (!proficienciasPorItem.has(escolaNome)) {
+              proficienciasPorItem.set(escolaNome, []);
+            }
+            proficienciasPorItem.get(escolaNome)!.push(escolaData.proficiencia ?? escolaData.media);
+          });
+        }
+      });
+      
+      // Calcular média de proficiência para cada item (turma ou escola)
+      proficienciasPorItem.forEach((proficiencias, itemNome) => {
+        const row = turmasMap.get(itemNome);
         if (row && proficiencias.length > 0) {
           row.proficienciaMedia = proficiencias.reduce((sum, p) => sum + p, 0) / proficiencias.length;
         }
       });
       
       // Se não encontrou proficiência por disciplina, usar GERAL
-      if (relatorioCompleto.proficiencia.por_disciplina['GERAL']?.por_turma) {
-        relatorioCompleto.proficiencia.por_disciplina['GERAL'].por_turma.forEach(turmaData => {
-          const row = turmasMap.get(turmaData.turma);
-          if (row && row.proficienciaMedia === undefined) {
-            row.proficienciaMedia = turmaData.proficiencia;
-          }
-        });
+      if (relatorioCompleto.proficiencia.por_disciplina['GERAL']) {
+        // Tentar por_turma primeiro
+        if (relatorioCompleto.proficiencia.por_disciplina['GERAL'].por_turma) {
+          relatorioCompleto.proficiencia.por_disciplina['GERAL'].por_turma.forEach(turmaData => {
+            const row = turmasMap.get(turmaData.turma);
+            if (row && row.proficienciaMedia === undefined) {
+              row.proficienciaMedia = turmaData.proficiencia;
+            }
+          });
+        }
+        // ✅ NOVO: Tentar por_escola se por_turma não estiver disponível
+        if (relatorioCompleto.proficiencia.por_disciplina['GERAL'].por_escola && !hasPorTurma) {
+          relatorioCompleto.proficiencia.por_disciplina['GERAL'].por_escola.forEach(escolaData => {
+            const row = turmasMap.get(escolaData.escola);
+            if (row && row.proficienciaMedia === undefined) {
+              row.proficienciaMedia = escolaData.proficiencia ?? escolaData.media;
+            }
+          });
+        }
       }
       
-      // Processar dados de comparecimento de total_alunos.por_turma
-      if (relatorioCompleto.total_alunos.por_turma) {
+      // Processar dados de comparecimento de total_alunos
+      // ✅ MELHORADO: Verificar tanto por_turma quanto por_escola
+      if (relatorioCompleto.total_alunos.por_turma && relatorioCompleto.total_alunos.por_turma.length > 0) {
         relatorioCompleto.total_alunos.por_turma.forEach(turmaAlunos => {
           const row = turmasMap.get(turmaAlunos.turma);
           if (row) {
             row.matriculados = turmaAlunos.matriculados;
             row.avaliados = turmaAlunos.avaliados;
             row.comparecimento = turmaAlunos.percentual;
+          }
+        });
+      } else if (relatorioCompleto.total_alunos.por_escola && relatorioCompleto.total_alunos.por_escola.length > 0) {
+        // ✅ NOVO: Processar por_escola se por_turma não estiver disponível
+        relatorioCompleto.total_alunos.por_escola.forEach(escolaAlunos => {
+          const row = turmasMap.get(escolaAlunos.escola);
+          if (row) {
+            row.matriculados = escolaAlunos.matriculados;
+            row.avaliados = escolaAlunos.avaliados;
+            row.comparecimento = escolaAlunos.percentual;
           }
         });
       }
@@ -815,7 +925,7 @@ export default function RelatorioEscolar() {
         
         // Calcular nível de proficiência
         if (row.proficienciaMedia !== undefined) {
-          const level = getProficiencyLevel(row.proficienciaMedia, row.serie, row.turma);
+          const level = getProficiencyLevelForAggregatedData(row.proficienciaMedia, row.serie);
           row.proficiencyLevel = level;
           row.proficiencyLabel = getProficiencyLevelLabel(level);
           row.proficiencyColor = getProficiencyLevelColor(level);
@@ -948,7 +1058,7 @@ export default function RelatorioEscolar() {
         };
 
         if (row.proficienciaMedia !== undefined) {
-          const level = getProficiencyLevel(row.proficienciaMedia, row.serie, escolaNome);
+          const level = getProficiencyLevelForAggregatedData(row.proficienciaMedia, row.serie);
           row.proficiencyLevel = level;
           row.proficiencyLabel = getProficiencyLevelLabel(level);
           row.proficiencyColor = getProficiencyLevelColor(level);
@@ -1073,7 +1183,7 @@ export default function RelatorioEscolar() {
       };
 
       if (row.proficienciaMedia !== undefined) {
-        const level = getProficiencyLevel(row.proficienciaMedia, row.serie, turmaNome);
+        const level = getProficiencyLevelForAggregatedData(row.proficienciaMedia, row.serie);
         row.proficiencyLevel = level;
         row.proficiencyLabel = getProficiencyLevelLabel(level);
         row.proficiencyColor = getProficiencyLevelColor(level);
@@ -1167,7 +1277,7 @@ export default function RelatorioEscolar() {
       
       const serieRef = classSummaryRows[0]?.serie;
       const proficiencyLevel = proficienciaMedia !== null && proficienciaMedia !== undefined
-        ? getProficiencyLevel(proficienciaMedia, serieRef, undefined)
+        ? getProficiencyLevelForAggregatedData(proficienciaMedia, serieRef)
         : null;
       
       return {
@@ -1226,7 +1336,7 @@ export default function RelatorioEscolar() {
 
     const proficiencyLevel =
       proficienciaMedia !== null && proficienciaMedia !== undefined
-        ? getProficiencyLevel(proficienciaMedia, serieRef, undefined)
+        ? getProficiencyLevelForAggregatedData(proficienciaMedia, serieRef)
         : null;
 
     // Usar dados de estatisticas_gerais

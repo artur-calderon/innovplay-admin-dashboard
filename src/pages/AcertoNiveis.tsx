@@ -1199,6 +1199,14 @@ export default function AcertoNiveis() {
         return null;
       };
 
+      // Utilitário: obter texto de turma (considerando seleção ou "Todas")
+      const getTurmaText = (): string => {
+        if (selectedClassId) {
+          return classes.find(c => c.id === selectedClassId)?.nome || 'Selecionada';
+        }
+        return 'Todas';
+      };
+
       // Função para adicionar cabeçalho
       const addHeader = (title: string): number => {
         const centerX = pageWidth / 2;
@@ -1222,7 +1230,7 @@ export default function AcertoNiveis() {
           doc.text(`Série: ${serieText}`, centerX, y, { align: 'center' });
           y += 5;
         }
-        doc.text(`Turma: ${students[0]?.turma || 'N/A'}`, centerX, y, { align: 'center' });
+        doc.text(`Turma: ${getTurmaText()}`, centerX, y, { align: 'center' });
         y += 8;
         
         // Barra cinza com título
@@ -1486,7 +1494,7 @@ export default function AcertoNiveis() {
         doc.text(`${evaluationInfo.titulo} - ${subtitle}`, landscapeWidth / 2, y, { align: 'center' });
         y += 5;
         doc.setFontSize(10);
-        doc.text(`Turma: ${students[0]?.turma || 'N/A'}`, landscapeWidth / 2, y, { align: 'center' });
+        doc.text(`Turma: ${getTurmaText()}`, landscapeWidth / 2, y, { align: 'center' });
         y += 10;
         
         // Preparar cabeçalhos
@@ -1736,6 +1744,272 @@ export default function AcertoNiveis() {
         renderDetailedPage('GERAL', detailedReport?.questoes || []);
       }
 
+      // ====== Páginas separadas por turma (quando "todas as turmas" estiver selecionado) ======
+      const renderPagesByTurma = () => {
+        // Só renderiza se não houver turma específica selecionada
+        if (selectedClassId) return;
+        
+        // Agrupar alunos por turma
+        const turmasMap = new Map<string, StudentResult[]>();
+        students.forEach(s => {
+          const turma = s.turma || 'Sem Turma';
+          if (!turmasMap.has(turma)) {
+            turmasMap.set(turma, []);
+          }
+          turmasMap.get(turma)!.push(s);
+        });
+        
+        // Ordenar turmas alfabeticamente
+        const turmasOrdenadas = Array.from(turmasMap.keys()).sort((a, b) => a.localeCompare(b));
+        
+        // Renderizar páginas para cada turma
+        turmasOrdenadas.forEach(turmaName => {
+          const alunosTurma = turmasMap.get(turmaName) || [];
+          if (alunosTurma.length === 0) return;
+          
+          const questoes = detailedReport?.questoes || [];
+          if (questoes.length === 0) return;
+          
+          // Ordenar questões
+          const questoesOrdenadas = sortQuestoes(questoes);
+          
+          // Nova página em landscape
+          doc.addPage('landscape');
+          pageCount++;
+          
+          const landscapeWidth = 297;
+          const landscapeHeight = 210;
+          const landscapeMargin = 10;
+          
+          // Título
+          let y = 15;
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(12);
+          doc.text(`${evaluationInfo.titulo} - TURMA: ${turmaName}`, landscapeWidth / 2, y, { align: 'center' });
+          y += 5;
+          doc.setFontSize(10);
+          const escolaTextTurma = selectedSchoolId ? schools.find(s => s.id === selectedSchoolId)?.nome || 'Escola Selecionada' : 'Todas as Escolas';
+          const serieTextTurma = getHeaderSerieText() || 'N/A';
+          doc.text(`Escola: ${escolaTextTurma}  •  Série: ${serieTextTurma}`, landscapeWidth / 2, y, { align: 'center' });
+          y += 10;
+          
+          // Preparar cabeçalhos
+          const headerRow1 = ["Aluno"];
+          const headerRow2 = ["Habilidade"];
+          const headerRow3 = ["% Turma"];
+          
+          // Adicionar questões aos cabeçalhos
+          questoesOrdenadas.forEach(q => {
+            headerRow1.push(`Q${q.numero}`);
+            const habilidade = generateHabilidadeCode(q, skillsMapping);
+            headerRow2.push(habilidade);
+          });
+          
+          // Calcular % da turma baseado nos alunos desta turma específica
+          const completedStudentsTurma = alunosTurma.filter(s => s.status === 'concluida');
+          const denomTurma = Math.max(1, completedStudentsTurma.length);
+          questoesOrdenadas.forEach(q => {
+            let correct = 0;
+            completedStudentsTurma.forEach(s => { if (getAnswer(s, q.numero)) correct++; });
+            const pct = Math.round((correct / denomTurma) * 100);
+            headerRow3.push(`${pct}%`);
+          });
+          
+          // Adicionar colunas finais
+          headerRow1.push("Total", "Proficiência", "Nível");
+          headerRow2.push("", "", "");
+          headerRow3.push("", "", "");
+          
+          // Preparar dados dos alunos
+          const bodyRows: (string | number)[][] = [];
+          
+          completedStudentsTurma.forEach(s => {
+            const row: (string | number)[] = [s.nome];
+            let acertos = 0;
+            
+            // Adicionar respostas
+            questoesOrdenadas.forEach(q => {
+              const resposta = getAnswer(s, q.numero);
+              if (resposta === true) {
+                row.push('\u2713');
+                acertos++;
+              } else {
+                row.push('\u2717');
+              }
+            });
+            
+            // Adicionar totais
+            row.push(`${acertos}/${questoesOrdenadas.length}`);
+            row.push(s.proficiencia.toFixed(1));
+            row.push(s.classificacao);
+            
+            bodyRows.push(row);
+          });
+          
+          // Calcular larguras das colunas
+          const availableWidth = landscapeWidth - (2 * landscapeMargin);
+          const nameColWidth = Math.min(45, availableWidth * 0.2);
+          const finalColsWidth = 20 + 25 + 30;
+          const questionColWidth = Math.max(8, Math.min(12, (availableWidth - nameColWidth - finalColsWidth) / questoesOrdenadas.length));
+          
+          const columnStyles: Record<number, { cellWidth: number; halign?: 'left' | 'center' | 'right' }> = {
+            0: { cellWidth: nameColWidth, halign: 'left' }
+          };
+          
+          for (let i = 1; i <= questoesOrdenadas.length; i++) {
+            columnStyles[i] = { cellWidth: questionColWidth, halign: 'center' };
+          }
+          
+          columnStyles[questoesOrdenadas.length + 1] = { cellWidth: 20, halign: 'center' };
+          columnStyles[questoesOrdenadas.length + 2] = { cellWidth: 25, halign: 'center' };
+          columnStyles[questoesOrdenadas.length + 3] = { cellWidth: 30, halign: 'center' };
+          
+          // Gerar tabela
+          autoTable(doc, {
+            startY: y,
+            head: [headerRow1, headerRow2, headerRow3],
+            body: bodyRows,
+            theme: 'grid',
+            margin: { left: landscapeMargin, right: landscapeMargin },
+            tableWidth: 'auto',
+            showHead: 'everyPage',
+            styles: {
+              fontSize: 6,
+              cellPadding: 0.5,
+              lineColor: [200, 200, 200],
+              lineWidth: 0.05,
+              overflow: 'linebreak',
+              valign: 'middle',
+              halign: 'center'
+            },
+            headStyles: {
+              fillColor: [240, 240, 240],
+              textColor: [0, 0, 0],
+              fontStyle: 'bold',
+              halign: 'center',
+              fontSize: 6
+            },
+            columnStyles: columnStyles,
+            bodyStyles: { textColor: [33, 33, 33] },
+            alternateRowStyles: { fillColor: [252, 252, 252] },
+            didDrawCell: (data) => {
+              const { doc, cell, column, section, row } = data;
+              const val = Array.isArray(cell.text) ? cell.text[0] : cell.text;
+              
+              // Colorir respostas dos alunos
+              if (section === 'body' && column.index > 0 && column.index <= questoesOrdenadas.length) {
+                if (val === '\u2713' || val === '\u2717') {
+                  const centerX = cell.x + cell.width / 2;
+                  const centerY = cell.y + cell.height / 2;
+                  const iconSize = Math.min(cell.width, cell.height) / 4.5;
+                  
+                  const fillColor = row.index % 2 === 0 ? [255, 255, 255] : [252, 252, 252];
+                  doc.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
+                  doc.rect(cell.x, cell.y, cell.width, cell.height, 'F');
+                  
+                  if (val === '\u2713') {
+                    doc.setDrawColor(22, 163, 74);
+                    doc.setLineWidth(0.8);
+                    doc.line(centerX - iconSize, centerY, centerX - iconSize / 2, centerY + iconSize);
+                    doc.line(centerX - iconSize / 2, centerY + iconSize, centerX + iconSize, centerY - iconSize);
+                  } else if (val === '\u2717') {
+                    doc.setDrawColor(239, 68, 68);
+                    doc.setLineWidth(0.8);
+                    doc.line(centerX - iconSize, centerY - iconSize, centerX + iconSize, centerY + iconSize);
+                    doc.line(centerX + iconSize, centerY - iconSize, centerX - iconSize, centerY + iconSize);
+                  }
+                  
+                  doc.setDrawColor(200, 200, 200);
+                  doc.setLineWidth(0.05);
+                  doc.rect(cell.x, cell.y, cell.width, cell.height);
+                }
+              }
+              
+              // Linha de habilidades
+              if (section === 'head' && row.index === 1) {
+                cell.styles.fillColor = [219, 234, 254];
+                cell.styles.fontSize = 5;
+                cell.styles.fontStyle = 'normal';
+                cell.styles.font = 'courier';
+              }
+              
+              // Linha de % Turma
+              if (section === 'head' && row.index === 2 && column.index > 0 && column.index <= questoesOrdenadas.length) {
+                const textValue = Array.isArray(cell.text) ? cell.text[0] || '' : cell.text || '';
+                const pct = parseInt(textValue.replace(/[^0-9]/g, ''));
+                if (!isNaN(pct)) {
+                  if (pct >= 60) {
+                    cell.styles.fillColor = [220, 252, 231];
+                    cell.styles.textColor = [22, 163, 74];
+                  } else {
+                    cell.styles.fillColor = [254, 226, 226];
+                    cell.styles.textColor = [239, 68, 68];
+                  }
+                  cell.styles.fontStyle = 'bold';
+                  cell.styles.fontSize = 5;
+                }
+              }
+              
+              // Coluna de nível
+              if (section === 'body' && column.index === questoesOrdenadas.length + 3) {
+                const textValue = (Array.isArray(cell.text) ? cell.text[0] : cell.text || '').toString().trim();
+                const [r, g, b] = generateClassificationColor(textValue);
+                
+                doc.setFillColor(r, g, b);
+                doc.rect(cell.x, cell.y, cell.width, cell.height, 'F');
+                
+                doc.setTextColor(255, 255, 255);
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(6);
+                doc.text(textValue, cell.x + cell.width / 2, cell.y + cell.height / 2 + 1.5, { align: 'center' });
+                
+                doc.setDrawColor(200, 200, 200);
+                doc.rect(cell.x, cell.y, cell.width, cell.height);
+              }
+            },
+          });
+          
+          // Legenda
+          const finalY = ((doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || y) + 4;
+          doc.setFontSize(7);
+          doc.setFont('helvetica', 'normal');
+          
+          let legendX = landscapeMargin;
+          const legendY = finalY + 2.5;
+          const legendIconSize = 1.5;
+          
+          // Símbolo correto
+          doc.setDrawColor(22, 163, 74);
+          doc.setLineWidth(0.5);
+          doc.line(legendX, legendY, legendX + legendIconSize * 0.5, legendY + legendIconSize);
+          doc.line(legendX + legendIconSize * 0.5, legendY + legendIconSize, legendX + legendIconSize * 1.5, legendY - legendIconSize * 0.5);
+          doc.setTextColor(90);
+          doc.text('Correto', legendX + 4, finalY + 3);
+          
+          legendX += 24;
+          
+          // Símbolo incorreto
+          doc.setDrawColor(239, 68, 68);
+          doc.setLineWidth(0.5);
+          doc.line(legendX, legendY - legendIconSize, legendX + legendIconSize * 2, legendY + legendIconSize);
+          doc.line(legendX + legendIconSize * 2, legendY - legendIconSize, legendX, legendY + legendIconSize);
+          doc.setTextColor(90);
+          doc.text('Incorretas', legendX + 5, finalY + 3);
+          
+          // Rodapé
+          doc.setFontSize(8);
+          doc.setTextColor(100, 100, 100);
+          doc.text('Afirme Play Soluções Educativas', landscapeMargin, landscapeHeight - 8);
+          doc.text(`Página ${pageCount}`, landscapeWidth / 2, landscapeHeight - 8, { align: 'center' });
+          doc.text(new Date().toLocaleString('pt-BR'), landscapeWidth - landscapeMargin, landscapeHeight - 8, { align: 'right' });
+        });
+      };
+      
+      // Renderizar páginas por turma (apenas quando "todas as turmas" estiver selecionado)
+      if ((detailedReport?.questoes?.length || 0) > 0 && !selectedClassId) {
+        renderPagesByTurma();
+      }
+
       // ====== Páginas por disciplina (consumindo diretamente tabela_detalhada) ======
       const renderDisciplineTablesPages = () => {
         if (!tabelaDetalhada || !Array.isArray(tabelaDetalhada.disciplinas)) return;
@@ -1781,7 +2055,7 @@ export default function AcertoNiveis() {
               serieText = evaluationInfo.serie;
             }
           }
-          doc.text(`Escola: ${escolaText}  •  Série: ${serieText || 'N/A'}  •  Turma: ${students[0]?.turma || 'N/A'}`, landscapeWidth / 2, y, { align: 'center' });
+          doc.text(`Escola: ${escolaText}  •  Série: ${serieText || 'N/A'}  •  Turma: ${getTurmaText()}`, landscapeWidth / 2, y, { align: 'center' });
           y += 8;
 
           // Cabeçalhos múltiplos
