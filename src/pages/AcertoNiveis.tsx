@@ -1202,7 +1202,7 @@ export default function AcertoNiveis() {
       };
 
       // Função para adicionar cabeçalho
-      const addHeader = (title: string): number => {
+      const addHeader = (title: string, turmaOverride?: string): number => {
         const centerX = pageWidth / 2;
         let y = 20;
         
@@ -1224,7 +1224,9 @@ export default function AcertoNiveis() {
           doc.text(`Série: ${serieText}`, centerX, y, { align: 'center' });
           y += 5;
         }
-        doc.text(`Turma: ${students[0]?.turma || 'N/A'}`, centerX, y, { align: 'center' });
+        // Usar turmaOverride se fornecido, caso contrário usar getTurmaText() ou students[0]?.turma
+        const turmaText = turmaOverride !== undefined ? turmaOverride : (selectedClassId ? classes.find(c => c.id === selectedClassId)?.nome || 'Selecionada' : (students[0]?.turma || 'Todas'));
+        doc.text(`Turma: ${turmaText}`, centerX, y, { align: 'center' });
         y += 8;
         
         // Barra cinza com título
@@ -1384,11 +1386,11 @@ export default function AcertoNiveis() {
       };
 
       // Função para gerar página de resumo para uma turma específica
-      const renderSummaryPageForTurma = (turmaName: string, alunosTurma: StudentResult[]) => {
+      const renderSummaryPageForTurma = (turmaName: string, alunosTurma: StudentResult[], isFirstTurma: boolean = false) => {
         if (alunosTurma.length === 0) return;
         
-        // Adicionar nova página se não for a primeira
-        if (pageCount > 0) {
+        // Adicionar nova página se não for a primeira turma (primeira turma usa a página inicial do documento)
+        if (!isFirstTurma) {
           doc.addPage();
         }
         pageCount++;
@@ -1987,13 +1989,15 @@ export default function AcertoNiveis() {
       const turmasOrdenadas = Array.from(turmasMap.keys()).sort((a, b) => a.localeCompare(b));
       
       // Para cada turma, renderizar todas as seções na ordem correta
-      turmasOrdenadas.forEach(turmaName => {
+      turmasOrdenadas.forEach((turmaName, turmaIndex) => {
         const alunosTurma = turmasMap.get(turmaName) || [];
         if (alunosTurma.length === 0) return;
         
+        const isFirstTurma = turmaIndex === 0;
+        
         // 1. RELATÓRIO DE DESEMPENHO GERAL (resumo)
         if ((detailedReport?.questoes?.length || 0) > 0) {
-          renderSummaryPageForTurma(turmaName, alunosTurma);
+          renderSummaryPageForTurma(turmaName, alunosTurma, isFirstTurma);
         }
         
         // 2. VISÃO GRÁFICA DOS RESULTADOS (gráficos)
