@@ -337,8 +337,6 @@ export default function AcertoNiveis() {
     if (estadoValor) filters.estado = estadoValor;
     if (selectedMunicipality) filters.municipio = selectedMunicipality;
     filters.avaliacao = evaluationId;
-    
-    // Passar IDs diretamente (backend espera IDs)
     if (overrides.schoolId) filters.escola = overrides.schoolId;
     if (overrides.gradeId) filters.serie = overrides.gradeId;
     if (overrides.classId) filters.turma = overrides.classId;
@@ -837,10 +835,14 @@ export default function AcertoNiveis() {
     try {
       setIsLoading(true);
       
-      // Recarregar dados com filtro de turma (usando ID da turma)
+      // Obter nome da turma a partir do ID para passar ao filtro
+      const selectedClass = classes.find(c => c.id === classId);
+      const className = selectedClass?.nome || classId;
+      
+      // Recarregar dados com filtro de turma (usando nome da turma)
       const { students: fetchedStudents, report, tabelaDetalhada: tabela, estatisticas, opcoesProximosFiltros: opcoes } = await fetchEvaluationData(
         selectedEvaluationId,
-        { schoolId: selectedSchoolId, gradeId: selectedGradeId, classId: classId }
+        { schoolId: selectedSchoolId, gradeId: selectedGradeId, classId: className }
       );
       
       setStudents(fetchedStudents);
@@ -1199,16 +1201,8 @@ export default function AcertoNiveis() {
         return null;
       };
 
-      // Utilitário: obter texto de turma (considerando seleção ou "Todas")
-      const getTurmaText = (): string => {
-        if (selectedClassId) {
-          return classes.find(c => c.id === selectedClassId)?.nome || 'Selecionada';
-        }
-        return 'Todas';
-      };
-
       // Função para adicionar cabeçalho
-      const addHeader = (title: string, turmaOverride?: string): number => {
+      const addHeader = (title: string): number => {
         const centerX = pageWidth / 2;
         let y = 20;
         
@@ -1230,9 +1224,7 @@ export default function AcertoNiveis() {
           doc.text(`Série: ${serieText}`, centerX, y, { align: 'center' });
           y += 5;
         }
-        // Usar turmaOverride se fornecido, caso contrário usar getTurmaText()
-        const turmaText = turmaOverride !== undefined ? turmaOverride : getTurmaText();
-        doc.text(`Turma: ${turmaText}`, centerX, y, { align: 'center' });
+        doc.text(`Turma: ${students[0]?.turma || 'N/A'}`, centerX, y, { align: 'center' });
         y += 8;
         
         // Barra cinza com título
@@ -1292,10 +1284,11 @@ export default function AcertoNiveis() {
         x: number,
         y: number,
         w: number,
-        h: number
+        h: number,
+        studentsToUse: StudentResult[] = students
       ) => {
         const categorias = ['Abaixo do Básico', 'Básico', 'Adequado', 'Avançado'];
-        const concluidos = students.filter(s => s.status === 'concluida');
+        const concluidos = studentsToUse.filter(s => s.status === 'concluida');
         const counts = categorias.map(c => concluidos.filter(s => s.classificacao === c).length);
         const total = Math.max(1, concluidos.length);
         const barAreaW = w - 80; // espaço para labels e números
@@ -1329,11 +1322,12 @@ export default function AcertoNiveis() {
         y: number,
         w: number,
         h: number,
-        qs: typeof detailedReport.questoes
+        qs: typeof detailedReport.questoes,
+        studentsToUse: StudentResult[] = students
       ) => {
         if (!qs || qs.length === 0) return;
         // Recalcular % de acerto usando a mesma regra dos ícones (getAnswer)
-        const completed = students.filter(s => s.status === 'concluida');
+        const completed = studentsToUse.filter(s => s.status === 'concluida');
         const denom = Math.max(1, completed.length);
         // counts: número absoluto de acertos por questão; values: percentual
         const counts = qs.map(q => {
@@ -1389,929 +1383,634 @@ export default function AcertoNiveis() {
         });
       };
 
-      // Função para gerar página de resumo (separada por turma)
-      const renderSummaryPage = () => {
+      // Função para gerar página de resumo para uma turma específica
+      const renderSummaryPageForTurma = (turmaName: string, alunosTurma: StudentResult[]) => {
+        if (alunosTurma.length === 0) return;
+        
+        // Adicionar nova página se não for a primeira
+        if (pageCount > 0) {
+          doc.addPage();
+        }
+        pageCount++;
+        
         const title = `RELATÓRIO DE DESEMPENHO GERAL`;
         const questoes: typeof detailedReport.questoes = detailedReport?.questoes || [];
         
-        // ✅ Agrupar alunos por turma para renderizar tabelas separadas
-        const turmasMap = new Map<string, StudentResult[]>();
-        students.forEach(s => {
-          const turma = s.turma || 'Sem Turma';
-          if (!turmasMap.has(turma)) {
-            turmasMap.set(turma, []);
+        const startY = addHeader(title, turmaName);
+        const availableWidth = pageWidth - (2 * margin);
+        const nameWidth = Math.min(140, availableWidth * 0.5);
+        const otherWidth = (availableWidth - nameWidth) / 3;
+        
+        // Preparar dados da tabela (usando sempre a mesma regra de acerto)
+        const bodyRows: (string | number)[][] = [];
+        const completedStudents = alunosTurma.filter(s => s.status === 'concluida');
+        
+        completedStudents.forEach((s, i) => {
+          const subset = questoes;
+          const acertos = countCorrectFor(s, subset);
+          const total = subset.length;
+          
+          const row = [
+            `${i + 1}. ${s.nome}`,
+            `${acertos}/${total}`,
+             s.proficiencia.toFixed(1),
+            s.classificacao
+          ];
+          bodyRows.push(row);
+        });
+
+        // Gerar tabela
+        autoTable(doc, {
+          startY: startY,
+          head: [["Aluno", "Acertos", "Proficiência", "Nível"]],
+          body: bodyRows,
+          theme: 'grid',
+          margin: { left: margin, right: margin },
+          styles: {
+            fontSize: 9,
+            cellPadding: 2.5,
+            lineColor: [200, 200, 200],
+            lineWidth: 0.1,
+            valign: 'middle'
+          },
+          headStyles: {
+            fillColor: [230, 230, 230],
+            textColor: [0, 0, 0],
+            fontStyle: 'bold',
+            halign: 'center'
+          },
+          bodyStyles: { textColor: [33, 33, 33] },
+          alternateRowStyles: { fillColor: [250, 250, 250] },
+          columnStyles: {
+            0: { cellWidth: nameWidth, halign: 'left' },
+            1: { cellWidth: otherWidth, halign: 'center' },
+            2: { cellWidth: otherWidth, halign: 'center' },
+            3: { cellWidth: otherWidth, halign: 'center' }
+          },
+          didDrawCell: (data: CellHookData) => {
+            if (data.section !== 'body' || data.column.index !== 3) return;
+
+            const textValue = (Array.isArray(data.cell.text) ? data.cell.text[0] : data.cell.text || '')
+              .toString()
+              .trim();
+            const [r, g, b] = generateClassificationColor(textValue);
+
+            data.doc.setFillColor(r, g, b);
+            data.doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+
+            data.doc.setTextColor(255, 255, 255);
+            data.doc.setFont('helvetica', 'bold');
+            data.doc.setFontSize(9);
+            data.doc.text(
+              textValue,
+              data.cell.x + data.cell.width / 2,
+              data.cell.y + data.cell.height / 2 + 2.5,
+              { align: 'center' }
+            );
+
+            data.doc.setDrawColor(200, 200, 200);
+            data.doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height);
           }
-          turmasMap.get(turma)!.push(s);
         });
         
-        // Ordenar turmas alfabeticamente
-        const turmasOrdenadas = Array.from(turmasMap.keys()).sort((a, b) => a.localeCompare(b));
-        
-        // Renderizar uma página de resumo para cada turma
-        turmasOrdenadas.forEach(turmaName => {
-          const alunosTurma = turmasMap.get(turmaName) || [];
-          if (alunosTurma.length === 0) return;
-          
-          // Adicionar nova página se não for a primeira
-          if (pageCount > 0) {
-            doc.addPage();
-          }
-          pageCount++;
-          
-          // Atualizar cabeçalho com informação da turma específica
-          const startY = addHeader(title, turmaName);
-          
-          const availableWidth = pageWidth - (2 * margin);
-          const nameWidth = Math.min(140, availableWidth * 0.5);
-          const otherWidth = (availableWidth - nameWidth) / 3;
-          
-          // Preparar dados da tabela apenas para alunos desta turma
-          const bodyRows: (string | number)[][] = [];
-          const completedStudentsTurma = alunosTurma.filter(s => s.status === 'concluida');
-          
-          completedStudentsTurma.forEach((s, i) => {
-            const subset = questoes;
-            const acertos = countCorrectFor(s, subset);
-            const total = subset.length;
-            
-            const row = [
-              `${i + 1}. ${s.nome}`,
-              `${acertos}/${total}`,
-              s.proficiencia.toFixed(1),
-              s.classificacao
-            ];
-            bodyRows.push(row);
-          });
-
-          // Gerar tabela apenas se houver alunos
-          if (bodyRows.length > 0) {
-            autoTable(doc, {
-              startY: selectedClassId ? startY : startY + 2,
-              head: [["Aluno", "Acertos", "Proficiência", "Nível"]],
-              body: bodyRows,
-              theme: 'grid',
-              margin: { left: margin, right: margin },
-              styles: {
-                fontSize: 9,
-                cellPadding: 2.5,
-                lineColor: [200, 200, 200],
-                lineWidth: 0.1,
-                valign: 'middle'
-              },
-              headStyles: {
-                fillColor: [230, 230, 230],
-                textColor: [0, 0, 0],
-                fontStyle: 'bold',
-                halign: 'center'
-              },
-              bodyStyles: { textColor: [33, 33, 33] },
-              alternateRowStyles: { fillColor: [250, 250, 250] },
-              columnStyles: {
-                0: { cellWidth: nameWidth, halign: 'left' },
-                1: { cellWidth: otherWidth, halign: 'center' },
-                2: { cellWidth: otherWidth, halign: 'center' },
-                3: { cellWidth: otherWidth, halign: 'center' }
-              },
-              didDrawCell: (data: CellHookData) => {
-                if (data.section !== 'body' || data.column.index !== 3) return;
-
-                const textValue = (Array.isArray(data.cell.text) ? data.cell.text[0] : data.cell.text || '')
-                  .toString()
-                  .trim();
-                const [r, g, b] = generateClassificationColor(textValue);
-
-                data.doc.setFillColor(r, g, b);
-                data.doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
-
-                data.doc.setTextColor(255, 255, 255);
-                data.doc.setFont('helvetica', 'bold');
-                data.doc.setFontSize(9);
-                data.doc.text(
-                  textValue,
-                  data.cell.x + data.cell.width / 2,
-                  data.cell.y + data.cell.height / 2 + 2.5,
-                  { align: 'center' }
-                );
-
-                data.doc.setDrawColor(200, 200, 200);
-                data.doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height);
-              }
-            });
-          }
-          
-          addFooter(pageCount);
-        });
+        addFooter(pageCount);
       };
 
-      // Função para gerar página detalhada (landscape)
-      const renderDetailedPage = (subtitle: string, questoes: typeof detailedReport.questoes) => {
-        if (!questoes || questoes.length === 0) return;
+      // Função para gerar página detalhada (landscape) para uma turma específica
+      const renderDetailedPageForTurma = (subtitle: string, turmaName: string, alunosTurma: StudentResult[], questoes: typeof detailedReport.questoes) => {
+        if (!questoes || questoes.length === 0 || alunosTurma.length === 0) return;
         // Ordenar questões
         questoes = sortQuestoes(questoes);
         
-        // ✅ NOVO: Agrupar alunos por turma para renderizar tabelas separadas
-        const turmasMap = new Map<string, StudentResult[]>();
-        students.forEach(s => {
-          const turma = s.turma || 'Sem Turma';
-          if (!turmasMap.has(turma)) {
-            turmasMap.set(turma, []);
-          }
-          turmasMap.get(turma)!.push(s);
+        doc.addPage('landscape');
+        pageCount++;
+        
+        const landscapeWidth = 297;
+        const landscapeHeight = 210;
+        const landscapeMargin = 10;
+        
+        // Título
+        let y = 15;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text(`${evaluationInfo.titulo} - ${subtitle}`, landscapeWidth / 2, y, { align: 'center' });
+        y += 5;
+        doc.setFontSize(10);
+        doc.text(`Turma: ${turmaName}`, landscapeWidth / 2, y, { align: 'center' });
+        y += 10;
+        
+        // Preparar cabeçalhos
+        const headerRow1 = ["Aluno"];
+        const headerRow2 = ["Habilidade"];
+        const headerRow3 = ["% Turma"];
+        
+        // Adicionar questões aos cabeçalhos
+        questoes.forEach(q => {
+          headerRow1.push(`Q${q.numero}`);
+          const habilidade = generateHabilidadeCode(q, skillsMapping);
+          headerRow2.push(habilidade);
+        });
+
+        // Recalcular % da turma baseado nas respostas reais (apenas alunos desta turma)
+        const completedStudentsLocal = alunosTurma.filter(s => s.status === 'concluida');
+        const denomLocal = Math.max(1, completedStudentsLocal.length);
+        questoes.forEach(q => {
+          let correct = 0;
+          completedStudentsLocal.forEach(s => { if (getAnswer(s, q.numero)) correct++; });
+          const pct = Math.round((correct / denomLocal) * 100);
+          headerRow3.push(`${pct}%`);
         });
         
-        // Ordenar turmas alfabeticamente
-        const turmasOrdenadas = Array.from(turmasMap.keys()).sort((a, b) => a.localeCompare(b));
+        // Adicionar colunas finais
+        headerRow1.push("Total", "Proficiência", "Nível");
+        headerRow2.push("", "", "");
+        headerRow3.push("", "", "");
         
-        // Renderizar uma tabela para cada turma
-        turmasOrdenadas.forEach(turmaName => {
-          const alunosTurma = turmasMap.get(turmaName) || [];
-          if (alunosTurma.length === 0) return;
+        // Preparar dados dos alunos (apenas desta turma)
+        const bodyRows: (string | number)[][] = [];
+        const completedStudents = alunosTurma.filter(s => s.status === 'concluida');
+        
+        completedStudents.forEach(s => {
+          const row: (string | number)[] = [s.nome];
+          let acertos = 0;
           
-          doc.addPage('landscape');
-          pageCount++;
-          
-          const landscapeWidth = 297;
-          const landscapeHeight = 210;
-          const landscapeMargin = 10;
-          
-          // Título
-          let y = 15;
-          doc.setFont('helvetica', 'bold');
-          doc.setFontSize(12);
-          doc.text(`${evaluationInfo.titulo} - ${subtitle}`, landscapeWidth / 2, y, { align: 'center' });
-          y += 5;
-          doc.setFontSize(10);
-          doc.text(`Turma: ${turmaName}`, landscapeWidth / 2, y, { align: 'center' });
-          y += 10;
-          
-          // Preparar cabeçalhos
-          const headerRow1 = ["Aluno"];
-          const headerRow2 = ["Habilidade"];
-          const headerRow3 = ["% Turma"];
-          
-          // Adicionar questões aos cabeçalhos
+          // Adicionar respostas usando a mesma função de cálculo
           questoes.forEach(q => {
-            headerRow1.push(`Q${q.numero}`);
-            const habilidade = generateHabilidadeCode(q, skillsMapping);
-            headerRow2.push(habilidade);
-          });
-
-          // ✅ CORRIGIDO: Calcular % da turma baseado apenas nos alunos desta turma específica
-          const completedStudentsTurma = alunosTurma.filter(s => s.status === 'concluida');
-          const denomTurma = Math.max(1, completedStudentsTurma.length);
-          questoes.forEach(q => {
-            let correct = 0;
-            completedStudentsTurma.forEach(s => { if (getAnswer(s, q.numero)) correct++; });
-            const pct = Math.round((correct / denomTurma) * 100);
-            headerRow3.push(`${pct}%`);
+            const resposta = getAnswer(s, q.numero);
+            if (resposta === true) {
+              row.push('\u2713'); // ✓ usando código Unicode
+              acertos++;
+            } else {
+              row.push('\u2717'); // ✗ usando código Unicode
+            }
           });
           
-          // Adicionar colunas finais
-          headerRow1.push("Total", "Proficiência", "Nível");
-          headerRow2.push("", "", "");
-          headerRow3.push("", "", "");
+          // Adicionar totais
+          row.push(`${acertos}/${questoes.length}`);
           
-          // Preparar dados dos alunos (apenas desta turma)
-          const bodyRows: (string | number)[][] = [];
-          const completedStudents = alunosTurma.filter(s => s.status === 'concluida');
+          // Usar sempre a proficiência geral do backend
+          row.push(s.proficiencia.toFixed(1));
+          row.push(s.classificacao);
           
-          completedStudents.forEach(s => {
-            const row: (string | number)[] = [s.nome];
-            let acertos = 0;
-            
-            // Adicionar respostas usando a mesma função de cálculo
-            questoes.forEach(q => {
-              const resposta = getAnswer(s, q.numero);
-              if (resposta === true) {
-                row.push('\u2713'); // ✓ usando código Unicode
-                acertos++;
-              } else {
-                row.push('\u2717'); // ✗ usando código Unicode
-              }
-            });
-            
-            // Adicionar totais
-            row.push(`${acertos}/${questoes.length}`);
-            
-            // Usar sempre a proficiência geral do backend
-            row.push(s.proficiencia.toFixed(1));
-            row.push(s.classificacao);
-            
-            bodyRows.push(row);
-          });
-          
-          // Calcular larguras das colunas dinamicamente (otimizado)
-          const availableWidth = landscapeWidth - (2 * landscapeMargin);
-          const nameColWidth = Math.min(45, availableWidth * 0.2); // Nome do aluno
-          const finalColsWidth = 20 + 25 + 30; // Total, Prof, Nível (reduzido)
-          const questionColWidth = Math.max(8, Math.min(12, (availableWidth - nameColWidth - finalColsWidth) / questoes.length));
-          
-          const columnStyles: Record<number, { cellWidth: number; halign?: 'left' | 'center' | 'right' }> = {
-            0: { cellWidth: nameColWidth, halign: 'left' }
-          };
-          
-          // Configurar largura das colunas de questões (otimizado)
-          for (let i = 1; i <= questoes.length; i++) {
-            columnStyles[i] = { cellWidth: questionColWidth, halign: 'center' };
-          }
-          
-          // Configurar colunas finais (reduzido)
-          columnStyles[questoes.length + 1] = { cellWidth: 20, halign: 'center' };
-          columnStyles[questoes.length + 2] = { cellWidth: 25, halign: 'center' };
-          columnStyles[questoes.length + 3] = { cellWidth: 30, halign: 'center' };
-          
-          // Gerar tabela
-          autoTable(doc, {
-            startY: y,
-            head: [headerRow1, headerRow2, headerRow3],
-            body: bodyRows,
-            theme: 'grid',
-            margin: { left: landscapeMargin, right: landscapeMargin },
-            tableWidth: 'auto',
-            showHead: 'everyPage',
-            styles: {
-              fontSize: 6,
-              cellPadding: 0.5,
-              lineColor: [200, 200, 200],
-              lineWidth: 0.05,
-              overflow: 'linebreak',
-              valign: 'middle',
-              halign: 'center'
-            },
-            headStyles: {
-              fillColor: [240, 240, 240],
-              textColor: [0, 0, 0],
-              fontStyle: 'bold',
-              halign: 'center',
-              fontSize: 6
-            },
-            columnStyles: columnStyles,
-            bodyStyles: { textColor: [33, 33, 33] },
-            alternateRowStyles: { fillColor: [252, 252, 252] },
-            didDrawCell: (data) => {
-              const { doc, cell, column, section, row } = data;
-              const val = Array.isArray(cell.text) ? cell.text[0] : cell.text;
+          bodyRows.push(row);
+        });
+        
+        // Calcular larguras das colunas dinamicamente (otimizado)
+        const availableWidth = landscapeWidth - (2 * landscapeMargin);
+        const nameColWidth = Math.min(45, availableWidth * 0.2); // Nome do aluno
+        const finalColsWidth = 20 + 25 + 30; // Total, Prof, Nível (reduzido)
+        const questionColWidth = Math.max(8, Math.min(12, (availableWidth - nameColWidth - finalColsWidth) / questoes.length));
+        
+        const columnStyles: Record<number, { cellWidth: number; halign?: 'left' | 'center' | 'right' }> = {
+          0: { cellWidth: nameColWidth, halign: 'left' }
+        };
+        
+        // Configurar largura das colunas de questões (otimizado)
+        for (let i = 1; i <= questoes.length; i++) {
+          columnStyles[i] = { cellWidth: questionColWidth, halign: 'center' };
+        }
+        
+        // Configurar colunas finais (reduzido)
+        columnStyles[questoes.length + 1] = { cellWidth: 20, halign: 'center' };
+        columnStyles[questoes.length + 2] = { cellWidth: 25, halign: 'center' };
+        columnStyles[questoes.length + 3] = { cellWidth: 30, halign: 'center' };
+        
+        // Gerar tabela
+        autoTable(doc, {
+          startY: y,
+          head: [headerRow1, headerRow2, headerRow3],
+          body: bodyRows,
+          theme: 'grid',
+          margin: { left: landscapeMargin, right: landscapeMargin },
+          tableWidth: 'auto',
+          showHead: 'everyPage',
+          styles: {
+            fontSize: 6,
+            cellPadding: 0.5,
+            lineColor: [200, 200, 200],
+            lineWidth: 0.05,
+            overflow: 'linebreak',
+            valign: 'middle',
+            halign: 'center'
+          },
+          headStyles: {
+            fillColor: [240, 240, 240],
+            textColor: [0, 0, 0],
+            fontStyle: 'bold',
+            halign: 'center',
+            fontSize: 6
+          },
+          columnStyles: columnStyles,
+          bodyStyles: { textColor: [33, 33, 33] },
+          alternateRowStyles: { fillColor: [252, 252, 252] },
+          didDrawCell: (data) => {
+            const { doc, cell, column, section, row } = data;
+            const val = Array.isArray(cell.text) ? cell.text[0] : cell.text;
 
-              // Colorir respostas dos alunos (✓ ou ✗) com desenho vetorial
-              if (section === 'body' && column.index > 0 && column.index <= questoes.length) {
-                if (val === '\u2713' || val === '\u2717') {
-                  const centerX = cell.x + cell.width / 2;
-                  const centerY = cell.y + cell.height / 2;
-                  const iconSize = Math.min(cell.width, cell.height) / 4.5;
+            // Colorir respostas dos alunos (✓ ou ✗) com desenho vetorial
+            if (section === 'body' && column.index > 0 && column.index <= questoes.length) {
+              if (val === '\u2713' || val === '\u2717') {
+                const centerX = cell.x + cell.width / 2;
+                const centerY = cell.y + cell.height / 2;
+                const iconSize = Math.min(cell.width, cell.height) / 4.5;
 
-                  // Apaga o texto original (que foi renderizado incorretamente)
-                  const fillColor = row.index % 2 === 0 ? [255, 255, 255] : [252, 252, 252];
-                  doc.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
-                  doc.rect(cell.x, cell.y, cell.width, cell.height, 'F');
-
-                  if (val === '\u2713') {
-                    // Desenha o '✓'
-                    doc.setDrawColor(22, 163, 74); // Verde escuro
-                    doc.setLineWidth(0.8);
-                    doc.line(centerX - iconSize, centerY, centerX - iconSize / 2, centerY + iconSize);
-                    doc.line(centerX - iconSize / 2, centerY + iconSize, centerX + iconSize, centerY - iconSize);
-                  } else if (val === '\u2717') {
-                    // Desenha o '✗'
-                    doc.setDrawColor(239, 68, 68); // Vermelho
-                    doc.setLineWidth(0.8);
-                    doc.line(centerX - iconSize, centerY - iconSize, centerX + iconSize, centerY + iconSize);
-                    doc.line(centerX + iconSize, centerY - iconSize, centerX - iconSize, centerY + iconSize);
-                  }
-                  
-                  // *** CORREÇÃO PRINCIPAL: Redesenha as bordas da célula ***
-                  // Restaura as bordas que foram cobertas pelo preenchimento
-                  doc.setDrawColor(200, 200, 200); // Cor padrão das bordas da tabela
-                  doc.setLineWidth(0.05);
-                  doc.rect(cell.x, cell.y, cell.width, cell.height); // Redesenha apenas o contorno
-                }
-              }
-
-              // Lógica original para colorir outras células (habilidades, porcentagens, nível)
-              if (section === 'head' && row.index === 1) {
-                cell.styles.fillColor = [219, 234, 254];
-                cell.styles.fontSize = 5;
-                cell.styles.fontStyle = 'normal';
-                cell.styles.font = 'courier';
-              }
-
-              if (section === 'head' && row.index === 2 && column.index > 0 && column.index <= questoes.length) {
-                const textValue = Array.isArray(cell.text) ? cell.text[0] || '' : cell.text || '';
-                const pct = parseInt(textValue.replace(/[^0-9]/g, ''));
-                if (!isNaN(pct)) {
-                  if (pct >= 60) {
-                    cell.styles.fillColor = [220, 252, 231];
-                    cell.styles.textColor = [22, 163, 74];
-                  } else {
-                    cell.styles.fillColor = [254, 226, 226];
-                    cell.styles.textColor = [239, 68, 68];
-                  }
-                  cell.styles.fontStyle = 'bold';
-                  cell.styles.fontSize = 5;
-                }
-              }
-
-              if (section === 'body' && column.index === questoes.length + 3) {
-                const textValue = (Array.isArray(cell.text) ? cell.text[0] : cell.text || '').toString().trim();
-                const [r, g, b] = generateClassificationColor(textValue);
-
-                doc.setFillColor(r, g, b);
+                // Apaga o texto original (que foi renderizado incorretamente)
+                const fillColor = row.index % 2 === 0 ? [255, 255, 255] : [252, 252, 252];
+                doc.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
                 doc.rect(cell.x, cell.y, cell.width, cell.height, 'F');
 
-                doc.setTextColor(255, 255, 255);
-                doc.setFont('helvetica', 'bold');
-                doc.setFontSize(6);
-                doc.text(textValue, cell.x + cell.width / 2, cell.y + cell.height / 2 + 1.5, { align: 'center' });
-
-                doc.setDrawColor(200, 200, 200);
-                doc.rect(cell.x, cell.y, cell.width, cell.height);
+                if (val === '\u2713') {
+                  // Desenha o '✓'
+                  doc.setDrawColor(22, 163, 74); // Verde escuro
+                  doc.setLineWidth(0.8);
+                  doc.line(centerX - iconSize, centerY, centerX - iconSize / 2, centerY + iconSize);
+                  doc.line(centerX - iconSize / 2, centerY + iconSize, centerX + iconSize, centerY - iconSize);
+                } else if (val === '\u2717') {
+                  // Desenha o '✗'
+                  doc.setDrawColor(239, 68, 68); // Vermelho
+                  doc.setLineWidth(0.8);
+                  doc.line(centerX - iconSize, centerY - iconSize, centerX + iconSize, centerY + iconSize);
+                  doc.line(centerX + iconSize, centerY - iconSize, centerX - iconSize, centerY + iconSize);
+                }
+                
+                // *** CORREÇÃO PRINCIPAL: Redesenha as bordas da célula ***
+                // Restaura as bordas que foram cobertas pelo preenchimento
+                doc.setDrawColor(200, 200, 200); // Cor padrão das bordas da tabela
+                doc.setLineWidth(0.05);
+                doc.rect(cell.x, cell.y, cell.width, cell.height); // Redesenha apenas o contorno
               }
-            },
-          });
-          
-          // Legenda com ícones vetoriais
-          const finalY = ((doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || y) + 4;
-          doc.setFontSize(7);
-          doc.setFont('helvetica', 'normal');
+            }
 
-          let legendX = landscapeMargin;
-          const legendY = finalY + 2.5;
-          const legendIconSize = 1.5;
+            // Lógica original para colorir outras células (habilidades, porcentagens, nível)
+            if (section === 'head' && row.index === 1) {
+              cell.styles.fillColor = [219, 234, 254];
+              cell.styles.fontSize = 5;
+              cell.styles.fontStyle = 'normal';
+              cell.styles.font = 'courier';
+            }
 
-          // Símbolo correto (✓) vetorial
-          doc.setDrawColor(22, 163, 74);
-          doc.setLineWidth(0.5);
-          doc.line(legendX, legendY, legendX + legendIconSize * 0.5, legendY + legendIconSize);
-          doc.line(legendX + legendIconSize * 0.5, legendY + legendIconSize, legendX + legendIconSize * 1.5, legendY - legendIconSize * 0.5);
-          doc.setTextColor(90);
-          doc.text('Correto', legendX + 4, finalY + 3);
+            if (section === 'head' && row.index === 2 && column.index > 0 && column.index <= questoes.length) {
+              const textValue = Array.isArray(cell.text) ? cell.text[0] || '' : cell.text || '';
+              const pct = parseInt(textValue.replace(/[^0-9]/g, ''));
+              if (!isNaN(pct)) {
+                if (pct >= 60) {
+                  cell.styles.fillColor = [220, 252, 231];
+                  cell.styles.textColor = [22, 163, 74];
+                } else {
+                  cell.styles.fillColor = [254, 226, 226];
+                  cell.styles.textColor = [239, 68, 68];
+                }
+                cell.styles.fontStyle = 'bold';
+                cell.styles.fontSize = 5;
+              }
+            }
 
-          legendX += 24;
-          
-          // Símbolo incorreto (✗) vetorial
-          doc.setDrawColor(239, 68, 68);
-          doc.setLineWidth(0.5);
-          doc.line(legendX, legendY - legendIconSize, legendX + legendIconSize * 2, legendY + legendIconSize);
-          doc.line(legendX + legendIconSize * 2, legendY - legendIconSize, legendX, legendY + legendIconSize);
-          doc.setTextColor(90);
-          doc.text('Incorretas', legendX + 5, finalY + 3);
-          
-          // Rodapé
-          doc.setFontSize(8);
-          doc.setTextColor(100, 100, 100);
-          doc.text('Afirme Play Soluções Educativas', landscapeMargin, landscapeHeight - 8);
-          doc.text(`Página ${pageCount}`, landscapeWidth / 2, landscapeHeight - 8, { align: 'center' });
-          doc.text(new Date().toLocaleString('pt-BR'), landscapeWidth - landscapeMargin, landscapeHeight - 8, { align: 'right' });
+            if (section === 'body' && column.index === questoes.length + 3) {
+              const textValue = (Array.isArray(cell.text) ? cell.text[0] : cell.text || '').toString().trim();
+              const [r, g, b] = generateClassificationColor(textValue);
+
+              doc.setFillColor(r, g, b);
+              doc.rect(cell.x, cell.y, cell.width, cell.height, 'F');
+
+              doc.setTextColor(255, 255, 255);
+              doc.setFont('helvetica', 'bold');
+              doc.setFontSize(6);
+              doc.text(textValue, cell.x + cell.width / 2, cell.y + cell.height / 2 + 1.5, { align: 'center' });
+
+              doc.setDrawColor(200, 200, 200);
+              doc.rect(cell.x, cell.y, cell.width, cell.height);
+            }
+          },
         });
+        
+        // Legenda com ícones vetoriais
+        const finalY = ((doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || y) + 4;
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'normal');
+
+        let legendX = landscapeMargin;
+        const legendY = finalY + 2.5;
+        const legendIconSize = 1.5;
+
+        // Símbolo correto (✓) vetorial
+        doc.setDrawColor(22, 163, 74);
+        doc.setLineWidth(0.5);
+        doc.line(legendX, legendY, legendX + legendIconSize * 0.5, legendY + legendIconSize);
+        doc.line(legendX + legendIconSize * 0.5, legendY + legendIconSize, legendX + legendIconSize * 1.5, legendY - legendIconSize * 0.5);
+        doc.setTextColor(90);
+        doc.text('Correto', legendX + 4, finalY + 3);
+
+        legendX += 24;
+        
+        // Símbolo incorreto (✗) vetorial
+        doc.setDrawColor(239, 68, 68);
+        doc.setLineWidth(0.5);
+        doc.line(legendX, legendY - legendIconSize, legendX + legendIconSize * 2, legendY + legendIconSize);
+        doc.line(legendX + legendIconSize * 2, legendY - legendIconSize, legendX, legendY + legendIconSize);
+        doc.setTextColor(90);
+        doc.text('Incorretas', legendX + 5, finalY + 3);
+        
+        // Rodapé
+        doc.setFontSize(8);
+        doc.setTextColor(100, 100, 100);
+        doc.text('Afirme Play Soluções Educativas', landscapeMargin, landscapeHeight - 8);
+        doc.text(`Página ${pageCount}`, landscapeWidth / 2, landscapeHeight - 8, { align: 'center' });
+        doc.text(new Date().toLocaleString('pt-BR'), landscapeWidth - landscapeMargin, landscapeHeight - 8, { align: 'right' });
       };
 
-      // Gerar páginas do PDF
-      // Página Geral (única)
-      if ((detailedReport?.questoes?.length || 0) > 0) {
-        renderSummaryPage();
-      }
-
-      // Página de Gráficos (sempre que houver dados)
-      if ((students?.length || 0) > 0) {
+      // Função para renderizar gráficos para uma turma específica
+      const renderChartsForTurma = (turmaName: string, alunosTurma: StudentResult[]) => {
+        if (alunosTurma.length === 0) return;
+        
         if (pageCount > 0) doc.addPage();
         pageCount++;
-        const yCharts = addHeader('VISÃO GRÁFICA DOS RESULTADOS');
+        const yCharts = addHeader('VISÃO GRÁFICA DOS RESULTADOS', turmaName);
         const chartsTop = yCharts + 2;
         const chartsLeft = margin;
         const chartsWidth = pageWidth - 2 * margin;
         const chartsHeight = pageHeight - chartsTop - margin - 6;
         // Metade superior: distribuição por classificação
-        drawClassificationChart(chartsLeft, chartsTop, chartsWidth, Math.floor(chartsHeight * 0.38));
+        drawClassificationChart(chartsLeft, chartsTop, chartsWidth, Math.floor(chartsHeight * 0.38), alunosTurma);
         // Metade inferior: acerto por questão geral
         const qsAll = sortQuestoes(detailedReport?.questoes || []);
-        drawQuestionAccuracyChart(chartsLeft, chartsTop + Math.floor(chartsHeight * 0.55), chartsWidth, Math.floor(chartsHeight * 0.4), qsAll);
+        drawQuestionAccuracyChart(chartsLeft, chartsTop + Math.floor(chartsHeight * 0.55), chartsWidth, Math.floor(chartsHeight * 0.4), qsAll, alunosTurma);
         addFooter(pageCount);
-      }
-      
-      // Página detalhada geral (sempre separada por turma)
-      if ((detailedReport?.questoes?.length || 0) > 0) {
-        renderDetailedPage('GERAL', detailedReport?.questoes || []);
-      }
-
-      // ====== Páginas separadas por turma (quando "todas as turmas" estiver selecionado) ======
-      const renderPagesByTurma = () => {
-        // Só renderiza se não houver turma específica selecionada
-        if (selectedClassId) return;
-        
-        // Agrupar alunos por turma
-        const turmasMap = new Map<string, StudentResult[]>();
-        students.forEach(s => {
-          const turma = s.turma || 'Sem Turma';
-          if (!turmasMap.has(turma)) {
-            turmasMap.set(turma, []);
-          }
-          turmasMap.get(turma)!.push(s);
-        });
-        
-        // Ordenar turmas alfabeticamente
-        const turmasOrdenadas = Array.from(turmasMap.keys()).sort((a, b) => a.localeCompare(b));
-        
-        // Renderizar páginas para cada turma
-        turmasOrdenadas.forEach(turmaName => {
-          const alunosTurma = turmasMap.get(turmaName) || [];
-          if (alunosTurma.length === 0) return;
-          
-          const questoes = detailedReport?.questoes || [];
-          if (questoes.length === 0) return;
-          
-          // Ordenar questões
-          const questoesOrdenadas = sortQuestoes(questoes);
-          
-          // Nova página em landscape
-          doc.addPage('landscape');
-          pageCount++;
-          
-          const landscapeWidth = 297;
-          const landscapeHeight = 210;
-          const landscapeMargin = 10;
-          
-          // Título
-          let y = 15;
-          doc.setFont('helvetica', 'bold');
-          doc.setFontSize(12);
-          doc.text(`${evaluationInfo.titulo} - TURMA: ${turmaName}`, landscapeWidth / 2, y, { align: 'center' });
-          y += 5;
-          doc.setFontSize(10);
-          const escolaTextTurma = selectedSchoolId ? schools.find(s => s.id === selectedSchoolId)?.nome || 'Escola Selecionada' : 'Todas as Escolas';
-          const serieTextTurma = getHeaderSerieText() || 'N/A';
-          doc.text(`Escola: ${escolaTextTurma}  •  Série: ${serieTextTurma}`, landscapeWidth / 2, y, { align: 'center' });
-          y += 10;
-          
-          // Preparar cabeçalhos
-          const headerRow1 = ["Aluno"];
-          const headerRow2 = ["Habilidade"];
-          const headerRow3 = ["% Turma"];
-          
-          // Adicionar questões aos cabeçalhos
-          questoesOrdenadas.forEach(q => {
-            headerRow1.push(`Q${q.numero}`);
-            const habilidade = generateHabilidadeCode(q, skillsMapping);
-            headerRow2.push(habilidade);
-          });
-          
-          // Calcular % da turma baseado nos alunos desta turma específica
-          const completedStudentsTurma = alunosTurma.filter(s => s.status === 'concluida');
-          const denomTurma = Math.max(1, completedStudentsTurma.length);
-          questoesOrdenadas.forEach(q => {
-            let correct = 0;
-            completedStudentsTurma.forEach(s => { if (getAnswer(s, q.numero)) correct++; });
-            const pct = Math.round((correct / denomTurma) * 100);
-            headerRow3.push(`${pct}%`);
-          });
-          
-          // Adicionar colunas finais
-          headerRow1.push("Total", "Proficiência", "Nível");
-          headerRow2.push("", "", "");
-          headerRow3.push("", "", "");
-          
-          // Preparar dados dos alunos
-          const bodyRows: (string | number)[][] = [];
-          
-          completedStudentsTurma.forEach(s => {
-            const row: (string | number)[] = [s.nome];
-            let acertos = 0;
-            
-            // Adicionar respostas
-            questoesOrdenadas.forEach(q => {
-              const resposta = getAnswer(s, q.numero);
-              if (resposta === true) {
-                row.push('\u2713');
-                acertos++;
-              } else {
-                row.push('\u2717');
-              }
-            });
-            
-            // Adicionar totais
-            row.push(`${acertos}/${questoesOrdenadas.length}`);
-            row.push(s.proficiencia.toFixed(1));
-            row.push(s.classificacao);
-            
-            bodyRows.push(row);
-          });
-          
-          // Calcular larguras das colunas
-          const availableWidth = landscapeWidth - (2 * landscapeMargin);
-          const nameColWidth = Math.min(45, availableWidth * 0.2);
-          const finalColsWidth = 20 + 25 + 30;
-          const questionColWidth = Math.max(8, Math.min(12, (availableWidth - nameColWidth - finalColsWidth) / questoesOrdenadas.length));
-          
-          const columnStyles: Record<number, { cellWidth: number; halign?: 'left' | 'center' | 'right' }> = {
-            0: { cellWidth: nameColWidth, halign: 'left' }
-          };
-          
-          for (let i = 1; i <= questoesOrdenadas.length; i++) {
-            columnStyles[i] = { cellWidth: questionColWidth, halign: 'center' };
-          }
-          
-          columnStyles[questoesOrdenadas.length + 1] = { cellWidth: 20, halign: 'center' };
-          columnStyles[questoesOrdenadas.length + 2] = { cellWidth: 25, halign: 'center' };
-          columnStyles[questoesOrdenadas.length + 3] = { cellWidth: 30, halign: 'center' };
-          
-          // Gerar tabela
-          autoTable(doc, {
-            startY: y,
-            head: [headerRow1, headerRow2, headerRow3],
-            body: bodyRows,
-            theme: 'grid',
-            margin: { left: landscapeMargin, right: landscapeMargin },
-            tableWidth: 'auto',
-            showHead: 'everyPage',
-            styles: {
-              fontSize: 6,
-              cellPadding: 0.5,
-              lineColor: [200, 200, 200],
-              lineWidth: 0.05,
-              overflow: 'linebreak',
-              valign: 'middle',
-              halign: 'center'
-            },
-            headStyles: {
-              fillColor: [240, 240, 240],
-              textColor: [0, 0, 0],
-              fontStyle: 'bold',
-              halign: 'center',
-              fontSize: 6
-            },
-            columnStyles: columnStyles,
-            bodyStyles: { textColor: [33, 33, 33] },
-            alternateRowStyles: { fillColor: [252, 252, 252] },
-            didDrawCell: (data) => {
-              const { doc, cell, column, section, row } = data;
-              const val = Array.isArray(cell.text) ? cell.text[0] : cell.text;
-              
-              // Colorir respostas dos alunos
-              if (section === 'body' && column.index > 0 && column.index <= questoesOrdenadas.length) {
-                if (val === '\u2713' || val === '\u2717') {
-                  const centerX = cell.x + cell.width / 2;
-                  const centerY = cell.y + cell.height / 2;
-                  const iconSize = Math.min(cell.width, cell.height) / 4.5;
-                  
-                  const fillColor = row.index % 2 === 0 ? [255, 255, 255] : [252, 252, 252];
-                  doc.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
-                  doc.rect(cell.x, cell.y, cell.width, cell.height, 'F');
-                  
-                  if (val === '\u2713') {
-                    doc.setDrawColor(22, 163, 74);
-                    doc.setLineWidth(0.8);
-                    doc.line(centerX - iconSize, centerY, centerX - iconSize / 2, centerY + iconSize);
-                    doc.line(centerX - iconSize / 2, centerY + iconSize, centerX + iconSize, centerY - iconSize);
-                  } else if (val === '\u2717') {
-                    doc.setDrawColor(239, 68, 68);
-                    doc.setLineWidth(0.8);
-                    doc.line(centerX - iconSize, centerY - iconSize, centerX + iconSize, centerY + iconSize);
-                    doc.line(centerX + iconSize, centerY - iconSize, centerX - iconSize, centerY + iconSize);
-                  }
-                  
-                  doc.setDrawColor(200, 200, 200);
-                  doc.setLineWidth(0.05);
-                  doc.rect(cell.x, cell.y, cell.width, cell.height);
-                }
-              }
-              
-              // Linha de habilidades
-              if (section === 'head' && row.index === 1) {
-                cell.styles.fillColor = [219, 234, 254];
-                cell.styles.fontSize = 5;
-                cell.styles.fontStyle = 'normal';
-                cell.styles.font = 'courier';
-              }
-              
-              // Linha de % Turma
-              if (section === 'head' && row.index === 2 && column.index > 0 && column.index <= questoesOrdenadas.length) {
-                const textValue = Array.isArray(cell.text) ? cell.text[0] || '' : cell.text || '';
-                const pct = parseInt(textValue.replace(/[^0-9]/g, ''));
-                if (!isNaN(pct)) {
-                  if (pct >= 60) {
-                    cell.styles.fillColor = [220, 252, 231];
-                    cell.styles.textColor = [22, 163, 74];
-                  } else {
-                    cell.styles.fillColor = [254, 226, 226];
-                    cell.styles.textColor = [239, 68, 68];
-                  }
-                  cell.styles.fontStyle = 'bold';
-                  cell.styles.fontSize = 5;
-                }
-              }
-              
-              // Coluna de nível
-              if (section === 'body' && column.index === questoesOrdenadas.length + 3) {
-                const textValue = (Array.isArray(cell.text) ? cell.text[0] : cell.text || '').toString().trim();
-                const [r, g, b] = generateClassificationColor(textValue);
-                
-                doc.setFillColor(r, g, b);
-                doc.rect(cell.x, cell.y, cell.width, cell.height, 'F');
-                
-                doc.setTextColor(255, 255, 255);
-                doc.setFont('helvetica', 'bold');
-                doc.setFontSize(6);
-                doc.text(textValue, cell.x + cell.width / 2, cell.y + cell.height / 2 + 1.5, { align: 'center' });
-                
-                doc.setDrawColor(200, 200, 200);
-                doc.rect(cell.x, cell.y, cell.width, cell.height);
-              }
-            },
-          });
-          
-          // Legenda
-          const finalY = ((doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || y) + 4;
-          doc.setFontSize(7);
-          doc.setFont('helvetica', 'normal');
-          
-          let legendX = landscapeMargin;
-          const legendY = finalY + 2.5;
-          const legendIconSize = 1.5;
-          
-          // Símbolo correto
-          doc.setDrawColor(22, 163, 74);
-          doc.setLineWidth(0.5);
-          doc.line(legendX, legendY, legendX + legendIconSize * 0.5, legendY + legendIconSize);
-          doc.line(legendX + legendIconSize * 0.5, legendY + legendIconSize, legendX + legendIconSize * 1.5, legendY - legendIconSize * 0.5);
-          doc.setTextColor(90);
-          doc.text('Correto', legendX + 4, finalY + 3);
-          
-          legendX += 24;
-          
-          // Símbolo incorreto
-          doc.setDrawColor(239, 68, 68);
-          doc.setLineWidth(0.5);
-          doc.line(legendX, legendY - legendIconSize, legendX + legendIconSize * 2, legendY + legendIconSize);
-          doc.line(legendX + legendIconSize * 2, legendY - legendIconSize, legendX, legendY + legendIconSize);
-          doc.setTextColor(90);
-          doc.text('Incorretas', legendX + 5, finalY + 3);
-          
-          // Rodapé
-          doc.setFontSize(8);
-          doc.setTextColor(100, 100, 100);
-          doc.text('Afirme Play Soluções Educativas', landscapeMargin, landscapeHeight - 8);
-          doc.text(`Página ${pageCount}`, landscapeWidth / 2, landscapeHeight - 8, { align: 'center' });
-          doc.text(new Date().toLocaleString('pt-BR'), landscapeWidth - landscapeMargin, landscapeHeight - 8, { align: 'right' });
-        });
       };
-      
-      // Renderizar páginas por turma (apenas quando "todas as turmas" estiver selecionado)
-      if ((detailedReport?.questoes?.length || 0) > 0 && !selectedClassId) {
-        renderPagesByTurma();
-      }
 
       // ====== Páginas por disciplina (consumindo diretamente tabela_detalhada) ======
-      const renderDisciplineTablesPages = () => {
+      const renderDisciplineTablesPagesForTurma = (turmaName: string, alunosTurma: StudentResult[]) => {
         if (!tabelaDetalhada || !Array.isArray(tabelaDetalhada.disciplinas)) return;
         const disciplinas = tabelaDetalhada.disciplinas;
 
         disciplinas.forEach((disc) => {
           if (!Array.isArray(disc.questoes) || disc.questoes.length === 0) return;
 
+          // Filtrar alunos da disciplina para incluir apenas os da turma específica
+          const alunosTurmaDisciplina = (disc.alunos || []).filter(al => al.turma === turmaName);
+          if (alunosTurmaDisciplina.length === 0) return; // Pular se não houver alunos desta turma nesta disciplina
+
           // Ordenar questões por número
           const qs = [...disc.questoes].sort((a, b) => (a?.numero || 0) - (b?.numero || 0));
 
-          // ✅ NOVO: Agrupar alunos por turma para renderizar tabelas separadas
-          const turmasMap = new Map<string, typeof disc.alunos>();
-          (disc.alunos || []).forEach(al => {
-            const turma = al.turma || 'Sem Turma';
-            if (!turmasMap.has(turma)) {
-              turmasMap.set(turma, []);
+          // Nova página em landscape
+          doc.addPage('landscape');
+          pageCount++;
+
+          const landscapeWidth = 297;
+          const landscapeHeight = 210;
+          const landscapeMargin = 10;
+
+          // Título
+          let y = 15;
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(12);
+          const headerDisc = `DISCIPLINA: ${disc.nome || 'N/A'}`;
+          doc.text(`${evaluationInfo?.titulo || 'Avaliação'} - ${headerDisc}`, landscapeWidth / 2, y, { align: 'center' });
+          y += 5;
+          doc.setFontSize(10);
+          const escolaText = selectedSchoolId ? (schools.find(s => s.id === selectedSchoolId)?.nome || '') : 'Todas as Escolas';
+          // Participantes (para série e % por questão) - apenas da turma específica
+          const alunosParticipantes = alunosTurmaDisciplina.filter(al => Array.isArray(al.respostas_por_questao) && al.respostas_por_questao.some(r => r.respondeu));
+          // Série: priorizar seleção atual; depois heurística global; depois inferir pelas turmas dos participantes; por fim evaluationInfo
+          const serieHeuristicaGlobal = getHeaderSerieText();
+          let serieText = selectedGradeId ? (grades.find(g => g.id === selectedGradeId)?.nome || '') : (serieHeuristicaGlobal || '');
+          if (!serieText) {
+            const setSeries = new Set<string>();
+            (alunosParticipantes || []).forEach(a => {
+              const ser = extractSerieFromTurma(a.turma);
+              if (ser) setSeries.add(ser);
+            });
+            if (setSeries.size === 1) {
+              serieText = Array.from(setSeries)[0];
+            } else if (evaluationInfo?.serie && evaluationInfo.serie !== 'N/A') {
+              serieText = evaluationInfo.serie;
             }
-            turmasMap.get(turma)!.push(al);
+          }
+          doc.text(`Escola: ${escolaText}  •  Série: ${serieText || 'N/A'}  •  Turma: ${turmaName}`, landscapeWidth / 2, y, { align: 'center' });
+          y += 8;
+
+          // Cabeçalhos múltiplos
+          const headerRow1 = ['Aluno'];
+          const headerRow2 = ['Habilidade'];
+          const headerRow3 = ['% Turma'];
+          // Participantes já calculados acima (apenas da turma específica)
+          const denomLocal = Math.max(1, alunosParticipantes.length);
+          qs.forEach(q => {
+            headerRow1.push(`Q${q.numero}`);
+            const hab = (q.codigo_habilidade || q.habilidade || '').toString();
+            headerRow2.push(hab);
+            // % Turma por questão (entre participantes da turma específica)
+            let correct = 0;
+            alunosParticipantes.forEach(s => {
+              const r = (s.respostas_por_questao || []).find(rr => rr.questao === q.numero);
+              if (r && r.respondeu && r.acertou) correct++;
+            });
+            const pct = Math.round((correct / denomLocal) * 100);
+            headerRow3.push(`${pct}%`);
+          });
+          headerRow1.push('Total', 'Nota', 'Proficiência', 'Nível');
+          headerRow2.push('', '', '', '');
+          headerRow3.push('', '', '', '');
+
+          // Linhas de alunos (usar somente dados do backend, apenas da turma específica)
+          const bodyRows: (string | number)[][] = [];
+          alunosTurmaDisciplina.forEach(al => {
+            // Ignorar alunos faltosos: manter apenas quem respondeu ao menos uma questão
+            const hasAnsweredAny = Array.isArray(al.respostas_por_questao)
+              ? al.respostas_por_questao.some(r => r.respondeu)
+              : false;
+            if (!hasAnsweredAny) return;
+            const row: (string | number)[] = [al.nome];
+            let acertos = 0;
+
+            qs.forEach(q => {
+              const resp = (al.respostas_por_questao || []).find(r => r.questao === q.numero);
+              if (!resp) {
+                row.push('');
+                return;
+              }
+              if (resp.respondeu) {
+                if (resp.acertou) {
+                  row.push('\u2713');
+                  acertos++;
+                } else {
+                  row.push('\u2717');
+                }
+              } else {
+                row.push(''); // em branco
+              }
+            });
+
+            row.push(`${al.total_acertos ?? acertos}/${qs.length}`);
+            row.push(Number(al.nota ?? 0).toFixed(1));
+            row.push(Number(al.proficiencia ?? 0).toFixed(1));
+            row.push(String(al.nivel_proficiencia || ''));
+            bodyRows.push(row);
           });
 
-          // Ordenar turmas alfabeticamente
-          const turmasOrdenadas = Array.from(turmasMap.keys()).sort((a, b) => a.localeCompare(b));
+          // Larguras
+          const availableWidth = landscapeWidth - (2 * landscapeMargin);
+          const nameColWidth = Math.min(45, availableWidth * 0.2);
+          const finalColsWidth = 20 + 20 + 25 + 30; // Total, Nota, Prof, Nível
+          const questionColWidth = Math.max(8, Math.min(12, (availableWidth - nameColWidth - finalColsWidth) / qs.length));
 
-          // Renderizar uma tabela para cada turma
-          turmasOrdenadas.forEach(turmaName => {
-            const alunosTurma = turmasMap.get(turmaName) || [];
-            if (alunosTurma.length === 0) return;
+          const columnStyles: Record<number, { cellWidth: number; halign?: 'left' | 'center' | 'right' }> = {
+            0: { cellWidth: nameColWidth, halign: 'left' }
+          };
+          for (let i = 1; i <= qs.length; i++) columnStyles[i] = { cellWidth: questionColWidth, halign: 'center' };
+          columnStyles[qs.length + 1] = { cellWidth: 20, halign: 'center' }; // Total
+          columnStyles[qs.length + 2] = { cellWidth: 20, halign: 'center' }; // Nota
+          columnStyles[qs.length + 3] = { cellWidth: 25, halign: 'center' }; // Prof
+          columnStyles[qs.length + 4] = { cellWidth: 30, halign: 'center' }; // Nível
 
-            // Nova página em landscape
-            doc.addPage('landscape');
-            pageCount++;
-
-            const landscapeWidth = 297;
-            const landscapeHeight = 210;
-            const landscapeMargin = 10;
-
-            // Título
-            let y = 15;
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(12);
-            const headerDisc = `DISCIPLINA: ${disc.nome || 'N/A'}`;
-            doc.text(`${evaluationInfo?.titulo || 'Avaliação'} - ${headerDisc}`, landscapeWidth / 2, y, { align: 'center' });
-            y += 5;
-            doc.setFontSize(10);
-            const escolaText = selectedSchoolId ? (schools.find(s => s.id === selectedSchoolId)?.nome || '') : 'Todas as Escolas';
-            // ✅ CORRIGIDO: Participantes apenas desta turma específica
-            const alunosParticipantesTurma = alunosTurma.filter(al => Array.isArray(al.respostas_por_questao) && al.respostas_por_questao.some(r => r.respondeu));
-            // Série: priorizar seleção atual; depois heurística global; depois inferir pelas turmas dos participantes; por fim evaluationInfo
-            const serieHeuristicaGlobal = getHeaderSerieText();
-            let serieText = selectedGradeId ? (grades.find(g => g.id === selectedGradeId)?.nome || '') : (serieHeuristicaGlobal || '');
-            if (!serieText) {
-              const setSeries = new Set<string>();
-              alunosParticipantesTurma.forEach(a => {
-                const ser = extractSerieFromTurma(a.turma);
-                if (ser) setSeries.add(ser);
-              });
-              if (setSeries.size === 1) {
-                serieText = Array.from(setSeries)[0];
-              } else if (evaluationInfo?.serie && evaluationInfo.serie !== 'N/A') {
-                serieText = evaluationInfo.serie;
-              }
-            }
-            doc.text(`Escola: ${escolaText}  •  Série: ${serieText || 'N/A'}  •  Turma: ${turmaName}`, landscapeWidth / 2, y, { align: 'center' });
-            y += 8;
-
-            // Cabeçalhos múltiplos
-            const headerRow1 = ['Aluno'];
-            const headerRow2 = ['Habilidade'];
-            const headerRow3 = ['% Turma'];
-            // ✅ CORRIGIDO: Calcular % baseado apenas nos alunos desta turma específica
-            const denomTurma = Math.max(1, alunosParticipantesTurma.length);
-            qs.forEach(q => {
-              headerRow1.push(`Q${q.numero}`);
-              const hab = (q.codigo_habilidade || q.habilidade || '').toString();
-              headerRow2.push(hab);
-              // % Turma por questão (entre participantes desta turma)
-              let correct = 0;
-              alunosParticipantesTurma.forEach(s => {
-                const r = (s.respostas_por_questao || []).find(rr => rr.questao === q.numero);
-                if (r && r.respondeu && r.acertou) correct++;
-              });
-              const pct = Math.round((correct / denomTurma) * 100);
-              headerRow3.push(`${pct}%`);
-            });
-            headerRow1.push('Total', 'Nota', 'Proficiência', 'Nível');
-            headerRow2.push('', '', '', '');
-            headerRow3.push('', '', '', '');
-
-            // ✅ CORRIGIDO: Linhas de alunos apenas desta turma específica
-            const bodyRows: (string | number)[][] = [];
-            alunosTurma.forEach(al => {
-              // Ignorar alunos faltosos: manter apenas quem respondeu ao menos uma questão
-              const hasAnsweredAny = Array.isArray(al.respostas_por_questao)
-                ? al.respostas_por_questao.some(r => r.respondeu)
-                : false;
-              if (!hasAnsweredAny) return;
-              const row: (string | number)[] = [al.nome];
-              let acertos = 0;
-
-              qs.forEach(q => {
-                const resp = (al.respostas_por_questao || []).find(r => r.questao === q.numero);
-                if (!resp) {
-                  row.push('');
-                  return;
-                }
-                if (resp.respondeu) {
-                  if (resp.acertou) {
-                    row.push('\u2713');
-                    acertos++;
-                  } else {
-                    row.push('\u2717');
-                  }
-                } else {
-                  row.push(''); // em branco
-                }
-              });
-
-              row.push(`${al.total_acertos ?? acertos}/${qs.length}`);
-              row.push(Number(al.nota ?? 0).toFixed(1));
-              row.push(Number(al.proficiencia ?? 0).toFixed(1));
-              row.push(String(al.nivel_proficiencia || ''));
-              bodyRows.push(row);
-            });
-
-            // Larguras
-            const availableWidth = landscapeWidth - (2 * landscapeMargin);
-            const nameColWidth = Math.min(45, availableWidth * 0.2);
-            const finalColsWidth = 20 + 20 + 25 + 30; // Total, Nota, Prof, Nível
-            const questionColWidth = Math.max(8, Math.min(12, (availableWidth - nameColWidth - finalColsWidth) / qs.length));
-
-            const columnStyles: Record<number, { cellWidth: number; halign?: 'left' | 'center' | 'right' }> = {
-              0: { cellWidth: nameColWidth, halign: 'left' }
-            };
-            for (let i = 1; i <= qs.length; i++) columnStyles[i] = { cellWidth: questionColWidth, halign: 'center' };
-            columnStyles[qs.length + 1] = { cellWidth: 20, halign: 'center' }; // Total
-            columnStyles[qs.length + 2] = { cellWidth: 20, halign: 'center' }; // Nota
-            columnStyles[qs.length + 3] = { cellWidth: 25, halign: 'center' }; // Prof
-            columnStyles[qs.length + 4] = { cellWidth: 30, halign: 'center' }; // Nível
-
-            // Tabela
-            autoTable(doc, {
-              startY: y,
-              head: [headerRow1, headerRow2, headerRow3],
-              body: bodyRows,
-              theme: 'grid',
-              margin: { left: landscapeMargin, right: landscapeMargin },
-              tableWidth: 'auto',
-              showHead: 'everyPage',
-              styles: {
-                fontSize: 6,
-                cellPadding: 0.5,
-                lineColor: [200, 200, 200],
-                lineWidth: 0.05,
-                overflow: 'linebreak',
-                valign: 'middle',
-                halign: 'center'
-              },
-              headStyles: {
-                fillColor: [240, 240, 240],
-                textColor: [0, 0, 0],
-                fontStyle: 'bold',
-                halign: 'center',
-                fontSize: 6
-              },
-              columnStyles: columnStyles,
-              bodyStyles: { textColor: [33, 33, 33] },
-              alternateRowStyles: { fillColor: [252, 252, 252] },
-              didDrawCell: (data) => {
-                const { doc, cell, column, section, row } = data;
-                const val = Array.isArray(cell.text) ? cell.text[0] : cell.text;
-                // Desenhar ✓/✗ como vetores e restaurar bordas
-                if (section === 'body' && column.index > 0 && column.index <= qs.length) {
-                  if (val === '\u2713' || val === '\u2717') {
-                    const centerX = cell.x + cell.width / 2;
-                    const centerY = cell.y + cell.height / 2;
-                    const iconSize = Math.min(cell.width, cell.height) / 4.5;
-                    const fillColor = row.index % 2 === 0 ? [255, 255, 255] : [252, 252, 252];
-                    doc.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
-                    doc.rect(cell.x, cell.y, cell.width, cell.height, 'F');
-                    if (val === '\u2713') {
-                      doc.setDrawColor(22, 163, 74);
-                      doc.setLineWidth(0.8);
-                      doc.line(centerX - iconSize, centerY, centerX - iconSize / 2, centerY + iconSize);
-                      doc.line(centerX - iconSize / 2, centerY + iconSize, centerX + iconSize, centerY - iconSize);
-                    } else {
-                      doc.setDrawColor(239, 68, 68);
-                      doc.setLineWidth(0.8);
-                      doc.line(centerX - iconSize, centerY - iconSize, centerX + iconSize, centerY + iconSize);
-                      doc.line(centerX + iconSize, centerY - iconSize, centerX - iconSize, centerY + iconSize);
-                    }
-                    doc.setDrawColor(200, 200, 200);
-                    doc.setLineWidth(0.05);
-                    doc.rect(cell.x, cell.y, cell.width, cell.height);
-                  }
-                }
-
-                // Colorir coluna de nível
-                if (section === 'body' && column.index === qs.length + 4) {
-                  const textValue = (Array.isArray(cell.text) ? cell.text[0] : cell.text || '').toString().trim();
-                  const [r, g, b] = generateClassificationColor(textValue);
-
-                  doc.setFillColor(r, g, b);
+          // Tabela
+          autoTable(doc, {
+            startY: y,
+            head: [headerRow1, headerRow2, headerRow3],
+            body: bodyRows,
+            theme: 'grid',
+            margin: { left: landscapeMargin, right: landscapeMargin },
+            tableWidth: 'auto',
+            showHead: 'everyPage',
+            styles: {
+              fontSize: 6,
+              cellPadding: 0.5,
+              lineColor: [200, 200, 200],
+              lineWidth: 0.05,
+              overflow: 'linebreak',
+              valign: 'middle',
+              halign: 'center'
+            },
+            headStyles: {
+              fillColor: [240, 240, 240],
+              textColor: [0, 0, 0],
+              fontStyle: 'bold',
+              halign: 'center',
+              fontSize: 6
+            },
+            columnStyles: columnStyles,
+            bodyStyles: { textColor: [33, 33, 33] },
+            alternateRowStyles: { fillColor: [252, 252, 252] },
+            didDrawCell: (data) => {
+              const { doc, cell, column, section, row } = data;
+              const val = Array.isArray(cell.text) ? cell.text[0] : cell.text;
+              // Desenhar ✓/✗ como vetores e restaurar bordas
+              if (section === 'body' && column.index > 0 && column.index <= qs.length) {
+                if (val === '\u2713' || val === '\u2717') {
+                  const centerX = cell.x + cell.width / 2;
+                  const centerY = cell.y + cell.height / 2;
+                  const iconSize = Math.min(cell.width, cell.height) / 4.5;
+                  const fillColor = row.index % 2 === 0 ? [255, 255, 255] : [252, 252, 252];
+                  doc.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
                   doc.rect(cell.x, cell.y, cell.width, cell.height, 'F');
-
-                  doc.setTextColor(255, 255, 255);
-                  doc.setFont('helvetica', 'bold');
-                  doc.setFontSize(6);
-                  doc.text(textValue, cell.x + cell.width / 2, cell.y + cell.height / 2 + 1.5, { align: 'center' });
-
+                  if (val === '\u2713') {
+                    doc.setDrawColor(22, 163, 74);
+                    doc.setLineWidth(0.8);
+                    doc.line(centerX - iconSize, centerY, centerX - iconSize / 2, centerY + iconSize);
+                    doc.line(centerX - iconSize / 2, centerY + iconSize, centerX + iconSize, centerY - iconSize);
+                  } else {
+                    doc.setDrawColor(239, 68, 68);
+                    doc.setLineWidth(0.8);
+                    doc.line(centerX - iconSize, centerY - iconSize, centerX + iconSize, centerY + iconSize);
+                    doc.line(centerX + iconSize, centerY - iconSize, centerX - iconSize, centerY + iconSize);
+                  }
                   doc.setDrawColor(200, 200, 200);
+                  doc.setLineWidth(0.05);
                   doc.rect(cell.x, cell.y, cell.width, cell.height);
                 }
+              }
 
-                // Linha de habilidades (segunda linha do head)
-                if (section === 'head' && row.index === 1) {
-                  cell.styles.fillColor = [219, 234, 254];
-                  cell.styles.fontSize = 5;
-                  cell.styles.fontStyle = 'normal';
-                  cell.styles.font = 'courier';
-                }
-                // Linha de % Turma (terceira linha do head)
-                if (section === 'head' && row.index === 2 && column.index > 0 && column.index <= qs.length) {
-                  const textValue = Array.isArray(cell.text) ? cell.text[0] || '' : cell.text || '';
-                  const pct = parseInt((textValue as string).replace(/[^0-9]/g, ''));
-                  if (!isNaN(pct)) {
-                    if (pct >= 60) {
-                      cell.styles.fillColor = [220, 252, 231];
-                      cell.styles.textColor = [22, 163, 74];
-                    } else {
-                      cell.styles.fillColor = [254, 226, 226];
-                      cell.styles.textColor = [239, 68, 68];
-                    }
-                    cell.styles.fontStyle = 'bold';
-                    cell.styles.fontSize = 5;
+              // Colorir coluna de nível
+              if (section === 'body' && column.index === qs.length + 4) {
+                const textValue = (Array.isArray(cell.text) ? cell.text[0] : cell.text || '').toString().trim();
+                const [r, g, b] = generateClassificationColor(textValue);
+
+                doc.setFillColor(r, g, b);
+                doc.rect(cell.x, cell.y, cell.width, cell.height, 'F');
+
+                doc.setTextColor(255, 255, 255);
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(6);
+                doc.text(textValue, cell.x + cell.width / 2, cell.y + cell.height / 2 + 1.5, { align: 'center' });
+
+                doc.setDrawColor(200, 200, 200);
+                doc.rect(cell.x, cell.y, cell.width, cell.height);
+              }
+
+              // Linha de habilidades (segunda linha do head)
+              if (section === 'head' && row.index === 1) {
+                cell.styles.fillColor = [219, 234, 254];
+                cell.styles.fontSize = 5;
+                cell.styles.fontStyle = 'normal';
+                cell.styles.font = 'courier';
+              }
+              // Linha de % Turma (terceira linha do head)
+              if (section === 'head' && row.index === 2 && column.index > 0 && column.index <= qs.length) {
+                const textValue = Array.isArray(cell.text) ? cell.text[0] || '' : cell.text || '';
+                const pct = parseInt((textValue as string).replace(/[^0-9]/g, ''));
+                if (!isNaN(pct)) {
+                  if (pct >= 60) {
+                    cell.styles.fillColor = [220, 252, 231];
+                    cell.styles.textColor = [22, 163, 74];
+                  } else {
+                    cell.styles.fillColor = [254, 226, 226];
+                    cell.styles.textColor = [239, 68, 68];
                   }
+                  cell.styles.fontStyle = 'bold';
+                  cell.styles.fontSize = 5;
                 }
-              },
-            });
-
-            // Rodapé
-            doc.setFontSize(8);
-            doc.setTextColor(100, 100, 100);
-            doc.text('Afirme Play Soluções Educativas', landscapeMargin, landscapeHeight - 8);
-            doc.text(`Página ${pageCount}`, landscapeWidth / 2, landscapeHeight - 8, { align: 'center' });
-            doc.text(new Date().toLocaleString('pt-BR'), landscapeWidth - landscapeMargin, landscapeHeight - 8, { align: 'right' });
+              }
+            },
           });
+
+          // Rodapé
+          doc.setFontSize(8);
+          doc.setTextColor(100, 100, 100);
+          doc.text('Afirme Play Soluções Educativas', landscapeMargin, landscapeHeight - 8);
+          doc.text(`Página ${pageCount}`, landscapeWidth / 2, landscapeHeight - 8, { align: 'center' });
+          doc.text(new Date().toLocaleString('pt-BR'), landscapeWidth - landscapeMargin, landscapeHeight - 8, { align: 'right' });
         });
       };
 
-      // Renderizar páginas por disciplina, se disponíveis
-      if (tabelaDetalhada && Array.isArray(tabelaDetalhada.disciplinas) && tabelaDetalhada.disciplinas.length > 0) {
-        renderDisciplineTablesPages();
-      }
+      // ====== ESTRUTURA PRINCIPAL: Reorganizar por turma ======
+      // Agrupar alunos por turma
+      const turmasMap = new Map<string, StudentResult[]>();
+      students.forEach(s => {
+        const turma = s.turma || 'Sem Turma';
+        if (!turmasMap.has(turma)) {
+          turmasMap.set(turma, []);
+        }
+        turmasMap.get(turma)!.push(s);
+      });
+      
+      // Ordenar turmas alfabeticamente
+      const turmasOrdenadas = Array.from(turmasMap.keys()).sort((a, b) => a.localeCompare(b));
+      
+      // Para cada turma, renderizar todas as seções na ordem correta
+      turmasOrdenadas.forEach(turmaName => {
+        const alunosTurma = turmasMap.get(turmaName) || [];
+        if (alunosTurma.length === 0) return;
+        
+        // 1. RELATÓRIO DE DESEMPENHO GERAL (resumo)
+        if ((detailedReport?.questoes?.length || 0) > 0) {
+          renderSummaryPageForTurma(turmaName, alunosTurma);
+        }
+        
+        // 2. VISÃO GRÁFICA DOS RESULTADOS (gráficos)
+        if (alunosTurma.length > 0) {
+          renderChartsForTurma(turmaName, alunosTurma);
+        }
+        
+        // 3. Resultado geral (tabela detalhada landscape)
+        if ((detailedReport?.questoes?.length || 0) > 0) {
+          renderDetailedPageForTurma('GERAL', turmaName, alunosTurma, detailedReport?.questoes || []);
+        }
+        
+        // 4. Resultado por disciplina (tabelas por disciplina)
+        if (tabelaDetalhada && Array.isArray(tabelaDetalhada.disciplinas) && tabelaDetalhada.disciplinas.length > 0) {
+          renderDisciplineTablesPagesForTurma(turmaName, alunosTurma);
+        }
+      });
 
       // Salvar PDF
       const fileName = `relatorio-${evaluationInfo.titulo?.replace(/[^a-zA-Z0-9]/g, '-') || 'avaliacao'}-${new Date().toISOString().split('T')[0]}.pdf`;
