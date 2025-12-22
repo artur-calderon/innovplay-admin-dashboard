@@ -337,8 +337,6 @@ export default function AcertoNiveis() {
     if (estadoValor) filters.estado = estadoValor;
     if (selectedMunicipality) filters.municipio = selectedMunicipality;
     filters.avaliacao = evaluationId;
-    
-    // Passar IDs diretamente (backend espera IDs)
     if (overrides.schoolId) filters.escola = overrides.schoolId;
     if (overrides.gradeId) filters.serie = overrides.gradeId;
     if (overrides.classId) filters.turma = overrides.classId;
@@ -837,10 +835,14 @@ export default function AcertoNiveis() {
     try {
       setIsLoading(true);
       
-      // Recarregar dados com filtro de turma (usando ID da turma)
+      // Obter nome da turma a partir do ID para passar ao filtro
+      const selectedClass = classes.find(c => c.id === classId);
+      const className = selectedClass?.nome || classId;
+      
+      // Recarregar dados com filtro de turma (usando nome da turma)
       const { students: fetchedStudents, report, tabelaDetalhada: tabela, estatisticas, opcoesProximosFiltros: opcoes } = await fetchEvaluationData(
         selectedEvaluationId,
-        { schoolId: selectedSchoolId, gradeId: selectedGradeId, classId: classId }
+        { schoolId: selectedSchoolId, gradeId: selectedGradeId, classId: className }
       );
       
       setStudents(fetchedStudents);
@@ -1200,7 +1202,7 @@ export default function AcertoNiveis() {
       };
 
       // Função para adicionar cabeçalho
-      const addHeader = (title: string): number => {
+      const addHeader = (title: string, turmaOverride?: string): number => {
         const centerX = pageWidth / 2;
         let y = 20;
         
@@ -1222,7 +1224,9 @@ export default function AcertoNiveis() {
           doc.text(`Série: ${serieText}`, centerX, y, { align: 'center' });
           y += 5;
         }
-        doc.text(`Turma: ${students[0]?.turma || 'N/A'}`, centerX, y, { align: 'center' });
+        // Usar turmaOverride se fornecido, caso contrário usar getTurmaText() ou students[0]?.turma
+        const turmaText = turmaOverride !== undefined ? turmaOverride : (selectedClassId ? classes.find(c => c.id === selectedClassId)?.nome || 'Selecionada' : (students[0]?.turma || 'Todas'));
+        doc.text(`Turma: ${turmaText}`, centerX, y, { align: 'center' });
         y += 8;
         
         // Barra cinza com título
@@ -1282,10 +1286,11 @@ export default function AcertoNiveis() {
         x: number,
         y: number,
         w: number,
-        h: number
+        h: number,
+        studentsToUse: StudentResult[] = students
       ) => {
         const categorias = ['Abaixo do Básico', 'Básico', 'Adequado', 'Avançado'];
-        const concluidos = students.filter(s => s.status === 'concluida');
+        const concluidos = studentsToUse.filter(s => s.status === 'concluida');
         const counts = categorias.map(c => concluidos.filter(s => s.classificacao === c).length);
         const total = Math.max(1, concluidos.length);
         const barAreaW = w - 80; // espaço para labels e números
@@ -1319,11 +1324,12 @@ export default function AcertoNiveis() {
         y: number,
         w: number,
         h: number,
-        qs: typeof detailedReport.questoes
+        qs: typeof detailedReport.questoes,
+        studentsToUse: StudentResult[] = students
       ) => {
         if (!qs || qs.length === 0) return;
         // Recalcular % de acerto usando a mesma regra dos ícones (getAnswer)
-        const completed = students.filter(s => s.status === 'concluida');
+        const completed = studentsToUse.filter(s => s.status === 'concluida');
         const denom = Math.max(1, completed.length);
         // counts: número absoluto de acertos por questão; values: percentual
         const counts = qs.map(q => {
@@ -1379,21 +1385,27 @@ export default function AcertoNiveis() {
         });
       };
 
-      // Função para gerar página de resumo
-      const renderSummaryPage = () => {
+      // Função para gerar página de resumo para uma turma específica
+      const renderSummaryPageForTurma = (turmaName: string, alunosTurma: StudentResult[], isFirstTurma: boolean = false) => {
+        if (alunosTurma.length === 0) return;
+        
+        // Adicionar nova página se não for a primeira turma (primeira turma usa a página inicial do documento)
+        if (!isFirstTurma) {
+          doc.addPage();
+        }
         pageCount++;
         
         const title = `RELATÓRIO DE DESEMPENHO GERAL`;
         const questoes: typeof detailedReport.questoes = detailedReport?.questoes || [];
         
-        const startY = addHeader(title);
+        const startY = addHeader(title, turmaName);
         const availableWidth = pageWidth - (2 * margin);
         const nameWidth = Math.min(140, availableWidth * 0.5);
         const otherWidth = (availableWidth - nameWidth) / 3;
         
         // Preparar dados da tabela (usando sempre a mesma regra de acerto)
         const bodyRows: (string | number)[][] = [];
-        const completedStudents = students.filter(s => s.status === 'concluida');
+        const completedStudents = alunosTurma.filter(s => s.status === 'concluida');
         
         completedStudents.forEach((s, i) => {
           const subset = questoes;
@@ -1466,9 +1478,9 @@ export default function AcertoNiveis() {
         addFooter(pageCount);
       };
 
-      // Função para gerar página detalhada (landscape)
-      const renderDetailedPage = (subtitle: string, questoes: typeof detailedReport.questoes) => {
-        if (!questoes || questoes.length === 0) return;
+      // Função para gerar página detalhada (landscape) para uma turma específica
+      const renderDetailedPageForTurma = (subtitle: string, turmaName: string, alunosTurma: StudentResult[], questoes: typeof detailedReport.questoes) => {
+        if (!questoes || questoes.length === 0 || alunosTurma.length === 0) return;
         // Ordenar questões
         questoes = sortQuestoes(questoes);
         
@@ -1486,7 +1498,7 @@ export default function AcertoNiveis() {
         doc.text(`${evaluationInfo.titulo} - ${subtitle}`, landscapeWidth / 2, y, { align: 'center' });
         y += 5;
         doc.setFontSize(10);
-        doc.text(`Turma: ${students[0]?.turma || 'N/A'}`, landscapeWidth / 2, y, { align: 'center' });
+        doc.text(`Turma: ${turmaName}`, landscapeWidth / 2, y, { align: 'center' });
         y += 10;
         
         // Preparar cabeçalhos
@@ -1501,8 +1513,8 @@ export default function AcertoNiveis() {
           headerRow2.push(habilidade);
         });
 
-        // Recalcular % da turma baseado nas respostas reais
-        const completedStudentsLocal = students.filter(s => s.status === 'concluida');
+        // Recalcular % da turma baseado nas respostas reais (apenas alunos desta turma)
+        const completedStudentsLocal = alunosTurma.filter(s => s.status === 'concluida');
         const denomLocal = Math.max(1, completedStudentsLocal.length);
         questoes.forEach(q => {
           let correct = 0;
@@ -1516,9 +1528,9 @@ export default function AcertoNiveis() {
         headerRow2.push("", "", "");
         headerRow3.push("", "", "");
         
-        // Preparar dados dos alunos
+        // Preparar dados dos alunos (apenas desta turma)
         const bodyRows: (string | number)[][] = [];
-        const completedStudents = students.filter(s => s.status === 'concluida');
+        const completedStudents = alunosTurma.filter(s => s.status === 'concluida');
         
         completedStudents.forEach(s => {
           const row: (string | number)[] = [s.nome];
@@ -1708,41 +1720,36 @@ export default function AcertoNiveis() {
         doc.text(new Date().toLocaleString('pt-BR'), landscapeWidth - landscapeMargin, landscapeHeight - 8, { align: 'right' });
       };
 
-      // Gerar páginas do PDF
-      // Página Geral (única)
-      if ((detailedReport?.questoes?.length || 0) > 0) {
-        renderSummaryPage();
-      }
-
-      // Página de Gráficos (sempre que houver dados)
-      if ((students?.length || 0) > 0) {
+      // Função para renderizar gráficos para uma turma específica
+      const renderChartsForTurma = (turmaName: string, alunosTurma: StudentResult[]) => {
+        if (alunosTurma.length === 0) return;
+        
         if (pageCount > 0) doc.addPage();
         pageCount++;
-        const yCharts = addHeader('VISÃO GRÁFICA DOS RESULTADOS');
+        const yCharts = addHeader('VISÃO GRÁFICA DOS RESULTADOS', turmaName);
         const chartsTop = yCharts + 2;
         const chartsLeft = margin;
         const chartsWidth = pageWidth - 2 * margin;
         const chartsHeight = pageHeight - chartsTop - margin - 6;
         // Metade superior: distribuição por classificação
-        drawClassificationChart(chartsLeft, chartsTop, chartsWidth, Math.floor(chartsHeight * 0.38));
+        drawClassificationChart(chartsLeft, chartsTop, chartsWidth, Math.floor(chartsHeight * 0.38), alunosTurma);
         // Metade inferior: acerto por questão geral
         const qsAll = sortQuestoes(detailedReport?.questoes || []);
-        drawQuestionAccuracyChart(chartsLeft, chartsTop + Math.floor(chartsHeight * 0.55), chartsWidth, Math.floor(chartsHeight * 0.4), qsAll);
+        drawQuestionAccuracyChart(chartsLeft, chartsTop + Math.floor(chartsHeight * 0.55), chartsWidth, Math.floor(chartsHeight * 0.4), qsAll, alunosTurma);
         addFooter(pageCount);
-      }
-      
-      // Página detalhada geral
-      if ((detailedReport?.questoes?.length || 0) > 0) {
-        renderDetailedPage('GERAL', detailedReport?.questoes || []);
-      }
+      };
 
       // ====== Páginas por disciplina (consumindo diretamente tabela_detalhada) ======
-      const renderDisciplineTablesPages = () => {
+      const renderDisciplineTablesPagesForTurma = (turmaName: string, alunosTurma: StudentResult[]) => {
         if (!tabelaDetalhada || !Array.isArray(tabelaDetalhada.disciplinas)) return;
         const disciplinas = tabelaDetalhada.disciplinas;
 
         disciplinas.forEach((disc) => {
           if (!Array.isArray(disc.questoes) || disc.questoes.length === 0) return;
+
+          // Filtrar alunos da disciplina para incluir apenas os da turma específica
+          const alunosTurmaDisciplina = (disc.alunos || []).filter(al => al.turma === turmaName);
+          if (alunosTurmaDisciplina.length === 0) return; // Pular se não houver alunos desta turma nesta disciplina
 
           // Ordenar questões por número
           const qs = [...disc.questoes].sort((a, b) => (a?.numero || 0) - (b?.numero || 0));
@@ -1764,8 +1771,8 @@ export default function AcertoNiveis() {
           y += 5;
           doc.setFontSize(10);
           const escolaText = selectedSchoolId ? (schools.find(s => s.id === selectedSchoolId)?.nome || '') : 'Todas as Escolas';
-          // Participantes (para série e % por questão)
-          const alunosParticipantes = (disc.alunos || []).filter(al => Array.isArray(al.respostas_por_questao) && al.respostas_por_questao.some(r => r.respondeu));
+          // Participantes (para série e % por questão) - apenas da turma específica
+          const alunosParticipantes = alunosTurmaDisciplina.filter(al => Array.isArray(al.respostas_por_questao) && al.respostas_por_questao.some(r => r.respondeu));
           // Série: priorizar seleção atual; depois heurística global; depois inferir pelas turmas dos participantes; por fim evaluationInfo
           const serieHeuristicaGlobal = getHeaderSerieText();
           let serieText = selectedGradeId ? (grades.find(g => g.id === selectedGradeId)?.nome || '') : (serieHeuristicaGlobal || '');
@@ -1781,20 +1788,20 @@ export default function AcertoNiveis() {
               serieText = evaluationInfo.serie;
             }
           }
-          doc.text(`Escola: ${escolaText}  •  Série: ${serieText || 'N/A'}  •  Turma: ${students[0]?.turma || 'N/A'}`, landscapeWidth / 2, y, { align: 'center' });
+          doc.text(`Escola: ${escolaText}  •  Série: ${serieText || 'N/A'}  •  Turma: ${turmaName}`, landscapeWidth / 2, y, { align: 'center' });
           y += 8;
 
           // Cabeçalhos múltiplos
           const headerRow1 = ['Aluno'];
           const headerRow2 = ['Habilidade'];
           const headerRow3 = ['% Turma'];
-          // Participantes já calculados acima
+          // Participantes já calculados acima (apenas da turma específica)
           const denomLocal = Math.max(1, alunosParticipantes.length);
           qs.forEach(q => {
             headerRow1.push(`Q${q.numero}`);
             const hab = (q.codigo_habilidade || q.habilidade || '').toString();
             headerRow2.push(hab);
-            // % Turma por questão (entre participantes)
+            // % Turma por questão (entre participantes da turma específica)
             let correct = 0;
             alunosParticipantes.forEach(s => {
               const r = (s.respostas_por_questao || []).find(rr => rr.questao === q.numero);
@@ -1807,9 +1814,9 @@ export default function AcertoNiveis() {
           headerRow2.push('', '', '', '');
           headerRow3.push('', '', '', '');
 
-          // Linhas de alunos (usar somente dados do backend)
+          // Linhas de alunos (usar somente dados do backend, apenas da turma específica)
           const bodyRows: (string | number)[][] = [];
-          (disc.alunos || []).forEach(al => {
+          alunosTurmaDisciplina.forEach(al => {
             // Ignorar alunos faltosos: manter apenas quem respondeu ao menos uma questão
             const hasAnsweredAny = Array.isArray(al.respostas_por_questao)
               ? al.respostas_por_questao.some(r => r.respondeu)
@@ -1967,10 +1974,47 @@ export default function AcertoNiveis() {
         });
       };
 
-      // Renderizar páginas por disciplina, se disponíveis
-      if (tabelaDetalhada && Array.isArray(tabelaDetalhada.disciplinas) && tabelaDetalhada.disciplinas.length > 0) {
-        renderDisciplineTablesPages();
-      }
+      // ====== ESTRUTURA PRINCIPAL: Reorganizar por turma ======
+      // Agrupar alunos por turma
+      const turmasMap = new Map<string, StudentResult[]>();
+      students.forEach(s => {
+        const turma = s.turma || 'Sem Turma';
+        if (!turmasMap.has(turma)) {
+          turmasMap.set(turma, []);
+        }
+        turmasMap.get(turma)!.push(s);
+      });
+      
+      // Ordenar turmas alfabeticamente
+      const turmasOrdenadas = Array.from(turmasMap.keys()).sort((a, b) => a.localeCompare(b));
+      
+      // Para cada turma, renderizar todas as seções na ordem correta
+      turmasOrdenadas.forEach((turmaName, turmaIndex) => {
+        const alunosTurma = turmasMap.get(turmaName) || [];
+        if (alunosTurma.length === 0) return;
+        
+        const isFirstTurma = turmaIndex === 0;
+        
+        // 1. RELATÓRIO DE DESEMPENHO GERAL (resumo)
+        if ((detailedReport?.questoes?.length || 0) > 0) {
+          renderSummaryPageForTurma(turmaName, alunosTurma, isFirstTurma);
+        }
+        
+        // 2. VISÃO GRÁFICA DOS RESULTADOS (gráficos)
+        if (alunosTurma.length > 0) {
+          renderChartsForTurma(turmaName, alunosTurma);
+        }
+        
+        // 3. Resultado geral (tabela detalhada landscape)
+        if ((detailedReport?.questoes?.length || 0) > 0) {
+          renderDetailedPageForTurma('GERAL', turmaName, alunosTurma, detailedReport?.questoes || []);
+        }
+        
+        // 4. Resultado por disciplina (tabelas por disciplina)
+        if (tabelaDetalhada && Array.isArray(tabelaDetalhada.disciplinas) && tabelaDetalhada.disciplinas.length > 0) {
+          renderDisciplineTablesPagesForTurma(turmaName, alunosTurma);
+        }
+      });
 
       // Salvar PDF
       const fileName = `relatorio-${evaluationInfo.titulo?.replace(/[^a-zA-Z0-9]/g, '-') || 'avaliacao'}-${new Date().toISOString().split('T')[0]}.pdf`;
