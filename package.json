@@ -82,6 +82,7 @@
     "cmdk": "^1.0.0",
     "date-fns": "^3.6.0",
     "embla-carousel-react": "^8.3.0",
+    "exceljs": "^4.4.0",
     "file-saver": "^2.0.5",
     "html2canvas": "^1.4.1",
     "input-otp": "^1.2.4",
@@ -114,6 +115,7 @@
     "tiptap-extension-resize-image": "github:bae-sh/tiptap-extension-resize-image",
     "vaul": "^0.9.3",
     "xlsx": "^0.18.5",
+    "xlsx-js-style": "^1.2.0",
     "zod": "^3.23.8",
     "zustand": "^5.0.4"
   },
