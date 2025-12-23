@@ -7,7 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { TrendingUp, Users, Target, Award, Filter, RefreshCw, Download, Plus, X, Check, AlertCircle, Search, Calendar, List } from 'lucide-react';
+import { TrendingUp, Users, Target, Award, Filter, RefreshCw, Download, Plus, X, Check, AlertCircle, Search, Calendar, List, Table } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/authContext';
 import { api } from '@/lib/api';
@@ -17,6 +17,7 @@ import { EvolutionCharts } from '@/components/evolution/EvolutionCharts';
 import type { ProcessedEvolutionData } from '@/components/evolution/EvolutionCharts';
 import { processComparisonData } from '@/utils/evolutionDataProcessor';
 import { generateEvolutionPDFFromHTML } from '@/utils/evolutionPdfService';
+import { exportEvolutionToExcel } from '@/utils/evolutionExcelExport';
 
 // Interfaces para os filtros
 interface State {
@@ -89,6 +90,7 @@ export default function Evolution() {
   const [isLoadingFilters, setIsLoadingFilters] = useState(false);
   const [isLoadingComparison, setIsLoadingComparison] = useState(false);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [comparisonData, setComparisonData] = useState<ComparisonResponse | null>(null);
   const [processedData, setProcessedData] = useState<ProcessedEvolutionData | null>(null);
   const [comparisonError, setComparisonError] = useState<string | null>(null);
@@ -894,45 +896,83 @@ export default function Evolution() {
           )}
           
           {comparisonData && processedData && (
-            <Button 
-              onClick={async () => {
-                if (!processedData || !comparisonData) {
-                  toast({
-                    title: "Dados insuficientes",
-                    description: "Não há dados disponíveis para gerar o relatório.",
-                    variant: "destructive",
-                  });
-                  return;
-                }
+            <>
+              <Button 
+                onClick={async () => {
+                  if (!processedData || !comparisonData) {
+                    toast({
+                      title: "Dados insuficientes",
+                      description: "Não há dados disponíveis para gerar o relatório.",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
 
-                try {
-                  setIsGeneratingPDF(true);
-                  await generateEvolutionPDFFromHTML(
-                    processedData,
-                    comparisonData,
-                    processedData.evaluationNames
-                  );
-                  toast({
-                    title: "PDF gerado com sucesso!",
-                    description: "O relatório foi salvo no seu dispositivo.",
-                  });
-                } catch (error) {
-                  console.error('Erro ao gerar PDF:', error);
-                  toast({
-                    title: "Erro ao gerar PDF",
-                    description: "Não foi possível gerar o relatório. Tente novamente.",
-                    variant: "destructive",
-                  });
-                } finally {
-                  setIsGeneratingPDF(false);
-                }
-              }}
-              disabled={isGeneratingPDF || !processedData || !comparisonData}
-              className="w-full sm:w-auto bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
-            >
-              <Download className={`h-4 w-4 mr-2 ${isGeneratingPDF ? 'animate-spin' : ''}`} />
-              {isGeneratingPDF ? 'Gerando PDF...' : 'Exportar Relatório'}
-            </Button>
+                  try {
+                    setIsGeneratingPDF(true);
+                    await generateEvolutionPDFFromHTML(
+                      processedData,
+                      comparisonData,
+                      processedData.evaluationNames
+                    );
+                    toast({
+                      title: "PDF gerado com sucesso!",
+                      description: "O relatório foi salvo no seu dispositivo.",
+                    });
+                  } catch (error) {
+                    console.error('Erro ao gerar PDF:', error);
+                    toast({
+                      title: "Erro ao gerar PDF",
+                      description: "Não foi possível gerar o relatório. Tente novamente.",
+                      variant: "destructive",
+                    });
+                  } finally {
+                    setIsGeneratingPDF(false);
+                  }
+                }}
+                disabled={isGeneratingPDF || isExportingExcel || !processedData || !comparisonData}
+                className="w-full sm:w-auto bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+              >
+                <Download className={`h-4 w-4 mr-2 ${isGeneratingPDF ? 'animate-spin' : ''}`} />
+                {isGeneratingPDF ? 'Gerando PDF...' : 'Exportar PDF'}
+              </Button>
+              
+              <Button 
+                onClick={() => {
+                  if (!processedData || !comparisonData) {
+                    toast({
+                      title: "Dados insuficientes",
+                      description: "Não há dados disponíveis para exportar.",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+
+                  try {
+                    setIsExportingExcel(true);
+                    exportEvolutionToExcel(comparisonData, processedData);
+                    toast({
+                      title: "Excel exportado com sucesso!",
+                      description: "O arquivo foi salvo no seu dispositivo.",
+                    });
+                  } catch (error) {
+                    console.error('Erro ao exportar Excel:', error);
+                    toast({
+                      title: "Erro ao exportar Excel",
+                      description: "Não foi possível exportar os dados. Tente novamente.",
+                      variant: "destructive",
+                    });
+                  } finally {
+                    setIsExportingExcel(false);
+                  }
+                }}
+                disabled={isGeneratingPDF || isExportingExcel || !processedData || !comparisonData}
+                className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+              >
+                <Table className={`h-4 w-4 mr-2 ${isExportingExcel ? 'animate-spin' : ''}`} />
+                {isExportingExcel ? 'Exportando...' : 'Exportar Excel'}
+              </Button>
+            </>
           )}
         </div>
 
