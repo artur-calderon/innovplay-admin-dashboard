@@ -196,7 +196,7 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
           aluno.total_questoes_disciplina ?? aluno.respostas_por_questao?.length ?? 0;
         const totalRespondidas = aluno.total_respondidas ?? totalQuestoesDisciplina;
         const totalAcertos = aluno.total_acertos ?? 0;
-        const totalEmBranco = aluno.total_em_branco ?? Math.max(0, totalQuestoesDisciplina - totalRespondidas);
+        const totalEmBranco = Math.max(0, totalQuestoesDisciplina - totalRespondidas);
         const totalErros = aluno.total_erros ?? Math.max(0, totalRespondidas - totalAcertos - totalEmBranco);
 
         student = {
@@ -209,7 +209,7 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
           acertos: totalAcertos,
           erros: totalErros,
           questoes_respondidas: totalRespondidas,
-          status: (aluno.status ?? 'pendente') === 'concluida' ? 'concluida' : 'pendente',
+          status: 'pendente',
           respostas: {}
         };
         studentsMap.set(aluno.id, student);
@@ -236,13 +236,15 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
           aluno.total_questoes_disciplina ?? aluno.respostas_por_questao?.length ?? 0;
         const totalRespondidas = aluno.total_respondidas ?? totalQuestoesDisciplina;
         const totalAcertos = aluno.total_acertos ?? 0;
-        const totalEmBranco = aluno.total_em_branco ?? Math.max(0, totalQuestoesDisciplina - totalRespondidas);
+        const totalEmBranco = Math.max(0, totalQuestoesDisciplina - totalRespondidas);
         const totalErros = aluno.total_erros ?? Math.max(0, totalRespondidas - totalAcertos - totalEmBranco);
 
         student.acertos += totalAcertos;
         student.erros += totalErros;
         student.questoes_respondidas += totalRespondidas || totalQuestoesDisciplina;
-        if (student.status !== 'concluida' && (aluno.status ?? '') === 'concluida') {
+        // Verificar se o aluno respondeu alguma questão para determinar status
+        const hasAnsweredAny = Array.isArray(aluno.respostas_por_questao) && aluno.respostas_por_questao.some(r => r.respondeu);
+        if (hasAnsweredAny && student.status !== 'concluida') {
           student.status = 'concluida';
         }
         if (!student.classificacao || student.classificacao === 'Abaixo do Básico') {
@@ -298,6 +300,11 @@ export default function AcertoNiveis() {
     serie?: string;
     escola?: string;
     municipio?: string;
+    total_alunos?: number;
+    alunos_participantes?: number;
+    alunos_ausentes?: number;
+    media_nota_geral?: number;
+    media_proficiencia_geral?: number;
     [key: string]: unknown;
   } | null>(null);
   // Estado para opcoes_proximos_filtros (para obter série correta do endpoint)
@@ -314,11 +321,12 @@ export default function AcertoNiveis() {
     return /^(LP\d+L\d+\.\d+|\d+N\d\.\d+|[A-Z]{2}\d+L\d+\.\d+|\d+[LMSN]\d+\.\d+|\d+\s+[LMSN]\s+\d+\.\d+)$/.test(v);
   };
 
-  const getStateFilterValue = () => {
+
+  const getStateFilterValue = React.useCallback(() => {
     if (!selectedState) return undefined;
     const stateObj = states.find((state) => state.id === selectedState);
     return stateObj?.nome || selectedState;
-  };
+  }, [selectedState, states]);
 
   const buildUnifiedFilters = React.useCallback((
     evaluationId: string,
@@ -342,7 +350,7 @@ export default function AcertoNiveis() {
     if (overrides.classId) filters.turma = overrides.classId;
 
     return filters;
-  }, [selectedMunicipality, selectedState, states]);
+  }, [selectedMunicipality, getStateFilterValue]);
 
   const fetchEvaluationData = React.useCallback(
     async (
@@ -708,8 +716,8 @@ export default function AcertoNiveis() {
         setStudents(fetchedStudents);
         setDetailedReport(report || null);
         setTabelaDetalhada(tabela || null);
-        if (estatisticas) setEstatisticasGerais(estatisticas);
-        if (opcoes) setOpcoesProximosFiltros(opcoes);
+        if (estatisticas) setEstatisticasGerais(estatisticas as unknown as { [key: string]: unknown; serie?: string; escola?: string; municipio?: string; total_alunos?: number; alunos_participantes?: number; alunos_ausentes?: number; media_nota_geral?: number; media_proficiencia_geral?: number; } | null);
+        if (opcoes) setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
       } catch (e) {
         toast({ title: "Erro", description: "Não foi possível recarregar os dados", variant: "destructive" });
       } finally {
@@ -739,8 +747,8 @@ export default function AcertoNiveis() {
       setStudents(fetchedStudents);
       setDetailedReport(report || null);
       setTabelaDetalhada(tabela || null);
-      if (estatisticas) setEstatisticasGerais(estatisticas);
-      if (opcoes) setOpcoesProximosFiltros(opcoes);
+      if (estatisticas) setEstatisticasGerais(estatisticas as unknown as { [key: string]: unknown; serie?: string; escola?: string; municipio?: string; total_alunos?: number; alunos_participantes?: number; alunos_ausentes?: number; media_nota_geral?: number; media_proficiencia_geral?: number; } | null);
+      if (opcoes) setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
       
     } catch (e) {
       toast({ title: "Erro", description: "Não foi possível carregar dados da escola", variant: "destructive" });
@@ -766,8 +774,8 @@ export default function AcertoNiveis() {
         setStudents(fetchedStudents);
         setDetailedReport(report || null);
         setTabelaDetalhada(tabela || null);
-        if (estatisticas) setEstatisticasGerais(estatisticas);
-        if (opcoes) setOpcoesProximosFiltros(opcoes);
+        if (estatisticas) setEstatisticasGerais(estatisticas as unknown as { [key: string]: unknown; serie?: string; escola?: string; municipio?: string; total_alunos?: number; alunos_participantes?: number; alunos_ausentes?: number; media_nota_geral?: number; media_proficiencia_geral?: number; } | null);
+        if (opcoes) setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
       } catch (e) {
         toast({ title: "Erro", description: "Não foi possível recarregar os dados", variant: "destructive" });
       } finally {
@@ -795,8 +803,8 @@ export default function AcertoNiveis() {
         setStudents(fetchedStudents);
         setDetailedReport(report || null);
         setTabelaDetalhada(tabela || null);
-        if (estatisticas) setEstatisticasGerais(estatisticas);
-        if (opcoes) setOpcoesProximosFiltros(opcoes);
+        if (estatisticas) setEstatisticasGerais(estatisticas as unknown as { [key: string]: unknown; serie?: string; escola?: string; municipio?: string; total_alunos?: number; alunos_participantes?: number; alunos_ausentes?: number; media_nota_geral?: number; media_proficiencia_geral?: number; } | null);
+        if (opcoes) setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
     } catch (e) {
       toast({ title: "Erro", description: "Não foi possível carregar turmas", variant: "destructive" });
     } finally {
@@ -821,8 +829,8 @@ export default function AcertoNiveis() {
         setStudents(fetchedStudents);
         setDetailedReport(report || null);
         setTabelaDetalhada(tabela || null);
-        if (estatisticas) setEstatisticasGerais(estatisticas);
-        if (opcoes) setOpcoesProximosFiltros(opcoes);
+        if (estatisticas) setEstatisticasGerais(estatisticas as unknown as { [key: string]: unknown; serie?: string; escola?: string; municipio?: string; total_alunos?: number; alunos_participantes?: number; alunos_ausentes?: number; media_nota_geral?: number; media_proficiencia_geral?: number; } | null);
+        if (opcoes) setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
       } catch (e) {
         toast({ title: "Erro", description: "Não foi possível recarregar os dados", variant: "destructive" });
       } finally {
@@ -848,8 +856,8 @@ export default function AcertoNiveis() {
       setStudents(fetchedStudents);
       setDetailedReport(report || null);
       setTabelaDetalhada(tabela || null);
-      if (estatisticas) setEstatisticasGerais(estatisticas);
-      if (opcoes) setOpcoesProximosFiltros(opcoes);
+      if (estatisticas) setEstatisticasGerais(estatisticas as unknown as { [key: string]: unknown; serie?: string; escola?: string; municipio?: string; total_alunos?: number; alunos_participantes?: number; alunos_ausentes?: number; media_nota_geral?: number; media_proficiencia_geral?: number; } | null);
+      if (opcoes) setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
       
     } catch (e) {
       toast({ title: "Erro", description: "Não foi possível carregar dados da turma", variant: "destructive" });
@@ -882,12 +890,12 @@ export default function AcertoNiveis() {
         await fetchEvaluationData(evaluationId);
       
       // Armazenar estatísticas gerais e opcoes_proximos_filtros para uso na exibição
-      if (estatisticas) {
-        setEstatisticasGerais(estatisticas);
-      }
-      if (opcoes) {
-        setOpcoesProximosFiltros(opcoes);
-      }
+        if (estatisticas) {
+          setEstatisticasGerais(estatisticas as unknown as { [key: string]: unknown; serie?: string; escola?: string; municipio?: string; total_alunos?: number; alunos_participantes?: number; alunos_ausentes?: number; media_nota_geral?: number; media_proficiencia_geral?: number; } | null);
+        }
+        if (opcoes) {
+          setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
+        }
 
       if (!info) throw new Error("Avaliação não encontrada");
 
@@ -1157,24 +1165,13 @@ export default function AcertoNiveis() {
       const jsPDF = (await import('jspdf')).default;
       const autoTable = (await import('jspdf-autotable')).default;
 
-      // Documento inteiro em orientação paisagem
+      // Documento começa em landscape para a capa inicial
       const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
       
       let pageCount = 0;
       const margin = 15;
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.getHeight();
-
-      // Função para adicionar rodapé
-      const addFooter = (pageNum: number) => {
-        const centerX = pageWidth / 2;
-        doc.setFontSize(8);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(100, 100, 100);
-        doc.text('Afirme Play Soluções Educativas', margin, pageHeight - 10);
-        doc.text(`Página ${pageNum}`, centerX, pageHeight - 10, { align: 'center' });
-        doc.text(new Date().toLocaleString('pt-BR'), pageWidth - margin, pageHeight - 10, { align: 'right' });
-      };
+      let pageWidth = doc.internal.pageSize.getWidth();
+      let pageHeight = doc.internal.pageSize.getHeight();
 
       // Utilitário: extrair série a partir do nome da turma
       const extractSerieFromTurma = (turma?: string): string | null => {
@@ -1199,6 +1196,308 @@ export default function AcertoNiveis() {
         if (inferred.size === 1) return Array.from(inferred)[0];
         // 3) Caso múltiplas ou nenhuma, omitir para evitar séries não aplicadas
         return null;
+      };
+
+      // Função para adicionar capa inicial
+      const addInitialCover = () => {
+        const centerX = pageWidth / 2;
+        let currentY = 50;
+
+        // Fundo gradiente (simulado com retângulos)
+        const gradientColors = [
+          { r: 37, g: 99, b: 235 }, // blue-600
+          { r: 79, g: 70, b: 229 }, // indigo-600
+        ];
+
+        for (let i = 0; i < pageHeight; i += 2) {
+          const ratio = i / pageHeight;
+          const r = Math.round(gradientColors[0].r + (gradientColors[1].r - gradientColors[0].r) * ratio);
+          const g = Math.round(gradientColors[0].g + (gradientColors[1].g - gradientColors[0].g) * ratio);
+          const b = Math.round(gradientColors[0].b + (gradientColors[1].b - gradientColors[0].b) * ratio);
+          
+          doc.setFillColor(r, g, b);
+          doc.rect(0, i, pageWidth, 2, 'F');
+        }
+
+        // Círculo decorativo
+        doc.setFillColor(100, 130, 255);
+        doc.circle(centerX, 40, 30, 'F');
+
+        // Título principal
+        doc.setFontSize(36);
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Relatório de Desempenho', centerX, currentY, { align: 'center' });
+
+        currentY += 18;
+
+        // Subtítulo
+        doc.setFontSize(18);
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Acerto e Níveis de Proficiência', centerX, currentY, { align: 'center' });
+
+        currentY += 35;
+
+        // Linha decorativa
+        doc.setDrawColor(255, 255, 255);
+        doc.setLineWidth(2);
+        doc.line(centerX - 80, currentY, centerX + 80, currentY);
+
+        currentY += 25;
+
+        // Card de informações (ajustado para landscape - mais largo, menos alto)
+        const cardWidth = pageWidth - 80;
+        const cardHeight = 80;
+        const cardX = (pageWidth - cardWidth) / 2;
+
+        // Fundo do card
+        doc.setFillColor(255, 255, 255);
+        doc.rect(cardX, currentY, cardWidth, cardHeight, 'F');
+        
+        // Borda do card
+        doc.setDrawColor(200, 200, 200);
+        doc.setLineWidth(0.5);
+        doc.rect(cardX, currentY, cardWidth, cardHeight, 'S');
+
+        // Conteúdo do card (layout em duas colunas para landscape)
+        let cardY = currentY + 12;
+
+        // Título do card
+        doc.setFontSize(16);
+        doc.setTextColor(37, 99, 235);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Informações da Avaliação', centerX, cardY, { align: 'center' });
+
+        cardY += 10;
+
+        // Informações em duas colunas
+        doc.setFontSize(10);
+        doc.setTextColor(30, 30, 30);
+        doc.setFont('helvetica', 'normal');
+
+        const leftColX = cardX + 15;
+        const rightColX = cardX + cardWidth / 2 + 10;
+        let leftY = cardY;
+        let rightY = cardY;
+
+        // Coluna esquerda
+        doc.setFont('helvetica', 'bold');
+        doc.text('Avaliação:', leftColX, leftY);
+        doc.setFont('helvetica', 'normal');
+        const avaliacaoText = evaluationInfo.titulo || 'N/A';
+        const avaliacaoLines = doc.splitTextToSize(avaliacaoText, cardWidth / 2 - 30);
+        doc.text(avaliacaoLines, leftColX + 35, leftY);
+        leftY += Math.max(8, avaliacaoLines.length * 5);
+
+        doc.setFont('helvetica', 'bold');
+        doc.text('Município:', leftColX, leftY);
+        doc.setFont('helvetica', 'normal');
+        doc.text(evaluationInfo.municipio || 'N/A', leftColX + 35, leftY);
+        leftY += 8;
+
+        const escolaText = selectedSchoolId ? schools.find(s => s.id === selectedSchoolId)?.nome || 'Escola Selecionada' : 'Todas as Escolas';
+        doc.setFont('helvetica', 'bold');
+        doc.text('Escola:', leftColX, leftY);
+        doc.setFont('helvetica', 'normal');
+        const escolaLines = doc.splitTextToSize(escolaText, cardWidth / 2 - 30);
+        doc.text(escolaLines, leftColX + 35, leftY);
+        leftY += Math.max(8, escolaLines.length * 5);
+
+        // Coluna direita
+        const serieText = getHeaderSerieText();
+        if (serieText) {
+          doc.setFont('helvetica', 'bold');
+          doc.text('Série:', rightColX, rightY);
+          doc.setFont('helvetica', 'normal');
+          doc.text(serieText, rightColX + 30, rightY);
+          rightY += 8;
+        }
+
+        if (evaluationInfo.data_aplicacao) {
+          doc.setFont('helvetica', 'bold');
+          doc.text('Data:', rightColX, rightY);
+          doc.setFont('helvetica', 'normal');
+          doc.text(new Date(evaluationInfo.data_aplicacao).toLocaleDateString('pt-BR'), rightColX + 30, rightY);
+          rightY += 8;
+        }
+
+        // Total de turmas
+        const turmasMap = new Map<string, StudentResult[]>();
+        students.forEach(s => {
+          const turma = s.turma || 'Sem Turma';
+          if (!turmasMap.has(turma)) {
+            turmasMap.set(turma, []);
+          }
+          turmasMap.get(turma)!.push(s);
+        });
+        const totalTurmas = turmasMap.size;
+
+        doc.setFont('helvetica', 'bold');
+        doc.text('Total de Turmas:', rightColX, rightY);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${totalTurmas}`, rightColX + 45, rightY);
+
+        currentY += cardHeight + 20;
+
+        // Data de geração
+        doc.setFontSize(10);
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'italic');
+        const currentDate = new Date().toLocaleDateString('pt-BR', {
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric',
+        });
+        doc.text(`Gerado em ${currentDate}`, centerX, currentY, { align: 'center' });
+
+        // Rodapé da capa
+        currentY = pageHeight - 30;
+        doc.setFontSize(10);
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Afirme Play Soluções Educativas', centerX, currentY, { align: 'center' });
+      };
+
+      // Função para adicionar capa de turma
+      const addTurmaCover = (turmaName: string, alunosTurma: StudentResult[]) => {
+        const centerX = pageWidth / 2;
+        let currentY = 50;
+
+        // Fundo gradiente
+        const gradientColors = [
+          { r: 37, g: 99, b: 235 },
+          { r: 79, g: 70, b: 229 },
+        ];
+
+        for (let i = 0; i < pageHeight; i += 2) {
+          const ratio = i / pageHeight;
+          const r = Math.round(gradientColors[0].r + (gradientColors[1].r - gradientColors[0].r) * ratio);
+          const g = Math.round(gradientColors[0].g + (gradientColors[1].g - gradientColors[0].g) * ratio);
+          const b = Math.round(gradientColors[0].b + (gradientColors[1].b - gradientColors[0].b) * ratio);
+          
+          doc.setFillColor(r, g, b);
+          doc.rect(0, i, pageWidth, 2, 'F');
+        }
+
+        // Círculo decorativo
+        doc.setFillColor(100, 130, 255);
+        doc.circle(centerX, 40, 28, 'F');
+
+        // Título
+        doc.setFontSize(32);
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Análise por Turma', centerX, currentY, { align: 'center' });
+
+        currentY += 18;
+
+        // Nome da turma
+        doc.setFontSize(26);
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.text(turmaName, centerX, currentY, { align: 'center' });
+
+        currentY += 25;
+
+        // Linha decorativa
+        doc.setDrawColor(255, 255, 255);
+        doc.setLineWidth(2);
+        doc.line(centerX - 80, currentY, centerX + 80, currentY);
+
+        currentY += 25;
+
+        // Card de informações da turma (ajustado para landscape)
+        const cardWidth = pageWidth - 80;
+        const cardHeight = 70;
+        const cardX = (pageWidth - cardWidth) / 2;
+
+        // Fundo do card
+        doc.setFillColor(255, 255, 255);
+        doc.rect(cardX, currentY, cardWidth, cardHeight, 'F');
+        
+        // Borda do card
+        doc.setDrawColor(200, 200, 200);
+        doc.setLineWidth(0.5);
+        doc.rect(cardX, currentY, cardWidth, cardHeight, 'S');
+
+        // Conteúdo do card
+        let cardY = currentY + 15;
+
+        // Título do card
+        doc.setFontSize(14);
+        doc.setTextColor(37, 99, 235);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Estatísticas da Turma', centerX, cardY, { align: 'center' });
+
+        cardY += 12;
+
+        // Estatísticas
+        doc.setFontSize(11);
+        doc.setTextColor(30, 30, 30);
+        doc.setFont('helvetica', 'normal');
+
+        const concluidos = alunosTurma.filter(s => s.status === 'concluida');
+        const totalAlunos = alunosTurma.length;
+        const mediaNota = concluidos.length > 0 
+          ? (concluidos.reduce((sum, s) => sum + s.nota, 0) / concluidos.length).toFixed(1)
+          : '0.0';
+        const mediaProficiencia = concluidos.length > 0
+          ? (concluidos.reduce((sum, s) => sum + s.proficiencia, 0) / concluidos.length).toFixed(1)
+          : '0.0';
+
+        // Layout em duas colunas
+        const leftCol = cardX + 10;
+        const rightCol = cardX + cardWidth / 2 + 10;
+
+        doc.setFont('helvetica', 'bold');
+        doc.text('Total de Alunos:', leftCol, cardY);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${totalAlunos}`, leftCol + 45, cardY);
+
+        doc.setFont('helvetica', 'bold');
+        doc.text('Alunos Concluíram:', rightCol, cardY);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${concluidos.length}`, rightCol + 45, cardY);
+        cardY += 8;
+
+        doc.setFont('helvetica', 'bold');
+        doc.text('Média de Nota:', leftCol, cardY);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${mediaNota}`, leftCol + 45, cardY);
+
+        doc.setFont('helvetica', 'bold');
+        doc.text('Média Proficiência:', rightCol, cardY);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${mediaProficiencia}`, rightCol + 45, cardY);
+        cardY += 8;
+
+        // Taxa de participação
+        const taxaParticipacao = totalAlunos > 0 
+          ? ((concluidos.length / totalAlunos) * 100).toFixed(1)
+          : '0.0';
+        doc.setFont('helvetica', 'bold');
+        doc.text('Taxa de Participação:', leftCol, cardY);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${taxaParticipacao}%`, leftCol + 50, cardY);
+
+        // Rodapé da capa
+        currentY = pageHeight - 30;
+        doc.setFontSize(10);
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Afirme Play Soluções Educativas', centerX, currentY, { align: 'center' });
+      };
+
+      // Função para adicionar rodapé
+      const addFooter = (pageNum: number) => {
+        const centerX = pageWidth / 2;
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(100, 100, 100);
+        doc.text('Afirme Play Soluções Educativas', margin, pageHeight - 10);
+        doc.text(`Página ${pageNum}`, centerX, pageHeight - 10, { align: 'center' });
+        doc.text(new Date().toLocaleString('pt-BR'), pageWidth - margin, pageHeight - 10, { align: 'right' });
       };
 
       // Função para adicionar cabeçalho
@@ -1389,10 +1688,8 @@ export default function AcertoNiveis() {
       const renderSummaryPageForTurma = (turmaName: string, alunosTurma: StudentResult[], isFirstTurma: boolean = false) => {
         if (alunosTurma.length === 0) return;
         
-        // Adicionar nova página se não for a primeira turma (primeira turma usa a página inicial do documento)
-        if (!isFirstTurma) {
-          doc.addPage();
-        }
+        // Adicionar nova página (sempre, pois vem após a capa da turma)
+        doc.addPage('landscape');
         pageCount++;
         
         const title = `RELATÓRIO DE DESEMPENHO GERAL`;
@@ -1724,7 +2021,7 @@ export default function AcertoNiveis() {
       const renderChartsForTurma = (turmaName: string, alunosTurma: StudentResult[]) => {
         if (alunosTurma.length === 0) return;
         
-        if (pageCount > 0) doc.addPage();
+        doc.addPage('landscape');
         pageCount++;
         const yCharts = addHeader('VISÃO GRÁFICA DOS RESULTADOS', turmaName);
         const chartsTop = yCharts + 2;
@@ -1988,16 +2285,25 @@ export default function AcertoNiveis() {
       // Ordenar turmas alfabeticamente
       const turmasOrdenadas = Array.from(turmasMap.keys()).sort((a, b) => a.localeCompare(b));
       
+      // Adicionar capa inicial (já em landscape)
+      addInitialCover();
+      pageCount++;
+      
       // Para cada turma, renderizar todas as seções na ordem correta
       turmasOrdenadas.forEach((turmaName, turmaIndex) => {
         const alunosTurma = turmasMap.get(turmaName) || [];
         if (alunosTurma.length === 0) return;
         
-        const isFirstTurma = turmaIndex === 0;
+        // Adicionar capa da turma (em landscape)
+        doc.addPage('landscape');
+        pageWidth = doc.internal.pageSize.getWidth();
+        pageHeight = doc.internal.pageSize.getHeight();
+        addTurmaCover(turmaName, alunosTurma);
+        pageCount++;
         
         // 1. RELATÓRIO DE DESEMPENHO GERAL (resumo)
         if ((detailedReport?.questoes?.length || 0) > 0) {
-          renderSummaryPageForTurma(turmaName, alunosTurma, isFirstTurma);
+          renderSummaryPageForTurma(turmaName, alunosTurma, false);
         }
         
         // 2. VISÃO GRÁFICA DOS RESULTADOS (gráficos)
@@ -2148,8 +2454,8 @@ export default function AcertoNiveis() {
                             setStudents(fetchedStudents);
                             setDetailedReport(report || null);
                             setTabelaDetalhada(tabela || null);
-                            if (estatisticas) setEstatisticasGerais(estatisticas);
-                            if (opcoes) setOpcoesProximosFiltros(opcoes);
+                            if (estatisticas) setEstatisticasGerais(estatisticas as unknown as { [key: string]: unknown; serie?: string; escola?: string; municipio?: string; total_alunos?: number; alunos_participantes?: number; alunos_ausentes?: number; media_nota_geral?: number; media_proficiencia_geral?: number; } | null);
+                            if (opcoes) setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
                           } catch (error) {
                             toast({ title: "Erro", description: "Não foi possível recarregar os dados", variant: "destructive" });
                           } finally {
@@ -2292,27 +2598,29 @@ export default function AcertoNiveis() {
                    <div className="space-y-2">
                      <div className="text-sm font-medium text-muted-foreground">Total de Alunos</div>
                      <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                       {estatisticasGerais.total_alunos || 0}
+                       {typeof estatisticasGerais.total_alunos === 'number' ? estatisticasGerais.total_alunos : 0}
                      </div>
                    </div>
                    <div className="space-y-2">
                      <div className="text-sm font-medium text-muted-foreground">Participantes</div>
                      <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                       {estatisticasGerais.alunos_participantes || 0}
+                       {typeof estatisticasGerais.alunos_participantes === 'number' ? estatisticasGerais.alunos_participantes : 0}
                      </div>
                    </div>
                    <div className="space-y-2">
                      <div className="text-sm font-medium text-muted-foreground">Faltosos</div>
                      <div className="text-2xl font-bold text-red-600 dark:text-red-400">
-                       {estatisticasGerais.alunos_ausentes || 0}
+                       {typeof estatisticasGerais.alunos_ausentes === 'number' ? estatisticasGerais.alunos_ausentes : 0}
                      </div>
                    </div>
                    <div className="space-y-2">
                      <div className="text-sm font-medium text-muted-foreground">Taxa de Participação</div>
                      <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                       {estatisticasGerais.total_alunos > 0 
-                         ? ((estatisticasGerais.alunos_participantes || 0) / estatisticasGerais.total_alunos * 100).toFixed(1)
-                         : '0.0'}%
+                       {(() => {
+                         const totalAlunos = typeof estatisticasGerais.total_alunos === 'number' ? estatisticasGerais.total_alunos : 0;
+                         const participantes = typeof estatisticasGerais.alunos_participantes === 'number' ? estatisticasGerais.alunos_participantes : 0;
+                         return totalAlunos > 0 ? ((participantes / totalAlunos) * 100).toFixed(1) : '0.0';
+                       })()}%
                      </div>
                    </div>
                    <div className="space-y-2">
@@ -2346,7 +2654,7 @@ export default function AcertoNiveis() {
                      <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                        {students.length > 0 
                          ? students.filter(s => s.status === 'concluida').length
-                         : (estatisticasGerais?.alunos_participantes || 0)}
+                         : (typeof estatisticasGerais?.alunos_participantes === 'number' ? estatisticasGerais.alunos_participantes : 0)}
                      </div>
                      <div className="text-sm text-muted-foreground mt-1">Alunos Concluíram</div>
                    </div>
@@ -2354,7 +2662,7 @@ export default function AcertoNiveis() {
                      <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
                        {students.length > 0 
                          ? students.length 
-                         : (estatisticasGerais?.total_alunos || 0)}
+                         : (typeof estatisticasGerais?.total_alunos === 'number' ? estatisticasGerais.total_alunos : 0)}
                      </div>
                      <div className="text-sm text-muted-foreground mt-1">Total de Alunos</div>
                    </div>
@@ -2362,9 +2670,11 @@ export default function AcertoNiveis() {
                      <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
                        {students.length > 0 
                          ? ((students.filter(s => s.status === 'concluida').length / students.length) * 100).toFixed(1)
-                         : (estatisticasGerais?.total_alunos && estatisticasGerais.total_alunos > 0
-                           ? ((estatisticasGerais.alunos_participantes || 0) / estatisticasGerais.total_alunos * 100).toFixed(1)
-                           : '0')}%
+                         : (() => {
+                             const totalAlunos = typeof estatisticasGerais?.total_alunos === 'number' ? estatisticasGerais.total_alunos : 0;
+                             const participantes = typeof estatisticasGerais?.alunos_participantes === 'number' ? estatisticasGerais.alunos_participantes : 0;
+                             return totalAlunos > 0 ? ((participantes / totalAlunos) * 100).toFixed(1) : '0';
+                           })()}%
                      </div>
                      <div className="text-sm text-muted-foreground mt-1">Taxa de Participação</div>
                    </div>
