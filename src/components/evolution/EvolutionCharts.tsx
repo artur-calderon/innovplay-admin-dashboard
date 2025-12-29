@@ -45,6 +45,8 @@ export interface ProcessedEvolutionData {
   subjectData: Record<string, EvolutionData[]>;
   /** por disciplina (proficiência) */
   subjectProficiencyData: Record<string, EvolutionData[]>;
+  /** classificação por disciplina */
+  classificationData: Record<string, EvolutionData[]>;
   /** dados por nível de proficiência */
   levelsData: Record<string, EvolutionData[]>;
   /** nomes das avaliações para exibição */
