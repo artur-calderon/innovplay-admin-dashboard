@@ -490,7 +490,6 @@ export default function Evolution() {
     };
 
     loadEvaluations();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedState, selectedMunicipality, selectedSchool, selectedGrade, selectedClass, toast]);
 
   // Filtrar avaliações por período e busca
@@ -545,14 +544,14 @@ export default function Evolution() {
             : (schoolsResponse.data?.data || []);
 
           const municipalitySchools = allSchools
-            .filter((school: any) => {
+            .filter((school: { city_id?: string; municipio_id?: string; municipio?: { id?: string } }) => {
               const cityId =
                 school.city_id ||
                 school.municipio_id ||
                 school.municipio?.id;
               return String(cityId) === String(selectedMunicipality);
             })
-            .map((school: any) => ({
+            .map((school: { id: string; name?: string; nome?: string }) => ({
               id: school.id,
               name: school.name || school.nome,
             }));
@@ -590,7 +589,7 @@ export default function Evolution() {
             : (classesResponse.data?.data || []);
 
           const gradeMap = new Map<string, Grade>();
-          classesData.forEach((classItem: any) => {
+          classesData.forEach((classItem: { grade?: { id?: string; name?: string; nome?: string } }) => {
             const grade = classItem.grade;
             if (grade && grade.id && !gradeMap.has(grade.id)) {
               gradeMap.set(grade.id, {
@@ -640,11 +639,11 @@ export default function Evolution() {
             : (response.data?.data || []);
 
           const filteredClasses = classesData
-            .filter((classItem: any) => {
+            .filter((classItem: { grade_id?: string; grade?: { id?: string } }) => {
               const gradeId = classItem.grade_id || classItem.grade?.id;
               return String(gradeId) === String(selectedGrade);
             })
-            .map((classItem: any) => ({
+            .map((classItem: { id: string; name?: string; nome?: string }) => ({
               id: classItem.id,
               name: classItem.name || classItem.nome || `Turma ${classItem.id}`,
             }));
@@ -910,10 +909,65 @@ export default function Evolution() {
 
                   try {
                     setIsGeneratingPDF(true);
+                    
+                    // Preparar informações dos filtros
+                    // Extrair escolas únicas das avaliações selecionadas
+                    const uniqueSchools = new Map<string, { id?: string; name: string }>();
+                    
+                    selectedEvaluationsForComparison.forEach(evaluation => {
+                      if (evaluation.escola) {
+                        // Se já não existe, adicionar
+                        if (!uniqueSchools.has(evaluation.escola)) {
+                          // Tentar encontrar na lista de escolas carregadas
+                          const foundSchool = schools.find(s => s.id === evaluation.escola || s.name === evaluation.escola);
+                          uniqueSchools.set(evaluation.escola, {
+                            id: foundSchool?.id,
+                            name: foundSchool?.name || evaluation.escola
+                          });
+                        }
+                      }
+                    });
+                    
+                    const schoolsArray = Array.from(uniqueSchools.values());
+                    
+                    const filterInfo = {
+                      state: selectedState !== 'all' 
+                        ? states.find(s => s.id === selectedState) 
+                          ? { id: selectedState, name: states.find(s => s.id === selectedState)!.name }
+                          : undefined
+                        : undefined,
+                      municipality: selectedMunicipality !== 'all'
+                        ? municipalities.find(m => m.id === selectedMunicipality)
+                          ? { id: selectedMunicipality, name: municipalities.find(m => m.id === selectedMunicipality)!.name }
+                          : undefined
+                        : undefined,
+                      // Manter escola única para compatibilidade se apenas uma escola foi selecionada manualmente
+                      school: selectedSchool !== 'all' && schoolsArray.length <= 1
+                        ? schools.find(s => s.id === selectedSchool)
+                          ? { id: selectedSchool, name: schools.find(s => s.id === selectedSchool)!.name }
+                          : undefined
+                        : undefined,
+                      // Adicionar array de escolas quando houver múltiplas
+                      schools: schoolsArray.length > 0 ? schoolsArray : undefined,
+                      grade: selectedGrade !== 'all'
+                        ? grades.find(g => g.id === selectedGrade)
+                          ? { id: selectedGrade, name: grades.find(g => g.id === selectedGrade)!.name }
+                          : undefined
+                        : undefined,
+                      class: selectedClass !== 'all'
+                        ? classes.find(c => c.id === selectedClass)
+                          ? { id: selectedClass, name: classes.find(c => c.id === selectedClass)!.name }
+                          : undefined
+                        : undefined,
+                      periodStart: periodStart || undefined,
+                      periodEnd: periodEnd || undefined,
+                    };
+                    
                     await generateEvolutionPDFFromHTML(
                       processedData,
                       comparisonData,
-                      processedData.evaluationNames
+                      processedData.evaluationNames,
+                      filterInfo
                     );
                     toast({
                       title: "PDF gerado com sucesso!",

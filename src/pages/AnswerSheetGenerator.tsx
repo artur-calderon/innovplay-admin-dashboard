@@ -63,6 +63,11 @@ export default function AnswerSheetGenerator() {
   const [isLoadingSchools, setIsLoadingSchools] = useState(false);
   const [isLoadingSeries, setIsLoadingSeries] = useState(false);
   const [isLoadingTurmas, setIsLoadingTurmas] = useState(false);
+  
+  // Estados para feedback visual
+  const [noSchoolsMessage, setNoSchoolsMessage] = useState<string>('');
+  const [noTurmasMessage, setNoTurmasMessage] = useState<string>('');
+  const [noSeriesMessage, setNoSeriesMessage] = useState<string>('');
 
   // Configuração de questões e gabarito manual
   const [totalQuestoes, setTotalQuestoes] = useState<number>(0);
@@ -141,6 +146,9 @@ export default function AnswerSheetGenerator() {
       setSeries([]);
       setSelectedTurma('');
       setTurmas([]);
+      setNoSchoolsMessage('');
+      setNoTurmasMessage('');
+      setNoSeriesMessage('');
     } else {
       setMunicipios([]);
       setSelectedMunicipio('');
@@ -148,7 +156,7 @@ export default function AnswerSheetGenerator() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEstado]);
 
-  // Carregar séries quando curso for selecionado
+  // Carregar séries quando curso ou município forem selecionados
   useEffect(() => {
     if (selectedCurso) {
       fetchSeries();
@@ -156,9 +164,10 @@ export default function AnswerSheetGenerator() {
       setSeries([]);
       setSelectedSerie('');
       setGradeName('');
+      setNoSeriesMessage('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCurso]);
+  }, [selectedCurso, selectedMunicipio]);
 
   // Carregar nome da série quando série for selecionada
   useEffect(() => {
@@ -179,6 +188,8 @@ export default function AnswerSheetGenerator() {
       setSchools([]);
       setSelectedTurma('');
       setTurmas([]);
+      setNoSchoolsMessage('');
+      setNoTurmasMessage('');
     } else {
       setSchools([]);
       setSelectedSchool('');
@@ -220,13 +231,50 @@ export default function AnswerSheetGenerator() {
     
     try {
       setIsLoadingSchools(true);
-      // Se tiver série selecionada, busca por série, senão por município
-      const response = selectedSerie 
-        ? await api.get(`/school/by-grade/${selectedSerie}`)
-        : await api.get(`/school/city/${selectedMunicipio}`);
+      setNoSchoolsMessage('');
       
-      const schoolsData = response.data?.schools || response.data || [];
-      setSchools(schoolsData);
+      // Buscar todas as escolas do município
+      const response = await api.get(`/school/city/${selectedMunicipio}`);
+      const allSchoolsData = response.data?.schools || response.data || [];
+      
+      // Se não houver série selecionada, mostrar todas as escolas
+      if (!selectedSerie) {
+        setSchools(allSchoolsData);
+        if (allSchoolsData.length === 0) {
+          setNoSchoolsMessage('Nenhuma escola encontrada para este município.');
+        }
+        return;
+      }
+      
+      // Se houver série selecionada, filtrar apenas escolas que têm turmas para essa série
+      const schoolsWithTurmas: SchoolType[] = [];
+      
+      for (const school of allSchoolsData) {
+        try {
+          // Buscar turmas da escola
+          const turmasResponse = await api.get(`/classes/school/${school.id}`);
+          const turmasData = turmasResponse.data || [];
+          
+          // Verificar se há turmas para a série selecionada
+          const hasTurmasForSerie = turmasData.some((turma: { grade_id?: string; grade?: { id?: string } }) => {
+            const gradeId = turma.grade_id || turma.grade?.id;
+            return gradeId === selectedSerie;
+          });
+          
+          if (hasTurmasForSerie) {
+            schoolsWithTurmas.push(school);
+          }
+        } catch (error) {
+          // Se der erro ao buscar turmas de uma escola, ignorar essa escola
+          console.warn(`Erro ao buscar turmas da escola ${school.id}:`, error);
+        }
+      }
+      
+      setSchools(schoolsWithTurmas);
+      
+      if (schoolsWithTurmas.length === 0) {
+        setNoSchoolsMessage('Nenhuma escola encontrada com turmas cadastradas para a série selecionada.');
+      }
     } catch (error) {
       console.error('Erro ao carregar escolas:', error);
       toast({
@@ -235,6 +283,7 @@ export default function AnswerSheetGenerator() {
         variant: 'destructive',
       });
       setSchools([]);
+      setNoSchoolsMessage('Erro ao carregar escolas.');
     } finally {
       setIsLoadingSchools(false);
     }
@@ -245,9 +294,54 @@ export default function AnswerSheetGenerator() {
     
     try {
       setIsLoadingSeries(true);
+      setNoSeriesMessage('');
+      
+      // Buscar todas as séries do curso
       const response = await api.get(`/grades/education-stage/${selectedCurso}`);
-      const seriesData = response.data || [];
-      setSeries(seriesData);
+      const allSeriesData = response.data || [];
+      
+      // Se não houver município selecionado, mostrar todas as séries
+      if (!selectedMunicipio) {
+        setSeries(allSeriesData);
+        return;
+      }
+      
+      // Buscar todas as escolas do município para verificar quais séries têm turmas
+      const schoolsResponse = await api.get(`/school/city/${selectedMunicipio}`);
+      const allSchoolsData = schoolsResponse.data?.schools || schoolsResponse.data || [];
+      
+      // Criar um Set com IDs de séries que têm turmas
+      const seriesWithTurmas = new Set<string>();
+      
+      for (const school of allSchoolsData) {
+        try {
+          // Buscar turmas da escola
+          const turmasResponse = await api.get(`/classes/school/${school.id}`);
+          const turmasData = turmasResponse.data || [];
+          
+          // Adicionar IDs de séries que têm turmas
+          turmasData.forEach((turma: { grade_id?: string; grade?: { id?: string } }) => {
+            const gradeId = turma.grade_id || turma.grade?.id;
+            if (gradeId) {
+              seriesWithTurmas.add(gradeId);
+            }
+          });
+        } catch (error) {
+          // Se der erro ao buscar turmas de uma escola, ignorar essa escola
+          console.warn(`Erro ao buscar turmas da escola ${school.id}:`, error);
+        }
+      }
+      
+      // Filtrar séries que têm turmas
+      const filteredSeries = allSeriesData.filter((serie: Serie) => 
+        seriesWithTurmas.has(serie.id)
+      );
+      
+      setSeries(filteredSeries);
+      
+      if (filteredSeries.length === 0) {
+        setNoSeriesMessage('Nenhuma série encontrada com turmas cadastradas para este município.');
+      }
     } catch (error) {
       console.error('Erro ao carregar séries:', error);
       toast({
@@ -256,6 +350,7 @@ export default function AnswerSheetGenerator() {
         variant: 'destructive',
       });
       setSeries([]);
+      setNoSeriesMessage('Erro ao carregar séries.');
     } finally {
       setIsLoadingSeries(false);
     }
@@ -266,6 +361,8 @@ export default function AnswerSheetGenerator() {
     
     try {
       setIsLoadingTurmas(true);
+      setNoTurmasMessage('');
+      
       const response = await api.get(`/classes/school/${selectedSchool}`);
       let turmasData = response.data || [];
       
@@ -278,6 +375,18 @@ export default function AnswerSheetGenerator() {
       }
       
       setTurmas(turmasData);
+      
+      // Limpar seleção de turma se não houver turmas disponíveis
+      if (turmasData.length === 0) {
+        setSelectedTurma('');
+        setNoTurmasMessage('Nenhuma turma encontrada para esta escola e série.');
+      } else {
+        // Verificar se a turma selecionada ainda existe na lista
+        const turmaExists = turmasData.some((t: Turma) => t.id === selectedTurma);
+        if (!turmaExists) {
+          setSelectedTurma('');
+        }
+      }
     } catch (error) {
       console.error('Erro ao carregar turmas:', error);
       toast({
@@ -286,6 +395,8 @@ export default function AnswerSheetGenerator() {
         variant: 'destructive',
       });
       setTurmas([]);
+      setSelectedTurma('');
+      setNoTurmasMessage('Erro ao carregar turmas.');
     } finally {
       setIsLoadingTurmas(false);
     }
@@ -344,6 +455,11 @@ export default function AnswerSheetGenerator() {
       department;
 
     if (!hasBaseInfo) {
+      return false;
+    }
+
+    // Verificar se há turmas disponíveis e se a turma selecionada existe
+    if (turmas.length === 0 || !turmas.some(t => t.id === selectedTurma)) {
       return false;
     }
 
@@ -924,18 +1040,30 @@ export default function AnswerSheetGenerator() {
                   {isLoadingSeries ? (
                     <Skeleton className="h-10 w-full" />
                   ) : (
-                    <Select value={selectedSerie} onValueChange={setSelectedSerie} disabled={!selectedCurso}>
-                      <SelectTrigger id="serie">
-                        <SelectValue placeholder="Selecione a série" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {series.map(serie => (
-                          <SelectItem key={serie.id} value={serie.id}>
-                            {serie.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <>
+                      <Select 
+                        value={selectedSerie} 
+                        onValueChange={setSelectedSerie} 
+                        disabled={!selectedCurso || !selectedMunicipio || series.length === 0}
+                      >
+                        <SelectTrigger id="serie">
+                          <SelectValue placeholder="Selecione a série" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {series.map(serie => (
+                            <SelectItem key={serie.id} value={serie.id}>
+                              {serie.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {noSeriesMessage && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" />
+                          {noSeriesMessage}
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -944,22 +1072,30 @@ export default function AnswerSheetGenerator() {
                   {isLoadingSchools ? (
                     <Skeleton className="h-10 w-full" />
                   ) : (
-                    <Select 
-                      value={selectedSchool} 
-                      onValueChange={setSelectedSchool}
-                      disabled={!selectedSerie}
-                    >
-                      <SelectTrigger id="school">
-                        <SelectValue placeholder="Selecione a escola" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {schools.map(school => (
-                          <SelectItem key={school.id} value={school.id}>
-                            {school.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <>
+                      <Select 
+                        value={selectedSchool} 
+                        onValueChange={setSelectedSchool}
+                        disabled={!selectedSerie}
+                      >
+                        <SelectTrigger id="school">
+                          <SelectValue placeholder="Selecione a escola" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {schools.map(school => (
+                            <SelectItem key={school.id} value={school.id}>
+                              {school.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {noSchoolsMessage && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" />
+                          {noSchoolsMessage}
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -968,18 +1104,30 @@ export default function AnswerSheetGenerator() {
                   {isLoadingTurmas ? (
                     <Skeleton className="h-10 w-full" />
                   ) : (
-                    <Select value={selectedTurma} onValueChange={setSelectedTurma} disabled={!selectedSchool}>
-                      <SelectTrigger id="turma">
-                        <SelectValue placeholder="Selecione a turma" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {turmas.map(turma => (
-                          <SelectItem key={turma.id} value={turma.id}>
-                            {turma.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <>
+                      <Select 
+                        value={selectedTurma} 
+                        onValueChange={setSelectedTurma} 
+                        disabled={!selectedSchool || turmas.length === 0}
+                      >
+                        <SelectTrigger id="turma">
+                          <SelectValue placeholder="Selecione a turma" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {turmas.map(turma => (
+                            <SelectItem key={turma.id} value={turma.id}>
+                              {turma.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {noTurmasMessage && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" />
+                          {noTurmasMessage}
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
 
