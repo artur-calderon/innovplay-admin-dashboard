@@ -1,0 +1,973 @@
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { Textarea } from '@/components/ui/textarea';
+import { 
+  ArrowLeft, 
+  Save, 
+  CheckCircle, 
+  AlertCircle,
+  Loader2,
+  Clock,
+  FileText
+} from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { api } from '@/lib/api';
+import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/context/authContext';
+import { Question, SubQuestion } from '@/types/forms';
+
+interface QuestionarioData {
+  formId: string;
+  title: string;
+  description: string;
+  instructions?: string;
+  deadline: string;
+  questions: Question[];
+  currentResponse?: {
+    id: string;
+    status: string;
+    startedAt: string;
+    responses: Record<string, any>;
+    progress?: number;
+  };
+  progress?: number; // Progresso calculado pelo backend
+}
+
+const QuestionarioRespond = () => {
+  const navigate = useNavigate();
+  const { formId } = useParams<{ formId: string }>();
+  const { toast } = useToast();
+  const { user } = useAuth();
+  
+  const [questionario, setQuestionario] = useState<QuestionarioData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [responses, setResponses] = useState<Record<string, any>>({});
+  const [sliderValues, setSliderValues] = useState<Record<string, number>>({});
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const startTimeRef = useRef<Date | null>(null);
+  const responsesInitializedRef = useRef<boolean>(false);
+
+  // ✅ Função para reconstruir o formato aninhado a partir das respostas achatadas do backend
+  // Definida antes dos useEffect para estar disponível quando necessário
+  const unflattenMatrixResponses = (flattenedResponses: Record<string, any>, questionarioData?: QuestionarioData | null): Record<string, any> => {
+    const questionsData = questionarioData || questionario;
+    if (!questionsData) return flattenedResponses;
+    
+    const unflattened: Record<string, any> = {};
+    const usedKeys = new Set<string>();
+    
+    // Primeiro, processar todas as questões com subperguntas
+    questionsData.questions.forEach(question => {
+      const subQuestions = question?.subQuestions || question?.subPerguntas || [];
+      const hasSubQuestions = subQuestions.length > 0;
+      
+      if (hasSubQuestions) {
+        // Reconstruir o objeto aninhado para esta questão
+        const nestedResponse: Record<string, any> = {};
+        
+        subQuestions.forEach((subQ: SubQuestion) => {
+          // ✅ Incluir todas as subperguntas que têm resposta, mesmo que seja vazia
+          if (flattenedResponses[subQ.id] !== undefined) {
+            nestedResponse[subQ.id] = flattenedResponses[subQ.id];
+            usedKeys.add(subQ.id);
+          }
+        });
+        
+        // ✅ Sempre adicionar a questão principal se houver subperguntas definidas
+        // Isso garante que questões parciais também sejam exibidas
+        if (hasSubQuestions) {
+          unflattened[question.id] = nestedResponse;
+        }
+      }
+    });
+    
+    // Depois, adicionar todas as respostas que não foram usadas (questões simples)
+    Object.entries(flattenedResponses).forEach(([key, value]) => {
+      if (!usedKeys.has(key)) {
+        unflattened[key] = value;
+      }
+    });
+    
+    return unflattened;
+  };
+
+  useEffect(() => {
+    if (formId) {
+      // Resetar flag de inicialização quando mudar de formulário
+      responsesInitializedRef.current = false;
+      fetchQuestionario();
+    }
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [formId]);
+
+  useEffect(() => {
+    // ✅ Recarregar respostas quando o status mudar para "completed" ou quando o questionário for recarregado
+    // Isso garante que as respostas finais sejam exibidas corretamente
+    if (questionario?.currentResponse?.responses) {
+      const shouldReload = 
+        !responsesInitializedRef.current || // Primeira vez carregando
+        questionario.currentResponse.status === 'completed'; // Formulário foi finalizado
+      
+      if (shouldReload) {
+        // ✅ Reconstruir formato aninhado a partir das respostas achatadas do backend
+        const unflattenedResponses = unflattenMatrixResponses(questionario.currentResponse.responses);
+        setResponses(unflattenedResponses);
+        responsesInitializedRef.current = true;
+        
+        // Carregar valores de sliders se existirem
+        Object.entries(unflattenedResponses).forEach(([key, value]) => {
+          if (typeof value === 'number') {
+            setSliderValues(prev => ({ ...prev, [key]: value }));
+          } else if (typeof value === 'object' && !Array.isArray(value)) {
+            // Para matriz slider, os valores podem estar dentro do objeto
+            Object.entries(value).forEach(([subKey, subValue]) => {
+              if (typeof subValue === 'number') {
+                setSliderValues(prev => ({ ...prev, [`${key}_${subKey}`]: subValue }));
+              }
+            });
+          }
+        });
+      }
+    }
+  }, [questionario]);
+
+  const fetchQuestionario = async () => {
+    if (!formId) return;
+    
+    setIsLoading(true);
+    try {
+      const response = await api.get(`/forms/${formId}/respond`);
+      setQuestionario(response.data);
+      
+      // Inicializar respostas existentes
+      if (response.data.currentResponse?.responses) {
+        // ✅ Reconstruir formato aninhado a partir das respostas achatadas do backend
+        // Passar response.data como parâmetro pois questionario ainda não foi setado
+        const unflattenedResponses = unflattenMatrixResponses(response.data.currentResponse.responses, response.data);
+        setResponses(unflattenedResponses);
+        responsesInitializedRef.current = true;
+      }
+      
+      // Marcar início se ainda não foi iniciado
+      if (!response.data.currentResponse) {
+        startTimeRef.current = new Date();
+      }
+    } catch (error: any) {
+      console.error('Erro ao carregar questionário:', error);
+      toast({
+        title: "Erro ao carregar questionário",
+        description: error.response?.data?.message || "Não foi possível carregar o questionário.",
+        variant: "destructive",
+      });
+      navigate(-1);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ✅ Função auxiliar para limpar respostas de múltipla escolha que tenham todas as subperguntas como "Não"
+  const cleanMultipleChoiceResponses = (responsesToClean: Record<string, any>): Record<string, any> => {
+    const cleaned = { ...responsesToClean };
+    
+    Object.keys(cleaned).forEach(questionId => {
+      const question = questionario?.questions.find(q => q.id === questionId);
+      const questionType = question?.type || question?.tipo;
+      const response = cleaned[questionId];
+      
+      if (questionType === 'multipla_escolha' && 
+          typeof response === 'object' && 
+          !Array.isArray(response) &&
+          Object.keys(response).length > 0) {
+        // Se todas as subperguntas são "Não", remover a resposta (não enviar)
+        const allNo = Object.values(response).every(value => value === 'Não');
+        if (allNo) {
+          console.log(`🗑️ Removendo resposta de múltipla escolha ${questionId} - todas as subperguntas são "Não"`);
+          delete cleaned[questionId];
+        }
+      }
+    });
+    
+    return cleaned;
+  };
+
+  // ✅ Função para achatar respostas de matriz (subperguntas) para o formato esperado pelo backend
+  const flattenMatrixResponses = (responsesToFlatten: Record<string, any>): Record<string, any> => {
+    const flattened: Record<string, any> = {};
+    
+    Object.entries(responsesToFlatten).forEach(([questionId, response]) => {
+      const question = questionario?.questions.find(q => q.id === questionId);
+      // Verificar tanto subQuestions quanto subPerguntas (para compatibilidade)
+      const subQuestions = question?.subQuestions || question?.subPerguntas || [];
+      const hasSubQuestions = subQuestions.length > 0;
+      
+      // Se é uma questão com subperguntas (matriz), achatar as subperguntas para o nível raiz
+      if (hasSubQuestions && typeof response === 'object' && !Array.isArray(response)) {
+        // Para questões de matriz, colocar cada subpergunta no nível raiz
+        Object.entries(response).forEach(([subQuestionId, subResponse]) => {
+          flattened[subQuestionId] = subResponse;
+        });
+      } else {
+        // Para questões simples, manter como está
+        flattened[questionId] = response;
+      }
+    });
+    
+    return flattened;
+  };
+
+  const saveResponse = useCallback(async (isComplete: boolean = false) => {
+    if (!formId || !questionario) return;
+
+    // ✅ Limpar respostas de múltipla escolha antes de salvar
+    const cleanedResponses = cleanMultipleChoiceResponses(responses);
+    
+    // ✅ Achatar respostas de matriz para o formato esperado pelo backend
+    const flattenedResponses = flattenMatrixResponses(cleanedResponses);
+
+    setIsSaving(true);
+    try {
+      const response = await api.post(`/forms/${formId}/responses`, {
+        responses: flattenedResponses,
+        isComplete
+      });
+      
+      // Atualizar progresso se retornado pela API
+      if (response.data?.progress !== undefined && questionario) {
+        setQuestionario(prev => prev ? {
+          ...prev,
+          currentResponse: prev.currentResponse ? {
+            ...prev.currentResponse,
+            progress: response.data.progress
+          } : undefined,
+          progress: response.data.progress
+        } : null);
+      }
+      
+      if (isComplete) {
+        toast({
+          title: "Resposta salva!",
+          description: "Sua resposta foi salva com sucesso.",
+        });
+      }
+    } catch (error: any) {
+      console.error('Erro ao salvar resposta:', error);
+      toast({
+        title: "Erro ao salvar",
+        description: error.response?.data?.message || "Não foi possível salvar sua resposta.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }, [formId, questionario, responses, toast]);
+
+  // Auto-save com debounce
+  useEffect(() => {
+    if (Object.keys(responses).length === 0) return;
+    
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    saveTimeoutRef.current = setTimeout(() => {
+      saveResponse(false);
+    }, 2000); // Salvar após 2 segundos de inatividade
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [responses, saveResponse]);
+
+  const handleResponseChange = (questionId: string, value: any) => {
+    setResponses(prev => ({
+      ...prev,
+      [questionId]: value
+    }));
+    
+    // Limpar erro de validação se existir
+    if (validationErrors[questionId]) {
+      setValidationErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[questionId];
+        return newErrors;
+      });
+    }
+  };
+
+  const handleSliderChange = (questionId: string, value: number) => {
+    setSliderValues(prev => ({
+      ...prev,
+      [questionId]: value
+    }));
+    handleResponseChange(questionId, value);
+  };
+
+  const handleMatrixResponse = (questionId: string, subQuestionId: string, value: string | number) => {
+    const currentValue = responses[questionId];
+    let newValue: any;
+    
+    if (currentValue && typeof currentValue === 'object' && !Array.isArray(currentValue)) {
+      newValue = {
+        ...currentValue,
+        [subQuestionId]: value
+      };
+    } else {
+      newValue = {
+        [subQuestionId]: value
+      };
+    }
+    
+    handleResponseChange(questionId, newValue);
+  };
+
+  const validateResponses = (): boolean => {
+    const errors: Record<string, string> = {};
+    
+    if (!questionario) return false;
+
+    questionario.questions.forEach(question => {
+      const isRequired = question.required !== undefined ? question.required : (question.obrigatoria !== undefined ? question.obrigatoria : false);
+      
+      if (isRequired) {
+        const questionId = question.id;
+        const response = responses[questionId];
+        
+        // Verificar dependências
+        if (question.dependsOn) {
+          const dependsOnId = Array.isArray(question.dependsOn.id) ? question.dependsOn.id[0] : question.dependsOn.id;
+          const dependsOnValue = Array.isArray(question.dependsOn.value) ? question.dependsOn.value[0] : question.dependsOn.value;
+          const dependsOnResponse = responses[dependsOnId];
+          
+          // Se a condição não for atendida, não validar esta questão
+          if (dependsOnResponse !== dependsOnValue) {
+            return;
+          }
+        }
+        
+        // Verificar se a resposta está vazia
+        let isEmpty = false;
+        const questionType = question.type || question.tipo;
+        
+        if (response === undefined || response === null || response === '') {
+          isEmpty = true;
+        } else if (typeof response === 'object' && !Array.isArray(response)) {
+          // Para questões de múltipla escolha, verificar se pelo menos uma opção foi marcada como "Sim"
+          if (questionType === 'multipla_escolha') {
+            // Verificar se pelo menos uma subpergunta tem valor "Sim"
+            const hasAtLeastOneYes = Object.values(response).some(value => value === 'Sim');
+            isEmpty = !hasAtLeastOneYes;
+            
+            // ✅ ADICIONAR: Se todas as subperguntas são "Não", considerar como vazio
+            // Isso evita enviar um objeto com todas as respostas como "Não" para o backend
+            const allNo = Object.keys(response).length > 0 && Object.values(response).every(value => value === 'Não');
+            if (allNo) {
+              isEmpty = true;
+            }
+          } else {
+            // Para outras matrizes, verificar se pelo menos uma subpergunta foi respondida
+            isEmpty = Object.keys(response).length === 0;
+          }
+        }
+        
+        if (isEmpty) {
+          errors[questionId] = 'Esta questão é obrigatória';
+        }
+      }
+    });
+
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleFinalize = async () => {
+    if (!validateResponses()) {
+      toast({
+        title: "Campos obrigatórios não preenchidos",
+        description: "Por favor, preencha todas as questões obrigatórias antes de finalizar.",
+        variant: "destructive",
+      });
+      
+      // Scroll para o primeiro erro
+      const firstErrorId = Object.keys(validationErrors)[0];
+      if (firstErrorId) {
+        const element = document.getElementById(`question-${firstErrorId}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }
+      return;
+    }
+
+    // ✅ Limpar respostas de múltipla escolha que tenham todas as subperguntas como "Não"
+    // Isso evita enviar objetos vazios para o backend
+    const cleanedResponses = cleanMultipleChoiceResponses(responses);
+    
+    // ✅ Achatar respostas de matriz para o formato esperado pelo backend
+    const flattenedResponses = flattenMatrixResponses(cleanedResponses);
+
+    // Log das respostas antes de enviar
+    console.log('📤 Enviando respostas para finalizar:', {
+      totalQuestions: questionario?.questions.length,
+      responsesCount: Object.keys(flattenedResponses).length,
+      originalResponsesCount: Object.keys(responses).length,
+      cleanedResponsesCount: Object.keys(cleanedResponses).length,
+      responses: flattenedResponses,
+      progressBefore: calculateProgress()
+    });
+
+    setIsSubmitting(true);
+    try {
+      // Salvar resposta final
+      const response = await api.post(`/forms/${formId}/responses/finalize`, {
+        responses: flattenedResponses
+      });
+
+      // Verificar se o progresso foi retornado e está em 100%
+      console.log('📥 Resposta da API após finalizar:', {
+        data: response.data,
+        progress: response.data?.progress,
+        status: response.data?.status
+      });
+
+      if (response.data?.progress !== undefined) {
+        console.log('✅ Progresso retornado pela API após finalizar:', response.data.progress);
+        if (response.data.progress < 100) {
+          console.warn('⚠️ ATENÇÃO: Progresso não está em 100% após finalizar:', response.data.progress);
+          console.warn('Isso pode indicar que o backend não está contando todas as questões corretamente.');
+        }
+      } else {
+        console.warn('⚠️ API não retornou progresso após finalizar');
+      }
+
+      toast({
+        title: "Questionário finalizado!",
+        description: "Sua resposta foi enviada com sucesso.",
+      });
+
+      // Redirecionar de volta para a lista com flag de refresh
+      const basePath = user?.role === 'aluno' ? '/aluno/questionario' : '/app/questionario';
+      navigate(basePath, { state: { refresh: true } });
+    } catch (error: any) {
+      console.error('Erro ao finalizar questionário:', error);
+      toast({
+        title: "Erro ao finalizar",
+        description: error.response?.data?.message || "Não foi possível finalizar o questionário.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const calculateProgress = (): number => {
+    if (!questionario || questionario.questions.length === 0) return 0;
+    
+    // Priorizar progresso do backend se disponível
+    if (questionario.progress !== undefined) {
+      return questionario.progress;
+    }
+    
+    if (questionario.currentResponse?.progress !== undefined) {
+      return questionario.currentResponse.progress;
+    }
+    
+    // Calcular progresso baseado em TODAS as questões (não apenas visíveis)
+    // para ficar consistente com o cálculo do backend
+    const totalQuestions = questionario.questions.length;
+    
+    const answeredQuestions = questionario.questions.filter(question => {
+      const response = responses[question.id];
+      
+      if (response === undefined || response === null || response === '') {
+        return false;
+      }
+      
+      // Para objetos (matrizes), verificar se tem pelo menos uma resposta
+      if (typeof response === 'object' && !Array.isArray(response)) {
+        const hasAnswers = Object.keys(response).length > 0;
+        return hasAnswers;
+      }
+      
+      return true;
+    }).length;
+
+    const calculatedProgress = totalQuestions > 0 ? (answeredQuestions / totalQuestions) * 100 : 0;
+    
+    return calculatedProgress;
+  };
+
+  const renderQuestion = (question: Question, index: number) => {
+    const questionId = question.id;
+    const questionText = question.text || question.texto || '';
+    const questionType = question.type || question.tipo || 'selecao_unica';
+    const isRequired = question.required !== undefined ? question.required : (question.obrigatoria !== undefined ? question.obrigatoria : false);
+    const options = question.options || question.opcoes || [];
+    const subQuestions = question.subQuestions || question.subPerguntas || [];
+    const hasError = !!validationErrors[questionId];
+    
+    // Verificar dependências
+    if (question.dependsOn) {
+      const dependsOnId = Array.isArray(question.dependsOn.id) ? question.dependsOn.id[0] : question.dependsOn.id;
+      const dependsOnValue = Array.isArray(question.dependsOn.value) ? question.dependsOn.value[0] : question.dependsOn.value;
+      const dependsOnResponse = responses[dependsOnId];
+      
+      if (dependsOnResponse !== dependsOnValue) {
+        return null; // Não renderizar se a condição não for atendida
+      }
+    }
+
+    const currentResponse = responses[questionId];
+    const sliderValue = sliderValues[questionId] ?? (question.min !== undefined ? question.min : 0);
+
+    return (
+      <div 
+        key={questionId} 
+        id={`question-${questionId}`}
+        className={`p-4 border rounded-lg bg-white ${hasError ? 'border-red-500 bg-red-50' : ''}`}
+      >
+        <div className="flex items-start gap-3">
+          <span className="text-sm font-medium text-gray-500 mt-1">
+            {index + 1}.
+          </span>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              <h4 className="font-medium text-gray-900">
+                {questionText}
+              </h4>
+              {isRequired && (
+                <Badge variant="destructive" className="text-xs">
+                  Obrigatória
+                </Badge>
+              )}
+            </div>
+            
+            {hasError && (
+              <p className="text-sm text-red-600 mb-2">{validationErrors[questionId]}</p>
+            )}
+
+            {/* Seleção Única */}
+            {(questionType === 'selecao_unica') && (
+              <div className="space-y-2">
+                {options.map((option: string, optIndex: number) => (
+                  <label 
+                    key={optIndex} 
+                    className={`flex items-center gap-3 cursor-pointer p-2 rounded-lg transition-colors ${
+                      currentResponse === option 
+                        ? 'bg-blue-50 border-2 border-blue-500' 
+                        : 'hover:bg-gray-50 border-2 border-transparent'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name={questionId}
+                      value={option}
+                      checked={currentResponse === option}
+                      onChange={(e) => handleResponseChange(questionId, e.target.value)}
+                      className="w-4 h-4 text-blue-600"
+                    />
+                    <span className="text-sm text-gray-700">{option}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            {/* Múltipla Escolha */}
+            {(questionType === 'multipla_escolha') && (
+              <div className="space-y-2">
+                {subQuestions.map((subQ: SubQuestion, subIndex: number) => {
+                  const subResponse = currentResponse?.[subQ.id] || 'Não';
+                  return (
+                    <div key={subQ.id} className="ml-4">
+                      <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={subResponse === 'Sim'}
+                          onChange={(e) => handleMatrixResponse(questionId, subQ.id, e.target.checked ? 'Sim' : 'Não')}
+                          className="w-4 h-4 text-blue-600 rounded"
+                        />
+                        <span className="text-sm text-gray-700">{subQ.text || subQ.texto}</span>
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Matriz de Seleção */}
+            {(questionType === 'matriz_selecao') && (
+              <div className="space-y-3">
+                {subQuestions.map((subQ: SubQuestion) => {
+                  const subResponse = (currentResponse && typeof currentResponse === 'object' && !Array.isArray(currentResponse))
+                    ? (currentResponse[subQ.id] || '')
+                    : '';
+                  return (
+                    <div key={subQ.id} className="ml-4">
+                      <p className="text-sm font-medium text-gray-700 mb-2">
+                        {subQ.text || subQ.texto}
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {options.map((option: string, optIndex: number) => (
+                          <label 
+                            key={optIndex}
+                            className={`flex items-center gap-3 cursor-pointer p-2 rounded-lg transition-colors ${
+                              subResponse === option 
+                                ? 'bg-blue-50 border-2 border-blue-500' 
+                                : 'hover:bg-gray-50 border-2 border-transparent'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name={`${questionId}_${subQ.id}`}
+                              value={option}
+                              checked={subResponse === option}
+                              onChange={(e) => handleMatrixResponse(questionId, subQ.id, e.target.value)}
+                              className="w-4 h-4 text-blue-600"
+                            />
+                            <span className="text-sm text-gray-600">{option}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Matriz de Seleção Complexa */}
+            {(questionType === 'matriz_selecao_complexa') && (
+              <div className="space-y-3">
+                {subQuestions.map((subQ: SubQuestion) => {
+                  const subResponse = (currentResponse && typeof currentResponse === 'object' && !Array.isArray(currentResponse))
+                    ? (currentResponse[subQ.id] || '')
+                    : '';
+                  return (
+                    <div key={subQ.id} className="ml-4">
+                      <p className="text-sm font-medium text-gray-700 mb-2">
+                        {subQ.text || subQ.texto}
+                      </p>
+                      <div className="grid grid-cols-1 gap-2">
+                        {options.map((option: string, optIndex: number) => (
+                          <label 
+                            key={optIndex}
+                            className={`flex items-center gap-3 cursor-pointer p-2 rounded-lg transition-colors ${
+                              subResponse === option 
+                                ? 'bg-blue-50 border-2 border-blue-500' 
+                                : 'hover:bg-gray-50 border-2 border-transparent'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name={`${questionId}_${subQ.id}`}
+                              value={option}
+                              checked={subResponse === option}
+                              onChange={(e) => handleMatrixResponse(questionId, subQ.id, e.target.value)}
+                              className="w-4 h-4 text-blue-600"
+                            />
+                            <span className="text-sm text-gray-600">{option}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Slider */}
+            {(questionType === 'slider') && (
+              <div className="space-y-3">
+                <div className="relative">
+                  <input
+                    type="range"
+                    min={question.min || 0}
+                    max={question.max || 100}
+                    value={sliderValue}
+                    onChange={(e) => handleSliderChange(questionId, parseInt(e.target.value))}
+                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                    style={{
+                      background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb 100%)`,
+                      WebkitAppearance: 'none',
+                      appearance: 'none'
+                    }}
+                  />
+                  <div className="flex justify-between text-xs text-gray-500 mt-2">
+                    <span>{question.min || 0}</span>
+                    <span className="font-medium text-gray-700">
+                      Valor: <span className="text-blue-600 font-semibold">{sliderValue}</span>
+                    </span>
+                    <span>{question.max || 100}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Slider com Opção */}
+            {(questionType === 'slider_com_opcao') && (
+              <div className="space-y-3">
+                <div className="relative">
+                  <input
+                    type="range"
+                    min={question.min || 0}
+                    max={question.max || 100}
+                    value={sliderValue}
+                    onChange={(e) => handleSliderChange(questionId, parseInt(e.target.value))}
+                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                    style={{
+                      background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb 100%)`,
+                      WebkitAppearance: 'none',
+                      appearance: 'none'
+                    }}
+                  />
+                  <div className="flex justify-between text-xs text-gray-500 mt-2">
+                    <span>{question.min || 0}</span>
+                    <span className="font-medium text-gray-700">
+                      Valor: <span className="text-blue-600 font-semibold">{sliderValue}</span>
+                    </span>
+                    <span>{question.max || 100}</span>
+                  </div>
+                </div>
+                {question.optionText && (
+                  <div className="mt-2">
+                    <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={currentResponse?.optionChecked || false}
+                        onChange={(e) => handleResponseChange(questionId, { value: sliderValue, optionChecked: e.target.checked })}
+                        className="w-4 h-4 text-blue-600 rounded"
+                      />
+                      <span className="text-sm text-gray-600">{question.optionText}</span>
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Matriz Slider */}
+            {(questionType === 'matriz_slider') && (
+              <div className="space-y-3">
+                {subQuestions.map((subQ: SubQuestion) => {
+                  const subSliderValue = sliderValues[`${questionId}_${subQ.id}`] ?? (question.min !== undefined ? question.min : 0);
+                  return (
+                    <div key={subQ.id} className="ml-4">
+                      <p className="text-sm font-medium text-gray-700 mb-2">
+                        {subQ.text || subQ.texto}
+                      </p>
+                      <div className="relative">
+                        <input
+                          type="range"
+                          min={question.min || 0}
+                          max={question.max || 100}
+                          value={subSliderValue}
+                          onChange={(e) => {
+                            const value = parseInt(e.target.value);
+                            setSliderValues(prev => ({ ...prev, [`${questionId}_${subQ.id}`]: value }));
+                            handleMatrixResponse(questionId, subQ.id, value);
+                          }}
+                          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                          style={{
+                            background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((subSliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb ${((subSliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb 100%)`,
+                            WebkitAppearance: 'none',
+                            appearance: 'none'
+                          }}
+                        />
+                        <div className="flex justify-between text-xs text-gray-500 mt-2">
+                          <span>{question.min || 0}</span>
+                          <span className="font-medium text-gray-700">
+                            Valor: <span className="text-blue-600 font-semibold">{subSliderValue}</span>
+                          </span>
+                          <span>{question.max || 100}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Textarea */}
+            {(questionType === 'textarea') && (
+              <div className="space-y-2">
+                <Textarea
+                  value={currentResponse || ''}
+                  onChange={(e) => handleResponseChange(questionId, e.target.value)}
+                  rows={4}
+                  className="w-full"
+                  placeholder="Digite sua resposta aqui..."
+                />
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>Resposta livre</span>
+                  <span>{(currentResponse as string)?.length || 0} caracteres</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  if (isLoading) {
+    return (
+      <div className="container mx-auto p-6">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+            <p className="text-gray-600">Carregando questionário...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!questionario) {
+    return (
+      <div className="container mx-auto p-6">
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <AlertCircle className="h-16 w-16 text-gray-400 mb-4" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Questionário não encontrado
+            </h3>
+            <p className="text-gray-600 mb-4">
+              O questionário solicitado não foi encontrado ou você não tem permissão para acessá-lo.
+            </p>
+            <Button onClick={() => navigate(-1)}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Voltar
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const progress = calculateProgress();
+  const isDeadlineExpired = new Date(questionario.deadline) < new Date();
+
+  return (
+    <div className="container mx-auto p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <Button variant="outline" size="sm" onClick={() => navigate(-1)}>
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Voltar
+        </Button>
+        <div className="flex-1">
+          <h1 className="text-3xl font-bold text-gray-900">{questionario.title}</h1>
+          <p className="text-gray-600 mt-1">{questionario.description}</p>
+        </div>
+        {isSaving && (
+          <Badge variant="secondary" className="flex items-center gap-2">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Salvando...
+          </Badge>
+        )}
+      </div>
+
+      {/* Informações e Progresso */}
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <FileText className="h-4 w-4" />
+                <span>{questionario.questions.length} questões</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Clock className="h-4 w-4" />
+                <span>
+                  Prazo: {new Date(questionario.deadline).toLocaleDateString('pt-BR')}
+                </span>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-sm font-medium text-gray-700 mb-1">
+                Progresso: {progress.toFixed(0)}%
+              </div>
+              <Progress value={progress} className="w-32 h-2" />
+            </div>
+          </div>
+
+          {questionario.instructions && (
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                <p className="text-sm text-blue-800">{questionario.instructions}</p>
+              </div>
+            </div>
+          )}
+
+          {isDeadlineExpired && (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
+                <p className="text-sm text-red-800">
+                  O prazo para responder este questionário expirou. Você ainda pode visualizar suas respostas, mas não pode mais editá-las.
+                </p>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Questões */}
+      <div className="space-y-4">
+        {questionario.questions.map((question, index) => renderQuestion(question, index))}
+      </div>
+
+      {/* Botões de Ação */}
+      <div className="flex items-center justify-between sticky bottom-0 bg-white p-4 border-t shadow-lg rounded-t-lg">
+        <Button
+          variant="outline"
+          onClick={() => saveResponse(false)}
+          disabled={isSaving || isSubmitting}
+        >
+          {isSaving ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Salvando...
+            </>
+          ) : (
+            <>
+              <Save className="h-4 w-4 mr-2" />
+              Salvar
+            </>
+          )}
+        </Button>
+        <Button
+          onClick={handleFinalize}
+          disabled={isSubmitting || isSaving || isDeadlineExpired}
+          className="bg-green-600 hover:bg-green-700"
+        >
+          {isSubmitting ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Finalizando...
+            </>
+          ) : (
+            <>
+              <CheckCircle className="h-4 w-4 mr-2" />
+              Finalizar Questionário
+            </>
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+export default QuestionarioRespond;
+

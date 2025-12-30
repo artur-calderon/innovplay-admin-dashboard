@@ -2,6 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { 
   BarChart3, 
   PieChart, 
@@ -14,9 +24,16 @@ import {
   Eye,
   Building2,
   GraduationCap,
-  UserCheck
+  UserCheck,
+  Loader2,
+  Trash2,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { api } from '@/lib/api';
+import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/context/authContext';
 import { 
   BarChart as RechartsBarChart, 
   Bar, 
@@ -48,10 +65,74 @@ interface FormReport {
 
 const FormReports = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const [reports, setReports] = useState<FormReport[]>([]);
   const [selectedReport, setSelectedReport] = useState<FormReport | null>(null);
   const [chartType, setChartType] = useState<'bar' | 'pie' | 'line'>('bar');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingReport, setIsLoadingReport] = useState(false);
+  const [reportData, setReportData] = useState<any>(null);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [formToDelete, setFormToDelete] = useState<{ id: string; title: string } | null>(null);
 
-  // Dados mockados dos relatórios
+  // Buscar formulários enviados
+  useEffect(() => {
+    fetchForms();
+  }, []);
+
+  const fetchForms = async () => {
+    setIsLoading(true);
+    try {
+      console.log('🔍 Buscando lista de formulários...');
+      // Buscar todos os formulários (apenas os enviados/ativos)
+      const response = await api.get('/forms', {
+        params: {
+          limit: 100
+        }
+      });
+
+      console.log('✅ Resposta da API (lista de formulários):', response);
+      console.log('📋 Dados (response.data):', response.data);
+      console.log('📝 Formulários retornados:', response.data?.data || response.data);
+
+      // Transformar dados da API para o formato esperado
+      const formsData = response.data.data || response.data || [];
+      const transformedReports: FormReport[] = formsData
+        .filter((form: any) => form.sentAt || form.isActive) // Apenas formulários enviados ou ativos
+        .map((form: any) => ({
+          id: form.id,
+          formId: form.id,
+          formTitle: form.title,
+          formType: form.formType,
+          totalResponses: form.statistics?.totalResponses || form.totalResponses || 0,
+          completionRate: form.statistics?.completionRate || form.completionRate || 0,
+          createdAt: new Date(form.createdAt || form.created_at),
+          lastResponse: form.lastResponseAt ? new Date(form.lastResponseAt) : (form.updatedAt ? new Date(form.updatedAt) : new Date(form.createdAt || form.created_at)),
+          status: form.isActive ? 'active' : 'completed',
+          schools: form.selectedSchools?.map((s: any) => typeof s === 'string' ? s : (s.name || s.id)) || []
+        }));
+
+      setReports(transformedReports);
+      
+      // Selecionar o primeiro relatório automaticamente se houver
+      if (transformedReports.length > 0 && !selectedReport) {
+        handleSelectReport(transformedReports[0]);
+      }
+    } catch (error: any) {
+      console.error('Erro ao buscar formulários:', error);
+      toast({
+        title: "Erro ao carregar formulários",
+        description: error.response?.data?.message || "Não foi possível carregar os formulários.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Dados mockados dos relatórios (mantido como fallback)
   const mockReports: FormReport[] = [
     {
       id: '1',
@@ -1486,29 +1567,303 @@ const FormReports = () => {
     }
   };
 
-  const handleSelectReport = (report: FormReport) => {
-    setSelectedReport(report);
+  const handleSelectReport = async (report: FormReport) => {
+    console.log('📋 Relatório selecionado (antes da busca):', report);
+    console.log('🏫 Escolas no relatório inicial (podem ser IDs):', report.schools);
+    
+    setIsLoadingReport(true);
+    setReportData(null);
+    setCurrentQuestionIndex(0); // Resetar para a primeira pergunta
+    
+    // Não definir selectedReport ainda, vamos esperar os dados completos
+    // setSelectedReport(report);
+    
+    try {
+      console.log('🔍 Buscando relatório para formId:', report.formId);
+      const response = await api.get(`/forms/${report.formId}/reports`);
+      
+      console.log('✅ Resposta completa da API:', response);
+      console.log('📊 Dados do relatório (response.data):', response.data);
+      console.log('📈 Statistics:', response.data?.statistics);
+      console.log('📝 By Question:', response.data?.statistics?.byQuestion);
+      console.log('🏫 By School:', response.data?.statistics?.bySchool);
+      
+      if (response.data) {
+        setReportData(response.data);
+        
+        // Extrair nomes das escolas de bySchool
+        const schoolsData = response.data.statistics?.bySchool || {};
+        const schoolNames = Object.values(schoolsData)
+          .map((school: any) => school.schoolName)
+          .filter((name: string) => name); // Remover valores vazios
+        
+        console.log('🏫 Nomes das escolas extraídos de bySchool:', schoolNames);
+        console.log('🔍 Verificando se há IDs misturados:', report.schools);
+        
+        // Sempre atualizar o selectedReport com os nomes das escolas do bySchool
+        // Se não houver nomes no bySchool, manter os do report original (mas filtrar IDs)
+        const finalSchoolNames = schoolNames.length > 0 
+          ? schoolNames 
+          : report.schools.filter((s: string) => !s.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)); // Filtrar UUIDs
+        
+        console.log('✅ Nomes finais das escolas a serem exibidos:', finalSchoolNames);
+        
+        // Atualizar o selectedReport com os dados completos e nomes corretos
+        setSelectedReport({
+          ...report,
+          schools: finalSchoolNames
+        });
+        
+        console.log('✅ reportData atualizado:', response.data);
+        console.log('✅ selectedReport atualizado com escolas:', finalSchoolNames);
+      } else {
+        console.warn('⚠️ Resposta da API não contém dados:', response);
+        // Se não houver dados, definir o report sem atualizar escolas
+        setSelectedReport(report);
+      }
+    } catch (error: any) {
+      console.error('❌ Erro ao buscar relatório:', error);
+      console.error('❌ Erro response:', error.response);
+      console.error('❌ Erro data:', error.response?.data);
+      // Em caso de erro, definir o report mesmo assim
+      setSelectedReport(report);
+      toast({
+        title: "Erro ao carregar relatório",
+        description: error.response?.data?.message || "Não foi possível carregar os dados do relatório.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingReport(false);
+    }
   };
 
-  const handleExportReport = () => {
-    console.log('Exportando relatório:', selectedReport?.id);
-    // Implementar lógica de exportação
+  const handleExportReport = async () => {
+    if (!selectedReport) return;
+    
+    try {
+      // Buscar relatório para exportação
+      const response = await api.get(`/forms/${selectedReport.formId}/reports/export`, {
+        params: {
+          format: 'csv'
+        },
+        responseType: 'blob'
+      });
+
+      // Criar link para download
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `relatorio-${selectedReport.formId}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "Relatório exportado!",
+        description: "O relatório foi baixado com sucesso.",
+      });
+    } catch (error: any) {
+      console.error('Erro ao exportar relatório:', error);
+      toast({
+        title: "Erro ao exportar",
+        description: error.response?.data?.message || "Não foi possível exportar o relatório.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteClick = (formId: string, formTitle: string, event: React.MouseEvent) => {
+    event.stopPropagation(); // Prevenir que o clique no botão selecione o card
+    setFormToDelete({ id: formId, title: formTitle });
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!formToDelete) return;
+
+    try {
+      console.log('🗑️ Excluindo formulário:', formToDelete.id);
+      await api.delete(`/forms/${formToDelete.id}`);
+
+      console.log('✅ Formulário excluído com sucesso');
+      
+      // Remover da lista
+      setReports(prevReports => prevReports.filter(report => report.formId !== formToDelete.id));
+      
+      // Se o formulário excluído estava selecionado, limpar seleção
+      if (selectedReport?.formId === formToDelete.id) {
+        setSelectedReport(null);
+        setReportData(null);
+        setCurrentQuestionIndex(0);
+      }
+
+      toast({
+        title: "Formulário excluído!",
+        description: `O formulário "${formToDelete.title}" foi excluído com sucesso.`,
+      });
+
+      setDeleteDialogOpen(false);
+      setFormToDelete(null);
+    } catch (error: any) {
+      console.error('❌ Erro ao excluir formulário:', error);
+      toast({
+        title: "Erro ao excluir",
+        description: error.response?.data?.message || "Não foi possível excluir o formulário.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Verificar se o usuário tem permissão para excluir (admin ou tecadm)
+  const canDelete = user?.role === 'admin' || user?.role === 'tecadm';
+
+  // Função auxiliar para transformar dados da API no formato esperado
+  const transformReportDataToQuestions = () => {
+    console.log('🔄 transformReportDataToQuestions chamada');
+    console.log('📊 reportData:', reportData);
+    console.log('📈 reportData?.statistics:', reportData?.statistics);
+    console.log('📝 reportData?.statistics?.byQuestion:', reportData?.statistics?.byQuestion);
+    
+    if (!reportData?.statistics?.byQuestion) {
+      console.warn('⚠️ Não há statistics.byQuestion disponível');
+      return null;
+    }
+
+    const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#A29BFE', '#6C5CE7', '#FD79A8', '#FDCB6E', '#E17055'];
+    
+    const questions = Object.entries(reportData.statistics.byQuestion).map(([questionId, questionData]: [string, any], index) => {
+      console.log(`\n📋 Processando questão ${index + 1} (ID: ${questionId}):`, questionData);
+      let chartData: { name: string; value: number; color: string }[] = [];
+
+      if (questionData.responses) {
+        console.log(`  📊 Respostas da questão ${questionId}:`, questionData.responses);
+        // Para questões simples (selecao_unica, textarea, slider)
+        if (typeof questionData.responses === 'object' && !Array.isArray(questionData.responses)) {
+          // Verificar se é uma questão com subperguntas (matriz)
+          const firstKey = Object.keys(questionData.responses)[0];
+          if (firstKey && typeof questionData.responses[firstKey] === 'object' && !Array.isArray(questionData.responses[firstKey])) {
+            // É uma matriz (multipla_escolha, matriz_selecao, etc.)
+            // Agregar todas as subperguntas para exibir
+            const aggregated: Record<string, number> = {};
+            Object.values(questionData.responses).forEach((subResponse: any) => {
+              if (typeof subResponse === 'object' && !Array.isArray(subResponse)) {
+                Object.entries(subResponse).forEach(([key, value]: [string, any]) => {
+                  aggregated[key] = (aggregated[key] || 0) + (typeof value === 'number' ? value : 0);
+                });
+              }
+            });
+            chartData = Object.entries(aggregated).map(([key, value], idx) => ({
+              name: key,
+              value: value,
+              color: colors[idx % colors.length]
+            }));
+          } else {
+            // É uma questão simples - usar percentages se disponível, senão usar valores absolutos
+            if (questionData.percentages) {
+              chartData = Object.entries(questionData.percentages).map(([key, value]: [string, any], idx) => ({
+                name: key,
+                value: typeof value === 'number' ? value : 0,
+                color: colors[idx % colors.length]
+              }));
+            } else {
+              chartData = Object.entries(questionData.responses).map(([key, value]: [string, any], idx) => ({
+                name: key,
+                value: typeof value === 'number' ? value : 0,
+                color: colors[idx % colors.length]
+              }));
+            }
+          }
+        }
+      }
+
+      // Não filtrar questões sem dados - mostrar todas, mesmo sem dados
+      // Isso garante que todas as 44 perguntas apareçam
+      if (chartData.length === 0) {
+        console.warn(`  ⚠️ Questão ${questionId} não tem dados de gráfico, mas será exibida`);
+        // Criar dados vazios para questões sem respostas
+        chartData = [{ name: 'Sem respostas', value: 0, color: '#E5E7EB' }];
+      }
+
+      console.log(`  ✅ Questão ${questionId} processada com ${chartData.length} itens de dados:`, chartData);
+      return {
+        id: questionId,
+        question: questionData.question || `Questão ${index + 1}`,
+        type: questionData.type || 'selecao_unica',
+        section: questionData.section,
+        data: chartData
+      };
+    }); // Não filtrar - mostrar todas as questões
+    
+    console.log(`\n✅ Total de questões processadas: ${questions.length}`);
+    console.log('📊 Questões finais:', questions);
+    return questions;
   };
 
   const renderChart = () => {
     if (!selectedReport) return null;
+    
+    if (isLoadingReport) {
+      return (
+        <div className="flex items-center justify-center h-96">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+            <p className="text-gray-600">Carregando dados do relatório...</p>
+          </div>
+        </div>
+      );
+    }
 
-    // Para anos iniciais, sempre mostrar visualização por pergunta
-    if (selectedReport.formType === 'aluno-jovem') {
-      const questions = getQuestionDataForAnosIniciais();
+    // Verificar se há dados reais da API
+    const realQuestions = transformReportDataToQuestions();
+    
+    // Se não houver dados reais, mostrar mensagem
+    if (!realQuestions || realQuestions.length === 0) {
+      return (
+        <div className="flex items-center justify-center h-96">
+          <div className="flex flex-col items-center gap-4 text-center">
+            <FileText className="h-16 w-16 text-gray-400" />
+            <h3 className="text-lg font-medium text-gray-600">Nenhum dado disponível</h3>
+            <p className="text-sm text-gray-500">
+              Ainda não há respostas suficientes para gerar relatórios estatísticos.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // Usar dados reais para todos os tipos de formulário
+    const questions = realQuestions;
+
+    // Renderizar visualização por pergunta para todos os tipos com carousel
+    if (selectedReport.formType === 'aluno-jovem' || 
+        selectedReport.formType === 'aluno-velho' || 
+        selectedReport.formType === 'professor' || 
+        selectedReport.formType === 'diretor') {
+
+      const currentQuestion = questions[currentQuestionIndex] || questions[0];
+      const totalQuestions = questions.length;
+
+      const goToPrevious = () => {
+        setCurrentQuestionIndex((prev) => (prev > 0 ? prev - 1 : totalQuestions - 1));
+      };
+
+      const goToNext = () => {
+        setCurrentQuestionIndex((prev) => (prev < totalQuestions - 1 ? prev + 1 : 0));
+      };
 
       return (
-        <div className="w-full space-y-8">
+        <div className="w-full space-y-6">
           {/* Controles de Visualização */}
           <div className="flex justify-between items-center">
-            <h3 className="text-lg font-medium text-gray-900">
-              Análise por Pergunta - Anos Iniciais
-            </h3>
+            <div className="flex items-center gap-4">
+              <h3 className="text-lg font-medium text-gray-900">
+                Análise por Pergunta
+              </h3>
+              <span className="text-sm text-gray-500">
+                {currentQuestionIndex + 1} de {totalQuestions}
+              </span>
+            </div>
             <div className="flex gap-2">
               <Button
                 variant={chartType === 'bar' ? 'default' : 'outline'}
@@ -1537,601 +1892,155 @@ const FormReports = () => {
             </div>
           </div>
 
-          {/* Todas as Perguntas em Ordem */}
-          {questions.map((question, index) => (
-            <div key={question.id} className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-blue-100 text-blue-800 rounded-full flex items-center justify-center text-sm font-medium">
-                  {index + 1}
-                </div>
-                <h4 className="text-lg font-medium text-gray-900">
-                  {question.question}
-                </h4>
-              </div>
-
-              <div className="h-80 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  {chartType === 'bar' ? (
-                    <RechartsBarChart data={question.data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis 
-                        dataKey="name" 
-                        angle={-45}
-                        textAnchor="end"
-                        height={100}
-                        fontSize={12}
-                      />
-                      <YAxis />
-                      <Tooltip 
-                        formatter={(value: number) => [`${value}%`, 'Percentual']}
-                        labelFormatter={(label: string) => `Resposta: ${label}`}
-                      />
-                      <Bar dataKey="value" fill="#3B82F6" radius={[4, 4, 0, 0]} />
-                    </RechartsBarChart>
-                  ) : chartType === 'pie' ? (
-                    <RechartsPieChart>
-                      <Pie
-                        data={question.data}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                        outerRadius={100}
-                        fill="#8884d8"
-                        dataKey="value"
-                      >
-                        {question.data.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value: number) => [`${value}%`, 'Percentual']} />
-                    </RechartsPieChart>
-                  ) : (
-                    <RechartsLineChart data={question.data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis 
-                        dataKey="name" 
-                        angle={-45}
-                        textAnchor="end"
-                        height={100}
-                        fontSize={12}
-                      />
-                      <YAxis />
-                      <Tooltip 
-                        formatter={(value: number) => [`${value}%`, 'Percentual']}
-                        labelFormatter={(label: string) => `Resposta: ${label}`}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="value" 
-                        stroke="#3B82F6" 
-                        strokeWidth={3}
-                        dot={{ fill: '#3B82F6', strokeWidth: 2, r: 6 }}
-                      />
-                    </RechartsLineChart>
-                  )}
-                </ResponsiveContainer>
-              </div>
-
-              <div className="text-center text-sm text-gray-500">
-                {question.data.length} opções de resposta • {question.data.reduce((sum, item) => sum + item.value, 0)}% do total
-              </div>
-
-              {/* Separador entre perguntas */}
-              {index < questions.length - 1 && (
-                <div className="border-t border-gray-200 pt-6"></div>
-              )}
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    // Para anos finais, sempre mostrar visualização por pergunta
-    if (selectedReport.formType === 'aluno-velho') {
-      const questions = getQuestionDataForAnosFinais();
-
-      return (
-        <div className="w-full space-y-8">
-          {/* Controles de Visualização */}
-          <div className="flex justify-between items-center">
-            <h3 className="text-lg font-medium text-gray-900">
-              Análise por Pergunta - Anos Finais
-            </h3>
-            <div className="flex gap-2">
-              <Button
-                variant={chartType === 'bar' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setChartType('bar')}
-              >
-                <BarChart3 className="h-4 w-4 mr-1" />
-                Barras
-              </Button>
-              <Button
-                variant={chartType === 'pie' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setChartType('pie')}
-              >
-                <PieChart className="h-4 w-4 mr-1" />
-                Pizza
-              </Button>
-              <Button
-                variant={chartType === 'line' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setChartType('line')}
-              >
-                <TrendingUp className="h-4 w-4 mr-1" />
-                Linha
-              </Button>
-            </div>
-          </div>
-
-          {/* Todas as Perguntas em Ordem */}
-          {questions.map((question, index) => (
-            <div key={question.id} className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-green-100 text-green-800 rounded-full flex items-center justify-center text-sm font-medium">
-                  {index + 1}
-                </div>
-                <h4 className="text-lg font-medium text-gray-900">
-                  {question.question}
-                </h4>
-              </div>
-
-              <div className="h-80 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  {chartType === 'bar' ? (
-                    <RechartsBarChart data={question.data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis 
-                        dataKey="name" 
-                        angle={-45}
-                        textAnchor="end"
-                        height={100}
-                        fontSize={12}
-                      />
-                      <YAxis />
-                      <Tooltip 
-                        formatter={(value: number) => [`${value}%`, 'Percentual']}
-                        labelFormatter={(label: string) => `Resposta: ${label}`}
-                      />
-                      <Bar dataKey="value" fill="#10B981" radius={[4, 4, 0, 0]} />
-                    </RechartsBarChart>
-                  ) : chartType === 'pie' ? (
-                    <RechartsPieChart>
-                      <Pie
-                        data={question.data}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                        outerRadius={100}
-                        fill="#8884d8"
-                        dataKey="value"
-                      >
-                        {question.data.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value: number) => [`${value}%`, 'Percentual']} />
-                    </RechartsPieChart>
-                  ) : (
-                    <RechartsLineChart data={question.data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis 
-                        dataKey="name" 
-                        angle={-45}
-                        textAnchor="end"
-                        height={100}
-                        fontSize={12}
-                      />
-                      <YAxis />
-                      <Tooltip 
-                        formatter={(value: number) => [`${value}%`, 'Percentual']}
-                        labelFormatter={(label: string) => `Resposta: ${label}`}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="value" 
-                        stroke="#10B981" 
-                        strokeWidth={3}
-                        dot={{ fill: '#10B981', strokeWidth: 2, r: 6 }}
-                      />
-                    </RechartsLineChart>
-                  )}
-                </ResponsiveContainer>
-              </div>
-
-              <div className="text-center text-sm text-gray-500">
-                {question.data.length} opções de resposta • {question.data.reduce((sum, item) => sum + item.value, 0)}% do total
-              </div>
-
-              {/* Separador entre perguntas */}
-              {index < questions.length - 1 && (
-                <div className="border-t border-gray-200 pt-6"></div>
-              )}
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    // Para professor, sempre mostrar visualização por pergunta
-    if (selectedReport.formType === 'professor') {
-      const questions = getQuestionDataForProfessor();
-
-      return (
-        <div className="w-full space-y-8">
-          {/* Controles de Visualização */}
-          <div className="flex justify-between items-center">
-            <h3 className="text-lg font-medium text-gray-900">
-              Análise por Pergunta - Professor
-            </h3>
-            <div className="flex gap-2">
-              <Button
-                variant={chartType === 'bar' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setChartType('bar')}
-              >
-                <BarChart3 className="h-4 w-4 mr-1" />
-                Barras
-              </Button>
-              <Button
-                variant={chartType === 'pie' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setChartType('pie')}
-              >
-                <PieChart className="h-4 w-4 mr-1" />
-                Pizza
-              </Button>
-              <Button
-                variant={chartType === 'line' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setChartType('line')}
-              >
-                <TrendingUp className="h-4 w-4 mr-1" />
-                Linha
-              </Button>
-            </div>
-          </div>
-
-          {/* Todas as Perguntas em Ordem */}
-          {questions.map((question, index) => (
-            <div key={question.id} className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-purple-100 text-purple-800 rounded-full flex items-center justify-center text-sm font-medium">
-                  {index + 1}
-                </div>
-                <div className="flex-1">
-                  <h4 className="text-lg font-medium text-gray-900">
-                    {question.question}
-                  </h4>
-                  {question.section && (
-                    <p className="text-sm text-purple-600 font-medium">
-                      {question.section}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="h-80 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  {chartType === 'bar' ? (
-                    <RechartsBarChart data={question.data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis 
-                        dataKey="name" 
-                        angle={-45}
-                        textAnchor="end"
-                        height={100}
-                        fontSize={12}
-                      />
-                      <YAxis />
-                      <Tooltip 
-                        formatter={(value: number) => [`${value}%`, 'Percentual']}
-                        labelFormatter={(label: string) => `Resposta: ${label}`}
-                      />
-                      <Bar dataKey="value" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
-                    </RechartsBarChart>
-                  ) : chartType === 'pie' ? (
-                    <RechartsPieChart>
-                      <Pie
-                        data={question.data}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                        outerRadius={100}
-                        fill="#8884d8"
-                        dataKey="value"
-                      >
-                        {question.data.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value: number) => [`${value}%`, 'Percentual']} />
-                    </RechartsPieChart>
-                  ) : (
-                    <RechartsLineChart data={question.data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis 
-                        dataKey="name" 
-                        angle={-45}
-                        textAnchor="end"
-                        height={100}
-                        fontSize={12}
-                      />
-                      <YAxis />
-                      <Tooltip 
-                        formatter={(value: number) => [`${value}%`, 'Percentual']}
-                        labelFormatter={(label: string) => `Resposta: ${label}`}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="value" 
-                        stroke="#8B5CF6" 
-                        strokeWidth={3}
-                        dot={{ fill: '#8B5CF6', strokeWidth: 2, r: 6 }}
-                      />
-                    </RechartsLineChart>
-                  )}
-                </ResponsiveContainer>
-              </div>
-
-              <div className="text-center text-sm text-gray-500">
-                {question.data.length} opções de resposta • {question.data.reduce((sum, item) => sum + item.value, 0)}% do total
-              </div>
-
-              {/* Separador entre perguntas */}
-              {index < questions.length - 1 && (
-                <div className="border-t border-gray-200 pt-6"></div>
-              )}
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    // Para diretor, sempre mostrar visualização por pergunta
-    if (selectedReport.formType === 'diretor') {
-      const questions = getQuestionDataForDiretor();
-
-      return (
-        <div className="w-full space-y-8">
-          {/* Controles de Visualização */}
-          <div className="flex justify-between items-center">
-            <h3 className="text-lg font-medium text-gray-900">
-              Análise por Pergunta - Diretor
-            </h3>
-            <div className="flex gap-2">
-              <Button
-                variant={chartType === 'bar' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setChartType('bar')}
-              >
-                <BarChart3 className="h-4 w-4 mr-1" />
-                Barras
-              </Button>
-              <Button
-                variant={chartType === 'pie' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setChartType('pie')}
-              >
-                <PieChart className="h-4 w-4 mr-1" />
-                Pizza
-              </Button>
-              <Button
-                variant={chartType === 'line' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setChartType('line')}
-              >
-                <TrendingUp className="h-4 w-4 mr-1" />
-                Linha
-              </Button>
-            </div>
-          </div>
-
-          {/* Todas as Perguntas em Ordem */}
-          {questions.map((question, index) => (
-            <div key={question.id} className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-orange-100 text-orange-800 rounded-full flex items-center justify-center text-sm font-medium">
-                  {index + 1}
-                </div>
-                <div className="flex-1">
-                  <h4 className="text-lg font-medium text-gray-900">
-                    {question.question}
-                  </h4>
-                  {question.section && (
-                    <p className="text-sm text-orange-600 font-medium">
-                      {question.section}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="h-80 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  {chartType === 'bar' ? (
-                    <RechartsBarChart data={question.data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis 
-                        dataKey="name" 
-                        angle={-45}
-                        textAnchor="end"
-                        height={100}
-                        fontSize={12}
-                      />
-                      <YAxis />
-                      <Tooltip 
-                        formatter={(value: number) => [`${value}%`, 'Percentual']}
-                        labelFormatter={(label: string) => `Resposta: ${label}`}
-                      />
-                      <Bar dataKey="value" fill="#F97316" radius={[4, 4, 0, 0]} />
-                    </RechartsBarChart>
-                  ) : chartType === 'pie' ? (
-                    <RechartsPieChart>
-                      <Pie
-                        data={question.data}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                        outerRadius={100}
-                        fill="#8884d8"
-                        dataKey="value"
-                      >
-                        {question.data.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value: number) => [`${value}%`, 'Percentual']} />
-                    </RechartsPieChart>
-                  ) : (
-                    <RechartsLineChart data={question.data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis 
-                        dataKey="name" 
-                        angle={-45}
-                        textAnchor="end"
-                        height={100}
-                        fontSize={12}
-                      />
-                      <YAxis />
-                      <Tooltip 
-                        formatter={(value: number) => [`${value}%`, 'Percentual']}
-                        labelFormatter={(label: string) => `Resposta: ${label}`}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="value" 
-                        stroke="#F97316" 
-                        strokeWidth={3}
-                        dot={{ fill: '#F97316', strokeWidth: 2, r: 6 }}
-                      />
-                    </RechartsLineChart>
-                  )}
-                </ResponsiveContainer>
-              </div>
-
-              <div className="text-center text-sm text-gray-500">
-                {question.data.length} opções de resposta • {question.data.reduce((sum, item) => sum + item.value, 0)}% do total
-              </div>
-
-              {/* Separador entre perguntas */}
-              {index < questions.length - 1 && (
-                <div className="border-t border-gray-200 pt-6"></div>
-              )}
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    // Para outros tipos de questionário, mostrar visualização geral
-    const data = getChartDataForForm(selectedReport.formType);
-    const totalResponses = data.reduce((sum, item) => sum + item.value, 0);
-
-    return (
-      <div className="w-full">
-        <div className="mb-4 flex justify-between items-center">
-          <h3 className="text-lg font-medium text-gray-900">
-            {chartType === 'bar' ? 'Gráfico de Barras' : chartType === 'pie' ? 'Gráfico de Pizza' : 'Gráfico de Linha'}
-          </h3>
-          <div className="flex gap-2">
+          {/* Carousel de Perguntas */}
+          <div className="relative">
+            {/* Botão Anterior */}
             <Button
-              variant={chartType === 'bar' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setChartType('bar')}
+              variant="outline"
+              size="icon"
+              className="absolute left-0 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full shadow-lg"
+              onClick={goToPrevious}
+              disabled={totalQuestions === 0}
             >
-              <BarChart3 className="h-4 w-4 mr-1" />
-              Barras
+              <ChevronLeft className="h-5 w-5" />
             </Button>
+
+            {/* Conteúdo do Carousel */}
+            <div className="mx-12">
+              {currentQuestion && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-blue-100 text-blue-800 rounded-full flex items-center justify-center text-sm font-medium">
+                      {currentQuestionIndex + 1}
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-lg font-medium text-gray-900">
+                        {currentQuestion.question}
+                      </h4>
+                      {currentQuestion.section && (
+                        <p className="text-sm text-blue-600 font-medium mt-1">
+                          {currentQuestion.section}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="h-96 w-full bg-white rounded-lg border p-4">
+                    <ResponsiveContainer width="100%" height="100%">
+                      {chartType === 'bar' ? (
+                        <RechartsBarChart data={currentQuestion.data} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis 
+                            dataKey="name" 
+                            angle={-45}
+                            textAnchor="end"
+                            height={80}
+                            fontSize={12}
+                          />
+                          <YAxis />
+                          <Tooltip 
+                            formatter={(value: number) => [`${value}%`, 'Percentual']}
+                            labelFormatter={(label: string) => `Resposta: ${label}`}
+                          />
+                          <Bar dataKey="value" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+                        </RechartsBarChart>
+                      ) : chartType === 'pie' ? (
+                        <RechartsPieChart>
+                          <Pie
+                            data={currentQuestion.data}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                            outerRadius={120}
+                            fill="#8884d8"
+                            dataKey="value"
+                          >
+                            {currentQuestion.data.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(value: number) => [`${value}%`, 'Percentual']} />
+                        </RechartsPieChart>
+                      ) : (
+                        <RechartsLineChart data={currentQuestion.data} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis 
+                            dataKey="name" 
+                            angle={-45}
+                            textAnchor="end"
+                            height={80}
+                            fontSize={12}
+                          />
+                          <YAxis />
+                          <Tooltip 
+                            formatter={(value: number) => [`${value}%`, 'Percentual']}
+                            labelFormatter={(label: string) => `Resposta: ${label}`}
+                          />
+                          <Line 
+                            type="monotone" 
+                            dataKey="value" 
+                            stroke="#3B82F6" 
+                            strokeWidth={3}
+                            dot={{ fill: '#3B82F6', strokeWidth: 2, r: 6 }}
+                          />
+                        </RechartsLineChart>
+                      )}
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div className="text-center text-sm text-gray-500">
+                    {currentQuestion.data.length} opções de resposta • {currentQuestion.data.reduce((sum, item) => sum + item.value, 0)}% do total
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Botão Próximo */}
             <Button
-              variant={chartType === 'pie' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setChartType('pie')}
+              variant="outline"
+              size="icon"
+              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full shadow-lg"
+              onClick={goToNext}
+              disabled={totalQuestions === 0}
             >
-              <PieChart className="h-4 w-4 mr-1" />
-              Pizza
-            </Button>
-            <Button
-              variant={chartType === 'line' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setChartType('line')}
-            >
-              <TrendingUp className="h-4 w-4 mr-1" />
-              Linha
+              <ChevronRight className="h-5 w-5" />
             </Button>
           </div>
-        </div>
 
-        <div className="h-96 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            {chartType === 'bar' ? (
-              <RechartsBarChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis 
-                  dataKey="name" 
-                  angle={-45}
-                  textAnchor="end"
-                  height={100}
-                  fontSize={12}
-                />
-                <YAxis />
-                <Tooltip 
-                  formatter={(value: number) => [`${value}%`, 'Percentual']}
-                  labelFormatter={(label: string) => `Categoria: ${label}`}
-                />
-                <Bar dataKey="value" fill="#3B82F6" radius={[4, 4, 0, 0]} />
-              </RechartsBarChart>
-            ) : chartType === 'pie' ? (
-              <RechartsPieChart>
-                <Pie
-                  data={data}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                  outerRadius={120}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {data.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value: number) => [`${value}%`, 'Percentual']} />
-              </RechartsPieChart>
-            ) : (
-              <RechartsLineChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis 
-                  dataKey="name" 
-                  angle={-45}
-                  textAnchor="end"
-                  height={100}
-                  fontSize={12}
-                />
-                <YAxis />
-                <Tooltip 
-                  formatter={(value: number) => [`${value}%`, 'Percentual']}
-                  labelFormatter={(label: string) => `Categoria: ${label}`}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="value" 
-                  stroke="#3B82F6" 
-                  strokeWidth={3}
-                  dot={{ fill: '#3B82F6', strokeWidth: 2, r: 6 }}
-                />
-              </RechartsLineChart>
+          {/* Indicadores de Pergunta */}
+          <div className="flex justify-center gap-2 flex-wrap">
+            {questions.slice(0, Math.min(20, totalQuestions)).map((_, index) => (
+              <button
+                key={index}
+                onClick={() => setCurrentQuestionIndex(index)}
+                className={`h-2 rounded-full transition-all ${
+                  index === currentQuestionIndex
+                    ? 'w-8 bg-blue-600'
+                    : 'w-2 bg-gray-300 hover:bg-gray-400'
+                }`}
+                aria-label={`Ir para pergunta ${index + 1}`}
+              />
+            ))}
+            {totalQuestions > 20 && (
+              <span className="text-xs text-gray-500 self-center">
+                ... e mais {totalQuestions - 20}
+              </span>
             )}
-          </ResponsiveContainer>
+          </div>
         </div>
+      );
+    }
 
-        <div className="mt-4 text-center text-sm text-gray-500">
-          {data.length} categorias • {totalResponses}% do total de respostas
+    // Se chegou aqui sem dados reais, mostrar mensagem
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <FileText className="h-16 w-16 text-gray-400" />
+          <h3 className="text-lg font-medium text-gray-600">Nenhum dado disponível</h3>
+          <p className="text-sm text-gray-500">
+            Ainda não há respostas suficientes para gerar relatórios estatísticos.
+          </p>
         </div>
       </div>
     );
@@ -2148,86 +2057,128 @@ const FormReports = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" className="flex items-center gap-2">
-            <Filter className="h-4 w-4" />
-            Filtrar
+          <Button variant="outline" onClick={fetchForms} disabled={isLoading} className="flex items-center gap-2">
+            {isLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Carregando...
+              </>
+            ) : (
+              <>
+                <Filter className="h-4 w-4" />
+                Atualizar
+              </>
+            )}
           </Button>
-          <Button className="flex items-center gap-2">
-            <Download className="h-4 w-4" />
-            Exportar
-          </Button>
+          {selectedReport && (
+            <Button onClick={handleExportReport} className="flex items-center gap-2">
+              <Download className="h-4 w-4" />
+              Exportar
+            </Button>
+          )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Lista de Relatórios */}
-        <div className="lg:col-span-1">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                Questionários Disponíveis
-              </CardTitle>
-              <CardDescription>
-                Selecione um questionário para visualizar os relatórios
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {mockReports.map((report) => {
-                const formInfo = getFormTypeInfo(report.formType);
-                const IconComponent = formInfo.icon;
-                const isSelected = selectedReport?.id === report.id;
-
-                return (
-                  <Card
-                    key={report.id}
-                    className={`cursor-pointer transition-all duration-200 hover:shadow-md ${
-                      isSelected ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:bg-gray-50'
-                    }`}
-                    onClick={() => handleSelectReport(report)}
-                  >
-                    <CardContent className="p-4">
-                      <div className="flex items-start gap-3">
-                        <div className={`p-2 rounded-lg ${formInfo.color}`}>
-                          <IconComponent className="h-5 w-5 text-white" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-medium text-gray-900 truncate">
-                            {report.formTitle}
-                          </h4>
-                          <p className="text-sm text-gray-600 mt-1">
-                            {formInfo.name}
-                          </p>
-                          <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
-                            <span className="flex items-center gap-1">
-                              <Users className="h-3 w-3" />
-                              {report.totalResponses} respostas
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <TrendingUp className="h-3 w-3" />
-                              {report.completionRate}%
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2 mt-2">
-                            <Badge 
-                              variant={report.status === 'active' ? 'default' : 'secondary'}
-                              className="text-xs"
-                            >
-                              {report.status === 'active' ? 'Ativo' : 'Concluído'}
-                            </Badge>
-                            <span className="text-xs text-gray-500">
-                              {report.createdAt.toLocaleDateString('pt-BR')}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </CardContent>
-          </Card>
+      {isLoading ? (
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+            <p className="text-gray-600">Carregando formulários...</p>
+          </div>
         </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Lista de Relatórios */}
+          <div className="lg:col-span-1">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Questionários Disponíveis
+                </CardTitle>
+                <CardDescription>
+                  Selecione um questionário para visualizar os relatórios
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {reports.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <FileText className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                    <p>Nenhum formulário enviado encontrado</p>
+                    <p className="text-sm mt-2">Os formulários enviados aparecerão aqui</p>
+                  </div>
+                ) : (
+                  reports.map((report) => {
+                    const formInfo = getFormTypeInfo(report.formType);
+                    const IconComponent = formInfo.icon;
+                    const isSelected = selectedReport?.id === report.id;
+
+                    return (
+                      <Card
+                        key={report.id}
+                        className={`cursor-pointer transition-all duration-200 hover:shadow-md ${
+                          isSelected ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:bg-gray-50'
+                        }`}
+                        onClick={() => handleSelectReport(report)}
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-start gap-3">
+                            <div className={`p-2 rounded-lg ${formInfo.color}`}>
+                              <IconComponent className="h-5 w-5 text-white" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <h4 className="font-medium text-gray-900 truncate">
+                                    {report.formTitle}
+                                  </h4>
+                                  <p className="text-sm text-gray-600 mt-1">
+                                    {formInfo.name}
+                                  </p>
+                                  <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                                    <span className="flex items-center gap-1">
+                                      <Users className="h-3 w-3" />
+                                      {report.totalResponses} respostas
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                      <TrendingUp className="h-3 w-3" />
+                                      {report.completionRate}%
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-2">
+                                    <Badge 
+                                      variant={report.status === 'active' ? 'default' : 'secondary'}
+                                      className="text-xs"
+                                    >
+                                      {report.status === 'active' ? 'Ativo' : 'Concluído'}
+                                    </Badge>
+                                    <span className="text-xs text-gray-500">
+                                      {report.createdAt.toLocaleDateString('pt-BR')}
+                                    </span>
+                                  </div>
+                                </div>
+                                {canDelete && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    onClick={(e) => handleDeleteClick(report.formId, report.formTitle, e)}
+                                    title="Excluir formulário"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })
+                )}
+              </CardContent>
+            </Card>
+          </div>
 
         {/* Área de Visualização */}
         <div className="lg:col-span-2">
@@ -2257,13 +2208,13 @@ const FormReports = () => {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                     <div className="text-center p-4 bg-blue-50 rounded-lg">
                       <div className="text-2xl font-bold text-blue-600">
-                        {selectedReport.totalResponses}
+                        {reportData?.totalResponses || selectedReport.totalResponses}
                       </div>
                       <div className="text-sm text-blue-800">Total de Respostas</div>
                     </div>
                     <div className="text-center p-4 bg-green-50 rounded-lg">
                       <div className="text-2xl font-bold text-green-600">
-                        {selectedReport.completionRate}%
+                        {reportData?.completionRate || selectedReport.completionRate}%
                       </div>
                       <div className="text-sm text-green-800">Taxa de Conclusão</div>
                     </div>
@@ -2329,7 +2280,34 @@ const FormReports = () => {
             </Card>
           )}
         </div>
-      </div>
+        </div>
+      )}
+
+      {/* Dialog de Confirmação de Exclusão */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir Formulário</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir o formulário <strong>"{formToDelete?.title}"</strong>?
+              <br />
+              <br />
+              Esta ação não pode ser desfeita e todos os dados relacionados serão permanentemente removidos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setFormToDelete(null)}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
