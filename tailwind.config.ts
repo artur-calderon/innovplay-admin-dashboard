@@ -88,7 +88,7 @@ export default {
 			borderRadius: {
 				lg: 'var(--radius)',
 				md: 'calc(var(--radius) - 2px)',
-				sm: 'calc(var(--radius) - 4px)'
+				// sm removido - usa valor padrão do Tailwind (0.125rem = 2px) para checkboxes
 			},
 			keyframes: {
 				'accordion-down': {
