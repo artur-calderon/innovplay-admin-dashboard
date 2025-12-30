@@ -131,47 +131,444 @@ function formatDate(dateString: string | null | undefined): string {
 }
 
 /**
- * Exporta dados de evolução para Excel
+ * Carrega o template Excel do servidor
  */
-export function exportEvolutionToExcel(
-  comparisonData: ComparisonResponse,
+async function loadTemplate(): Promise<XLSX.WorkBook> {
+  try {
+    const response = await fetch('/templates/Relatorio_Afirme_Play.xlsx');
+    if (!response.ok) {
+      throw new Error(`Template não encontrado: ${response.status} ${response.statusText}`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    // Converter ArrayBuffer para Uint8Array para compatibilidade
+    const data = new Uint8Array(arrayBuffer);
+    // Usar XLSX.read com type 'array'
+    const workbook = XLSX.read(data, { type: 'array' });
+    return workbook;
+  } catch (error) {
+    console.error('Erro ao carregar template:', error);
+    throw new Error(`Falha ao carregar template: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * Normaliza nome de disciplina para comparação (case-insensitive)
+ */
+function normalizeSubjectName(name: string): string {
+  return name.toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
+/**
+ * Converte direção do backend para formato do Excel
+ */
+function formatDirection(direction: string | undefined, variation: number | null | undefined): string {
+  if (direction) {
+    // Converter para formato do Excel (capitalizado)
+    if (direction === 'increase') return 'Increase';
+    if (direction === 'decrease') return 'Decrease';
+    if (direction === 'stable') return 'Stable';
+  }
+  
+  // Fallback: calcular baseado na variação
+  if (variation === null || variation === undefined) return 'Stable';
+  if (variation > 0.01) return 'Increase';
+  if (variation < -0.01) return 'Decrease';
+  return 'Stable';
+}
+
+/**
+ * Preenche dados na aba "Geral"
+ */
+function fillGeneralSheet(
+  worksheet: XLSX.WorkSheet,
   processedData: ProcessedEvolutionData
 ): void {
-  const workbook = XLSX.utils.book_new();
+  const generalData = processedData.generalData[0];
+  const proficiencyData = processedData.proficiencyData[0];
+  
+  // Linha 7: Nota Geral (0-indexed: linha 6)
+  if (generalData) {
+    const row = 6; // Linha 7 no Excel (0-indexed)
+    
+    // B7, C7, D7: Valores das avaliações
+    if (generalData.etapa1 !== undefined) {
+      const cellB7 = XLSX.utils.encode_cell({ r: row, c: 1 }); // B7
+      worksheet[cellB7] = { v: generalData.etapa1, t: 'n' };
+    }
+    
+    if (generalData.etapa2 !== undefined) {
+      const cellC7 = XLSX.utils.encode_cell({ r: row, c: 2 }); // C7
+      worksheet[cellC7] = { v: generalData.etapa2, t: 'n' };
+    }
+    
+    if (generalData.etapa3 !== undefined) {
+      const cellD7 = XLSX.utils.encode_cell({ r: row, c: 3 }); // D7
+      worksheet[cellD7] = { v: generalData.etapa3, t: 'n' };
+    }
+    
+    // E7: Var 1->2 (percentual do backend, converter para decimal)
+    if (generalData.variacao_1_2 !== undefined) {
+      const cellE7 = XLSX.utils.encode_cell({ r: row, c: 4 }); // E7
+      worksheet[cellE7] = { 
+        v: generalData.variacao_1_2 / 100, // Converter % para decimal
+        t: 'n',
+        z: '0.0%' // Formato percentual
+      };
+    }
+    
+    // F7: Var 2->3 (se existir)
+    if (generalData.variacao_2_3 !== undefined) {
+      const cellF7 = XLSX.utils.encode_cell({ r: row, c: 5 }); // F7
+      worksheet[cellF7] = { 
+        v: generalData.variacao_2_3 / 100,
+        t: 'n',
+        z: '0.0%'
+      };
+    }
+    
+    // G7: Direção (baseado na última variação disponível)
+    const lastVariation = generalData.variacao_2_3 ?? generalData.variacao_1_2 ?? null;
+    const direction = formatDirection(undefined, lastVariation);
+    const cellG7 = XLSX.utils.encode_cell({ r: row, c: 6 }); // G7
+    worksheet[cellG7] = { v: direction, t: 's' };
+  }
+  
+  // Linha 25: Proficiência Geral (0-indexed: linha 24)
+  if (proficiencyData) {
+    const row = 24; // Linha 25 no Excel (0-indexed)
+    
+    // B25, C25, D25: Valores das avaliações
+    if (proficiencyData.etapa1 !== undefined) {
+      const cellB25 = XLSX.utils.encode_cell({ r: row, c: 1 }); // B25
+      worksheet[cellB25] = { v: proficiencyData.etapa1, t: 'n' };
+    }
+    
+    if (proficiencyData.etapa2 !== undefined) {
+      const cellC25 = XLSX.utils.encode_cell({ r: row, c: 2 }); // C25
+      worksheet[cellC25] = { v: proficiencyData.etapa2, t: 'n' };
+    }
+    
+    if (proficiencyData.etapa3 !== undefined) {
+      const cellD25 = XLSX.utils.encode_cell({ r: row, c: 3 }); // D25
+      worksheet[cellD25] = { v: proficiencyData.etapa3, t: 'n' };
+    }
+    
+    // E25: Var 1->2
+    if (proficiencyData.variacao_1_2 !== undefined) {
+      const cellE25 = XLSX.utils.encode_cell({ r: row, c: 4 }); // E25
+      worksheet[cellE25] = { 
+        v: proficiencyData.variacao_1_2 / 100,
+        t: 'n',
+        z: '0.0%'
+      };
+    }
+    
+    // F25: Var 2->3
+    if (proficiencyData.variacao_2_3 !== undefined) {
+      const cellF25 = XLSX.utils.encode_cell({ r: row, c: 5 }); // F25
+      worksheet[cellF25] = { 
+        v: proficiencyData.variacao_2_3 / 100,
+        t: 'n',
+        z: '0.0%'
+      };
+    }
+    
+    // G25: Direção
+    const lastVariation = proficiencyData.variacao_2_3 ?? proficiencyData.variacao_1_2 ?? null;
+    const direction = formatDirection(undefined, lastVariation);
+    const cellG25 = XLSX.utils.encode_cell({ r: row, c: 6 }); // G25
+    worksheet[cellG25] = { v: direction, t: 's' };
+  }
+}
 
-  // 1. Aba: Resumo Executivo
-  const summarySheet = createSummarySheet(comparisonData, processedData);
-  XLSX.utils.book_append_sheet(workbook, summarySheet, 'Resumo Executivo');
+/**
+ * Preenche dados na aba de uma disciplina específica
+ */
+function fillSubjectSheet(
+  worksheet: XLSX.WorkSheet,
+  subjectName: string,
+  subjectData: EvolutionData[],
+  subjectProficiencyData: EvolutionData[]
+): void {
+  // Buscar dados da disciplina (normalizar nome)
+  const normalizedSubjectName = normalizeSubjectName(subjectName);
+  const notesData = subjectData.find(d => normalizeSubjectName(d.name) === normalizedSubjectName);
+  const proficiencyData = subjectProficiencyData.find(d => normalizeSubjectName(d.name) === normalizedSubjectName);
+  
+  // Linha 7: Nota da disciplina
+  if (notesData) {
+    const row = 6; // Linha 7 no Excel
+    
+    if (notesData.etapa1 !== undefined) {
+      const cellB7 = XLSX.utils.encode_cell({ r: row, c: 1 });
+      worksheet[cellB7] = { v: notesData.etapa1, t: 'n' };
+    }
+    
+    if (notesData.etapa2 !== undefined) {
+      const cellC7 = XLSX.utils.encode_cell({ r: row, c: 2 });
+      worksheet[cellC7] = { v: notesData.etapa2, t: 'n' };
+    }
+    
+    if (notesData.etapa3 !== undefined) {
+      const cellD7 = XLSX.utils.encode_cell({ r: row, c: 3 });
+      worksheet[cellD7] = { v: notesData.etapa3, t: 'n' };
+    }
+    
+    if (notesData.variacao_1_2 !== undefined) {
+      const cellE7 = XLSX.utils.encode_cell({ r: row, c: 4 });
+      worksheet[cellE7] = { 
+        v: notesData.variacao_1_2 / 100,
+        t: 'n',
+        z: '0.0%'
+      };
+    }
+    
+    if (notesData.variacao_2_3 !== undefined) {
+      const cellF7 = XLSX.utils.encode_cell({ r: row, c: 5 });
+      worksheet[cellF7] = { 
+        v: notesData.variacao_2_3 / 100,
+        t: 'n',
+        z: '0.0%'
+      };
+    }
+    
+    const lastVariation = notesData.variacao_2_3 ?? notesData.variacao_1_2 ?? null;
+    const direction = formatDirection(undefined, lastVariation);
+    const cellG7 = XLSX.utils.encode_cell({ r: row, c: 6 });
+    worksheet[cellG7] = { v: direction, t: 's' };
+  }
+  
+  // Linha 25: Proficiência da disciplina
+  if (proficiencyData) {
+    const row = 24; // Linha 25 no Excel
+    
+    if (proficiencyData.etapa1 !== undefined) {
+      const cellB25 = XLSX.utils.encode_cell({ r: row, c: 1 });
+      worksheet[cellB25] = { v: proficiencyData.etapa1, t: 'n' };
+    }
+    
+    if (proficiencyData.etapa2 !== undefined) {
+      const cellC25 = XLSX.utils.encode_cell({ r: row, c: 2 });
+      worksheet[cellC25] = { v: proficiencyData.etapa2, t: 'n' };
+    }
+    
+    if (proficiencyData.etapa3 !== undefined) {
+      const cellD25 = XLSX.utils.encode_cell({ r: row, c: 3 });
+      worksheet[cellD25] = { v: proficiencyData.etapa3, t: 'n' };
+    }
+    
+    if (proficiencyData.variacao_1_2 !== undefined) {
+      const cellE25 = XLSX.utils.encode_cell({ r: row, c: 4 });
+      worksheet[cellE25] = { 
+        v: proficiencyData.variacao_1_2 / 100,
+        t: 'n',
+        z: '0.0%'
+      };
+    }
+    
+    if (proficiencyData.variacao_2_3 !== undefined) {
+      const cellF25 = XLSX.utils.encode_cell({ r: row, c: 5 });
+      worksheet[cellF25] = { 
+        v: proficiencyData.variacao_2_3 / 100,
+        t: 'n',
+        z: '0.0%'
+      };
+    }
+    
+    const lastVariation = proficiencyData.variacao_2_3 ?? proficiencyData.variacao_1_2 ?? null;
+    const direction = formatDirection(undefined, lastVariation);
+    const cellG25 = XLSX.utils.encode_cell({ r: row, c: 6 });
+    worksheet[cellG25] = { v: direction, t: 's' };
+  }
+}
 
-  // 2. Aba: Evolução Geral
-  const generalSheet = createGeneralSheet(processedData);
-  XLSX.utils.book_append_sheet(workbook, generalSheet, 'Evolução Geral');
+/**
+ * Preenche dados na aba "Níveis"
+ */
+function fillLevelsSheet(
+  worksheet: XLSX.WorkSheet,
+  processedData: ProcessedEvolutionData
+): void {
+  // Mapear níveis do template para os dados do backend
+  const levelMapping: Record<string, string> = {
+    'Abaixo do Básico': 'Abaixo do Básico',
+    'Básico': 'Básico',
+    'Adequado': 'Adequado',
+    'Avançado': 'Avançado'
+  };
+  
+  // Linhas 7-10 no Excel (0-indexed: 6-9)
+  const levelRows: Record<string, number> = {
+    'Abaixo do Básico': 6,  // Linha 7
+    'Básico': 7,            // Linha 8
+    'Adequado': 8,          // Linha 9
+    'Avançado': 9            // Linha 10
+  };
+  
+  Object.keys(levelRows).forEach(templateLevelName => {
+    const row = levelRows[templateLevelName];
+    
+    // Buscar dados do nível (tentar diferentes variações do nome)
+    let levelData: EvolutionData | undefined;
+    
+    // Tentar encontrar pelo nome exato
+    Object.keys(processedData.levelsData).forEach(levelKey => {
+      const normalizedKey = levelKey.toLowerCase().trim();
+      const normalizedTemplate = templateLevelName.toLowerCase().trim();
+      
+      if (normalizedKey === normalizedTemplate || 
+          normalizedKey.includes(normalizedTemplate) ||
+          normalizedTemplate.includes(normalizedKey)) {
+        levelData = processedData.levelsData[levelKey]?.[0];
+      }
+    });
+    
+    if (levelData) {
+      // B, C, D: Quantidade de alunos por avaliação
+      if (levelData.etapa1 !== undefined) {
+        const cellB = XLSX.utils.encode_cell({ r: row, c: 1 });
+        worksheet[cellB] = { v: levelData.etapa1, t: 'n' };
+      }
+      
+      if (levelData.etapa2 !== undefined) {
+        const cellC = XLSX.utils.encode_cell({ r: row, c: 2 });
+        worksheet[cellC] = { v: levelData.etapa2, t: 'n' };
+      }
+      
+      if (levelData.etapa3 !== undefined) {
+        const cellD = XLSX.utils.encode_cell({ r: row, c: 3 });
+        worksheet[cellD] = { v: levelData.etapa3, t: 'n' };
+      }
+      
+      // E: Var 1->2
+      if (levelData.variacao_1_2 !== undefined) {
+        const cellE = XLSX.utils.encode_cell({ r: row, c: 4 });
+        worksheet[cellE] = { 
+          v: levelData.variacao_1_2 / 100,
+          t: 'n',
+          z: '0.0%'
+        };
+      }
+      
+      // F: Var 2->3
+      if (levelData.variacao_2_3 !== undefined) {
+        const cellF = XLSX.utils.encode_cell({ r: row, c: 5 });
+        worksheet[cellF] = { 
+          v: levelData.variacao_2_3 / 100,
+          t: 'n',
+          z: '0.0%'
+        };
+      }
+    }
+  });
+}
 
-  // 3. Aba: Por Disciplina - Notas
-  const subjectsNotesSheet = createSubjectsNotesSheet(processedData);
-  XLSX.utils.book_append_sheet(workbook, subjectsNotesSheet, 'Por Disciplina - Notas');
+/**
+ * Exporta dados de evolução para Excel usando template
+ */
+export async function exportEvolutionToExcelWithTemplate(
+  comparisonData: ComparisonResponse,
+  processedData: ProcessedEvolutionData
+): Promise<void> {
+  try {
+    // 1. Carregar template
+    const workbook = await loadTemplate();
+    
+    // 2. Preencher aba "Geral"
+    const generalSheet = workbook.Sheets['Geral'];
+    if (generalSheet) {
+      fillGeneralSheet(generalSheet, processedData);
+    }
+    
+    // 3. Preencher abas de disciplinas
+    // O template tem "Matemática", mas pode haver outras disciplinas
+    Object.keys(processedData.subjectData).forEach(subjectName => {
+      // Tentar encontrar aba com nome similar (case-insensitive)
+      const sheetNames = workbook.SheetNames;
+      const normalizedSubjectName = normalizeSubjectName(subjectName);
+      
+      const matchingSheet = sheetNames.find(sheetName => 
+        normalizeSubjectName(sheetName) === normalizedSubjectName
+      );
+      
+      if (matchingSheet) {
+        const sheet = workbook.Sheets[matchingSheet];
+        if (sheet) {
+          fillSubjectSheet(
+            sheet,
+            subjectName,
+            processedData.subjectData[subjectName],
+            processedData.subjectProficiencyData[subjectName] || []
+          );
+        }
+      }
+    });
+    
+    // 4. Preencher aba "Níveis"
+    const levelsSheet = workbook.Sheets['Níveis'];
+    if (levelsSheet) {
+      fillLevelsSheet(levelsSheet, processedData);
+    }
+    
+    // 5. Salvar arquivo
+    const fileName = `Relatorio_Afirme_Play_${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(workbook, fileName);
+    
+  } catch (error) {
+    console.error('Erro ao exportar com template:', error);
+    throw error;
+  }
+}
 
-  // 4. Aba: Por Disciplina - Proficiência
-  const subjectsProficiencySheet = createSubjectsProficiencySheet(processedData);
-  XLSX.utils.book_append_sheet(workbook, subjectsProficiencySheet, 'Por Disciplina - Proficiência');
+/**
+ * Exporta dados de evolução para Excel (usa template se disponível, senão cria novo)
+ */
+export async function exportEvolutionToExcel(
+  comparisonData: ComparisonResponse,
+  processedData: ProcessedEvolutionData
+): Promise<void> {
+  try {
+    // Tentar usar template primeiro
+    await exportEvolutionToExcelWithTemplate(comparisonData, processedData);
+  } catch (error) {
+    console.warn('Erro ao usar template, criando arquivo novo:', error);
+    // Fallback: criar arquivo novo (código antigo)
+    const workbook = XLSX.utils.book_new();
 
-  // 5. Aba: Níveis de Proficiência
-  const levelsSheet = createLevelsSheet(processedData);
-  XLSX.utils.book_append_sheet(workbook, levelsSheet, 'Níveis de Proficiência');
+    // 1. Aba: Resumo Executivo
+    const summarySheet = createSummarySheet(comparisonData, processedData);
+    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Resumo Executivo');
 
-  // 6. Aba: Taxa de Aprovação
-  const approvalSheet = createApprovalSheet(processedData);
-  XLSX.utils.book_append_sheet(workbook, approvalSheet, 'Taxa de Aprovação');
+    // 2. Aba: Evolução Geral
+    const generalSheet = createGeneralSheet(processedData);
+    XLSX.utils.book_append_sheet(workbook, generalSheet, 'Evolução Geral');
 
-  // 7. Aba: Comparações Detalhadas
-  const comparisonsSheet = createComparisonsSheet(comparisonData);
-  XLSX.utils.book_append_sheet(workbook, comparisonsSheet, 'Comparações Detalhadas');
+    // 3. Aba: Por Disciplina - Notas
+    const subjectsNotesSheet = createSubjectsNotesSheet(processedData);
+    XLSX.utils.book_append_sheet(workbook, subjectsNotesSheet, 'Por Disciplina - Notas');
 
-  // Gerar nome do arquivo com data
-  const fileName = `Evolucao_Avaliacoes_${new Date().toISOString().split('T')[0]}.xlsx`;
+    // 4. Aba: Por Disciplina - Proficiência
+    const subjectsProficiencySheet = createSubjectsProficiencySheet(processedData);
+    XLSX.utils.book_append_sheet(workbook, subjectsProficiencySheet, 'Por Disciplina - Proficiência');
 
-  // Salvar arquivo
-  XLSX.writeFile(workbook, fileName);
+    // 5. Aba: Níveis de Proficiência
+    const levelsSheet = createLevelsSheet(processedData);
+    XLSX.utils.book_append_sheet(workbook, levelsSheet, 'Níveis de Proficiência');
+
+    // 6. Aba: Taxa de Aprovação
+    const approvalSheet = createApprovalSheet(processedData);
+    XLSX.utils.book_append_sheet(workbook, approvalSheet, 'Taxa de Aprovação');
+
+    // 7. Aba: Comparações Detalhadas
+    const comparisonsSheet = createComparisonsSheet(comparisonData);
+    XLSX.utils.book_append_sheet(workbook, comparisonsSheet, 'Comparações Detalhadas');
+
+    // Gerar nome do arquivo com data
+    const fileName = `Evolucao_Avaliacoes_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+    // Salvar arquivo
+    XLSX.writeFile(workbook, fileName);
+  }
 }
 
 /**

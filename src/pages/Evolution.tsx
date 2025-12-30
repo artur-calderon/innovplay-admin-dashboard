@@ -992,7 +992,7 @@ export default function Evolution() {
               </Button>
               
               <Button 
-                onClick={() => {
+                onClick={async () => {
                   if (!processedData || !comparisonData) {
                     toast({
                       title: "Dados insuficientes",
@@ -1004,7 +1004,7 @@ export default function Evolution() {
 
                   try {
                     setIsExportingExcel(true);
-                    exportEvolutionToExcel(comparisonData, processedData);
+                    await exportEvolutionToExcel(comparisonData, processedData);
                     toast({
                       title: "Excel exportado com sucesso!",
                       description: "O arquivo foi salvo no seu dispositivo.",

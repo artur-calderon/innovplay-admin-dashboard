@@ -351,87 +351,42 @@ function processSubjectProficiencyComparison(comparison: ComparisonResponse): { 
   return subjectData;
 }
 
-/**
- * Processa dados de participação
- */
-function processParticipationData(comparison: ComparisonResponse): EvolutionData[] {
-  if (!comparison.comparisons || comparison.comparisons.length === 0) {
-    return [];
-  }
-
-  const data: EvolutionData[] = [];
-  
-  comparison.comparisons.forEach((comp, index) => {
-    const general = comp.general_comparison;
-    
-    // Calcular taxa de participação (assumindo que temos dados de total de alunos)
-    const participation1 = general.total_students.evaluation_1 > 0 
-      ? (general.total_students.evaluation_1 / general.total_students.evaluation_1) * 100 
-      : 0;
-    const participation2 = general.total_students.evaluation_2 > 0 
-      ? (general.total_students.evaluation_2 / general.total_students.evaluation_2) * 100 
-      : 0;
-    
-    const variation = participation1 > 0 ? ((participation2 - participation1) / participation1) * 100 : 0;
-    
-    data.push({
-      name: "PARTICIPAÇÃO",
-      etapa1: participation1,
-      etapa2: participation2,
-      variacao_1_2: variation
-    });
-
-    // Se houver terceira avaliação
-    if (index < comparison.comparisons.length - 1) {
-      const nextComp = comparison.comparisons[index + 1];
-      const nextGeneral = nextComp.general_comparison;
-      
-      const participation3 = nextGeneral.total_students.evaluation_2 > 0 
-        ? (nextGeneral.total_students.evaluation_2 / nextGeneral.total_students.evaluation_2) * 100 
-        : 0;
-      
-      const variation2 = participation2 > 0 ? ((participation3 - participation2) / participation2) * 100 : 0;
-      
-      data[data.length - 1].etapa3 = participation3;
-      data[data.length - 1].variacao_2_3 = variation2;
-    }
-  });
-
-  return data;
-}
+// Função removida - não é usada e tinha bugs de cálculo
+// Se necessário, o backend deve enviar participation_rate calculado
 
 /**
- * Processa dados de aprovação (alunos com nota >= 6.0)
+ * Processa dados de aprovação - usa dados calculados do backend
  */
 function processApprovalData(comparison: ComparisonResponse): EvolutionData[] {
   if (!comparison.comparisons || comparison.comparisons.length === 0) {
     return [];
   }
 
-  // NOVO: Coletar todos os valores de aprovação
+  // Verificar se o backend envia approval_rate
+  if (!comparison.comparisons[0]?.general_comparison?.approval_rate) {
+    // Se o backend não enviar, retornar vazio (não calcular no frontend)
+    return [];
+  }
+
+  // Coletar todos os valores de aprovação do backend
   const values: number[] = [];
   const variations: number[] = [];
   
-  // Primeira comparação
+  // Primeira comparação tem evaluation_1 e evaluation_2
   if (comparison.comparisons[0]) {
-    const general = comparison.comparisons[0].general_comparison;
-    const approval1 = calculateApprovalRate(general.classification_distribution.evaluation_1);
-    const approval2 = calculateApprovalRate(general.classification_distribution.evaluation_2);
-    
-    values.push(approval1);
-    values.push(approval2);
-    variations.push(approval1 > 0 ? ((approval2 - approval1) / approval1) * 100 : 0);
+    const approval = comparison.comparisons[0].general_comparison.approval_rate;
+    values.push(approval.evaluation_1);
+    values.push(approval.evaluation_2);
+    variations.push(approval.evolution.percentage);
   }
   
-  // Comparações subsequentes
+  // Comparações subsequentes só adicionam evaluation_2 (evita duplicatas)
   for (let i = 1; i < comparison.comparisons.length; i++) {
-    const general = comparison.comparisons[i].general_comparison;
-    const approval = calculateApprovalRate(general.classification_distribution.evaluation_2);
-    values.push(approval);
-    
-    const prevApproval = values[values.length - 2];
-    const variation = prevApproval > 0 ? ((approval - prevApproval) / prevApproval) * 100 : 0;
-    variations.push(variation);
+    const approval = comparison.comparisons[i].general_comparison.approval_rate;
+    if (approval) {
+      values.push(approval.evaluation_2);
+      variations.push(approval.evolution.percentage);
+    }
   }
   
   // Criar UM único registro com todas as etapas dinamicamente
@@ -445,7 +400,7 @@ function processApprovalData(comparison: ComparisonResponse): EvolutionData[] {
     result[etapaKey] = value;
   });
   
-  // Adicionar todas as variações dinamicamente
+  // Adicionar todas as variações dinamicamente (do backend)
   variations.forEach((variation, index) => {
     const variacaoKey = `variacao_${index + 1}_${index + 2}`;
     result[variacaoKey] = variation;
@@ -455,7 +410,7 @@ function processApprovalData(comparison: ComparisonResponse): EvolutionData[] {
 }
 
 /**
- * Processa dados de classificação por disciplina
+ * Processa dados de classificação por disciplina - usa dados calculados do backend
  */
 function processClassificationData(comparison: ComparisonResponse): { [subjectName: string]: EvolutionData[] } {
   if (!comparison.comparisons || comparison.comparisons.length === 0) {
@@ -490,30 +445,30 @@ function processClassificationData(comparison: ComparisonResponse): { [subjectNa
       return;
     }
     
+    // Verificar se o backend envia approval_rate para esta disciplina
+    const firstCompSubjectKey = Object.keys(comparison.comparisons[0].subject_comparison).find(
+      name => normalizeSubjectName(name) === normalizedName
+    );
+    
+    if (!firstCompSubjectKey) {
+      return;
+    }
+    
+    const firstSubjectData = comparison.comparisons[0].subject_comparison[firstCompSubjectKey];
+    if (!firstSubjectData?.approval_rate) {
+      // Se o backend não enviar approval_rate, pular esta disciplina (não calcular no frontend)
+      return;
+    }
+    
     const values: number[] = [];
     const variations: number[] = [];
     
     // Primeira comparação
     if (comparison.comparisons[0]) {
-      // Encontrar a disciplina na primeira comparação (pode ter case diferente)
-      const firstCompSubjectKey = Object.keys(comparison.comparisons[0].subject_comparison).find(
-        name => normalizeSubjectName(name) === normalizedName
-      );
-      
-      if (firstCompSubjectKey) {
-        const subjectData = comparison.comparisons[0].subject_comparison[firstCompSubjectKey];
-        if (subjectData && subjectData.classification_distribution) {
-          const levels1 = subjectData.classification_distribution.evaluation_1;
-          const levels2 = subjectData.classification_distribution.evaluation_2;
-          
-          const approval1 = calculateApprovalRate(levels1);
-          const approval2 = calculateApprovalRate(levels2);
-          
-          values.push(approval1);
-          values.push(approval2);
-          variations.push(approval1 > 0 ? ((approval2 - approval1) / approval1) * 100 : 0);
-        }
-      }
+      const approval = firstSubjectData.approval_rate;
+      values.push(approval.evaluation_1);
+      values.push(approval.evaluation_2);
+      variations.push(approval.evolution.percentage);
     }
     
     // Comparações subsequentes
@@ -524,14 +479,9 @@ function processClassificationData(comparison: ComparisonResponse): { [subjectNa
       
       if (compSubjectKey) {
         const subjectData = comparison.comparisons[i].subject_comparison[compSubjectKey];
-        if (subjectData && subjectData.classification_distribution) {
-          const levels = subjectData.classification_distribution.evaluation_2;
-          const approval = calculateApprovalRate(levels);
-          values.push(approval);
-          
-          const prevApproval = values[values.length - 2];
-          const variation = prevApproval > 0 ? ((approval - prevApproval) / prevApproval) * 100 : 0;
-          variations.push(variation);
+        if (subjectData?.approval_rate) {
+          values.push(subjectData.approval_rate.evaluation_2);
+          variations.push(subjectData.approval_rate.evolution.percentage);
         }
       }
     }
@@ -548,7 +498,7 @@ function processClassificationData(comparison: ComparisonResponse): { [subjectNa
         result[etapaKey] = value;
       });
       
-      // Adicionar todas as variações dinamicamente
+      // Adicionar todas as variações dinamicamente (do backend)
       variations.forEach((variation, index) => {
         const variacaoKey = `variacao_${index + 1}_${index + 2}`;
         result[variacaoKey] = variation;
@@ -598,7 +548,7 @@ function getLevelValue(distribution: Record<string, number>, levelName: string):
 }
 
 /**
- * Processa dados de níveis de proficiência (quantidade de alunos por nível)
+ * Processa dados de níveis de proficiência - usa dados calculados do backend
  */
 function processLevelsData(comparison: ComparisonResponse): Record<string, EvolutionData[]> {
   if (!comparison.comparisons || comparison.comparisons.length === 0) {
@@ -607,43 +557,81 @@ function processLevelsData(comparison: ComparisonResponse): Record<string, Evolu
 
   const levelsData: Record<string, EvolutionData[]> = {};
   
-  // Níveis esperados
-  const levelNames = ['Abaixo do Básico', 'Básico', 'Adequado', 'Avançado'];
+  // Verificar se o backend envia classification_levels_evolution
+  if (!comparison.comparisons[0]?.general_comparison?.classification_levels_evolution) {
+    // Se o backend não enviar, tentar usar classification_distribution (sem evoluções)
+    // Mas sem calcular variações - apenas valores
+    const levelNames = ['Abaixo do Básico', 'Básico', 'Adequado', 'Avançado'];
+    
+    levelNames.forEach(levelName => {
+      const values: number[] = [];
+      
+      // Primeira comparação tem evaluation_1 e evaluation_2
+      if (comparison.comparisons[0]) {
+        const general = comparison.comparisons[0].general_comparison;
+        const dist1 = general.classification_distribution?.evaluation_1 || {};
+        const dist2 = general.classification_distribution?.evaluation_2 || {};
+        
+        const actualValue1 = getLevelValue(dist1, levelName);
+        const actualValue2 = getLevelValue(dist2, levelName);
+        
+        values.push(actualValue1);
+        values.push(actualValue2);
+      }
+      
+      // Comparações subsequentes só adicionam evaluation_2 (evita duplicatas)
+      for (let i = 1; i < comparison.comparisons.length; i++) {
+        const general = comparison.comparisons[i].general_comparison;
+        const dist2 = general.classification_distribution?.evaluation_2 || {};
+        
+        const actualValue = getLevelValue(dist2, levelName);
+        values.push(actualValue);
+      }
+      
+      // Só adicionar se tiver valores válidos (sem variações - backend deve calcular)
+      if (values.length > 0) {
+        const result: any = {
+          name: levelName.toUpperCase(),
+        };
+        
+        // Adicionar todas as etapas dinamicamente
+        values.forEach((value, index) => {
+          const etapaKey = `etapa${index + 1}`;
+          result[etapaKey] = value;
+        });
+        
+        // Não adicionar variações - backend deve calcular
+        levelsData[levelName] = [result];
+      }
+    });
+    
+    return levelsData;
+  }
   
-  // Para cada nível, coletar dados de todas as avaliações
-  levelNames.forEach(levelName => {
+  // Usar dados calculados do backend (classification_levels_evolution)
+  const firstComparison = comparison.comparisons[0];
+  const levelsEvolution = firstComparison.general_comparison.classification_levels_evolution || {};
+  
+  Object.keys(levelsEvolution).forEach(levelName => {
     const values: number[] = [];
     const variations: number[] = [];
     
-    // Primeira comparação tem evaluation_1 e evaluation_2
-    if (comparison.comparisons[0]) {
-      const general = comparison.comparisons[0].general_comparison;
-      const dist1 = general.classification_distribution?.evaluation_1 || {};
-      const dist2 = general.classification_distribution?.evaluation_2 || {};
-      
-      const actualValue1 = getLevelValue(dist1, levelName);
-      const actualValue2 = getLevelValue(dist2, levelName);
-      
-      values.push(actualValue1);
-      values.push(actualValue2);
-      
-      // Calcular variação percentual
-      const variation = actualValue1 > 0 ? ((actualValue2 - actualValue1) / actualValue1) * 100 : (actualValue2 > 0 ? 100 : 0);
-      variations.push(variation);
+    // Primeira comparação
+    const firstLevel = levelsEvolution[levelName];
+    if (firstLevel) {
+      values.push(firstLevel.evaluation_1);
+      values.push(firstLevel.evaluation_2);
+      variations.push(firstLevel.evolution.percentage);
     }
     
-    // Comparações subsequentes só adicionam evaluation_2 (evita duplicatas)
+    // Comparações subsequentes
     for (let i = 1; i < comparison.comparisons.length; i++) {
-      const general = comparison.comparisons[i].general_comparison;
-      const dist2 = general.classification_distribution?.evaluation_2 || {};
-      
-      const actualValue = getLevelValue(dist2, levelName);
-      values.push(actualValue);
-      
-      // Calcular variação percentual
-      const prevValue = values[values.length - 2];
-      const variation = prevValue > 0 ? ((actualValue - prevValue) / prevValue) * 100 : (actualValue > 0 ? 100 : 0);
-      variations.push(variation);
+      const comp = comparison.comparisons[i];
+      const levelEvolution = comp.general_comparison.classification_levels_evolution?.[levelName];
+      if (levelEvolution) {
+        values.push(levelEvolution.evaluation_2);
+        variations.push(levelEvolution.evolution.percentage);
+      }
     }
     
     // Só adicionar se tiver valores válidos
@@ -658,7 +646,7 @@ function processLevelsData(comparison: ComparisonResponse): Record<string, Evolu
         result[etapaKey] = value;
       });
       
-      // Adicionar todas as variações dinamicamente
+      // Adicionar todas as variações dinamicamente (do backend)
       variations.forEach((variation, index) => {
         const variacaoKey = `variacao_${index + 1}_${index + 2}`;
         result[variacaoKey] = variation;
@@ -671,20 +659,8 @@ function processLevelsData(comparison: ComparisonResponse): Record<string, Evolu
   return levelsData;
 }
 
-/**
- * Calcula taxa de aprovação baseada na distribuição de classificação
- */
-function calculateApprovalRate(classificationDistribution: Record<string, number>): number {
-  const total = Object.values(classificationDistribution).reduce((sum, count) => sum + count, 0);
-  
-  if (total === 0) return 0;
-  
-  // Considerar "Adequado" e "Avançado" como aprovados
-  const adequate = classificationDistribution['Adequado'] || 0;
-  const advanced = classificationDistribution['Avançado'] || 0;
-  
-  return ((adequate + advanced) / total) * 100;
-}
+// Função removida - cálculo deve ser feito no backend
+// O backend deve enviar approval_rate já calculado
 
 /**
  * Obtém domínio do eixo Y baseado na métrica

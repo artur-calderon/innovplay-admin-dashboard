@@ -26,6 +26,94 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { questionsAlunoJovem, questionsAlunoVelho, professorQuestions, diretorQuestions, secretarioQuestions } from '../data';
 import { Question, SubQuestion } from '@/types/forms';
 import { api } from '@/lib/api';
+import { useToast } from '@/hooks/use-toast';
+
+// ✅ IDs de Education Stages pré-definidos para cada tipo de formulário
+const EDUCATION_STAGE_IDS_BY_FORM_TYPE: Record<string, string[]> = {
+  'aluno-jovem': [
+    'd1142d12-ed98-46f4-ae78-62c963371464', // Educação Infantil
+    '614b7d10-b758-42ec-a04e-86f78dc7740a', // Anos Iniciais
+    '63cb6876-3221-4fa2-89e8-a82ad1733032', // EJA (filtrar períodos 1-5)
+  ],
+  'aluno-velho': [
+    'c78fcd8e-00a1-485d-8c03-70bcf59e3025', // Anos Finais
+    '63cb6876-3221-4fa2-89e8-a82ad1733032', // EJA (filtrar períodos 6-9)
+  ],
+};
+
+// Função para filtrar grades EJA por período
+const filterEJAGrades = (grades: Array<{ id: string; name: string }>, formType: string): Array<{ id: string; name: string }> => {
+  if (formType === 'aluno-jovem') {
+    // Filtrar apenas períodos 1-5 para EJA Inicial
+    return grades.filter(grade => {
+      const name = grade.name.toLowerCase();
+      return /^(1°|2°|3°|4°|5°)/.test(name) || 
+             /^1[°º]/.test(name) || 
+             /^2[°º]/.test(name) || 
+             /^3[°º]/.test(name) || 
+             /^4[°º]/.test(name) || 
+             /^5[°º]/.test(name) ||
+             (name.includes('período') && (name.includes('1') || name.includes('2') || name.includes('3') || name.includes('4') || name.includes('5')));
+    });
+  } else if (formType === 'aluno-velho') {
+    // Filtrar apenas períodos 6-9 para EJA Avançado
+    return grades.filter(grade => {
+      const name = grade.name.toLowerCase();
+      return /^(6°|7°|8°|9°)/.test(name) || 
+             /^6[°º]/.test(name) || 
+             /^7[°º]/.test(name) || 
+             /^8[°º]/.test(name) || 
+             /^9[°º]/.test(name) ||
+             (name.includes('período') && (name.includes('6') || name.includes('7') || name.includes('8') || name.includes('9')));
+    });
+  }
+  return grades;
+};
+
+// Função assíncrona para buscar IDs das séries baseado no tipo de formulário
+const getGradeIdsForFormType = async (formType: string | null): Promise<string[]> => {
+  if (!formType || formType === 'professor' || formType === 'diretor' || formType === 'secretario') {
+    return []; // Esses tipos não precisam de séries
+  }
+
+  const educationStageIds = EDUCATION_STAGE_IDS_BY_FORM_TYPE[formType] || [];
+  
+  if (educationStageIds.length === 0) {
+    console.warn(`Nenhum education stage definido para o tipo de formulário: ${formType}`);
+    return [];
+  }
+
+  const allGradeIds: string[] = [];
+
+  // Buscar séries de cada education stage
+  for (const stageId of educationStageIds) {
+    try {
+      const response = await api.get(`/grades/education-stage/${stageId}`);
+      const grades = response.data || [];
+      
+      // Se for EJA, filtrar os períodos corretos
+      if (stageId === '63cb6876-3221-4fa2-89e8-a82ad1733032') {
+        const filteredGrades = filterEJAGrades(grades, formType);
+        const gradeIds = filteredGrades.map((grade: { id: string }) => grade.id);
+        allGradeIds.push(...gradeIds);
+        console.log(`📋 EJA ${formType}: ${filteredGrades.length} períodos encontrados`);
+      } else {
+        // Para outros education stages, incluir todas as grades
+        const gradeIds = grades.map((grade: { id: string }) => grade.id);
+        allGradeIds.push(...gradeIds);
+        console.log(`📋 ${stageId}: ${grades.length} séries encontradas`);
+      }
+    } catch (error) {
+      console.error(`Erro ao buscar séries do education stage ${stageId}:`, error);
+    }
+  }
+
+  // Remover duplicatas (caso uma série apareça em múltiplos stages)
+  const uniqueGradeIds = [...new Set(allGradeIds)];
+  console.log(`✅ Total de séries únicas para ${formType}: ${uniqueGradeIds.length}`);
+  
+  return uniqueGradeIds;
+};
 
 // Tipos para as escolas
 interface School {
@@ -92,6 +180,12 @@ const FormCreate = () => {
   
   // Estado para controlar erros de validação
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  
+  // Estado para controlar o envio
+  const [isSending, setIsSending] = useState(false);
+  
+  // Hook para toast
+  const { toast } = useToast();
 
   // Mapeamento de tipos de formulário para grupos de destino
   const getTargetGroupsForFormType = (formType: string) => {
@@ -664,11 +758,182 @@ const FormCreate = () => {
     }
   };
 
-  const handleSendForm = () => {
-    // Aqui seria implementada a lógica para enviar o questionário
-    console.log('Enviando questionário:', formConfig);
-    alert('Questionário enviado com sucesso!');
-    navigate('/app/questionarios/cadastro');
+  // Função para normalizar questões do formato local para o formato da API
+  const normalizeQuestions = (questions: Question[]): any[] => {
+    return questions.map((question, index) => {
+      const normalized: any = {
+        id: question.id,
+        text: question.text || question.texto || '',
+        type: question.type || question.tipo || 'selecao_unica',
+        required: question.required !== undefined ? question.required : (question.obrigatoria !== undefined ? question.obrigatoria : false),
+        order: index + 1
+      };
+
+      // Adicionar opções se existirem
+      if (question.options || question.opcoes) {
+        normalized.options = question.options || question.opcoes;
+      }
+
+      // Adicionar subperguntas se existirem
+      if (question.subQuestions || question.subPerguntas) {
+        normalized.subQuestions = (question.subQuestions || question.subPerguntas)?.map(subQ => ({
+          id: subQ.id,
+          text: subQ.text || subQ.texto || ''
+        }));
+      }
+
+      // Adicionar min/max para sliders
+      if (question.min !== undefined) {
+        normalized.min = question.min;
+      }
+      if (question.max !== undefined) {
+        normalized.max = question.max;
+      }
+
+      // Adicionar optionId e optionText para slider_com_opcao
+      if (question.optionId) {
+        normalized.optionId = question.optionId;
+      }
+      if (question.optionText) {
+        normalized.optionText = question.optionText;
+      }
+
+      // Adicionar dependsOn se existir
+      if (question.dependsOn) {
+        normalized.dependsOn = question.dependsOn;
+      }
+
+      return normalized;
+    });
+  };
+
+  const handleSendForm = async () => {
+    // Validar antes de enviar
+    if (!validateForm()) {
+      toast({
+        title: "Erro de validação",
+        description: "Por favor, corrija os erros antes de enviar o questionário.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validar seleção de escolas/usuários
+    if (formType !== 'secretario') {
+      const selectedSchoolsList = formConfig.selectAllSchools 
+        ? schools.map(s => s.id) 
+        : formConfig.selectedSchools;
+      
+      if (selectedSchoolsList.length === 0) {
+        toast({
+          title: "Seleção obrigatória",
+          description: "Selecione pelo menos uma escola para enviar o questionário.",
+          variant: "destructive",
+        });
+        return;
+      }
+    } else {
+      const selectedUsersList = formConfig.selectAllTecAdminUsers
+        ? tecAdminUsers.map(u => u.id)
+        : formConfig.selectedTecAdminUsers;
+      
+      if (selectedUsersList.length === 0) {
+        toast({
+          title: "Seleção obrigatória",
+          description: "Selecione pelo menos um usuário TecAdmin para enviar o questionário.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
+    setIsSending(true);
+
+    try {
+      // Preparar dados do questionário
+      const questions = formData?.questions || [];
+      const normalizedQuestions = normalizeQuestions(questions);
+
+      // ✅ BUSCAR IDs das séries dinamicamente via API
+      const gradeIds = await getGradeIdsForFormType(formType);
+      
+      if (gradeIds.length === 0 && (formType === 'aluno-jovem' || formType === 'aluno-velho')) {
+        console.warn(`⚠️ Nenhuma série encontrada para ${formType}. Verifique os education stages.`);
+      }
+
+      // Preparar payload
+      const formPayload: any = {
+        title: formConfig.title.trim(),
+        description: formConfig.description.trim() || undefined,
+        formType: formType,
+        targetGroups: formConfig.targetGroups,
+        isActive: formConfig.isActive,
+        deadline: formConfig.deadline ? new Date(formConfig.deadline).toISOString() : undefined,
+        instructions: formConfig.instructions.trim() || undefined,
+        questions: normalizedQuestions
+      };
+
+      // ✅ ADICIONAR: IDs das séries (apenas para tipos de alunos)
+      if (gradeIds.length > 0) {
+        formPayload.selectedGrades = gradeIds;
+        console.log('📋 Séries adicionadas ao payload:', gradeIds.length, 'séries');
+      }
+
+      // Adicionar escolas ou usuários TecAdmin conforme o tipo
+      if (formType === 'secretario') {
+        formPayload.selectedTecAdminUsers = formConfig.selectAllTecAdminUsers
+          ? tecAdminUsers.map(u => u.id)
+          : formConfig.selectedTecAdminUsers;
+      } else {
+        formPayload.selectedSchools = formConfig.selectAllSchools
+          ? schools.map(s => s.id)
+          : formConfig.selectedSchools;
+      }
+
+      // 1. Criar o questionário
+      toast({
+        title: "Criando questionário...",
+        description: "Aguarde enquanto o questionário é criado.",
+      });
+
+      const createResponse = await api.post('/forms', formPayload);
+      const formId = createResponse.data.id;
+
+      // 2. Enviar o questionário para os destinatários
+      toast({
+        title: "Enviando questionário...",
+        description: "Aguarde enquanto o questionário é enviado para os destinatários.",
+      });
+
+      const sendResponse = await api.post(`/forms/${formId}/send`, {
+        notifyUsers: true,
+        sendNotification: true
+      });
+
+      // Sucesso!
+      toast({
+        title: "Questionário enviado com sucesso!",
+        description: `Questionário enviado para ${sendResponse.data.totalRecipients || 0} destinatários.`,
+      });
+
+      // Navegar de volta para a lista
+      navigate('/app/questionarios/cadastro');
+    } catch (error: any) {
+      console.error('Erro ao enviar questionário:', error);
+      
+      const errorMessage = error.response?.data?.message 
+        || error.response?.data?.error 
+        || error.message 
+        || 'Erro desconhecido ao enviar o questionário';
+
+      toast({
+        title: "Erro ao enviar questionário",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSending(false);
+    }
   };
 
   if (!formData) {
@@ -1340,15 +1605,38 @@ const FormCreate = () => {
               <div className="space-y-4">
                 <h3 className="font-semibold text-gray-900">Ações Disponíveis</h3>
                 <div className="space-y-2">
-                  <Button className="w-full" onClick={handleSendForm}>
-                    <Send className="h-4 w-4 mr-2" />
-                    Enviar Questionário
+                  <Button 
+                    className="w-full" 
+                    onClick={handleSendForm}
+                    disabled={isSending}
+                  >
+                    {isSending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Enviando...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4 mr-2" />
+                        Enviar Questionário
+                      </>
+                    )}
                   </Button>
-                  <Button variant="outline" className="w-full">
+                  <Button 
+                    variant="outline" 
+                    className="w-full"
+                    onClick={() => setCurrentStep('preview')}
+                    disabled={isSending}
+                  >
                     <Eye className="h-4 w-4 mr-2" />
                     Visualizar Novamente
                   </Button>
-                  <Button variant="outline" className="w-full">
+                  <Button 
+                    variant="outline" 
+                    className="w-full"
+                    onClick={() => setCurrentStep('config')}
+                    disabled={isSending}
+                  >
                     <Settings className="h-4 w-4 mr-2" />
                     Editar Configurações
                   </Button>
@@ -1369,12 +1657,29 @@ const FormCreate = () => {
             </div>
 
             <div className="flex justify-between">
-              <Button variant="outline" onClick={() => setCurrentStep('preview')}>
+              <Button 
+                variant="outline" 
+                onClick={() => setCurrentStep('preview')}
+                disabled={isSending}
+              >
                 Voltar: Visualização
               </Button>
-              <Button onClick={handleSendForm} className="bg-green-600 hover:bg-green-700">
-                <Send className="h-4 w-4 mr-2" />
-                Confirmar Envio
+              <Button 
+                onClick={handleSendForm} 
+                className="bg-green-600 hover:bg-green-700"
+                disabled={isSending}
+              >
+                {isSending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Enviando...
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-4 w-4 mr-2" />
+                    Confirmar Envio
+                  </>
+                )}
               </Button>
             </div>
           </CardContent>

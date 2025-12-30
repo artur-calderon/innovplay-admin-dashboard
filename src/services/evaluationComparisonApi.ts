@@ -34,6 +34,20 @@ export interface GeneralComparison {
     evaluation_1: Record<string, number>;
     evaluation_2: Record<string, number>;
   };
+  // Taxa de aprovação/classificação calculada pelo backend
+  approval_rate?: {
+    evaluation_1: number;
+    evaluation_2: number;
+    evolution: EvolutionMetrics;
+  };
+  // Evoluções por nível de classificação (calculadas pelo backend)
+  classification_levels_evolution?: {
+    [levelName: string]: {
+      evaluation_1: number;
+      evaluation_2: number;
+      evolution: EvolutionMetrics;
+    };
+  };
 }
 
 export interface SubjectComparison {
@@ -56,6 +70,20 @@ export interface SubjectComparison {
     classification_distribution: {
       evaluation_1: Record<string, number>;
       evaluation_2: Record<string, number>;
+    };
+    // Taxa de aprovação/classificação por disciplina calculada pelo backend
+    approval_rate?: {
+      evaluation_1: number;
+      evaluation_2: number;
+      evolution: EvolutionMetrics;
+    };
+    // Evoluções por nível de classificação por disciplina (calculadas pelo backend)
+    classification_levels_evolution?: {
+      [levelName: string]: {
+        evaluation_1: number;
+        evaluation_2: number;
+        evolution: EvolutionMetrics;
+      };
     };
   };
 }
@@ -195,7 +223,36 @@ export class EvaluationComparisonApiService {
         test_ids: testIds
       });
 
-      console.log('Resposta da API de comparação:', response.data);
+      // Log detalhado da resposta completa
+      console.log('=== RESPOSTA COMPLETA DA API /test/compare ===');
+      console.log('Resposta completa:', JSON.stringify(response.data, null, 2));
+      console.log('Estrutura da resposta:', {
+        total_evaluations: response.data?.total_evaluations,
+        total_comparisons: response.data?.total_comparisons,
+        evaluations_count: response.data?.evaluations?.length,
+        comparisons_count: response.data?.comparisons?.length,
+      });
+      
+      // Log de cada comparação
+      if (response.data?.comparisons) {
+        response.data.comparisons.forEach((comp: any, index: number) => {
+          console.log(`\n--- Comparação ${index + 1} ---`);
+          console.log(`De: ${comp.from_evaluation?.title} (${comp.from_evaluation?.id})`);
+          console.log(`Para: ${comp.to_evaluation?.title} (${comp.to_evaluation?.id})`);
+          console.log('Geral:', {
+            nota_1: comp.general_comparison?.average_grade?.evaluation_1,
+            nota_2: comp.general_comparison?.average_grade?.evaluation_2,
+            evolucao_percentual: comp.general_comparison?.average_grade?.evolution?.percentage,
+            evolucao_direcao: comp.general_comparison?.average_grade?.evolution?.direction,
+            proficiencia_1: comp.general_comparison?.average_proficiency?.evaluation_1,
+            proficiencia_2: comp.general_comparison?.average_proficiency?.evaluation_2,
+            proficiencia_evolucao: comp.general_comparison?.average_proficiency?.evolution?.percentage,
+          });
+          console.log('Disciplinas:', Object.keys(comp.subject_comparison || {}));
+        });
+      }
+      console.log('=== FIM DA RESPOSTA ===\n');
+
       return response.data;
     } catch (error) {
       console.error('Erro ao comparar avaliações:', error);
