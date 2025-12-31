@@ -42,28 +42,26 @@ export const VideoPlayer = ({ url, title }: VideoPlayerProps) => {
   const embedUrl = getEmbedUrl(url);
 
   return (
-    <Card>
-      <CardContent className="p-0">
-        <div className="w-full min-h-[600px] bg-muted rounded-lg overflow-hidden">
-          {embedUrl ? (
-            <iframe
-              src={embedUrl}
-              className="w-full h-full min-h-[600px] border-0"
-              allowFullScreen
-              title={title || 'Vídeo'}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            />
-          ) : (
-            <div className="flex items-center justify-center h-[600px]">
-              <div className="text-center">
-                <Play className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">Vídeo não disponível</p>
-              </div>
-            </div>
-          )}
+    <div className="w-full bg-muted rounded-lg overflow-hidden">
+      {embedUrl ? (
+        <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
+          <iframe
+            src={embedUrl}
+            className="absolute top-0 left-0 w-full h-full border-0"
+            allowFullScreen
+            title={title || 'Vídeo'}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          />
         </div>
-      </CardContent>
-    </Card>
+      ) : (
+        <div className="flex items-center justify-center min-h-[400px] bg-gradient-to-br from-muted to-muted/50">
+          <div className="text-center">
+            <Play className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">Vídeo não disponível</p>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 

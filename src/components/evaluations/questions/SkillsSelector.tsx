@@ -502,7 +502,7 @@ const SkillsSelector: React.FC<SkillsSelectorProps> = ({
 
         // Se temos gradeName e subjectName, usar lógica acumulativa
         if (gradeName && subjectName && loadedAllGrades.length > 0) {
-          const gradeIdsToInclude = getGradeIdsForCumulativeSkills(
+          let gradeIdsToInclude = getGradeIdsForCumulativeSkills(
             gradeId,
             gradeName,
             subjectName,
