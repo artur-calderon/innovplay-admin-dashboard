@@ -1,17 +1,23 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Play, Calendar, School, BookOpen, GraduationCap } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Play, Calendar, School, BookOpen, GraduationCap, Trash2 } from 'lucide-react';
 import { PlayTvVideo } from '@/types/playtv';
 import { useNavigate } from 'react-router-dom';
+import { getVideoThumbnail } from '@/lib/utils';
+import { useState } from 'react';
 
 interface VideoListProps {
   videos: PlayTvVideo[];
   isLoading?: boolean;
   onVideoClick?: (video: PlayTvVideo) => void;
+  onDeleteVideo?: (videoId: string) => void;
+  userRole?: string;
 }
 
-export const VideoList = ({ videos, isLoading, onVideoClick }: VideoListProps) => {
+export const VideoList = ({ videos, isLoading, onVideoClick, onDeleteVideo, userRole }: VideoListProps) => {
   const navigate = useNavigate();
+  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
 
   const handleVideoClick = (video: PlayTvVideo) => {
     if (onVideoClick) {
@@ -21,6 +27,17 @@ export const VideoList = ({ videos, isLoading, onVideoClick }: VideoListProps) =
       const isStudent = window.location.pathname.includes('/aluno');
       navigate(isStudent ? `/aluno/play-tv/${video.id}` : `/app/play-tv/${video.id}`);
     }
+  };
+
+  const handleDeleteClick = (e: React.MouseEvent, videoId: string) => {
+    e.stopPropagation(); // Prevenir que o clique no botão dispare o clique no card
+    if (onDeleteVideo) {
+      onDeleteVideo(videoId);
+    }
+  };
+
+  const handleImageError = (videoId: string) => {
+    setImageErrors(prev => new Set(prev).add(videoId));
   };
 
   if (isLoading) {
@@ -41,63 +58,108 @@ export const VideoList = ({ videos, isLoading, onVideoClick }: VideoListProps) =
     );
   }
 
+  const isAdmin = userRole === 'admin';
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {videos.map((video) => (
-        <Card
-          key={video.id}
-          className="cursor-pointer hover:shadow-lg transition-shadow"
-          onClick={() => handleVideoClick(video)}
-        >
-          <CardHeader className="pb-3">
-            <div className="flex justify-between items-start">
-              <CardTitle className="text-lg line-clamp-2">{video.title || 'Vídeo sem título'}</CardTitle>
-              <Badge variant="secondary" className="ml-2">
-                {video.subject.name}
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Thumbnail placeholder */}
-            <div className="relative aspect-video bg-muted rounded-lg overflow-hidden flex items-center justify-center">
-              <Play className="w-12 h-12 text-muted-foreground" />
-            </div>
+      {videos.map((video) => {
+        const thumbnail = getVideoThumbnail(video.url);
+        const hasImageError = imageErrors.has(video.id);
+        const showThumbnail = thumbnail && !hasImageError;
 
-            {/* Informações do vídeo */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <GraduationCap className="w-4 h-4" />
-                <span>{video.grade.name}</span>
-              </div>
-              
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <BookOpen className="w-4 h-4" />
-                <span>{video.subject.name}</span>
-              </div>
-
-              {video.schools.length > 0 && (
-                <div className="flex items-start gap-2 text-sm text-muted-foreground">
-                  <School className="w-4 h-4 mt-0.5" />
-                  <div className="flex-1">
-                    {video.schools.length === 1 ? (
-                      <span>{video.schools[0].name}</span>
-                    ) : (
-                      <span>{video.schools.length} escolas</span>
-                    )}
+        return (
+          <Card
+            key={video.id}
+            className="group cursor-pointer hover:shadow-xl transition-all duration-300 border-border/50 hover:border-primary/50 overflow-hidden"
+            onClick={() => handleVideoClick(video)}
+          >
+            {/* Preview/Thumbnail do Vídeo */}
+            <div className="relative aspect-video bg-gradient-to-br from-muted to-muted/50 overflow-hidden">
+              {showThumbnail ? (
+                <img
+                  src={thumbnail}
+                  alt={video.title || 'Preview do vídeo'}
+                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  onError={() => handleImageError(video.id)}
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5">
+                  <div className="relative">
+                    <Play className="w-16 h-16 text-primary/60" />
+                    <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl"></div>
                   </div>
                 </div>
               )}
+              
+              {/* Overlay com botão de play */}
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 flex items-center justify-center">
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  <div className="w-16 h-16 rounded-full bg-primary/90 backdrop-blur-sm flex items-center justify-center shadow-lg">
+                    <Play className="w-8 h-8 text-primary-foreground ml-1" fill="currentColor" />
+                  </div>
+                </div>
+              </div>
 
-              {video.created_at && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Calendar className="w-4 h-4" />
-                  <span>{new Date(video.created_at).toLocaleDateString('pt-BR')}</span>
+              {/* Badge de disciplina no canto superior */}
+              <div className="absolute top-3 left-3">
+                <Badge variant="secondary" className="bg-background/90 backdrop-blur-sm shadow-md">
+                  {video.subject.name}
+                </Badge>
+              </div>
+
+              {/* Botão de deletar (apenas para admin) */}
+              {isAdmin && onDeleteVideo && (
+                <div className="absolute top-3 right-3">
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    className="h-8 w-8 bg-destructive/90 backdrop-blur-sm hover:bg-destructive shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                    onClick={(e) => handleDeleteClick(e, video.id)}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
                 </div>
               )}
             </div>
-          </CardContent>
-        </Card>
-      ))}
+
+            <CardHeader className="pb-3 pt-4">
+              <CardTitle className="text-lg line-clamp-2 leading-tight group-hover:text-primary transition-colors">
+                {video.title || 'Vídeo sem título'}
+              </CardTitle>
+            </CardHeader>
+
+            <CardContent className="space-y-3 pt-0">
+              {/* Informações do vídeo */}
+              <div className="space-y-2.5">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <GraduationCap className="w-4 h-4 flex-shrink-0 text-primary/70" />
+                  <span className="truncate">{video.grade.name}</span>
+                </div>
+                
+                {video.schools.length > 0 && (
+                  <div className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <School className="w-4 h-4 mt-0.5 flex-shrink-0 text-primary/70" />
+                    <div className="flex-1 min-w-0">
+                      {video.schools.length === 1 ? (
+                        <span className="truncate">{video.schools[0].name}</span>
+                      ) : (
+                        <span>{video.schools.length} escolas</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {video.created_at && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Calendar className="w-4 h-4 flex-shrink-0 text-primary/70" />
+                    <span>{new Date(video.created_at).toLocaleDateString('pt-BR')}</span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })}
     </div>
   );
 };

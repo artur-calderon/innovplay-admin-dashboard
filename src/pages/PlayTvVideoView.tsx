@@ -67,17 +67,17 @@ export default function PlayTvVideoView() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="container mx-auto py-8 px-4 space-y-8 max-w-7xl">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button onClick={handleBack} variant="outline" size="sm">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 pb-6 border-b">
+        <div className="flex items-center gap-4 flex-1 min-w-0">
+          <Button onClick={handleBack} variant="outline" size="sm" className="shadow-sm flex-shrink-0">
             <ArrowLeft className="w-4 h-4 mr-2" />
             Voltar
           </Button>
-          <div>
-            <h1 className="text-2xl font-bold">{video.title || 'Vídeo sem título'}</h1>
-            <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-3xl font-bold tracking-tight line-clamp-2">{video.title || 'Vídeo sem título'}</h1>
+            <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-muted-foreground">
               {video.subject && (
                 <div className="flex items-center gap-1">
                   <BookOpen className="w-4 h-4" />
@@ -100,17 +100,19 @@ export default function PlayTvVideoView() {
           </div>
         </div>
 
-        <Badge variant="secondary">Play TV</Badge>
+        <Badge variant="secondary" className="text-sm px-3 py-1.5 shadow-sm">Play TV</Badge>
       </div>
 
       {/* Player de Vídeo */}
-      <VideoPlayer url={video.url} title={video.title} />
+      <div className="rounded-lg overflow-hidden shadow-lg border border-border/50">
+        <VideoPlayer url={video.url} title={video.title} />
+      </div>
 
       {/* Informações do Vídeo */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Informações do Vídeo</CardTitle>
+        <Card className="shadow-sm border-border/50">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-xl">Informações do Vídeo</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {video.title && (
@@ -173,9 +175,9 @@ export default function PlayTvVideoView() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Como Assistir</CardTitle>
+        <Card className="shadow-sm border-border/50">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-xl">Como Assistir</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
