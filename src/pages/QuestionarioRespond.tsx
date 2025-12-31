@@ -6,6 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
 import { 
   ArrowLeft, 
+  ArrowRight,
   Save, 
   CheckCircle, 
   AlertCircle,
@@ -49,10 +50,57 @@ const QuestionarioRespond = () => {
   const [responses, setResponses] = useState<Record<string, any>>({});
   const [sliderValues, setSliderValues] = useState<Record<string, number>>({});
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<Date | null>(null);
   const responsesInitializedRef = useRef<boolean>(false);
+
+  // Função para obter questões visíveis (considerando dependências)
+  const getVisibleQuestions = useCallback((): Question[] => {
+    if (!questionario) return [];
+    
+    return questionario.questions.filter(question => {
+      // Se não tem dependência, sempre visível
+      if (!question.dependsOn) return true;
+      
+      // Verificar se a condição de dependência é atendida
+      const dependsOnId = Array.isArray(question.dependsOn.id) 
+        ? question.dependsOn.id[0] 
+        : question.dependsOn.id;
+      const dependsOnValue = Array.isArray(question.dependsOn.value) 
+        ? question.dependsOn.value[0] 
+        : question.dependsOn.value;
+      const dependsOnResponse = responses[dependsOnId];
+      
+      return dependsOnResponse === dependsOnValue;
+    });
+  }, [questionario, responses]);
+
+  // Função para verificar se uma questão foi respondida
+  const isQuestionAnswered = useCallback((question: Question): boolean => {
+    const questionId = question.id;
+    const response = responses[questionId];
+    const questionType = question.type || question.tipo;
+    
+    if (response === undefined || response === null || response === '') {
+      return false;
+    }
+    
+    // Para questões de matriz/múltipla escolha
+    if (typeof response === 'object' && !Array.isArray(response)) {
+      if (questionType === 'multipla_escolha') {
+        // Para múltipla escolha, verificar se pelo menos uma opção é "Sim"
+        const hasAtLeastOneYes = Object.values(response).some(value => value === 'Sim');
+        return hasAtLeastOneYes;
+      } else {
+        // Para outras matrizes, verificar se tem pelo menos uma resposta
+        return Object.keys(response).length > 0;
+      }
+    }
+    
+    return true;
+  }, [responses]);
 
   // ✅ Função para reconstruir o formato aninhado a partir das respostas achatadas do backend
   // Definida antes dos useEffect para estar disponível quando necessário
@@ -142,6 +190,15 @@ const QuestionarioRespond = () => {
     }
   }, [questionario]);
 
+  // Resetar índice quando as questões visíveis mudarem
+  useEffect(() => {
+    if (!questionario) return;
+    const visibleQuestions = getVisibleQuestions();
+    if (currentQuestionIndex >= visibleQuestions.length && visibleQuestions.length > 0) {
+      setCurrentQuestionIndex(visibleQuestions.length - 1);
+    }
+  }, [questionario, responses, currentQuestionIndex, getVisibleQuestions]);
+
   const fetchQuestionario = async () => {
     if (!formId) return;
     
@@ -149,6 +206,9 @@ const QuestionarioRespond = () => {
     try {
       const response = await api.get(`/forms/${formId}/respond`);
       setQuestionario(response.data);
+      
+      // Resetar índice para primeira questão
+      setCurrentQuestionIndex(0);
       
       // Inicializar respostas existentes
       if (response.data.currentResponse?.responses) {
@@ -305,6 +365,52 @@ const QuestionarioRespond = () => {
         return newErrors;
       });
     }
+  };
+
+  // Função para navegar para a questão anterior
+  const goToPreviousQuestion = () => {
+    if (currentQuestionIndex === 0) {
+      // Se estiver na primeira questão, voltar para a lista
+      const basePath = user?.role === 'aluno' ? '/aluno/questionario' : '/app/questionario';
+      navigate(basePath);
+      return;
+    }
+    setCurrentQuestionIndex(prev => prev - 1);
+    // Limpar erro de validação ao voltar
+    setValidationErrors({});
+  };
+
+  // Função para navegar para a próxima questão
+  const goToNextQuestion = async () => {
+    const visibleQuestions = getVisibleQuestions();
+    if (currentQuestionIndex >= visibleQuestions.length - 1) return;
+    
+    const currentQuestion = visibleQuestions[currentQuestionIndex];
+    const isRequired = currentQuestion.required !== undefined 
+      ? currentQuestion.required 
+      : (currentQuestion.obrigatoria !== undefined ? currentQuestion.obrigatoria : false);
+    
+    // Validar se a questão foi respondida (se for obrigatória)
+    if (isRequired && !isQuestionAnswered(currentQuestion)) {
+      setValidationErrors(prev => ({
+        ...prev,
+        [currentQuestion.id]: 'Esta questão é obrigatória'
+      }));
+      toast({
+        title: "Questão obrigatória não respondida",
+        description: "Por favor, responda esta questão antes de continuar.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Salvar antes de avançar
+    await saveResponse(false);
+    
+    // Avançar para próxima questão
+    setCurrentQuestionIndex(prev => prev + 1);
+    // Limpar erro de validação ao avançar
+    setValidationErrors({});
   };
 
   const handleSliderChange = (questionId: string, value: number) => {
@@ -509,7 +615,7 @@ const QuestionarioRespond = () => {
     return calculatedProgress;
   };
 
-  const renderQuestion = (question: Question, index: number) => {
+  const renderQuestion = (question: Question) => {
     const questionId = question.id;
     const questionText = question.text || question.texto || '';
     const questionType = question.type || question.tipo || 'selecao_unica';
@@ -517,17 +623,6 @@ const QuestionarioRespond = () => {
     const options = question.options || question.opcoes || [];
     const subQuestions = question.subQuestions || question.subPerguntas || [];
     const hasError = !!validationErrors[questionId];
-    
-    // Verificar dependências
-    if (question.dependsOn) {
-      const dependsOnId = Array.isArray(question.dependsOn.id) ? question.dependsOn.id[0] : question.dependsOn.id;
-      const dependsOnValue = Array.isArray(question.dependsOn.value) ? question.dependsOn.value[0] : question.dependsOn.value;
-      const dependsOnResponse = responses[dependsOnId];
-      
-      if (dependsOnResponse !== dependsOnValue) {
-        return null; // Não renderizar se a condição não for atendida
-      }
-    }
 
     const currentResponse = responses[questionId];
     const sliderValue = sliderValues[questionId] ?? (question.min !== undefined ? question.min : 0);
@@ -536,38 +631,33 @@ const QuestionarioRespond = () => {
       <div 
         key={questionId} 
         id={`question-${questionId}`}
-        className={`p-4 border rounded-lg bg-white ${hasError ? 'border-red-500 bg-red-50' : ''}`}
+        className={`w-full max-w-3xl mx-auto ${hasError ? 'border-red-500' : ''}`}
       >
-        <div className="flex items-start gap-3">
-          <span className="text-sm font-medium text-gray-500 mt-1">
-            {index + 1}.
-          </span>
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-2">
-              <h4 className="font-medium text-gray-900">
-                {questionText}
-              </h4>
-              {isRequired && (
-                <Badge variant="destructive" className="text-xs">
-                  Obrigatória
-                </Badge>
-              )}
-            </div>
-            
-            {hasError && (
-              <p className="text-sm text-red-600 mb-2">{validationErrors[questionId]}</p>
-            )}
+        <div className="mb-6">
+          <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+            {questionText}
+          </h2>
+          {isRequired && (
+            <Badge variant="destructive" className="text-xs">
+              Obrigatória
+            </Badge>
+          )}
+          {hasError && (
+            <p className="text-sm text-red-600 mt-2">{validationErrors[questionId]}</p>
+          )}
+        </div>
 
+        <div>
             {/* Seleção Única */}
             {(questionType === 'selecao_unica') && (
-              <div className="space-y-2">
+              <div className="space-y-3 mt-6">
                 {options.map((option: string, optIndex: number) => (
                   <label 
                     key={optIndex} 
-                    className={`flex items-center gap-3 cursor-pointer p-2 rounded-lg transition-colors ${
+                    className={`flex items-center gap-4 cursor-pointer p-4 rounded-lg border-2 transition-all ${
                       currentResponse === option 
-                        ? 'bg-blue-50 border-2 border-blue-500' 
-                        : 'hover:bg-gray-50 border-2 border-transparent'
+                        ? 'bg-blue-50 border-blue-500 shadow-sm' 
+                        : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50 hover:bg-opacity-50'
                     }`}
                   >
                     <input
@@ -576,9 +666,11 @@ const QuestionarioRespond = () => {
                       value={option}
                       checked={currentResponse === option}
                       onChange={(e) => handleResponseChange(questionId, e.target.value)}
-                      className="w-4 h-4 text-blue-600"
+                      className="w-5 h-5 text-blue-600 focus:ring-blue-500 focus:ring-2"
                     />
-                    <span className="text-sm text-gray-700">{option}</span>
+                    <span className={`text-base ${currentResponse === option ? 'text-gray-900 font-medium' : 'text-gray-700'}`}>
+                      {option}
+                    </span>
                   </label>
                 ))}
               </div>
@@ -586,19 +678,26 @@ const QuestionarioRespond = () => {
 
             {/* Múltipla Escolha */}
             {(questionType === 'multipla_escolha') && (
-              <div className="space-y-2">
+              <div className="space-y-3 mt-6">
                 {subQuestions.map((subQ: SubQuestion, subIndex: number) => {
                   const subResponse = currentResponse?.[subQ.id] || 'Não';
+                  const isChecked = subResponse === 'Sim';
                   return (
-                    <div key={subQ.id} className="ml-4">
-                      <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50 transition-colors">
+                    <div key={subQ.id}>
+                      <label                       className={`flex items-center gap-4 cursor-pointer p-4 rounded-lg border-2 transition-all ${
+                        isChecked 
+                          ? 'bg-blue-50 border-blue-500 shadow-sm' 
+                          : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50 hover:bg-opacity-50'
+                      }`}>
                         <input
                           type="checkbox"
-                          checked={subResponse === 'Sim'}
+                          checked={isChecked}
                           onChange={(e) => handleMatrixResponse(questionId, subQ.id, e.target.checked ? 'Sim' : 'Não')}
-                          className="w-4 h-4 text-blue-600 rounded"
+                          className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 focus:ring-2"
                         />
-                        <span className="text-sm text-gray-700">{subQ.text || subQ.texto}</span>
+                        <span className={`text-base ${isChecked ? 'text-gray-900 font-medium' : 'text-gray-700'}`}>
+                          {subQ.text || subQ.texto}
+                        </span>
                       </label>
                     </div>
                   );
@@ -608,37 +707,42 @@ const QuestionarioRespond = () => {
 
             {/* Matriz de Seleção */}
             {(questionType === 'matriz_selecao') && (
-              <div className="space-y-3">
+              <div className="space-y-6 mt-6">
                 {subQuestions.map((subQ: SubQuestion) => {
                   const subResponse = (currentResponse && typeof currentResponse === 'object' && !Array.isArray(currentResponse))
                     ? (currentResponse[subQ.id] || '')
                     : '';
                   return (
-                    <div key={subQ.id} className="ml-4">
-                      <p className="text-sm font-medium text-gray-700 mb-2">
+                    <div key={subQ.id}>
+                      <p className="text-base font-medium text-gray-900 mb-3">
                         {subQ.text || subQ.texto}
                       </p>
-                      <div className="grid grid-cols-2 gap-2">
-                        {options.map((option: string, optIndex: number) => (
-                          <label 
-                            key={optIndex}
-                            className={`flex items-center gap-3 cursor-pointer p-2 rounded-lg transition-colors ${
-                              subResponse === option 
-                                ? 'bg-blue-50 border-2 border-blue-500' 
-                                : 'hover:bg-gray-50 border-2 border-transparent'
-                            }`}
-                          >
-                            <input
-                              type="radio"
-                              name={`${questionId}_${subQ.id}`}
-                              value={option}
-                              checked={subResponse === option}
-                              onChange={(e) => handleMatrixResponse(questionId, subQ.id, e.target.value)}
-                              className="w-4 h-4 text-blue-600"
-                            />
-                            <span className="text-sm text-gray-600">{option}</span>
-                          </label>
-                        ))}
+                      <div className="grid grid-cols-2 gap-3">
+                        {options.map((option: string, optIndex: number) => {
+                          const isSelected = subResponse === option;
+                          return (
+                            <label 
+                              key={optIndex}
+                              className={`flex items-center gap-4 cursor-pointer p-4 rounded-lg border-2 transition-all ${
+                                isSelected 
+                                  ? 'bg-blue-50 border-blue-500 shadow-sm' 
+                                  : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50 hover:bg-opacity-50'
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                name={`${questionId}_${subQ.id}`}
+                                value={option}
+                                checked={isSelected}
+                                onChange={(e) => handleMatrixResponse(questionId, subQ.id, e.target.value)}
+                                className="w-5 h-5 text-blue-600 focus:ring-blue-500 focus:ring-2"
+                              />
+                              <span className={`text-base ${isSelected ? 'text-gray-900 font-medium' : 'text-gray-700'}`}>
+                                {option}
+                              </span>
+                            </label>
+                          );
+                        })}
                       </div>
                     </div>
                   );
@@ -648,37 +752,42 @@ const QuestionarioRespond = () => {
 
             {/* Matriz de Seleção Complexa */}
             {(questionType === 'matriz_selecao_complexa') && (
-              <div className="space-y-3">
+              <div className="space-y-6 mt-6">
                 {subQuestions.map((subQ: SubQuestion) => {
                   const subResponse = (currentResponse && typeof currentResponse === 'object' && !Array.isArray(currentResponse))
                     ? (currentResponse[subQ.id] || '')
                     : '';
                   return (
-                    <div key={subQ.id} className="ml-4">
-                      <p className="text-sm font-medium text-gray-700 mb-2">
+                    <div key={subQ.id}>
+                      <p className="text-base font-medium text-gray-900 mb-3">
                         {subQ.text || subQ.texto}
                       </p>
-                      <div className="grid grid-cols-1 gap-2">
-                        {options.map((option: string, optIndex: number) => (
-                          <label 
-                            key={optIndex}
-                            className={`flex items-center gap-3 cursor-pointer p-2 rounded-lg transition-colors ${
-                              subResponse === option 
-                                ? 'bg-blue-50 border-2 border-blue-500' 
-                                : 'hover:bg-gray-50 border-2 border-transparent'
-                            }`}
-                          >
-                            <input
-                              type="radio"
-                              name={`${questionId}_${subQ.id}`}
-                              value={option}
-                              checked={subResponse === option}
-                              onChange={(e) => handleMatrixResponse(questionId, subQ.id, e.target.value)}
-                              className="w-4 h-4 text-blue-600"
-                            />
-                            <span className="text-sm text-gray-600">{option}</span>
-                          </label>
-                        ))}
+                      <div className="space-y-3">
+                        {options.map((option: string, optIndex: number) => {
+                          const isSelected = subResponse === option;
+                          return (
+                            <label 
+                              key={optIndex}
+                              className={`flex items-center gap-4 cursor-pointer p-4 rounded-lg border-2 transition-all ${
+                                isSelected 
+                                  ? 'bg-blue-50 border-blue-500 shadow-sm' 
+                                  : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50 hover:bg-opacity-50'
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                name={`${questionId}_${subQ.id}`}
+                                value={option}
+                                checked={isSelected}
+                                onChange={(e) => handleMatrixResponse(questionId, subQ.id, e.target.value)}
+                                className="w-5 h-5 text-blue-600 focus:ring-blue-500 focus:ring-2"
+                              />
+                              <span className={`text-base ${isSelected ? 'text-gray-900 font-medium' : 'text-gray-700'}`}>
+                                {option}
+                              </span>
+                            </label>
+                          );
+                        })}
                       </div>
                     </div>
                   );
@@ -813,7 +922,6 @@ const QuestionarioRespond = () => {
                 </div>
               </div>
             )}
-          </div>
         </div>
       </div>
     );
@@ -856,115 +964,140 @@ const QuestionarioRespond = () => {
 
   const progress = calculateProgress();
   const isDeadlineExpired = new Date(questionario.deadline) < new Date();
+  const visibleQuestions = getVisibleQuestions();
+  const currentQuestion = visibleQuestions[currentQuestionIndex];
+  const isLastQuestion = currentQuestionIndex === visibleQuestions.length - 1;
+  const isFirstQuestion = currentQuestionIndex === 0;
+  const currentQuestionNumber = currentQuestionIndex + 1;
+  const totalQuestions = visibleQuestions.length;
+  const remainingQuestions = totalQuestions - currentQuestionNumber;
+
+  // Verificar se pode avançar
+  const canProceed = currentQuestion ? isQuestionAnswered(currentQuestion) : false;
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="outline" size="sm" onClick={() => navigate(-1)}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Voltar
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold text-gray-900">{questionario.title}</h1>
-          <p className="text-gray-600 mt-1">{questionario.description}</p>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header Moderno */}
+      <div className="bg-white border-b shadow-sm">
+        <div className="container mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <h1 className="text-xl font-semibold text-blue-600 mb-1">
+                {questionario.title}
+              </h1>
+              <div className="flex items-center gap-4 text-sm text-gray-600">
+                <span>{totalQuestions} questões</span>
+                <span>•</span>
+                <span>Questão {currentQuestionNumber} de {totalQuestions}</span>
+                {remainingQuestions > 0 && (
+                  <>
+                    <span>•</span>
+                    <span>{remainingQuestions} {remainingQuestions === 1 ? 'restante' : 'restantes'}</span>
+                  </>
+                )}
+              </div>
+            </div>
+            {isSaving && (
+              <Badge variant="secondary" className="flex items-center gap-2">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Salvando...
+              </Badge>
+            )}
+          </div>
+          
+          {/* Barra de Progresso */}
+          <div className="mt-4">
+            <Progress 
+              value={progress} 
+              className="h-2"
+            />
+          </div>
         </div>
-        {isSaving && (
-          <Badge variant="secondary" className="flex items-center gap-2">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            Salvando...
-          </Badge>
+      </div>
+
+      {/* Conteúdo Principal */}
+      <div className="container mx-auto px-6 py-8">
+        {currentQuestion ? (
+          <div className="bg-white rounded-lg shadow-sm p-8 min-h-[400px]">
+            {renderQuestion(currentQuestion)}
+          </div>
+        ) : (
+          <div className="bg-white rounded-lg shadow-sm p-8 text-center">
+            <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-600">Nenhuma questão disponível no momento.</p>
+          </div>
+        )}
+
+        {/* Avisos */}
+        {questionario.instructions && (
+          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+              <p className="text-sm text-blue-800">{questionario.instructions}</p>
+            </div>
+          </div>
+        )}
+
+        {isDeadlineExpired && (
+          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
+              <p className="text-sm text-red-800">
+                O prazo para responder este questionário expirou. Você ainda pode visualizar suas respostas, mas não pode mais editá-las.
+              </p>
+            </div>
+          </div>
         )}
       </div>
 
-      {/* Informações e Progresso */}
-      <Card>
-        <CardContent className="p-6 space-y-4">
+      {/* Botões de Navegação Fixos */}
+      <div className="fixed bottom-0 left-0 md:left-16 lg:left-64 right-0 bg-white border-t shadow-lg z-[60]">
+        <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <FileText className="h-4 w-4" />
-                <span>{questionario.questions.length} questões</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <Clock className="h-4 w-4" />
-                <span>
-                  Prazo: {new Date(questionario.deadline).toLocaleDateString('pt-BR')}
-                </span>
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="text-sm font-medium text-gray-700 mb-1">
-                Progresso: {progress.toFixed(0)}%
-              </div>
-              <Progress value={progress} className="w-32 h-2" />
-            </div>
+            <Button
+              variant="outline"
+              onClick={goToPreviousQuestion}
+              disabled={isSubmitting || isSaving || isDeadlineExpired}
+              className="flex items-center gap-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              {isFirstQuestion ? 'Voltar' : 'Anterior'}
+            </Button>
+            
+            {isLastQuestion ? (
+              <Button
+                onClick={handleFinalize}
+                disabled={!canProceed || isSubmitting || isSaving || isDeadlineExpired}
+                className="flex items-center gap-2"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Finalizando...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="h-4 w-4" />
+                    Finalizar Questionário
+                  </>
+                )}
+              </Button>
+            ) : (
+              <Button
+                onClick={goToNextQuestion}
+                disabled={!canProceed || isSubmitting || isSaving || isDeadlineExpired}
+                className="flex items-center gap-2"
+              >
+                Próximo
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            )}
           </div>
-
-          {questionario.instructions && (
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                <p className="text-sm text-blue-800">{questionario.instructions}</p>
-              </div>
-            </div>
-          )}
-
-          {isDeadlineExpired && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
-                <p className="text-sm text-red-800">
-                  O prazo para responder este questionário expirou. Você ainda pode visualizar suas respostas, mas não pode mais editá-las.
-                </p>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Questões */}
-      <div className="space-y-4">
-        {questionario.questions.map((question, index) => renderQuestion(question, index))}
+        </div>
       </div>
-
-      {/* Botões de Ação */}
-      <div className="flex items-center justify-between sticky bottom-0 bg-white p-4 border-t shadow-lg rounded-t-lg">
-        <Button
-          variant="outline"
-          onClick={() => saveResponse(false)}
-          disabled={isSaving || isSubmitting}
-        >
-          {isSaving ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Salvando...
-            </>
-          ) : (
-            <>
-              <Save className="h-4 w-4 mr-2" />
-              Salvar
-            </>
-          )}
-        </Button>
-        <Button
-          onClick={handleFinalize}
-          disabled={isSubmitting || isSaving || isDeadlineExpired}
-          className="bg-green-600 hover:bg-green-700"
-        >
-          {isSubmitting ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Finalizando...
-            </>
-          ) : (
-            <>
-              <CheckCircle className="h-4 w-4 mr-2" />
-              Finalizar Questionário
-            </>
-          )}
-        </Button>
-      </div>
+      
+      {/* Espaçamento para os botões fixos */}
+      <div className="h-20"></div>
     </div>
   );
 };
