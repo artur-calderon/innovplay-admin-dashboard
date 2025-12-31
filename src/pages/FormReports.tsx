@@ -1738,13 +1738,38 @@ const FormReports = () => {
 
       if (questionData.responses) {
         console.log(`  📊 Respostas da questão ${questionId}:`, questionData.responses);
-        // Para questões simples (selecao_unica, textarea, slider)
-        if (typeof questionData.responses === 'object' && !Array.isArray(questionData.responses)) {
-          // Verificar se é uma questão com subperguntas (matriz)
+        console.log(`  📋 Subperguntas da questão ${questionId}:`, questionData.subQuestions);
+        
+        // Verificar se é uma questão com subperguntas (matriz)
+        if (questionData.subQuestions && Array.isArray(questionData.subQuestions) && questionData.subQuestions.length > 0) {
+          // É uma matriz (multipla_escolha, matriz_selecao, etc.)
+          // Processar cada subpergunta individualmente
+          questionData.subQuestions.forEach((subQuestion: any) => {
+            const subQuestionId = subQuestion.id;
+            const subQuestionText = subQuestion.text || subQuestion.texto || subQuestionId;
+            const subQuestionResponse = questionData.responses[subQuestionId];
+            
+            if (subQuestionResponse && typeof subQuestionResponse === 'object' && !Array.isArray(subQuestionResponse)) {
+              // Para cada resposta desta subpergunta, criar um item no gráfico
+              Object.entries(subQuestionResponse).forEach(([responseValue, count]: [string, any]) => {
+                const value = typeof count === 'number' ? count : 0;
+                if (value > 0) {
+                  // Combinar texto da subpergunta com a resposta escolhida
+                  const label = `${subQuestionText}: ${responseValue}`;
+                  chartData.push({
+                    name: label,
+                    value: value,
+                    color: colors[chartData.length % colors.length]
+                  });
+                }
+              });
+            }
+          });
+        } else if (typeof questionData.responses === 'object' && !Array.isArray(questionData.responses)) {
+          // Verificar se é uma questão simples ou se tem estrutura de matriz sem subQuestions definidas
           const firstKey = Object.keys(questionData.responses)[0];
           if (firstKey && typeof questionData.responses[firstKey] === 'object' && !Array.isArray(questionData.responses[firstKey])) {
-            // É uma matriz (multipla_escolha, matriz_selecao, etc.)
-            // Agregar todas as subperguntas para exibir
+            // É uma matriz mas sem subQuestions definidas - manter comportamento antigo (agregar)
             const aggregated: Record<string, number> = {};
             Object.values(questionData.responses).forEach((subResponse: any) => {
               if (typeof subResponse === 'object' && !Array.isArray(subResponse)) {
@@ -1898,23 +1923,23 @@ const FormReports = () => {
             <Button
               variant="outline"
               size="icon"
-              className="absolute left-0 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full shadow-lg"
+              className="absolute left-2 top-1/2 -translate-y-1/2 z-10 h-12 w-12 rounded-full shadow-lg bg-white hover:bg-gray-50"
               onClick={goToPrevious}
               disabled={totalQuestions === 0}
             >
-              <ChevronLeft className="h-5 w-5" />
+              <ChevronLeft className="h-6 w-6" />
             </Button>
 
             {/* Conteúdo do Carousel */}
-            <div className="mx-12">
+            <div className="mx-16">
               {currentQuestion && (
-                <div className="space-y-4">
+                <div className="space-y-6">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-blue-100 text-blue-800 rounded-full flex items-center justify-center text-sm font-medium">
+                    <div className="w-10 h-10 bg-blue-100 text-blue-800 rounded-full flex items-center justify-center text-base font-medium">
                       {currentQuestionIndex + 1}
                     </div>
                     <div className="flex-1">
-                      <h4 className="text-lg font-medium text-gray-900">
+                      <h4 className="text-xl font-semibold text-gray-900">
                         {currentQuestion.question}
                       </h4>
                       {currentQuestion.section && (
@@ -1925,22 +1950,24 @@ const FormReports = () => {
                     </div>
                   </div>
 
-                  <div className="h-96 w-full bg-white rounded-lg border p-4">
+                  <div className="h-[700px] w-full bg-white rounded-lg border p-6">
                     <ResponsiveContainer width="100%" height="100%">
                       {chartType === 'bar' ? (
-                        <RechartsBarChart data={currentQuestion.data} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                        <RechartsBarChart data={currentQuestion.data} margin={{ top: 20, right: 30, left: 20, bottom: 120 }}>
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis 
                             dataKey="name" 
                             angle={-45}
                             textAnchor="end"
-                            height={80}
-                            fontSize={12}
+                            height={140}
+                            fontSize={11}
+                            interval={0}
                           />
                           <YAxis />
                           <Tooltip 
                             formatter={(value: number) => [`${value}%`, 'Percentual']}
                             labelFormatter={(label: string) => `Resposta: ${label}`}
+                            contentStyle={{ maxWidth: '400px', wordWrap: 'break-word' }}
                           />
                           <Bar dataKey="value" fill="#3B82F6" radius={[4, 4, 0, 0]} />
                         </RechartsBarChart>
@@ -1951,8 +1978,11 @@ const FormReports = () => {
                             cx="50%"
                             cy="50%"
                             labelLine={false}
-                            label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                            outerRadius={120}
+                            label={({ name, percent }) => {
+                              const shortName = name.length > 30 ? name.substring(0, 30) + '...' : name;
+                              return `${shortName} (${(percent * 100).toFixed(0)}%)`;
+                            }}
+                            outerRadius={180}
                             fill="#8884d8"
                             dataKey="value"
                           >
@@ -1960,22 +1990,27 @@ const FormReports = () => {
                               <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                           </Pie>
-                          <Tooltip formatter={(value: number) => [`${value}%`, 'Percentual']} />
+                          <Tooltip 
+                            formatter={(value: number) => [`${value}%`, 'Percentual']}
+                            contentStyle={{ maxWidth: '400px', wordWrap: 'break-word' }}
+                          />
                         </RechartsPieChart>
                       ) : (
-                        <RechartsLineChart data={currentQuestion.data} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                        <RechartsLineChart data={currentQuestion.data} margin={{ top: 20, right: 30, left: 20, bottom: 120 }}>
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis 
                             dataKey="name" 
                             angle={-45}
                             textAnchor="end"
-                            height={80}
-                            fontSize={12}
+                            height={140}
+                            fontSize={11}
+                            interval={0}
                           />
                           <YAxis />
                           <Tooltip 
                             formatter={(value: number) => [`${value}%`, 'Percentual']}
                             labelFormatter={(label: string) => `Resposta: ${label}`}
+                            contentStyle={{ maxWidth: '400px', wordWrap: 'break-word' }}
                           />
                           <Line 
                             type="monotone" 
@@ -2000,11 +2035,11 @@ const FormReports = () => {
             <Button
               variant="outline"
               size="icon"
-              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full shadow-lg"
+              className="absolute right-2 top-1/2 -translate-y-1/2 z-10 h-12 w-12 rounded-full shadow-lg bg-white hover:bg-gray-50"
               onClick={goToNext}
               disabled={totalQuestions === 0}
             >
-              <ChevronRight className="h-5 w-5" />
+              <ChevronRight className="h-6 w-6" />
             </Button>
           </div>
 
@@ -2087,9 +2122,9 @@ const FormReports = () => {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Lista de Relatórios */}
-          <div className="lg:col-span-1">
+        <div className="space-y-6">
+          {/* Cards dos Formulários - Em cima */}
+          <div>
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -2100,7 +2135,7 @@ const FormReports = () => {
                   Selecione um questionário para visualizar os relatórios
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent>
                 {reports.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
                     <FileText className="h-12 w-12 mx-auto mb-4 text-gray-400" />
@@ -2108,164 +2143,164 @@ const FormReports = () => {
                     <p className="text-sm mt-2">Os formulários enviados aparecerão aqui</p>
                   </div>
                 ) : (
-                  reports.map((report) => {
-                    const formInfo = getFormTypeInfo(report.formType);
-                    const IconComponent = formInfo.icon;
-                    const isSelected = selectedReport?.id === report.id;
+                  <div className="flex gap-4 overflow-x-auto pb-4 custom-scrollbar" style={{ scrollbarWidth: 'thin' }}>
+                    {reports.map((report) => {
+                      const formInfo = getFormTypeInfo(report.formType);
+                      const IconComponent = formInfo.icon;
+                      const isSelected = selectedReport?.id === report.id;
 
-                    return (
-                      <Card
-                        key={report.id}
-                        className={`cursor-pointer transition-all duration-200 hover:shadow-md ${
-                          isSelected ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:bg-gray-50'
-                        }`}
-                        onClick={() => handleSelectReport(report)}
-                      >
-                        <CardContent className="p-4">
-                          <div className="flex items-start gap-3">
-                            <div className={`p-2 rounded-lg ${formInfo.color}`}>
-                              <IconComponent className="h-5 w-5 text-white" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="flex-1 min-w-0">
-                                  <h4 className="font-medium text-gray-900 truncate">
-                                    {report.formTitle}
-                                  </h4>
-                                  <p className="text-sm text-gray-600 mt-1">
-                                    {formInfo.name}
-                                  </p>
-                                  <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
-                                    <span className="flex items-center gap-1">
-                                      <Users className="h-3 w-3" />
-                                      {report.totalResponses} respostas
-                                    </span>
-                                    <span className="flex items-center gap-1">
-                                      <TrendingUp className="h-3 w-3" />
-                                      {report.completionRate}%
-                                    </span>
+                      return (
+                        <Card
+                          key={report.id}
+                          className={`cursor-pointer transition-all duration-200 hover:shadow-md flex-shrink-0 w-80 ${
+                            isSelected ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:bg-gray-50'
+                          }`}
+                          onClick={() => handleSelectReport(report)}
+                        >
+                          <CardContent className="p-4">
+                            <div className="flex items-start gap-3">
+                              <div className={`p-2 rounded-lg ${formInfo.color}`}>
+                                <IconComponent className="h-5 w-5 text-white" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <h4 className="font-medium text-gray-900 truncate">
+                                      {report.formTitle}
+                                    </h4>
+                                    <p className="text-sm text-gray-600 mt-1">
+                                      {formInfo.name}
+                                    </p>
+                                    <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                                      <span className="flex items-center gap-1">
+                                        <Users className="h-3 w-3" />
+                                        {report.totalResponses} respostas
+                                      </span>
+                                      <span className="flex items-center gap-1">
+                                        <TrendingUp className="h-3 w-3" />
+                                        {report.completionRate}%
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-2">
+                                      <Badge 
+                                        variant={report.status === 'active' ? 'default' : 'secondary'}
+                                        className="text-xs"
+                                      >
+                                        {report.status === 'active' ? 'Ativo' : 'Concluído'}
+                                      </Badge>
+                                      <span className="text-xs text-gray-500">
+                                        {report.createdAt.toLocaleDateString('pt-BR')}
+                                      </span>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-2 mt-2">
-                                    <Badge 
-                                      variant={report.status === 'active' ? 'default' : 'secondary'}
-                                      className="text-xs"
+                                  {canDelete && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                      onClick={(e) => handleDeleteClick(report.formId, report.formTitle, e)}
+                                      title="Excluir formulário"
                                     >
-                                      {report.status === 'active' ? 'Ativo' : 'Concluído'}
-                                    </Badge>
-                                    <span className="text-xs text-gray-500">
-                                      {report.createdAt.toLocaleDateString('pt-BR')}
-                                    </span>
-                                  </div>
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  )}
                                 </div>
-                                {canDelete && (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                    onClick={(e) => handleDeleteClick(report.formId, report.formTitle, e)}
-                                    title="Excluir formulário"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                )}
                               </div>
                             </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
                 )}
               </CardContent>
             </Card>
           </div>
 
-        {/* Área de Visualização */}
-        <div className="lg:col-span-2">
+          {/* Informações do Relatório Selecionado */}
+          {selectedReport && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Eye className="h-5 w-5" />
+                      {selectedReport.formTitle}
+                    </CardTitle>
+                    <CardDescription className="mt-1">
+                      {getFormTypeInfo(selectedReport.formType).name} • 
+                      Criado em {selectedReport.createdAt.toLocaleDateString('pt-BR')}
+                    </CardDescription>
+                  </div>
+                  <Button onClick={handleExportReport} className="flex items-center gap-2">
+                    <Download className="h-4 w-4" />
+                    Exportar
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div className="text-center p-4 bg-blue-50 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-600">
+                      {reportData?.totalResponses || selectedReport.totalResponses}
+                    </div>
+                    <div className="text-sm text-blue-800">Total de Respostas</div>
+                  </div>
+                  <div className="text-center p-4 bg-green-50 rounded-lg">
+                    <div className="text-2xl font-bold text-green-600">
+                      {reportData?.completionRate || selectedReport.completionRate}%
+                    </div>
+                    <div className="text-sm text-green-800">Taxa de Conclusão</div>
+                  </div>
+                  <div className="text-center p-4 bg-purple-50 rounded-lg">
+                    <div className="text-2xl font-bold text-purple-600">
+                      {selectedReport.schools.length}
+                    </div>
+                    <div className="text-sm text-purple-800">Escolas Participantes</div>
+                  </div>
+                </div>
+
+                {/* Lista de Escolas */}
+                <div className="mb-6">
+                  <h4 className="font-medium text-gray-900 mb-3">Escolas Participantes</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedReport.schools.map((school, index) => (
+                      <Badge key={index} variant="outline" className="text-xs">
+                        {school}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Gráficos - Em baixo em um carousel */}
           {selectedReport ? (
-            <div className="space-y-6">
-              {/* Informações do Relatório */}
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="flex items-center gap-2">
-                        <Eye className="h-5 w-5" />
-                        {selectedReport.formTitle}
-                      </CardTitle>
-                      <CardDescription className="mt-1">
-                        {getFormTypeInfo(selectedReport.formType).name} • 
-                        Criado em {selectedReport.createdAt.toLocaleDateString('pt-BR')}
-                      </CardDescription>
-                    </div>
-                    <Button onClick={handleExportReport} className="flex items-center gap-2">
-                      <Download className="h-4 w-4" />
-                      Exportar
-                    </Button>
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <BarChart3 className="h-5 w-5" />
+                      Análise dos Dados
+                    </CardTitle>
+                    <CardDescription>
+                      Visualização dos dados coletados no questionário
+                    </CardDescription>
                   </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                    <div className="text-center p-4 bg-blue-50 rounded-lg">
-                      <div className="text-2xl font-bold text-blue-600">
-                        {reportData?.totalResponses || selectedReport.totalResponses}
-                      </div>
-                      <div className="text-sm text-blue-800">Total de Respostas</div>
+                  {(selectedReport.formType === 'aluno-jovem' || selectedReport.formType === 'aluno-velho' || selectedReport.formType === 'professor' || selectedReport.formType === 'diretor') && (
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-blue-600" />
+                      <span className="text-sm font-medium text-blue-600">Análise por Pergunta</span>
                     </div>
-                    <div className="text-center p-4 bg-green-50 rounded-lg">
-                      <div className="text-2xl font-bold text-green-600">
-                        {reportData?.completionRate || selectedReport.completionRate}%
-                      </div>
-                      <div className="text-sm text-green-800">Taxa de Conclusão</div>
-                    </div>
-                    <div className="text-center p-4 bg-purple-50 rounded-lg">
-                      <div className="text-2xl font-bold text-purple-600">
-                        {selectedReport.schools.length}
-                      </div>
-                      <div className="text-sm text-purple-800">Escolas Participantes</div>
-                    </div>
-                  </div>
-
-                  {/* Lista de Escolas */}
-                  <div className="mb-6">
-                    <h4 className="font-medium text-gray-900 mb-3">Escolas Participantes</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedReport.schools.map((school, index) => (
-                        <Badge key={index} variant="outline" className="text-xs">
-                          {school}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Gráfico */}
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="flex items-center gap-2">
-                        <BarChart3 className="h-5 w-5" />
-                        Análise dos Dados
-                      </CardTitle>
-                      <CardDescription>
-                        Visualização dos dados coletados no questionário
-                      </CardDescription>
-                    </div>
-                    {(selectedReport.formType === 'aluno-jovem' || selectedReport.formType === 'aluno-velho' || selectedReport.formType === 'professor' || selectedReport.formType === 'diretor') && (
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-blue-600" />
-                        <span className="text-sm font-medium text-blue-600">Análise por Pergunta</span>
-                      </div>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {renderChart()}
-                </CardContent>
-              </Card>
-            </div>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                {renderChart()}
+              </CardContent>
+            </Card>
           ) : (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
@@ -2274,12 +2309,11 @@ const FormReports = () => {
                   Selecione um Relatório
                 </h3>
                 <p className="text-sm text-gray-500 text-center">
-                  Escolha um questionário da lista ao lado para visualizar os relatórios e gráficos
+                  Escolha um questionário acima para visualizar os relatórios e gráficos
                 </p>
               </CardContent>
             </Card>
           )}
-        </div>
         </div>
       )}
 

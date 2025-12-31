@@ -164,22 +164,22 @@ export default function PlayTvManagement() {
   const userContext = getUserContext();
 
   return (
-    <div className="container mx-auto py-6 px-4 space-y-6">
+    <div className="container mx-auto py-8 px-4 space-y-8 max-w-7xl">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <Tv className="w-8 h-8 text-blue-500" />
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 pb-4 border-b">
+        <div className="space-y-2">
+          <h1 className="text-4xl font-bold tracking-tight flex items-center gap-3 bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent">
+            <Tv className="w-10 h-10 text-blue-600" />
             Play TV
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground text-lg">
             {canCreate
               ? 'Gerencie e cadastre vídeos educacionais para os alunos'
               : 'Visualize os vídeos disponíveis'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={handleRefresh} disabled={isLoading}>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" onClick={handleRefresh} disabled={isLoading} className="shadow-sm">
             <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             Atualizar
           </Button>
@@ -200,11 +200,15 @@ export default function PlayTvManagement() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="visualizar" className="space-y-4">
+          <TabsContent value="visualizar" className="space-y-6 mt-6">
             {/* Filtros */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Filtros</CardTitle>
+            <Card className="shadow-sm border-border/50">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-xl flex items-center gap-2">
+                  <School className="w-5 h-5 text-primary" />
+                  Filtros
+                </CardTitle>
+                <CardDescription>Filtre os vídeos por escola, série ou disciplina</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -288,7 +292,13 @@ export default function PlayTvManagement() {
             </Card>
 
             {/* Lista de Vídeos */}
-            <VideoList videos={videos} isLoading={isLoading} onVideoClick={handleVideoClick} />
+            <VideoList 
+              videos={videos} 
+              isLoading={isLoading} 
+              onVideoClick={handleVideoClick}
+              onDeleteVideo={handleDeleteVideo}
+              userRole={user.role}
+            />
           </TabsContent>
 
           <TabsContent value="cadastrar">
@@ -305,9 +315,13 @@ export default function PlayTvManagement() {
       {!canCreate && (
         <>
           {/* Filtros */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Filtros</CardTitle>
+          <Card className="shadow-sm border-border/50">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-xl flex items-center gap-2">
+                <School className="w-5 h-5 text-primary" />
+                Filtros
+              </CardTitle>
+              <CardDescription>Filtre os vídeos por escola, série ou disciplina</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -391,7 +405,13 @@ export default function PlayTvManagement() {
           </Card>
 
           {/* Lista de Vídeos */}
-          <VideoList videos={videos} isLoading={isLoading} onVideoClick={handleVideoClick} />
+          <VideoList 
+            videos={videos} 
+            isLoading={isLoading} 
+            onVideoClick={handleVideoClick}
+            onDeleteVideo={handleDeleteVideo}
+            userRole={user.role}
+          />
         </>
       )}
     </div>
