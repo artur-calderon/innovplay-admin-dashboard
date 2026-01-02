@@ -30,6 +30,7 @@ import { FormType } from '@/types/forms';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { FormMultiSelect, FormOption } from '@/components/ui/form-multi-select';
 import { useToast } from '@/hooks/use-toast';
 import { FormFiltersApiService } from '@/services/formFiltersApi';
 import { api } from '@/lib/api';
@@ -159,9 +160,9 @@ const FormRegistration = () => {
   // Estados dos filtros
   const [selectedState, setSelectedState] = useState<string>('all');
   const [selectedMunicipality, setSelectedMunicipality] = useState<string>('all');
-  const [selectedSchool, setSelectedSchool] = useState<string>('all');
-  const [selectedGrade, setSelectedGrade] = useState<string>('all');
-  const [selectedClass, setSelectedClass] = useState<string>('all');
+  const [selectedSchools, setSelectedSchools] = useState<string[]>([]); // Array vazio = "Todas"
+  const [selectedGrades, setSelectedGrades] = useState<string[]>([]); // Array vazio = "Todas"
+  const [selectedClasses, setSelectedClasses] = useState<string[]>([]); // Array vazio = "Todas"
 
   // Estados dos dados dos filtros
   const [states, setStates] = useState<State[]>([]);
@@ -181,6 +182,10 @@ const FormRegistration = () => {
   // Estado para tipo de formulário determinado pela série
   const [determinedFormType, setDeterminedFormType] = useState<string | null>(null);
   const [isDeterminingFormType, setIsDeterminingFormType] = useState(false);
+
+  // Estados para formulários disponíveis baseados em escola e município
+  const [availableFormTypes, setAvailableFormTypes] = useState<string[]>([]);
+  const [selectedFormType, setSelectedFormType] = useState<string | null>(null);
 
   // Estados para informações do formulário (editáveis pelo usuário)
   const [formTitle, setFormTitle] = useState<string>('');
@@ -229,21 +234,23 @@ const FormRegistration = () => {
 
   // Helpers de reset em cascata
   const resetAfterMunicipality = useCallback(() => {
-    setSelectedSchool('all');
+    setSelectedSchools([]);
     setSchools([]);
     resetAfterSchool();
   }, []);
 
   const resetAfterSchool = useCallback(() => {
-    setSelectedGrade('all');
+    setSelectedGrades([]);
     setGrades([]);
     resetAfterGrade();
   }, []);
 
   const resetAfterGrade = useCallback(() => {
-    setSelectedClass('all');
+    setSelectedClasses([]);
     setClasses([]);
     setDeterminedFormType(null);
+    // Não limpar availableFormTypes e selectedFormType aqui
+    // Eles serão gerenciados pelos useEffects específicos baseados nos filtros selecionados
   }, []);
 
   const resetAfterState = useCallback(() => {
@@ -305,13 +312,31 @@ const FormRegistration = () => {
             estado: selectedState,
             municipio: selectedMunicipality
           });
-          setSchools(schoolsData.map(school => ({
-            id: school.id,
-            name: school.nome
-          })));
-          if (!isRestoringFiltersRef.current) {
-            resetAfterSchool();
-          }
+          
+          // Remover duplicatas por ID e por nome
+          const uniqueSchoolsById = new Map<string, { id: string; name: string }>();
+          const uniqueSchoolsByName = new Map<string, string>();
+          
+          schoolsData.forEach(school => {
+            const schoolName = school.nome?.trim() || '';
+            const normalizedName = schoolName.toLowerCase().trim();
+            
+            if (!uniqueSchoolsById.has(school.id) && !uniqueSchoolsByName.has(normalizedName)) {
+              uniqueSchoolsById.set(school.id, {
+                id: school.id,
+                name: schoolName
+              });
+              uniqueSchoolsByName.set(normalizedName, school.id);
+            }
+          });
+          
+          // Converter para array e ordenar por nome
+          const uniqueSchools = Array.from(uniqueSchoolsById.values()).sort((a, b) => 
+            a.name.localeCompare(b.name)
+          );
+          
+          setSchools(uniqueSchools);
+          // Não resetar seleções automaticamente - permitir múltiplas seleções
         } catch (error) {
           console.error("Erro ao carregar escolas:", error);
           setSchools([]);
@@ -321,32 +346,56 @@ const FormRegistration = () => {
       } else {
         setSchools([]);
         if (!isRestoringFiltersRef.current) {
-          resetAfterSchool();
+          setSelectedSchools([]);
         }
       }
     };
 
     loadSchools();
-  }, [selectedMunicipality, selectedState, resetAfterSchool]);
+  }, [selectedMunicipality, selectedState]);
 
-  // Carregar séries quando escola for selecionada
+  // Carregar séries quando escola(s) for(em) selecionada(s)
   useEffect(() => {
     const loadGrades = async () => {
-      if (selectedState !== 'all' && selectedMunicipality !== 'all' && selectedSchool !== 'all') {
+      if (selectedState !== 'all' && selectedMunicipality !== 'all' && selectedSchools.length > 0) {
         try {
           setIsLoadingFilters(true);
-          const gradesData = await FormFiltersApiService.getFormFilterGrades({
-            estado: selectedState,
-            municipio: selectedMunicipality,
-            escola: selectedSchool
-          });
-          setGrades(gradesData.map(grade => ({
-            id: grade.id,
-            name: grade.nome
-          })));
-          if (!isRestoringFiltersRef.current) {
-            resetAfterGrade();
+          // Carregar séries para todas as escolas selecionadas
+          // Se múltiplas escolas, fazer requisições e unir resultados
+          const allGradesById = new Map<string, { id: string; name: string }>();
+          const allGradesByName = new Map<string, string>(); // Para detectar duplicatas por nome
+          
+          for (const schoolId of selectedSchools) {
+            try {
+              const gradesData = await FormFiltersApiService.getFormFilterGrades({
+                estado: selectedState,
+                municipio: selectedMunicipality,
+                escola: schoolId
+              });
+              gradesData.forEach(grade => {
+                const gradeName = grade.nome?.trim() || '';
+                // Verificar se já existe por ID ou por nome (normalizado)
+                const normalizedName = gradeName.toLowerCase().trim();
+                
+                if (!allGradesById.has(grade.id) && !allGradesByName.has(normalizedName)) {
+                  allGradesById.set(grade.id, {
+                    id: grade.id,
+                    name: gradeName
+                  });
+                  allGradesByName.set(normalizedName, grade.id);
+                }
+              });
+            } catch (error) {
+              console.error(`Erro ao carregar séries da escola ${schoolId}:`, error);
+            }
           }
+          
+          // Converter para array e ordenar por nome
+          const uniqueGrades = Array.from(allGradesById.values()).sort((a, b) => 
+            a.name.localeCompare(b.name)
+          );
+          
+          setGrades(uniqueGrades);
         } catch (error) {
           console.error("Erro ao carregar séries:", error);
           setGrades([]);
@@ -354,35 +403,58 @@ const FormRegistration = () => {
           setIsLoadingFilters(false);
         }
       } else {
+        // Se nenhuma escola selecionada, limpar séries
         setGrades([]);
-        if (!isRestoringFiltersRef.current) {
-          resetAfterGrade();
-        }
       }
     };
 
     loadGrades();
-  }, [selectedSchool, selectedState, selectedMunicipality, resetAfterGrade]);
+  }, [selectedSchools, selectedState, selectedMunicipality]);
 
-  // Carregar turmas quando série for selecionada
+  // Carregar turmas quando série(s) for(em) selecionada(s)
   useEffect(() => {
     const loadClasses = async () => {
-      if (selectedState !== 'all' && selectedMunicipality !== 'all' && selectedSchool !== 'all' && selectedGrade !== 'all') {
+      if (selectedState !== 'all' && selectedMunicipality !== 'all' && selectedSchools.length > 0 && selectedGrades.length > 0) {
         try {
           setIsLoadingFilters(true);
-          const classesData = await FormFiltersApiService.getFormFilterClasses({
-            estado: selectedState,
-            municipio: selectedMunicipality,
-            escola: selectedSchool,
-            serie: selectedGrade
-          });
-          setClasses(classesData.map(classItem => ({
-            id: classItem.id,
-            name: classItem.nome
-          })));
-          if (!isRestoringFiltersRef.current) {
-            setSelectedClass('all');
+          // Carregar turmas para todas as combinações escola-série selecionadas
+          const allClassesById = new Map<string, { id: string; name: string }>();
+          const allClassesByName = new Map<string, string>(); // Para detectar duplicatas por nome
+          
+          for (const schoolId of selectedSchools) {
+            for (const gradeId of selectedGrades) {
+              try {
+                const classesData = await FormFiltersApiService.getFormFilterClasses({
+                  estado: selectedState,
+                  municipio: selectedMunicipality,
+                  escola: schoolId,
+                  serie: gradeId
+                });
+                classesData.forEach(classItem => {
+                  const className = classItem.nome?.trim() || '';
+                  // Verificar se já existe por ID ou por nome (normalizado)
+                  const normalizedName = className.toLowerCase().trim();
+                  
+                  if (!allClassesById.has(classItem.id) && !allClassesByName.has(normalizedName)) {
+                    allClassesById.set(classItem.id, {
+                      id: classItem.id,
+                      name: className
+                    });
+                    allClassesByName.set(normalizedName, classItem.id);
+                  }
+                });
+              } catch (error) {
+                console.error(`Erro ao carregar turmas da escola ${schoolId} e série ${gradeId}:`, error);
+              }
+            }
           }
+          
+          // Converter para array e ordenar por nome
+          const uniqueClasses = Array.from(allClassesById.values()).sort((a, b) => 
+            a.name.localeCompare(b.name)
+          );
+          
+          setClasses(uniqueClasses);
         } catch (error) {
           console.error("Erro ao carregar turmas:", error);
           setClasses([]);
@@ -391,23 +463,96 @@ const FormRegistration = () => {
         }
       } else {
         setClasses([]);
-        if (!isRestoringFiltersRef.current) {
-          setSelectedClass('all');
-        }
       }
     };
 
     loadClasses();
-  }, [selectedGrade, selectedState, selectedMunicipality, selectedSchool]);
+  }, [selectedGrades, selectedSchools, selectedState, selectedMunicipality]);
 
-  // Determinar tipo de formulário quando série for selecionada
+  // Determinar formulários disponíveis quando escola(s) for(em) selecionada(s) (sem série)
+  useEffect(() => {
+    if (selectedState !== 'all' && selectedMunicipality !== 'all' && selectedSchools.length > 0 && selectedGrades.length === 0) {
+      // Quando escola(s) está(ão) selecionada(s) mas série não, mostrar professor e diretor
+      const expected = ['professor', 'diretor'];
+      setAvailableFormTypes(prev => {
+        // Só atualizar se for diferente do esperado
+        if (JSON.stringify(prev.sort()) !== JSON.stringify(expected.sort())) {
+          return expected;
+        }
+        return prev;
+      });
+      setDeterminedFormType(null); // Limpar tipo determinado pela série
+      // Se há múltiplos tipos, não selecionar automaticamente (usuário deve escolher)
+      // Mas manter a seleção atual se já existir
+    } else if (selectedGrades.length > 0) {
+      // Se série(s) foi(foram) selecionada(s), limpar formulários disponíveis por escola
+      setAvailableFormTypes([]);
+      setSelectedFormType(null);
+    } else if (selectedSchools.length === 0 && selectedState !== 'all' && selectedMunicipality !== 'all') {
+      // Se escola foi deselecionada mas município ainda está selecionado, não limpar aqui
+      // (será tratado pelo useEffect do município)
+    } else if (selectedState === 'all' || selectedMunicipality === 'all') {
+      // Limpar apenas se os filtros obrigatórios não estiverem selecionados
+      setAvailableFormTypes([]);
+      setSelectedFormType(null);
+    }
+  }, [selectedState, selectedMunicipality, selectedSchools, selectedGrades]);
+
+  // Determinar formulários disponíveis quando município for selecionado (sem escola)
+  useEffect(() => {
+    if (selectedState !== 'all' && selectedMunicipality !== 'all' && selectedSchools.length === 0) {
+      // Quando município está selecionado mas escola não, mostrar secretário
+      const expected = ['secretario'];
+      setAvailableFormTypes(prev => {
+        // Só atualizar se for diferente do esperado
+        if (JSON.stringify(prev.sort()) !== JSON.stringify(expected.sort())) {
+          return expected;
+        }
+        return prev;
+      });
+      setDeterminedFormType(null); // Limpar tipo determinado pela série
+      // Selecionar automaticamente quando há apenas um tipo disponível
+      setSelectedFormType('secretario');
+    } else if (selectedSchools.length > 0) {
+      // Se escola foi selecionada, o useEffect acima já vai tratar de definir professor/diretor
+      // Não limpar aqui para evitar conflitos
+    } else if (selectedState === 'all' || selectedMunicipality === 'all') {
+      // Limpar quando filtros obrigatórios não estão selecionados
+      setAvailableFormTypes([]);
+      setSelectedFormType(null);
+    }
+  }, [selectedState, selectedMunicipality, selectedSchools]);
+
+  // Determinar tipo de formulário quando série(s) for(em) selecionada(s)
   useEffect(() => {
     const determineFormType = async () => {
-      if (selectedGrade !== 'all') {
+      if (selectedGrades.length > 0) {
         setIsDeterminingFormType(true);
         try {
-          const formType = await determineFormTypeFromGrade(selectedGrade);
-          setDeterminedFormType(formType);
+          // Se houver múltiplas séries, verificar tipos de todas
+          const formTypes = new Set<string>();
+          
+          for (const gradeId of selectedGrades) {
+            const formType = await determineFormTypeFromGrade(gradeId);
+            if (formType) {
+              formTypes.add(formType);
+            }
+          }
+          
+          // Se todas as séries têm o mesmo tipo, usar esse tipo
+          // Se houver tipos diferentes, não determinar automaticamente
+          if (formTypes.size === 1) {
+            setDeterminedFormType(Array.from(formTypes)[0]);
+            setAvailableFormTypes([]);
+            setSelectedFormType(null);
+          } else if (formTypes.size > 1) {
+            // Múltiplos tipos - mostrar opções ou avisar conflito
+            setDeterminedFormType(null);
+            setAvailableFormTypes(Array.from(formTypes));
+            setSelectedFormType(null);
+          } else {
+            setDeterminedFormType(null);
+          }
         } catch (error) {
           console.error('Erro ao determinar tipo de formulário:', error);
           setDeterminedFormType(null);
@@ -420,26 +565,30 @@ const FormRegistration = () => {
     };
 
     determineFormType();
-  }, [selectedGrade]);
+  }, [selectedGrades]);
 
-  // Preencher campos com valores sugeridos quando o tipo de formulário for determinado
+  // Preencher campos com valores sugeridos quando o tipo de formulário for determinado (série) ou selecionado (escola/município)
   useEffect(() => {
-    if (determinedFormType) {
-      const formData = getFormData(determinedFormType);
+    const formTypeToUse = determinedFormType || selectedFormType;
+    if (formTypeToUse) {
+      const formData = getFormData(formTypeToUse);
       if (formData) {
         // Preencher apenas se os campos estiverem vazios (para não sobrescrever edições do usuário)
         setFormTitle(prev => prev.trim() ? prev : formData.name);
         setFormDescription(prev => prev.trim() ? prev : (formData.description || ''));
       }
     } else {
-      // Limpar campos quando não houver tipo determinado
-      setFormTitle('');
-      setFormDescription('');
-      setFormInstructions('');
-      setFormDeadline('');
+      // Limpar campos apenas se não houver tipos disponíveis E não houver tipo selecionado
+      // Não limpar se houver tipos disponíveis aguardando seleção
+      if (!availableFormTypes.length && !determinedFormType && !selectedFormType) {
+        setFormTitle('');
+        setFormDescription('');
+        setFormInstructions('');
+        setFormDeadline('');
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [determinedFormType]);
+  }, [determinedFormType, selectedFormType, availableFormTypes.length]);
 
   // Função para obter dados do formulário baseado no tipo
   const getFormData = useCallback((formType: string) => {
@@ -543,30 +692,32 @@ const FormRegistration = () => {
 
   // Função para enviar formulário
   const handleSendForm = async () => {
-    if (!determinedFormType) {
+    const formTypeToUse = determinedFormType || selectedFormType;
+    
+    if (!formTypeToUse) {
       toast({
         title: "Erro",
-        description: "Selecione uma série para determinar o tipo de formulário.",
+        description: "Selecione um tipo de formulário ou uma série para determinar o tipo.",
         variant: "destructive",
       });
       return;
     }
 
-    if (selectedState === 'all' || selectedMunicipality === 'all' || selectedSchool === 'all') {
+    if (selectedState === 'all' || selectedMunicipality === 'all' || selectedSchools.length === 0) {
       toast({
         title: "Erro",
-        description: "Selecione Estado, Município e Escola para enviar o formulário.",
+        description: "Selecione Estado, Município e pelo menos uma Escola para enviar o formulário.",
         variant: "destructive",
       });
       return;
     }
 
     // Preparar payload
-    const formData = getFormData(determinedFormType);
+    const formData = getFormData(formTypeToUse);
     if (!formData) return;
 
     // Usar perguntas selecionadas ou todas se não houver seleção específica
-    const questionsToSend = selectedQuestionIds.size > 0 && selectedFormTypeForEditor === determinedFormType
+    const questionsToSend = selectedQuestionIds.size > 0 && selectedFormTypeForEditor === formTypeToUse
       ? formData.questions.filter(q => selectedQuestionIds.has(q.id))
       : formData.questions;
 
@@ -613,7 +764,7 @@ const FormRegistration = () => {
 
     // Preparar payload no formato correto da API
     const payload: any = {
-      formType: determinedFormType,
+      formType: formTypeToUse,
       title: formTitle.trim(),
       questions: normalizedQuestions
     };
@@ -640,35 +791,10 @@ const FormRegistration = () => {
       }
     }
 
-    // Adicionar filtros se todos os obrigatórios estiverem presentes
-    if (selectedState !== 'all' && selectedMunicipality !== 'all' && selectedSchool !== 'all') {
-      payload.filters = {
-        estado: selectedState,
-        municipio: selectedMunicipality,
-        escola: selectedSchool
-      };
-
-      // Adicionar série e turma apenas se não forem 'all'
-      if (selectedGrade !== 'all') {
-        payload.filters.serie = selectedGrade;
-      }
-      if (selectedClass !== 'all') {
-        payload.filters.turma = selectedClass;
-      }
-    }
-
-    // Adicionar seleções
-    if (selectedSchool !== 'all') {
-      payload.selectedSchools = [selectedSchool];
-    }
-
-    if (selectedGrade !== 'all') {
-      payload.selectedGrades = [selectedGrade];
-    }
-
-    if (selectedClass !== 'all') {
-      payload.selectedClasses = [selectedClass];
-    }
+    // Adicionar seleções (arrays) - backend processa múltiplos destinatários usando apenas selected*
+    payload.selectedSchools = selectedSchools.length > 0 ? selectedSchools : [];
+    payload.selectedGrades = selectedGrades.length > 0 ? selectedGrades : [];
+    payload.selectedClasses = selectedClasses.length > 0 ? selectedClasses : [];
 
     // Campos padrão
     payload.isActive = true;
@@ -793,8 +919,9 @@ const FormRegistration = () => {
     return typeMap[tipo.toLowerCase()] || tipo;
   };
 
-  // Obter dados do formulário determinado
-  const determinedFormData = determinedFormType ? getFormData(determinedFormType) : null;
+  // Obter dados do formulário determinado ou selecionado
+  const formDataToShow = determinedFormType || selectedFormType;
+  const determinedFormData = formDataToShow ? getFormData(formDataToShow) : null;
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -886,68 +1013,50 @@ const FormRegistration = () => {
 
             {/* Escola */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Escola *</label>
-              <Select
-                value={selectedSchool}
-                onValueChange={setSelectedSchool}
-                disabled={isLoadingFilters || selectedMunicipality === 'all'}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a escola" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  {schools.map(school => (
-                    <SelectItem key={school.id} value={school.id}>
-                      {school.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <label className="text-sm font-medium">Escola(s) *</label>
+              <FormMultiSelect
+                options={schools.map(school => ({ id: school.id, name: school.name }))}
+                selected={selectedSchools}
+                onChange={setSelectedSchools}
+                placeholder={selectedSchools.length === 0 ? "Selecione escolas" : `${selectedSchools.length} selecionada(s)`}
+              />
+              {selectedSchools.length === 0 && selectedMunicipality !== 'all' && (
+                <p className="text-xs text-muted-foreground">
+                  Selecione pelo menos uma escola
+                </p>
+              )}
             </div>
 
             {/* Série */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Série</label>
-              <Select
-                value={selectedGrade}
-                onValueChange={setSelectedGrade}
-                disabled={isLoadingFilters || selectedSchool === 'all'}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a série" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
-                  {grades.map(grade => (
-                    <SelectItem key={grade.id} value={grade.id}>
-                      {grade.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <label className="text-sm font-medium">Série(s)</label>
+              <FormMultiSelect
+                options={grades.map(grade => ({ id: grade.id, name: grade.name }))}
+                selected={selectedGrades}
+                onChange={setSelectedGrades}
+                placeholder={selectedGrades.length === 0 ? "Selecione séries (opcional)" : `${selectedGrades.length} selecionada(s)`}
+              />
+              {selectedSchools.length > 0 && selectedGrades.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Deixe vazio para enviar a todas as séries
+                </p>
+              )}
             </div>
 
             {/* Turma */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Turma</label>
-              <Select
-                value={selectedClass}
-                onValueChange={setSelectedClass}
-                disabled={isLoadingFilters || selectedGrade === 'all'}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a turma" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
-                  {classes.map(classItem => (
-                    <SelectItem key={classItem.id} value={classItem.id}>
-                      {classItem.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <label className="text-sm font-medium">Turma(s)</label>
+              <FormMultiSelect
+                options={classes.map(classItem => ({ id: classItem.id, name: classItem.name }))}
+                selected={selectedClasses}
+                onChange={setSelectedClasses}
+                placeholder={selectedClasses.length === 0 ? "Selecione turmas (opcional)" : `${selectedClasses.length} selecionada(s)`}
+              />
+              {selectedGrades.length > 0 && selectedClasses.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Deixe vazio para enviar a todas as turmas
+                </p>
+              )}
             </div>
           </div>
 
@@ -957,14 +1066,74 @@ const FormRegistration = () => {
               💡 <strong>Hierarquia dos Filtros:</strong> Estado → Município → Escola → Série → Turma
             </p>
             <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
-              <strong>Estado</strong>, <strong>Município</strong> e <strong>Escola</strong> são obrigatórios. Série e Turma são opcionais.
+              <strong>Estado</strong> e <strong>Município</strong> são obrigatórios. Você pode selecionar <strong>múltiplas Escolas, Séries e Turmas</strong>.
+            </p>
+            <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
+              Deixe <strong>Série</strong> ou <strong>Turma</strong> vazios para enviar a todas.
             </p>
           </div>
         </CardContent>
       </Card>
 
-      {/* Formulário determinado pela série */}
-      {determinedFormType && determinedFormData && (
+      {/* Seleção de tipo de formulário quando escola está selecionada */}
+      {availableFormTypes.length > 0 && selectedGrades.length === 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Filter className="h-5 w-5" />
+              Selecione o Tipo de Formulário
+            </CardTitle>
+            <CardDescription>
+              {availableFormTypes.length === 1 
+                ? 'Um tipo de formulário está disponível para esta seleção.'
+                : 'Selecione o tipo de formulário que deseja criar.'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {availableFormTypes.map((formType) => {
+                const formData = getFormData(formType);
+                if (!formData) return null;
+                
+                const Icon = formData.icon;
+                const isSelected = selectedFormType === formType;
+                
+                return (
+                  <Card
+                    key={formType}
+                    className={`cursor-pointer transition-all ${
+                      isSelected
+                        ? 'border-2 border-blue-500 bg-blue-50 dark:bg-blue-950/30'
+                        : 'border hover:border-gray-300'
+                    }`}
+                    onClick={() => setSelectedFormType(formType)}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div className={`p-3 rounded-lg ${formData.color}`}>
+                          <Icon className="h-6 w-6 text-white" />
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-lg">{formData.name}</h3>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {formData.description}
+                          </p>
+                        </div>
+                        {isSelected && (
+                          <Check className="h-5 w-5 text-blue-600" />
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Formulário determinado pela série OU selecionado manualmente */}
+      {formDataToShow && determinedFormData && (
         <Card className="border-2 border-blue-500">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -1063,11 +1232,11 @@ const FormRegistration = () => {
                 <Target className="h-4 w-4" />
                 <span>
                   Total de perguntas: {
-                    selectedQuestionIds.size > 0 && selectedFormTypeForEditor === determinedFormType
+                    selectedQuestionIds.size > 0 && selectedFormTypeForEditor === formDataToShow
                       ? selectedQuestionIds.size
                       : determinedFormData.questions.length
                   }
-                  {selectedQuestionIds.size > 0 && selectedFormTypeForEditor === determinedFormType && (
+                  {selectedQuestionIds.size > 0 && selectedFormTypeForEditor === formDataToShow && (
                     <span className="text-muted-foreground ml-1">
                       (de {determinedFormData.questions.length} disponíveis)
                     </span>
@@ -1078,7 +1247,7 @@ const FormRegistration = () => {
               <div className="flex gap-2">
                 <Button
                   variant="outline"
-                  onClick={() => handleOpenQuestionEditor(determinedFormType)}
+                  onClick={() => handleOpenQuestionEditor(formDataToShow)}
                   className="flex items-center gap-2"
                 >
                   <CheckSquare className="h-4 w-4" />
@@ -1097,25 +1266,43 @@ const FormRegistration = () => {
         </Card>
       )}
 
-      {/* Mensagem quando não há série selecionada */}
-      {selectedGrade === 'all' && selectedState !== 'all' && selectedMunicipality !== 'all' && selectedSchool !== 'all' && (
+      {/* Mensagem quando não há série selecionada mas escola está selecionada */}
+      {selectedGrades.length === 0 && selectedState !== 'all' && selectedMunicipality !== 'all' && selectedSchools.length > 0 && availableFormTypes.length === 0 && !selectedFormType && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
               <Filter className="h-8 w-8 text-muted-foreground" />
             </div>
             <h3 className="text-lg font-medium text-foreground mb-2">
-              Selecione uma Série
+              Selecione um Tipo de Formulário
             </h3>
             <p className="text-gray-600 text-center max-w-md">
-              Selecione uma série nos filtros acima para determinar automaticamente o tipo de formulário apropriado.
+              Com a escola selecionada, você pode criar formulários para <strong>Professores</strong> ou <strong>Diretores</strong>. 
+              Selecione uma série para criar formulários para alunos.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Mensagem quando município está selecionado mas escola não */}
+      {selectedState !== 'all' && selectedMunicipality !== 'all' && selectedSchools.length === 0 && availableFormTypes.length === 0 && !selectedFormType && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+              <Filter className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-medium text-foreground mb-2">
+              Formulário de Secretário Disponível
+            </h3>
+            <p className="text-gray-600 text-center max-w-md">
+              Com o município selecionado, você pode criar um formulário para <strong>Secretário Municipal de Educação</strong>.
             </p>
           </CardContent>
         </Card>
       )}
 
       {/* Mensagem quando não há filtros suficientes */}
-      {(selectedState === 'all' || selectedMunicipality === 'all' || selectedSchool === 'all') && (
+      {(selectedState === 'all' || selectedMunicipality === 'all' || selectedSchools.length === 0) && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
@@ -1125,7 +1312,7 @@ const FormRegistration = () => {
               Selecione os filtros obrigatórios
             </h3>
             <p className="text-gray-600 text-center max-w-md">
-              Para criar um questionário, você precisa selecionar: <strong>Estado</strong>, <strong>Município</strong> e <strong>Escola</strong>.
+              Para criar um questionário, você precisa selecionar: <strong>Estado</strong>, <strong>Município</strong> e pelo menos uma <strong>Escola</strong>.
             </p>
           </CardContent>
         </Card>
