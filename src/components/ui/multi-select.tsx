@@ -99,9 +99,9 @@ export function MultiSelect({
       className="w-full justify-between min-h-[44px] h-auto py-2"
       onClick={() => setOpen(true)}
     >
-      <div className="flex items-center gap-2 flex-1 text-left">
+      <div className="flex items-center gap-2 flex-1 text-left min-w-0">
         {selected.length > 0 ? (
-          <div className="flex flex-wrap gap-1 max-w-full">
+          <div className="flex flex-wrap gap-1 max-w-full min-w-0">
             {selectedOptions.slice(0, maxDisplayItems).map((option) => (
               <Badge
                 key={option.id}
@@ -130,7 +130,7 @@ export function MultiSelect({
             )}
           </div>
         ) : (
-          <span className="text-muted-foreground">{placeholder}</span>
+          <span className="text-muted-foreground truncate">{placeholder}</span>
         )}
       </div>
       <div className="flex items-center gap-1 ml-2">
