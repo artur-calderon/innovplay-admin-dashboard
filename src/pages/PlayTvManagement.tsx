@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/context/authContext';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,6 +12,7 @@ import { api } from '@/lib/api';
 import { CreatePlayTvVideoForm } from '@/components/playtv/CreatePlayTvVideoForm';
 import { VideoList } from '@/components/playtv/VideoList';
 import { PlayTvVideo, PlayTvFilters } from '@/types/playtv';
+import { getUserHierarchyContext } from '@/utils/userHierarchy';
 
 export default function PlayTvManagement() {
   const { user } = useAuth();
@@ -24,10 +25,57 @@ export default function PlayTvManagement() {
   const [schools, setSchools] = useState<Array<{ id: string; name: string }>>([]);
   const [grades, setGrades] = useState<Array<{ id: string; name: string }>>([]);
   const [subjects, setSubjects] = useState<Array<{ id: string; name: string }>>([]);
+  const [userContext, setUserContext] = useState<{
+    municipio_id?: string;
+    escola_id?: string;
+    estado_id?: string;
+    turmas?: Array<{ class_id: string; school_id: string; grade_id: string; subject_id?: string }>;
+  }>({});
+  const [isLoadingContext, setIsLoadingContext] = useState(true);
 
   // Verificar permissões
-  const allowedRoles = ['admin', 'professor', 'diretor', 'coordenador', 'tecadm'];
+  const allowedRoles = useMemo(() => ['admin', 'professor', 'diretor', 'coordenador', 'tecadm'], []);
   const canCreate = allowedRoles.includes(user.role);
+
+  const loadUserContext = useCallback(async () => {
+    setIsLoadingContext(true);
+    try {
+      const context = await getUserHierarchyContext(user.id, user.role);
+      
+      // Buscar estado ID se tiver município com state
+      let estadoId: string | undefined;
+      if (context.municipality?.state) {
+        try {
+          const statesResponse = await api.get('/city/states');
+          const states = statesResponse.data || [];
+          const state = states.find((s: { nome: string }) => s.nome === context.municipality?.state);
+          estadoId = state?.id;
+        } catch (error) {
+          console.error('Erro ao buscar estado:', error);
+        }
+      }
+
+      // Converter turmas do professor para o formato esperado
+      const turmas = context.classes?.map(c => ({
+        class_id: c.class_id,
+        school_id: c.school_id,
+        grade_id: c.grade_id,
+        subject_id: undefined, // Turmas podem não ter subject_id direto
+      })) || [];
+
+      setUserContext({
+        municipio_id: context.municipality?.id,
+        escola_id: context.school?.id,
+        estado_id: estadoId,
+        turmas,
+      });
+    } catch (error) {
+      console.error('Erro ao carregar contexto do usuário:', error);
+      setUserContext({});
+    } finally {
+      setIsLoadingContext(false);
+    }
+  }, [user.id, user.role]);
 
   useEffect(() => {
     if (!allowedRoles.includes(user.role)) {
@@ -39,9 +87,16 @@ export default function PlayTvManagement() {
       navigate('/app');
       return;
     }
-    loadVideos();
-    loadFilterOptions();
-  }, [user.role, filters]);
+    loadUserContext();
+  }, [user.id, user.role, allowedRoles, toast, navigate, loadUserContext]);
+
+  useEffect(() => {
+    if (!isLoadingContext && allowedRoles.includes(user.role)) {
+      loadVideos();
+      loadFilterOptions();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.role, filters, isLoadingContext, allowedRoles]);
 
   const loadFilterOptions = async () => {
     try {
@@ -61,11 +116,17 @@ export default function PlayTvManagement() {
           const classesData = classesRes.data || [];
           const gradeMap = new Map<string, { id: string; name: string }>();
           
-          classesData.forEach((classItem: any) => {
+          classesData.forEach((classItem: {
+            grade?: {
+              id: string;
+              name?: string;
+              nome?: string;
+            };
+          }) => {
             if (classItem.grade && classItem.grade.id && !gradeMap.has(classItem.grade.id)) {
               gradeMap.set(classItem.grade.id, {
                 id: classItem.grade.id,
-                name: classItem.grade.name || classItem.grade.nome || classItem.grade.name,
+                name: classItem.grade.name || classItem.grade.nome || '',
               });
             }
           });
@@ -93,8 +154,22 @@ export default function PlayTvManagement() {
       if (filters.subject) params.append('subject', filters.subject);
 
       const response = await api.get(`/play-tv/videos?${params.toString()}`);
-      setVideos(response.data || []);
-    } catch (error: any) {
+      let allVideos = response.data || [];
+
+      // Filtrar vídeos baseado no role
+      allVideos = filterVideosByRole(allVideos);
+
+      setVideos(allVideos);
+    } catch (err) {
+      const error = err as {
+        response?: {
+          status?: number;
+          data?: {
+            message?: string;
+          };
+        };
+        message?: string;
+      };
       // Se o endpoint não existir (404), apenas definir lista vazia sem mostrar erro
       // O interceptor transforma o erro, então verificamos a mensagem ou o status original
       const is404 = error.response?.status === 404 || 
@@ -119,6 +194,69 @@ export default function PlayTvManagement() {
     }
   };
 
+  const filterVideosByRole = (videos: PlayTvVideo[]): PlayTvVideo[] => {
+    if (user.role === 'admin') {
+      return videos;
+    }
+
+    if (user.role === 'tecadm' && userContext.municipio_id) {
+      // Tecadmin vê vídeos do seu município (que está no seu estado)
+      // Filtrar vídeos onde pelo menos uma escola pertence ao município do tecadmin
+      return videos.filter(video => 
+        video.schools.some(school => {
+          // Assumindo que as escolas têm city_id que corresponde ao município
+          // Como não temos city_id direto nas escolas do vídeo, vamos verificar se
+          // a escola está na lista de escolas do município
+          // Por enquanto, retornar todos os vídeos se tiver município definido
+          // O backend deve filtrar corretamente
+          return true;
+        })
+      );
+    }
+
+    if ((user.role === 'diretor' || user.role === 'coordenador') && userContext.escola_id) {
+      return videos.filter(video => 
+        video.schools.some(school => school.id === userContext.escola_id)
+      );
+    }
+
+    if (user.role === 'professor' && userContext.turmas && userContext.turmas.length > 0) {
+      const allowedSchoolIds = new Set(userContext.turmas.map(t => t.school_id));
+      const allowedGradeIds = new Set(userContext.turmas.map(t => t.grade_id));
+      
+      return videos.filter(video => 
+        video.schools.some(school => allowedSchoolIds.has(school.id)) &&
+        allowedGradeIds.has(video.grade.id)
+      );
+    }
+
+    return videos;
+  };
+
+  const canDeleteVideo = (video: PlayTvVideo): boolean => {
+    if (user.role === 'admin') {
+      return true;
+    }
+
+    if (user.role === 'coordenador' || user.role === 'professor') {
+      return false;
+    }
+
+    if (user.role === 'tecadm' && userContext.municipio_id) {
+      // Tecadmin pode deletar vídeos do seu município
+      // Verificar se o vídeo tem escolas do município do tecadmin
+      // Como não temos city_id direto, vamos permitir se tiver escolas
+      // O backend deve validar corretamente
+      return video.schools.length > 0;
+    }
+
+    if ((user.role === 'diretor') && userContext.escola_id) {
+      return video.schools.some(school => school.id === userContext.escola_id);
+    }
+
+    return false;
+  };
+
   const handleDeleteVideo = async (videoId: string) => {
     if (!confirm('Tem certeza que deseja excluir este vídeo?')) return;
 
@@ -129,7 +267,14 @@ export default function PlayTvManagement() {
         description: 'Vídeo excluído com sucesso.',
       });
       loadVideos();
-    } catch (error: any) {
+    } catch (err) {
+      const error = err as {
+        response?: {
+          data?: {
+            message?: string;
+          };
+        };
+      };
       console.error('Erro ao excluir vídeo:', error);
       toast({
         title: 'Erro',
@@ -152,16 +297,6 @@ export default function PlayTvManagement() {
     setActiveTab('visualizar');
   };
 
-  // Obter IDs do contexto do usuário (similar ao padrão de Avisos)
-  const getUserContext = () => {
-    // TODO: Integrar com API quando disponível para obter município/escola do usuário
-    return {
-      municipio_id: user.role === 'tecadm' ? undefined : undefined,
-      escola_id: ['diretor', 'coordenador', 'professor'].includes(user.role) ? undefined : undefined,
-    };
-  };
-
-  const userContext = getUserContext();
 
   return (
     <div className="container mx-auto py-8 px-4 space-y-8 max-w-7xl">
@@ -298,6 +433,7 @@ export default function PlayTvManagement() {
               onVideoClick={handleVideoClick}
               onDeleteVideo={handleDeleteVideo}
               userRole={user.role}
+              canDeleteVideo={canDeleteVideo}
             />
           </TabsContent>
 
@@ -307,6 +443,8 @@ export default function PlayTvManagement() {
               userRole={user.role}
               userMunicipioId={userContext.municipio_id}
               userEscolaId={userContext.escola_id}
+              userEstadoId={userContext.estado_id}
+              userTurmas={userContext.turmas}
             />
           </TabsContent>
         </Tabs>
@@ -411,6 +549,7 @@ export default function PlayTvManagement() {
             onVideoClick={handleVideoClick}
             onDeleteVideo={handleDeleteVideo}
             userRole={user.role}
+            canDeleteVideo={canDeleteVideo}
           />
         </>
       )}
