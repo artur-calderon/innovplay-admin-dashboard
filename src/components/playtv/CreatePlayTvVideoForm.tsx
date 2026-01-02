@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Send, School, GraduationCap, BookOpen, X, Check, ChevronsUpDown } from 'lucide-react';
+import { Loader2, Send, School, GraduationCap, BookOpen, X, Check, ChevronsUpDown, MapPin, Building2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -19,6 +19,8 @@ interface CreatePlayTvVideoFormProps {
   userRole: string;
   userMunicipioId?: string;
   userEscolaId?: string;
+  userEstadoId?: string;
+  userTurmas?: Array<{ class_id: string; school_id: string; grade_id: string; subject_id?: string }>;
 }
 
 export function CreatePlayTvVideoForm({
@@ -26,10 +28,14 @@ export function CreatePlayTvVideoForm({
   userRole,
   userMunicipioId,
   userEscolaId,
+  userEstadoId,
+  userTurmas,
 }: CreatePlayTvVideoFormProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingStates, setIsLoadingStates] = useState(false);
+  const [isLoadingMunicipalities, setIsLoadingMunicipalities] = useState(false);
   const [isLoadingSchools, setIsLoadingSchools] = useState(false);
   const [isLoadingGrades, setIsLoadingGrades] = useState(false);
   const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
@@ -37,35 +43,110 @@ export function CreatePlayTvVideoForm({
   // Estados do formulário
   const [url, setUrl] = useState('');
   const [title, setTitle] = useState('');
+  const [selectedState, setSelectedState] = useState<string>('');
+  const [selectedMunicipality, setSelectedMunicipality] = useState<string>('');
   const [selectedSchools, setSelectedSchools] = useState<PlayTvSchool[]>([]);
   const [selectedGrade, setSelectedGrade] = useState<string>('');
   const [selectedSubject, setSelectedSubject] = useState<string>('');
 
   // Estados dos popovers
+  const [openStateCombo, setOpenStateCombo] = useState(false);
+  const [openMunicipalityCombo, setOpenMunicipalityCombo] = useState(false);
   const [openSchoolCombo, setOpenSchoolCombo] = useState(false);
   const [openGradeCombo, setOpenGradeCombo] = useState(false);
   const [openSubjectCombo, setOpenSubjectCombo] = useState(false);
 
   // Listas de opções
+  const [states, setStates] = useState<Array<{ id: string; nome: string }>>([]);
+  const [municipalities, setMunicipalities] = useState<Array<{ id: string; nome: string }>>([]);
   const [schools, setSchools] = useState<PlayTvSchool[]>([]);
   const [filteredSchools, setFilteredSchools] = useState<PlayTvSchool[]>([]);
   const [grades, setGrades] = useState<PlayTvGrade[]>([]);
   const [subjects, setSubjects] = useState<PlayTvSubject[]>([]);
 
-  // Carregar escolas baseado no role do usuário
+  // Carregar estados e disciplinas ao montar componente
   useEffect(() => {
-    loadSchools();
+    loadStates();
     loadSubjects();
-  }, [userRole, userMunicipioId]);
+    // Auto-selecionar estado para tecadmin
+    if (userRole === 'tecadm' && userEstadoId) {
+      setSelectedState(userEstadoId);
+    }
+  }, [userRole, userEstadoId]);
+
+  // Auto-selecionar município para tecadm quando municípios carregarem
+  useEffect(() => {
+    if (userRole === 'tecadm' && userMunicipioId && municipalities.length > 0 && !selectedMunicipality) {
+      const userMunicipality = municipalities.find(m => m.id === userMunicipioId);
+      if (userMunicipality) {
+        setSelectedMunicipality(userMunicipioId);
+      }
+    }
+  }, [municipalities, userRole, userMunicipioId, selectedMunicipality]);
+
+  // Carregar municípios quando estado for selecionado
+  useEffect(() => {
+    if (selectedState) {
+      loadMunicipalities(selectedState);
+      // Resetar município e escola quando estado mudar (exceto se for tecadm com município pré-definido)
+      if (!(userRole === 'tecadm' && userMunicipioId)) {
+        setSelectedMunicipality('');
+        setSelectedSchools([]);
+        setFilteredSchools([]);
+        setGrades([]);
+        setSelectedGrade('');
+      }
+    } else {
+      setMunicipalities([]);
+      if (!(userRole === 'tecadm' && userMunicipioId)) {
+        setSelectedMunicipality('');
+      }
+    }
+  }, [selectedState, userRole, userMunicipioId]);
+
+  // Carregar escolas quando município for selecionado
+  useEffect(() => {
+    if (selectedMunicipality) {
+      loadSchools();
+      // Resetar escola quando município mudar
+      setSelectedSchools([]);
+      setGrades([]);
+      setSelectedGrade('');
+    } else {
+      setSchools([]);
+      setFilteredSchools([]);
+      setSelectedSchools([]);
+    }
+  }, [selectedMunicipality]);
 
   // Filtrar escolas baseado no município selecionado ou role do usuário
   useEffect(() => {
-    if (userRole === 'admin') {
+    if (userRole === 'professor' && userTurmas && userTurmas.length > 0) {
+      // Professor vê apenas escolas das suas turmas
+      const allowedSchoolIds = new Set(userTurmas.map(t => t.school_id));
+      const filtered = schools.filter(school => allowedSchoolIds.has(school.id));
+      setFilteredSchools(filtered);
+      
+      // Auto-selecionar escolas das turmas do professor
+      if (filtered.length > 0 && selectedSchools.length === 0) {
+        const uniqueSchools = Array.from(
+          new Map(filtered.map(s => [s.id, s])).values()
+        );
+        setSelectedSchools(uniqueSchools);
+      }
+    } else if (selectedMunicipality) {
+      // Filtrar escolas por município selecionado
+      const filtered = schools.filter(school => school.city_id === selectedMunicipality);
+      setFilteredSchools(filtered);
+    } else if (userRole === 'admin') {
+      // Admin vê todas as escolas se não houver município selecionado
       setFilteredSchools(schools);
-    } else if (userRole === 'tecadm' && userMunicipioId) {
+    } else if (userRole === 'tecadm' && userMunicipioId && schools.length > 0) {
+      // Técnico administrativo vê apenas escolas do seu município
       const filtered = schools.filter(school => school.city_id === userMunicipioId);
       setFilteredSchools(filtered);
-    } else if ((userRole === 'diretor' || userRole === 'coordenador') && userEscolaId) {
+    } else if ((userRole === 'diretor' || userRole === 'coordenador') && userEscolaId && schools.length > 0) {
+      // Diretor/Coordenador vê apenas sua escola
       const filtered = schools.filter(school => school.id === userEscolaId);
       setFilteredSchools(filtered);
       // Auto-selecionar a escola do usuário
@@ -75,17 +156,83 @@ export function CreatePlayTvVideoForm({
     } else {
       setFilteredSchools(schools);
     }
-  }, [schools, userRole, userMunicipioId, userEscolaId]);
+  }, [schools, selectedMunicipality, userRole, userMunicipioId, userEscolaId, userTurmas, selectedSchools.length]);
 
   // Carregar séries quando escolas são selecionadas
   useEffect(() => {
-    if (selectedSchools.length > 0) {
-      loadGradesForSchools();
-    } else {
-      setGrades([]);
-      setSelectedGrade('');
+    const loadGradesForProfessor = async () => {
+      if (userRole === 'professor' && userTurmas && userTurmas.length > 0) {
+        // Para professor, usar séries das suas turmas
+        setIsLoadingGrades(true);
+        try {
+          const allowedGradeIds = new Set(userTurmas.map(t => t.grade_id));
+          const allGradesResponse = await api.get('/grades/').catch(() => ({ data: [] }));
+          const allGrades = allGradesResponse.data || [];
+          const filteredGrades = allGrades.filter((grade: { id: string }) => 
+            allowedGradeIds.has(grade.id)
+          );
+          setGrades(filteredGrades);
+        } catch (error) {
+          console.error('Erro ao carregar séries do professor:', error);
+          setGrades([]);
+        } finally {
+          setIsLoadingGrades(false);
+        }
+      } else if (selectedSchools.length > 0) {
+        loadGradesForSchools();
+      } else {
+        setGrades([]);
+        setSelectedGrade('');
+      }
+    };
+
+    loadGradesForProfessor();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSchools, userRole, userTurmas]);
+
+  const loadStates = async () => {
+    setIsLoadingStates(true);
+    try {
+      const response = await api.get('/city/states');
+      const allStates = response.data || [];
+      
+      // Para tecadmin, filtrar apenas seu estado
+      if (userRole === 'tecadm' && userEstadoId) {
+        setStates(allStates.filter((state: { id: string }) => state.id === userEstadoId));
+      } else {
+        setStates(allStates);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar estados:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível carregar a lista de estados',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingStates(false);
     }
-  }, [selectedSchools]);
+  };
+
+  const loadMunicipalities = async (stateId: string) => {
+    if (!stateId) return;
+    
+    setIsLoadingMunicipalities(true);
+    try {
+      const response = await api.get(`/city/municipalities/state/${stateId}`);
+      setMunicipalities(response.data || []);
+    } catch (error) {
+      console.error('Erro ao carregar municípios:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível carregar a lista de municípios',
+        variant: 'destructive',
+      });
+      setMunicipalities([]);
+    } finally {
+      setIsLoadingMunicipalities(false);
+    }
+  };
 
   const loadSchools = async () => {
     setIsLoadingSchools(true);
@@ -148,7 +295,25 @@ export function CreatePlayTvVideoForm({
     setIsLoadingSubjects(true);
     try {
       const response = await api.get('/subjects');
-      setSubjects(response.data || []);
+      const allSubjects = response.data || [];
+      
+      // Para professor, filtrar apenas disciplinas das suas turmas (se disponível)
+      if (userRole === 'professor' && userTurmas && userTurmas.length > 0) {
+        const allowedSubjectIds = userTurmas
+          .map(t => t.subject_id)
+          .filter((id): id is string => id !== undefined);
+        
+        if (allowedSubjectIds.length > 0) {
+          setSubjects(allSubjects.filter((subject: { id: string }) => 
+            allowedSubjectIds.includes(subject.id)
+          ));
+        } else {
+          // Se não tiver subject_id nas turmas, mostrar todas
+          setSubjects(allSubjects);
+        }
+      } else {
+        setSubjects(allSubjects);
+      }
     } catch (error) {
       console.error('Erro ao carregar disciplinas:', error);
       toast({
@@ -187,6 +352,24 @@ export function CreatePlayTvVideoForm({
       toast({
         title: 'Erro de validação',
         description: 'Por favor, insira uma URL válida',
+        variant: 'destructive',
+      });
+      return false;
+    }
+
+    if (!selectedState) {
+      toast({
+        title: 'Erro de validação',
+        description: 'Selecione um estado',
+        variant: 'destructive',
+      });
+      return false;
+    }
+
+    if (!selectedMunicipality) {
+      toast({
+        title: 'Erro de validação',
+        description: 'Selecione um município',
         variant: 'destructive',
       });
       return false;
@@ -342,6 +525,116 @@ export function CreatePlayTvVideoForm({
             </p>
           </div>
 
+          {/* Seleção de Estado */}
+          <div className="space-y-2">
+            <Label>
+              Estado <span className="text-red-500">*</span>
+            </Label>
+            <Popover open={openStateCombo} onOpenChange={setOpenStateCombo}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={openStateCombo}
+                  className="w-full justify-between"
+                  disabled={isLoadingStates || (userRole === 'tecadm' && userEstadoId && states.length === 1)}
+                >
+                  {selectedState
+                    ? states.find(state => state.id === selectedState)?.nome
+                    : isLoadingStates
+                    ? "Carregando estados..."
+                    : "Selecione um estado..."}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[400px] p-0">
+                <Command>
+                  <CommandInput placeholder="Buscar estado..." />
+                  <CommandEmpty>Nenhum estado encontrado.</CommandEmpty>
+                  <CommandGroup className="max-h-[200px] overflow-auto">
+                    {states.map((state) => (
+                      <CommandItem
+                        key={state.id}
+                        value={state.nome}
+                        onSelect={() => {
+                          setSelectedState(state.id);
+                          setOpenStateCombo(false);
+                        }}
+                      >
+                        <Check
+                          className={cn(
+                            "mr-2 h-4 w-4",
+                            selectedState === state.id ? "opacity-100" : "opacity-0"
+                          )}
+                        />
+                        <MapPin className="mr-2 h-4 w-4 text-muted-foreground" />
+                        <span>{state.nome}</span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          {/* Seleção de Município */}
+          <div className="space-y-2">
+            <Label>
+              Município <span className="text-red-500">*</span>
+            </Label>
+            <Popover open={openMunicipalityCombo} onOpenChange={setOpenMunicipalityCombo}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={openMunicipalityCombo}
+                  className="w-full justify-between"
+                  disabled={isLoadingMunicipalities || !selectedState}
+                >
+                  {selectedMunicipality
+                    ? municipalities.find(municipality => municipality.id === selectedMunicipality)?.nome
+                    : !selectedState
+                    ? "Selecione um estado primeiro..."
+                    : isLoadingMunicipalities
+                    ? "Carregando municípios..."
+                    : "Selecione um município..."}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[400px] p-0">
+                <Command>
+                  <CommandInput placeholder="Buscar município..." />
+                  <CommandEmpty>
+                    {!selectedState
+                      ? "Selecione um estado primeiro"
+                      : "Nenhum município encontrado para o estado selecionado"}
+                  </CommandEmpty>
+                  <CommandGroup className="max-h-[200px] overflow-auto">
+                    {municipalities.map((municipality) => (
+                      <CommandItem
+                        key={municipality.id}
+                        value={municipality.nome}
+                        onSelect={() => {
+                          setSelectedMunicipality(municipality.id);
+                          setOpenMunicipalityCombo(false);
+                        }}
+                      >
+                        <Check
+                          className={cn(
+                            "mr-2 h-4 w-4",
+                            selectedMunicipality === municipality.id ? "opacity-100" : "opacity-0"
+                          )}
+                        />
+                        <Building2 className="mr-2 h-4 w-4 text-muted-foreground" />
+                        <span>{municipality.nome}</span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+
           {/* Seleção de Escolas */}
           <div className="space-y-2">
             <Label>
@@ -354,10 +647,12 @@ export function CreatePlayTvVideoForm({
                   role="combobox"
                   aria-expanded={openSchoolCombo}
                   className="w-full justify-between"
-                  disabled={isLoadingSchools}
+                  disabled={isLoadingSchools || !selectedMunicipality}
                 >
                   {selectedSchools.length > 0
                     ? `${selectedSchools.length} escola${selectedSchools.length !== 1 ? 's' : ''} selecionada${selectedSchools.length !== 1 ? 's' : ''}`
+                    : !selectedMunicipality
+                    ? "Selecione um município primeiro..."
                     : "Selecione as escolas..."}
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
@@ -365,7 +660,11 @@ export function CreatePlayTvVideoForm({
               <PopoverContent className="w-[400px] p-0">
                 <Command>
                   <CommandInput placeholder="Buscar escola..." />
-                  <CommandEmpty>Nenhuma escola encontrada.</CommandEmpty>
+                  <CommandEmpty>
+                    {!selectedMunicipality
+                      ? "Selecione um município primeiro"
+                      : "Nenhuma escola encontrada para o município selecionado"}
+                  </CommandEmpty>
                   <CommandGroup className="max-h-[200px] overflow-auto">
                     {filteredSchools.map((school) => (
                       <CommandItem
@@ -404,6 +703,11 @@ export function CreatePlayTvVideoForm({
                   </Badge>
                 ))}
               </div>
+            )}
+            {!selectedMunicipality && (
+              <p className="text-xs text-muted-foreground">
+                Selecione um município para visualizar as escolas disponíveis
+              </p>
             )}
             {selectedSchools.length > 0 && (
               <p className="text-xs text-muted-foreground">
@@ -533,6 +837,8 @@ export function CreatePlayTvVideoForm({
               onClick={() => {
                 setUrl('');
                 setTitle('');
+                setSelectedState('');
+                setSelectedMunicipality('');
                 setSelectedSchools([]);
                 setSelectedGrade('');
                 setSelectedSubject('');
