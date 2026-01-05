@@ -163,6 +163,12 @@ const mapDetailedStudentsToResults = (alunos: DetailedReport['alunos'] | undefin
 const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult[] => {
   const studentsMap = new Map<string, StudentResult>();
 
+  console.log('mapUnifiedStudents - Processando tabela:', {
+    hasGeral: !!tabela?.geral,
+    geralAlunosCount: tabela?.geral?.alunos?.length || 0,
+    disciplinasCount: tabela?.disciplinas?.length || 0
+  });
+
   tabela?.geral?.alunos?.forEach((aluno) => {
     const totalQuestoes = aluno.total_questoes_geral ?? aluno.total_respondidas_geral ?? 0;
     const totalRespondidas = aluno.total_respondidas_geral ?? totalQuestoes;
@@ -261,9 +267,13 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
     });
   });
 
-  return Array.from(studentsMap.values()).sort((a, b) =>
+  const mappedStudents = Array.from(studentsMap.values()).sort((a, b) =>
     a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' })
   );
+  
+  console.log(`mapUnifiedStudents - Retornando ${mappedStudents.length} alunos mapeados`);
+  
+  return mappedStudents;
 };
 
 export default function AcertoNiveis() {
@@ -744,6 +754,13 @@ export default function AcertoNiveis() {
         { schoolId }
       );
 
+      console.log('handleSelectSchool - Dados carregados:', {
+        studentsCount: fetchedStudents.length,
+        reportAlunos: report?.alunos?.length || 0,
+        tabelaGeralAlunos: tabela?.geral?.alunos?.length || 0,
+        tabelaDisciplinas: tabela?.disciplinas?.length || 0
+      });
+
       setStudents(fetchedStudents);
       setDetailedReport(report || null);
       setTabelaDetalhada(tabela || null);
@@ -751,6 +768,7 @@ export default function AcertoNiveis() {
       if (opcoes) setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
       
     } catch (e) {
+      console.error('Erro em handleSelectSchool:', e);
       toast({ title: "Erro", description: "Não foi possível carregar dados da escola", variant: "destructive" });
     } finally {
       setIsLoading(false);
@@ -800,12 +818,21 @@ export default function AcertoNiveis() {
           selectedEvaluationId,
           { schoolId: selectedSchoolId, gradeId }
         );
+        
+        console.log('handleSelectGrade - Dados carregados:', {
+          studentsCount: fetchedStudents.length,
+          reportAlunos: report?.alunos?.length || 0,
+          tabelaGeralAlunos: tabela?.geral?.alunos?.length || 0,
+          tabelaDisciplinas: tabela?.disciplinas?.length || 0
+        });
+        
         setStudents(fetchedStudents);
         setDetailedReport(report || null);
         setTabelaDetalhada(tabela || null);
         if (estatisticas) setEstatisticasGerais(estatisticas as unknown as { [key: string]: unknown; serie?: string; escola?: string; municipio?: string; total_alunos?: number; alunos_participantes?: number; alunos_ausentes?: number; media_nota_geral?: number; media_proficiencia_geral?: number; } | null);
         if (opcoes) setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
     } catch (e) {
+      console.error('Erro em handleSelectGrade:', e);
       toast({ title: "Erro", description: "Não foi possível carregar turmas", variant: "destructive" });
     } finally {
       setIsLoading(false);
@@ -853,6 +880,14 @@ export default function AcertoNiveis() {
         { schoolId: selectedSchoolId, gradeId: selectedGradeId, classId: className }
       );
       
+      console.log('handleSelectClass - Dados carregados:', {
+        studentsCount: fetchedStudents.length,
+        reportAlunos: report?.alunos?.length || 0,
+        tabelaGeralAlunos: tabela?.geral?.alunos?.length || 0,
+        tabelaDisciplinas: tabela?.disciplinas?.length || 0,
+        className
+      });
+      
       setStudents(fetchedStudents);
       setDetailedReport(report || null);
       setTabelaDetalhada(tabela || null);
@@ -860,6 +895,7 @@ export default function AcertoNiveis() {
       if (opcoes) setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
       
     } catch (e) {
+      console.error('Erro em handleSelectClass:', e);
       toast({ title: "Erro", description: "Não foi possível carregar dados da turma", variant: "destructive" });
     } finally {
       setIsLoading(false);
@@ -888,6 +924,13 @@ export default function AcertoNiveis() {
 
       const { students: unifiedStudents, report, tabelaDetalhada: tabelaDetalhadaUnificada, estatisticas, opcoesProximosFiltros: opcoes } =
         await fetchEvaluationData(evaluationId);
+      
+      console.log('handleSelectEvaluation - Dados carregados:', {
+        studentsCount: unifiedStudents.length,
+        reportAlunos: report?.alunos?.length || 0,
+        tabelaGeralAlunos: tabelaDetalhadaUnificada?.geral?.alunos?.length || 0,
+        tabelaDisciplinas: tabelaDetalhadaUnificada?.disciplinas?.length || 0
+      });
       
       // Armazenar estatísticas gerais e opcoes_proximos_filtros para uso na exibição
         if (estatisticas) {
@@ -1086,8 +1129,44 @@ export default function AcertoNiveis() {
   };
 
   const handleGeneratePDF = async () => {
-    if (!evaluationInfo || students.length === 0) {
-      toast({ title: "Atenção", description: "Selecione uma avaliação com alunos.", variant: "destructive" });
+    if (!evaluationInfo) {
+      toast({ title: "Atenção", description: "Selecione uma avaliação.", variant: "destructive" });
+      return;
+    }
+    
+    // Verificação mais robusta: checar múltiplas fontes de dados
+    let hasStudentsInState = students.length > 0;
+    const hasStudentsInDetailed = detailedReport?.alunos && detailedReport.alunos.length > 0;
+    const hasStudentsInTabela = tabelaDetalhada?.geral?.alunos && tabelaDetalhada.geral.alunos.length > 0;
+    const hasStudentsInDisciplinas = tabelaDetalhada?.disciplinas?.some(d => d.alunos && d.alunos.length > 0);
+    
+    // Se students estiver vazio mas tabelaDetalhada tiver dados, reconstruir students
+    if (!hasStudentsInState && tabelaDetalhada && (hasStudentsInTabela || hasStudentsInDisciplinas)) {
+      console.log('Reconstruindo lista de alunos a partir de tabelaDetalhada...');
+      const reconstructedStudents = mapUnifiedStudents(tabelaDetalhada);
+      if (reconstructedStudents.length > 0) {
+        setStudents(reconstructedStudents);
+        hasStudentsInState = true;
+        console.log(`Reconstruídos ${reconstructedStudents.length} alunos`);
+      }
+    }
+    
+    const hasAnyStudents = hasStudentsInState || hasStudentsInDetailed || hasStudentsInTabela || hasStudentsInDisciplinas;
+    
+    if (!hasAnyStudents) {
+      console.log('Debug - Dados disponíveis:', {
+        students: students.length,
+        detailedReport: detailedReport?.alunos?.length || 0,
+        tabelaGeralAlunos: tabelaDetalhada?.geral?.alunos?.length || 0,
+        tabelaDisciplinas: tabelaDetalhada?.disciplinas?.length || 0,
+        filtros: { selectedSchoolId, selectedGradeId, selectedClassId }
+      });
+      
+      toast({ 
+        title: "Atenção", 
+        description: "Nenhum aluno encontrado para os filtros selecionados. Tente remover alguns filtros.", 
+        variant: "destructive" 
+      });
       return;
     }
 
@@ -1165,8 +1244,49 @@ export default function AcertoNiveis() {
       const jsPDF = (await import('jspdf')).default;
       const autoTable = (await import('jspdf-autotable')).default;
 
+      // Carregar logo e obter dimensões reais
+      let logoDataUrl = '';
+      let logoWidth = 0;
+      let logoHeight = 0;
+      try {
+        const logoPath = '/LOGO-1-menor.png';
+        const logoImg = new Image();
+        const logoPromise = new Promise<void>((resolve, reject) => {
+          logoImg.onload = () => resolve();
+          logoImg.onerror = reject;
+          logoImg.src = logoPath;
+        });
+        
+        await logoPromise;
+        
+        // Obter dimensões reais da imagem
+        logoWidth = logoImg.width;
+        logoHeight = logoImg.height;
+        
+        // Converter para DataURL
+        const response = await fetch(logoPath);
+        const blob = await response.blob();
+        logoDataUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(blob);
+        });
+      } catch (error) {
+        console.warn('Não foi possível carregar logo, continuando sem ela:', error);
+      }
+
       // Documento começa em landscape para a capa inicial
       const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      
+      // Paleta de cores institucional (baseada em institutional_test_hybrid.html)
+      const COLORS = {
+        primary: [124, 62, 237] as [number, number, number],      // #7c3aed - roxo principal
+        textDark: [31, 41, 55] as [number, number, number],        // #1f2937 - preto texto
+        textGray: [107, 114, 128] as [number, number, number],     // #6b7280 - cinza texto
+        borderLight: [229, 231, 235] as [number, number, number],  // #e5e7eb - cinza borda
+        bgLight: [250, 250, 250] as [number, number, number],      // #fafafa - fundo claro
+        white: [255, 255, 255] as [number, number, number]         // branco
+      };
       
       let pageCount = 0;
       const margin = 15;
@@ -1180,8 +1300,8 @@ export default function AcertoNiveis() {
         return match ? match[1] : null;
       };
 
-      // Utilitário: obter texto de série confiável
-      const getHeaderSerieText = (): string | null => {
+      // Utilitário: obter texto de série confiável (recebe lista de alunos como parâmetro)
+      const getHeaderSerieText = (alunosRef: StudentResult[] = students): string | null => {
         // 1) Se o usuário selecionou explicitamente uma série, priorizar
         if (selectedGradeId) {
           const g = grades.find(gr => gr.id === selectedGradeId)?.nome;
@@ -1189,7 +1309,7 @@ export default function AcertoNiveis() {
         }
         // 2) Tentar inferir a partir das turmas dos alunos
         const inferred = new Set<string>();
-        students.forEach(s => {
+        alunosRef.forEach(s => {
           const ser = extractSerieFromTurma(s.turma);
           if (ser) inferred.add(ser);
         });
@@ -1200,243 +1320,259 @@ export default function AcertoNiveis() {
 
       // Função para adicionar capa inicial
       const addInitialCover = () => {
+        // Garantir fundo branco limpo - desenhar primeiro e cobrir toda a página
+        doc.setFillColor(...COLORS.white);
+        doc.rect(0, 0, pageWidth, pageHeight, 'F');
+        
         const centerX = pageWidth / 2;
-        let currentY = 50;
+        let y = 20;
 
-        // Fundo gradiente (simulado com retângulos)
-        const gradientColors = [
-          { r: 37, g: 99, b: 235 }, // blue-600
-          { r: 79, g: 70, b: 229 }, // indigo-600
-        ];
-
-        for (let i = 0; i < pageHeight; i += 2) {
-          const ratio = i / pageHeight;
-          const r = Math.round(gradientColors[0].r + (gradientColors[1].r - gradientColors[0].r) * ratio);
-          const g = Math.round(gradientColors[0].g + (gradientColors[1].g - gradientColors[0].g) * ratio);
-          const b = Math.round(gradientColors[0].b + (gradientColors[1].b - gradientColors[0].b) * ratio);
-          
-          doc.setFillColor(r, g, b);
-          doc.rect(0, i, pageWidth, 2, 'F');
+        // Logo AFIRME PLAY (imagem) - mantendo proporção real
+        if (logoDataUrl && logoWidth > 0 && logoHeight > 0) {
+          // Largura desejada em mm
+          const desiredLogoWidth = 50;
+          // Calcular altura proporcional baseada nas dimensões reais
+          const desiredLogoHeight = (logoHeight * desiredLogoWidth) / logoWidth;
+          const logoX = centerX - desiredLogoWidth / 2;
+          doc.addImage(logoDataUrl, 'PNG', logoX, y, desiredLogoWidth, desiredLogoHeight);
+          y += desiredLogoHeight + 8;
+        } else {
+          // Fallback: texto "AFIRME PLAY"
+          doc.setFontSize(20);
+          doc.setTextColor(...COLORS.primary);
+          doc.setFont('helvetica', 'bold');
+          doc.text('AFIRME PLAY', centerX, y, { align: 'center' });
+          y += 15;
         }
 
-        // Círculo decorativo
-        doc.setFillColor(100, 130, 255);
-        doc.circle(centerX, 40, 30, 'F');
+        y += 8;
 
-        // Título principal
-        doc.setFontSize(36);
-        doc.setTextColor(255, 255, 255);
+        // Município - Estado
+        doc.setFontSize(14);
+        doc.setTextColor(...COLORS.primary); // Roxo institucional
         doc.setFont('helvetica', 'bold');
-        doc.text('Relatório de Desempenho', centerX, currentY, { align: 'center' });
+        const locationText = `${evaluationInfo.municipio?.toUpperCase() || 'MUNICÍPIO'} - ALAGOAS`;
+        doc.text(locationText, centerX, y, { align: 'center' });
 
-        currentY += 18;
+        y += 8;
 
-        // Subtítulo
-        doc.setFontSize(18);
-        doc.setTextColor(255, 255, 255);
+        // Secretaria
+        doc.setFontSize(11);
+        doc.setTextColor(...COLORS.textGray); // Cinza
         doc.setFont('helvetica', 'normal');
-        doc.text('Acerto e Níveis de Proficiência', centerX, currentY, { align: 'center' });
+        doc.text('SECRETARIA MUNICIPAL DE EDUCAÇÃO', centerX, y, { align: 'center' });
 
-        currentY += 35;
+        y += 18;
 
-        // Linha decorativa
-        doc.setDrawColor(255, 255, 255);
-        doc.setLineWidth(2);
-        doc.line(centerX - 80, currentY, centerX + 80, currentY);
+        // Título principal 1
+        doc.setFontSize(24);
+        doc.setTextColor(...COLORS.textDark); // Preto
+        doc.setFont('helvetica', 'bold');
+        doc.text('RELATÓRIO DE DESEMPENHO', centerX, y, { align: 'center' });
 
-        currentY += 25;
+        y += 12;
 
-        // Card de informações (ajustado para landscape - mais largo, menos alto)
-        const cardWidth = pageWidth - 80;
-        const cardHeight = 80;
+        // Título principal 2
+        doc.setFontSize(18);
+        doc.setTextColor(...COLORS.textDark); // Preto
+        doc.setFont('helvetica', 'bold');
+        doc.text('ACERTO E NÍVEIS DE PROFICIÊNCIA', centerX, y, { align: 'center' });
+
+        y += 20;
+
+        // Card de informações - tamanho reduzido
+        const cardWidth = pageWidth - 120; // Reduzido: mais estreito
+        const cardHeight = 60; // Reduzido: mais baixo
         const cardX = (pageWidth - cardWidth) / 2;
+        
+        // Centralizar verticalmente melhor na página
+        const availableHeight = pageHeight - y - 20;
+        if (cardHeight < availableHeight) {
+          y = (pageHeight - cardHeight) / 2;
+        }
 
         // Fundo do card
-        doc.setFillColor(255, 255, 255);
-        doc.rect(cardX, currentY, cardWidth, cardHeight, 'F');
+        doc.setFillColor(...COLORS.bgLight);
+        doc.rect(cardX, y, cardWidth, cardHeight, 'F');
         
         // Borda do card
-        doc.setDrawColor(200, 200, 200);
+        doc.setDrawColor(...COLORS.borderLight);
         doc.setLineWidth(0.5);
-        doc.rect(cardX, currentY, cardWidth, cardHeight, 'S');
+        doc.rect(cardX, y, cardWidth, cardHeight, 'S');
 
-        // Conteúdo do card (layout em duas colunas para landscape)
-        let cardY = currentY + 12;
+        // Conteúdo do card
+        let cardY = y + 9;
 
         // Título do card
-        doc.setFontSize(16);
-        doc.setTextColor(37, 99, 235);
+        doc.setFontSize(11);
+        doc.setTextColor(...COLORS.primary); // Roxo
         doc.setFont('helvetica', 'bold');
-        doc.text('Informações da Avaliação', centerX, cardY, { align: 'center' });
+        doc.text('INFORMAÇÕES DA AVALIAÇÃO', centerX, cardY, { align: 'center' });
 
-        cardY += 10;
+        cardY += 9;
 
-        // Informações em duas colunas
-        doc.setFontSize(10);
-        doc.setTextColor(30, 30, 30);
+        // Informações em formato tabular (label: valor)
+        doc.setFontSize(8);
         doc.setFont('helvetica', 'normal');
 
-        const leftColX = cardX + 15;
-        const rightColX = cardX + cardWidth / 2 + 10;
-        let leftY = cardY;
-        let rightY = cardY;
+        const leftColX = cardX + 12;
+        const labelWidth = 32; // Espaçamento adequado para evitar sobreposição
 
-        // Coluna esquerda
+        // AVALIAÇÃO
         doc.setFont('helvetica', 'bold');
-        doc.text('Avaliação:', leftColX, leftY);
+        doc.setTextColor(...COLORS.primary); // Labels em roxo
+        doc.text('AVALIAÇÃO:', leftColX, cardY);
         doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...COLORS.textDark); // Valores em preto
         const avaliacaoText = evaluationInfo.titulo || 'N/A';
-        const avaliacaoLines = doc.splitTextToSize(avaliacaoText, cardWidth / 2 - 30);
-        doc.text(avaliacaoLines, leftColX + 35, leftY);
-        leftY += Math.max(8, avaliacaoLines.length * 5);
+        const avaliacaoLines = doc.splitTextToSize(avaliacaoText, cardWidth - labelWidth - 24);
+        doc.text(avaliacaoLines, leftColX + labelWidth, cardY);
+        cardY += Math.max(5, avaliacaoLines.length * 4);
 
+        // MUNICÍPIO
         doc.setFont('helvetica', 'bold');
-        doc.text('Município:', leftColX, leftY);
+        doc.setTextColor(...COLORS.primary);
+        doc.text('MUNICÍPIO:', leftColX, cardY);
         doc.setFont('helvetica', 'normal');
-        doc.text(evaluationInfo.municipio || 'N/A', leftColX + 35, leftY);
-        leftY += 8;
+        doc.setTextColor(...COLORS.textDark);
+        doc.text(evaluationInfo.municipio || 'N/A', leftColX + labelWidth, cardY);
+        cardY += 5;
 
-        const escolaText = selectedSchoolId ? schools.find(s => s.id === selectedSchoolId)?.nome || 'Escola Selecionada' : 'Todas as Escolas';
+        // ESCOLA
         doc.setFont('helvetica', 'bold');
-        doc.text('Escola:', leftColX, leftY);
+        doc.setTextColor(...COLORS.primary);
+        doc.text('ESCOLA:', leftColX, cardY);
         doc.setFont('helvetica', 'normal');
-        const escolaLines = doc.splitTextToSize(escolaText, cardWidth / 2 - 30);
-        doc.text(escolaLines, leftColX + 35, leftY);
-        leftY += Math.max(8, escolaLines.length * 5);
+        doc.setTextColor(...COLORS.textDark);
+        const escolaText = selectedSchoolId 
+          ? schools.find(s => s.id === selectedSchoolId)?.nome || 'Escola Selecionada' 
+          : 'Todas as Escolas';
+        const escolaLines = doc.splitTextToSize(escolaText.toUpperCase(), cardWidth - labelWidth - 24);
+        doc.text(escolaLines, leftColX + labelWidth, cardY);
+        cardY += Math.max(5, escolaLines.length * 4);
 
-        // Coluna direita
-        const serieText = getHeaderSerieText();
+        // SÉRIE
+        const serieText = getHeaderSerieText(studentsToUse);
         if (serieText) {
           doc.setFont('helvetica', 'bold');
-          doc.text('Série:', rightColX, rightY);
+          doc.setTextColor(...COLORS.primary);
+          doc.text('SÉRIE:', leftColX, cardY);
           doc.setFont('helvetica', 'normal');
-          doc.text(serieText, rightColX + 30, rightY);
-          rightY += 8;
+          doc.setTextColor(...COLORS.textDark);
+          doc.text(serieText, leftColX + labelWidth, cardY);
+          cardY += 5;
         }
 
+        // DATA
         if (evaluationInfo.data_aplicacao) {
           doc.setFont('helvetica', 'bold');
-          doc.text('Data:', rightColX, rightY);
+          doc.setTextColor(...COLORS.primary);
+          doc.text('DATA:', leftColX, cardY);
           doc.setFont('helvetica', 'normal');
-          doc.text(new Date(evaluationInfo.data_aplicacao).toLocaleDateString('pt-BR'), rightColX + 30, rightY);
-          rightY += 8;
+          doc.setTextColor(...COLORS.textDark);
+          doc.text(new Date(evaluationInfo.data_aplicacao).toLocaleDateString('pt-BR'), leftColX + labelWidth, cardY);
+          cardY += 5;
         }
 
-        // Total de turmas
-        const turmasMap = new Map<string, StudentResult[]>();
-        students.forEach(s => {
+        // TOTAL DE TURMAS
+        const turmasMapInitial = new Map<string, StudentResult[]>();
+        studentsToUse.forEach(s => {
           const turma = s.turma || 'Sem Turma';
-          if (!turmasMap.has(turma)) {
-            turmasMap.set(turma, []);
+          if (!turmasMapInitial.has(turma)) {
+            turmasMapInitial.set(turma, []);
           }
-          turmasMap.get(turma)!.push(s);
+          turmasMapInitial.get(turma)!.push(s);
         });
-        const totalTurmas = turmasMap.size;
+        const totalTurmas = turmasMapInitial.size;
 
         doc.setFont('helvetica', 'bold');
-        doc.text('Total de Turmas:', rightColX, rightY);
+        doc.setTextColor(...COLORS.primary);
+        doc.text('TOTAL DE TURMAS:', leftColX, cardY);
         doc.setFont('helvetica', 'normal');
-        doc.text(`${totalTurmas}`, rightColX + 45, rightY);
-
-        currentY += cardHeight + 20;
-
-        // Data de geração
-        doc.setFontSize(10);
-        doc.setTextColor(255, 255, 255);
-        doc.setFont('helvetica', 'italic');
-        const currentDate = new Date().toLocaleDateString('pt-BR', {
-          day: '2-digit',
-          month: 'long',
-          year: 'numeric',
-        });
-        doc.text(`Gerado em ${currentDate}`, centerX, currentY, { align: 'center' });
-
-        // Rodapé da capa
-        currentY = pageHeight - 30;
-        doc.setFontSize(10);
-        doc.setTextColor(255, 255, 255);
-        doc.setFont('helvetica', 'normal');
-        doc.text('Afirme Play Soluções Educativas', centerX, currentY, { align: 'center' });
+        doc.setTextColor(...COLORS.textDark);
+        doc.text(`${totalTurmas}`, leftColX + labelWidth, cardY);
       };
 
       // Função para adicionar capa de turma
       const addTurmaCover = (turmaName: string, alunosTurma: StudentResult[]) => {
+        // Garantir fundo branco limpo - desenhar primeiro e cobrir toda a página
+        doc.setFillColor(...COLORS.white);
+        doc.rect(0, 0, pageWidth, pageHeight, 'F');
+        
         const centerX = pageWidth / 2;
-        let currentY = 50;
+        let y = 25;
 
-        // Fundo gradiente
-        const gradientColors = [
-          { r: 37, g: 99, b: 235 },
-          { r: 79, g: 70, b: 229 },
-        ];
-
-        for (let i = 0; i < pageHeight; i += 2) {
-          const ratio = i / pageHeight;
-          const r = Math.round(gradientColors[0].r + (gradientColors[1].r - gradientColors[0].r) * ratio);
-          const g = Math.round(gradientColors[0].g + (gradientColors[1].g - gradientColors[0].g) * ratio);
-          const b = Math.round(gradientColors[0].b + (gradientColors[1].b - gradientColors[0].b) * ratio);
-          
-          doc.setFillColor(r, g, b);
-          doc.rect(0, i, pageWidth, 2, 'F');
+        // Logo AFIRME PLAY (imagem) - mantendo proporção real
+        if (logoDataUrl && logoWidth > 0 && logoHeight > 0) {
+          // Largura desejada em mm
+          const desiredLogoWidth = 50;
+          // Calcular altura proporcional baseada nas dimensões reais
+          const desiredLogoHeight = (logoHeight * desiredLogoWidth) / logoWidth;
+          const logoX = centerX - desiredLogoWidth / 2;
+          doc.addImage(logoDataUrl, 'PNG', logoX, y, desiredLogoWidth, desiredLogoHeight);
+          y += desiredLogoHeight + 8;
+        } else {
+          // Fallback: texto "AFIRME PLAY"
+          doc.setFontSize(20);
+          doc.setTextColor(...COLORS.primary);
+          doc.setFont('helvetica', 'bold');
+          doc.text('AFIRME PLAY', centerX, y, { align: 'center' });
+          y += 15;
         }
 
-        // Círculo decorativo
-        doc.setFillColor(100, 130, 255);
-        doc.circle(centerX, 40, 28, 'F');
+        y += 20;
 
-        // Título
-        doc.setFontSize(32);
-        doc.setTextColor(255, 255, 255);
+        // Título "ANÁLISE POR TURMA"
+        doc.setFontSize(24);
+        doc.setTextColor(...COLORS.textDark); // Preto
         doc.setFont('helvetica', 'bold');
-        doc.text('Análise por Turma', centerX, currentY, { align: 'center' });
+        doc.text('ANÁLISE POR TURMA', centerX, y, { align: 'center' });
 
-        currentY += 18;
+        y += 20;
 
-        // Nome da turma
-        doc.setFontSize(26);
-        doc.setTextColor(255, 255, 255);
+        // Nome da turma a ser avaliada (abaixo do título)
+        doc.setFontSize(48);
+        doc.setTextColor(...COLORS.primary); // Roxo para destaque
         doc.setFont('helvetica', 'bold');
-        doc.text(turmaName, centerX, currentY, { align: 'center' });
+        doc.text(turmaName.toUpperCase(), centerX, y, { align: 'center' });
 
-        currentY += 25;
+        y += 25;
 
-        // Linha decorativa
-        doc.setDrawColor(255, 255, 255);
-        doc.setLineWidth(2);
-        doc.line(centerX - 80, currentY, centerX + 80, currentY);
-
-        currentY += 25;
-
-        // Card de informações da turma (ajustado para landscape)
-        const cardWidth = pageWidth - 80;
-        const cardHeight = 70;
+        // Card de estatísticas - tamanho reduzido
+        const cardWidth = pageWidth - 120; // Reduzido: mais estreito
+        const cardHeight = 60; // Reduzido: mais baixo
         const cardX = (pageWidth - cardWidth) / 2;
+        
+        // Garantir que o card não fique muito próximo do final da página
+        const minSpaceAtBottom = 20;
+        const maxCardY = pageHeight - cardHeight - minSpaceAtBottom;
+        
+        // Apenas ajustar se realmente necessário (card muito próximo do final)
+        if (y + cardHeight > maxCardY) {
+          y = maxCardY;
+        }
 
         // Fundo do card
-        doc.setFillColor(255, 255, 255);
-        doc.rect(cardX, currentY, cardWidth, cardHeight, 'F');
+        doc.setFillColor(...COLORS.bgLight);
+        doc.rect(cardX, y, cardWidth, cardHeight, 'F');
         
         // Borda do card
-        doc.setDrawColor(200, 200, 200);
+        doc.setDrawColor(...COLORS.borderLight);
         doc.setLineWidth(0.5);
-        doc.rect(cardX, currentY, cardWidth, cardHeight, 'S');
+        doc.rect(cardX, y, cardWidth, cardHeight, 'S');
 
         // Conteúdo do card
-        let cardY = currentY + 15;
+        let cardY = y + 9;
 
         // Título do card
-        doc.setFontSize(14);
-        doc.setTextColor(37, 99, 235);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Estatísticas da Turma', centerX, cardY, { align: 'center' });
-
-        cardY += 12;
-
-        // Estatísticas
         doc.setFontSize(11);
-        doc.setTextColor(30, 30, 30);
-        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...COLORS.primary); // Roxo
+        doc.setFont('helvetica', 'bold');
+        doc.text('ESTATÍSTICAS DA TURMA', centerX, cardY, { align: 'center' });
 
+        cardY += 9;
+
+        // Calcular estatísticas
         const concluidos = alunosTurma.filter(s => s.status === 'concluida');
         const totalAlunos = alunosTurma.length;
         const mediaNota = concluidos.length > 0 
@@ -1445,59 +1581,94 @@ export default function AcertoNiveis() {
         const mediaProficiencia = concluidos.length > 0
           ? (concluidos.reduce((sum, s) => sum + s.proficiencia, 0) / concluidos.length).toFixed(1)
           : '0.0';
-
-        // Layout em duas colunas
-        const leftCol = cardX + 10;
-        const rightCol = cardX + cardWidth / 2 + 10;
-
-        doc.setFont('helvetica', 'bold');
-        doc.text('Total de Alunos:', leftCol, cardY);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`${totalAlunos}`, leftCol + 45, cardY);
-
-        doc.setFont('helvetica', 'bold');
-        doc.text('Alunos Concluíram:', rightCol, cardY);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`${concluidos.length}`, rightCol + 45, cardY);
-        cardY += 8;
-
-        doc.setFont('helvetica', 'bold');
-        doc.text('Média de Nota:', leftCol, cardY);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`${mediaNota}`, leftCol + 45, cardY);
-
-        doc.setFont('helvetica', 'bold');
-        doc.text('Média Proficiência:', rightCol, cardY);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`${mediaProficiencia}`, rightCol + 45, cardY);
-        cardY += 8;
-
-        // Taxa de participação
         const taxaParticipacao = totalAlunos > 0 
           ? ((concluidos.length / totalAlunos) * 100).toFixed(1)
           : '0.0';
-        doc.setFont('helvetica', 'bold');
-        doc.text('Taxa de Participação:', leftCol, cardY);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`${taxaParticipacao}%`, leftCol + 50, cardY);
 
-        // Rodapé da capa
-        currentY = pageHeight - 30;
-        doc.setFontSize(10);
-        doc.setTextColor(255, 255, 255);
+        // Estatísticas em formato tabular (label: valor)
+        doc.setFontSize(8);
         doc.setFont('helvetica', 'normal');
-        doc.text('Afirme Play Soluções Educativas', centerX, currentY, { align: 'center' });
+
+        const leftColX = cardX + 12;
+        const labelWidth = 48; // Padronizado: mesmo espaçamento
+
+        // TOTAL DE ALUNOS
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...COLORS.primary); // Labels em roxo
+        doc.text('TOTAL DE ALUNOS:', leftColX, cardY);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...COLORS.textDark); // Valores em preto
+        doc.text(`${totalAlunos}`, leftColX + labelWidth, cardY);
+        cardY += 5;
+
+        // ALUNOS CONCLUÍRAM
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...COLORS.primary);
+        doc.text('ALUNOS CONCLUÍRAM:', leftColX, cardY);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...COLORS.textDark);
+        doc.text(`${concluidos.length}`, leftColX + labelWidth, cardY);
+        cardY += 5;
+
+        // MÉDIA DE NOTA
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...COLORS.primary);
+        doc.text('MÉDIA DE NOTA:', leftColX, cardY);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...COLORS.textDark);
+        doc.text(`${mediaNota}`, leftColX + labelWidth, cardY);
+        cardY += 5;
+
+        // MÉDIA PROFICIÊNCIA
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...COLORS.primary);
+        doc.text('MÉDIA PROFICIÊNCIA:', leftColX, cardY);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...COLORS.textDark);
+        doc.text(`${mediaProficiencia}`, leftColX + labelWidth, cardY);
+        cardY += 5;
+
+        // TAXA DE PARTICIPAÇÃO
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...COLORS.primary);
+        doc.text('TAXA DE PARTICIPAÇÃO:', leftColX, cardY);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...COLORS.textDark);
+        doc.text(`${taxaParticipacao}%`, leftColX + labelWidth, cardY);
       };
 
       // Função para adicionar rodapé
       const addFooter = (pageNum: number) => {
         const centerX = pageWidth / 2;
+        const footerY = pageHeight - 10;
+        
+        // Linha sutil acima do rodapé
+        doc.setDrawColor(220, 220, 220);
+        doc.setLineWidth(0.3);
+        doc.line(margin, footerY - 5, pageWidth - margin, footerY - 5);
+        
+        // Configuração de texto do rodapé
         doc.setFontSize(8);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(100, 100, 100);
-        doc.text('Afirme Play Soluções Educativas', margin, pageHeight - 10);
-        doc.text(`Página ${pageNum}`, centerX, pageHeight - 10, { align: 'center' });
-        doc.text(new Date().toLocaleString('pt-BR'), pageWidth - margin, pageHeight - 10, { align: 'right' });
+        
+        // Esquerda: Nome da empresa
+        doc.text('Afirme Play Soluções Educativas', margin, footerY);
+        
+        // Centro: Número da página
+        doc.text(`Página ${pageNum}`, centerX, footerY, { align: 'center' });
+        
+        // Direita: Data e hora formatada
+        const now = new Date();
+        const dateTimeStr = now.toLocaleString('pt-BR', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        });
+        doc.text(dateTimeStr, pageWidth - margin, footerY, { align: 'right' });
       };
 
       // Função para adicionar cabeçalho
@@ -1508,35 +1679,36 @@ export default function AcertoNiveis() {
         // Título da prefeitura
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(13);
-        doc.setTextColor(0, 0, 0);
+        doc.setTextColor(...COLORS.textDark); // Preto institucional
         doc.text(`PREFEITURA DE ${evaluationInfo.municipio?.toUpperCase() || 'MUNICÍPIO'}`, centerX, y, { align: 'center' });
-        y += 7;
+        y += 10;
         
-        // Informações da escola
+        // Informações da escola, série e turma em linhas separadas
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(10);
+        doc.setTextColor(...COLORS.textGray); // Cinza institucional
+        
         const escolaText = selectedSchoolId ? schools.find(s => s.id === selectedSchoolId)?.nome || 'Escola Selecionada' : 'Todas as Escolas';
         doc.text(`Escola: ${escolaText}`, centerX, y, { align: 'center' });
         y += 5;
-        const serieText = getHeaderSerieText();
+        
+        const serieText = getHeaderSerieText(studentsToUse);
         if (serieText) {
           doc.text(`Série: ${serieText}`, centerX, y, { align: 'center' });
           y += 5;
         }
-        // Usar turmaOverride se fornecido, caso contrário usar getTurmaText() ou students[0]?.turma
-        const turmaText = turmaOverride !== undefined ? turmaOverride : (selectedClassId ? classes.find(c => c.id === selectedClassId)?.nome || 'Selecionada' : (students[0]?.turma || 'Todas'));
+        
+        const turmaText = turmaOverride !== undefined ? turmaOverride : (selectedClassId ? classes.find(c => c.id === selectedClassId)?.nome || 'Selecionada' : (studentsToUse[0]?.turma || 'Todas'));
         doc.text(`Turma: ${turmaText}`, centerX, y, { align: 'center' });
-        y += 8;
+        y += 10;
         
-        // Barra cinza com título
-        doc.setFillColor(230, 230, 230);
-        doc.rect(margin - 5, y - 4, pageWidth - 2 * (margin - 5), 10, 'F');
+        // Título da seção
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(11);
-        doc.setTextColor(0, 0, 0);
-        doc.text(title, centerX, y + 2, { align: 'center' });
+        doc.setFontSize(14);
+        doc.setTextColor(...COLORS.textDark); // Preto institucional
+        doc.text(title, centerX, y, { align: 'center' });
         
-        return y + 12;
+        return y + 10;
       };
 
       // Utilitário: ordenar questões por número
@@ -1906,25 +2078,30 @@ export default function AcertoNiveis() {
             const { doc, cell, column, section, row } = data;
             const val = Array.isArray(cell.text) ? cell.text[0] : cell.text;
 
-            // Colorir respostas dos alunos (✓ ou ✗) com desenho vetorial
+            // Colorir células com símbolos ✓ ou ✗
             if (section === 'body' && column.index > 0 && column.index <= questoes.length) {
-              if (val === '\u2713' || val === '\u2717') {
+              const valStr = String(val);
+              if (valStr === '✓' || valStr === '\u2713' || valStr === '✗' || valStr === '\u2717') {
+                // Redesenhar o símbolo centralizado com cor apropriada
                 const centerX = cell.x + cell.width / 2;
                 const centerY = cell.y + cell.height / 2;
-                const iconSize = Math.min(cell.width, cell.height) / 4.5;
 
-                // Apaga o texto original (que foi renderizado incorretamente)
+                // Apagar texto renderizado automaticamente
                 const fillColor = row.index % 2 === 0 ? [255, 255, 255] : [252, 252, 252];
                 doc.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
                 doc.rect(cell.x, cell.y, cell.width, cell.height, 'F');
 
-                if (val === '\u2713') {
+                // Renderizar símbolo vetorialmente
+                const iconSize = Math.min(cell.width, cell.height) / 4.5;
+                const isCorrect = valStr === '✓' || valStr === '\u2713';
+                
+                if (isCorrect) {
                   // Desenha o '✓'
                   doc.setDrawColor(22, 163, 74); // Verde escuro
                   doc.setLineWidth(0.8);
                   doc.line(centerX - iconSize, centerY, centerX - iconSize / 2, centerY + iconSize);
                   doc.line(centerX - iconSize / 2, centerY + iconSize, centerX + iconSize, centerY - iconSize);
-                } else if (val === '\u2717') {
+                } else {
                   // Desenha o '✗'
                   doc.setDrawColor(239, 68, 68); // Vermelho
                   doc.setLineWidth(0.8);
@@ -1932,11 +2109,10 @@ export default function AcertoNiveis() {
                   doc.line(centerX + iconSize, centerY - iconSize, centerX - iconSize, centerY + iconSize);
                 }
                 
-                // *** CORREÇÃO PRINCIPAL: Redesenha as bordas da célula ***
-                // Restaura as bordas que foram cobertas pelo preenchimento
-                doc.setDrawColor(200, 200, 200); // Cor padrão das bordas da tabela
+                // Redesenhar bordas
+                doc.setDrawColor(200, 200, 200);
                 doc.setLineWidth(0.05);
-                doc.rect(cell.x, cell.y, cell.width, cell.height); // Redesenha apenas o contorno
+                doc.rect(cell.x, cell.y, cell.width, cell.height);
               }
             }
 
@@ -1982,31 +2158,31 @@ export default function AcertoNiveis() {
           },
         });
         
-        // Legenda com ícones vetoriais
+        // Legenda com símbolos
         const finalY = ((doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || y) + 4;
-        doc.setFontSize(7);
+        doc.setFontSize(8);
         doc.setFont('helvetica', 'normal');
 
         let legendX = landscapeMargin;
-        const legendY = finalY + 2.5;
-        const legendIconSize = 1.5;
 
-        // Símbolo correto (✓) vetorial
-        doc.setDrawColor(22, 163, 74);
-        doc.setLineWidth(0.5);
-        doc.line(legendX, legendY, legendX + legendIconSize * 0.5, legendY + legendIconSize);
-        doc.line(legendX + legendIconSize * 0.5, legendY + legendIconSize, legendX + legendIconSize * 1.5, legendY - legendIconSize * 0.5);
-        doc.setTextColor(90);
-        doc.text('Correto', legendX + 4, finalY + 3);
+        // Símbolo correto ✓
+        doc.setDrawColor(22, 163, 74); // Verde escuro
+        doc.setLineWidth(0.8);
+        const iconSize = 2;
+        const legendY = finalY + 2;
+        doc.line(legendX - iconSize, legendY, legendX - iconSize / 2, legendY + iconSize);
+        doc.line(legendX - iconSize / 2, legendY + iconSize, legendX + iconSize, legendY - iconSize);
+        doc.setTextColor(90, 90, 90);
+        doc.text('Correto', legendX + 5, finalY + 3);
 
         legendX += 24;
         
-        // Símbolo incorreto (✗) vetorial
-        doc.setDrawColor(239, 68, 68);
-        doc.setLineWidth(0.5);
-        doc.line(legendX, legendY - legendIconSize, legendX + legendIconSize * 2, legendY + legendIconSize);
-        doc.line(legendX + legendIconSize * 2, legendY - legendIconSize, legendX, legendY + legendIconSize);
-        doc.setTextColor(90);
+        // Símbolo incorreto ✗
+        doc.setDrawColor(239, 68, 68); // Vermelho
+        doc.setLineWidth(0.8);
+        doc.line(legendX - iconSize, legendY - iconSize, legendX + iconSize, legendY + iconSize);
+        doc.line(legendX + iconSize, legendY - iconSize, legendX - iconSize, legendY + iconSize);
+        doc.setTextColor(90, 90, 90);
         doc.text('Incorretas', legendX + 5, finalY + 3);
         
         // Rodapé
@@ -2071,7 +2247,7 @@ export default function AcertoNiveis() {
           // Participantes (para série e % por questão) - apenas da turma específica
           const alunosParticipantes = alunosTurmaDisciplina.filter(al => Array.isArray(al.respostas_por_questao) && al.respostas_por_questao.some(r => r.respondeu));
           // Série: priorizar seleção atual; depois heurística global; depois inferir pelas turmas dos participantes; por fim evaluationInfo
-          const serieHeuristicaGlobal = getHeaderSerieText();
+          const serieHeuristicaGlobal = getHeaderSerieText(studentsToUse);
           let serieText = selectedGradeId ? (grades.find(g => g.id === selectedGradeId)?.nome || '') : (serieHeuristicaGlobal || '');
           if (!serieText) {
             const setSeries = new Set<string>();
@@ -2130,10 +2306,10 @@ export default function AcertoNiveis() {
               }
               if (resp.respondeu) {
                 if (resp.acertou) {
-                  row.push('\u2713');
+                  row.push('\u2713'); // ✓ usando código Unicode
                   acertos++;
                 } else {
-                  row.push('\u2717');
+                  row.push('\u2717'); // ✗ usando código Unicode
                 }
               } else {
                 row.push(''); // em branco
@@ -2193,26 +2369,37 @@ export default function AcertoNiveis() {
             didDrawCell: (data) => {
               const { doc, cell, column, section, row } = data;
               const val = Array.isArray(cell.text) ? cell.text[0] : cell.text;
-              // Desenhar ✓/✗ como vetores e restaurar bordas
+              // Colorir células com símbolos ✓ ou ✗
               if (section === 'body' && column.index > 0 && column.index <= qs.length) {
-                if (val === '\u2713' || val === '\u2717') {
+                const valStr = String(val);
+                if (valStr === '✓' || valStr === '\u2713' || valStr === '✗' || valStr === '\u2717') {
                   const centerX = cell.x + cell.width / 2;
                   const centerY = cell.y + cell.height / 2;
-                  const iconSize = Math.min(cell.width, cell.height) / 4.5;
+                  
+                  // Apagar texto renderizado automaticamente
                   const fillColor = row.index % 2 === 0 ? [255, 255, 255] : [252, 252, 252];
                   doc.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
                   doc.rect(cell.x, cell.y, cell.width, cell.height, 'F');
-                  if (val === '\u2713') {
-                    doc.setDrawColor(22, 163, 74);
+                  
+                  // Renderizar símbolo vetorialmente
+                  const iconSize = Math.min(cell.width, cell.height) / 4.5;
+                  const isCorrect = valStr === '✓' || valStr === '\u2713';
+                  
+                  if (isCorrect) {
+                    // Desenha o '✓'
+                    doc.setDrawColor(22, 163, 74); // Verde escuro
                     doc.setLineWidth(0.8);
                     doc.line(centerX - iconSize, centerY, centerX - iconSize / 2, centerY + iconSize);
                     doc.line(centerX - iconSize / 2, centerY + iconSize, centerX + iconSize, centerY - iconSize);
                   } else {
-                    doc.setDrawColor(239, 68, 68);
+                    // Desenha o '✗'
+                    doc.setDrawColor(239, 68, 68); // Vermelho
                     doc.setLineWidth(0.8);
                     doc.line(centerX - iconSize, centerY - iconSize, centerX + iconSize, centerY + iconSize);
                     doc.line(centerX + iconSize, centerY - iconSize, centerX - iconSize, centerY + iconSize);
                   }
+                  
+                  // Redesenhar bordas
                   doc.setDrawColor(200, 200, 200);
                   doc.setLineWidth(0.05);
                   doc.rect(cell.x, cell.y, cell.width, cell.height);
@@ -2272,15 +2459,42 @@ export default function AcertoNiveis() {
       };
 
       // ====== ESTRUTURA PRINCIPAL: Reorganizar por turma ======
+      // Usar students ou reconstruir a partir de tabelaDetalhada se necessário
+      let studentsToUse = students;
+      
+      if (studentsToUse.length === 0 && tabelaDetalhada) {
+        console.log('PDF: Reconstruindo students a partir de tabelaDetalhada');
+        studentsToUse = mapUnifiedStudents(tabelaDetalhada);
+        console.log(`PDF: ${studentsToUse.length} alunos reconstruídos`);
+      }
+      
+      if (studentsToUse.length === 0 && detailedReport?.alunos) {
+        console.log('PDF: Usando alunos de detailedReport');
+        studentsToUse = mapDetailedStudentsToResults(detailedReport.alunos);
+        console.log(`PDF: ${studentsToUse.length} alunos do detailedReport`);
+      }
+      
+      if (studentsToUse.length === 0) {
+        console.error('PDF: Nenhum aluno disponível para gerar relatório');
+        toast({ 
+          title: "Erro", 
+          description: "Não foi possível encontrar dados de alunos para gerar o relatório.", 
+          variant: "destructive" 
+        });
+        return;
+      }
+      
       // Agrupar alunos por turma
       const turmasMap = new Map<string, StudentResult[]>();
-      students.forEach(s => {
+      studentsToUse.forEach(s => {
         const turma = s.turma || 'Sem Turma';
         if (!turmasMap.has(turma)) {
           turmasMap.set(turma, []);
         }
         turmasMap.get(turma)!.push(s);
       });
+      
+      console.log(`PDF: ${studentsToUse.length} alunos agrupados em ${turmasMap.size} turma(s)`);
       
       // Ordenar turmas alfabeticamente
       const turmasOrdenadas = Array.from(turmasMap.keys()).sort((a, b) => a.localeCompare(b));
@@ -2298,6 +2512,9 @@ export default function AcertoNiveis() {
         doc.addPage('landscape');
         pageWidth = doc.internal.pageSize.getWidth();
         pageHeight = doc.internal.pageSize.getHeight();
+        // Garantir fundo branco limpo na nova página antes de desenhar a capa
+        doc.setFillColor(...COLORS.white);
+        doc.rect(0, 0, pageWidth, pageHeight, 'F');
         addTurmaCover(turmaName, alunosTurma);
         pageCount++;
         

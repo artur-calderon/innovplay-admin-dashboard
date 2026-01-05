@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CheckCircle2, Target, Gauge, Award, Users } from 'lucide-react';
+import { CheckCircle2, Target, Gauge, Award, Users, Coins } from 'lucide-react';
 import { QuestionData, VisibleFields } from '../../../types/results-table';
 
 // Interface para questões da tabela_detalhada
@@ -41,6 +41,7 @@ interface TableHeaderProps {
     [key: string]: any;
   }>;
   successThreshold?: number;
+  showCoins?: boolean; // Mostrar coluna de moedas (para competições)
 }
 
 export const TableHeader: React.FC<TableHeaderProps> = ({
@@ -50,7 +51,8 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
   visibleFields,
   tabelaDetalhada,
   students = [],
-  successThreshold = 60
+  successThreshold = 60,
+  showCoins = false
 }) => {
   const [hoveredSkill, setHoveredSkill] = useState<string | null>(null);
 
@@ -198,6 +200,14 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
             NÍVEL
           </div>
         </th>
+        {showCoins && (
+          <th className="border border-border p-2 text-center font-semibold text-foreground">
+            <div className="flex items-center justify-center gap-1">
+              <Coins className="h-4 w-4 text-yellow-500" />
+              MOEDAS
+            </div>
+          </th>
+        )}
       </tr>
     </thead>
   );

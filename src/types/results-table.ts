@@ -68,6 +68,8 @@ export interface StudentResult {
     resposta_em_branco: boolean;
     tempo_gasto: number;
   }>;
+  // ✅ NOVO: Moedas ganhas (para competições)
+  moedas_ganhas?: number;
 }
 
 export interface DetailedReport {

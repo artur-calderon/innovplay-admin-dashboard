@@ -18,39 +18,57 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 interface StudentData {
   id: string;
   name: string;
+  full_name?: string;
+  email: string;
   registration: string;
   birth_date: string;
-  class_id: string;
-  grade_id: string;
-  school_id: string;
+  address?: string;
   created_at: string;
-  user: {
-    id: string;
-    name: string;
-    email: string;
-    registration: string;
-    role: string;
-    city_id: string | null;
-    created_at: string;
-    updated_at: string;
-  };
   school: {
     id: string;
     name: string;
     domain: string;
     address: string;
-    city_id: string;
   };
-  class: {
+  city?: {
+    id: string;
+    name: string;
+    state: string;
+  };
+  municipio?: string;
+  estado?: string;
+  class?: {
     id: string;
     name: string;
     school_id: string;
-    grade_id: string;
   };
-  grade: {
+  turma?: {
+    id: string;
+    name: string;
+    school_id: string;
+  };
+  grade?: {
     id: string;
     name: string;
   };
+  serie?: {
+    id: string;
+    name: string;
+  };
+  teachers?: Array<{
+    id: string;
+    name: string;
+    email: string;
+    registration: string;
+    user_id: string;
+  }>;
+  professores?: Array<{
+    id: string;
+    name: string;
+    email: string;
+    registration: string;
+    user_id: string;
+  }>;
 }
 
 interface TeacherData {
@@ -182,14 +200,17 @@ const Profile = () => {
     });
   };
 
+  // Usar dados do perfil quando disponível (especialmente para alunos)
+  const studentData = user?.role === 'aluno' && profileData ? (profileData as StudentData) : null;
+  
   const personalDetails = {
-    "Nome completo": user?.name || "Nome não informado",
-    "Data de Nascimento": user?.birth_date || "Data não informada",
+    "Nome completo": studentData?.full_name || studentData?.name || user?.name || "Nome não informado",
+    "Data de Nascimento": studentData?.birth_date || user?.birth_date || "Data não informada",
     "Gênero": user?.gender || "Gênero não informado",
     "Nacionalidade": user?.nationality || "Nacionalidade não informada",
-    "Endereço": user?.address || "Endereço não informado",
+    "Endereço": studentData?.address || user?.address || "Endereço não informado",
     "Telefone": user?.phone || "Telefone não informado",
-    "Email": user?.email || "usuario@exemplo.com",
+    "Email": studentData?.email || user?.email || "usuario@exemplo.com",
   };
 
   const accountDetails = {
@@ -232,88 +253,149 @@ const Profile = () => {
     </Card>
   );
 
-  const renderStudentProfile = (data: StudentData) => (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-xl">
-            <School className="h-5 w-5 text-innov-blue" />
-            Informações Escolares
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Escola:</span>
-                <span className="font-medium">{data.school?.name || "Não informado"}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <BookOpen className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Série:</span>
-                <span className="font-medium">{data.grade?.name || "Não informado"}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Users className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Turma:</span>
-                <span className="font-medium">{data.class?.name || "Não informado"}</span>
-              </div>
-            </div>
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Data de Nascimento:</span>
-                <span className="font-medium">{formatDate(data.birth_date)}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Matrícula:</span>
-                <span className="font-medium">{data.registration || "Não informado"}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Cadastrado em:</span>
-                <span className="font-medium">{formatDate(data.created_at)}</span>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+  const renderStudentProfile = (data: StudentData) => {
+    // Usar turma ou class (prioridade para turma)
+    const turma = data.turma || data.class;
+    // Usar serie ou grade (prioridade para serie)
+    const serie = data.serie || data.grade;
+    // Usar professores ou teachers (prioridade para professores)
+    const professores = data.professores || data.teachers || [];
+    // Usar city ou municipio/estado
+    const cidadeNome = data.city?.name || data.municipio || "Não informado";
+    const estadoNome = data.city?.state || data.estado || "";
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-xl">
-            <User className="h-5 w-5 text-innov-blue" />
-            Dados da Conta
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Mail className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Email:</span>
-                <span className="font-medium">{data.user?.email || "Não informado"}</span>
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <School className="h-5 w-5 text-innov-blue" />
+              Informações Escolares
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Escola:</span>
+                  <span className="font-medium">{data.school?.name || "Não informado"}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <BookOpen className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Série:</span>
+                  <span className="font-medium">{serie?.name || "Não informado"}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Turma:</span>
+                  <span className="font-medium">{turma?.name || "Não informado"}</span>
+                </div>
+                {data.school?.address && (
+                  <div className="flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Endereço da Escola:</span>
+                    <span className="font-medium">{data.school.address}</span>
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Conta criada:</span>
-                <span className="font-medium">{formatDate(data.user?.created_at)}</span>
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Data de Nascimento:</span>
+                  <span className="font-medium">{formatDate(data.birth_date)}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Matrícula:</span>
+                  <span className="font-medium">{data.registration || "Não informado"}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Cadastrado em:</span>
+                  <span className="font-medium">{formatDate(data.created_at)}</span>
+                </div>
+                {(cidadeNome !== "Não informado" || estadoNome) && (
+                  <div className="flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Cidade:</span>
+                    <span className="font-medium">
+                      {cidadeNome}{estadoNome ? ` - ${estadoNome}` : ""}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Última atualização:</span>
-                <span className="font-medium">{formatDate(data.user?.updated_at)}</span>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <User className="h-5 w-5 text-innov-blue" />
+              Dados da Conta
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Email:</span>
+                  <span className="font-medium">{data.email || "Não informado"}</span>
+                </div>
+                {data.full_name && (
+                  <div className="flex items-center gap-2">
+                    <User className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Nome Completo:</span>
+                    <span className="font-medium">{data.full_name}</span>
+                  </div>
+                )}
+                {data.address && (
+                  <div className="flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Endereço:</span>
+                    <span className="font-medium">{data.address}</span>
+                  </div>
+                )}
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Conta criada:</span>
+                  <span className="font-medium">{formatDate(data.created_at)}</span>
+                </div>
               </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
+          </CardContent>
+        </Card>
+
+        {professores.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <Users className="h-5 w-5 text-innov-blue" />
+                Professores
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {professores.map((professor, index) => (
+                  <div key={professor.id || index} className="p-4 border rounded-lg bg-muted/50">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-semibold">{professor.name || "Nome não informado"}</h4>
+                      <Badge variant="secondary">{professor.registration || "N/A"}</Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{professor.email || "Email não informado"}</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  };
 
   const renderTeacherProfile = (data: TeacherData) => (
     <div className="space-y-6">

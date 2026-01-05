@@ -1115,7 +1115,8 @@ export class EvaluationResultsApiService {
   }
 
   // Buscar opções de filtros (mantido para compatibilidade)
-  static async getFilterOptions(): Promise<{
+  // NOTA: Renomeado para evitar conflito com o método privado getFilterOptions
+  static async getLegacyFilterOptions(): Promise<{
     courses: string[];
     subjects: string[];
     classes: string[];

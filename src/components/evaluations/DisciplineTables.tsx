@@ -2,7 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Check, X, Minus, Eye, CheckCircle2, Target, Gauge, Award, ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
+import { Check, X, Minus, Eye, CheckCircle2, Target, Gauge, Award, ChevronLeft, ChevronRight, MoreHorizontal, Coins } from "lucide-react";
+import { formatCoins } from "@/utils/coins";
 import { TableHeader } from './results-table/TableHeader';
 import { TableRow } from './results-table/TableRow';
 import { TableLegend } from './results-table/TableLegend';
@@ -33,6 +34,7 @@ interface TabelaDetalhadaAluno {
   nivel_proficiencia: string;
   nota: number;
   proficiencia: number;
+  moedas_ganhas?: number; // Opcional para competições
 }
 
 interface TabelaDetalhadaDisciplina {
@@ -57,6 +59,7 @@ interface TabelaDetalhadaGeralAluno {
   total_em_branco_geral: number;
   percentual_acertos_geral: number;
   status_geral: string;
+  moedas_ganhas?: number; // Opcional para competições
 }
 
 interface QuestaoConsolidada extends TabelaDetalhadaQuestao {
@@ -73,12 +76,15 @@ interface DisciplineTablesProps {
   onViewStudentDetails?: (studentId: string) => void;
   // ✅ NOVO: Função para abrir em nova guia
   onOpenInNewTab?: (studentId: string) => void;
+  // ✅ NOVO: Mostrar coluna de moedas (para competições)
+  showCoins?: boolean;
 }
 
 export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
   tabelaDetalhada,
   onViewStudentDetails,
-  onOpenInNewTab
+  onOpenInNewTab,
+  showCoins = false
 }) => {
   // ✅ NOVO: Estado para gerenciar visualização de muitas questões
   const [currentQuestionWindow, setCurrentQuestionWindow] = useState(0);
@@ -229,6 +235,15 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
         }
       }
 
+      // Buscar moedas_ganhas se disponível
+      let moedasGanhas = 0;
+      if (tabelaDetalhada.geral?.alunos) {
+        const alunoGeral = tabelaDetalhada.geral.alunos.find(a => a.id === aluno.id);
+        if (alunoGeral?.moedas_ganhas !== undefined) {
+          moedasGanhas = alunoGeral.moedas_ganhas;
+        }
+      }
+
       return {
         id: aluno.id,
         nome: aluno.nome,
@@ -242,7 +257,8 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
         total_questoes_disciplina: totalQuestoes,
         nivel_proficiencia: nivelProficiencia,
         nota: nota,
-        proficiencia: proficiencia
+        proficiencia: proficiencia,
+        moedas_ganhas: moedasGanhas
       };
     }).sort((a, b) => a.nome.localeCompare(b.nome));
   }, [tabelaDetalhada.disciplinas, tabelaDetalhada.geral?.alunos]);
@@ -398,6 +414,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                     proficiencia: true,
                     nivel: true
                   }}
+                  showCoins={showCoins}
                   tabelaDetalhada={{
                     disciplinas: (allQuestions.length > MAX_QUESTIONS_FOR_FULL_VIEW 
                       ? getQuestionWindow(allQuestions, currentQuestionWindow) 
@@ -427,6 +444,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                     }))
                   }))}
                   successThreshold={60}
+                  showCoins={showCoins}
                 />
                 <tbody>
                   {consolidatedStudents.map((aluno, studentIndex) => (
@@ -445,6 +463,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                         em_branco: aluno.total_questoes_disciplina - aluno.total_respondidas,
                         tempo_gasto: 0,
                         status: 'concluida' as const,
+                        moedas_ganhas: aluno.moedas_ganhas,
                         respostas: aluno.respostas_por_questao.map(resposta => ({
                           questao_id: `q${resposta.questao}`,
                           questao_numero: resposta.questao,
@@ -469,6 +488,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                       }}
                       onViewStudentDetails={onViewStudentDetails}
                       onOpenInNewTab={onOpenInNewTab}
+                      showCoins={showCoins}
                       evaluationId="visao-geral"
                       tabelaDetalhada={{
                         disciplinas: (allQuestions.length > MAX_QUESTIONS_FOR_FULL_VIEW 
@@ -587,6 +607,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                     }))
                   }))}
                   successThreshold={60}
+                  showCoins={showCoins}
                 />
                 <tbody>
                   {disciplina.alunos.filter(aluno => {
@@ -608,6 +629,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                         em_branco: aluno.total_questoes_disciplina - aluno.total_respondidas,
                         tempo_gasto: 0,
                         status: 'concluida' as const,
+                        moedas_ganhas: aluno.moedas_ganhas,
                         respostas: aluno.respostas_por_questao.map(resposta => ({
                           questao_id: `q${resposta.questao}`,
                           questao_numero: resposta.questao,
@@ -632,6 +654,7 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                       }}
                       onViewStudentDetails={onViewStudentDetails}
                       onOpenInNewTab={onOpenInNewTab}
+                      showCoins={showCoins}
                       evaluationId={disciplina.id}
                       tabelaDetalhada={{
                         disciplinas: [{
