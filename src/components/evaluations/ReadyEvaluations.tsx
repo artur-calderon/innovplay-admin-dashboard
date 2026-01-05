@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Eye, Pencil, Trash2, ChevronLeft, ChevronRight, Filter, RefreshCw, Play, MoreVertical, FileText } from "lucide-react";
+import { Search, Eye, Pencil, Trash2, ChevronLeft, ChevronRight, Filter, RefreshCw, Play, MoreVertical, FileText, Download } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
@@ -171,7 +171,9 @@ const EvaluationsTable = ({
   onRefresh,
   onClearFilters,
   hasActiveFilters,
-  onNavigateToPhysical
+  onNavigateToPhysical,
+  onExport,
+  isExporting
 }: {
   evaluations: Evaluation[];
   pagination: PaginationData | null | undefined;
@@ -197,6 +199,8 @@ const EvaluationsTable = ({
   onClearFilters: () => void;
   hasActiveFilters: boolean;
   onNavigateToPhysical: (evaluationId: string) => void;
+  onExport: () => void;
+  isExporting: boolean;
 }) => {
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('pt-BR');
@@ -336,14 +340,25 @@ const EvaluationsTable = ({
           <span className="text-sm text-blue-800 dark:text-blue-400">
             {selectedIds.length} avaliação(ões) selecionada(s)
           </span>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => onDelete('bulk')}
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Excluir ({selectedIds.length})
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="default"
+              size="sm"
+              onClick={onExport}
+              disabled={isExporting}
+            >
+              <Download className={`h-4 w-4 mr-2 ${isExporting ? 'animate-spin' : ''}`} />
+              {isExporting ? 'Exportando...' : `Exportar Excel (${selectedIds.length})`}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => onDelete('bulk')}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Excluir ({selectedIds.length})
+            </Button>
+          </div>
         </div>
       )}
 
@@ -610,6 +625,7 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
   const [startModalOpen, setStartModalOpen] = useState(false);
   const [selectedEvaluationToStart, setSelectedEvaluationToStart] = useState<Evaluation | null>(null);
   const [forceUpdate, setForceUpdate] = useState(0); // Forçar re-render após exclusão
+  const [isExporting, setIsExporting] = useState(false);
   const itemsPerPage = 10;
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -924,6 +940,94 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
     }
   };
 
+  const handleExportToExcel = async () => {
+    // Validação: verificar se há avaliações selecionadas
+    if (selectedIds.length === 0) {
+      toast({
+        title: "Nenhuma avaliação selecionada",
+        description: "Selecione pelo menos uma avaliação para exportar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsExporting(true);
+
+      // Preparar payload conforme especificação do backend
+      const payload = {
+        test_ids: selectedIds,
+      };
+
+      // Fazer requisição POST para o backend
+      const response = await api.post('/test/evolution/export-excel', payload, {
+        responseType: 'blob',
+      });
+
+      // Criar blob a partir da resposta
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+
+      // Extrair nome do arquivo do header Content-Disposition ou usar padrão
+      const contentDisposition = response.headers['content-disposition'];
+      let fileName = `exportacao-avaliacoes-${new Date().toISOString().split('T')[0]}.xlsx`;
+      
+      if (contentDisposition) {
+        const fileNameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (fileNameMatch && fileNameMatch[1]) {
+          fileName = fileNameMatch[1].replace(/['"]/g, '');
+        }
+      }
+
+      // Criar link temporário e fazer download
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "Exportação concluída!",
+        description: `Arquivo Excel gerado com sucesso para ${selectedIds.length} avaliação(ões).`,
+      });
+    } catch (error: any) {
+      console.error('Erro ao exportar para Excel:', error);
+
+      // Tratar erro que pode vir como blob (alguns backends retornam erro JSON como blob)
+      let errorMessage = "Não foi possível exportar as avaliações.";
+
+      if (error.response?.data instanceof Blob) {
+        try {
+          const text = await error.response.data.text();
+          const errorData = JSON.parse(text);
+          errorMessage = errorData.message || errorMessage;
+        } catch {
+          // Se não conseguir parsear, usar mensagem padrão
+        }
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.response?.status === 400) {
+        errorMessage = "Dados inválidos para exportação.";
+      } else if (error.response?.status === 404) {
+        errorMessage = "Rota de exportação não encontrada.";
+      } else if (error.response?.status === 500) {
+        errorMessage = "Erro interno do servidor ao gerar o arquivo.";
+      }
+
+      toast({
+        title: "Erro ao exportar",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
       setSelectedIds((evaluations || []).map((item) => item.id));
@@ -1127,6 +1231,8 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
             onClearFilters={clearFilters}
             hasActiveFilters={hasActiveFilters}
             onNavigateToPhysical={handleNavigateToPhysical}
+            onExport={handleExportToExcel}
+            isExporting={isExporting}
           />
 
           {/* Dialog de confirmação de exclusão */}

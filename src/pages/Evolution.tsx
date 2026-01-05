@@ -17,7 +17,6 @@ import { EvolutionCharts } from '@/components/evolution/EvolutionCharts';
 import type { ProcessedEvolutionData } from '@/components/evolution/EvolutionCharts';
 import { processComparisonData } from '@/utils/evolutionDataProcessor';
 import { generateEvolutionPDFFromHTML } from '@/utils/evolutionPdfService';
-import { exportEvolutionToExcel } from '@/utils/evolutionExcelExport';
 
 // Interfaces para os filtros
 interface State {
@@ -160,72 +159,39 @@ export default function Evolution() {
     initializeData();
   }, [autoLogin, loadInitialFilters, toast]);
 
-  // Função para adicionar avaliação ao carrinho com validação preventiva
-  const handleAddEvaluation = useCallback(async (evaluationId: string) => {
+  // Função para adicionar avaliação ao carrinho (validação acontece apenas quando há 2+ avaliações)
+  const handleAddEvaluation = useCallback((evaluationId: string) => {
     const evaluation = availableEvaluationsForPicker.find(e => e.id === evaluationId);
     if (!evaluation) return;
     
-    // Verificar se já foi adicionada
-    if (selectedEvaluationsForComparison.some(e => e.id === evaluationId)) {
+    // Adicionar diretamente ao carrinho com verificação atômica dentro do setState
+    // Isso previne race conditions em cliques rápidos
+    setSelectedEvaluationsForComparison(prev => {
+      // Verificar duplicata dentro do setState (garantido que usa o estado mais recente)
+      if (prev.some(e => e.id === evaluationId)) {
+        // Se já existe, retornar estado inalterado e mostrar toast
+        toast({
+          title: "Avaliação já adicionada",
+          description: "Esta avaliação já está na lista de comparação.",
+          variant: "destructive",
+        });
+        return prev; // Retornar estado inalterado
+      }
+      
+      // Se não existe, adicionar e mostrar toast de sucesso
+      const newState = [...prev, evaluation];
+      const message = prev.length === 0
+        ? `"${evaluation.titulo}" foi adicionada à comparação. Selecione mais uma avaliação para comparar.`
+        : `"${evaluation.titulo}" foi adicionada à comparação.`;
+      
       toast({
-        title: "Avaliação já adicionada",
-        description: "Esta avaliação já está na lista de comparação.",
-        variant: "destructive",
+        title: "Avaliação adicionada",
+        description: message,
       });
-      return;
-    }
-    
-    try {
-      // Estratégia de validação inteligente:
-      if (selectedEvaluationsForComparison.length === 0) {
-        // Primeira avaliação - apenas adicionar sem validar (a validação acontece quando há 2+ avaliações)
-        setSelectedEvaluationsForComparison(prev => [...prev, evaluation]);
-        toast({
-          title: "Avaliação adicionada",
-          description: `"${evaluation.titulo}" foi adicionada à comparação. Selecione mais uma avaliação para comparar.`,
-        });
-      } else {
-        // Já há avaliações - validar se pode comparar com a primeira
-        const testIds = [selectedEvaluationsForComparison[0].id, evaluationId];
-        console.log('🔍 Validando avaliação subsequente:', evaluationId, 'com:', selectedEvaluationsForComparison[0].id);
-        await EvaluationComparisonApiService.compareEvaluations(testIds);
-        
-        // Se passou, adicionar
-        setSelectedEvaluationsForComparison(prev => [...prev, evaluation]);
-        toast({
-          title: "Avaliação adicionada",
-          description: `"${evaluation.titulo}" foi adicionada à comparação.`,
-        });
-      }
-    } catch (error: unknown) {
-      let errorMessage = '';
       
-      // Extrair mensagem de erro do backend
-      if (error && typeof error === 'object' && 'response' in error) {
-        const axiosError = error as { response?: { data?: { error?: string } } };
-        errorMessage = axiosError.response?.data?.error || '';
-      } else if (error instanceof Error) {
-        errorMessage = error.message;
-      }
-      
-      if (errorMessage.includes('não possui resultados calculados')) {
-        // Marcar como inválida
-        setInvalidEvaluationIds(prev => new Set(prev).add(evaluationId));
-        
-        toast({
-          title: "Avaliação sem resultados",
-          description: "Esta avaliação ainda não possui resultados calculados. Aguarde o processamento.",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Erro ao adicionar",
-          description: errorMessage || "Não foi possível adicionar esta avaliação.",
-          variant: "destructive",
-        });
-      }
-    }
-  }, [availableEvaluationsForPicker, selectedEvaluationsForComparison, toast]);
+      return newState;
+    });
+  }, [availableEvaluationsForPicker, toast]);
 
   // Função para remover avaliação do carrinho
   const handleRemoveEvaluation = useCallback((evaluationId: string) => {
@@ -341,6 +307,7 @@ export default function Evolution() {
           // Se a API de comparação retornou avaliações, usar elas
           if (comparisonResponse?.opcoes?.avaliacoes && comparisonResponse.opcoes.avaliacoes.length > 0) {
             console.log(`📊 ${comparisonResponse.opcoes.avaliacoes.length} avaliações encontradas na API de comparação`);
+            console.log('🆔 IDs da API de comparação:', comparisonResponse.opcoes.avaliacoes.map(a => ({ id: String(a.id).trim(), titulo: a.titulo })));
             
             // Tentar buscar detalhes completos (data_aplicacao) da API de resultados com filtros
             let evaluationsWithDetails: Evaluation[] = [];
@@ -348,15 +315,21 @@ export default function Evolution() {
               const detailedResponse = await EvaluationResultsApiService.getEvaluationsList(1, 100, filters);
               
               if (detailedResponse?.resultados_detalhados?.avaliacoes) {
-                // Normalizar IDs para comparação (ambos como string)
+                console.log('🆔 IDs da API de resultados:', detailedResponse.resultados_detalhados.avaliacoes.map(e => ({ id: String(e.id).trim(), titulo: e.titulo })));
+                
+                // Normalizar IDs para comparação (ambos como string, removendo espaços e convertendo para minúsculas para comparação mais robusta)
                 const comparisonIds = new Set(
-                  comparisonResponse.opcoes.avaliacoes.map(a => String(a.id).trim())
+                  comparisonResponse.opcoes.avaliacoes.map(a => String(a.id).trim().toLowerCase())
                 );
                 
                 evaluationsWithDetails = detailedResponse.resultados_detalhados.avaliacoes
                   .filter(evaluation => {
-                    const evalId = String(evaluation.id).trim();
-                    return comparisonIds.has(evalId);
+                    const evalId = String(evaluation.id).trim().toLowerCase();
+                    const found = comparisonIds.has(evalId);
+                    if (!found) {
+                      console.log(`⚠️ ID não encontrado na comparação: ${evaluation.id} (${evaluation.titulo})`);
+                    }
+                    return found;
                   })
                   .map(evaluation => ({
                     id: evaluation.id,
@@ -369,7 +342,7 @@ export default function Evolution() {
                     turma: evaluation.turma || null,
                   }));
                 
-                console.log(`✅ ${evaluationsWithDetails.length} avaliações mapeadas com detalhes`);
+                console.log(`✅ ${evaluationsWithDetails.length} avaliações mapeadas com detalhes da API de resultados`);
               }
             } catch (detailError) {
               console.warn('⚠️ Erro ao buscar detalhes:', detailError);
@@ -378,27 +351,30 @@ export default function Evolution() {
             // Se não encontrou detalhes ou encontrou menos do que esperado, usar dados básicos da API de comparação
             if (evaluationsWithDetails.length < comparisonResponse.opcoes.avaliacoes.length) {
               console.log(`⚠️ Apenas ${evaluationsWithDetails.length} de ${comparisonResponse.opcoes.avaliacoes.length} avaliações tiveram detalhes encontrados`);
+              console.log('📋 Usando dados da API de comparação diretamente para as avaliações faltantes');
               
-              // Criar um mapa dos detalhes encontrados
-              const detailsMap = new Map(evaluationsWithDetails.map(e => [String(e.id).trim(), e]));
+              // Criar um mapa dos detalhes encontrados (usar lowercase para comparação)
+              const detailsMap = new Map(
+                evaluationsWithDetails.map(e => [String(e.id).trim().toLowerCase(), e])
+              );
               
               // Mapear todas as avaliações da API de comparação, usando detalhes quando disponíveis
               const mappedEvaluations = comparisonResponse.opcoes.avaliacoes.map(evaluation => {
-                const evalId = String(evaluation.id).trim();
+                const evalId = String(evaluation.id).trim().toLowerCase();
                 const existingDetail = detailsMap.get(evalId);
                 
                 if (existingDetail) {
                   return existingDetail;
                 }
                 
-                // Se não tem detalhes, buscar data individualmente
-                // Retornar null temporariamente, será preenchido depois
+                // Se não tem detalhes, usar dados básicos da API de comparação
+                // Usar data padrão para garantir que apareça mesmo sem filtro de período
                 return {
                   id: evaluation.id,
                   titulo: evaluation.titulo || 'Sem título',
                   disciplina: '',
                   status: 'concluida',
-                  data_aplicacao: null as string | null,
+                  data_aplicacao: new Date().toISOString(), // Data padrão para garantir exibição
                   escola: null,
                   serie: null,
                   turma: null,
@@ -407,34 +383,53 @@ export default function Evolution() {
               
               console.log(`✅ ${mappedEvaluations.length} avaliações mapeadas (combinando detalhes e dados básicos)`);
               
-              // Buscar datas faltantes individualmente
-              const evaluationsWithDates = await Promise.all(
+              // Tentar buscar datas faltantes individualmente (mas não bloquear se falhar)
+              const evaluationsWithDates = await Promise.allSettled(
                 mappedEvaluations.map(async (evaluation) => {
-                  if (evaluation.data_aplicacao) {
+                  // Se já tem data válida, não buscar novamente
+                  if (evaluation.data_aplicacao && evaluation.data_aplicacao !== new Date().toISOString()) {
                     return evaluation;
                   }
                   
                   try {
                     const detailResponse = await EvaluationResultsApiService.getEvaluationById(evaluation.id);
-                    return {
-                      ...evaluation,
-                      data_aplicacao: detailResponse?.data_aplicacao || new Date().toISOString()
-                    };
+                    if (detailResponse?.data_aplicacao) {
+                      return {
+                        ...evaluation,
+                        data_aplicacao: detailResponse.data_aplicacao
+                      };
+                    }
                   } catch (error) {
                     console.warn(`⚠️ Erro ao buscar data da avaliação ${evaluation.id}:`, error);
-                    return {
-                      ...evaluation,
-                      data_aplicacao: new Date().toISOString()
-                    };
                   }
+                  
+                  // Retornar com data padrão se não conseguir buscar
+                  return evaluation;
                 })
               );
               
-              setAvailableEvaluationsForPicker(evaluationsWithDates);
+              // Extrair resultados bem-sucedidos ou usar o valor padrão
+              const finalEvaluations = evaluationsWithDates.map((result, index) => {
+                if (result.status === 'fulfilled') {
+                  return result.value;
+                } else {
+                  // Se falhou, usar a avaliação original com data padrão
+                  return mappedEvaluations[index];
+                }
+              });
+              
+              console.log(`📋 Definindo ${finalEvaluations.length} avaliações em availableEvaluationsForPicker`);
+              console.log('📋 Avaliações finais:', finalEvaluations.map(e => ({ id: e.id, titulo: e.titulo, data: e.data_aplicacao })));
+              setAvailableEvaluationsForPicker(finalEvaluations);
             } else {
               // Todas as avaliações tiveram detalhes encontrados
+              console.log(`📋 Definindo ${evaluationsWithDetails.length} avaliações com detalhes completos em availableEvaluationsForPicker`);
+              console.log('📋 Avaliações com detalhes:', evaluationsWithDetails.map(e => ({ id: e.id, titulo: e.titulo, data: e.data_aplicacao })));
               setAvailableEvaluationsForPicker(evaluationsWithDetails);
             }
+            
+            // Log adicional para confirmar que foi definido
+            console.log('✅ availableEvaluationsForPicker atualizado com', comparisonResponse.opcoes.avaliacoes.length, 'avaliações');
           } else {
             // Se a API de comparação não retornou avaliações, tentar API de resultados diretamente com filtros
             console.log('⚠️ API de comparação não retornou avaliações, tentando API de resultados...');
@@ -496,13 +491,25 @@ export default function Evolution() {
   // Nota: Os filtros de escola/série/turma já são aplicados pela API em loadEvaluations
   const filteredEvaluations = useMemo(() => {
     let filtered = [...availableEvaluationsForPicker];
+    
+    console.log('🔍 Filtros aplicados:', { 
+      total: availableEvaluationsForPicker.length,
+      periodStart, 
+      periodEnd, 
+      evaluationSearch,
+      filteredAntes: filtered.length 
+    });
 
-    // Filtro por período
+    // Filtro por período - só aplicar se houver filtro ativo
     if (periodStart) {
       const startDate = new Date(periodStart);
       startDate.setHours(0, 0, 0, 0); // Iniciar no início do dia
       filtered = filtered.filter(evaluation => {
-        if (!evaluation.data_aplicacao) return false;
+        // Se não tem data_aplicacao e há filtro de período, remover
+        if (!evaluation.data_aplicacao) {
+          console.log(`⚠️ Avaliação ${evaluation.id} sem data_aplicacao removida pelo filtro de período`);
+          return false;
+        }
         const evalDate = new Date(evaluation.data_aplicacao);
         evalDate.setHours(0, 0, 0, 0); // Comparar apenas a data, ignorando hora
         return evalDate >= startDate;
@@ -513,7 +520,10 @@ export default function Evolution() {
       const endDate = new Date(periodEnd);
       endDate.setHours(23, 59, 59, 999); // Incluir o dia inteiro
       filtered = filtered.filter(evaluation => {
-        if (!evaluation.data_aplicacao) return false;
+        // Se não tem data_aplicacao e há filtro de período, remover
+        if (!evaluation.data_aplicacao) {
+          return false;
+        }
         const evalDate = new Date(evaluation.data_aplicacao);
         return evalDate <= endDate;
       });
@@ -527,8 +537,26 @@ export default function Evolution() {
       );
     }
 
+    console.log('✅ filteredEvaluations:', { 
+      antes: availableEvaluationsForPicker.length,
+      depois: filtered.length,
+      avaliacoes: filtered.map(e => ({ id: e.id, titulo: e.titulo, data: e.data_aplicacao }))
+    });
+
     return filtered;
   }, [availableEvaluationsForPicker, periodStart, periodEnd, evaluationSearch]);
+
+  // Debug: Log quando availableEvaluationsForPicker mudar
+  useEffect(() => {
+    console.log('📊 availableEvaluationsForPicker atualizado:', {
+      length: availableEvaluationsForPicker.length,
+      avaliacoes: availableEvaluationsForPicker.map(e => ({
+        id: e.id,
+        titulo: e.titulo,
+        data_aplicacao: e.data_aplicacao
+      }))
+    });
+  }, [availableEvaluationsForPicker]);
 
   // Carregar escolas quando município for selecionado (independente das avaliações)
   useEffect(() => {
@@ -687,7 +715,10 @@ export default function Evolution() {
       setIsLoadingComparison(true);
       setComparisonError(null);
 
-      const evaluationIds = selectedEvaluationsForComparison.map(e => e.id);
+      // Remover duplicatas usando Set para garantir IDs únicos
+      const evaluationIds = Array.from(
+        new Set(selectedEvaluationsForComparison.map(e => e.id))
+      );
       console.log('IDs finais para comparação:', evaluationIds);
 
       const comparison = await EvaluationComparisonApiService.compareEvaluations(evaluationIds);
@@ -766,7 +797,33 @@ export default function Evolution() {
         
         // Verificar novamente se ainda temos 2+ avaliações (pode ter mudado durante o delay)
         if (selectedEvaluationsForComparison.length >= 2) {
-          await handleCompareEvaluations();
+          try {
+            await handleCompareEvaluations();
+          } catch (error: unknown) {
+            // Se a comparação falhar, tentar identificar avaliações inválidas
+            // e removê-las automaticamente
+            console.error('Erro na comparação automática:', error);
+            
+            // Extrair mensagem de erro
+            let errorMessage = '';
+            if (error && typeof error === 'object') {
+              if ('response' in error) {
+                const axiosError = error as { response?: { data?: { error?: string } } };
+                errorMessage = axiosError.response?.data?.error || '';
+              }
+              if ('message' in error && typeof error.message === 'string') {
+                errorMessage = error.message;
+              }
+            }
+            
+            // Se o erro menciona avaliações sem resultados, tentar identificar quais
+            if (errorMessage.includes('não possui resultados calculados') || 
+                errorMessage.includes('sem resultados')) {
+              // Marcar todas como potencialmente inválidas e deixar o usuário decidir
+              // ou tentar validar uma por uma (mais complexo, deixamos o usuário remover manualmente)
+              console.warn('Uma ou mais avaliações podem não ter resultados calculados');
+            }
+          }
         }
       } else {
         // Limpar dados quando houver menos de 2 avaliações
@@ -993,10 +1050,11 @@ export default function Evolution() {
               
               <Button 
                 onClick={async () => {
-                  if (!processedData || !comparisonData) {
+                  // Validar se há avaliações selecionadas
+                  if (selectedEvaluationsForComparison.length < 2) {
                     toast({
-                      title: "Dados insuficientes",
-                      description: "Não há dados disponíveis para exportar.",
+                      title: "Selecione pelo menos 2 avaliações",
+                      description: "Para exportar, você precisa ter pelo menos 2 avaliações selecionadas.",
                       variant: "destructive",
                     });
                     return;
@@ -1004,23 +1062,86 @@ export default function Evolution() {
 
                   try {
                     setIsExportingExcel(true);
-                    await exportEvolutionToExcel(comparisonData, processedData);
+
+                    // Preparar payload com os IDs das avaliações selecionadas
+                    // Remover duplicatas usando Set para garantir IDs únicos
+                    const uniqueTestIds = Array.from(
+                      new Set(selectedEvaluationsForComparison.map(e => e.id))
+                    );
+                    
+                    const payload = {
+                      test_ids: uniqueTestIds,
+                    };
+
+                    // Fazer requisição POST para o backend
+                    const response = await api.post('/test/evolution/export-excel', payload, {
+                      responseType: 'blob',
+                    });
+
+                    // Criar blob a partir da resposta
+                    const blob = new Blob([response.data], {
+                      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                    });
+
+                    // Extrair nome do arquivo do header Content-Disposition ou usar padrão
+                    const contentDisposition = response.headers['content-disposition'];
+                    let fileName = `exportacao-evolucao-${new Date().toISOString().split('T')[0]}.xlsx`;
+                    
+                    if (contentDisposition) {
+                      const fileNameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                      if (fileNameMatch && fileNameMatch[1]) {
+                        fileName = fileNameMatch[1].replace(/['"]/g, '');
+                      }
+                    }
+
+                    // Criar link temporário e fazer download
+                    const url = window.URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.setAttribute('download', fileName);
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    window.URL.revokeObjectURL(url);
+
                     toast({
                       title: "Excel exportado com sucesso!",
-                      description: "O arquivo foi salvo no seu dispositivo.",
+                      description: `Arquivo gerado com sucesso para ${selectedEvaluationsForComparison.length} avaliação(ões).`,
                     });
-                  } catch (error) {
+                  } catch (error: any) {
                     console.error('Erro ao exportar Excel:', error);
+
+                    // Tratar erro que pode vir como blob
+                    let errorMessage = "Não foi possível exportar as avaliações.";
+
+                    if (error.response?.data instanceof Blob) {
+                      try {
+                        const text = await error.response.data.text();
+                        const errorData = JSON.parse(text);
+                        errorMessage = errorData.message || errorMessage;
+                      } catch {
+                        // Se não conseguir parsear, usar mensagem padrão
+                      }
+                    } else if (error.response?.data?.message) {
+                      errorMessage = error.response.data.message;
+                    } else if (error.response?.status === 400) {
+                      errorMessage = "Dados inválidos para exportação.";
+                    } else if (error.response?.status === 404) {
+                      errorMessage = "Rota de exportação não encontrada.";
+                    } else if (error.response?.status === 500) {
+                      errorMessage = "Erro interno do servidor ao gerar o arquivo.";
+                    }
+
                     toast({
                       title: "Erro ao exportar Excel",
-                      description: "Não foi possível exportar os dados. Tente novamente.",
+                      description: errorMessage,
                       variant: "destructive",
                     });
                   } finally {
                     setIsExportingExcel(false);
                   }
                 }}
-                disabled={isGeneratingPDF || isExportingExcel || !processedData || !comparisonData}
+                disabled={isGeneratingPDF || isExportingExcel || selectedEvaluationsForComparison.length < 2}
                 className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
               >
                 <Table className={`h-4 w-4 mr-2 ${isExportingExcel ? 'animate-spin' : ''}`} />
