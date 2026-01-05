@@ -4,7 +4,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
-import { ArrowLeft, Play, Calendar, User, BookOpen } from 'lucide-react';
+import { ArrowLeft, Play, Calendar, User, BookOpen, Users } from 'lucide-react';
 
 const GameView = () => {
     const { id } = useParams();
@@ -168,6 +168,22 @@ const GameView = () => {
                                         day: 'numeric'
                                     })}
                                 </p>
+                            </div>
+                        )}
+
+                        {game.classes && Array.isArray(game.classes) && game.classes.length > 0 && (
+                            <div>
+                                <h4 className="font-medium mb-2 flex items-center gap-2">
+                                    <Users className="w-4 h-4" />
+                                    Turmas Vinculadas
+                                </h4>
+                                <div className="flex flex-wrap gap-2">
+                                    {game.classes.map((classItem: any) => (
+                                        <Badge key={classItem.id} variant="secondary" className="text-xs">
+                                            {classItem.name || classItem.nome || `Turma ${classItem.id}`}
+                                        </Badge>
+                                    ))}
+                                </div>
                             </div>
                         )}
                     </CardContent>
