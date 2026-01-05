@@ -408,13 +408,13 @@ export const DisciplineTables: React.FC<DisciplineTablesProps> = ({
                     turma: false,
                     habilidade: allQuestions.length <= 15, // ✅ NOVO: Ocultar habilidades se muitas questões
                     questoes: true,
-                  showCoins={showCoins}
                     percentualTurma: allQuestions.length <= 20, // ✅ NOVO: Ocultar % se muitas questões
                     total: true,
                     nota: true,
                     proficiencia: true,
                     nivel: true
                   }}
+                  showCoins={showCoins}
                   tabelaDetalhada={{
                     disciplinas: (allQuestions.length > MAX_QUESTIONS_FOR_FULL_VIEW 
                       ? getQuestionWindow(allQuestions, currentQuestionWindow) 
