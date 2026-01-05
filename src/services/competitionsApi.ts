@@ -6,13 +6,107 @@ import type {
   CompetitionRanking,
   CompetitionEnrollmentStatus,
   CompetitionSession,
+  CompetitionQuestion,
   CompetitionSubmitResponse,
   CompetitionResultsResponse,
   GenerateQuestionsParams,
   GenerateQuestionsResponse,
   CanStartResponse,
-  CompetitionFilters
+  CompetitionFilters,
+  ApiResponse,
+  EnrollmentResponse
 } from '@/types/competition-types';
+
+/**
+ * Funções auxiliares para mapeamento de campos entre frontend e backend
+ */
+
+/**
+ * Mapeia dados do formulário (frontend) para o formato do backend
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapFormDataToBackend(data: CompetitionFormData): any {
+  return {
+    title: data.titulo,
+    description: data.descricao,
+    instrucoes: data.instrucoes,
+    recompensas: data.recompensas,
+    modo_selecao: data.modo_selecao,
+    icone: data.icone,
+    cor: data.cor,
+    dificuldade: data.dificuldades || [],
+    duration: data.duracao,
+    time_limit: data.dataInicio.toISOString(),
+    end_time: data.dataFim.toISOString(),
+    max_participantes: data.maxParticipantes,
+    subject: data.disciplina_id,
+    grade_id: data.serie_id,
+    questions: data.questoes,
+    classes: data.turmas,
+    quantidade_questoes: data.quantidade_questoes
+  };
+}
+
+/**
+ * Mapeia dados do backend para o formato do frontend
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapBackendToFrontend(backendData: any): Competition {
+  return {
+    ...backendData,
+    // Mapear campos do backend para frontend
+    titulo: backendData.title || backendData.titulo,
+    disciplina_id: backendData.subject || backendData.disciplina_id,
+    data_inicio: backendData.time_limit || backendData.data_inicio,
+    data_fim: backendData.end_time || backendData.data_fim,
+    duracao: backendData.duration || backendData.duracao,
+    max_participantes: backendData.max_participantes,
+    turmas: backendData.classes || backendData.turmas,
+    questoes: backendData.questions || backendData.questoes,
+    descricao: backendData.description || backendData.descricao,
+    // Manter campos originais também para compatibilidade
+    title: backendData.title,
+    subject: backendData.subject,
+    time_limit: backendData.time_limit,
+    end_time: backendData.end_time,
+    duration: backendData.duration,
+    classes: backendData.classes,
+    questions: backendData.questions,
+    description: backendData.description
+  };
+}
+
+/**
+ * Extrai dados de uma resposta com wrapper {mensagem, data}
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function extractDataFromResponse<T>(response: any): T {
+  // Se a resposta já é o tipo esperado, retornar direto
+  if (response && !response.mensagem && !response.message && !response.data) {
+    return response;
+  }
+  // Se tem wrapper, extrair de data
+  if (response?.data) {
+    return response.data;
+  }
+  // Fallback: retornar a resposta original
+  return response;
+}
+
+/**
+ * Mapeia CanStartResponse do backend para frontend
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapCanStartResponse(backendResponse: any): CanStartResponse {
+  return {
+    pode_iniciar: backendResponse.pode_iniciar,
+    can_start: backendResponse.pode_iniciar ?? backendResponse.can_start ?? false,
+    motivo: backendResponse.motivo,
+    reason: backendResponse.motivo || backendResponse.reason,
+    starts_at: backendResponse.starts_at,
+    competition_data: backendResponse.competition_data
+  };
+}
 
 /**
  * Serviço de API para gerenciamento de Competições
@@ -30,30 +124,21 @@ export class CompetitionsApiService {
    * @returns Competição criada
    */
   static async createCompetition(data: CompetitionFormData): Promise<Competition> {
-    const payload: any = {
-      titulo: data.titulo,
-      disciplina_id: data.disciplina_id,
-      data_inicio: data.dataInicio.toISOString(),
-      data_fim: data.dataFim.toISOString(),
-      duracao: data.duracao,
-      max_participantes: data.maxParticipantes,
-      recompensas: data.recompensas,
-      turmas: data.turmas,
-      questoes: data.questoes,
-      modo_selecao: data.modo_selecao,
-      quantidade_questoes: data.quantidade_questoes,
-      dificuldade: data.dificuldades || data.dificuldade
-    };
+    // Mapear dados do frontend para o formato do backend
+    const payload = mapFormDataToBackend(data);
 
-    // Adicionar campos opcionais se presentes
-    if (data.descricao) payload.descricao = data.descricao;
-    if (data.instrucoes) payload.instrucoes = data.instrucoes;
-    if (data.icone) payload.icone = data.icone;
-    if (data.cor) payload.cor = data.cor;
-    if (data.serie_id) payload.serie_id = data.serie_id;
-
-    const response = await api.post('/competitions/', payload);
-    return response.data;
+    const response = await api.post<ApiResponse<{ id: string; title: string }>>('/competitions', payload);
+    
+    // Extrair dados do wrapper de resposta
+    const responseData = extractDataFromResponse<{ id: string; title: string }>(response.data);
+    
+    // Buscar a competição criada para retornar dados completos
+    if (responseData.id) {
+      return this.getCompetitionById(responseData.id);
+    }
+    
+    // Fallback: retornar dados mapeados
+    return mapBackendToFrontend(responseData);
   }
 
   /**
@@ -63,29 +148,55 @@ export class CompetitionsApiService {
    * @returns Competição atualizada
    */
   static async updateCompetition(competitionId: string, data: Partial<CompetitionFormData>): Promise<Competition> {
-    const payload: any = {};
-    
-    // Mapear campos do formulário para o formato da API
-    if (data.titulo) payload.titulo = data.titulo;
-    if (data.disciplina_id) payload.disciplina_id = data.disciplina_id;
-    if (data.dataInicio) payload.data_inicio = data.dataInicio.toISOString();
-    if (data.dataFim) payload.data_fim = data.dataFim.toISOString();
-    if (data.duracao !== undefined) payload.duracao = data.duracao;
-    if (data.maxParticipantes !== undefined) payload.max_participantes = data.maxParticipantes;
-    if (data.recompensas) payload.recompensas = data.recompensas;
-    if (data.turmas) payload.turmas = data.turmas;
-    if (data.questoes) payload.questoes = data.questoes;
-    if (data.modo_selecao) payload.modo_selecao = data.modo_selecao;
-    if (data.quantidade_questoes !== undefined) payload.quantidade_questoes = data.quantidade_questoes;
-    if (data.dificuldades) payload.dificuldade = data.dificuldades;
-    if (data.descricao) payload.descricao = data.descricao;
-    if (data.instrucoes) payload.instrucoes = data.instrucoes;
-    if (data.icone) payload.icone = data.icone;
-    if (data.cor) payload.cor = data.cor;
-    if (data.serie_id) payload.serie_id = data.serie_id;
+    // Criar objeto completo para mapeamento
+    const fullData = {
+      titulo: data.titulo || '',
+      disciplina_id: data.disciplina_id || '',
+      dataInicio: data.dataInicio || new Date(),
+      dataFim: data.dataFim || new Date(),
+      duracao: data.duracao || 0,
+      maxParticipantes: data.maxParticipantes || 0,
+      recompensas: data.recompensas || { ouro: 0, prata: 0, bronze: 0, participacao: 0 },
+      turmas: data.turmas || [],
+      questoes: data.questoes || [],
+      modo_selecao: data.modo_selecao || 'manual',
+      quantidade_questoes: data.quantidade_questoes,
+      dificuldades: data.dificuldades,
+      serie_id: data.serie_id,
+      descricao: data.descricao,
+      instrucoes: data.instrucoes,
+      icone: data.icone,
+      cor: data.cor
+    } as CompetitionFormData;
 
-    const response = await api.put(`/competitions/${competitionId}`, payload);
-    return response.data;
+    // Mapear apenas campos que foram fornecidos
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const payload: any = {};
+    const mapped = mapFormDataToBackend(fullData);
+    
+    // Incluir apenas campos que foram fornecidos no data original
+    if (data.titulo !== undefined) payload.title = mapped.title;
+    if (data.descricao !== undefined) payload.description = mapped.description;
+    if (data.instrucoes !== undefined) payload.instrucoes = mapped.instrucoes;
+    if (data.recompensas !== undefined) payload.recompensas = mapped.recompensas;
+    if (data.modo_selecao !== undefined) payload.modo_selecao = mapped.modo_selecao;
+    if (data.icone !== undefined) payload.icone = mapped.icone;
+    if (data.cor !== undefined) payload.cor = mapped.cor;
+    if (data.dificuldades !== undefined) payload.dificuldade = mapped.dificuldade;
+    if (data.duracao !== undefined) payload.duration = mapped.duration;
+    if (data.dataInicio !== undefined) payload.time_limit = mapped.time_limit;
+    if (data.dataFim !== undefined) payload.end_time = mapped.end_time;
+    if (data.maxParticipantes !== undefined) payload.max_participantes = mapped.max_participantes;
+    if (data.disciplina_id !== undefined) payload.subject = mapped.subject;
+    if (data.serie_id !== undefined) payload.grade_id = mapped.grade_id;
+    if (data.questoes !== undefined) payload.questions = mapped.questions;
+    if (data.turmas !== undefined) payload.classes = mapped.classes;
+    if (data.quantidade_questoes !== undefined) payload.quantidade_questoes = mapped.quantidade_questoes;
+
+    const response = await api.put<ApiResponse<{ id: string }>>(`/competitions/${competitionId}`, payload);
+    
+    // Buscar a competição atualizada para retornar dados completos
+    return this.getCompetitionById(competitionId);
   }
 
   /**
@@ -94,8 +205,16 @@ export class CompetitionsApiService {
    * @returns Sucesso da operação
    */
   static async deleteCompetition(competitionId: string): Promise<{ success: boolean; message: string }> {
-    const response = await api.delete(`/competitions/${competitionId}`);
-    return response.data;
+    const response = await api.delete<ApiResponse<null> | { mensagem: string }>(`/competitions/${competitionId}`);
+    
+    // Extrair mensagem do wrapper ou resposta direta
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mensagem = (response.data as any)?.mensagem || (response.data as any)?.message || 'Competição excluída com sucesso';
+    
+    return {
+      success: true,
+      message: mensagem
+    };
   }
 
   /**
@@ -255,8 +374,22 @@ export class CompetitionsApiService {
    * @returns Lista de competições
    */
   static async listAllCompetitions(filters?: CompetitionFilters): Promise<Competition[]> {
-    const response = await api.get('/competitions/', { params: filters });
-    return response.data;
+    // Mapear filtros do frontend para backend
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const backendFilters: any = {};
+    if (filters?.status) backendFilters.status = filters.status;
+    if (filters?.disciplina_id) backendFilters.subject_id = filters.disciplina_id;
+    if (filters?.escola_id) backendFilters.school_id = filters.escola_id;
+    if (filters?.municipio_id) backendFilters.municipio_id = filters.municipio_id;
+    if (filters?.estado_id) backendFilters.estado_id = filters.estado_id;
+    if (filters?.data_inicio_from) backendFilters.data_inicio_from = filters.data_inicio_from;
+    if (filters?.data_inicio_to) backendFilters.data_inicio_to = filters.data_inicio_to;
+
+    const response = await api.get<Competition[]>('/competitions/', { params: backendFilters });
+    
+    // Mapear cada competição do backend para frontend
+    const competitions = Array.isArray(response.data) ? response.data : [];
+    return competitions.map(mapBackendToFrontend);
   }
 
   /**
@@ -265,8 +398,8 @@ export class CompetitionsApiService {
    * @returns Detalhes da competição
    */
   static async getCompetitionById(competitionId: string): Promise<Competition> {
-    const response = await api.get(`/competitions/${competitionId}`);
-    return response.data;
+    const response = await api.get<Competition>(`/competitions/${competitionId}`);
+    return mapBackendToFrontend(response.data);
   }
 
   /**
@@ -275,8 +408,16 @@ export class CompetitionsApiService {
    * @returns Resultado da finalização
    */
   static async finalizeCompetition(competitionId: string): Promise<{ success: boolean; message: string }> {
-    const response = await api.post(`/competitions/${competitionId}/finalize`);
-    return response.data;
+    const response = await api.post<ApiResponse<null> | { mensagem: string }>(`/competitions/${competitionId}/finalize`);
+    
+    // Extrair mensagem do wrapper ou resposta direta
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mensagem = (response.data as any)?.mensagem || (response.data as any)?.message || 'Competição finalizada com sucesso';
+    
+    return {
+      success: true,
+      message: mensagem
+    };
   }
 
   /**
@@ -307,8 +448,17 @@ export class CompetitionsApiService {
     disciplina?: string;
     status?: string;
   }): Promise<Competition[]> {
-    const response = await api.get('/competitions/available', { params: filters });
-    return response.data;
+    // Mapear filtros
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const backendFilters: any = {};
+    if (filters?.disciplina) backendFilters.disciplina = filters.disciplina;
+    if (filters?.status) backendFilters.status = filters.status;
+
+    const response = await api.get<Competition[]>('/competitions/available', { params: backendFilters });
+    
+    // Mapear cada competição do backend para frontend
+    const competitions = Array.isArray(response.data) ? response.data : [];
+    return competitions.map(mapBackendToFrontend);
   }
 
   /**
@@ -317,8 +467,31 @@ export class CompetitionsApiService {
    * @returns Status da inscrição
    */
   static async getEnrollmentStatus(competitionId: string): Promise<CompetitionEnrollmentStatus> {
-    const response = await api.get(`/competitions/${competitionId}/enrollment-status`);
-    return response.data;
+    const response = await api.get<{
+      inscrito: boolean;
+      status?: string | null;
+      enrolled_at?: string;
+      enrollment_id?: string;
+      can_enroll?: boolean;
+      reason?: string;
+      has_started?: boolean;
+      has_finished?: boolean;
+      result?: CompetitionResult;
+    }>(`/competitions/${competitionId}/enrollment-status`);
+    
+    const backendData = response.data;
+    
+    // Mapear campos do backend para frontend
+    return {
+      is_enrolled: backendData.inscrito ?? false,
+      enrollment_id: backendData.enrollment_id,
+      enrolled_at: backendData.enrolled_at,
+      can_enroll: backendData.can_enroll ?? !backendData.inscrito,
+      reason: backendData.reason,
+      has_started: backendData.has_started,
+      has_finished: backendData.has_finished,
+      result: backendData.result
+    };
   }
 
   /**
@@ -331,8 +504,19 @@ export class CompetitionsApiService {
     message: string;
     enrollment_id?: string;
   }> {
-    const response = await api.post(`/competitions/${competitionId}/enroll`);
-    return response.data;
+    const response = await api.post<EnrollmentResponse>(`/competitions/${competitionId}/enroll`);
+    
+    // Extrair dados do wrapper
+    const responseData = extractDataFromResponse<{ enrollment_id?: string }>(response.data);
+    
+    // Verificar se já estava inscrito (código 200) ou nova inscrição (código 201)
+    const isSuccess = response.status === 200 || response.status === 201;
+    
+    return {
+      success: isSuccess,
+      message: response.data.mensagem || response.data.message || (isSuccess ? 'Inscrição realizada com sucesso' : 'Erro na inscrição'),
+      enrollment_id: responseData.enrollment_id
+    };
   }
 
   /**
@@ -341,8 +525,16 @@ export class CompetitionsApiService {
    * @returns Resultado do cancelamento
    */
   static async cancelEnrollment(competitionId: string): Promise<{ success: boolean; message: string }> {
-    const response = await api.delete(`/competitions/${competitionId}/enroll`);
-    return response.data;
+    const response = await api.delete<ApiResponse<null> | { mensagem: string }>(`/competitions/${competitionId}/enroll`);
+    
+    // Extrair mensagem do wrapper ou resposta direta
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mensagem = (response.data as any)?.mensagem || (response.data as any)?.message || 'Inscrição cancelada com sucesso';
+    
+    return {
+      success: true,
+      message: mensagem
+    };
   }
 
   /**
@@ -351,8 +543,8 @@ export class CompetitionsApiService {
    * @returns Dados de permissão para iniciar
    */
   static async canStartCompetition(competitionId: string): Promise<CanStartResponse> {
-    const response = await api.get(`/competitions/${competitionId}/can-start`);
-    return response.data;
+    const response = await api.get<CanStartResponse>(`/competitions/${competitionId}/can-start`);
+    return mapCanStartResponse(response.data);
   }
 
   /**
@@ -361,8 +553,71 @@ export class CompetitionsApiService {
    * @returns Dados da sessão iniciada com questões
    */
   static async startCompetition(competitionId: string): Promise<CompetitionSession> {
-    const response = await api.post(`/competitions/${competitionId}/start`);
-    return response.data;
+    const response = await api.post<ApiResponse<{
+      session_id: string;
+      started_at: string;
+      time_limit_minutes: number;
+      questions: CompetitionQuestion[];
+    }>>(`/competitions/${competitionId}/start`);
+    
+    // Extrair dados do wrapper
+    const backendData = extractDataFromResponse<{
+      session_id: string;
+      started_at: string;
+      time_limit_minutes: number;
+      questions: CompetitionQuestion[];
+    }>(response.data);
+    
+    // Calcular expires_at baseado em started_at e time_limit_minutes
+    const startedAt = new Date(backendData.started_at);
+    const expiresAt = new Date(startedAt.getTime() + backendData.time_limit_minutes * 60 * 1000);
+    
+    // Calcular remaining_time_minutes
+    const now = new Date();
+    const remainingMs = expiresAt.getTime() - now.getTime();
+    const remainingMinutes = Math.max(0, Math.floor(remainingMs / (60 * 1000)));
+    
+    // Mapear questões do backend para frontend
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mappedQuestions = backendData.questions.map((q: any) => {
+      // Backend pode retornar 'number' ou 'numero', 'text' ou 'texto', etc.
+      const question: CompetitionQuestion = {
+        id: q.id,
+        numero: q.numero || q.number || 0,
+        texto: q.texto || q.text || '',
+        texto_formatado: q.texto_formatado || q.formatted_text,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        alternativas: (q.alternativas || q.alternatives || []).map((alt: any) => ({
+          id: alt.id || alt.letra || '',
+          letra: alt.letra || alt.id || '',
+          texto: alt.texto || alt.text || '',
+          is_correct: alt.is_correct
+        })),
+        disciplina: q.disciplina,
+        habilidade: q.habilidade,
+        codigo_habilidade: q.codigo_habilidade,
+        dificuldade: q.dificuldade,
+        valor: q.valor,
+        imagem_url: q.imagem_url
+      };
+      return question;
+    });
+    
+    // Mapear para CompetitionSession
+    const session: CompetitionSession = {
+      session_id: backendData.session_id,
+      competition_id: competitionId,
+      student_id: '', // Será preenchido pelo backend ou contexto
+      started_at: backendData.started_at,
+      expires_at: expiresAt.toISOString(),
+      time_limit_minutes: backendData.time_limit_minutes,
+      remaining_time_minutes: remainingMinutes,
+      questions: mappedQuestions,
+      total_questions: mappedQuestions.length,
+      current_answers: {}
+    };
+    
+    return session;
   }
 
   /**
@@ -394,8 +649,64 @@ export class CompetitionsApiService {
     }>;
     time_spent: number;
   }): Promise<CompetitionSubmitResponse> {
-    const response = await api.post('/competitions/submit', data);
-    return response.data;
+    const response = await api.post<ApiResponse<{
+      result_id?: string;
+      grade: number;
+      proficiency?: number;
+      classification?: string;
+      correct_answers: number;
+      total_questions: number;
+      ranking_position?: number;
+      total_participants?: number;
+      coins_earned?: number;
+      wrong_answers?: number;
+      blank_answers?: number;
+      time_spent?: number;
+    }>>('/competitions/submit', {
+      session_id: data.session_id,
+      answers: data.answers
+    });
+    
+    // Extrair dados do wrapper
+    const backendData = extractDataFromResponse<{
+      result_id?: string;
+      grade: number;
+      proficiency?: number;
+      classification?: string;
+      correct_answers: number;
+      total_questions: number;
+      ranking_position?: number;
+      total_participants?: number;
+      coins_earned?: number;
+      wrong_answers?: number;
+      blank_answers?: number;
+      time_spent?: number;
+    }>(response.data);
+    
+    // Calcular campos derivados
+    const totalQuestions = backendData.total_questions;
+    const correctAnswers = backendData.correct_answers;
+    const wrongAnswers = backendData.wrong_answers || 0;
+    const blankAnswers = backendData.blank_answers || (totalQuestions - correctAnswers - wrongAnswers);
+    
+    // Mapear para CompetitionSubmitResponse
+    const result: CompetitionSubmitResponse = {
+      success: true,
+      score: backendData.grade,
+      proficiencia: backendData.proficiency,
+      ranking_position: backendData.ranking_position || 0,
+      total_participants: backendData.total_participants || 0,
+      coins_earned: backendData.coins_earned || 0,
+      correct_answers: correctAnswers,
+      wrong_answers: wrongAnswers,
+      blank_answers: blankAnswers,
+      total_questions: totalQuestions,
+      time_spent: backendData.time_spent || data.time_spent,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      classificacao: (backendData.classification as any) || undefined
+    };
+    
+    return result;
   }
 
   /**
@@ -405,8 +716,24 @@ export class CompetitionsApiService {
    */
   static async getMyResult(competitionId: string): Promise<CompetitionResult | null> {
     try {
-      const response = await api.get(`/competitions/${competitionId}/my-result`);
-      return response.data;
+      const response = await api.get<ApiResponse<CompetitionResult> | { mensagem: string; data: null }>(`/competitions/${competitionId}/my-result`);
+      
+      // Se resposta tem wrapper e data é null, retornar null
+      if (response.data && typeof response.data === 'object' && 'data' in response.data) {
+        const wrapped = response.data as ApiResponse<CompetitionResult>;
+        if (wrapped.data === null) {
+          return null;
+        }
+        return wrapped.data;
+      }
+      
+      // Se resposta é null, retornar null
+      if (!response.data) {
+        return null;
+      }
+      
+      // Extrair dados do wrapper ou retornar direto
+      return extractDataFromResponse<CompetitionResult>(response.data);
     } catch (error) {
       // Se não encontrar resultado, retorna null
       return null;
@@ -430,7 +757,21 @@ export class CompetitionsApiService {
     municipio_id?: string;
     estado_id?: string;
   }): Promise<CompetitionResultsResponse> {
-    const response = await api.get(`/competitions/${competitionId}/results`, { params: filters });
+    // Mapear filtros do frontend para backend
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const backendFilters: any = {};
+    if (filters?.escola_id) backendFilters.escola_id = filters.escola_id;
+    if (filters?.turma_id) backendFilters.turma_id = filters.turma_id;
+    if (filters?.serie_id) backendFilters.serie_id = filters.serie_id;
+    if (filters?.municipio_id) backendFilters.municipio_id = filters.municipio_id;
+    if (filters?.estado_id) backendFilters.estado_id = filters.estado_id;
+
+    const response = await api.get<CompetitionResultsResponse>(`/competitions/${competitionId}/results`, { 
+      params: backendFilters 
+    });
+    
+    // A resposta pode vir no formato documentado (disciplinas/geral) ou no formato antigo
+    // Retornar como está, pois o tipo suporta ambos
     return response.data;
   }
 

@@ -17,16 +17,26 @@ export type QuestionSelectionMode = 'manual' | 'automatico';
 export interface Competition {
   id: string;
   titulo: string;
+  // Compatibilidade: backend pode retornar 'title' também
+  title?: string;
   disciplina_id: string;
   disciplina_nome?: string;
+  // Compatibilidade: backend pode retornar 'subject' também
+  subject?: string;
   data_inicio: string;
   data_fim: string;
+  // Compatibilidade: backend pode retornar 'time_limit' e 'end_time' também
+  time_limit?: string;
+  end_time?: string;
   duracao: number; // em minutos
+  duration?: number; // compatibilidade
   max_participantes: number;
   participantes_atual?: number;
   recompensas: CompetitionRewards;
   turmas: string[];
+  classes?: string[]; // compatibilidade
   questoes: string[];
+  questions?: string[]; // compatibilidade
   status: CompetitionStatus;
   
   // Campos opcionais para exibição
@@ -34,17 +44,22 @@ export interface Competition {
   escola?: string;
   municipio?: string;
   estado?: string;
-  dificuldade?: CompetitionDifficulty;
+  dificuldade?: CompetitionDifficulty | CompetitionDifficulty[];
   total_questoes?: number;
   icone?: string;
   cor?: string;
   descricao?: string;
+  description?: string; // compatibilidade
   instrucoes?: string; // Instruções especiais para alunos
   
   // Timestamps
   created_at?: string;
   updated_at?: string;
   created_by?: string;
+  
+  // Campos adicionais para listagem de competições disponíveis
+  inscrito?: boolean;
+  enrollment_status?: string | null;
 }
 
 // ========================================
@@ -231,9 +246,71 @@ export interface CompetitionRanking {
 // RESPOSTA DE RESULTADOS COMPLETA
 // ========================================
 
+// Estrutura documentada (backend retorna)
+export interface CompetitionResultsResponseBackend {
+  disciplinas: Array<{
+    id: string;
+    nome: string;
+    questoes: Array<{
+      numero: number;
+      habilidade?: string;
+      codigo_habilidade?: string;
+      question_id: string;
+    }>;
+    alunos: Array<{
+      id: string;
+      nome: string;
+      escola: string;
+      serie: string;
+      turma: string;
+      respostas_por_questao: Array<{
+        questao: number;
+        acertou: boolean;
+        respondeu: boolean;
+        resposta: string;
+      }>;
+      total_acertos: number;
+      total_erros: number;
+      total_respondidas: number;
+      total_questoes_disciplina: number;
+      total_em_branco: number;
+      nivel_proficiencia: string;
+      nota: number;
+      proficiencia: number;
+      status: string;
+      percentual_acertos: number;
+      posicao: number;
+      moedas_ganhas: number;
+      tempo_gasto: number;
+    }>;
+  }>;
+  geral: {
+    alunos: Array<{
+      id: string;
+      nome: string;
+      escola: string;
+      serie: string;
+      turma: string;
+      nota_geral: number;
+      proficiencia_geral: number;
+      nivel_proficiencia_geral: string;
+      total_acertos_geral: number;
+      total_questoes_geral: number;
+      total_respondidas_geral: number;
+      total_em_branco_geral: number;
+      percentual_acertos_geral: number;
+      status_geral: string;
+      posicao: number;
+      moedas_ganhas: number;
+      tempo_gasto: number;
+    }>;
+  };
+}
+
+// Estrutura atual (compatibilidade)
 export interface CompetitionResultsResponse {
-  competicao: Competition;
-  estatisticas: {
+  competicao?: Competition;
+  estatisticas?: {
     total_inscritos: number;
     total_participantes: number;
     total_finalizados: number;
@@ -250,7 +327,7 @@ export interface CompetitionResultsResponse {
       avancado: number;
     };
   };
-  ranking: CompetitionRanking[];
+  ranking?: CompetitionRanking[];
   estatisticas_por_questao?: Array<{
     questao_numero: number;
     questao_id: string;
@@ -264,6 +341,9 @@ export interface CompetitionResultsResponse {
     segundo?: CompetitionRanking;
     terceiro?: CompetitionRanking;
   };
+  // Campos da estrutura documentada
+  disciplinas?: CompetitionResultsResponseBackend['disciplinas'];
+  geral?: CompetitionResultsResponseBackend['geral'];
 }
 
 // ========================================
@@ -307,7 +387,11 @@ export interface GenerateQuestionsResponse {
 // ========================================
 
 export interface CanStartResponse {
+  // Backend retorna 'pode_iniciar', mas mantemos 'can_start' para compatibilidade
+  pode_iniciar?: boolean;
   can_start: boolean;
+  // Backend retorna 'motivo', mas mantemos 'reason' para compatibilidade
+  motivo?: string;
   reason?: string;
   starts_at?: string; // Se não pode iniciar ainda
   competition_data?: {
@@ -316,6 +400,26 @@ export interface CanStartResponse {
     total_questoes: number;
     recompensas: CompetitionRewards;
     descricao?: string;
+  };
+}
+
+// ========================================
+// TIPOS DE RESPOSTA COM WRAPPER
+// ========================================
+
+export interface ApiResponse<T> {
+  mensagem?: string;
+  message?: string; // compatibilidade
+  data: T;
+  erro?: string;
+  error?: string; // compatibilidade
+}
+
+export interface EnrollmentResponse {
+  mensagem?: string;
+  message?: string; // compatibilidade
+  data: {
+    enrollment_id?: string;
   };
 }
 

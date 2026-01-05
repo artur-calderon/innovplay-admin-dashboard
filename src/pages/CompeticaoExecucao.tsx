@@ -25,6 +25,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/authContext";
 import { CompetitionsApiService } from "@/services/competitionsApi";
+import { getErrorMessage, getErrorSuggestion } from "@/utils/errorHandler";
 import type { 
   CompetitionSession, 
   CompetitionQuestion, 
@@ -110,10 +111,14 @@ const CompeticaoExecucao = () => {
       // Verificar se pode iniciar
       const canStartResponse = await CompetitionsApiService.canStartCompetition(competitionId);
       
-      if (!canStartResponse.can_start) {
+      // Usar pode_iniciar se disponível, senão usar can_start (compatibilidade)
+      const podeIniciar = canStartResponse.pode_iniciar ?? canStartResponse.can_start ?? false;
+      const motivo = canStartResponse.motivo || canStartResponse.reason;
+      
+      if (!podeIniciar) {
         toast({
           title: "Não disponível",
-          description: canStartResponse.reason || "Esta competição não está disponível no momento.",
+          description: motivo || "Esta competição não está disponível no momento.",
           variant: "destructive",
         });
         navigate('/aluno/competicoes');

@@ -64,8 +64,10 @@ export const CompetitionEnrollment = ({
     try {
       setIsCheckingStart(true);
       const response = await CompetitionsApiService.canStartCompetition(competition.id);
-      setCanStart(response.can_start);
-      setStartReason(response.reason || null);
+      // Usar pode_iniciar se disponível, senão usar can_start (compatibilidade)
+      setCanStart(response.pode_iniciar ?? response.can_start ?? false);
+      // Usar motivo se disponível, senão usar reason (compatibilidade)
+      setStartReason(response.motivo || response.reason || null);
     } catch (error) {
       console.error('Erro ao verificar início:', error);
       setCanStart(false);
@@ -123,14 +125,17 @@ export const CompetitionEnrollment = ({
       // Verificar mais uma vez se pode iniciar
       const canStartResponse = await CompetitionsApiService.canStartCompetition(competition.id);
       
-      if (!canStartResponse.can_start) {
+      const podeIniciar = canStartResponse.pode_iniciar ?? canStartResponse.can_start ?? false;
+      const motivo = canStartResponse.motivo || canStartResponse.reason;
+      
+      if (!podeIniciar) {
         toast({
           title: "Não é possível iniciar",
-          description: canStartResponse.reason || "A competição ainda não está disponível.",
+          description: motivo || "A competição ainda não está disponível.",
           variant: "destructive",
         });
         setCanStart(false);
-        setStartReason(canStartResponse.reason || null);
+        setStartReason(motivo || null);
         return;
       }
 
@@ -176,7 +181,9 @@ export const CompetitionEnrollment = ({
 
     // Está inscrito
     if (enrollmentStatus?.is_enrolled) {
-      if (canStart) {
+      // Usar pode_iniciar se disponível, senão usar can_start
+      const podeIniciarAgora = canStart;
+      if (podeIniciarAgora) {
         return {
           disabled: isLoading,
           variant: 'default' as const,
