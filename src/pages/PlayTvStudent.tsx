@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/authContext';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,6 +9,16 @@ import { useToast } from '@/hooks/use-toast';
 import { api } from '@/lib/api';
 import { VideoList } from '@/components/playtv/VideoList';
 import { PlayTvVideo } from '@/types/playtv';
+
+interface ApiError {
+  response?: {
+    status?: number;
+    data?: {
+      message?: string;
+    };
+  };
+  message?: string;
+}
 
 export default function PlayTvStudent() {
   const { user } = useAuth();
@@ -21,69 +31,7 @@ export default function PlayTvStudent() {
   const [studentGrade, setStudentGrade] = useState<string | null>(null);
   const [studentSchool, setStudentSchool] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (user.role !== 'aluno') {
-      toast({
-        title: 'Acesso Negado',
-        description: 'Esta página é apenas para alunos.',
-        variant: 'destructive',
-      });
-      navigate('/aluno');
-      return;
-    }
-
-    loadStudentInfo();
-    loadSubjects();
-  }, [user.id]);
-
-  useEffect(() => {
-    if (studentGrade) {
-      loadVideos();
-    }
-  }, [studentGrade, selectedSubject]);
-
-  const loadStudentInfo = async () => {
-    try {
-      // Buscar informações do aluno (série e escola)
-      const response = await api.get(`/students/${user.id}`);
-      const studentData = response.data;
-
-      if (studentData.grade_id) {
-        setStudentGrade(studentData.grade_id);
-      }
-      if (studentData.school_id) {
-        setStudentSchool(studentData.school_id);
-      }
-
-      // Se não encontrar na resposta direta, tentar buscar via turma
-      if (!studentData.grade_id && studentData.class_id) {
-        const classResponse = await api.get(`/classes/${studentData.class_id}`);
-        const classData = classResponse.data;
-        if (classData.grade_id) {
-          setStudentGrade(classData.grade_id);
-        }
-        if (classData.school_id) {
-          setStudentSchool(classData.school_id);
-        }
-      }
-    } catch (error: any) {
-      console.error('Erro ao carregar informações do aluno:', error);
-      // Tentar carregar vídeos mesmo sem informações específicas
-      // O backend deve filtrar automaticamente
-      loadVideos();
-    }
-  };
-
-  const loadSubjects = async () => {
-    try {
-      const response = await api.get('/subjects');
-      setSubjects(response.data || []);
-    } catch (error) {
-      console.error('Erro ao carregar disciplinas:', error);
-    }
-  };
-
-  const loadVideos = async () => {
+  const loadVideos = useCallback(async () => {
     setIsLoading(true);
     try {
       // Buscar vídeos filtrados automaticamente pela série do aluno
@@ -108,7 +56,8 @@ export default function PlayTvStudent() {
       }
 
       setVideos(filteredVideos);
-    } catch (error: any) {
+    } catch (err) {
+      const error = err as ApiError;
       // Se o endpoint não existir (404), apenas definir lista vazia sem mostrar erro
       // O interceptor transforma o erro, então verificamos a mensagem ou o status original
       const is404 = error.response?.status === 404 || 
@@ -131,7 +80,71 @@ export default function PlayTvStudent() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [selectedSubject, studentGrade, studentSchool, toast]);
+
+  const loadStudentInfo = useCallback(async () => {
+    try {
+      // Buscar informações do aluno (série e escola)
+      const response = await api.get(`/students/${user.id}`);
+      const studentData = response.data;
+
+      if (studentData.grade_id) {
+        setStudentGrade(studentData.grade_id);
+      }
+      if (studentData.school_id) {
+        setStudentSchool(studentData.school_id);
+      }
+
+      // Se não encontrar na resposta direta, tentar buscar via turma
+      if (!studentData.grade_id && studentData.class_id) {
+        const classResponse = await api.get(`/classes/${studentData.class_id}`);
+        const classData = classResponse.data;
+        if (classData.grade_id) {
+          setStudentGrade(classData.grade_id);
+        }
+      if (classData.school_id) {
+        setStudentSchool(classData.school_id);
+      }
+    }
+    } catch (err) {
+      const error = err as ApiError;
+      console.error('Erro ao carregar informações do aluno:', error);
+      // Tentar carregar vídeos mesmo sem informações específicas
+      // O backend deve filtrar automaticamente
+      loadVideos();
+    }
+  }, [user.id, loadVideos]);
+
+  const loadSubjects = useCallback(async () => {
+    try {
+      const response = await api.get('/subjects');
+      setSubjects(response.data || []);
+    } catch (error) {
+      console.error('Erro ao carregar disciplinas:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (user.role !== 'aluno') {
+      toast({
+        title: 'Acesso Negado',
+        description: 'Esta página é apenas para alunos.',
+        variant: 'destructive',
+      });
+      navigate('/aluno');
+      return;
+    }
+
+    loadStudentInfo();
+    loadSubjects();
+  }, [user.id, user.role, navigate, toast, loadStudentInfo, loadSubjects]);
+
+  useEffect(() => {
+    if (studentGrade) {
+      loadVideos();
+    }
+  }, [studentGrade, selectedSubject, loadVideos]);
+
 
   const handleVideoClick = (video: PlayTvVideo) => {
     navigate(`/aluno/play-tv/${video.id}`);

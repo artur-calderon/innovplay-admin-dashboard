@@ -1,7 +1,9 @@
 import React from 'react';
-import { Eye, Check, X, Minus } from 'lucide-react';
+import { Eye, Check, X, Minus, Coins } from 'lucide-react';
 import { StudentResult, VisibleFields } from '../../../types/results-table';
 import { ContextMenu } from '../../ui/context-menu';
+import { formatCoins } from '@/utils/coins';
+import { Badge } from '@/components/ui/badge';
 
 // Interface para questões da tabela_detalhada
 interface TabelaDetalhadaQuestao {
@@ -31,6 +33,8 @@ interface TableRowProps {
   };
   // ✅ NOVO: Função para abrir em nova guia
   onOpenInNewTab?: (studentId: string) => void;
+  // ✅ NOVO: Mostrar coluna de moedas (para competições)
+  showCoins?: boolean;
 }
 
 export const TableRow: React.FC<TableRowProps> = ({
@@ -42,7 +46,8 @@ export const TableRow: React.FC<TableRowProps> = ({
   detailedReport,
   evaluationId,
   tabelaDetalhada,
-  onOpenInNewTab
+  onOpenInNewTab,
+  showCoins = false
 }) => {
   
   // ✅ NOVO: Processar respostas reais da tabela_detalhada
@@ -179,6 +184,18 @@ export const TableRow: React.FC<TableRowProps> = ({
           {student.classificacao || 'Abaixo do Básico'}
         </span>
       </td>
+      {showCoins && (
+        <td className="border border-border p-2 text-center">
+          {student.moedas_ganhas !== undefined && student.moedas_ganhas > 0 ? (
+            <Badge className="bg-yellow-100 dark:bg-yellow-950/30 text-yellow-800 dark:text-yellow-400 border-yellow-300">
+              <Coins className="w-3 h-3 mr-1" />
+              {formatCoins(student.moedas_ganhas)}
+            </Badge>
+          ) : (
+            <span className="text-muted-foreground text-sm">-</span>
+          )}
+        </td>
+      )}
     </tr>
   );
 }; 

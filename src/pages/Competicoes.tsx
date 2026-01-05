@@ -1,248 +1,81 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/context/authContext";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { 
   Trophy,
   Users,
   Clock,
   Coins,
   BookOpen,
-  Calculator,
-  Globe,
-  Atom,
-  MapPin,
-  Languages,
-  Palette,
-  Music,
   Star,
   Calendar,
   Timer,
   Award,
   Target,
-  Zap,
-  Filter,
-  Search
+  Search,
+  RefreshCw
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { CompetitionsApiService } from "@/services/competitionsApi";
+import { CompetitionEnrollment } from "@/components/competicoes/CompetitionEnrollment";
+import type { Competition, CompetitionStatus } from "@/types/competition-types";
 
-interface Torneio {
-  id: string;
-  titulo: string;
-  disciplina: string;
-  nivel: string;
-  escola: string;
-  dataInicio: Date;
-  dataFim: Date;
-  participantes: number;
-  maxParticipantes: number;
-  recompensaOuro: number;
-  recompensaPrata: number;
-  recompensaBronze: number;
-  status: 'disponivel' | 'inscrito' | 'em_andamento' | 'finalizado';
-  dificuldade: 'facil' | 'medio' | 'dificil';
-  duracao: number; // em minutos
-  questoes: number;
-  icone: string;
-  cor: string;
-  descricao: string;
-}
-
-type FiltroStatus = 'todos' | 'disponivel' | 'inscrito' | 'em_andamento' | 'finalizado';
-type FiltroDisciplina = 'todas' | 'matematica' | 'portugues' | 'ciencias' | 'historia' | 'geografia' | 'ingles' | 'arte' | 'educacao_fisica';
+type FiltroStatus = 'todos' | CompetitionStatus;
+type FiltroDisciplina = 'todas' | string;
 
 const Competicoes = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [torneios, setTorneios] = useState<Torneio[]>([]);
+  
+  const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>('todos');
   const [filtroDisciplina, setFiltroDisciplina] = useState<FiltroDisciplina>('todas');
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Dados mockados de torneios
-  const mockTorneios: Torneio[] = [
-    {
-      id: '1',
-      titulo: 'Desafio Matemático Semanal',
-      disciplina: 'Matemática',
-      nivel: '9º Ano',
-      escola: 'Todas as Escolas',
-      dataInicio: new Date(Date.now() + 2 * 60 * 60 * 1000), // Em 2 horas
-      dataFim: new Date(Date.now() + 26 * 60 * 60 * 1000), // Em 26 horas
-      participantes: 234,
-      maxParticipantes: 500,
-      recompensaOuro: 100,
-      recompensaPrata: 60,
-      recompensaBronze: 30,
-      status: 'disponivel',
-      dificuldade: 'medio',
-      duracao: 45,
-      questoes: 20,
-      icone: '🧮',
-      cor: 'bg-blue-500',
-      descricao: 'Teste seus conhecimentos em álgebra, geometria e estatística!'
-    },
-    {
-      id: '2',
-      titulo: 'Português: Interpretação de Texto',
-      disciplina: 'Português',
-      nivel: '8º-9º Ano',
-      escola: 'Regional Sul',
-      dataInicio: new Date(Date.now() - 1 * 60 * 60 * 1000), // Começou há 1 hora
-      dataFim: new Date(Date.now() + 23 * 60 * 60 * 1000), // Termina em 23 horas
-      participantes: 156,
-      maxParticipantes: 300,
-      recompensaOuro: 90,
-      recompensaPrata: 50,
-      recompensaBronze: 25,
-      status: 'inscrito',
-      dificuldade: 'medio',
-      duracao: 40,
-      questoes: 15,
-      icone: '📚',
-      cor: 'bg-green-500',
-      descricao: 'Domine a arte da interpretação e análise textual!'
-    },
-    {
-      id: '3',
-      titulo: 'Ciências da Natureza',
-      disciplina: 'Ciências',
-      nivel: '7º-8º Ano',
-      escola: 'Todas as Escolas',
-      dataInicio: new Date(Date.now() - 25 * 60 * 60 * 1000), // Começou há 25 horas
-      dataFim: new Date(Date.now() - 1 * 60 * 60 * 1000), // Terminou há 1 hora
-      participantes: 189,
-      maxParticipantes: 400,
-      recompensaOuro: 80,
-      recompensaPrata: 45,
-      recompensaBronze: 20,
-      status: 'finalizado',
-      dificuldade: 'facil',
-      duracao: 35,
-      questoes: 18,
-      icone: '🔬',
-      cor: 'bg-purple-500',
-      descricao: 'Explore os mistérios da física, química e biologia!'
-    },
-    {
-      id: '4',
-      titulo: 'História do Brasil',
-      disciplina: 'História',
-      nivel: '8º Ano',
-      escola: 'Regional Norte',
-      dataInicio: new Date(Date.now() + 24 * 60 * 60 * 1000), // Em 1 dia
-      dataFim: new Date(Date.now() + 48 * 60 * 60 * 1000), // Em 2 dias
-      participantes: 78,
-      maxParticipantes: 200,
-      recompensaOuro: 70,
-      recompensaPrata: 40,
-      recompensaBronze: 15,
-      status: 'disponivel',
-      dificuldade: 'medio',
-      duracao: 30,
-      questoes: 12,
-      icone: '🏛️',
-      cor: 'bg-yellow-500',
-      descricao: 'Viaje pela rica história do nosso país!'
-    },
-    {
-      id: '5',
-      titulo: 'Geografia Mundial',
-      disciplina: 'Geografia',
-      nivel: '9º Ano',
-      escola: 'Todas as Escolas',
-      dataInicio: new Date(Date.now() + 72 * 60 * 60 * 1000), // Em 3 dias
-      dataFim: new Date(Date.now() + 96 * 60 * 60 * 1000), // Em 4 dias
-      participantes: 45,
-      maxParticipantes: 350,
-      recompensaOuro: 110,
-      recompensaPrata: 65,
-      recompensaBronze: 35,
-      status: 'disponivel',
-      dificuldade: 'dificil',
-      duracao: 50,
-      questoes: 25,
-      icone: '🌍',
-      cor: 'bg-teal-500',
-      descricao: 'Desbrave continentes e culturas ao redor do globo!'
-    },
-    {
-      id: '6',
-      titulo: 'English Challenge',
-      disciplina: 'Inglês',
-      nivel: '8º-9º Ano',
-      escola: 'Todas as Escolas',
-      dataInicio: new Date(Date.now() - 30 * 60 * 1000), // Começou há 30 min
-      dataFim: new Date(Date.now() + 23.5 * 60 * 60 * 1000), // Termina em 23h30min
-      participantes: 167,
-      maxParticipantes: 250,
-      recompensaOuro: 85,
-      recompensaPrata: 50,
-      recompensaBronze: 25,
-      status: 'em_andamento',
-      dificuldade: 'medio',
-      duracao: 35,
-      questoes: 16,
-      icone: '🇺🇸',
-      cor: 'bg-red-500',
-      descricao: 'Test your English skills with grammar and vocabulary!'
-    }
-  ];
-
+  // Carregar competições disponíveis
   useEffect(() => {
-    const loadTorneios = async () => {
-      try {
-        setIsLoading(true);
-        // Simular delay de carregamento
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        setTorneios(mockTorneios);
-      } catch (error) {
-        console.error('Erro ao carregar torneios:', error);
-        toast({
-          title: "Erro",
-          description: "Não foi possível carregar os torneios.",
-          variant: "destructive",
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
+    loadCompetitions();
+  }, []);
 
-    loadTorneios();
-  }, [toast]);
-
-  const handleInscricao = (torneioId: string) => {
-    setTorneios(prev => prev.map(torneio => 
-      torneio.id === torneioId 
-        ? { ...torneio, status: 'inscrito', participantes: torneio.participantes + 1 }
-        : torneio
-    ));
-    toast({
-      title: "Inscrição realizada!",
-      description: "Você foi inscrito no torneio com sucesso.",
-    });
-  };
-
-  const handleIniciarTorneio = (torneioId: string) => {
-    const torneio = torneios.find(t => t.id === torneioId);
-    if (torneio) {
-      // Navegar para a página de execução do torneio
-      const basePath = user?.role === 'aluno' ? '/aluno' : '/app';
-      navigate(`${basePath}/torneio/${torneioId}`);
+  const loadCompetitions = async () => {
+    try {
+      setIsLoading(true);
+      const data = await CompetitionsApiService.getAvailableCompetitions();
+      setCompetitions(data);
+    } catch (error) {
+      console.error('Erro ao carregar competições:', error);
+      setCompetitions([]);
+      
+      const errorMessage = getErrorMessage(error, "Não foi possível carregar as competições. Tente novamente.");
+      const suggestion = getErrorSuggestion(error);
+      
+      toast({
+        title: "Erro ao carregar",
+        description: suggestion ? `${errorMessage} ${suggestion}` : errorMessage,
+        variant: "destructive",
+        duration: 5000,
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const formatTimeRemaining = (date: Date) => {
+  // Formatar tempo restante
+  const formatTimeRemaining = (dateStr: string) => {
+    const date = new Date(dateStr);
     const now = new Date();
     const diff = date.getTime() - now.getTime();
     
-    if (diff <= 0) return 'Expirado';
+    if (diff <= 0) return 'Encerrado';
     
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
@@ -255,52 +88,81 @@ const Competicoes = () => {
     return `${hours}h ${minutes}m`;
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'disponivel':
-        return <Badge className="bg-green-100 dark:bg-green-950/30 text-green-800 dark:text-green-400">Disponível</Badge>;
-      case 'inscrito':
-        return <Badge className="bg-blue-100 dark:bg-blue-950/30 text-blue-800 dark:text-blue-400">Inscrito</Badge>;
-      case 'em_andamento':
-        return <Badge className="bg-orange-100 dark:bg-orange-950/30 text-orange-800 dark:text-orange-400">Em Andamento</Badge>;
-      case 'finalizado':
-        return <Badge className="bg-muted text-foreground">Finalizado</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
+  // Obter badge de status
+  const getStatusBadge = (status: CompetitionStatus) => {
+    const configs: Record<CompetitionStatus, { label: string; className: string }> = {
+      agendada: { label: 'Agendada', className: 'bg-yellow-100 dark:bg-yellow-950/30 text-yellow-800 dark:text-yellow-400' },
+      aberta: { label: 'Inscrições Abertas', className: 'bg-green-100 dark:bg-green-950/30 text-green-800 dark:text-green-400' },
+      em_andamento: { label: 'Em Andamento', className: 'bg-blue-100 dark:bg-blue-950/30 text-blue-800 dark:text-blue-400' },
+      finalizada: { label: 'Finalizada', className: 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-400' }
+    };
+
+    const config = configs[status] || configs.agendada;
+    return <Badge className={config.className}>{config.label}</Badge>;
   };
 
+  // Obter cor da dificuldade
   const getDifficultyColor = (dificuldade: string) => {
     switch (dificuldade) {
-      case 'facil':
-        return 'text-green-600 dark:text-green-400';
-      case 'medio':
-        return 'text-yellow-600 dark:text-yellow-400';
-      case 'dificil':
-        return 'text-red-600 dark:text-red-400';
-      default:
-        return 'text-muted-foreground';
+      case 'facil': return 'text-green-600 dark:text-green-400';
+      case 'medio': return 'text-yellow-600 dark:text-yellow-400';
+      case 'dificil': return 'text-red-600 dark:text-red-400';
+      default: return 'text-muted-foreground';
     }
   };
 
-  const torneiosFiltrados = torneios.filter(torneio => {
-    const matchStatus = filtroStatus === 'todos' || torneio.status === filtroStatus;
+  // Filtrar competições
+  const competicoesFiltradas = competitions.filter(competition => {
+    const matchStatus = filtroStatus === 'todos' || competition.status === filtroStatus;
     const matchDisciplina = filtroDisciplina === 'todas' || 
-      torneio.disciplina.toLowerCase().includes(filtroDisciplina.replace('_', ' '));
-    const matchSearch = torneio.titulo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      torneio.disciplina.toLowerCase().includes(searchTerm.toLowerCase());
+      competition.disciplina_id === filtroDisciplina ||
+      (competition.disciplina_nome || '').toLowerCase().includes(filtroDisciplina.toLowerCase());
+    const matchSearch = competition.titulo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (competition.disciplina_nome || '').toLowerCase().includes(searchTerm.toLowerCase());
     
     return matchStatus && matchDisciplina && matchSearch;
   });
 
+  // Extrair disciplinas únicas
+  const uniqueDisciplinas = [...new Set(competitions.map(c => c.disciplina_id))];
+
+  // Handler para quando inscrição é realizada
+  const handleEnrolled = () => {
+    // Recarregar para atualizar status
+    loadCompetitions();
+  };
+
+  // Handler para quando competição é iniciada
+  const handleStarted = () => {
+    // Nada adicional necessário - navegação feita no componente
+  };
+
+  // Calcular estatísticas
+  const stats = {
+    total: competitions.filter(c => c.status !== 'finalizada').length,
+    participantes: competitions.reduce((sum, c) => sum + (c.participantes_atual || 0), 0),
+    premios: competitions.reduce((sum, c) => sum + c.recompensas.ouro, 0),
+    inscritos: competitions.filter(c => c.status === 'em_andamento' || c.status === 'aberta').length
+  };
+
   if (isLoading) {
     return (
-      <div className="container mx-auto py-6 px-4">
+      <div className="container mx-auto py-6 px-4 max-w-7xl">
+        {/* Header Skeleton */}
+        <div className="flex items-center gap-4 mb-8">
+          <Skeleton className="w-16 h-16 rounded-full" />
+          <div>
+            <Skeleton className="h-8 w-48 mb-2" />
+            <Skeleton className="h-4 w-72" />
+          </div>
+        </div>
+        
+        {/* Cards Skeleton */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[...Array(6)].map((_, i) => (
             <Card key={i} className="animate-pulse">
               <CardContent className="p-6">
-                <div className="h-40 bg-muted rounded"></div>
+                <Skeleton className="h-40 w-full" />
               </CardContent>
             </Card>
           ))}
@@ -319,10 +181,14 @@ const Competicoes = () => {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-foreground">Competições</h1>
-            <p className="text-muted-foreground">Participe de torneios semanais e ganhe recompensas!</p>
+            <p className="text-muted-foreground">Participe de competições e ganhe InnovCoins!</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={loadCompetitions} disabled={isLoading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            Atualizar
+          </Button>
           <Badge variant="outline" className="bg-yellow-100 dark:bg-yellow-950/30 text-yellow-800 dark:text-yellow-400 px-3 py-1">
             <Coins className="w-4 h-4 mr-1" />
             Ganhe InnovCoins
@@ -334,51 +200,52 @@ const Competicoes = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="relative">
           <Search className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
-          <input
+          <Input
             type="text"
-            placeholder="Buscar torneios..."
-            className="w-full pl-10 pr-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-background text-foreground"
+            placeholder="Buscar competições..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10"
           />
         </div>
         
-        <select
-          value={filtroStatus}
-          onChange={(e) => setFiltroStatus(e.target.value as FiltroStatus)}
-          className="w-full px-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-background text-foreground"
-        >
-          <option value="todos">Todos os Status</option>
-          <option value="disponivel">Disponível</option>
-          <option value="inscrito">Inscrito</option>
-          <option value="em_andamento">Em Andamento</option>
-          <option value="finalizado">Finalizado</option>
-        </select>
+        <Select value={filtroStatus} onValueChange={(value) => setFiltroStatus(value as FiltroStatus)}>
+          <SelectTrigger>
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todos os Status</SelectItem>
+            <SelectItem value="agendada">Agendada</SelectItem>
+            <SelectItem value="aberta">Inscrições Abertas</SelectItem>
+            <SelectItem value="em_andamento">Em Andamento</SelectItem>
+            <SelectItem value="finalizada">Finalizada</SelectItem>
+          </SelectContent>
+        </Select>
 
-        <select
-          value={filtroDisciplina}
-          onChange={(e) => setFiltroDisciplina(e.target.value as FiltroDisciplina)}
-          className="w-full px-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-background text-foreground"
-        >
-          <option value="todas">Todas as Disciplinas</option>
-          <option value="matematica">Matemática</option>
-          <option value="portugues">Português</option>
-          <option value="ciencias">Ciências</option>
-          <option value="historia">História</option>
-          <option value="geografia">Geografia</option>
-          <option value="ingles">Inglês</option>
-        </select>
+        <Select value={filtroDisciplina} onValueChange={setFiltroDisciplina}>
+          <SelectTrigger>
+            <SelectValue placeholder="Disciplina" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todas">Todas as Disciplinas</SelectItem>
+            {uniqueDisciplinas.map(disciplina => (
+              <SelectItem key={disciplina} value={disciplina}>
+                {disciplina}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
-      {/* Estatísticas rápidas */}
+      {/* Estatísticas Rápidas */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <Card className="bg-gradient-to-br from-blue-50 dark:from-blue-950/30 to-blue-100 dark:to-blue-950/40 border-blue-200 dark:border-blue-800">
           <CardContent className="p-4 text-center">
             <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center mx-auto mb-2">
               <Trophy className="w-6 h-6 text-white" />
             </div>
-            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{torneios.length}</div>
-            <div className="text-sm text-blue-700 dark:text-blue-400">Torneios Ativos</div>
+            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{stats.total}</div>
+            <div className="text-sm text-blue-700 dark:text-blue-400">Competições Ativas</div>
           </CardContent>
         </Card>
 
@@ -387,9 +254,7 @@ const Competicoes = () => {
             <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-2">
               <Users className="w-6 h-6 text-white" />
             </div>
-            <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-              {torneios.reduce((sum, t) => sum + t.participantes, 0)}
-            </div>
+            <div className="text-2xl font-bold text-green-600 dark:text-green-400">{stats.participantes}</div>
             <div className="text-sm text-green-700 dark:text-green-400">Participantes</div>
           </CardContent>
         </Card>
@@ -399,9 +264,7 @@ const Competicoes = () => {
             <div className="w-12 h-12 bg-yellow-500 rounded-full flex items-center justify-center mx-auto mb-2">
               <Coins className="w-6 h-6 text-white" />
             </div>
-            <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
-              {torneios.reduce((sum, t) => sum + t.recompensaOuro, 0)}
-            </div>
+            <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{stats.premios}</div>
             <div className="text-sm text-yellow-700 dark:text-yellow-400">Total em Prêmios</div>
           </CardContent>
         </Card>
@@ -411,60 +274,65 @@ const Competicoes = () => {
             <div className="w-12 h-12 bg-purple-500 rounded-full flex items-center justify-center mx-auto mb-2">
               <Star className="w-6 h-6 text-white" />
             </div>
-            <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-              {torneios.filter(t => t.status === 'inscrito').length}
-            </div>
-            <div className="text-sm text-purple-700 dark:text-purple-400">Seus Torneios</div>
+            <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{stats.inscritos}</div>
+            <div className="text-sm text-purple-700 dark:text-purple-400">Disponíveis</div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Grid de Torneios */}
+      {/* Grid de Competições */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {torneiosFiltrados.map((torneio) => (
-          <Card key={torneio.id} className="hover:shadow-xl transition-all duration-300 border-2 hover:border-blue-200 dark:hover:border-blue-800">
+        {competicoesFiltradas.map((competition) => (
+          <Card 
+            key={competition.id} 
+            className="hover:shadow-xl transition-all duration-300 border-2 hover:border-blue-200 dark:hover:border-blue-800"
+          >
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                  <div className={`w-12 h-12 ${torneio.cor} rounded-full flex items-center justify-center text-2xl`}>
-                    {torneio.icone}
+                  <div className={`w-12 h-12 ${competition.cor || 'bg-blue-500'} rounded-full flex items-center justify-center text-2xl`}>
+                    {competition.icone || '🏆'}
                   </div>
                   <div>
-                    <CardTitle className="text-lg leading-tight">{torneio.titulo}</CardTitle>
+                    <CardTitle className="text-lg leading-tight">{competition.titulo}</CardTitle>
                     <div className="flex items-center gap-2 mt-1">
                       <Badge variant="outline" className="text-xs">
-                        {torneio.disciplina}
+                        {competition.disciplina_nome || competition.disciplina_id}
                       </Badge>
-                      <span className={`text-xs font-medium ${getDifficultyColor(torneio.dificuldade)}`}>
-                        {torneio.dificuldade.charAt(0).toUpperCase() + torneio.dificuldade.slice(1)}
-                      </span>
+                      {competition.dificuldade && (
+                        <span className={`text-xs font-medium ${getDifficultyColor(competition.dificuldade)}`}>
+                          {competition.dificuldade.charAt(0).toUpperCase() + competition.dificuldade.slice(1)}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
-                {getStatusBadge(torneio.status)}
+                {getStatusBadge(competition.status)}
               </div>
             </CardHeader>
             
             <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">{torneio.descricao}</p>
+              {competition.descricao && (
+                <p className="text-sm text-muted-foreground">{competition.descricao}</p>
+              )}
               
               {/* Info Grid */}
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div className="flex items-center gap-2">
                   <Users className="w-4 h-4 text-muted-foreground" />
-                  <span>{torneio.participantes}/{torneio.maxParticipantes}</span>
+                  <span>{competition.participantes_atual || 0}/{competition.max_participantes}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Clock className="w-4 h-4 text-muted-foreground" />
-                  <span>{torneio.duracao}min</span>
+                  <span>{competition.duracao}min</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Target className="w-4 h-4 text-muted-foreground" />
-                  <span>{torneio.questoes} questões</span>
+                  <span>{competition.total_questoes || competition.questoes?.length || 0} questões</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <BookOpen className="w-4 h-4 text-muted-foreground" />
-                  <span>{torneio.nivel}</span>
+                  <span>{competition.nivel || 'Todos'}</span>
                 </div>
               </div>
 
@@ -472,9 +340,12 @@ const Competicoes = () => {
               <div className="space-y-2">
                 <div className="flex justify-between text-xs text-muted-foreground">
                   <span>Participantes</span>
-                  <span>{Math.round((torneio.participantes / torneio.maxParticipantes) * 100)}%</span>
+                  <span>{Math.round(((competition.participantes_atual || 0) / competition.max_participantes) * 100)}%</span>
                 </div>
-                <Progress value={(torneio.participantes / torneio.maxParticipantes) * 100} className="h-2" />
+                <Progress 
+                  value={((competition.participantes_atual || 0) / competition.max_participantes) * 100} 
+                  className="h-2" 
+                />
               </div>
 
               {/* Recompensas */}
@@ -485,95 +356,70 @@ const Competicoes = () => {
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-xs">
                   <div className="text-center">
-                    <div className="text-yellow-600 dark:text-yellow-400 font-bold">🥇 {torneio.recompensaOuro}</div>
+                    <div className="text-yellow-600 dark:text-yellow-400 font-bold">🥇 {competition.recompensas.ouro}</div>
                     <div className="text-yellow-700 dark:text-yellow-400">1º lugar</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-muted-foreground font-bold">🥈 {torneio.recompensaPrata}</div>
+                    <div className="text-muted-foreground font-bold">🥈 {competition.recompensas.prata}</div>
                     <div className="text-muted-foreground">2º lugar</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-orange-600 dark:text-orange-400 font-bold">🥉 {torneio.recompensaBronze}</div>
+                    <div className="text-orange-600 dark:text-orange-400 font-bold">🥉 {competition.recompensas.bronze}</div>
                     <div className="text-orange-700 dark:text-orange-400">3º lugar</div>
                   </div>
                 </div>
               </div>
 
               {/* Timer */}
-              {torneio.status !== 'finalizado' && (
+              {competition.status !== 'finalizada' && (
                 <div className="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
                   <div className="flex items-center gap-2">
                     <Timer className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                     <span className="text-sm font-medium text-blue-700 dark:text-blue-400">
-                      {torneio.status === 'disponivel' ? 'Inscrições até:' : 
-                       torneio.status === 'inscrito' || torneio.status === 'em_andamento' ? 'Termina em:' : 'Tempo restante:'}
+                      {competition.status === 'agendada' ? 'Início em:' : 'Termina em:'}
                     </span>
                   </div>
                   <div className="text-lg font-bold text-blue-600 dark:text-blue-400 mt-1">
-                    {formatTimeRemaining(torneio.dataFim)}
+                    {formatTimeRemaining(
+                      competition.status === 'agendada' 
+                        ? competition.data_inicio 
+                        : competition.data_fim
+                    )}
                   </div>
                 </div>
               )}
 
-              {/* Botões de Ação */}
+              {/* Componente de Inscrição/Início */}
               <div className="pt-2">
-                {torneio.status === 'disponivel' && (
-                  <Button 
-                    onClick={() => handleInscricao(torneio.id)}
-                    className="w-full bg-green-600 hover:bg-green-700"
-                  >
-                    <Trophy className="w-4 h-4 mr-2" />
-                    Inscrever-se
-                  </Button>
-                )}
-                
-                {torneio.status === 'inscrito' && (
-                  <Button 
-                    onClick={() => handleIniciarTorneio(torneio.id)}
-                    className="w-full bg-blue-600 hover:bg-blue-700"
-                  >
-                    <Zap className="w-4 h-4 mr-2" />
-                    Iniciar Torneio
-                  </Button>
-                )}
-                
-                {torneio.status === 'em_andamento' && (
-                  <Button 
-                    onClick={() => handleIniciarTorneio(torneio.id)}
-                    className="w-full bg-orange-600 hover:bg-orange-700"
-                  >
-                    <Timer className="w-4 h-4 mr-2" />
-                    Continuar
-                  </Button>
-                )}
-                
-                {torneio.status === 'finalizado' && (
-                  <Button 
-                    variant="outline" 
-                    className="w-full"
-                    disabled
-                  >
-                    <Award className="w-4 h-4 mr-2" />
-                    Finalizado
-                  </Button>
-                )}
+                <CompetitionEnrollment
+                  competition={competition}
+                  onEnrolled={handleEnrolled}
+                  onStarted={handleStarted}
+                />
               </div>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {torneiosFiltrados.length === 0 && (
-        <div className="text-center py-12">
-          <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-            <Trophy className="w-10 h-10 text-muted-foreground" />
-          </div>
-          <h3 className="text-lg font-medium text-foreground mb-2">Nenhum torneio encontrado</h3>
-          <p className="text-muted-foreground">Tente ajustar os filtros ou aguarde novos torneios!</p>
-        </div>
+      {/* Estado Vazio */}
+      {competicoesFiltradas.length === 0 && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mb-4">
+              <Trophy className="w-10 h-10 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-medium text-foreground mb-2">Nenhuma competição encontrada</h3>
+            <p className="text-muted-foreground text-center">
+              {searchTerm || filtroStatus !== 'todos' || filtroDisciplina !== 'todas'
+                ? 'Tente ajustar os filtros de busca.'
+                : 'Aguarde novas competições!'}
+            </p>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
 };
 
-export default Competicoes; 
+export default Competicoes;
