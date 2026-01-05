@@ -178,7 +178,7 @@ const GameView = () => {
                                     Turmas Vinculadas
                                 </h4>
                                 <div className="flex flex-wrap gap-2">
-                                    {game.classes.map((classItem: any) => (
+                                    {game.classes.map((classItem) => (
                                         <Badge key={classItem.id} variant="secondary" className="text-xs">
                                             {classItem.name || classItem.nome || `Turma ${classItem.id}`}
                                         </Badge>
