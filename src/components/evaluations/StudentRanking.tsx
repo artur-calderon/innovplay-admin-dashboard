@@ -1,7 +1,13 @@
 import React, { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Trophy, UserX, Medal, Award, Star, TrendingUp, Users } from "lucide-react";
+import { Trophy, UserX, Medal, Award, Star, TrendingUp, Users, Coins } from "lucide-react";
+import { 
+  getMedalEmoji, 
+  getPositionHighlightClass, 
+  getPositionTextColor,
+  formatCoins 
+} from "@/utils/coins";
 
 interface Student {
   id: string;
@@ -11,16 +17,22 @@ interface Student {
   proficiencia: number;
   classificacao: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
   status: 'concluida' | 'pendente';
+  moedas_ganhas?: number; // Opcional para competições
+  posicao?: number; // Posição no ranking (opcional)
 }
 
 interface StudentRankingProps {
   students: Student[];
   maxStudents?: number;
+  showCoins?: boolean; // Mostrar coluna de moedas (para competições)
+  isCompetition?: boolean; // Se é ranking de competição
 }
 
 export function StudentRanking({ 
   students, 
-  maxStudents = 50
+  maxStudents = 50,
+  showCoins = false,
+  isCompetition = false
 }: StudentRankingProps) {
   // Separar alunos que participaram da avaliação dos faltosos
   const { completedStudents, absentStudents } = useMemo(() => {
@@ -30,26 +42,36 @@ export function StudentRanking({
     return { completedStudents: completed, absentStudents: absent };
   }, [students]);
 
-  // Ordenar alunos por proficiência (maior para menor)
+  // Ordenar alunos por proficiência (maior para menor) ou por posição se for competição
   const rankedStudents = useMemo(() => {
-    return completedStudents
-      .sort((a, b) => (b.proficiencia || 0) - (a.proficiencia || 0))
+    const sorted = isCompetition && students.some(s => s.posicao !== undefined)
+      ? completedStudents.sort((a, b) => (a.posicao || 999) - (b.posicao || 999))
+      : completedStudents.sort((a, b) => (b.proficiencia || 0) - (a.proficiencia || 0));
+    
+    return sorted
+      .map((student, index) => ({
+        ...student,
+        posicao: student.posicao || index + 1
+      }))
       .slice(0, maxStudents);
-  }, [completedStudents, maxStudents]);
+  }, [completedStudents, maxStudents, isCompetition, students]);
 
   // Função para obter ícone do ranking
   const getRankingIcon = (position: number) => {
+    const medalEmoji = getMedalEmoji(position);
+    if (medalEmoji) {
+      return <span className="text-2xl">{medalEmoji}</span>;
+    }
     if (position === 1) return <Trophy className="h-6 w-6 text-amber-500" />;
     if (position === 2) return <Medal className="h-6 w-6 text-muted-foreground" />;
     if (position === 3) return <Award className="h-6 w-6 text-amber-600 dark:text-amber-500" />;
     return <span className="text-lg font-bold text-muted-foreground">{position}</span>;
   };
 
-  // Função para obter cor de fundo do ranking
+  // Função para obter cor de fundo do ranking (usando utils de coins)
   const getRankingBackground = (position: number) => {
-    if (position === 1) return 'bg-gradient-to-r from-amber-50 dark:from-amber-950/30 to-yellow-50 dark:to-yellow-950/30 border-amber-200 dark:border-amber-800';
-    if (position === 2) return 'bg-gradient-to-r from-gray-50 dark:from-muted to-slate-50 dark:to-muted border-border';
-    if (position === 3) return 'bg-gradient-to-r from-orange-50 dark:from-orange-950/30 to-amber-50 dark:to-amber-950/30 border-orange-200 dark:border-orange-800';
+    const highlightClass = getPositionHighlightClass(position);
+    if (highlightClass) return highlightClass;
     return 'bg-card border-border';
   };
 
@@ -105,8 +127,9 @@ export function StudentRanking({
         <CardContent className="p-6">
           {rankedStudents.length > 0 ? (
             <div className="space-y-4">
-              {rankedStudents.map((student, index) => {
-                const position = index + 1;
+              {rankedStudents.map((student) => {
+                const position = student.posicao || 1;
+                const positionColor = getPositionTextColor(position);
 
                 return (
                   <div
@@ -114,22 +137,29 @@ export function StudentRanking({
                     className={`flex items-center gap-4 p-4 rounded-lg border transition-all duration-200 hover:shadow-md ${getRankingBackground(position)}`}
                   >
                     {/* Posição no ranking */}
-                    <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-card border border-border shadow-sm">
+                    <div className={`flex items-center justify-center w-12 h-12 rounded-lg bg-card border-2 ${
+                      position <= 3 ? 'border-yellow-400 dark:border-yellow-600' : 'border-border'
+                    } shadow-sm`}>
                       {getRankingIcon(position)}
                     </div>
 
                     {/* Informações do aluno */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-3 mb-2">
-                        <h3 className="font-semibold text-foreground truncate text-base">
+                        <h3 className={`font-semibold truncate text-base ${positionColor}`}>
                           {student.nome}
                         </h3>
                         <Badge variant="outline" className="text-xs">
                           {student.turma}
                         </Badge>
+                        {position <= 3 && (
+                          <Badge className="bg-yellow-100 dark:bg-yellow-950/30 text-yellow-800 dark:text-yellow-400 border-yellow-300 text-xs font-bold">
+                            {position}º Lugar
+                          </Badge>
+                        )}
                       </div>
 
-                      <div className="flex items-center gap-6 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-6 text-sm text-muted-foreground flex-wrap">
                         <div className="flex items-center gap-2">
                           <TrendingUp className="h-4 w-4 text-blue-500 dark:text-blue-400" />
                           <span className="font-medium">Nota:</span>
@@ -140,15 +170,32 @@ export function StudentRanking({
                           <span className="font-medium">Proficiência:</span>
                           <span className="font-semibold text-foreground">{student.proficiencia || 0}</span>
                         </div>
+                        {showCoins && student.moedas_ganhas !== undefined && (
+                          <div className="flex items-center gap-2">
+                            <Coins className="h-4 w-4 text-yellow-500 dark:text-yellow-400" />
+                            <span className="font-medium">Moedas:</span>
+                            <span className="font-semibold text-yellow-600 dark:text-yellow-400">
+                              {formatCoins(student.moedas_ganhas)}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    {/* Nível de proficiência */}
-                    <div className="flex flex-col items-end gap-1">
-                      <div className="text-xs text-muted-foreground font-medium">Nível</div>
-                      <Badge className={`${getLevelBadgeColor(student.classificacao)} text-xs font-medium border`}>
-                        {student.classificacao}
-                      </Badge>
+                    {/* Nível de proficiência e moedas */}
+                    <div className="flex flex-col items-end gap-2">
+                      <div className="flex flex-col items-end gap-1">
+                        <div className="text-xs text-muted-foreground font-medium">Nível</div>
+                        <Badge className={`${getLevelBadgeColor(student.classificacao)} text-xs font-medium border`}>
+                          {student.classificacao}
+                        </Badge>
+                      </div>
+                      {showCoins && student.moedas_ganhas !== undefined && student.moedas_ganhas > 0 && (
+                        <Badge className="bg-yellow-100 dark:bg-yellow-950/30 text-yellow-800 dark:text-yellow-400 border-yellow-300 text-xs font-bold">
+                          <Coins className="w-3 h-3 mr-1" />
+                          {formatCoins(student.moedas_ganhas)}
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 );
