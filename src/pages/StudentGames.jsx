@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -11,7 +12,10 @@ import {
     BookOpen,
     Users,
     School,
-    Globe
+    Globe,
+    Calendar,
+    User,
+    Search
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useAuth } from '@/context/authContext';
@@ -33,6 +37,7 @@ const StudentGames = () => {
     const [games, setGames] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedSubject, setSelectedSubject] = useState('Todas');
+    const [searchTerm, setSearchTerm] = useState('');
     
     // Estados para dados do aluno
     const [studentClassId, setStudentClassId] = useState(null);
@@ -189,6 +194,17 @@ const StudentGames = () => {
         };
     };
 
+    // Filtrar jogos por nome
+    const filterGamesByName = (gamesList) => {
+        if (!searchTerm.trim()) {
+            return gamesList;
+        }
+        const term = searchTerm.toLowerCase().trim();
+        return gamesList.filter((game) => 
+            game.title?.toLowerCase().includes(term)
+        );
+    };
+
     // Filtrar jogos por disciplina
     const filterGamesBySubject = (gamesList) => {
         if (selectedSubject === 'Todas') {
@@ -213,9 +229,9 @@ const StudentGames = () => {
     };
 
     const categorizedGames = categorizeGames();
-    const filteredTeacherGames = filterGamesBySubject(categorizedGames.teacherGames);
-    const filteredSchoolAdminGames = filterGamesBySubject(categorizedGames.schoolAdminGames);
-    const filteredOtherGames = filterGamesBySubject(categorizedGames.otherGames);
+    const filteredTeacherGames = filterGamesBySubject(filterGamesByName(categorizedGames.teacherGames));
+    const filteredSchoolAdminGames = filterGamesBySubject(filterGamesByName(categorizedGames.schoolAdminGames));
+    const filteredOtherGames = filterGamesBySubject(filterGamesByName(categorizedGames.otherGames));
 
     if (isLoading || isLoadingStudentInfo) {
         return (
@@ -233,6 +249,18 @@ const StudentGames = () => {
             <div>
                 <h2 className="text-2xl font-bold">Meus Jogos</h2>
                 <p className="text-muted-foreground">Jogue e aprenda com seus jogos educativos</p>
+            </div>
+
+            {/* Campo de Busca */}
+            <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                <Input
+                    type="text"
+                    placeholder="Buscar jogos por nome..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                />
             </div>
 
             {/* Filtro por Disciplina */}
@@ -286,11 +314,13 @@ const StudentGames = () => {
                                         </div>
                                         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                                             {subjectGames.map((game) => (
-                                                <Card key={game.id} className="hover:shadow-md transition-shadow">
-                                                    <CardHeader>
+                                                <Card key={game.id} className="group hover:shadow-lg transition-shadow cursor-pointer" onClick={() => openGame(game.id)}>
+                                                    <CardHeader className="pb-3">
                                                         <div className="flex justify-between items-start">
                                                             <CardTitle className="text-lg line-clamp-2">{game.title}</CardTitle>
-                                                            <Badge variant="secondary">{game.subject}</Badge>
+                                                            <Badge variant="secondary" className="ml-2">
+                                                                {game.subject}
+                                                            </Badge>
                                                         </div>
                                                     </CardHeader>
                                                     <CardContent className="space-y-4">
@@ -303,19 +333,45 @@ const StudentGames = () => {
                                                                 />
                                                             ) : (
                                                                 <div className="w-full h-full flex items-center justify-center">
-                                                                    <Gamepad2 className="w-8 h-8 text-muted-foreground" />
+                                                                    <Gamepad2 className="w-12 h-12 text-muted-foreground" />
                                                                 </div>
                                                             )}
                                                         </div>
-                                                        <div className="flex gap-2">
-                                                            <Button
-                                                                onClick={() => openGame(game.id)}
-                                                                className="flex-1"
-                                                            >
-                                                                <ExternalLink className="w-4 h-4 mr-1" />
-                                                                Jogar
-                                                            </Button>
+
+                                                        {/* Informações do jogo */}
+                                                        <div className="space-y-2">
+                                                            {game.subject && (
+                                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                                    <BookOpen className="w-4 h-4" />
+                                                                    <span>{game.subject}</span>
+                                                                </div>
+                                                            )}
+
+                                                            {game.author && (
+                                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                                    <User className="w-4 h-4" />
+                                                                    <span>{game.author}</span>
+                                                                </div>
+                                                            )}
+
+                                                            {(game.createdAt || game.created_at) && (
+                                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                                    <Calendar className="w-4 h-4" />
+                                                                    <span>{new Date(game.createdAt || game.created_at).toLocaleDateString('pt-BR')}</span>
+                                                                </div>
+                                                            )}
                                                         </div>
+
+                                                        <Button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                openGame(game.id);
+                                                            }}
+                                                            className="w-full"
+                                                        >
+                                                            <ExternalLink className="w-4 h-4 mr-1" />
+                                                            Jogar
+                                                        </Button>
                                                     </CardContent>
                                                 </Card>
                                             ))}
@@ -344,11 +400,13 @@ const StudentGames = () => {
                                         </div>
                                         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                                             {subjectGames.map((game) => (
-                                                <Card key={game.id} className="hover:shadow-md transition-shadow">
-                                                    <CardHeader>
+                                                <Card key={game.id} className="group hover:shadow-lg transition-shadow cursor-pointer" onClick={() => openGame(game.id)}>
+                                                    <CardHeader className="pb-3">
                                                         <div className="flex justify-between items-start">
                                                             <CardTitle className="text-lg line-clamp-2">{game.title}</CardTitle>
-                                                            <Badge variant="secondary">{game.subject}</Badge>
+                                                            <Badge variant="secondary" className="ml-2">
+                                                                {game.subject}
+                                                            </Badge>
                                                         </div>
                                                     </CardHeader>
                                                     <CardContent className="space-y-4">
@@ -361,19 +419,45 @@ const StudentGames = () => {
                                                                 />
                                                             ) : (
                                                                 <div className="w-full h-full flex items-center justify-center">
-                                                                    <Gamepad2 className="w-8 h-8 text-muted-foreground" />
+                                                                    <Gamepad2 className="w-12 h-12 text-muted-foreground" />
                                                                 </div>
                                                             )}
                                                         </div>
-                                                        <div className="flex gap-2">
-                                                            <Button
-                                                                onClick={() => openGame(game.id)}
-                                                                className="flex-1"
-                                                            >
-                                                                <ExternalLink className="w-4 h-4 mr-1" />
-                                                                Jogar
-                                                            </Button>
+
+                                                        {/* Informações do jogo */}
+                                                        <div className="space-y-2">
+                                                            {game.subject && (
+                                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                                    <BookOpen className="w-4 h-4" />
+                                                                    <span>{game.subject}</span>
+                                                                </div>
+                                                            )}
+
+                                                            {game.author && (
+                                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                                    <User className="w-4 h-4" />
+                                                                    <span>{game.author}</span>
+                                                                </div>
+                                                            )}
+
+                                                            {(game.createdAt || game.created_at) && (
+                                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                                    <Calendar className="w-4 h-4" />
+                                                                    <span>{new Date(game.createdAt || game.created_at).toLocaleDateString('pt-BR')}</span>
+                                                                </div>
+                                                            )}
                                                         </div>
+
+                                                        <Button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                openGame(game.id);
+                                                            }}
+                                                            className="w-full"
+                                                        >
+                                                            <ExternalLink className="w-4 h-4 mr-1" />
+                                                            Jogar
+                                                        </Button>
                                                     </CardContent>
                                                 </Card>
                                             ))}
@@ -402,11 +486,13 @@ const StudentGames = () => {
                                         </div>
                                         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                                             {subjectGames.map((game) => (
-                                                <Card key={game.id} className="hover:shadow-md transition-shadow">
-                                                    <CardHeader>
+                                                <Card key={game.id} className="group hover:shadow-lg transition-shadow cursor-pointer" onClick={() => openGame(game.id)}>
+                                                    <CardHeader className="pb-3">
                                                         <div className="flex justify-between items-start">
                                                             <CardTitle className="text-lg line-clamp-2">{game.title}</CardTitle>
-                                                            <Badge variant="secondary">{game.subject}</Badge>
+                                                            <Badge variant="secondary" className="ml-2">
+                                                                {game.subject}
+                                                            </Badge>
                                                         </div>
                                                     </CardHeader>
                                                     <CardContent className="space-y-4">
@@ -419,19 +505,45 @@ const StudentGames = () => {
                                                                 />
                                                             ) : (
                                                                 <div className="w-full h-full flex items-center justify-center">
-                                                                    <Gamepad2 className="w-8 h-8 text-muted-foreground" />
+                                                                    <Gamepad2 className="w-12 h-12 text-muted-foreground" />
                                                                 </div>
                                                             )}
                                                         </div>
-                                                        <div className="flex gap-2">
-                                                            <Button
-                                                                onClick={() => openGame(game.id)}
-                                                                className="flex-1"
-                                                            >
-                                                                <ExternalLink className="w-4 h-4 mr-1" />
-                                                                Jogar
-                                                            </Button>
+
+                                                        {/* Informações do jogo */}
+                                                        <div className="space-y-2">
+                                                            {game.subject && (
+                                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                                    <BookOpen className="w-4 h-4" />
+                                                                    <span>{game.subject}</span>
+                                                                </div>
+                                                            )}
+
+                                                            {game.author && (
+                                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                                    <User className="w-4 h-4" />
+                                                                    <span>{game.author}</span>
+                                                                </div>
+                                                            )}
+
+                                                            {(game.createdAt || game.created_at) && (
+                                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                                    <Calendar className="w-4 h-4" />
+                                                                    <span>{new Date(game.createdAt || game.created_at).toLocaleDateString('pt-BR')}</span>
+                                                                </div>
+                                                            )}
                                                         </div>
+
+                                                        <Button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                openGame(game.id);
+                                                            }}
+                                                            className="w-full"
+                                                        >
+                                                            <ExternalLink className="w-4 h-4 mr-1" />
+                                                            Jogar
+                                                        </Button>
                                                     </CardContent>
                                                 </Card>
                                             ))}

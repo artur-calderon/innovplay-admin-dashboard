@@ -4,7 +4,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
-import { ArrowLeft, Play, Calendar, User, BookOpen, Users } from 'lucide-react';
+import { ArrowLeft, Play, Calendar, User, BookOpen } from 'lucide-react';
 
 const GameView = () => {
     const { id } = useParams();
@@ -16,6 +16,56 @@ const GameView = () => {
     useEffect(() => {
         fetchGame();
     }, [id]);
+
+    // Remover banner do Wordwall após o iframe carregar
+    useEffect(() => {
+        if (!game) return;
+
+        const removeWordwallBanner = () => {
+            // Procurar pelo elemento embed-banner em todo o documento
+            const banner = document.querySelector('.embed-banner');
+            if (banner) {
+                banner.remove();
+                return true;
+            }
+            return false;
+        };
+
+        // Tentar remover imediatamente
+        removeWordwallBanner();
+
+        // Usar MutationObserver para detectar quando o banner é adicionado
+        const observer = new MutationObserver(() => {
+            if (removeWordwallBanner()) {
+                observer.disconnect();
+            }
+        });
+
+        // Observar mudanças no body
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+
+        // Também usar um intervalo como fallback (caso o observer não capture)
+        const interval = setInterval(() => {
+            if (removeWordwallBanner()) {
+                clearInterval(interval);
+            }
+        }, 500);
+
+        // Limpar após 10 segundos (tempo suficiente para o iframe carregar)
+        const timeout = setTimeout(() => {
+            observer.disconnect();
+            clearInterval(interval);
+        }, 10000);
+
+        return () => {
+            observer.disconnect();
+            clearInterval(interval);
+            clearTimeout(timeout);
+        };
+    }, [game]);
 
     const fetchGame = async () => {
         try {
@@ -105,91 +155,38 @@ const GameView = () => {
             </div>
 
             {/* Game Container */}
-            <Card>
-                <CardContent className="p-0">
-                    <div className="w-full min-h-[600px] bg-muted rounded-lg overflow-hidden">
-                        {game.iframeHtml ? (
-                            <div
-                                className="w-full h-full min-h-[600px]"
-                                dangerouslySetInnerHTML={{ __html: game.iframeHtml }}
-                            />
-                        ) : game.url ? (
-                            <iframe
-                                src={game.url}
-                                className="w-full h-full min-h-[600px] border-0"
-                                allowFullScreen
-                                title={game.title}
-                            />
-                        ) : (
-                            <div className="flex items-center justify-center h-[600px]">
-                                <div className="text-center">
-                                    <Play className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-                                    <p className="text-muted-foreground">Jogo não disponível</p>
+            <div className="flex justify-center">
+                <Card className=" max-w-6xl">
+                    <CardContent className="p-0">
+                        <div className="w-full min-h-[600px] bg-muted rounded-lg overflow-hidden">
+                            {game.iframeHtml ? (
+                                <div
+                                    className="w-full h-full min-h-[600px]"
+                                    dangerouslySetInnerHTML={{ __html: game.iframeHtml }}
+                                />
+                            ) : game.url ? (
+                                <iframe
+                                    src={game.url}
+                                    className="w-full h-full min-h-[600px] border-0"
+                                    allowFullScreen
+                                    title={game.title}
+                                />
+                            ) : (
+                                <div className="flex items-center justify-center h-[600px]">
+                                    <div className="text-center">
+                                        <Play className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
+                                        <p className="text-muted-foreground">Jogo não disponível</p>
+                                    </div>
                                 </div>
-                            </div>
-                        )}
-                    </div>
-                </CardContent>
-            </Card>
-
-            {/* Game Info */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Informações do Jogo</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div>
-                            <h4 className="font-medium mb-2">Título</h4>
-                            <p className="text-muted-foreground">{game.title}</p>
+                            )}
                         </div>
-
-                        {game.subject && (
-                            <div>
-                                <h4 className="font-medium mb-2">Disciplina</h4>
-                                <p className="text-muted-foreground">{game.subject}</p>
-                            </div>
-                        )}
-
-                        {game.author && (
-                            <div>
-                                <h4 className="font-medium mb-2">Criado por</h4>
-                                <p className="text-muted-foreground">{game.author}</p>
-                            </div>
-                        )}
-
-                        {(game.createdAt || game.created_at) && (
-                            <div>
-                                <h4 className="font-medium mb-2">Data de Criação</h4>
-                                <p className="text-muted-foreground">
-                                    {new Date(game.createdAt || game.created_at).toLocaleDateString('pt-BR', {
-                                        year: 'numeric',
-                                        month: 'long',
-                                        day: 'numeric'
-                                    })}
-                                </p>
-                            </div>
-                        )}
-
-                        {game.classes && Array.isArray(game.classes) && game.classes.length > 0 && (
-                            <div>
-                                <h4 className="font-medium mb-2 flex items-center gap-2">
-                                    <Users className="w-4 h-4" />
-                                    Turmas Vinculadas
-                                </h4>
-                                <div className="flex flex-wrap gap-2">
-                                    {game.classes.map((classItem) => (
-                                        <Badge key={classItem.id} variant="secondary" className="text-xs">
-                                            {classItem.name || classItem.nome || `Turma ${classItem.id}`}
-                                        </Badge>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
                     </CardContent>
                 </Card>
+            </div>
 
-                <Card>
+            {/* Como Jogar */}
+            <div className="flex justify-center">
+                <Card className="max-w-6xl w-full">
                     <CardHeader>
                         <CardTitle>Como Jogar</CardTitle>
                     </CardHeader>
@@ -234,6 +231,7 @@ const GameView = () => {
                     </CardContent>
                 </Card>
             </div>
+
         </div>
     );
 };
