@@ -44,7 +44,7 @@ interface Torneio {
   recompensaPrata: number;
   recompensaBronze: number;
   status: 'disponivel' | 'inscrito' | 'em_andamento' | 'finalizado';
-  dificuldade: 'facil' | 'medio' | 'dificil';
+  dificuldade: 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
   duracao: number; // em minutos
   questoes: number;
   icone: string;
@@ -81,7 +81,7 @@ const Competicoes = () => {
       recompensaPrata: 60,
       recompensaBronze: 30,
       status: 'disponivel',
-      dificuldade: 'medio',
+      dificuldade: 'Adequado',
       duracao: 45,
       questoes: 20,
       icone: '🧮',
@@ -102,7 +102,7 @@ const Competicoes = () => {
       recompensaPrata: 50,
       recompensaBronze: 25,
       status: 'inscrito',
-      dificuldade: 'medio',
+      dificuldade: 'Adequado',
       duracao: 40,
       questoes: 15,
       icone: '📚',
@@ -123,7 +123,7 @@ const Competicoes = () => {
       recompensaPrata: 45,
       recompensaBronze: 20,
       status: 'finalizado',
-      dificuldade: 'facil',
+      dificuldade: 'Básico',
       duracao: 35,
       questoes: 18,
       icone: '🔬',
@@ -144,7 +144,7 @@ const Competicoes = () => {
       recompensaPrata: 40,
       recompensaBronze: 15,
       status: 'disponivel',
-      dificuldade: 'medio',
+      dificuldade: 'Adequado',
       duracao: 30,
       questoes: 12,
       icone: '🏛️',
@@ -165,7 +165,7 @@ const Competicoes = () => {
       recompensaPrata: 65,
       recompensaBronze: 35,
       status: 'disponivel',
-      dificuldade: 'dificil',
+      dificuldade: 'Avançado',
       duracao: 50,
       questoes: 25,
       icone: '🌍',
@@ -186,7 +186,7 @@ const Competicoes = () => {
       recompensaPrata: 50,
       recompensaBronze: 25,
       status: 'em_andamento',
-      dificuldade: 'medio',
+      dificuldade: 'Adequado',
       duracao: 35,
       questoes: 16,
       icone: '🇺🇸',
@@ -272,12 +272,14 @@ const Competicoes = () => {
 
   const getDifficultyColor = (dificuldade: string) => {
     switch (dificuldade) {
-      case 'facil':
-        return 'text-green-600';
-      case 'medio':
-        return 'text-yellow-600';
-      case 'dificil':
+      case 'Abaixo do Básico':
         return 'text-red-600';
+      case 'Básico':
+        return 'text-yellow-600';
+      case 'Adequado':
+        return 'text-green-600';
+      case 'Avançado':
+        return 'text-blue-600';
       default:
         return 'text-gray-600';
     }

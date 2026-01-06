@@ -161,6 +161,7 @@ export const ClassSelector = ({
       let statesData: Record<string, any> = {};
       let municipalitiesData: Record<string, any> = {};
       let cityToMunicipalityMap: Record<string, string> = {}; // city_id -> municipality_id
+      let municipalityNameToStateMap: Record<string, string> = {}; // nome município (uppercase) -> nome estado
       
       try {
         // 1. Tentar buscar estados via endpoint unificado (como em Results.tsx)
@@ -183,6 +184,47 @@ export const ClassSelector = ({
             console.log(`Estados carregados via /city/states: ${states.length}`);
           } catch (statesError) {
             console.log('Erro ao buscar estados via /city/states:', statesError);
+            // Tentar buscar todos os municípios de uma vez para criar o mapeamento
+            try {
+              const allMunicipalitiesResponse = await api.get('/city/municipalities');
+              const allMunicipalities = Array.isArray(allMunicipalitiesResponse.data) 
+                ? allMunicipalitiesResponse.data 
+                : [];
+              console.log(`Municípios carregados diretamente: ${allMunicipalities.length}`);
+              
+              // Extrair estados únicos dos municípios
+              const uniqueStateIds = new Set<string>();
+              allMunicipalities.forEach((municipality: any) => {
+                if (municipality.state_id || municipality.estado_id) {
+                  uniqueStateIds.add(String(municipality.state_id || municipality.estado_id));
+                }
+              });
+              
+              // Buscar estados pelos IDs encontrados
+              for (const stateId of uniqueStateIds) {
+                try {
+                  const stateResponse = await api.get(`/city/states/${stateId}`);
+                  if (stateResponse.data) {
+                    states.push(stateResponse.data);
+                  }
+                } catch (err) {
+                  console.log(`Erro ao buscar estado ${stateId}:`, err);
+                }
+              }
+              
+              // Mapear municípios diretamente
+              allMunicipalities.forEach((municipality: any) => {
+                if (municipality && municipality.id) {
+                  municipalitiesData[municipality.id] = {
+                    id: municipality.id,
+                    nome: municipality.nome || municipality.name || '',
+                    estado_id: municipality.state_id || municipality.estado_id || ''
+                  };
+                }
+              });
+            } catch (municipalitiesError) {
+              console.log('Erro ao buscar municípios diretamente:', municipalitiesError);
+            }
           }
         }
         
@@ -286,6 +328,17 @@ export const ClassSelector = ({
         
         console.log(`Total de municípios carregados: ${Object.keys(municipalitiesData).length}`);
         console.log(`Mapeamentos city_id -> municipality_id: ${Object.keys(cityToMunicipalityMap).length}`);
+        
+        // Criar mapeamento reverso: nome do município -> estado (para quando já temos o nome do município)
+        Object.values(municipalitiesData).forEach((municipality: any) => {
+          if (municipality.nome && municipality.estado_id) {
+            const stateName = statesData[municipality.estado_id]?.nome || statesData[municipality.estado_id]?.name || '';
+            if (stateName) {
+              municipalityNameToStateMap[municipality.nome.toUpperCase()] = stateName;
+            }
+          }
+        });
+        console.log(`Mapeamentos nome município -> estado: ${Object.keys(municipalityNameToStateMap).length}`);
       } catch (error) {
         console.log('Erro ao buscar dados de estados e municípios:', error);
       }
@@ -396,6 +449,16 @@ export const ClassSelector = ({
           item.cidade as string ||
           '';
         
+        // Se não encontrou estado mas encontrou município, tentar buscar pelo nome do município
+        let estadoFinal = estado;
+        if (!estadoFinal && municipio) {
+          const municipioUpper = municipio.toUpperCase();
+          estadoFinal = municipalityNameToStateMap[municipioUpper] || '';
+          if (estadoFinal) {
+            console.log(`Estado encontrado via mapeamento de município: ${municipio} -> ${estadoFinal}`);
+          }
+        }
+        
         const normalized = {
           id: item.id as string,
           nome: item.name as string || item.nome as string || 'Sem nome',
@@ -450,7 +513,7 @@ export const ClassSelector = ({
             return finalCount;
           })(),
           municipio: municipio,
-          estado: estado
+          estado: estadoFinal
         };
         
         // Log para debug
@@ -537,16 +600,24 @@ export const ClassSelector = ({
     // Filtra classes baseado nos filtros já aplicados para mostrar apenas opções disponíveis
     let filteredForCities = classesWithStudents;
     let filteredForSchools = classesWithStudents;
+    let filteredForGrades = classesWithStudents;
     
     // Filtrar por estado para mostrar cidades disponíveis
     if (stateFilter !== 'all') {
       filteredForCities = filteredForCities.filter(c => c.estado && c.estado === stateFilter);
       filteredForSchools = filteredForSchools.filter(c => c.estado && c.estado === stateFilter);
+      filteredForGrades = filteredForGrades.filter(c => c.estado && c.estado === stateFilter);
     }
     
     // Filtrar por cidade para mostrar escolas disponíveis
     if (cityFilter !== 'all') {
       filteredForSchools = filteredForSchools.filter(c => c.municipio && c.municipio === cityFilter);
+      filteredForGrades = filteredForGrades.filter(c => c.municipio && c.municipio === cityFilter);
+    }
+    
+    // Filtrar por escola para mostrar séries disponíveis
+    if (schoolFilter !== 'all') {
+      filteredForGrades = filteredForGrades.filter(c => c.escola && c.escola === schoolFilter);
     }
     
     // Extrair estados únicos (apenas de turmas com alunos)
@@ -570,9 +641,9 @@ export const ClassSelector = ({
         .filter((escola): escola is string => Boolean(escola) && escola.trim() !== '')
     )].sort();
     
-    // Extrair séries únicas (apenas séries que têm turmas com alunos)
+    // Extrair séries únicas (apenas séries que têm turmas visíveis com os filtros aplicados)
     const grades = [...new Set(
-      classesWithStudents
+      filteredForGrades
         .map(c => c.serie)
         .filter((serie): serie is string => Boolean(serie) && serie.trim() !== '')
     )].sort();
@@ -591,7 +662,7 @@ export const ClassSelector = ({
     });
     
     return { uniqueStates: states, uniqueCities: cities, uniqueSchools: schools, uniqueGrades: grades };
-  }, [classes, stateFilter, cityFilter]);
+  }, [classes, stateFilter, cityFilter, schoolFilter]);
 
   // Filtrar turmas (apenas turmas com alunos)
   const filteredClasses = useMemo(() => {
@@ -764,67 +835,71 @@ export const ClassSelector = ({
 
           {/* Segunda linha: Filtros de Estado, Cidade */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Select 
-              value={stateFilter} 
-              onValueChange={(value) => {
-                setStateFilter(value);
-                // Reset cidade e escola quando mudar estado
-                if (value !== stateFilter) {
-                  setCityFilter('all');
-                  setSchoolFilter('all');
-                }
-              }}
-            >
-              <SelectTrigger className={stateFilter !== 'all' ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30' : ''}>
-                <Globe className="w-4 h-4 mr-2" />
-                <SelectValue placeholder="Estado" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os Estados</SelectItem>
-                {uniqueStates.length > 0 ? (
-                  uniqueStates.map(state => (
-                    <SelectItem key={state} value={state}>
-                      {state}
+            <div className="w-full">
+              <Select 
+                value={stateFilter} 
+                onValueChange={(value) => {
+                  setStateFilter(value);
+                  // Reset cidade e escola quando mudar estado
+                  if (value !== stateFilter) {
+                    setCityFilter('all');
+                    setSchoolFilter('all');
+                  }
+                }}
+              >
+                <SelectTrigger className={`w-full ${stateFilter !== 'all' ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30' : ''}`}>
+                  <Globe className="w-4 h-4 mr-2" />
+                  <SelectValue placeholder="Estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os Estados</SelectItem>
+                  {uniqueStates.length > 0 ? (
+                    uniqueStates.map(state => (
+                      <SelectItem key={state} value={state}>
+                        {state}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="no-data" disabled>
+                      Nenhum estado disponível
                     </SelectItem>
-                  ))
-                ) : (
-                  <SelectItem value="no-data" disabled>
-                    Nenhum estado disponível
-                  </SelectItem>
-                )}
-              </SelectContent>
-            </Select>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
 
-            <Select 
-              value={cityFilter} 
-              onValueChange={(value) => {
-                setCityFilter(value);
-                // Reset escola quando mudar cidade
-                if (value !== cityFilter) {
-                  setSchoolFilter('all');
-                }
-              }}
-              disabled={stateFilter !== 'all' && uniqueCities.length === 0}
-            >
-              <SelectTrigger className={cityFilter !== 'all' ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30' : ''}>
-                <Building2 className="w-4 h-4 mr-2" />
-                <SelectValue placeholder={stateFilter !== 'all' && uniqueCities.length === 0 ? "Selecione um estado primeiro" : "Cidade"} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas as Cidades</SelectItem>
-                {uniqueCities.length > 0 ? (
-                  uniqueCities.map(city => (
-                    <SelectItem key={city} value={city}>
-                      {city}
+            <div className="w-full">
+              <Select 
+                value={cityFilter} 
+                onValueChange={(value) => {
+                  setCityFilter(value);
+                  // Reset escola quando mudar cidade
+                  if (value !== cityFilter) {
+                    setSchoolFilter('all');
+                  }
+                }}
+                disabled={stateFilter !== 'all' && uniqueCities.length === 0}
+              >
+                <SelectTrigger className={`w-full ${cityFilter !== 'all' ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30' : ''}`}>
+                  <Building2 className="w-4 h-4 mr-2" />
+                  <SelectValue placeholder={stateFilter !== 'all' && uniqueCities.length === 0 ? "Selecione um estado primeiro" : "Cidade"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as Cidades</SelectItem>
+                  {uniqueCities.length > 0 ? (
+                    uniqueCities.map(city => (
+                      <SelectItem key={city} value={city}>
+                        {city}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="no-data" disabled>
+                      {stateFilter !== 'all' ? 'Nenhuma cidade disponível neste estado' : 'Nenhuma cidade disponível'}
                     </SelectItem>
-                  ))
-                ) : (
-                  <SelectItem value="no-data" disabled>
-                    {stateFilter !== 'all' ? 'Nenhuma cidade disponível neste estado' : 'Nenhuma cidade disponível'}
-                  </SelectItem>
-                )}
-              </SelectContent>
-            </Select>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {/* Terceira linha: Filtros de Escola, Série */}

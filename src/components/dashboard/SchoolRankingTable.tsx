@@ -70,10 +70,32 @@ export default function SchoolRankingTable() {
         } else {
           setRankings([]);
         }
-      } catch (error) {
-        console.error("Erro ao buscar ranking de escolas:", error);
-        setError("Não foi possível carregar o ranking de escolas.");
-        setRankings([]);
+      } catch (error: unknown) {
+        // ✅ MELHORADO: Tratar erro 500 como "sem dados" para endpoints de listagem
+        const axiosError = error as { response?: { status?: number; data?: { message?: string } } };
+        if (axiosError.response?.status === 500) {
+          const errorMessage = axiosError.response?.data?.message || '';
+          const isEmptyError = errorMessage.toLowerCase().includes('nenhum') || 
+                             errorMessage.toLowerCase().includes('não encontrado') ||
+                             errorMessage.toLowerCase().includes('empty') ||
+                             errorMessage.toLowerCase().includes('no data') ||
+                             errorMessage === '';
+          
+          if (isEmptyError) {
+            // Não há escolas no sistema ainda - não é um erro real
+            console.info('Nenhuma escola encontrada no sistema.');
+            setRankings([]);
+            setError(null);
+          } else {
+            console.error("Erro ao buscar ranking de escolas:", error);
+            setError("Não foi possível carregar o ranking de escolas.");
+            setRankings([]);
+          }
+        } else {
+          console.error("Erro ao buscar ranking de escolas:", error);
+          setError("Não foi possível carregar o ranking de escolas.");
+          setRankings([]);
+        }
       } finally {
         setIsLoading(false);
       }

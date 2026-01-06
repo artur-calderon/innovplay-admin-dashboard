@@ -104,9 +104,10 @@ const Competicoes = () => {
   // Obter cor da dificuldade
   const getDifficultyColor = (dificuldade: string) => {
     switch (dificuldade) {
-      case 'facil': return 'text-green-600 dark:text-green-400';
-      case 'medio': return 'text-yellow-600 dark:text-yellow-400';
-      case 'dificil': return 'text-red-600 dark:text-red-400';
+      case 'Abaixo do Básico': return 'text-red-600 dark:text-red-400';
+      case 'Básico': return 'text-yellow-600 dark:text-yellow-400';
+      case 'Adequado': return 'text-green-600 dark:text-green-400';
+      case 'Avançado': return 'text-blue-600 dark:text-blue-400';
       default: return 'text-muted-foreground';
     }
   };
