@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -11,7 +12,10 @@ import {
     BookOpen,
     Users,
     School,
-    Globe
+    Globe,
+    Calendar,
+    User,
+    Search
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useAuth } from '@/context/authContext';
@@ -33,6 +37,7 @@ const StudentGames = () => {
     const [games, setGames] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedSubject, setSelectedSubject] = useState('Todas');
+    const [searchTerm, setSearchTerm] = useState('');
     
     // Estados para dados do aluno
     const [studentClassId, setStudentClassId] = useState(null);
@@ -46,14 +51,14 @@ const StudentGames = () => {
         try {
             setIsLoadingStudentInfo(true);
             
-            // Buscar dados do aluno
-            const studentResponse = await api.get(`/students/${user.id}`);
+            // Buscar dados do aluno usando o endpoint /students/me
+            const studentResponse = await api.get('/students/me');
             const studentData = studentResponse.data;
             
             // A resposta da API retorna class ou turma (objeto com id e name)
-            const classId = studentData.class?.id || studentData.turma?.id;
-            // A resposta da API retorna school (objeto com id e name)
-            const schoolId = studentData.school?.id;
+            const classId = studentData.class_id || studentData.class?.id || studentData.turma?.id;
+            // A resposta da API retorna school_id ou school (objeto com id e name)
+            const schoolId = studentData.school_id || studentData.school?.id;
             
             setStudentClassId(classId);
             setStudentSchoolId(schoolId);
@@ -65,17 +70,17 @@ const StudentGames = () => {
                     .map((t) => t.user_id || t.usuario?.id || t.id)
                     .filter(Boolean);
                 setTeacherIds(teacherUserIds);
-            } else if (classId) {
-                // Fallback: buscar professores da turma se não vierem na resposta
+            } else if (schoolId) {
+                // Fallback: buscar professores da escola se não vierem na resposta
                 try {
-                    const teachersResponse = await api.get(`/classes/${classId}/teachers`);
-                    const teachers = teachersResponse.data?.professores || teachersResponse.data || [];
-                    const teacherUserIds = teachers
-                        .map((t) => t.professor?.user_id || t.usuario?.id || t.user_id || t.id)
+                    const teachersResponse = await api.get(`/teacher/school/${schoolId}`);
+                    const professores = teachersResponse.data?.professores || [];
+                    const teacherUserIds = professores
+                        .map((t) => t.usuario?.id || t.professor?.user_id || t.id)
                         .filter(Boolean);
                     setTeacherIds(teacherUserIds);
                 } catch (error) {
-                    console.error('Erro ao buscar professores da turma:', error);
+                    console.error('Erro ao buscar professores da escola:', error);
                     setTeacherIds([]);
                 }
             }
@@ -83,22 +88,15 @@ const StudentGames = () => {
             // Buscar diretores e coordenadores da escola (após ter o schoolId)
             if (schoolId) {
                 try {
-                    // Buscar diretores da escola
-                    const directorsResponse = await api.get(`/school/${schoolId}/directors`);
-                    const directors = Array.isArray(directorsResponse.data) 
-                        ? directorsResponse.data 
-                        : (directorsResponse.data?.data || []);
+                    // Buscar managers (diretores e coordenadores) da escola
+                    const managersResponse = await api.get(`/managers/school/${schoolId}`);
+                    const managers = managersResponse.data?.managers || [];
                     
-                    // Buscar coordenadores da escola
-                    const coordinatorsResponse = await api.get(`/school/${schoolId}/coordinators`);
-                    const coordinators = Array.isArray(coordinatorsResponse.data)
-                        ? coordinatorsResponse.data
-                        : (coordinatorsResponse.data?.data || []);
+                    // Extrair user_id de todos os managers (diretores e coordenadores)
+                    const adminUserIds = managers
+                        .map((m) => m.user?.id || m.usuario?.id || m.id)
+                        .filter(Boolean);
                     
-                    const adminUserIds = [
-                        ...directors.map((d) => d.user_id || d.usuario?.id || d.id).filter(Boolean),
-                        ...coordinators.map((c) => c.user_id || c.usuario?.id || c.id).filter(Boolean)
-                    ];
                     setSchoolAdminIds(adminUserIds);
                 } catch (error) {
                     console.error('Erro ao buscar administradores da escola:', error);
@@ -107,7 +105,17 @@ const StudentGames = () => {
             }
         } catch (error) {
             console.error('Erro ao carregar informações do aluno:', error);
-            toast.error('Erro ao carregar informações do aluno');
+            
+            // Tratamento de erros mais específico
+            if (error.response?.status === 404) {
+                toast.error('Seus dados não foram encontrados. Entre em contato com o administrador.');
+            } else if (error.response?.status === 500) {
+                // Mesmo com erro 500, tentar continuar se tiver dados mínimos
+                console.warn('Erro 500 ao buscar dados do aluno, mas continuando...');
+                toast.error('Erro ao carregar alguns dados. Os jogos podem não estar completamente filtrados.');
+            } else {
+                toast.error('Erro ao carregar informações do aluno');
+            }
         } finally {
             setIsLoadingStudentInfo(false);
         }
@@ -120,7 +128,7 @@ const StudentGames = () => {
             const response = await api.get('/games');
             const allGames = response.data.jogos || [];
             
-            // Filtrar jogos da turma do aluno
+            // Filtrar jogos da turma do aluno (se tiver classId)
             let filteredGames = allGames;
             
             if (studentClassId) {
@@ -130,9 +138,11 @@ const StudentGames = () => {
                     if (game.classes && Array.isArray(game.classes)) {
                         return game.classes.some((c) => c.id === studentClassId);
                     }
-                    return false;
+                    // Se não tiver classes vinculadas, mostrar o jogo (pode ser jogo geral)
+                    return true;
                 });
             }
+            // Se não tiver classId, mostrar todos os jogos disponíveis
             
             setGames(filteredGames);
         } catch (error) {
@@ -146,13 +156,15 @@ const StudentGames = () => {
 
     useEffect(() => {
         loadStudentInfo();
-    }, [user.id]);
+    }, []);
 
     useEffect(() => {
-        if (!isLoadingStudentInfo && studentClassId) {
+        // Carregar jogos mesmo sem classId (mostrará todos os jogos disponíveis)
+        // Se tiver classId, filtrará por turma
+        if (!isLoadingStudentInfo) {
             fetchGames();
         }
-    }, [user.id, studentClassId, isLoadingStudentInfo]);
+    }, [studentClassId, isLoadingStudentInfo]);
 
     // Abrir jogo na página GameView
     const openGame = (gameId) => {
@@ -189,6 +201,17 @@ const StudentGames = () => {
         };
     };
 
+    // Filtrar jogos por nome
+    const filterGamesByName = (gamesList) => {
+        if (!searchTerm.trim()) {
+            return gamesList;
+        }
+        const term = searchTerm.toLowerCase().trim();
+        return gamesList.filter((game) => 
+            game.title?.toLowerCase().includes(term)
+        );
+    };
+
     // Filtrar jogos por disciplina
     const filterGamesBySubject = (gamesList) => {
         if (selectedSubject === 'Todas') {
@@ -213,9 +236,9 @@ const StudentGames = () => {
     };
 
     const categorizedGames = categorizeGames();
-    const filteredTeacherGames = filterGamesBySubject(categorizedGames.teacherGames);
-    const filteredSchoolAdminGames = filterGamesBySubject(categorizedGames.schoolAdminGames);
-    const filteredOtherGames = filterGamesBySubject(categorizedGames.otherGames);
+    const filteredTeacherGames = filterGamesBySubject(filterGamesByName(categorizedGames.teacherGames));
+    const filteredSchoolAdminGames = filterGamesBySubject(filterGamesByName(categorizedGames.schoolAdminGames));
+    const filteredOtherGames = filterGamesBySubject(filterGamesByName(categorizedGames.otherGames));
 
     if (isLoading || isLoadingStudentInfo) {
         return (
@@ -233,6 +256,18 @@ const StudentGames = () => {
             <div>
                 <h2 className="text-2xl font-bold">Meus Jogos</h2>
                 <p className="text-muted-foreground">Jogue e aprenda com seus jogos educativos</p>
+            </div>
+
+            {/* Campo de Busca */}
+            <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                <Input
+                    type="text"
+                    placeholder="Buscar jogos por nome..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                />
             </div>
 
             {/* Filtro por Disciplina */}
@@ -286,11 +321,13 @@ const StudentGames = () => {
                                         </div>
                                         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                                             {subjectGames.map((game) => (
-                                                <Card key={game.id} className="hover:shadow-md transition-shadow">
-                                                    <CardHeader>
+                                                <Card key={game.id} className="group hover:shadow-lg transition-shadow cursor-pointer" onClick={() => openGame(game.id)}>
+                                                    <CardHeader className="pb-3">
                                                         <div className="flex justify-between items-start">
                                                             <CardTitle className="text-lg line-clamp-2">{game.title}</CardTitle>
-                                                            <Badge variant="secondary">{game.subject}</Badge>
+                                                            <Badge variant="secondary" className="ml-2">
+                                                                {game.subject}
+                                                            </Badge>
                                                         </div>
                                                     </CardHeader>
                                                     <CardContent className="space-y-4">
@@ -303,19 +340,45 @@ const StudentGames = () => {
                                                                 />
                                                             ) : (
                                                                 <div className="w-full h-full flex items-center justify-center">
-                                                                    <Gamepad2 className="w-8 h-8 text-muted-foreground" />
+                                                                    <Gamepad2 className="w-12 h-12 text-muted-foreground" />
                                                                 </div>
                                                             )}
                                                         </div>
-                                                        <div className="flex gap-2">
-                                                            <Button
-                                                                onClick={() => openGame(game.id)}
-                                                                className="flex-1"
-                                                            >
-                                                                <ExternalLink className="w-4 h-4 mr-1" />
-                                                                Jogar
-                                                            </Button>
+
+                                                        {/* Informações do jogo */}
+                                                        <div className="space-y-2">
+                                                            {game.subject && (
+                                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                                    <BookOpen className="w-4 h-4" />
+                                                                    <span>{game.subject}</span>
+                                                                </div>
+                                                            )}
+
+                                                            {game.author && (
+                                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                                    <User className="w-4 h-4" />
+                                                                    <span>{game.author}</span>
+                                                                </div>
+                                                            )}
+
+                                                            {(game.createdAt || game.created_at) && (
+                                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                                    <Calendar className="w-4 h-4" />
+                                                                    <span>{new Date(game.createdAt || game.created_at).toLocaleDateString('pt-BR')}</span>
+                                                                </div>
+                                                            )}
                                                         </div>
+
+                                                        <Button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                openGame(game.id);
+                                                            }}
+                                                            className="w-full"
+                                                        >
+                                                            <ExternalLink className="w-4 h-4 mr-1" />
+                                                            Jogar
+                                                        </Button>
                                                     </CardContent>
                                                 </Card>
                                             ))}
@@ -344,11 +407,13 @@ const StudentGames = () => {
                                         </div>
                                         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                                             {subjectGames.map((game) => (
-                                                <Card key={game.id} className="hover:shadow-md transition-shadow">
-                                                    <CardHeader>
+                                                <Card key={game.id} className="group hover:shadow-lg transition-shadow cursor-pointer" onClick={() => openGame(game.id)}>
+                                                    <CardHeader className="pb-3">
                                                         <div className="flex justify-between items-start">
                                                             <CardTitle className="text-lg line-clamp-2">{game.title}</CardTitle>
-                                                            <Badge variant="secondary">{game.subject}</Badge>
+                                                            <Badge variant="secondary" className="ml-2">
+                                                                {game.subject}
+                                                            </Badge>
                                                         </div>
                                                     </CardHeader>
                                                     <CardContent className="space-y-4">
@@ -361,19 +426,45 @@ const StudentGames = () => {
                                                                 />
                                                             ) : (
                                                                 <div className="w-full h-full flex items-center justify-center">
-                                                                    <Gamepad2 className="w-8 h-8 text-muted-foreground" />
+                                                                    <Gamepad2 className="w-12 h-12 text-muted-foreground" />
                                                                 </div>
                                                             )}
                                                         </div>
-                                                        <div className="flex gap-2">
-                                                            <Button
-                                                                onClick={() => openGame(game.id)}
-                                                                className="flex-1"
-                                                            >
-                                                                <ExternalLink className="w-4 h-4 mr-1" />
-                                                                Jogar
-                                                            </Button>
+
+                                                        {/* Informações do jogo */}
+                                                        <div className="space-y-2">
+                                                            {game.subject && (
+                                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                                    <BookOpen className="w-4 h-4" />
+                                                                    <span>{game.subject}</span>
+                                                                </div>
+                                                            )}
+
+                                                            {game.author && (
+                                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                                    <User className="w-4 h-4" />
+                                                                    <span>{game.author}</span>
+                                                                </div>
+                                                            )}
+
+                                                            {(game.createdAt || game.created_at) && (
+                                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                                    <Calendar className="w-4 h-4" />
+                                                                    <span>{new Date(game.createdAt || game.created_at).toLocaleDateString('pt-BR')}</span>
+                                                                </div>
+                                                            )}
                                                         </div>
+
+                                                        <Button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                openGame(game.id);
+                                                            }}
+                                                            className="w-full"
+                                                        >
+                                                            <ExternalLink className="w-4 h-4 mr-1" />
+                                                            Jogar
+                                                        </Button>
                                                     </CardContent>
                                                 </Card>
                                             ))}
@@ -402,11 +493,13 @@ const StudentGames = () => {
                                         </div>
                                         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                                             {subjectGames.map((game) => (
-                                                <Card key={game.id} className="hover:shadow-md transition-shadow">
-                                                    <CardHeader>
+                                                <Card key={game.id} className="group hover:shadow-lg transition-shadow cursor-pointer" onClick={() => openGame(game.id)}>
+                                                    <CardHeader className="pb-3">
                                                         <div className="flex justify-between items-start">
                                                             <CardTitle className="text-lg line-clamp-2">{game.title}</CardTitle>
-                                                            <Badge variant="secondary">{game.subject}</Badge>
+                                                            <Badge variant="secondary" className="ml-2">
+                                                                {game.subject}
+                                                            </Badge>
                                                         </div>
                                                     </CardHeader>
                                                     <CardContent className="space-y-4">
@@ -419,19 +512,45 @@ const StudentGames = () => {
                                                                 />
                                                             ) : (
                                                                 <div className="w-full h-full flex items-center justify-center">
-                                                                    <Gamepad2 className="w-8 h-8 text-muted-foreground" />
+                                                                    <Gamepad2 className="w-12 h-12 text-muted-foreground" />
                                                                 </div>
                                                             )}
                                                         </div>
-                                                        <div className="flex gap-2">
-                                                            <Button
-                                                                onClick={() => openGame(game.id)}
-                                                                className="flex-1"
-                                                            >
-                                                                <ExternalLink className="w-4 h-4 mr-1" />
-                                                                Jogar
-                                                            </Button>
+
+                                                        {/* Informações do jogo */}
+                                                        <div className="space-y-2">
+                                                            {game.subject && (
+                                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                                    <BookOpen className="w-4 h-4" />
+                                                                    <span>{game.subject}</span>
+                                                                </div>
+                                                            )}
+
+                                                            {game.author && (
+                                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                                    <User className="w-4 h-4" />
+                                                                    <span>{game.author}</span>
+                                                                </div>
+                                                            )}
+
+                                                            {(game.createdAt || game.created_at) && (
+                                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                                    <Calendar className="w-4 h-4" />
+                                                                    <span>{new Date(game.createdAt || game.created_at).toLocaleDateString('pt-BR')}</span>
+                                                                </div>
+                                                            )}
                                                         </div>
+
+                                                        <Button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                openGame(game.id);
+                                                            }}
+                                                            className="w-full"
+                                                        >
+                                                            <ExternalLink className="w-4 h-4 mr-1" />
+                                                            Jogar
+                                                        </Button>
                                                     </CardContent>
                                                 </Card>
                                             ))}

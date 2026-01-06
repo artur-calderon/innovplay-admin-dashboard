@@ -7,7 +7,7 @@
 // ========================================
 
 export type CompetitionStatus = 'agendada' | 'aberta' | 'em_andamento' | 'finalizada';
-export type CompetitionDifficulty = 'facil' | 'medio' | 'dificil';
+export type CompetitionDifficulty = 'Abaixo do Básico' | 'Básico' | 'Adequado' | 'Avançado';
 export type QuestionSelectionMode = 'manual' | 'automatico';
 
 // ========================================

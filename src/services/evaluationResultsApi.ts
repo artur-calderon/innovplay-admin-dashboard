@@ -1,6 +1,29 @@
 import { api, apiWithRetry, apiWithTimeout } from '@/lib/api';
 import { EvaluationResultsData, StudentProficiency, ResultsFilters, calculateProficiency, RelatorioCompleto } from '@/types/evaluation-results';
 
+// ✅ NOVO: Interfaces para status e processamento de relatórios
+interface ReportStatus {
+  status: 'ready' | 'processing' | 'not_found';
+  has_payload: boolean;
+  has_ai_analysis: boolean;
+  is_dirty: boolean;
+  ai_analysis_is_dirty: boolean;
+  last_update: string | null;
+}
+
+interface ProcessingResponse {
+  status: 'processing';
+  message: string;
+  has_payload: boolean;
+  has_ai_analysis: boolean;
+  is_dirty: boolean;
+  ai_analysis_is_dirty: boolean;
+  last_update: string | null;
+  evaluation_id: string;
+  scope_type: 'school' | 'city';
+  scope_id: string;
+}
+
 // ===== INTERFACES PARA BACKEND REAL =====
 
 // ✅ NOVO: Interfaces para a nova estrutura de resposta em cascata
@@ -2158,7 +2181,84 @@ export class EvaluationResultsApiService {
     }
   }
 
-  // ✅ NOVO: Buscar relatório completo de uma avaliação
+  // ✅ NOVO: Verificar status do relatório
+  static async checkReportStatus(
+    evaluationId: string,
+    options?: { schoolId?: string; cityId?: string }
+  ): Promise<ReportStatus> {
+    try {
+      const params = new URLSearchParams();
+      
+      if (options?.schoolId) {
+        params.append('school_id', options.schoolId);
+      } else if (options?.cityId) {
+        params.append('city_id', options.cityId);
+      }
+      
+      const url = `/reports/status/${evaluationId}${params.toString() ? `?${params.toString()}` : ''}`;
+      const response = await api.get(url);
+      
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao verificar status do relatório:', error);
+      throw error;
+    }
+  }
+
+  // ✅ NOVO: Fazer polling até o relatório ficar pronto
+  static async pollUntilReady(
+    evaluationId: string,
+    options?: { schoolId?: string; cityId?: string },
+    maxAttempts: number = 30,
+    pollInterval: number = 2000
+  ): Promise<RelatorioCompleto> {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      // Aguardar antes de verificar (exceto na primeira tentativa)
+      if (attempt > 0) {
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+      }
+      
+      try {
+        const status = await this.checkReportStatus(evaluationId, options);
+        
+        if (status.status === 'ready') {
+          // Relatório pronto - buscar dados completos
+          const params = new URLSearchParams();
+          if (options?.schoolId) {
+            params.append('school_id', options.schoolId);
+          } else if (options?.cityId) {
+            params.append('city_id', options.cityId);
+          }
+          
+          const url = `/reports/dados-json/${evaluationId}${params.toString() ? `?${params.toString()}` : ''}`;
+          const response = await api.get(url);
+          
+          return response.data;
+        }
+        
+        // Continuar polling se ainda estiver processando
+        if (status.status === 'processing') {
+          continue;
+        }
+        
+        // Se status for 'not_found', lançar erro
+        if (status.status === 'not_found') {
+          throw new Error('Relatório não encontrado');
+        }
+      } catch (error) {
+        // Se for o último attempt, lançar erro
+        if (attempt === maxAttempts - 1) {
+          throw new Error('Timeout: Relatório não ficou pronto a tempo');
+        }
+        // Caso contrário, continuar tentando
+        continue;
+      }
+    }
+    
+    throw new Error('Timeout: Relatório não ficou pronto a tempo');
+  }
+
+  // ✅ ATUALIZADO: Buscar relatório completo de uma avaliação com suporte a polling
   static async getRelatorioCompleto(
     evaluationId: string, 
     options?: { schoolId?: string; cityId?: string }
@@ -2176,21 +2276,49 @@ export class EvaluationResultsApiService {
       const url = `/reports/dados-json/${evaluationId}${params.toString() ? `?${params.toString()}` : ''}`;
       
       const response = await api.get(url);
+      
+      // ✅ NOVO: Verificar status HTTP
+      if (response.status === 202) {
+        // Relatório está sendo processado - fazer polling
+        return await this.pollUntilReady(evaluationId, options);
+      }
+      
+      // ✅ NOVO: Verificar campo status na resposta (caso HTTP 200 mas status processing)
+      if (response.status === 200) {
+        const data = response.data;
+        
+        // Se a resposta tiver campo status, verificar
+        if (data && typeof data === 'object' && 'status' in data) {
+          if (data.status === 'ready') {
+            // Relatório pronto - retornar dados normalmente
+            return data as RelatorioCompleto;
+          } else if (data.status === 'processing') {
+            // Relatório sendo processado - fazer polling
+            return await this.pollUntilReady(evaluationId, options);
+          }
+        }
+        
+        // Se não tiver campo status, assumir que está pronto (compatibilidade com API antiga)
+        return data as RelatorioCompleto;
+      }
     
-      return response.data;
-    } catch (error) {
+      // Fallback: retornar dados mesmo se status for diferente
+      return response.data as RelatorioCompleto;
+    } catch (error: unknown) {
       console.error('❌ LOG - Erro ao buscar relatório completo:');
       console.error('  - Tipo do erro:', typeof error);
       console.error('  - Mensagem do erro:', error);
       
-      if (error.response) {
-        console.error('  - Status do erro:', error.response.status);
-        console.error('  - Dados do erro:', error.response.data);
-        console.error('  - Headers do erro:', error.response.headers);
-      } else if (error.request) {
-        console.error('  - Erro de requisição (sem resposta):', error.request);
+      const axiosError = error as { response?: { status?: number; data?: unknown; headers?: unknown }; request?: unknown; message?: string };
+      
+      if (axiosError.response) {
+        console.error('  - Status do erro:', axiosError.response.status);
+        console.error('  - Dados do erro:', axiosError.response.data);
+        console.error('  - Headers do erro:', axiosError.response.headers);
+      } else if (axiosError.request) {
+        console.error('  - Erro de requisição (sem resposta):', axiosError.request);
       } else {
-        console.error('  - Erro de configuração:', error.message);
+        console.error('  - Erro de configuração:', axiosError.message);
       }
       
       throw error;

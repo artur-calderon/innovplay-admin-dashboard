@@ -539,9 +539,9 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
 
         {link.children && isSubmenuOpen && !isCollapsed && (
           <ul className="space-y-1 ml-1.5 md:ml-2 mt-1 border-l border-[#E5D5EA] pl-2 md:pl-3 dark:border-white/10">
-            {link.children.map(child => (
+            {link.children.map((child, index) => (
               <RenderMenuItem
-                key={child.href || child.label}
+                key={`${child.label}-${child.href || child.role.join('-')}-${index}`}
                 link={child}
                 currentPath={currentPath}
                 isCollapsed={isCollapsed}
@@ -678,9 +678,9 @@ export default function Sidebar({ onMobileMenuClose }: SidebarProps = {}) {
                 <div key={category.name}>
                   <CategorySeparator name={category.name} />
                   <ul className="space-y-1 md:space-y-1.5">
-                    {category.links.map(link => (
+                    {category.links.map((link, index) => (
                       <RenderMenuItem
-                        key={link.label}
+                        key={`${link.label}-${link.href || link.role.join('-')}-${index}`}
                         link={link}
                         currentPath={currentPath}
                         isCollapsed={isCollapsed}

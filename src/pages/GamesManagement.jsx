@@ -18,7 +18,8 @@ import {
     Gamepad2,
     Link,
     User,
-    Globe
+    Globe,
+    Search
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useAuth } from '@/context/authContext';
@@ -54,6 +55,7 @@ const GamesManagement = () => {
     const [gameToDelete, setGameToDelete] = useState(null);
     const [activeTab, setActiveTab] = useState('my_games'); // 'my_games' ou 'all_games'
     const [editError, setEditError] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
     
     // Estados para edição de turmas
     const [editingClasses, setEditingClasses] = useState([]);
@@ -434,6 +436,17 @@ const GamesManagement = () => {
         navigate(`/app/jogos/${gameId}`);
     };
 
+    // Filtrar jogos por nome
+    const filterGamesByName = (gamesList) => {
+        if (!searchTerm.trim()) {
+            return gamesList;
+        }
+        const term = searchTerm.toLowerCase().trim();
+        return gamesList.filter((game) => 
+            game.title?.toLowerCase().includes(term)
+        );
+    };
+
 
 
     if (isLoading) {
@@ -493,6 +506,18 @@ const GamesManagement = () => {
                 </Tabs>
             )}
 
+            {/* Campo de Busca */}
+            <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                <Input
+                    type="text"
+                    placeholder="Buscar jogos por nome..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                />
+            </div>
+
             {!games || games.length === 0 ? (
                 <Card>
                     <CardContent className="py-12 text-center">
@@ -510,9 +535,19 @@ const GamesManagement = () => {
                         )}
                     </CardContent>
                 </Card>
+            ) : filterGamesByName(games).length === 0 ? (
+                <Card>
+                    <CardContent className="py-12 text-center">
+                        <Gamepad2 className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                        <h3 className="text-lg font-medium mb-2">Nenhum jogo encontrado</h3>
+                        <p className="text-muted-foreground mb-4">
+                            Nenhum jogo corresponde à busca "{searchTerm}".
+                        </p>
+                    </CardContent>
+                </Card>
             ) : (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {games.map((game) => {
+                    {filterGamesByName(games).map((game) => {
                         const canEdit = canEditGame(game);
                         return (
                             <Card key={game.id} className="hover:shadow-md transition-shadow">

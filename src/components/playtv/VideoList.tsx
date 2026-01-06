@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Play, Calendar, School, BookOpen, GraduationCap, Trash2 } from 'lucide-react';
 import { PlayTvVideo } from '@/types/playtv';
 import { useNavigate } from 'react-router-dom';
+import { getVideoThumbnail } from '@/lib/utils';
 
 interface VideoListProps {
   videos: PlayTvVideo[];
@@ -92,9 +93,45 @@ export const VideoList = ({
               </div>
             </CardHeader>
           <CardContent className="space-y-4">
-            {/* Thumbnail placeholder */}
-            <div className="relative aspect-video bg-muted rounded-lg overflow-hidden flex items-center justify-center">
-              <Play className="w-12 h-12 text-muted-foreground" />
+            {/* Thumbnail */}
+            <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
+              {(() => {
+                const thumbnailUrl = getVideoThumbnail(video.url);
+                if (thumbnailUrl) {
+                  return (
+                    <>
+                      <img
+                        src={thumbnailUrl}
+                        alt={video.title || 'Vídeo'}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          // Se a imagem falhar ao carregar, esconder e mostrar placeholder
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                          const placeholder = target.parentElement?.querySelector('.thumbnail-placeholder') as HTMLElement;
+                          if (placeholder) {
+                            placeholder.style.display = 'flex';
+                          }
+                        }}
+                      />
+                      <div className="thumbnail-placeholder hidden absolute inset-0 items-center justify-center bg-muted">
+                        <Play className="w-12 h-12 text-muted-foreground" />
+                      </div>
+                      {/* Overlay com ícone de play no centro */}
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors pointer-events-none">
+                        <div className="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                          <Play className="w-8 h-8 text-primary ml-1" fill="currentColor" />
+                        </div>
+                      </div>
+                    </>
+                  );
+                }
+                return (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <Play className="w-12 h-12 text-muted-foreground" />
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Informações do vídeo */}
@@ -131,7 +168,7 @@ export const VideoList = ({
             </div>
           </CardContent>
         </Card>
-        );
+      );
       })}
     </div>
   );
