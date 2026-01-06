@@ -87,11 +87,12 @@ interface QuestionDetails {
   images?: string[];
 }
 
-// Opções de dificuldade disponíveis
+// Opções de dificuldade disponíveis (mesmos valores do QuestionBank.tsx)
 const DIFFICULTY_OPTIONS = [
-  { value: 'facil', label: 'Fácil', color: 'bg-green-500' },
-  { value: 'medio', label: 'Médio', color: 'bg-yellow-500' },
-  { value: 'dificil', label: 'Difícil', color: 'bg-red-500' },
+  { value: 'Abaixo do Básico', label: 'Abaixo do Básico', color: 'bg-red-500' },
+  { value: 'Básico', label: 'Básico', color: 'bg-yellow-500' },
+  { value: 'Adequado', label: 'Adequado', color: 'bg-green-500' },
+  { value: 'Avançado', label: 'Avançado', color: 'bg-blue-500' },
 ];
 
 export const CompetitionAdminPanel = ({ 
@@ -129,7 +130,7 @@ export const CompetitionAdminPanel = ({
     questoes: editingCompetition?.questoes || [],
     modo_selecao: 'manual',
     quantidade_questoes: 20,
-    dificuldades: ['facil', 'medio', 'dificil'], // Todas selecionadas por padrão
+    dificuldades: ['Abaixo do Básico', 'Básico', 'Adequado', 'Avançado'], // Todas selecionadas por padrão
     descricao: editingCompetition?.descricao || '',
     instrucoes: editingCompetition?.instrucoes || '',
     icone: editingCompetition?.icone || '🏆',

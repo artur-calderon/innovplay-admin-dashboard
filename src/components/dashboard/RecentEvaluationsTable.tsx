@@ -107,9 +107,30 @@ export default function RecentEvaluationsTable() {
         } else {
           setEvaluations([]);
         }
-      } catch (error) {
-        console.error('Erro ao buscar avaliações recentes:', error);
-        setError('Erro ao carregar dados');
+      } catch (error: unknown) {
+        // ✅ MELHORADO: Tratar erro 500 como "sem dados" para endpoints de listagem
+        const axiosError = error as { response?: { status?: number; data?: { message?: string } } };
+        if (axiosError.response?.status === 500) {
+          const errorMessage = axiosError.response?.data?.message || '';
+          const isEmptyError = errorMessage.toLowerCase().includes('nenhum') || 
+                             errorMessage.toLowerCase().includes('não encontrado') ||
+                             errorMessage.toLowerCase().includes('empty') ||
+                             errorMessage.toLowerCase().includes('no data') ||
+                             errorMessage === '';
+          
+          if (isEmptyError) {
+            // Não há avaliações no sistema ainda - não é um erro real
+            console.info('Nenhuma avaliação recente encontrada no sistema.');
+            setEvaluations([]);
+            setError(null);
+          } else {
+            console.error('Erro ao buscar avaliações recentes:', error);
+            setError('Erro ao carregar dados');
+          }
+        } else {
+          console.error('Erro ao buscar avaliações recentes:', error);
+          setError('Erro ao carregar dados');
+        }
       } finally {
         setIsLoading(false);
       }

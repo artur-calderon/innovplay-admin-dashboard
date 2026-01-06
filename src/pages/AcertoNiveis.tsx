@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -163,12 +163,6 @@ const mapDetailedStudentsToResults = (alunos: DetailedReport['alunos'] | undefin
 const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult[] => {
   const studentsMap = new Map<string, StudentResult>();
 
-  console.log('mapUnifiedStudents - Processando tabela:', {
-    hasGeral: !!tabela?.geral,
-    geralAlunosCount: tabela?.geral?.alunos?.length || 0,
-    disciplinasCount: tabela?.disciplinas?.length || 0
-  });
-
   tabela?.geral?.alunos?.forEach((aluno) => {
     const totalQuestoes = aluno.total_questoes_geral ?? aluno.total_respondidas_geral ?? 0;
     const totalRespondidas = aluno.total_respondidas_geral ?? totalQuestoes;
@@ -271,8 +265,6 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
     a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' })
   );
   
-  console.log(`mapUnifiedStudents - Retornando ${mappedStudents.length} alunos mapeados`);
-  
   return mappedStudents;
 };
 
@@ -300,11 +292,16 @@ export default function AcertoNiveis() {
 
   const [evaluationInfo, setEvaluationInfo] = useState<EvaluationInfo | null>(null);
   const [students, setStudents] = useState<StudentResult[]>([]);
+  // Estados para armazenar todos os dados carregados (sem filtros aplicados)
+  const [allStudents, setAllStudents] = useState<StudentResult[]>([]);
+  const [allTabelaDetalhada, setAllTabelaDetalhada] = useState<TabelaDetalhadaPorDisciplina>(null);
   const [detailedReport, setDetailedReport] = useState<DetailedReport | null>(null);
   const [skillsMapping, setSkillsMapping] = useState<Record<string, string>>({});
   const fallbackAnswersCache = React.useRef<Map<string, Map<number, boolean>>>(new Map());
   // Nova: tabela detalhada por disciplina do backend
   const [tabelaDetalhada, setTabelaDetalhada] = useState<TabelaDetalhadaPorDisciplina>(null);
+  // Ref para debounce dos filtros
+  const filterTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   // Estado para estatísticas gerais (similar ao apiData em Results.tsx)
   const [estatisticasGerais, setEstatisticasGerais] = useState<{
     serie?: string;
@@ -422,6 +419,75 @@ export default function AcertoNiveis() {
     },
     [buildUnifiedFilters]
   );
+
+  // ✅ OTIMIZAÇÃO: Filtrar dados no frontend quando possível usando useMemo
+  // Isso evita requisições desnecessárias à API quando apenas filtros locais mudam
+  // ✅ OTIMIZAÇÃO: useMemo para calcular dados filtrados de forma eficiente
+  // Ordem otimizada: filtrar por escola/série primeiro (reduz dataset), depois por turma (filtro simples)
+  const filteredStudents = useMemo(() => {
+    if (!selectedSchoolId && !selectedGradeId && !selectedClassId) {
+      return allStudents;
+    }
+
+    if (allStudents.length === 0) {
+      return [];
+    }
+
+    let filtered = [...allStudents];
+
+    // ✅ OTIMIZAÇÃO: Filtrar por escola e série primeiro (usando tabela detalhada)
+    // Isso reduz o dataset antes de aplicar o filtro de turma (mais eficiente)
+    if ((selectedSchoolId || selectedGradeId) && allTabelaDetalhada?.disciplinas) {
+      const validIds = new Set<string>();
+      
+      allTabelaDetalhada.disciplinas.forEach(disciplina => {
+        disciplina.alunos?.forEach(aluno => {
+          let matches = true;
+          
+          // Filtrar por escola
+          if (selectedSchoolId) {
+            const selectedSchool = schools.find(s => s.id === selectedSchoolId);
+            if (selectedSchool && aluno.escola !== selectedSchool.nome && aluno.escola !== selectedSchoolId) {
+              matches = false;
+            }
+          }
+          
+          // Filtrar por série
+          if (selectedGradeId && matches) {
+            const selectedGrade = grades.find(g => g.id === selectedGradeId);
+            if (selectedGrade && aluno.serie !== selectedGrade.nome && aluno.serie !== selectedGradeId) {
+              matches = false;
+            }
+          }
+          
+          if (matches) {
+            validIds.add(aluno.id);
+          }
+        });
+      });
+      
+      filtered = filtered.filter(s => validIds.has(s.id));
+    }
+
+    // ✅ OTIMIZAÇÃO: Filtrar por turma depois (filtro simples sobre dataset já reduzido)
+    if (selectedClassId) {
+      const selectedClass = classes.find(c => c.id === selectedClassId);
+      if (selectedClass) {
+        filtered = filtered.filter(s => s.turma === selectedClass.nome);
+      }
+    }
+
+    return filtered;
+  }, [allStudents, allTabelaDetalhada, selectedSchoolId, selectedGradeId, selectedClassId, schools, grades, classes]);
+
+  // ✅ OTIMIZAÇÃO: Limpar timeout quando componente for desmontado
+  useEffect(() => {
+    return () => {
+      if (filterTimeoutRef.current) {
+        clearTimeout(filterTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // ✅ MODIFICADO: Usar apenas a proficiência do backend (tabela evaluation_results)
   // Removidas as funções de cálculo de proficiência por disciplina do frontend
@@ -715,14 +781,24 @@ export default function AcertoNiveis() {
     setGrades([]);
     setClasses([]);
     
-    // Se escola foi limpa (valor vazio), recarregar dados sem filtro de escola
+    // Se escola foi limpa (valor vazio), usar dados completos já carregados
     if (!schoolId || schoolId === "") {
+      if (allStudents.length > 0 && allTabelaDetalhada) {
+        // Usar dados completos já carregados
+        setStudents(allStudents);
+        setTabelaDetalhada(allTabelaDetalhada);
+        return;
+      }
+      
+      // Se não temos dados carregados, fazer requisição
       if (!selectedState || !selectedMunicipality || !selectedEvaluationId) return;
       try {
         setIsLoading(true);
         const { students: fetchedStudents, report, tabelaDetalhada: tabela, estatisticas, opcoesProximosFiltros: opcoes } = await fetchEvaluationData(
           selectedEvaluationId
         );
+        setAllStudents(fetchedStudents);
+        setAllTabelaDetalhada(tabela || null);
         setStudents(fetchedStudents);
         setDetailedReport(report || null);
         setTabelaDetalhada(tabela || null);
@@ -737,6 +813,49 @@ export default function AcertoNiveis() {
     }
     
     if (!selectedState || !selectedMunicipality || !selectedEvaluationId) return;
+    
+    // ✅ OTIMIZAÇÃO: Usar dados já carregados quando possível
+    if (allStudents.length > 0 && allTabelaDetalhada) {
+      // Filtrar dados localmente sem fazer nova requisição
+      const selectedSchool = schools.find(s => s.id === schoolId);
+      if (selectedSchool && allTabelaDetalhada?.disciplinas) {
+        const escolaIds = new Set<string>();
+        allTabelaDetalhada.disciplinas.forEach(disciplina => {
+          disciplina.alunos?.forEach(aluno => {
+            // Verificar se o aluno pertence à escola selecionada
+            if (aluno.escola === selectedSchool.nome || aluno.escola === schoolId) {
+              escolaIds.add(aluno.id);
+            }
+          });
+        });
+        const filtered = allStudents.filter(s => escolaIds.has(s.id));
+        setStudents(filtered);
+        
+        // ✅ OTIMIZAÇÃO: Tentar usar séries de opcoes_proximos_filtros primeiro
+        // Se não estiver disponível, fazer requisição (requisição leve, apenas lista)
+        // Fazer isso de forma assíncrona para não bloquear a UI
+        (async () => {
+          try {
+            // Verificar se temos séries em opcoes_proximos_filtros que sejam relevantes
+            // (geralmente opcoes_proximos_filtros vem da resposta da avaliação completa)
+            // Mas séries específicas de uma escola podem não estar lá, então fazer requisição
+            const series = await EvaluationResultsApiService.getFilterGradesByEvaluation({
+              estado: selectedState,
+              municipio: selectedMunicipality,
+              avaliacao: selectedEvaluationId,
+              escola: schoolId
+            });
+            setGrades(series);
+          } catch (e) {
+            console.error('Erro ao carregar séries:', e);
+          }
+        })();
+        
+        return; // Não fazer requisição adicional
+      }
+    }
+    
+    // Se não temos dados carregados, fazer requisição
     try {
       setIsLoading(true);
       
@@ -754,13 +873,8 @@ export default function AcertoNiveis() {
         { schoolId }
       );
 
-      console.log('handleSelectSchool - Dados carregados:', {
-        studentsCount: fetchedStudents.length,
-        reportAlunos: report?.alunos?.length || 0,
-        tabelaGeralAlunos: tabela?.geral?.alunos?.length || 0,
-        tabelaDisciplinas: tabela?.disciplinas?.length || 0
-      });
-
+      setAllStudents(fetchedStudents);
+      setAllTabelaDetalhada(tabela || null);
       setStudents(fetchedStudents);
       setDetailedReport(report || null);
       setTabelaDetalhada(tabela || null);
@@ -780,60 +894,104 @@ export default function AcertoNiveis() {
     setSelectedClassId("");
     setClasses([]);
     
-    // Se série foi limpa (valor vazio), recarregar dados sem filtro de série
+    // Se série foi limpa (valor vazio), usar dados já carregados
     if (!gradeId || gradeId === "") {
-      if (!selectedState || !selectedMunicipality || !selectedEvaluationId || !selectedSchoolId) return;
-      try {
-        setIsLoading(true);
-        const { students: fetchedStudents, report, tabelaDetalhada: tabela, estatisticas, opcoesProximosFiltros: opcoes } = await fetchEvaluationData(
-          selectedEvaluationId,
-          { schoolId: selectedSchoolId }
-        );
-        setStudents(fetchedStudents);
-        setDetailedReport(report || null);
-        setTabelaDetalhada(tabela || null);
-        if (estatisticas) setEstatisticasGerais(estatisticas as unknown as { [key: string]: unknown; serie?: string; escola?: string; municipio?: string; total_alunos?: number; alunos_participantes?: number; alunos_ausentes?: number; media_nota_geral?: number; media_proficiencia_geral?: number; } | null);
-        if (opcoes) setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
-      } catch (e) {
-        toast({ title: "Erro", description: "Não foi possível recarregar os dados", variant: "destructive" });
-      } finally {
-        setIsLoading(false);
+      if (allStudents.length > 0 && allTabelaDetalhada) {
+        // Aplicar apenas filtro de escola se existir
+        if (selectedSchoolId) {
+          const selectedSchool = schools.find(s => s.id === selectedSchoolId);
+          if (selectedSchool && allTabelaDetalhada?.disciplinas) {
+            const escolaIds = new Set<string>();
+            allTabelaDetalhada.disciplinas.forEach(disciplina => {
+              disciplina.alunos?.forEach(aluno => {
+                if (aluno.escola === selectedSchool.nome || aluno.escola === selectedSchoolId) {
+                  escolaIds.add(aluno.id);
+                }
+              });
+            });
+            const filtered = allStudents.filter(s => escolaIds.has(s.id));
+            setStudents(filtered);
+          } else {
+            setStudents(allStudents);
+          }
+        } else {
+          setStudents(allStudents);
+        }
+        setTabelaDetalhada(allTabelaDetalhada);
       }
       return;
     }
     
     if (!selectedState || !selectedMunicipality || !selectedEvaluationId || !selectedSchoolId) return;
-    try {
-      setIsLoading(true);
-      const turmas = await EvaluationResultsApiService.getFilterClassesByEvaluation({
-        estado: selectedState,
-        municipio: selectedMunicipality,
-        avaliacao: selectedEvaluationId,
-        escola: selectedSchoolId,
-        serie: gradeId
-      });
-      setClasses(turmas);
-
-        const { students: fetchedStudents, report, tabelaDetalhada: tabela, estatisticas, opcoesProximosFiltros: opcoes } = await fetchEvaluationData(
-          selectedEvaluationId,
-          { schoolId: selectedSchoolId, gradeId }
-        );
+    
+    // ✅ OTIMIZAÇÃO: Filtrar localmente primeiro (sem requisição)
+    if (allStudents.length > 0 && allTabelaDetalhada) {
+      const selectedSchool = schools.find(s => s.id === selectedSchoolId);
+      const selectedGrade = grades.find(g => g.id === gradeId);
+      
+      if (selectedSchool && selectedGrade && allTabelaDetalhada?.disciplinas) {
+        // Filtrar dados localmente imediatamente (sem esperar requisição)
+        const validIds = new Set<string>();
+        allTabelaDetalhada.disciplinas.forEach(disciplina => {
+          disciplina.alunos?.forEach(aluno => {
+            if ((aluno.escola === selectedSchool.nome || aluno.escola === selectedSchoolId) &&
+                (aluno.serie === selectedGrade.nome || aluno.serie === gradeId)) {
+              validIds.add(aluno.id);
+            }
+          });
+        });
+        const filtered = allStudents.filter(s => validIds.has(s.id));
+        setStudents(filtered);
         
-        console.log('handleSelectGrade - Dados carregados:', {
-          studentsCount: fetchedStudents.length,
-          reportAlunos: report?.alunos?.length || 0,
-          tabelaGeralAlunos: tabela?.geral?.alunos?.length || 0,
-          tabelaDisciplinas: tabela?.disciplinas?.length || 0
+        // Carregar turmas em paralelo (requisição leve, apenas lista)
+        // Não bloquear a UI esperando isso
+        EvaluationResultsApiService.getFilterClassesByEvaluation({
+          estado: selectedState,
+          municipio: selectedMunicipality,
+          avaliacao: selectedEvaluationId,
+          escola: selectedSchoolId,
+          serie: gradeId
+        }).then(turmas => {
+          setClasses(turmas);
+        }).catch(e => {
+          console.error('Erro ao carregar turmas:', e);
         });
         
-        setStudents(fetchedStudents);
-        setDetailedReport(report || null);
-        setTabelaDetalhada(tabela || null);
-        if (estatisticas) setEstatisticasGerais(estatisticas as unknown as { [key: string]: unknown; serie?: string; escola?: string; municipio?: string; total_alunos?: number; alunos_participantes?: number; alunos_ausentes?: number; media_nota_geral?: number; media_proficiencia_geral?: number; } | null);
-        if (opcoes) setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
+        return; // Não fazer requisição adicional
+      }
+    }
+    
+    // Se não temos dados carregados, fazer requisição completa
+    try {
+      setIsLoading(true);
+      
+      // Carregar turmas e dados em paralelo
+      const [turmas, dataResult] = await Promise.all([
+        EvaluationResultsApiService.getFilterClassesByEvaluation({
+          estado: selectedState,
+          municipio: selectedMunicipality,
+          avaliacao: selectedEvaluationId,
+          escola: selectedSchoolId,
+          serie: gradeId
+        }),
+        fetchEvaluationData(selectedEvaluationId, { schoolId: selectedSchoolId, gradeId })
+      ]);
+      
+      setClasses(turmas);
+      
+      const { students: fetchedStudents, report, tabelaDetalhada: tabela, estatisticas, opcoesProximosFiltros: opcoes } = dataResult;
+      
+      setAllStudents(fetchedStudents);
+      setAllTabelaDetalhada(tabela || null);
+      setStudents(fetchedStudents);
+      setDetailedReport(report || null);
+      setTabelaDetalhada(tabela || null);
+      if (estatisticas) setEstatisticasGerais(estatisticas as unknown as { [key: string]: unknown; serie?: string; escola?: string; municipio?: string; total_alunos?: number; alunos_participantes?: number; alunos_ausentes?: number; media_nota_geral?: number; media_proficiencia_geral?: number; } | null);
+      if (opcoes) setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
+      
     } catch (e) {
       console.error('Erro em handleSelectGrade:', e);
-      toast({ title: "Erro", description: "Não foi possível carregar turmas", variant: "destructive" });
+      toast({ title: "Erro", description: "Não foi possível carregar dados da série", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -844,29 +1002,33 @@ export default function AcertoNiveis() {
   const handleSelectClass = async (classId: string) => {
     setSelectedClassId(classId || "");
     
-    // Se turma foi limpa (valor vazio), recarregar dados sem filtro de turma
+    // ✅ OTIMIZAÇÃO: Usar filteredStudents do useMemo (já calculado e memoizado)
+    // Se turma foi limpa (valor vazio), usar dados já carregados
     if (!classId || classId === "") {
-      if (!selectedState || !selectedMunicipality || !selectedEvaluationId || !selectedSchoolId || !selectedGradeId) return;
-      try {
-        setIsLoading(true);
-        const { students: fetchedStudents, report, tabelaDetalhada: tabela, estatisticas, opcoesProximosFiltros: opcoes } = await fetchEvaluationData(
-          selectedEvaluationId,
-          { schoolId: selectedSchoolId, gradeId: selectedGradeId }
-        );
-        setStudents(fetchedStudents);
-        setDetailedReport(report || null);
-        setTabelaDetalhada(tabela || null);
-        if (estatisticas) setEstatisticasGerais(estatisticas as unknown as { [key: string]: unknown; serie?: string; escola?: string; municipio?: string; total_alunos?: number; alunos_participantes?: number; alunos_ausentes?: number; media_nota_geral?: number; media_proficiencia_geral?: number; } | null);
-        if (opcoes) setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
-      } catch (e) {
-        toast({ title: "Erro", description: "Não foi possível recarregar os dados", variant: "destructive" });
-      } finally {
-        setIsLoading(false);
+      if (allStudents.length > 0) {
+        // O filteredStudents do useMemo já aplica filtros de escola e série automaticamente
+        // Quando classId está vazio, o useMemo retorna os dados filtrados sem turma
+        setStudents(filteredStudents);
+        setTabelaDetalhada(allTabelaDetalhada);
       }
       return;
     }
     
     if (!selectedState || !selectedMunicipality || !selectedEvaluationId || !selectedSchoolId || !selectedGradeId) return;
+    
+    // ✅ OTIMIZAÇÃO: Usar filteredStudents do useMemo (já tem todos os filtros aplicados)
+    // O useMemo já calcula os dados filtrados incluindo turma quando selectedClassId muda
+    if (allStudents.length > 0 && classes.length > 0) {
+      const selectedClass = classes.find(c => c.id === classId);
+      if (selectedClass) {
+        // O filteredStudents do useMemo já aplica todos os filtros (escola, série e turma)
+        // Apenas usar o resultado memoizado - muito mais rápido!
+        setStudents(filteredStudents);
+        return;
+      }
+    }
+    
+    // Caso contrário, buscar da API (só acontece se dados não estiverem carregados)
     try {
       setIsLoading(true);
       
@@ -880,14 +1042,8 @@ export default function AcertoNiveis() {
         { schoolId: selectedSchoolId, gradeId: selectedGradeId, classId: className }
       );
       
-      console.log('handleSelectClass - Dados carregados:', {
-        studentsCount: fetchedStudents.length,
-        reportAlunos: report?.alunos?.length || 0,
-        tabelaGeralAlunos: tabela?.geral?.alunos?.length || 0,
-        tabelaDisciplinas: tabela?.disciplinas?.length || 0,
-        className
-      });
-      
+      setAllStudents(fetchedStudents);
+      setAllTabelaDetalhada(tabela || null);
       setStudents(fetchedStudents);
       setDetailedReport(report || null);
       setTabelaDetalhada(tabela || null);
@@ -925,12 +1081,9 @@ export default function AcertoNiveis() {
       const { students: unifiedStudents, report, tabelaDetalhada: tabelaDetalhadaUnificada, estatisticas, opcoesProximosFiltros: opcoes } =
         await fetchEvaluationData(evaluationId);
       
-      console.log('handleSelectEvaluation - Dados carregados:', {
-        studentsCount: unifiedStudents.length,
-        reportAlunos: report?.alunos?.length || 0,
-        tabelaGeralAlunos: tabelaDetalhadaUnificada?.geral?.alunos?.length || 0,
-        tabelaDisciplinas: tabelaDetalhadaUnificada?.disciplinas?.length || 0
-      });
+      // ✅ OTIMIZAÇÃO: Armazenar todos os dados carregados para filtragem no frontend
+      setAllStudents(unifiedStudents);
+      setAllTabelaDetalhada(tabelaDetalhadaUnificada);
       
       // Armazenar estatísticas gerais e opcoes_proximos_filtros para uso na exibição
         if (estatisticas) {
@@ -1018,15 +1171,28 @@ export default function AcertoNiveis() {
       }
       setSkillsMapping(newSkillsMapping);
 
-      // Carregar escolas para a avaliação
+      // ✅ OTIMIZAÇÃO: Carregar escolas para a avaliação
+      // Primeiro tentar usar opcoes_proximos_filtros se disponível
       if (selectedState && selectedMunicipality && evaluationId) {
         try {
-          const escolas = await EvaluationResultsApiService.getFilterSchoolsByEvaluation({
-            estado: selectedState,
-            municipio: selectedMunicipality,
-            avaliacao: evaluationId
-          });
-          setSchools(escolas);
+          let escolas: Array<{ id: string; nome: string }> = [];
+          
+          // Tentar usar escolas de opcoes_proximos_filtros primeiro (já vem na resposta)
+          if (opcoes?.escolas && Array.isArray(opcoes.escolas) && opcoes.escolas.length > 0) {
+            escolas = opcoes.escolas.map((esc: { id: string; name: string }) => ({
+              id: esc.id,
+              nome: esc.name
+            }));
+            setSchools(escolas);
+          } else {
+            // Se não estiver em opcoes_proximos_filtros, fazer requisição
+            escolas = await EvaluationResultsApiService.getFilterSchoolsByEvaluation({
+              estado: selectedState,
+              municipio: selectedMunicipality,
+              avaliacao: evaluationId
+            });
+            setSchools(escolas);
+          }
           
           // Tentar extrair série das escolas se não estiver na avaliação
           if (serieExtraida === 'N/A' && escolas.length > 0) {
@@ -1044,6 +1210,7 @@ export default function AcertoNiveis() {
           }
         } catch (e) {
           // Ignorar falhas silenciosamente, apenas não popula escolas
+          console.error('Erro ao carregar escolas:', e);
         }
       }
       
@@ -2661,13 +2828,18 @@ export default function AcertoNiveis() {
                          setSelectedGradeId("");
                          setSelectedClassId("");
                          
-                         // Recarregar dados de todas as escolas
-                        if (selectedEvaluationId) {
+                         // ✅ OTIMIZAÇÃO: Usar dados já carregados quando possível
+                        if (allStudents.length > 0 && allTabelaDetalhada) {
+                          setStudents(allStudents);
+                          setTabelaDetalhada(allTabelaDetalhada);
+                        } else if (selectedEvaluationId) {
                           try {
                             setIsLoading(true);
                             const { students: fetchedStudents, report, tabelaDetalhada: tabela, estatisticas, opcoesProximosFiltros: opcoes } = await fetchEvaluationData(
                               selectedEvaluationId
                             );
+                            setAllStudents(fetchedStudents);
+                            setAllTabelaDetalhada(tabela || null);
                             setStudents(fetchedStudents);
                             setDetailedReport(report || null);
                             setTabelaDetalhada(tabela || null);

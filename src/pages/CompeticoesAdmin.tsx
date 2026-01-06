@@ -78,7 +78,37 @@ const CompeticoesAdmin = () => {
         totalParticipantes: data.reduce((sum, c) => sum + (c.participantes_atual || 0), 0),
         totalMoedas: data.reduce((sum, c) => sum + c.recompensas.ouro + c.recompensas.prata + c.recompensas.bronze + (c.recompensas.participacao || 0), 0)
       });
-    } catch (error) {
+    } catch (error: unknown) {
+      // ✅ MELHORADO: Tratar erro 500 como "sem dados" para endpoints de listagem
+      const axiosError = error as { response?: { status?: number; data?: { message?: string } } };
+      const is500Error = axiosError.response?.status === 500;
+      
+      if (is500Error) {
+        const errorMessage = axiosError.response?.data?.message || '';
+        const isEmptyError = errorMessage.toLowerCase().includes('nenhum') || 
+                           errorMessage.toLowerCase().includes('não encontrado') ||
+                           errorMessage.toLowerCase().includes('empty') ||
+                           errorMessage.toLowerCase().includes('no data') ||
+                           errorMessage === '';
+        
+        if (isEmptyError) {
+          // Não há competições no sistema ainda - não é um erro real
+          console.info('Nenhuma competição encontrada no sistema.');
+          setCompetitions([]);
+          setStats({
+            total: 0,
+            ativas: 0,
+            finalizadas: 0,
+            totalParticipantes: 0,
+            totalMoedas: 0
+          });
+          // Não mostrar toast de erro quando simplesmente não há dados
+          setIsLoading(false);
+          return;
+        }
+      }
+      
+      // Para erros reais, mostrar mensagem de erro
       console.error('Erro ao carregar competições:', error);
       setCompetitions([]);
       setStats({
@@ -224,7 +254,7 @@ const CompeticoesAdmin = () => {
         questoes: competition.questoes,
         modo_selecao: competition.questoes.length > 0 ? 'manual' : 'automatico',
         quantidade_questoes: competition.total_questoes || competition.questoes.length,
-        dificuldades: competition.dificuldade ? [competition.dificuldade] : ['facil', 'medio', 'dificil'],
+        dificuldades: competition.dificuldade ? [competition.dificuldade] : ['Abaixo do Básico', 'Básico', 'Adequado', 'Avançado'],
         descricao: competition.descricao,
         instrucoes: competition.instrucoes,
         icone: competition.icone,

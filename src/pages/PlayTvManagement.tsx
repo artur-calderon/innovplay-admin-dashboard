@@ -100,46 +100,17 @@ export default function PlayTvManagement() {
 
   const loadFilterOptions = async () => {
     try {
-      // Carregar escolas, séries e disciplinas para filtros
-      const [schoolsRes, subjectsRes] = await Promise.all([
+      // Carregar escolas, séries e disciplinas para filtros em paralelo
+      const [schoolsRes, subjectsRes, gradesRes] = await Promise.all([
         api.get('/school/').catch(() => ({ data: [] })),
         api.get('/subjects').catch(() => ({ data: [] })),
+        api.get('/grades/').catch(() => ({ data: [] })),
       ]);
 
       setSchools(Array.isArray(schoolsRes.data) ? schoolsRes.data : (schoolsRes.data?.data || []));
       setSubjects(subjectsRes.data || []);
-
-      // Carregar séries se houver escola selecionada
-      if (filters.school) {
-        try {
-          const classesRes = await api.get(`/classes/school/${filters.school}`);
-          const classesData = classesRes.data || [];
-          const gradeMap = new Map<string, { id: string; name: string }>();
-          
-          classesData.forEach((classItem: {
-            grade?: {
-              id: string;
-              name?: string;
-              nome?: string;
-            };
-          }) => {
-            if (classItem.grade && classItem.grade.id && !gradeMap.has(classItem.grade.id)) {
-              gradeMap.set(classItem.grade.id, {
-                id: classItem.grade.id,
-                name: classItem.grade.name || classItem.grade.nome || '',
-              });
-            }
-          });
-          
-          setGrades(Array.from(gradeMap.values()));
-        } catch (error) {
-          console.error('Erro ao carregar séries:', error);
-          setGrades([]);
-        }
-      } else {
-        const gradesRes = await api.get('/grades/').catch(() => ({ data: [] }));
-        setGrades(gradesRes.data || []);
-      }
+      // Sempre carregar todas as séries disponíveis
+      setGrades(gradesRes.data || []);
     } catch (error) {
       console.error('Erro ao carregar opções de filtro:', error);
     }
@@ -355,7 +326,6 @@ export default function PlayTvManagement() {
                         setFilters({
                           ...filters,
                           school: value === 'all' ? undefined : value,
-                          grade: undefined, // Reset série ao mudar escola
                         });
                       }}
                     >
@@ -471,7 +441,6 @@ export default function PlayTvManagement() {
                       setFilters({
                         ...filters,
                         school: value === 'all' ? undefined : value,
-                        grade: undefined,
                       });
                     }}
                   >

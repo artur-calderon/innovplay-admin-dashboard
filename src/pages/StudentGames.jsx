@@ -51,14 +51,14 @@ const StudentGames = () => {
         try {
             setIsLoadingStudentInfo(true);
             
-            // Buscar dados do aluno
-            const studentResponse = await api.get(`/students/${user.id}`);
+            // Buscar dados do aluno usando o endpoint /students/me
+            const studentResponse = await api.get('/students/me');
             const studentData = studentResponse.data;
             
             // A resposta da API retorna class ou turma (objeto com id e name)
-            const classId = studentData.class?.id || studentData.turma?.id;
-            // A resposta da API retorna school (objeto com id e name)
-            const schoolId = studentData.school?.id;
+            const classId = studentData.class_id || studentData.class?.id || studentData.turma?.id;
+            // A resposta da API retorna school_id ou school (objeto com id e name)
+            const schoolId = studentData.school_id || studentData.school?.id;
             
             setStudentClassId(classId);
             setStudentSchoolId(schoolId);
@@ -105,7 +105,17 @@ const StudentGames = () => {
             }
         } catch (error) {
             console.error('Erro ao carregar informações do aluno:', error);
-            toast.error('Erro ao carregar informações do aluno');
+            
+            // Tratamento de erros mais específico
+            if (error.response?.status === 404) {
+                toast.error('Seus dados não foram encontrados. Entre em contato com o administrador.');
+            } else if (error.response?.status === 500) {
+                // Mesmo com erro 500, tentar continuar se tiver dados mínimos
+                console.warn('Erro 500 ao buscar dados do aluno, mas continuando...');
+                toast.error('Erro ao carregar alguns dados. Os jogos podem não estar completamente filtrados.');
+            } else {
+                toast.error('Erro ao carregar informações do aluno');
+            }
         } finally {
             setIsLoadingStudentInfo(false);
         }
@@ -118,7 +128,7 @@ const StudentGames = () => {
             const response = await api.get('/games');
             const allGames = response.data.jogos || [];
             
-            // Filtrar jogos da turma do aluno
+            // Filtrar jogos da turma do aluno (se tiver classId)
             let filteredGames = allGames;
             
             if (studentClassId) {
@@ -128,9 +138,11 @@ const StudentGames = () => {
                     if (game.classes && Array.isArray(game.classes)) {
                         return game.classes.some((c) => c.id === studentClassId);
                     }
-                    return false;
+                    // Se não tiver classes vinculadas, mostrar o jogo (pode ser jogo geral)
+                    return true;
                 });
             }
+            // Se não tiver classId, mostrar todos os jogos disponíveis
             
             setGames(filteredGames);
         } catch (error) {
@@ -144,13 +156,15 @@ const StudentGames = () => {
 
     useEffect(() => {
         loadStudentInfo();
-    }, [user.id]);
+    }, []);
 
     useEffect(() => {
-        if (!isLoadingStudentInfo && studentClassId) {
+        // Carregar jogos mesmo sem classId (mostrará todos os jogos disponíveis)
+        // Se tiver classId, filtrará por turma
+        if (!isLoadingStudentInfo) {
             fetchGames();
         }
-    }, [user.id, studentClassId, isLoadingStudentInfo]);
+    }, [studentClassId, isLoadingStudentInfo]);
 
     // Abrir jogo na página GameView
     const openGame = (gameId) => {
