@@ -100,10 +100,11 @@ export default function PlayTvStudent() {
   const loadStudentInfo = useCallback(async () => {
     setIsLoadingStudentInfo(true);
     try {
-      // Buscar informações do aluno (série e escola)
-      const response = await api.get(`/students/${user.id}`);
+      // Buscar informações do aluno usando o endpoint /students/me
+      const response = await api.get('/students/me');
       const studentData = response.data;
 
+      // O endpoint retorna os dados formatados com grade_id e school_id
       if (studentData.grade_id) {
         setStudentGrade(studentData.grade_id);
       }
@@ -111,25 +112,56 @@ export default function PlayTvStudent() {
         setStudentSchool(studentData.school_id);
       }
 
-      // Se não encontrar na resposta direta, tentar buscar via turma
+      // Se não encontrar na resposta direta, tentar buscar via turma ou grade
       if (!studentData.grade_id && studentData.class_id) {
-        const classResponse = await api.get(`/classes/${studentData.class_id}`);
-        const classData = classResponse.data;
-        if (classData.grade_id) {
-          setStudentGrade(classData.grade_id);
+        try {
+          const classResponse = await api.get(`/classes/${studentData.class_id}`);
+          const classData = classResponse.data;
+          if (classData.grade_id) {
+            setStudentGrade(classData.grade_id);
+          }
+          if (classData.school_id) {
+            setStudentSchool(classData.school_id);
+          }
+        } catch (classError) {
+          console.error('Erro ao buscar dados da turma:', classError);
         }
-        if (classData.school_id) {
-          setStudentSchool(classData.school_id);
-        }
+      } else if (!studentData.grade_id && studentData.grade?.id) {
+        // Tentar usar o objeto grade se disponível
+        setStudentGrade(studentData.grade.id);
+      }
+
+      // Se ainda não tiver grade_id, mostrar mensagem ao usuário
+      if (!studentData.grade_id && !studentData.grade?.id) {
+        toast({
+          title: 'Atenção',
+          description: 'Sua série não está cadastrada. Entre em contato com o administrador.',
+          variant: 'destructive',
+        });
       }
     } catch (err) {
       const error = err as ApiError;
       console.error('Erro ao carregar informações do aluno:', error);
+      
+      // Se for erro 404, o aluno pode não ter registro completo
+      if (error.response?.status === 404) {
+        toast({
+          title: 'Erro',
+          description: 'Seus dados não foram encontrados. Entre em contato com o administrador.',
+          variant: 'destructive',
+        });
+      } else if (error.response?.status === 500) {
+        toast({
+          title: 'Erro',
+          description: 'Erro ao carregar seus dados. Tente novamente mais tarde.',
+          variant: 'destructive',
+        });
+      }
       // Não chamar loadVideos aqui - deixar que o useEffect faça isso quando studentGrade estiver disponível
     } finally {
       setIsLoadingStudentInfo(false);
     }
-  }, [user.id]);
+  }, [toast]);
 
   const loadSubjects = useCallback(async () => {
     try {
@@ -154,7 +186,7 @@ export default function PlayTvStudent() {
 
     loadStudentInfo();
     loadSubjects();
-  }, [user.id, user.role, navigate, toast, loadStudentInfo, loadSubjects]);
+  }, [user.role, navigate, toast, loadStudentInfo, loadSubjects]);
 
   // Carregar vídeos quando a série do aluno estiver disponível ou quando o filtro de disciplina mudar
   useEffect(() => {

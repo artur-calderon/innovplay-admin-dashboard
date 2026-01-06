@@ -46,68 +46,102 @@ const StudentGames = () => {
         try {
             setIsLoadingStudentInfo(true);
             
-            // Buscar dados do aluno
-            const studentResponse = await api.get(`/students/${user.id}`);
+            // Buscar dados do aluno usando o endpoint /students/me
+            const studentResponse = await api.get('/students/me');
             const studentData = studentResponse.data;
             
             // A resposta da API retorna class ou turma (objeto com id e name)
-            const classId = studentData.class?.id || studentData.turma?.id;
-            // A resposta da API retorna school (objeto com id e name)
-            const schoolId = studentData.school?.id;
+            const classId = studentData.class_id || studentData.class?.id || studentData.turma?.id;
+            // A resposta da API retorna school_id ou school (objeto com id e name)
+            const schoolId = studentData.school_id || studentData.school?.id;
             
             setStudentClassId(classId);
             setStudentSchoolId(schoolId);
             
-            // A resposta da API já inclui teachers ou professores no objeto do aluno
-            if (studentData.teachers || studentData.professores) {
-                const teachers = studentData.teachers || studentData.professores || [];
-                const teacherUserIds = teachers
-                    .map((t) => t.user_id || t.usuario?.id || t.id)
-                    .filter(Boolean);
-                setTeacherIds(teacherUserIds);
-            } else if (classId) {
-                // Fallback: buscar professores da turma se não vierem na resposta
-                try {
-                    const teachersResponse = await api.get(`/classes/${classId}/teachers`);
-                    const teachers = teachersResponse.data?.professores || teachersResponse.data || [];
+            // Tentar buscar professores - isso é opcional e pode falhar (403 para alunos)
+            // Não bloquear o carregamento se falhar
+            const loadTeachers = async () => {
+                // A resposta da API já inclui teachers ou professores no objeto do aluno
+                if (studentData.teachers || studentData.professores) {
+                    const teachers = studentData.teachers || studentData.professores || [];
                     const teacherUserIds = teachers
-                        .map((t) => t.professor?.user_id || t.usuario?.id || t.user_id || t.id)
+                        .map((t) => t.user_id || t.usuario?.id || t.id)
                         .filter(Boolean);
                     setTeacherIds(teacherUserIds);
-                } catch (error) {
-                    console.error('Erro ao buscar professores da turma:', error);
-                    setTeacherIds([]);
+                    return;
                 }
-            }
+                
+                // Fallback: buscar professores da turma se não vierem na resposta
+                if (classId) {
+                    try {
+                        const teachersResponse = await api.get(`/classes/${classId}/teachers`);
+                        const teachers = teachersResponse.data?.professores || teachersResponse.data || [];
+                        const teacherUserIds = teachers
+                            .map((t) => t.professor?.user_id || t.usuario?.id || t.user_id || t.id)
+                            .filter(Boolean);
+                        setTeacherIds(teacherUserIds);
+                    } catch (error) {
+                        // 403 é esperado para alunos - silenciar o erro
+                        if (error.response?.status !== 403 && error.response?.status !== 404) {
+                            console.warn('Erro ao buscar professores da turma:', error);
+                        }
+                        setTeacherIds([]);
+                    }
+                }
+            };
             
-            // Buscar diretores e coordenadores da escola (após ter o schoolId)
-            if (schoolId) {
-                try {
-                    // Buscar diretores da escola
-                    const directorsResponse = await api.get(`/school/${schoolId}/directors`);
-                    const directors = Array.isArray(directorsResponse.data) 
-                        ? directorsResponse.data 
-                        : (directorsResponse.data?.data || []);
-                    
-                    // Buscar coordenadores da escola
-                    const coordinatorsResponse = await api.get(`/school/${schoolId}/coordinators`);
-                    const coordinators = Array.isArray(coordinatorsResponse.data)
-                        ? coordinatorsResponse.data
-                        : (coordinatorsResponse.data?.data || []);
-                    
-                    const adminUserIds = [
-                        ...directors.map((d) => d.user_id || d.usuario?.id || d.id).filter(Boolean),
-                        ...coordinators.map((c) => c.user_id || c.usuario?.id || c.id).filter(Boolean)
-                    ];
-                    setSchoolAdminIds(adminUserIds);
-                } catch (error) {
-                    console.error('Erro ao buscar administradores da escola:', error);
-                    setSchoolAdminIds([]);
+            // Tentar buscar administradores - isso é opcional e pode falhar
+            // Não bloquear o carregamento se falhar
+            const loadAdmins = async () => {
+                if (schoolId) {
+                    try {
+                        // Buscar diretores da escola
+                        const directorsResponse = await api.get(`/school/${schoolId}/directors`);
+                        const directors = Array.isArray(directorsResponse.data) 
+                            ? directorsResponse.data 
+                            : (directorsResponse.data?.data || []);
+                        
+                        // Buscar coordenadores da escola
+                        const coordinatorsResponse = await api.get(`/school/${schoolId}/coordinators`);
+                        const coordinators = Array.isArray(coordinatorsResponse.data)
+                            ? coordinatorsResponse.data
+                            : (coordinatorsResponse.data?.data || []);
+                        
+                        const adminUserIds = [
+                            ...directors.map((d) => d.user_id || d.usuario?.id || d.id).filter(Boolean),
+                            ...coordinators.map((c) => c.user_id || c.usuario?.id || c.id).filter(Boolean)
+                        ];
+                        setSchoolAdminIds(adminUserIds);
+                    } catch (error) {
+                        // 403, 404 ou erro de rede é esperado para alunos - silenciar o erro
+                        if (error.response?.status !== 403 && error.response?.status !== 404 && !error.message?.includes('Network')) {
+                            console.warn('Erro ao buscar administradores da escola:', error);
+                        }
+                        setSchoolAdminIds([]);
+                    }
                 }
-            }
+            };
+            
+            // Carregar professores e administradores em paralelo (não bloqueia)
+            // Essas chamadas são opcionais e podem falhar sem afetar o funcionamento
+            Promise.all([
+                loadTeachers().catch(() => {}), // Ignorar erros silenciosamente
+                loadAdmins().catch(() => {})    // Ignorar erros silenciosamente
+            ]);
+            
         } catch (error) {
             console.error('Erro ao carregar informações do aluno:', error);
-            toast.error('Erro ao carregar informações do aluno');
+            
+            // Tratamento de erros mais específico
+            if (error.response?.status === 404) {
+                toast.error('Seus dados não foram encontrados. Entre em contato com o administrador.');
+            } else if (error.response?.status === 500) {
+                // Mesmo com erro 500, tentar continuar se tiver dados mínimos
+                console.warn('Erro 500 ao buscar dados do aluno, mas continuando...');
+                toast.error('Erro ao carregar alguns dados. Os jogos podem não estar completamente filtrados.');
+            } else {
+                toast.error('Erro ao carregar informações do aluno');
+            }
         } finally {
             setIsLoadingStudentInfo(false);
         }
@@ -120,7 +154,7 @@ const StudentGames = () => {
             const response = await api.get('/games');
             const allGames = response.data.jogos || [];
             
-            // Filtrar jogos da turma do aluno
+            // Filtrar jogos da turma do aluno (se tiver classId)
             let filteredGames = allGames;
             
             if (studentClassId) {
@@ -130,9 +164,11 @@ const StudentGames = () => {
                     if (game.classes && Array.isArray(game.classes)) {
                         return game.classes.some((c) => c.id === studentClassId);
                     }
-                    return false;
+                    // Se não tiver classes vinculadas, mostrar o jogo (pode ser jogo geral)
+                    return true;
                 });
             }
+            // Se não tiver classId, mostrar todos os jogos disponíveis
             
             setGames(filteredGames);
         } catch (error) {
@@ -146,13 +182,15 @@ const StudentGames = () => {
 
     useEffect(() => {
         loadStudentInfo();
-    }, [user.id]);
+    }, []);
 
     useEffect(() => {
-        if (!isLoadingStudentInfo && studentClassId) {
+        // Carregar jogos mesmo sem classId (mostrará todos os jogos disponíveis)
+        // Se tiver classId, filtrará por turma
+        if (!isLoadingStudentInfo) {
             fetchGames();
         }
-    }, [user.id, studentClassId, isLoadingStudentInfo]);
+    }, [studentClassId, isLoadingStudentInfo]);
 
     // Abrir jogo na página GameView
     const openGame = (gameId) => {
