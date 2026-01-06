@@ -1,14 +1,14 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/authContext';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tv, RefreshCw, BookOpen } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Tv, RefreshCw, BookOpen, Loader2, Play } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { api } from '@/lib/api';
-import { VideoList } from '@/components/playtv/VideoList';
 import { PlayTvVideo } from '@/types/playtv';
+import { getVideoThumbnail } from '@/lib/utils';
 
 interface ApiError {
   response?: {
@@ -28,42 +28,23 @@ export default function PlayTvStudent() {
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingStudentInfo, setIsLoadingStudentInfo] = useState(true);
   const [subjects, setSubjects] = useState<Array<{ id: string; name: string }>>([]);
-  const [selectedSubject, setSelectedSubject] = useState<string>('all');
-  const [debouncedSubject, setDebouncedSubject] = useState<string>('all');
+  const [selectedSubject, setSelectedSubject] = useState<string>('Todas');
   const [studentGrade, setStudentGrade] = useState<string | null>(null);
   const [studentSchool, setStudentSchool] = useState<string | null>(null);
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Debounce para o filtro de disciplina (300ms)
-  useEffect(() => {
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
-
-    debounceTimerRef.current = setTimeout(() => {
-      setDebouncedSubject(selectedSubject);
-    }, 300);
-
-    return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-    };
-  }, [selectedSubject]);
 
   const loadVideos = useCallback(async () => {
-    // Só carregar vídeos se tiver a série do aluno (o backend precisa disso para filtrar)
-    if (!studentGrade) {
-      return;
-    }
-
+    // Carregar vídeos mesmo sem grade (mostrará todos os vídeos disponíveis)
     setIsLoading(true);
     try {
       // Passar parâmetros para o backend fazer a filtragem
       // O backend já filtra automaticamente por grade e school para alunos
       const params = new URLSearchParams();
-      if (debouncedSubject !== 'all') {
-        params.append('subject', debouncedSubject);
+      if (selectedSubject !== 'Todas') {
+        // Encontrar o ID da disciplina pelo nome
+        const subjectObj = subjects.find(s => s.name === selectedSubject);
+        if (subjectObj) {
+          params.append('subject', subjectObj.id);
+        }
       }
       // Passar grade como parâmetro para garantir filtragem no backend
       if (studentGrade) {
@@ -95,7 +76,7 @@ export default function PlayTvStudent() {
     } finally {
       setIsLoading(false);
     }
-  }, [debouncedSubject, studentGrade, toast]);
+  }, [selectedSubject, studentGrade, subjects, toast]);
 
   const loadStudentInfo = useCallback(async () => {
     setIsLoadingStudentInfo(true);
@@ -190,10 +171,10 @@ export default function PlayTvStudent() {
 
   // Carregar vídeos quando a série do aluno estiver disponível ou quando o filtro de disciplina mudar
   useEffect(() => {
-    if (studentGrade && !isLoadingStudentInfo) {
+    if (!isLoadingStudentInfo) {
       loadVideos();
     }
-  }, [studentGrade, debouncedSubject, loadVideos, isLoadingStudentInfo]);
+  }, [studentGrade, selectedSubject, loadVideos, isLoadingStudentInfo]);
 
 
   const handleVideoClick = (video: PlayTvVideo) => {
@@ -204,66 +185,191 @@ export default function PlayTvStudent() {
     loadVideos();
   };
 
-  return (
-    <div className="container mx-auto py-8 px-4 space-y-8 max-w-7xl">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 pb-4 border-b">
-        <div className="space-y-2">
-          <h1 className="text-4xl font-bold tracking-tight flex items-center gap-3 bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent">
-            <Tv className="w-10 h-10 text-blue-600" />
-            Play TV
-          </h1>
-          <p className="text-muted-foreground text-lg">
-            Assista aos vídeos educacionais disponíveis para sua série
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button variant="outline" onClick={handleRefresh} disabled={isLoading} className="shadow-sm">
-            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-            Atualizar
-          </Button>
+  // Filtrar vídeos por disciplina
+  const filterVideosBySubject = (videosList: PlayTvVideo[]) => {
+    if (selectedSubject === 'Todas') {
+      return videosList;
+    }
+    return videosList.filter((video) => video.subject?.name === selectedSubject);
+  };
+
+  // Agrupar vídeos por disciplina
+  const groupVideosBySubject = (videosList: PlayTvVideo[]) => {
+    const grouped: Record<string, PlayTvVideo[]> = {};
+
+    videosList.forEach((video) => {
+      const subject = video.subject?.name || 'Sem Disciplina';
+      if (!grouped[subject]) {
+        grouped[subject] = [];
+      }
+      grouped[subject].push(video);
+    });
+
+    return grouped;
+  };
+
+  const filteredVideos = filterVideosBySubject(videos);
+  const groupedVideos = groupVideosBySubject(filteredVideos);
+
+  if (isLoading || isLoadingStudentInfo) {
+    return (
+      <div className="container mx-auto py-6">
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin mr-2" />
+          <span>Carregando vídeos...</span>
         </div>
       </div>
+    );
+  }
 
-      {/* Filtro de Disciplina */}
-      <Card className="shadow-sm border-border/50">
-        <CardHeader className="pb-4">
-          <CardTitle className="text-xl flex items-center gap-2">
-            <BookOpen className="w-5 h-5 text-primary" />
-            Filtros
-          </CardTitle>
-          <CardDescription>Filtre os vídeos por disciplina</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1 space-y-2">
-              <label className="text-sm font-medium flex items-center gap-2">
-                <BookOpen className="w-4 h-4" />
-                Disciplina
-              </label>
-              <Select
-                value={selectedSubject}
-                onValueChange={(value) => setSelectedSubject(value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Todas as disciplinas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas as disciplinas</SelectItem>
-                  {subjects.map((subject) => (
-                    <SelectItem key={subject.id} value={subject.id}>
-                      {subject.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+  return (
+    <div className="container mx-auto py-6 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <Tv className="w-6 h-6 text-blue-600" />
+            Play TV
+          </h2>
+          <p className="text-muted-foreground">Assista aos vídeos educacionais disponíveis para sua série</p>
+        </div>
+        <Button variant="outline" onClick={handleRefresh} disabled={isLoading} size="sm">
+          <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+          Atualizar
+        </Button>
+      </div>
 
-      {/* Lista de Vídeos */}
-      <VideoList videos={videos} isLoading={isLoading || isLoadingStudentInfo} onVideoClick={handleVideoClick} />
+      {/* Filtro por Disciplina - Layout Dinâmico */}
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant={selectedSubject === 'Todas' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setSelectedSubject('Todas')}
+        >
+          Todas as Disciplinas
+        </Button>
+        {subjects.map((subject) => (
+          <Button
+            key={subject.id}
+            variant={selectedSubject === subject.name ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setSelectedSubject(subject.name)}
+          >
+            {subject.name}
+          </Button>
+        ))}
+      </div>
+
+      {videos.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Tv className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+            <h3 className="text-lg font-medium mb-2">Nenhum vídeo encontrado</h3>
+            <p className="text-muted-foreground">
+              Nenhum vídeo disponível no momento. Aguarde seu professor adicionar vídeos.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-8">
+          {/* Vídeos agrupados por disciplina */}
+          {Object.entries(groupedVideos).map(([subject, subjectVideos]) => (
+            subjectVideos.length > 0 && (
+              <div key={subject} className="space-y-4">
+                <div className="flex items-center gap-3 pb-2 border-b">
+                  <BookOpen className="w-6 h-6 text-primary" />
+                  <h3 className="text-xl font-semibold">{subject}</h3>
+                  <Badge variant="secondary">{subjectVideos.length} vídeo{subjectVideos.length !== 1 ? 's' : ''}</Badge>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {subjectVideos.map((video) => {
+                    const thumbnailUrl = getVideoThumbnail(video.url);
+                    return (
+                      <Card
+                        key={video.id}
+                        className="group cursor-pointer hover:shadow-lg transition-shadow"
+                        onClick={() => handleVideoClick(video)}
+                      >
+                        <CardHeader className="pb-3">
+                          <div className="flex justify-between items-start">
+                            <CardTitle className="text-lg line-clamp-2">{video.title || 'Vídeo sem título'}</CardTitle>
+                            <Badge variant="secondary" className="ml-2">
+                              {video.subject?.name || 'Sem disciplina'}
+                            </Badge>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          {/* Thumbnail */}
+                          <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
+                            {thumbnailUrl ? (
+                              <>
+                                <img
+                                  src={thumbnailUrl}
+                                  alt={video.title || 'Vídeo'}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    const target = e.target as HTMLImageElement;
+                                    target.style.display = 'none';
+                                    const placeholder = target.parentElement?.querySelector('.thumbnail-placeholder') as HTMLElement;
+                                    if (placeholder) {
+                                      placeholder.style.display = 'flex';
+                                    }
+                                  }}
+                                />
+                                <div className="thumbnail-placeholder hidden absolute inset-0 items-center justify-center bg-muted">
+                                  <Play className="w-12 h-12 text-muted-foreground" />
+                                </div>
+                                {/* Overlay com ícone de play no centro */}
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors pointer-events-none">
+                                  <div className="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                                    <Play className="w-8 h-8 text-primary ml-1" fill="currentColor" />
+                                  </div>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <Play className="w-12 h-12 text-muted-foreground" />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Informações do vídeo */}
+                          <div className="space-y-2">
+                            {video.grade && (
+                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <BookOpen className="w-4 h-4" />
+                                <span>{video.grade.name}</span>
+                              </div>
+                            )}
+                            {video.created_at && (
+                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <span>{new Date(video.created_at).toLocaleDateString('pt-BR')}</span>
+                              </div>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            )
+          ))}
+
+          {/* Mensagem quando não há vídeos na disciplina selecionada */}
+          {filteredVideos.length === 0 && videos.length > 0 && (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <Tv className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                <h3 className="text-lg font-medium mb-2">Nenhum vídeo encontrado</h3>
+                <p className="text-muted-foreground">
+                  Não há vídeos disponíveis para a disciplina selecionada.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
     </div>
   );
 }
