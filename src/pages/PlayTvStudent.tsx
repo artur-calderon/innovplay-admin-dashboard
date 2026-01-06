@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/context/authContext';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,48 +25,63 @@ export default function PlayTvStudent() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [videos, setVideos] = useState<PlayTvVideo[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingStudentInfo, setIsLoadingStudentInfo] = useState(true);
   const [subjects, setSubjects] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
+  const [debouncedSubject, setDebouncedSubject] = useState<string>('all');
   const [studentGrade, setStudentGrade] = useState<string | null>(null);
   const [studentSchool, setStudentSchool] = useState<string | null>(null);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Debounce para o filtro de disciplina (300ms)
+  useEffect(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    debounceTimerRef.current = setTimeout(() => {
+      setDebouncedSubject(selectedSubject);
+    }, 300);
+
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, [selectedSubject]);
 
   const loadVideos = useCallback(async () => {
+    // Só carregar vídeos se tiver a série do aluno (o backend precisa disso para filtrar)
+    if (!studentGrade) {
+      return;
+    }
+
     setIsLoading(true);
     try {
-      // Buscar vídeos filtrados automaticamente pela série do aluno
-      // O backend deve filtrar baseado na série e escola do aluno
+      // Passar parâmetros para o backend fazer a filtragem
+      // O backend já filtra automaticamente por grade e school para alunos
       const params = new URLSearchParams();
-      if (selectedSubject !== 'all') {
-        params.append('subject', selectedSubject);
+      if (debouncedSubject !== 'all') {
+        params.append('subject', debouncedSubject);
+      }
+      // Passar grade como parâmetro para garantir filtragem no backend
+      if (studentGrade) {
+        params.append('grade', studentGrade);
       }
 
       const response = await api.get(`/play-tv/videos?${params.toString()}`);
-      // Filtrar vídeos que correspondem à série do aluno e às suas escolas
-      let filteredVideos = response.data || [];
-
-      if (studentGrade) {
-        filteredVideos = filteredVideos.filter((video: PlayTvVideo) => video.grade.id === studentGrade);
-      }
-
-      if (studentSchool) {
-        filteredVideos = filteredVideos.filter((video: PlayTvVideo) =>
-          video.schools.some(school => school.id === studentSchool)
-        );
-      }
-
-      setVideos(filteredVideos);
+      // O backend já filtra por grade e school para alunos, então não precisa filtrar no frontend
+      setVideos(response.data || []);
     } catch (err) {
       const error = err as ApiError;
       // Se o endpoint não existir (404), apenas definir lista vazia sem mostrar erro
-      // O interceptor transforma o erro, então verificamos a mensagem ou o status original
       const is404 = error.response?.status === 404 || 
                     error.message?.includes('não encontrado') ||
                     error.message?.includes('Not Found');
       
       if (is404) {
         setVideos([]);
-        // Não logar erro para 404 em endpoints que podem não estar implementados ainda
         return;
       }
       
@@ -80,9 +95,10 @@ export default function PlayTvStudent() {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedSubject, studentGrade, studentSchool, toast]);
+  }, [debouncedSubject, studentGrade, toast]);
 
   const loadStudentInfo = useCallback(async () => {
+    setIsLoadingStudentInfo(true);
     try {
       // Buscar informações do aluno (série e escola)
       const response = await api.get(`/students/${user.id}`);
@@ -102,18 +118,18 @@ export default function PlayTvStudent() {
         if (classData.grade_id) {
           setStudentGrade(classData.grade_id);
         }
-      if (classData.school_id) {
-        setStudentSchool(classData.school_id);
+        if (classData.school_id) {
+          setStudentSchool(classData.school_id);
+        }
       }
-    }
     } catch (err) {
       const error = err as ApiError;
       console.error('Erro ao carregar informações do aluno:', error);
-      // Tentar carregar vídeos mesmo sem informações específicas
-      // O backend deve filtrar automaticamente
-      loadVideos();
+      // Não chamar loadVideos aqui - deixar que o useEffect faça isso quando studentGrade estiver disponível
+    } finally {
+      setIsLoadingStudentInfo(false);
     }
-  }, [user.id, loadVideos]);
+  }, [user.id]);
 
   const loadSubjects = useCallback(async () => {
     try {
@@ -124,6 +140,7 @@ export default function PlayTvStudent() {
     }
   }, []);
 
+  // Verificar permissões e carregar dados iniciais
   useEffect(() => {
     if (user.role !== 'aluno') {
       toast({
@@ -139,11 +156,12 @@ export default function PlayTvStudent() {
     loadSubjects();
   }, [user.id, user.role, navigate, toast, loadStudentInfo, loadSubjects]);
 
+  // Carregar vídeos quando a série do aluno estiver disponível ou quando o filtro de disciplina mudar
   useEffect(() => {
-    if (studentGrade) {
+    if (studentGrade && !isLoadingStudentInfo) {
       loadVideos();
     }
-  }, [studentGrade, selectedSubject, loadVideos]);
+  }, [studentGrade, debouncedSubject, loadVideos, isLoadingStudentInfo]);
 
 
   const handleVideoClick = (video: PlayTvVideo) => {
@@ -213,7 +231,7 @@ export default function PlayTvStudent() {
       </Card>
 
       {/* Lista de Vídeos */}
-      <VideoList videos={videos} isLoading={isLoading} onVideoClick={handleVideoClick} />
+      <VideoList videos={videos} isLoading={isLoading || isLoadingStudentInfo} onVideoClick={handleVideoClick} />
     </div>
   );
 }
