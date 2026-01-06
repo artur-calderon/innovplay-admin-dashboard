@@ -129,6 +129,7 @@ export default function AnaliseAvaliacoes() {
   const [isLoadingFilters, setIsLoadingFilters] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [isProcessingReport, setIsProcessingReport] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -394,13 +395,33 @@ export default function AnaliseAvaliacoes() {
       if (allRequiredFiltersSelected) {
         try {
           setIsLoadingData(true);
+          setIsProcessingReport(false);
+          
           // Buscar relatório completo da avaliação selecionada
           // Determinar qual tipo de relatório buscar baseado na seleção da escola
           const options = selectedSchool !== 'all' 
             ? { schoolId: selectedSchool }
             : { cityId: selectedMunicipality };
           
+          // ✅ NOVO: Verificar status antes de buscar (para mostrar feedback visual)
+          try {
+            const status = await EvaluationResultsApiService.checkReportStatus(selectedEvaluation, options);
+            if (status.status === 'processing') {
+              setIsProcessingReport(true);
+              toast({
+                title: "Gerando relatório",
+                description: "O relatório está sendo processado. Isso pode levar alguns minutos...",
+              });
+            }
+          } catch (statusError) {
+            // Se não conseguir verificar status, continuar normalmente
+            console.log('Não foi possível verificar status inicial:', statusError);
+          }
+          
+          // Buscar relatório (método já implementa polling internamente)
           const relatorio = await EvaluationResultsApiService.getRelatorioCompleto(selectedEvaluation, options);
+          
+          setIsProcessingReport(false);
           setApiData(relatorio);
           
           // Determinar o modo de renderização baseado nos dados retornados
@@ -411,9 +432,16 @@ export default function AnaliseAvaliacoes() {
           }
         } catch (error) {
           console.error("Erro ao carregar dados:", error);
+          setIsProcessingReport(false);
+          
+          const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+          const isTimeout = errorMessage.includes('Timeout') || errorMessage.includes('timeout');
+          
           toast({
-            title: "Erro ao carregar dados",
-            description: "Não foi possível carregar os dados da análise. Tente novamente.",
+            title: isTimeout ? "Timeout ao gerar relatório" : "Erro ao carregar dados",
+            description: isTimeout 
+              ? "O relatório está demorando mais que o esperado. Tente novamente em alguns instantes."
+              : "Não foi possível carregar os dados da análise. Tente novamente.",
             variant: "destructive",
           });
         } finally {
@@ -515,7 +543,19 @@ export default function AnaliseAvaliacoes() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mb-4" />
-            <p className="text-muted-foreground">Carregando dados da análise...</p>
+            {isProcessingReport ? (
+              <>
+                <p className="text-lg font-medium text-foreground mb-2">Gerando relatório...</p>
+                <p className="text-muted-foreground text-center max-w-md">
+                  O relatório está sendo processado em background. Isso pode levar alguns minutos.
+                </p>
+                <div className="mt-4 w-full max-w-md">
+                  <Progress value={undefined} className="h-2" />
+                </div>
+              </>
+            ) : (
+              <p className="text-muted-foreground">Carregando dados da análise...</p>
+            )}
           </CardContent>
         </Card>
       )}

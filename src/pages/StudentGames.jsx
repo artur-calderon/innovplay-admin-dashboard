@@ -70,17 +70,17 @@ const StudentGames = () => {
                     .map((t) => t.user_id || t.usuario?.id || t.id)
                     .filter(Boolean);
                 setTeacherIds(teacherUserIds);
-            } else if (classId) {
-                // Fallback: buscar professores da turma se não vierem na resposta
+            } else if (schoolId) {
+                // Fallback: buscar professores da escola se não vierem na resposta
                 try {
-                    const teachersResponse = await api.get(`/classes/${classId}/teachers`);
-                    const teachers = teachersResponse.data?.professores || teachersResponse.data || [];
-                    const teacherUserIds = teachers
-                        .map((t) => t.professor?.user_id || t.usuario?.id || t.user_id || t.id)
+                    const teachersResponse = await api.get(`/teacher/school/${schoolId}`);
+                    const professores = teachersResponse.data?.professores || [];
+                    const teacherUserIds = professores
+                        .map((t) => t.usuario?.id || t.professor?.user_id || t.id)
                         .filter(Boolean);
                     setTeacherIds(teacherUserIds);
                 } catch (error) {
-                    console.error('Erro ao buscar professores da turma:', error);
+                    console.error('Erro ao buscar professores da escola:', error);
                     setTeacherIds([]);
                 }
             }
@@ -88,22 +88,15 @@ const StudentGames = () => {
             // Buscar diretores e coordenadores da escola (após ter o schoolId)
             if (schoolId) {
                 try {
-                    // Buscar diretores da escola
-                    const directorsResponse = await api.get(`/school/${schoolId}/directors`);
-                    const directors = Array.isArray(directorsResponse.data) 
-                        ? directorsResponse.data 
-                        : (directorsResponse.data?.data || []);
+                    // Buscar managers (diretores e coordenadores) da escola
+                    const managersResponse = await api.get(`/managers/school/${schoolId}`);
+                    const managers = managersResponse.data?.managers || [];
                     
-                    // Buscar coordenadores da escola
-                    const coordinatorsResponse = await api.get(`/school/${schoolId}/coordinators`);
-                    const coordinators = Array.isArray(coordinatorsResponse.data)
-                        ? coordinatorsResponse.data
-                        : (coordinatorsResponse.data?.data || []);
+                    // Extrair user_id de todos os managers (diretores e coordenadores)
+                    const adminUserIds = managers
+                        .map((m) => m.user?.id || m.usuario?.id || m.id)
+                        .filter(Boolean);
                     
-                    const adminUserIds = [
-                        ...directors.map((d) => d.user_id || d.usuario?.id || d.id).filter(Boolean),
-                        ...coordinators.map((c) => c.user_id || c.usuario?.id || c.id).filter(Boolean)
-                    ];
                     setSchoolAdminIds(adminUserIds);
                 } catch (error) {
                     console.error('Erro ao buscar administradores da escola:', error);

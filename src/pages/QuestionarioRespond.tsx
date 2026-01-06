@@ -676,77 +676,109 @@ const QuestionarioRespond = () => {
               </div>
             )}
 
-            {/* Múltipla Escolha */}
+            {/* Múltipla Escolha - Tabela */}
             {(questionType === 'multipla_escolha') && (
-              <div className="space-y-3 mt-6">
-                {subQuestions.map((subQ: SubQuestion, subIndex: number) => {
-                  const subResponse = currentResponse?.[subQ.id] || 'Não';
-                  const isChecked = subResponse === 'Sim';
-                  return (
-                    <div key={subQ.id}>
-                      <label                       className={`flex items-center gap-4 cursor-pointer p-4 rounded-lg border-2 transition-all ${
-                        isChecked 
-                          ? 'bg-blue-50 border-blue-500 shadow-sm' 
-                          : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50 hover:bg-opacity-50'
-                      }`}>
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => handleMatrixResponse(questionId, subQ.id, e.target.checked ? 'Sim' : 'Não')}
-                          className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 focus:ring-2"
-                        />
-                        <span className={`text-base ${isChecked ? 'text-gray-900 font-medium' : 'text-gray-700'}`}>
-                          {subQ.text || subQ.texto}
-                        </span>
-                      </label>
-                    </div>
-                  );
-                })}
+              <div className="mt-6 overflow-x-auto">
+                <table className="w-full border-collapse bg-white rounded-lg shadow-sm">
+                  <thead>
+                    <tr className="bg-gray-50 border-b-2 border-gray-200">
+                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Item</th>
+                      {options.map((option: string, optIndex: number) => (
+                        <th key={optIndex} className="px-6 py-4 text-center text-sm font-semibold text-gray-900">
+                          {option}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {subQuestions.map((subQ: SubQuestion, subIndex: number) => {
+                      const subResponse = currentResponse?.[subQ.id] || 'Não';
+                      return (
+                        <tr 
+                          key={subQ.id} 
+                          className={`border-b border-gray-200 hover:bg-gray-50 transition-colors ${
+                            subIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                          }`}
+                        >
+                          <td className="px-6 py-4 text-base text-gray-900 font-medium">
+                            {subQ.text || subQ.texto}
+                          </td>
+                          {options.map((option: string, optIndex: number) => {
+                            const isSelected = subResponse === option;
+                            return (
+                              <td key={optIndex} className="px-6 py-4 text-center">
+                                <label className="flex items-center justify-center cursor-pointer">
+                                  <input
+                                    type="radio"
+                                    name={`${questionId}_${subQ.id}`}
+                                    value={option}
+                                    checked={isSelected}
+                                    onChange={(e) => handleMatrixResponse(questionId, subQ.id, e.target.value)}
+                                    className="w-5 h-5 text-blue-600 focus:ring-blue-500 focus:ring-2 cursor-pointer"
+                                  />
+                                </label>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
 
-            {/* Matriz de Seleção */}
+            {/* Matriz de Seleção - Tabela */}
             {(questionType === 'matriz_selecao') && (
-              <div className="space-y-6 mt-6">
-                {subQuestions.map((subQ: SubQuestion) => {
-                  const subResponse = (currentResponse && typeof currentResponse === 'object' && !Array.isArray(currentResponse))
-                    ? (currentResponse[subQ.id] || '')
-                    : '';
-                  return (
-                    <div key={subQ.id}>
-                      <p className="text-base font-medium text-gray-900 mb-3">
-                        {subQ.text || subQ.texto}
-                      </p>
-                      <div className="grid grid-cols-2 gap-3">
-                        {options.map((option: string, optIndex: number) => {
-                          const isSelected = subResponse === option;
-                          return (
-                            <label 
-                              key={optIndex}
-                              className={`flex items-center gap-4 cursor-pointer p-4 rounded-lg border-2 transition-all ${
-                                isSelected 
-                                  ? 'bg-blue-50 border-blue-500 shadow-sm' 
-                                  : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50 hover:bg-opacity-50'
-                              }`}
-                            >
-                              <input
-                                type="radio"
-                                name={`${questionId}_${subQ.id}`}
-                                value={option}
-                                checked={isSelected}
-                                onChange={(e) => handleMatrixResponse(questionId, subQ.id, e.target.value)}
-                                className="w-5 h-5 text-blue-600 focus:ring-blue-500 focus:ring-2"
-                              />
-                              <span className={`text-base ${isSelected ? 'text-gray-900 font-medium' : 'text-gray-700'}`}>
-                                {option}
-                              </span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="mt-6 overflow-x-auto">
+                <table className="w-full border-collapse bg-white rounded-lg shadow-sm">
+                  <thead>
+                    <tr className="bg-gray-50 border-b-2 border-gray-200">
+                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Item</th>
+                      {options.map((option: string, optIndex: number) => (
+                        <th key={optIndex} className="px-6 py-4 text-center text-sm font-semibold text-gray-900">
+                          {option}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {subQuestions.map((subQ: SubQuestion, subIndex: number) => {
+                      const subResponse = (currentResponse && typeof currentResponse === 'object' && !Array.isArray(currentResponse))
+                        ? (currentResponse[subQ.id] || '')
+                        : '';
+                      return (
+                        <tr 
+                          key={subQ.id} 
+                          className={`border-b border-gray-200 hover:bg-gray-50 transition-colors ${
+                            subIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                          }`}
+                        >
+                          <td className="px-6 py-4 text-base text-gray-900 font-medium">
+                            {subQ.text || subQ.texto}
+                          </td>
+                          {options.map((option: string, optIndex: number) => {
+                            const isSelected = subResponse === option;
+                            return (
+                              <td key={optIndex} className="px-6 py-4 text-center">
+                                <label className="flex items-center justify-center cursor-pointer">
+                                  <input
+                                    type="radio"
+                                    name={`${questionId}_${subQ.id}`}
+                                    value={option}
+                                    checked={isSelected}
+                                    onChange={(e) => handleMatrixResponse(questionId, subQ.id, e.target.value)}
+                                    className="w-5 h-5 text-blue-600 focus:ring-blue-500 focus:ring-2 cursor-pointer"
+                                  />
+                                </label>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
 
