@@ -692,7 +692,8 @@ const QuestionarioRespond = () => {
                   </thead>
                   <tbody>
                     {subQuestions.map((subQ: SubQuestion, subIndex: number) => {
-                      const subResponse = currentResponse?.[subQ.id] || 'Não';
+                      // ✅ CORREÇÃO: Não definir valor padrão - deixar undefined se não houver resposta salva
+                      const subResponse = currentResponse?.[subQ.id];
                       return (
                         <tr 
                           key={subQ.id} 
@@ -704,7 +705,8 @@ const QuestionarioRespond = () => {
                             {subQ.text || subQ.texto}
                           </td>
                           {options.map((option: string, optIndex: number) => {
-                            const isSelected = subResponse === option;
+                            // ✅ CORREÇÃO: Só marcar se houver resposta salva e ela corresponder à opção
+                            const isSelected = subResponse !== undefined && subResponse === option;
                             return (
                               <td key={optIndex} className="px-6 py-4 text-center">
                                 <label className="flex items-center justify-center cursor-pointer">
@@ -744,9 +746,10 @@ const QuestionarioRespond = () => {
                   </thead>
                   <tbody>
                     {subQuestions.map((subQ: SubQuestion, subIndex: number) => {
+                      // ✅ CORREÇÃO: Não definir valor padrão - deixar undefined se não houver resposta salva
                       const subResponse = (currentResponse && typeof currentResponse === 'object' && !Array.isArray(currentResponse))
-                        ? (currentResponse[subQ.id] || '')
-                        : '';
+                        ? currentResponse[subQ.id]
+                        : undefined;
                       return (
                         <tr 
                           key={subQ.id} 
@@ -758,7 +761,8 @@ const QuestionarioRespond = () => {
                             {subQ.text || subQ.texto}
                           </td>
                           {options.map((option: string, optIndex: number) => {
-                            const isSelected = subResponse === option;
+                            // ✅ CORREÇÃO: Só marcar se houver resposta salva e ela corresponder à opção
+                            const isSelected = subResponse !== undefined && subResponse === option;
                             return (
                               <td key={optIndex} className="px-6 py-4 text-center">
                                 <label className="flex items-center justify-center cursor-pointer">
