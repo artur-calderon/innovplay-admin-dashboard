@@ -22,12 +22,39 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { useDataContext } from "@/context/dataContext";
+import { useAuth } from "@/context/authContext";
 import { ROLE_DISPLAY_MAPPING, ROLES, ROLE_HIERARCHY, getRoleDisplayName } from "@/lib/constants";
 
 // Role mapping for display
 const roleDisplayMapping = ROLE_DISPLAY_MAPPING;
 
 const PAGE_SIZE_OPTIONS = [10, 15, 20, 25];
+
+// Função para obter roles permitidas baseado no role do usuário logado
+const getAllowedRoles = (currentUserRole: string): string[] => {
+  // Roles no formato display (como aparecem no select)
+  const allDisplayRoles = {
+    admin: "Administrador",
+    tecadm: "Técnico Administrador",
+    diretor: "Diretor",
+    coordenador: "Coordenador"
+  };
+
+  switch (currentUserRole) {
+    case 'admin':
+      // Admin pode criar todos
+      return [allDisplayRoles.admin, allDisplayRoles.tecadm, allDisplayRoles.diretor, allDisplayRoles.coordenador];
+    case 'tecadm':
+      // Tecadm pode criar tecadm, diretor e coordenador (não pode criar admin)
+      return [allDisplayRoles.tecadm, allDisplayRoles.diretor, allDisplayRoles.coordenador];
+    case 'diretor':
+    case 'coordenador':
+      // Diretor/Coordenador só podem criar diretor e coordenador
+      return [allDisplayRoles.diretor, allDisplayRoles.coordenador];
+    default:
+      return [];
+  }
+};
 
 // Hierarquia de funções para ordenação por nível
 const roleHierarchy = ROLE_HIERARCHY;
@@ -142,6 +169,7 @@ interface Filters {
 
 export default function UsersTable() {
   const { municipios, getMunicipios } = useDataContext();
+  const { user: currentUser } = useAuth();
   
   // Estados principais
   const [users, setUsers] = useState<User[]>([]);
@@ -151,7 +179,7 @@ export default function UsersTable() {
   // Estados de modais
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<number | null>(null);
   
@@ -306,25 +334,39 @@ export default function UsersTable() {
     setCurrentPage(1);
   }, [debouncedSearchTerm, filters]);
 
-  // Fetch users from API
   const fetchUsers = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
-      
+
       const response = await api.get('/users/list');
-      
-      // Get users from response data
       const usersData = response.data?.users || [];
-      
-      // Transform the roles to display format (city names will be added separately)
+
       const formattedUsers = usersData.map((user: User) => ({
         ...user,
-                        role: getRoleDisplayName(user.role),
-        city_name: '' // Will be populated by separate effect
+        role: getRoleDisplayName(user.role),
+        city_id: user.city_id ? String(user.city_id) : null,
+        city_name: ''
       }));
-      
+
       setUsers(formattedUsers);
+
+      if (Array.isArray(municipios) && municipios.length > 0) {
+        setUsers(prevUsers =>
+          prevUsers.map(user => {
+            const cityId = user.city_id ? String(user.city_id) : null;
+            const cityName = cityId
+              ? municipios.find(m => m.id.toString() === cityId)?.name || ''
+              : '';
+
+            return {
+              ...user,
+              city_id: cityId,
+              city_name: cityName,
+            };
+          })
+        );
+      }
     } catch (error) {
       console.error('Error fetching users:', error);
       setError('Erro ao carregar usuários');
@@ -332,7 +374,7 @@ export default function UsersTable() {
     } finally {
       setIsLoading(false);
     }
-  }, []); // No dependencies to prevent infinite loops
+  }, [municipios]);
 
   // Load users only once on mount
   useEffect(() => {
@@ -340,18 +382,25 @@ export default function UsersTable() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run on mount
 
-  // Update city names when municipios data is available
+  // Update city names whenever both users and municipios are ready
   useEffect(() => {
     if (Array.isArray(municipios) && municipios.length > 0 && users.length > 0) {
-      setUsers(prevUsers => 
-        prevUsers.map(user => ({
-          ...user,
-          city_name: municipios.find(m => m.id.toString() === user.city_id)?.name || ''
-        }))
+      setUsers(prevUsers =>
+        prevUsers.map(user => {
+          const cityId = user.city_id ? String(user.city_id) : null;
+          const cityName = cityId
+            ? municipios.find(m => m.id.toString() === cityId)?.name || ''
+            : '';
+
+          return {
+            ...user,
+            city_id: cityId,
+            city_name: cityName,
+          };
+        })
       );
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [municipios]); // Update city names when municipios change
+  }, [municipios, users.length]);
 
   // Event handlers
   const handleFilterChange = (key: keyof Filters, value: string) => {
@@ -393,20 +442,57 @@ export default function UsersTable() {
 
   const handleAddUser = async (userData: Omit<User, "id"> & { password?: string }) => {
     try {
-      const response = await api.post('/admin/criar-usuario', {
-        name: userData.name,
-        email: userData.email,
-        password: userData.password,
-        role: userData.role,
-        registration: userData.registration,
-        city_id: userData.city_id
-      });
+      // Mapear role de display para backend (ex: "Administrador" -> "admin")
+      const roleMapping: { [key: string]: string } = {
+        "Administrador": "admin",
+        "Técnico Administrador": "tecadm",
+        "Diretor": "diretor",
+        "Coordenador": "coordenador",
+        "Professor": "professor",
+        "Aluno": "aluno"
+      };
 
-      if (response.status === 200 || response.status === 201) {
-        toast.success('Usuário criado com sucesso!');
-        closeAddModal();
-        // Refresh the list after adding
-        await fetchUsers();
+      const backendRole = roleMapping[userData.role] || userData.role;
+
+      // Se for admin, usar rota /admin/criar-usuario
+      if (backendRole === 'admin') {
+        const response = await api.post('/admin/criar-usuario', {
+          name: userData.name,
+          email: userData.email,
+          password: userData.password,
+          role: backendRole,
+          registration: userData.registration,
+          city_id: userData.city_id
+        });
+
+        if (response.status === 200 || response.status === 201) {
+          toast.success('Usuário criado com sucesso!');
+          closeAddModal();
+          await fetchUsers();
+        }
+      } else {
+        // Para tecadm, diretor e coordenador, usar rota /manager
+        const requestBody: any = {
+          name: userData.name,
+          email: userData.email,
+          password: userData.password,
+          role: backendRole,
+          registration: userData.registration || null
+        };
+
+        // Se quem está criando é admin, precisa enviar city_id
+        // Se não é admin, não envia city_id (backend pega do token)
+        if (currentUser?.role === 'admin') {
+          requestBody.city_id = userData.city_id;
+        }
+
+        const response = await api.post('/managers', requestBody);
+
+        if (response.status === 200 || response.status === 201) {
+          toast.success('Usuário criado com sucesso!');
+          closeAddModal();
+          await fetchUsers();
+        }
       }
     } catch (error) {
       console.error('Error creating user:', error);
@@ -428,18 +514,18 @@ export default function UsersTable() {
   };
 
   const openEditModal = (user: User) => {
-    setCurrentUser(user);
+    setEditingUser(user);
     setIsEditModalOpen(true);
   };
 
   const closeEditModal = () => {
-    setCurrentUser(null);
+    setEditingUser(null);
     setIsEditModalOpen(false);
   };
 
   const handleEditModalChange = (open: boolean) => {
     if (!open) {
-      setCurrentUser(null);
+      setEditingUser(null);
     }
     setIsEditModalOpen(open);
   };
@@ -615,7 +701,11 @@ export default function UsersTable() {
               <DialogHeader>
                 <DialogTitle>Adicionar Novo Usuário</DialogTitle>
               </DialogHeader>
-              <UserForm onSubmit={handleAddUser} />
+              <UserForm 
+                onSubmit={handleAddUser} 
+                allowedRoles={currentUser ? getAllowedRoles(currentUser.role) : []}
+                showCitySelect={currentUser?.role === 'admin'}
+              />
             </DialogContent>
           </Dialog>
         </div>
@@ -1067,7 +1157,7 @@ export default function UsersTable() {
           <DialogHeader>
             <DialogTitle>Editar Usuário</DialogTitle>
           </DialogHeader>
-          {currentUser && <UserForm user={currentUser} onSubmit={handleEditUser} />}
+          {editingUser && <UserForm user={editingUser} onSubmit={handleEditUser} />}
         </DialogContent>
       </Dialog>
 

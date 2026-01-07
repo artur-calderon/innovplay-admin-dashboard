@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -40,11 +40,40 @@ interface Student {
   class_id?: string;
 }
 
+interface EducationStage {
+  id: string;
+  name: string;
+  [key: string]: unknown;
+}
+
+interface GradeObject {
+  id: string;
+  name: string;
+  education_stage: EducationStage;
+}
+
+interface ApiResponse<T = unknown> {
+  data: T;
+  [key: string]: unknown;
+}
+
+interface ApiError {
+  response?: {
+    data?: {
+      error?: string;
+      [key: string]: unknown;
+    };
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
 interface ClassData {
   id: string;
   name: string;
   school_id?: string;
-  grade?: string | { id: string; name: string; education_stage: any };
+  grade?: string | GradeObject;
+  grade_id?: string;
 }
 
 interface ManageClassModalProps {
@@ -80,56 +109,62 @@ export function ManageClassModal({
   const { toast } = useToast();
 
   // Função para buscar professores e alunos da turma
-  const fetchClassData = async () => {
+  const fetchClassData = useCallback(async () => {
     setIsLoading(true);
     try {
              // Buscar professores da turma
        let teachersData = [];
        try {
-         const teachersResponse = await api.get(`/classes/${classData.id}/teachers`);
-         if (teachersResponse.data && teachersResponse.data.professores) {
-           teachersData = teachersResponse.data.professores;
-         } else if (Array.isArray(teachersResponse.data)) {
-           teachersData = teachersResponse.data;
-         }
+         const teachersResponse = await api.get<ApiResponse>(`/classes/${classData.id}/teachers`);
+                 if (teachersResponse.data && typeof teachersResponse.data === 'object' && 'professores' in teachersResponse.data) {
+          const professores = (teachersResponse.data as Record<string, unknown>).professores;
+          teachersData = Array.isArray(professores) ? professores : [];
+        } else if (Array.isArray(teachersResponse.data)) {
+          teachersData = teachersResponse.data;
+        }
        } catch (error) {
          console.error("Erro ao buscar professores da turma:", error);
          // Fallback: tentar buscar professores da escola
          try {
-           const fallbackResponse = await api.get(`/teacher/school/${schoolId}`);
-           if (fallbackResponse.data && fallbackResponse.data.professores) {
-             teachersData = fallbackResponse.data.professores;
-           } else if (Array.isArray(fallbackResponse.data)) {
-             teachersData = fallbackResponse.data;
-           }
+           const fallbackResponse = await api.get<ApiResponse>(`/teacher/school/${schoolId}`);
+                     if (fallbackResponse.data && typeof fallbackResponse.data === 'object' && 'professores' in fallbackResponse.data) {
+            const professores = (fallbackResponse.data as Record<string, unknown>).professores;
+            teachersData = Array.isArray(professores) ? professores : [];
+          } else if (Array.isArray(fallbackResponse.data)) {
+            teachersData = fallbackResponse.data;
+          }
          } catch (fallbackError) {
            console.error("Erro no fallback de busca de professores:", fallbackError);
            teachersData = [];
          }
        }
       
-             const classTeachers = teachersData.map((teacher: any) => ({
-         id: teacher.professor?.id || teacher.usuario?.id || teacher.id,
-         name: teacher.professor?.name || teacher.usuario?.name || teacher.name || 'Nome não informado',
-         email: teacher.professor?.email || teacher.usuario?.email || teacher.email || 'Email não informado',
-         vinculo_id: teacher.teacher_class?.id || teacher.vinculo_turma?.teacher_class_id || teacher.vinculo_id
-       }));
+                           const classTeachers = teachersData.map((teacher: Record<string, unknown>) => {
+          const t = teacher as Record<string, Record<string, unknown> | unknown>;
+          return {
+            id: String((t.professor as Record<string, unknown>)?.id || (t.usuario as Record<string, unknown>)?.id || t.id || ''),
+            name: String((t.professor as Record<string, unknown>)?.name || (t.usuario as Record<string, unknown>)?.name || t.name || 'Nome não informado'),
+            email: String((t.professor as Record<string, unknown>)?.email || (t.usuario as Record<string, unknown>)?.email || t.email || 'Email não informado'),
+            vinculo_id: String((t.teacher_class as Record<string, unknown>)?.id || (t.vinculo_turma as Record<string, unknown>)?.teacher_class_id || t.vinculo_id || '')
+          };
+        });
       
       setTeachers(classTeachers);
       
              // Buscar alunos da turma
        let studentsData = [];
        try {
-         const studentsResponse = await api.get(`/students/classes/${classData.id}`);
+         const studentsResponse = await api.get<ApiResponse>(`/students/classes/${classData.id}`);
          if (Array.isArray(studentsResponse.data)) {
            studentsData = studentsResponse.data;
-         } else if (studentsResponse.data && studentsResponse.data.alunos) {
-           studentsData = studentsResponse.data.alunos;
-         }
+                 } else if (studentsResponse.data && typeof studentsResponse.data === 'object' && 'alunos' in studentsResponse.data) {
+          const alunos = (studentsResponse.data as Record<string, unknown>).alunos;
+          studentsData = Array.isArray(alunos) ? alunos : [];
+        }
        } catch (error) {
          // Fallback: tentar buscar por escola
          try {
-           const fallbackResponse = await api.get(`/students/school/${schoolId}/class/${classData.id}`);
+           const fallbackResponse = await api.get<ApiResponse>(`/students/school/${schoolId}/class/${classData.id}`);
            studentsData = Array.isArray(fallbackResponse.data) ? fallbackResponse.data : [];
          } catch (fallbackError) {
            console.error("Erro no fallback de busca de alunos:", fallbackError);
@@ -137,12 +172,15 @@ export function ManageClassModal({
          }
        }
       
-             const classStudents = studentsData.map((student: any) => ({
-         id: student.id,
-         name: student.name || student.usuario?.name || 'Nome não informado',
-         email: student.email || student.user?.email || student.usuario?.email || 'Email não informado',
-         registration: student.registration
-       }));
+             const classStudents = studentsData.map((student: Record<string, unknown>) => {
+         const s = student as Record<string, Record<string, unknown> | unknown>;
+         return {
+           id: String(s.id || ''),
+           name: String(s.name || (s.usuario as Record<string, unknown>)?.name || 'Nome não informado'),
+           email: String(s.email || (s.user as Record<string, unknown>)?.email || (s.usuario as Record<string, unknown>)?.email || 'Email não informado'),
+           registration: String(s.registration || '')
+         };
+       });
       
       setStudents(classStudents);
     } catch (error) {
@@ -155,13 +193,13 @@ export function ManageClassModal({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [classData.id, schoolId, toast]);
 
   // Buscar professores e alunos da turma
   useEffect(() => {
     if (!isOpen) return;
     fetchClassData();
-  }, [isOpen, schoolId, classData.id, toast]);
+  }, [isOpen, fetchClassData]);
 
   const handleRemoveTeacher = async (teacherId: string) => {
     setIsRemoving(`teacher-${teacherId}`);
@@ -231,13 +269,28 @@ export function ManageClassModal({
 
     setIsCreating(true);
     try {
+      const gradeId =
+        classData.grade_id ||
+        (typeof classData.grade === "object" && classData.grade !== null ? classData.grade.id : undefined);
+
+      if (!gradeId) {
+        toast({
+          title: "Erro",
+          description: "Não foi possível identificar a série da turma. Tente novamente mais tarde.",
+          variant: "destructive",
+        });
+        setIsCreating(false);
+        return;
+      }
+
       const studentData = {
         name: formData.name,
         email: formData.email,
         password: formData.password,
         registration: formData.registration || undefined,
         birth_date: formData.birth_date,
-        class_id: classData.id
+        class_id: classData.id,
+        grade_id: gradeId
       };
 
       const response = await api.post("/students", studentData);
@@ -258,9 +311,9 @@ export function ManageClassModal({
 
       // Recarregar dados da turma
       await fetchClassData();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Erro ao criar aluno:", error);
-      const errorMessage = error.response?.data?.error || "Erro ao criar aluno";
+      const errorMessage = (error as ApiError)?.response?.data?.error || "Erro ao criar aluno";
       toast({
         title: "Erro",
         description: errorMessage,
@@ -310,9 +363,9 @@ export function ManageClassModal({
 
       // Recarregar dados da turma
       await fetchClassData();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Erro ao criar professor:", error);
-      const errorMessage = error.response?.data?.error || "Erro ao criar professor";
+      const errorMessage = (error as ApiError)?.response?.data?.error || "Erro ao criar professor";
       toast({
         title: "Erro",
         description: errorMessage,
@@ -338,11 +391,11 @@ export function ManageClassModal({
     if (words.length === 0) return "";
     
     if (words.length === 1) {
-      return `${words[0]}@innovplay.com`;
+      return `${words[0]}@afirmeplay.com.br`;
     }
     
     const initials = words.map(word => word.charAt(0)).join('');
-    return `${initials}@innovplay.com`;
+    return `${initials}@afirmeplay.com.br`;
   };
 
   // Função para gerar senha automática baseada no nome
@@ -350,7 +403,7 @@ export function ManageClassModal({
     if (!name) return "";
     
     const firstName = name.toLowerCase().split(' ')[0];
-    return `${firstName}@innovplay`;
+    return `${firstName}@afirmeplay`;
   };
 
   // Atualizar email e senha quando o nome mudar
@@ -366,165 +419,236 @@ export function ManageClassModal({
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-blue-600" />
-              Gerenciar Turma: {classData.name}
+        <DialogContent className="w-[95vw] max-w-7xl h-[95vh] max-h-[95vh] overflow-hidden flex flex-col p-0">
+          <DialogHeader className="px-4 sm:px-6 py-4 border-b bg-gradient-to-r from-blue-50 to-green-50 dark:from-blue-950/40 dark:via-sky-950/30 dark:to-emerald-950/25">
+            <DialogTitle className="font-semibold tracking-tight flex flex-col sm:flex-row sm:items-center gap-2 text-lg sm:text-xl text-foreground">
+              <div className="flex items-center gap-2">
+                <Users className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600 dark:text-blue-400" />
+                <span className="font-semibold">Gerenciar Turma</span>
+              </div>
+              <span className="text-base sm:text-lg font-medium text-blue-700 dark:text-blue-300 sm:ml-2">
+                {classData.name}
+              </span>
             </DialogTitle>
-            <DialogDescription>
-              Visualize e gerencie professores e alunos da turma
-              {classData.grade && (
-                <span className="ml-2">
-                  • Série: <strong>{typeof classData.grade === 'object' && classData.grade !== null ? (classData.grade as any).name : classData.grade}</strong>
-                </span>
-              )}
+            <DialogDescription className="text-sm sm:text-base text-muted-foreground mt-2">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
+                <span>Visualize e gerencie professores e alunos da turma</span>
+                {classData.grade && (
+                  <span className="flex items-center gap-1">
+                    <span className="hidden sm:inline">•</span>
+                    <span className="text-xs sm:text-sm bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200 px-2 py-1 rounded-full font-medium">
+                      Série: {typeof classData.grade === 'object' && classData.grade !== null ? (classData.grade as GradeObject).name : String(classData.grade)}
+                    </span>
+                  </span>
+                )}
+              </div>
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 overflow-hidden px-4 sm:px-6">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="manage">Gerenciar Usuários</TabsTrigger>
-                <TabsTrigger value="create-student">Criar Novo Aluno</TabsTrigger>
-                <TabsTrigger value="create-teacher">Criar Novo Professor</TabsTrigger>
+              <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-0 h-auto sm:h-10 p-1 bg-gray-100 dark:bg-muted rounded-lg my-4">
+                <TabsTrigger 
+                  value="manage" 
+                  className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                >
+                  <Users className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                  <span className="hidden xs:inline">Gerenciar</span>
+                  <span className="xs:hidden">Gerenciar</span>
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="create-student" 
+                  className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                >
+                  <UserPlus className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                  <span className="hidden xs:inline">Novo Aluno</span>
+                  <span className="xs:hidden">Aluno</span>
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="create-teacher" 
+                  className="text-xs sm:text-sm py-2 sm:py-1.5 px-2 sm:px-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                >
+                  <GraduationCap className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                  <span className="hidden xs:inline">Novo Professor</span>
+                  <span className="xs:hidden">Professor</span>
+                </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="manage" className="flex-1 mt-4">
+              <TabsContent value="manage" className="flex-1 mt-0 overflow-hidden">
                 {isLoading ? (
-                  <div className="flex items-center justify-center p-8">
-                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                    <span className="ml-2">Carregando dados da turma...</span>
+                  <div className="flex flex-col items-center justify-center p-8 h-full">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
+                    <span className="text-sm sm:text-base text-muted-foreground">Carregando dados da turma...</span>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full">
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6 h-full overflow-y-auto pr-2 pb-4 scroll-smooth">
                     {/* Teachers Section */}
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-medium flex items-center gap-2">
-                          <GraduationCap className="h-4 w-4 text-blue-600" />
-                          Professores ({teachers.length})
+                    <div className="flex flex-col min-h-0">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                        <h3 className="font-semibold text-base sm:text-lg flex items-center gap-2">
+                          <GraduationCap className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
+                          <span>Professores</span>
+                          <Badge variant="secondary" className="text-xs px-2 py-0.5">
+                            {teachers.length}
+                          </Badge>
                         </h3>
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => setShowLinkTeacherModal(true)}
+                          className="w-full sm:w-auto text-xs sm:text-sm"
                         >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Adicionar
+                          <Plus className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                          Adicionar Professor
                         </Button>
                       </div>
 
-                      <div className="border rounded-lg p-4 max-h-64 overflow-y-auto">
+                      <div className="border rounded-lg flex-1 overflow-hidden bg-card border-border">
                         {teachers.length === 0 ? (
-                          <div className="text-center py-8">
-                            <GraduationCap className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                            <p className="text-sm text-muted-foreground">Nenhum professor vinculado</p>
+                          <div className="flex flex-col items-center justify-center p-6 sm:p-8 h-full min-h-[200px]">
+                            <div className="bg-blue-50 dark:bg-blue-950/40 p-4 rounded-full mb-4">
+                              <GraduationCap className="h-6 w-6 sm:h-8 sm:w-8 text-blue-400 dark:text-blue-300" />
+                            </div>
+                            <p className="text-sm sm:text-base text-muted-foreground text-center">
+                              Nenhum professor vinculado
+                            </p>
+                            <p className="text-xs sm:text-sm text-muted-foreground/80 text-center mt-1">
+                              Clique em "Adicionar Professor" para vincular
+                            </p>
                           </div>
                         ) : (
-                          <div className="space-y-2">
-                            {teachers.map((teacher) => (
-                              <div
-                                key={teacher.id}
-                                className="flex items-center gap-3 p-2 border rounded hover:bg-gray-50"
-                              >
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-medium text-sm truncate">{teacher.name}</div>
-                                  <div className="text-xs text-muted-foreground truncate">
-                                    {teacher.email}
+                          <div className="p-3 sm:p-4 h-full overflow-y-auto scrollbar-thin scrollbar-thumb-blue-300 scrollbar-track-blue-50 hover:scrollbar-thumb-blue-400 scroll-smooth">
+                            <div className="space-y-2 sm:space-y-3">
+                              {teachers.map((teacher) => (
+                                <div
+                                  key={teacher.id}
+                                  className="flex items-center gap-3 p-3 sm:p-4 border rounded-lg hover:bg-muted transition-colors border-border"
+                                >
+                                  <div className="flex-shrink-0">
+                                    <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-100 dark:bg-blue-950/30 rounded-full flex items-center justify-center">
+                                      <GraduationCap className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 dark:text-blue-300" />
+                                    </div>
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-medium text-sm sm:text-base truncate text-foreground">
+                                      {teacher.name}
+                                    </div>
+                                    <div className="text-xs sm:text-sm text-muted-foreground truncate">
+                                      {teacher.email}
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-1 sm:gap-2 flex-shrink-0">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                                      onClick={() => {/* TODO: Ver detalhes do professor */}}
+                                    >
+                                      <Eye className="h-3 w-3 sm:h-4 sm:w-4 text-blue-600 dark:text-blue-300" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                      onClick={() => handleRemoveTeacher(teacher.id)}
+                                      disabled={isRemoving === `teacher-${teacher.id}`}
+                                    >
+                                      {isRemoving === `teacher-${teacher.id}` ? (
+                                        <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin text-red-600" />
+                                      ) : (
+                                        <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 text-red-600" />
+                                      )}
+                                    </Button>
                                   </div>
                                 </div>
-                                <div className="flex gap-1">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-6 w-6 p-0"
-                                    onClick={() => {/* TODO: Ver detalhes do professor */}}
-                                  >
-                                    <Eye className="h-3 w-3" />
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-6 w-6 p-0 text-red-600 hover:text-red-700"
-                                    onClick={() => handleRemoveTeacher(teacher.id)}
-                                    disabled={isRemoving === `teacher-${teacher.id}`}
-                                  >
-                                    {isRemoving === `teacher-${teacher.id}` ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                      <Trash2 className="h-3 w-3" />
-                                    )}
-                                  </Button>
-                                </div>
-                              </div>
-                            ))}
+                              ))}
+                            </div>
                           </div>
                         )}
                       </div>
                     </div>
 
                     {/* Students Section */}
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-medium flex items-center gap-2">
-                          <Users className="h-4 w-4 text-green-600" />
-                          Alunos ({students.length})
+                    <div className="flex flex-col min-h-0">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                        <h3 className="font-semibold text-base sm:text-lg flex items-center gap-2">
+                          <Users className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
+                          <span>Alunos</span>
+                          <Badge variant="secondary" className="text-xs px-2 py-0.5">
+                            {students.length}
+                          </Badge>
                         </h3>
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => setShowLinkStudentModal(true)}
+                          className="w-full sm:w-auto text-xs sm:text-sm"
                         >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Adicionar
+                          <Plus className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                          Adicionar Aluno
                         </Button>
                       </div>
 
-                      <div className="border rounded-lg p-4 max-h-64 overflow-y-auto">
+                      <div className="border rounded-lg flex-1 overflow-hidden bg-card border-border">
                         {students.length === 0 ? (
-                          <div className="text-center py-8">
-                            <Users className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                            <p className="text-sm text-muted-foreground">Nenhum aluno vinculado</p>
+                          <div className="flex flex-col items-center justify-center p-6 sm:p-8 h-full min-h-[200px]">
+                            <div className="bg-green-50 dark:bg-green-950/40 p-4 rounded-full mb-4">
+                              <Users className="h-6 w-6 sm:h-8 sm:w-8 text-green-400 dark:text-green-300" />
+                            </div>
+                            <p className="text-sm sm:text-base text-muted-foreground text-center">
+                              Nenhum aluno vinculado
+                            </p>
+                            <p className="text-xs sm:text-sm text-muted-foreground/80 text-center mt-1">
+                              Clique em "Adicionar Aluno" para vincular
+                            </p>
                           </div>
                         ) : (
-                          <div className="space-y-2">
-                            {students.map((student) => (
-                              <div
-                                key={student.id}
-                                className="flex items-center gap-3 p-2 border rounded hover:bg-gray-50"
-                              >
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-medium text-sm truncate">{student.name}</div>
-                                  <div className="text-xs text-muted-foreground truncate">
-                                    {student.email || student.user?.email}
+                          <div className="p-3 sm:p-4 h-full overflow-y-auto scrollbar-thin scrollbar-thumb-green-300 scrollbar-track-green-50 hover:scrollbar-thumb-green-400 scroll-smooth">
+                            <div className="space-y-2 sm:space-y-3">
+                              {students.map((student) => (
+                                <div
+                                  key={student.id}
+                                  className="flex items-center gap-3 p-3 sm:p-4 border rounded-lg hover:bg-muted transition-colors border-border"
+                                >
+                                  <div className="flex-shrink-0">
+                                    <div className="w-8 h-8 sm:w-10 sm:h-10 bg-green-100 dark:bg-green-950/30 rounded-full flex items-center justify-center">
+                                      <Users className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 dark:text-green-300" />
+                                    </div>
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-medium text-sm sm:text-base truncate text-foreground">
+                                      {student.name}
+                                    </div>
+                                    <div className="text-xs sm:text-sm text-muted-foreground truncate">
+                                      {student.email || student.user?.email}
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-1 sm:gap-2 flex-shrink-0">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-green-50 dark:hover:bg-green-950/30"
+                                      onClick={() => {/* TODO: Ver detalhes do aluno */}}
+                                    >
+                                      <Eye className="h-3 w-3 sm:h-4 sm:w-4 text-green-600 dark:text-green-300" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                      onClick={() => handleRemoveStudent(student.id)}
+                                      disabled={isRemoving === `student-${student.id}`}
+                                    >
+                                      {isRemoving === `student-${student.id}` ? (
+                                        <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin text-red-600" />
+                                      ) : (
+                                        <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 text-red-600" />
+                                      )}
+                                    </Button>
                                   </div>
                                 </div>
-                                <div className="flex gap-1">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-6 w-6 p-0"
-                                    onClick={() => {/* TODO: Ver detalhes do aluno */}}
-                                  >
-                                    <Eye className="h-3 w-3" />
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-6 w-6 p-0 text-red-600 hover:text-red-700"
-                                    onClick={() => handleRemoveStudent(student.id)}
-                                    disabled={isRemoving === `student-${student.id}`}
-                                  >
-                                    {isRemoving === `student-${student.id}` ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                      <Trash2 className="h-3 w-3" />
-                                    )}
-                                  </Button>
-                                </div>
-                              </div>
-                            ))}
+                              ))}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -533,80 +657,112 @@ export function ManageClassModal({
                 )}
               </TabsContent>
 
-              <TabsContent value="create-student" className="flex-1 mt-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <UserPlus className="h-5 w-5 text-green-600" />
+              <TabsContent value="create-student" className="flex-1 mt-0 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 dark:scrollbar-thumb-gray-700 dark:scrollbar-track-gray-900 hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-600 pr-2 pb-4 scroll-smooth">
+                <Card className="mx-auto max-w-4xl">
+                  <CardHeader className="pb-4">
+                    <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                      <UserPlus className="h-5 w-5 sm:h-6 sm:w-6 text-green-600 dark:text-green-300" />
                       Criar Novo Aluno
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="text-sm text-muted-foreground bg-blue-50 p-3 rounded-lg border border-blue-200">
-                      <p className="font-medium text-blue-800 mb-2">📧 Credenciais Automáticas:</p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                        <div>
-                          <p><strong>Email:</strong> Iniciais do nome + "@innovplay.com"</p>
-                          <p className="text-blue-600 font-mono">Ex: "João Silva" → jss@innovplay.com</p>
+                  <CardContent className="space-y-6">
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:via-indigo-950/30 dark:to-indigo-950/20 p-4 sm:p-6 rounded-xl border border-blue-200 dark:border-blue-900/60">
+                      <div className="flex items-start gap-3 mb-4">
+                        <div className="flex-shrink-0 w-8 h-8 bg-blue-100 dark:bg-blue-900/50 rounded-full flex items-center justify-center">
+                          <span className="text-blue-600 dark:text-blue-300 text-lg">📧</span>
                         </div>
-                        <div>
-                          <p><strong>Senha:</strong> Primeiro nome + "@innovplay"</p>
-                          <p className="text-blue-600 font-mono">Ex: "João Silva" → joão@innovplay</p>
+                        <div className="flex-1">
+                          <p className="font-semibold text-blue-800 dark:text-blue-200 text-sm sm:text-base mb-2">
+                            Credenciais Automáticas
+                          </p>
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs sm:text-sm">
+                            <div className="bg-white/70 dark:bg-white/10 p-3 rounded-lg">
+                              <p className="font-medium text-foreground mb-1">
+                                <strong>Email:</strong> Iniciais do nome + "@afirmeplay.com.br"
+                              </p>
+                              <p className="text-blue-600 dark:text-blue-300 font-mono text-xs">
+                                Ex: "João Silva" → js@afirmeplay.com.br
+                              </p>
+                            </div>
+                            <div className="bg-white/70 dark:bg-white/10 p-3 rounded-lg">
+                              <p className="font-medium text-foreground mb-1">
+                                <strong>Senha:</strong> Primeiro nome + "@afirmeplay"
+                              </p>
+                              <p className="text-blue-600 dark:text-blue-300 font-mono text-xs">
+                                Ex: "João Silva" → joão@afirmeplay
+                              </p>
+                            </div>
+                          </div>
+                          <p className="text-xs sm:text-sm mt-3 text-blue-700 dark:text-blue-300 font-medium flex items-center gap-1">
+                            <span>✨</span>
+                            As credenciais aparecerão automaticamente conforme você digita o nome
+                          </p>
                         </div>
                       </div>
-                      <p className="text-xs mt-2 text-blue-600 font-medium">✨ As credenciais aparecerão automaticamente conforme você digita o nome</p>
                     </div>
 
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="student-name">Nome Completo *</Label>
+                    <div className="space-y-6">
+                      <div className="space-y-3">
+                        <Label htmlFor="student-name" className="text-sm sm:text-base font-medium text-foreground">
+                          Nome Completo *
+                        </Label>
                         <Input
                           id="student-name"
                           placeholder="Digite o nome completo do aluno"
-                          className="text-lg"
+                          className="text-base sm:text-lg h-11 sm:h-12 focus:ring-2 focus:ring-green-500"
                           value={formData.name}
                           onChange={(e) => handleNameChange(e.target.value)}
                         />
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="student-email">Email (Gerado automaticamente)</Label>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                        <div className="space-y-3">
+                          <Label htmlFor="student-email" className="text-sm font-medium text-muted-foreground">
+                            Email (Gerado automaticamente)
+                          </Label>
                           <Input
                             id="student-email"
                             placeholder="Email será gerado automaticamente"
-                            className="bg-muted font-mono"
+                            className="bg-muted border-border font-mono text-sm h-11 cursor-not-allowed"
                             value={formData.email}
                             readOnly
                           />
                         </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="student-password">Senha (Gerada automaticamente)</Label>
+                        <div className="space-y-3">
+                          <Label htmlFor="student-password" className="text-sm font-medium text-muted-foreground">
+                            Senha (Gerada automaticamente)
+                          </Label>
                           <Input
                             id="student-password"
                             placeholder="Senha será gerada automaticamente"
-                            className="bg-muted font-mono"
+                            className="bg-muted border-border font-mono text-sm h-11 cursor-not-allowed"
                             value={formData.password}
                             readOnly
                           />
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="student-registration">Matrícula (Opcional)</Label>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                        <div className="space-y-3">
+                          <Label htmlFor="student-registration" className="text-sm sm:text-base font-medium text-foreground">
+                            Matrícula (Opcional)
+                          </Label>
                           <Input
                             id="student-registration"
                             placeholder="Número de matrícula"
+                            className="h-11 focus:ring-2 focus:ring-green-500"
                             value={formData.registration}
                             onChange={(e) => handleInputChange('registration', e.target.value)}
                           />
                         </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="student-birthdate">Data de Nascimento *</Label>
+                        <div className="space-y-3">
+                          <Label htmlFor="student-birthdate" className="text-sm sm:text-base font-medium text-foreground">
+                            Data de Nascimento *
+                          </Label>
                           <Input
                             id="student-birthdate"
                             type="date"
+                            className="h-11 focus:ring-2 focus:ring-green-500"
                             value={formData.birth_date}
                             onChange={(e) => handleInputChange('birth_date', e.target.value)}
                           />
@@ -614,16 +770,22 @@ export function ManageClassModal({
                       </div>
                     </div>
 
-                    <div className="flex gap-2 pt-4">
-                      <Button variant="outline" onClick={onClose} disabled={isCreating}>
+                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-6 border-t border-border/60">
+                      <Button 
+                        variant="outline" 
+                        onClick={onClose} 
+                        disabled={isCreating}
+                        className="order-2 sm:order-1 h-11"
+                      >
                         Cancelar
                       </Button>
                       <Button 
                         onClick={handleCreateStudent} 
                         disabled={isCreating}
-                        className="flex-1"
+                        className="order-1 sm:order-2 flex-1 h-11 bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-400"
                       >
                         {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        <UserPlus className="mr-2 h-4 w-4" />
                         Criar Aluno
                       </Button>
                     </div>
@@ -631,79 +793,118 @@ export function ManageClassModal({
                 </Card>
               </TabsContent>
 
-              <TabsContent value="create-teacher" className="flex-1 mt-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <UserPlus className="h-5 w-5 text-blue-600" />
+              <TabsContent value="create-teacher" className="flex-1 mt-0 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 dark:scrollbar-thumb-gray-700 dark:scrollbar-track-gray-900 hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-600 pr-2 pb-4 scroll-smooth">
+                <Card className="mx-auto max-w-4xl">
+                  <CardHeader className="pb-4">
+                    <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                      <UserPlus className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600 dark:text-blue-300" />
                       Criar Novo Professor
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="teacher-nome">Nome Completo *</Label>
-                        <Input
-                          id="teacher-nome"
-                          placeholder="Digite o nome completo"
-                          value={formData.name}
-                          onChange={(e) => handleInputChange('name', e.target.value)}
-                        />
+                  <CardContent className="space-y-6">
+                    <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/40 dark:via-indigo-950/30 dark:to-purple-950/20 p-4 sm:p-6 rounded-xl border border-blue-200 dark:border-blue-900/60">
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 w-8 h-8 bg-blue-100 dark:bg-blue-900/50 rounded-full flex items-center justify-center">
+                          <GraduationCap className="h-4 w-4 text-blue-600 dark:text-blue-300" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-semibold text-blue-800 dark:text-blue-200 text-sm sm:text-base mb-2">
+                            Informações do Professor
+                          </p>
+                          <p className="text-xs sm:text-sm text-blue-700 dark:text-blue-300">
+                            Preencha os dados do novo professor que será vinculado à escola e poderá ser associado a esta turma.
+                          </p>
+                        </div>
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="teacher-email">Email *</Label>
+                    </div>
+
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                        <div className="space-y-3">
+                          <Label htmlFor="teacher-nome" className="text-sm sm:text-base font-medium text-foreground">
+                            Nome Completo *
+                          </Label>
+                          <Input
+                            id="teacher-nome"
+                            placeholder="Digite o nome completo"
+                            className="h-11 focus:ring-2 focus:ring-blue-500"
+                            value={formData.name}
+                            onChange={(e) => handleInputChange('name', e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-3">
+                          <Label htmlFor="teacher-email" className="text-sm sm:text-base font-medium text-foreground">
+                            Email *
+                          </Label>
+                          <Input
+                            id="teacher-email"
+                            type="email"
+                            placeholder="Digite o email"
+                            className="h-11 focus:ring-2 focus:ring-blue-500"
+                            value={formData.email}
+                            onChange={(e) => handleInputChange('email', e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                        <div className="space-y-3">
+                          <Label htmlFor="teacher-senha" className="text-sm sm:text-base font-medium text-foreground">
+                            Senha *
+                          </Label>
+                          <Input
+                            id="teacher-senha"
+                            type="password"
+                            placeholder="Digite a senha"
+                            className="h-11 focus:ring-2 focus:ring-blue-500"
+                            value={formData.password}
+                            onChange={(e) => handleInputChange('password', e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-3">
+                          <Label htmlFor="teacher-matricula" className="text-sm sm:text-base font-medium text-foreground">
+                            Matrícula (Opcional)
+                          </Label>
+                          <Input
+                            id="teacher-matricula"
+                            placeholder="Digite a matrícula"
+                            className="h-11 focus:ring-2 focus:ring-blue-500"
+                            value={formData.registration}
+                            onChange={(e) => handleInputChange('registration', e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        <Label htmlFor="teacher-birth_date" className="text-sm sm:text-base font-medium text-foreground">
+                          Data de Nascimento *
+                        </Label>
                         <Input
-                          id="teacher-email"
-                          type="email"
-                          placeholder="Digite o email"
-                          value={formData.email}
-                          onChange={(e) => handleInputChange('email', e.target.value)}
+                          id="teacher-birth_date"
+                          type="date"
+                          className="h-11 focus:ring-2 focus:ring-blue-500 max-w-xs"
+                          value={formData.birth_date}
+                          onChange={(e) => handleInputChange('birth_date', e.target.value)}
                         />
                       </div>
                     </div>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="teacher-senha">Senha *</Label>
-                        <Input
-                          id="teacher-senha"
-                          type="password"
-                          placeholder="Digite a senha"
-                          value={formData.password}
-                          onChange={(e) => handleInputChange('password', e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="teacher-matricula">Matrícula (Opcional)</Label>
-                        <Input
-                          id="teacher-matricula"
-                          placeholder="Digite a matrícula"
-                          value={formData.registration}
-                          onChange={(e) => handleInputChange('registration', e.target.value)}
-                        />
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="teacher-birth_date">Data de Nascimento *</Label>
-                      <Input
-                        id="teacher-birth_date"
-                        type="date"
-                        value={formData.birth_date}
-                        onChange={(e) => handleInputChange('birth_date', e.target.value)}
-                      />
-                    </div>
-                    
-                    <div className="flex gap-2 pt-4">
-                      <Button variant="outline" onClick={onClose} disabled={isCreating}>
+                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-6 border-t border-border/60">
+                      <Button 
+                        variant="outline" 
+                        onClick={onClose} 
+                        disabled={isCreating}
+                        className="order-2 sm:order-1 h-11"
+                      >
                         Cancelar
                       </Button>
                       <Button 
                         onClick={handleCreateTeacher} 
                         disabled={isCreating}
-                        className="flex-1"
+                        className="order-1 sm:order-2 flex-1 h-11 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400"
                       >
                         {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        <UserPlus className="mr-2 h-4 w-4" />
                         Criar Professor
                       </Button>
                     </div>
@@ -713,8 +914,12 @@ export function ManageClassModal({
             </Tabs>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={onClose}>
+          <DialogFooter className="px-4 sm:px-6 py-4 border-t bg-gray-50/50 dark:bg-muted">
+            <Button 
+              variant="outline" 
+              onClick={onClose}
+              className="w-full sm:w-auto h-10"
+            >
               Fechar
             </Button>
           </DialogFooter>

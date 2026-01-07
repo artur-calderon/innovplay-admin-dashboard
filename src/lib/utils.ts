@@ -36,3 +36,53 @@ export function getDifficultyDotColor(difficulty: string): string {
       return 'bg-gray-500';
   }
 }
+
+// Função para extrair thumbnail de URLs de vídeo
+export function getVideoThumbnail(url: string): string | null {
+  if (!url) return null;
+
+  try {
+    // YouTube
+    if (url.includes('youtube.com/watch') || url.includes('youtu.be')) {
+      const videoId = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)?.[1];
+      if (videoId) {
+        return `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+      }
+    }
+    
+    // YouTube embed
+    if (url.includes('youtube.com/embed/')) {
+      const videoId = url.match(/youtube\.com\/embed\/([^&\n?#]+)/)?.[1];
+      if (videoId) {
+        return `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+      }
+    }
+
+    // Vimeo
+    if (url.includes('vimeo.com')) {
+      const videoId = url.match(/vimeo\.com\/(?:video\/)?(\d+)/)?.[1];
+      if (videoId) {
+        // Vimeo requer API para thumbnail, mas podemos tentar uma URL padrão
+        return `https://vumbnail.com/${videoId}.jpg`;
+      }
+    }
+
+    // Vimeo embed
+    if (url.includes('player.vimeo.com')) {
+      const videoId = url.match(/player\.vimeo\.com\/video\/(\d+)/)?.[1];
+      if (videoId) {
+        return `https://vumbnail.com/${videoId}.jpg`;
+      }
+    }
+
+    // Se for uma URL de imagem direta, retornar como está
+    if (url.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+      return url;
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Erro ao extrair thumbnail:', error);
+    return null;
+  }
+}

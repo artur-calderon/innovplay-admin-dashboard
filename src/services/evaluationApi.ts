@@ -5,7 +5,6 @@ import {
     SessionStatusResponse,
     StartSessionRequest,
     StartSessionResponse,
-    SavePartialRequest,
     SubmitTestRequest,
     SubmitTestResponse
 } from '@/types/evaluation-types';
@@ -50,9 +49,10 @@ export class EvaluationApiService {
             const response = await api.get(`/test/${testId}/session-info`);
             console.log('Resposta da API getTestSessionInfo:', response.data);
             return response.data;
-        } catch (error: any) {
+        } catch (error: unknown) {
             // ✅ CORRIGIDO: Tratar erro 404 como caso normal (sem sessão ativa)
-            if (error.response?.status === 404) {
+            const apiError = error as { response?: { status?: number; data?: unknown } };
+            if (apiError.response?.status === 404) {
                 console.log('Nenhuma sessão ativa encontrada para este teste');
 
                 // Retornar resposta estruturada indicando que não há sessão
@@ -80,7 +80,7 @@ export class EvaluationApiService {
 
             // Para outros erros, continuar lançando exceção
             console.error('Erro ao buscar informações da sessão:', error);
-            console.error('Detalhes do erro:', error.response?.data);
+            console.error('Detalhes do erro:', apiError.response?.data);
             throw error;
         }
     }
@@ -124,7 +124,50 @@ export class EvaluationApiService {
                 time_limit_minutes: timeLimitMinutes
             });
             console.log('Resposta da API startSession:', response.data);
-            return response.data;
+            
+            const sessionData = response.data;
+            
+            // ✅ NOVO: Log detalhado para debug
+            console.log('🔍 Validação de sessão:', {
+                requestedTestId: testId,
+                returnedTestId: sessionData.test_id,
+                hasTestId: !!sessionData.test_id,
+                sessionId: sessionData.session_id,
+                message: sessionData.message
+            });
+            
+            // ✅ NOVO: Validar se a sessão retornada pertence ao teste solicitado
+            if (sessionData.test_id && sessionData.test_id !== testId) {
+                console.error('❌ Sessão retornada pertence a outro teste:', {
+                    requestedTestId: testId,
+                    returnedTestId: sessionData.test_id,
+                    sessionId: sessionData.session_id
+                });
+                throw new Error(`A sessão retornada (${sessionData.session_id}) pertence a outro teste (${sessionData.test_id}). Teste solicitado: ${testId}`);
+            }
+            
+            // ✅ NOVO: Se test_id não foi retornado, verificar via getTestSessionInfo
+            if (!sessionData.test_id && sessionData.session_id) {
+                console.log('⚠️ test_id não retornado na resposta, verificando via getTestSessionInfo...');
+                try {
+                    const sessionInfo = await this.getTestSessionInfo(testId);
+                    if (sessionInfo.session_exists && sessionInfo.test_id && sessionInfo.test_id !== testId) {
+                        console.error('❌ Sessão verificada pertence a outro teste:', {
+                            requestedTestId: testId,
+                            sessionTestId: sessionInfo.test_id,
+                            sessionId: sessionInfo.session_id
+                        });
+                        throw new Error(`A sessão verificada (${sessionInfo.session_id}) pertence a outro teste (${sessionInfo.test_id}). Teste solicitado: ${testId}`);
+                    }
+                } catch (error) {
+                    // Se getTestSessionInfo falhar (404), é normal - sessão ainda não existe
+                    if ((error as { response?: { status?: number } }).response?.status !== 404) {
+                        throw error;
+                    }
+                }
+            }
+            
+            return sessionData;
         } catch (error) {
             console.error('Erro ao iniciar sessão:', error);
             console.error('Detalhes do erro:', error.response?.data);
@@ -133,19 +176,7 @@ export class EvaluationApiService {
         }
     }
 
-    // ✅ MANTIDO: Salvar respostas parciais (para auto-save)
-    static async savePartialAnswers(data: SavePartialRequest): Promise<void> {
-        console.log('Salvando respostas parciais:', data);
 
-        try {
-            await api.post('/student-answers/save-partial', data);
-            console.log('Respostas salvas com sucesso');
-        } catch (error) {
-            console.error('Erro ao salvar respostas parciais:', error);
-            console.error('Detalhes do erro:', error.response?.data);
-            throw error;
-        }
-    }
 
     // ✅ NOVO: Sincronizar timer com backend
     static async syncTimer(sessionId: string, elapsedMinutes: number, remainingMinutes: number): Promise<void> {
@@ -165,32 +196,109 @@ export class EvaluationApiService {
     }
 
     // ✅ NOVO: Verificar status da sessão
-    static async getSessionStatus(sessionId: string): Promise<any> {
+    static async getSessionStatus(sessionId: string): Promise<SessionStatusResponse> {
         console.log('Verificando status da sessão:', sessionId);
 
         try {
             const response = await api.get(`/student-answers/sessions/${sessionId}/status`);
             console.log('Status da sessão:', response.data);
             return response.data;
-        } catch (error) {
+        } catch (error: unknown) {
+            const apiError = error as { response?: { data?: unknown } };
             console.error('Erro ao verificar status da sessão:', error);
-            console.error('Detalhes do erro:', error.response?.data);
+            console.error('Detalhes do erro:', apiError.response?.data);
             throw error;
         }
     }
 
     // Finalizar teste
     static async submitTest(data: SubmitTestRequest): Promise<SubmitTestResponse> {
-        console.log('Enviando dados para finalizar teste:', data);
-        try {
-            const response = await api.post('/student-answers/submit', data);
-            console.log('Resposta da API submitTest:', response.data);
-            return response.data;
-        } catch (error) {
-            console.error('Erro ao verificar status da sessão:', error);
-            console.error('Detalhes do erro:', error.response?.data);
-            throw error;
+        console.log('🚀 Enviando dados para finalizar teste:', {
+            sessionId: data.session_id,
+            answersCount: data.answers?.length || 0,
+            endpoint: '/student-answers/submit'
+        });
+
+        const maxRetries = 3;
+        let lastError: unknown;
+
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            let abortController: AbortController | null = null;
+            let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+            try {
+                console.log(`🔄 Tentativa ${attempt + 1}/${maxRetries + 1} de envio da avaliação`);
+
+                abortController = new AbortController();
+                const timeoutMs = 15000 + attempt * 15000; // 15s, 30s, 45s, 60s
+
+                timeoutId = setTimeout(() => {
+                    abortController?.abort();
+                }, timeoutMs);
+
+                const response = await api.post('/student-answers/submit', data, {
+                    signal: abortController.signal,
+                    timeout: timeoutMs
+                });
+
+                console.log('✅ Resposta da API submitTest recebida:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    data: response.data,
+                    hasResults: !!response.data?.results,
+                    attempt: attempt + 1
+                });
+
+                return response.data;
+            } catch (error: unknown) {
+                lastError = error;
+                const apiError = error as {
+                    code?: string;
+                    message?: string;
+                    response?: {
+                        status?: number;
+                        statusText?: string;
+                        data?: unknown;
+                    };
+                };
+
+                console.error(`❌ Erro na tentativa ${attempt + 1}:`, {
+                    error,
+                    response: apiError.response?.data,
+                    status: apiError.response?.status,
+                    statusText: apiError.response?.statusText,
+                    code: apiError.code,
+                    message: apiError.message
+                });
+
+                const status = apiError.response?.status;
+                const wasAborted = apiError.code === 'ERR_CANCELED';
+                const isTimeout = apiError.code === 'ECONNABORTED' || wasAborted || apiError.message?.toLowerCase().includes('timeout');
+                const isNetworkIssue = apiError.code === 'ERR_NETWORK' || !apiError.response;
+                const isServerError = status !== undefined && status >= 500;
+
+                const shouldRetry = attempt < maxRetries &&
+                    (isTimeout || isNetworkIssue || isServerError) &&
+                    status !== 400 &&
+                    status !== 410;
+
+                if (shouldRetry) {
+                    const delay = 2000 * (attempt + 1); // 2s, 4s, 6s
+                    console.log(`⏳ Aguardando ${delay}ms antes da próxima tentativa...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    continue;
+                }
+
+                break;
+            } finally {
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                }
+            }
         }
+
+        console.error('❌ Todas as tentativas de envio falharam:', lastError);
+        throw lastError;
     }
 }
 

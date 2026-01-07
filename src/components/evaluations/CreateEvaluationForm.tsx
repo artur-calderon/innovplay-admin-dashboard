@@ -543,11 +543,11 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
           )}
         />
         <div className="space-y-6">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-blue-800 mb-3">
+          <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+            <h3 className="text-sm font-semibold text-blue-800 dark:text-blue-400 mb-3">
               Período de Disponibilidade da Avaliação
             </h3>
-            <p className="text-xs text-blue-600 mb-4">
+            <p className="text-xs text-blue-600 dark:text-blue-400 mb-4">
               Configure quando a avaliação ficará disponível para os alunos realizarem
             </p>
             
@@ -581,14 +581,14 @@ const CreateEvaluationForm: React.FC<CreateEvaluationFormProps> = ({ onSubmit, i
             </div>
             
             {calculateTotalPeriod() && (
-              <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-md">
+              <div className="mt-3 p-3 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-md">
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span className="text-sm font-medium text-green-800">
+                  <span className="text-sm font-medium text-green-800 dark:text-green-400">
                     Período de disponibilidade: {calculateTotalPeriod()}
                   </span>
                 </div>
-                <p className="text-xs text-green-600 mt-1">
+                <p className="text-xs text-green-600 dark:text-green-400 mt-1">
                   A avaliação ficará disponível para os alunos durante este período
                 </p>
               </div>

@@ -2,7 +2,7 @@ import axios from 'axios'
 
 // Configuração da base URL da API
 // Em desenvolvimento, use o proxy do Vite (\"/api\") para evitar CORS
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 
 export const api = axios.create({
     baseURL: BASE_URL,
@@ -49,10 +49,27 @@ api.interceptors.response.use(
             console.error('Timeout na requisição:', error.message)
             throw new Error('A requisição demorou muito para responder. O servidor pode estar sobrecarregado ou processando muitos dados.')
         } else if (error.response?.status === 404) {
-            // Recurso não encontrado
+            // Recurso não encontrado - mas não lançar erro genérico para endpoints que podem não estar implementados
+            const url = error.config?.url || '';
+            // Endpoints do Play TV e Skills podem não estar implementados ainda, então preservar o erro original
+            if (url.includes('/play-tv/') || url.includes('/skills/')) {
+                // Preservar o erro original com response para que o código possa detectar o 404
+                return Promise.reject(error);
+            }
+            // Para outros endpoints, lançar erro genérico
             throw new Error('Recurso não encontrado no servidor.')
         } else if (error.response?.status >= 500) {
-            // Erro do servidor
+            // ✅ CORRIGIDO: Preservar erro original para endpoints críticos
+            // Endpoints que precisam de tratamento específico de erro
+            const url = error.config?.url || '';
+            const criticalEndpoints = ['/student-answers/submit', '/student-answers/save-partial'];
+            
+            if (criticalEndpoints.some(endpoint => url.includes(endpoint))) {
+                // Preservar o erro original com response para tratamento específico
+                return Promise.reject(error);
+            }
+            
+            // Para outros endpoints, lançar erro genérico
             throw new Error('Erro interno do servidor. Tente novamente mais tarde.')
         }
 
@@ -67,7 +84,7 @@ export const apiWithRetry = async <T>(
     initialDelay: number = 1000,
     maxTimeout: number = 60000
 ): Promise<T> => {
-    let lastError: any;
+    let lastError: Error | unknown;
     let currentTimeout = 15000; // Timeout inicial
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -85,15 +102,16 @@ export const apiWithRetry = async <T>(
             const result = await Promise.race([requestPromise, timeoutPromise]);
             return result;
 
-        } catch (error: any) {
+        } catch (error: unknown) {
             lastError = error;
 
             // Só tentar novamente se for timeout ou erro de rede
+            const errorObj = error as { code?: string; message?: string };
             if (attempt < maxRetries && (
-                error.code === 'ECONNABORTED' ||
-                error.code === 'ERR_NETWORK' ||
-                error.message?.includes('timeout') ||
-                error.message?.includes('Timeout')
+                errorObj.code === 'ECONNABORTED' ||
+                errorObj.code === 'ERR_NETWORK' ||
+                errorObj.message?.includes('timeout') ||
+                errorObj.message?.includes('Timeout')
             )) {
                 await new Promise(resolve => setTimeout(resolve, initialDelay));
 
@@ -123,12 +141,8 @@ export const apiWithTimeout = async <T>(
 
     const requestPromise = requestFn();
 
-    try {
-        const result = await Promise.race([requestPromise, timeoutPromise]);
-        return result;
-    } catch (error) {
-        throw error;
-    }
+    const result = await Promise.race([requestPromise, timeoutPromise]);
+    return result;
 };
 
 // Configuração padrão para desenvolvimento

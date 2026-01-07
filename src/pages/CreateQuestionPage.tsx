@@ -17,39 +17,20 @@ const CreateQuestionPage = () => {
     try {
       setIsLoading(true);
       
-      // Verificar se o usuário está autenticado
-      if (!user?.id) {
-        toast.error("Erro de autenticação", {
-          description: "Usuário não autenticado. Faça login novamente.",
-        });
-        return;
-      }
-
-      // Usar created_by do questionData se disponível, senão usar user.id
-      const createdBy = questionData.created_by || user.id;
-
-      const response = await api.post("/questions", {
-        title: questionData.title,
-        text: questionData.text,
-        second_statement: questionData.secondStatement,
-        type: questionData.type,
-        subjectId: questionData.subjectId,
-        grade: questionData.grade?.id || questionData.grade,
-        difficulty: questionData.difficulty,
-        value: questionData.value,
-        solution: questionData.solution,
-        skills: questionData.skills,
-        options: questionData.options,
-        createdBy: createdBy
-      });
-
+      // Debug: verificar os dados recebidos
+      console.log('🔍 Debug - Dados recebidos do QuestionForm:', questionData);
+      
+      // Não criar payload aqui - apenas redirecionar após sucesso
+      // O QuestionForm já fez a chamada para a API
+      
       toast.success("Questão criada com sucesso! 🎉", {
         description: "A nova questão foi adicionada ao banco de questões",
       });
       navigate("/app/cadastros/questao");
+      
     } catch (error) {
-      console.error("Erro ao criar questão:", error);
-      toast.error("Erro ao criar questão", {
+      console.error("Erro ao processar questão:", error);
+      toast.error("Erro ao processar questão", {
         description: "Tente novamente ou entre em contato com o suporte",
       });
     } finally {
@@ -58,7 +39,7 @@ const CreateQuestionPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-blue-950/30 dark:via-background dark:to-purple-950/30">
       <div className="container max-w-7xl mx-auto py-8 px-4">
         {/* Header aprimorado */}
         <div className="mb-8">
@@ -66,7 +47,7 @@ const CreateQuestionPage = () => {
             <Button
               variant="outline"
               onClick={() => navigate("/app/cadastros/questao")}
-              className="flex items-center gap-2 hover:bg-blue-50 hover:border-blue-300"
+              className="flex items-center gap-2 hover:bg-blue-50 dark:hover:bg-blue-950/50 hover:border-blue-300 dark:hover:border-blue-700"
             >
               <ArrowLeft className="h-4 w-4" />
               Voltar ao Banco de Questões
@@ -74,12 +55,12 @@ const CreateQuestionPage = () => {
           </div>
           
           <div className="flex items-center gap-4 mb-4">
-            <div className="p-3 bg-blue-100 rounded-xl">
-              <Plus className="h-8 w-8 text-blue-600" />
+            <div className="p-3 bg-blue-100 dark:bg-blue-900/50 rounded-xl">
+              <Plus className="h-8 w-8 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Criar Nova Questão</h1>
-              <p className="text-gray-600 text-lg mt-1">
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-foreground">Criar Nova Questão</h1>
+              <p className="text-gray-600 dark:text-muted-foreground text-lg mt-1">
                 Adicione uma nova questão ao banco de questões da plataforma
               </p>
             </div>

@@ -23,7 +23,6 @@ import { Eye, EyeOff } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { useDataContext } from "@/context/dataContext";
-import { MultiSelect } from "@/components/ui/multi-select";
 
 import { ROLE_DISPLAY_MAPPING } from "@/lib/constants";
 
@@ -84,9 +83,11 @@ interface UserFormProps {
     city_id?: string;
   };
   onSubmit?: (data: UserFormValues) => Promise<void> | void;
+  allowedRoles?: string[]; // Roles permitidas para criação (ex: ["Administrador", "Diretor"])
+  showCitySelect?: boolean; // Se deve mostrar o campo de seleção de município
 }
 
-export default function UserForm({ user, onSubmit }: UserFormProps) {
+export default function UserForm({ user, onSubmit, allowedRoles, showCitySelect = true }: UserFormProps) {
   const isEditing = !!user;
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -120,7 +121,7 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
       .map(n => n.charAt(0).toLowerCase())
       .join("");
     
-    return `${initials}@innovplay.com`;
+    return `${initials}@afirmeplay.com.br`;
   };
 
   // Watch para mudanças no campo nome (apenas para novos usuários)
@@ -216,7 +217,7 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
               </FormControl>
               {!isEditing && (
                 <p className="text-xs text-muted-foreground">
-                  O email é gerado automaticamente baseado nas iniciais do nome + @innovplay.com
+                  O email é gerado automaticamente baseado nas iniciais do nome + @afirmeplay.com.br
                 </p>
               )}
               <FormMessage />
@@ -257,40 +258,41 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
           )}
         />
 
-        {!isEditing && (
-          <FormField
-            control={form.control}
-            name="confirmPassword"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Confirmar Senha</FormLabel>
-                <FormControl>
-                  <div className="relative">
-                    <Input 
-                      type={showConfirmPassword ? "text" : "password"} 
-                      placeholder="Confirme sua senha" 
-                      {...field} 
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    >
-                      {showConfirmPassword ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        )}
+        <FormField
+          control={form.control}
+          name="confirmPassword"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{isEditing ? "Confirmar nova senha" : "Confirmar Senha"}</FormLabel>
+              <FormControl>
+                <div className="relative">
+                  <Input 
+                    type={showConfirmPassword ? "text" : "password"} 
+                    placeholder={isEditing ? "Repita a nova senha" : "Confirme sua senha"}
+                    {...field} 
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </FormControl>
+              {isEditing && (
+                <p className="text-xs text-muted-foreground">Necessário apenas se desejar atualizar a senha.</p>
+              )}
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         <FormField
           control={form.control}
@@ -306,51 +308,81 @@ export default function UserForm({ user, onSubmit }: UserFormProps) {
           )}
         />
 
-        <FormField
-          control={form.control}
-          name="city_id"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Município</FormLabel>
-              <FormControl>
-                <MultiSelect
-                  options={municipioOptions}
-                  selected={field.value ? [field.value] : []}
-                  onChange={(values) => field.onChange(values[0] || null)}
-                  placeholder="Selecione um município"
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {showCitySelect && (
+          <FormField
+            control={form.control}
+            name="city_id"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Município</FormLabel>
+                <Select
+                  onValueChange={field.onChange}
+                  defaultValue={field.value || undefined}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione um município" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {municipioOptions.map((municipio) => (
+                      <SelectItem key={municipio.id} value={municipio.id}>
+                        {municipio.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
         <FormField
           control={form.control}
           name="role"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Função</FormLabel>
-              <Select
-                onValueChange={field.onChange}
-                defaultValue={field.value}
-              >
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione uma função" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  <SelectItem value="Administrador">Administrador</SelectItem>
-                  <SelectItem value="Professor">Professor</SelectItem>
-                  <SelectItem value="Coordenador">Coordenador</SelectItem>
-                  <SelectItem value="Diretor">Diretor</SelectItem>
-                  <SelectItem value="Técnico Administrador">Técnico Administrador</SelectItem>
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
+          render={({ field }) => {
+            // Lista completa de roles disponíveis
+            const allRoles = [
+              { value: "Administrador", label: "Administrador" },
+              { value: "Professor", label: "Professor" },
+              { value: "Coordenador", label: "Coordenador" },
+              { value: "Diretor", label: "Diretor" },
+              { value: "Técnico Administrador", label: "Técnico Administrador" }
+            ];
+
+            // Se estiver editando, mostrar todas as roles (para não quebrar edição)
+            // Se estiver criando, filtrar baseado em allowedRoles
+            const availableRoles = isEditing 
+              ? allRoles 
+              : (allowedRoles && allowedRoles.length > 0 
+                  ? allRoles.filter(role => allowedRoles.includes(role.value))
+                  : allRoles);
+
+            return (
+              <FormItem>
+                <FormLabel>Função</FormLabel>
+                <Select
+                  onValueChange={field.onChange}
+                  defaultValue={field.value}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione uma função" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {availableRoles.map((role) => (
+                      <SelectItem key={role.value} value={role.value}>
+                        {role.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            );
+          }}
         />
 
         <div className="flex justify-end">

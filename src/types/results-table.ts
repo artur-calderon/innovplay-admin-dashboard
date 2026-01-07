@@ -60,6 +60,16 @@ export interface StudentResult {
   em_branco: number;
   tempo_gasto: number;
   status: 'concluida' | 'pendente';
+  // ✅ ADICIONAR: Propriedade respostas para compatibilidade com TableRow
+  respostas?: Array<{
+    questao_id: string;
+    questao_numero: number;
+    resposta_correta: boolean;
+    resposta_em_branco: boolean;
+    tempo_gasto: number;
+  }>;
+  // ✅ NOVO: Moedas ganhas (para competições)
+  moedas_ganhas?: number;
 }
 
 export interface DetailedReport {
@@ -115,6 +125,7 @@ export interface ResultsTableProps {
   visibleFields?: VisibleFields;
   subjectFilter?: string;
   evaluationId?: string;
+  successThreshold?: number; // porcentagem para considerar desempenho bom
 }
 
 export interface SkillCodeGeneratorParams {

@@ -37,6 +37,15 @@ export interface Question {
     }[];
     points: number;
     difficulty: "easy" | "medium" | "hard";
+    // ✅ NOVO: Mapeamento de posições embaralhadas para originais
+    positionMapping?: Array<{
+        shuffledIndex: number;
+        originalIndex: number;
+        originalLetter: string; // A, B, C, D...
+        shuffledLetter: string; // A, B, C, D... (pode ser diferente)
+        originalText: string;
+        shuffledText: string;
+    }>;
 }
 
 export interface TestData {
@@ -80,6 +89,7 @@ export interface StartSessionResponse {
     actual_start_time?: string;
     time_limit_minutes: number;
     remaining_time_minutes: number;
+    test_id?: string; // ✅ NOVO: ID do teste para validação
 }
 
 export interface SessionStatusResponse {
@@ -95,13 +105,7 @@ export interface SessionStatusResponse {
     grade: string | null;
 }
 
-export interface SavePartialRequest {
-    session_id: string;
-    answers: {
-        question_id: string;
-        answer: string;
-    }[];
-}
+
 
 export interface SubmitTestRequest {
     session_id: string;
@@ -117,4 +121,142 @@ export interface SubmitTestResponse {
     submitted_at: string;
     duration_minutes: number;
     results: TestResults;
-} 
+}
+
+// Interface unificada de Evaluation
+export interface Subject {
+    id: string;
+    name: string;
+}
+
+export interface Grade {
+    id: string;
+    name: string;
+}
+
+export interface Course {
+    id: string;
+    name: string;
+}
+
+export interface Author {
+    id: string;
+    name: string;
+}
+
+export interface Municipality {
+    id: string;
+    name: string;
+}
+
+export interface SchoolInfo {
+    id: string;
+    name: string;
+}
+
+export interface AppliedClass {
+    class_test_id: string | null;
+    class: {
+        id: string;
+        name: string;
+        students_count: number;
+        school?: {
+            id: string;
+            name: string;
+        };
+        grade?: {
+            id: string;
+            name: string;
+        };
+    };
+    application: string | null;
+    expiration: string | null;
+    status?: "applied" | "configured";
+}
+
+export interface Evaluation {
+    id: string;
+    title: string;
+    description?: string | null;
+    type: "AVALIACAO" | "SIMULADO" | "EVALUATION" | "SIMULATION";
+    model: "SAEB" | "PROVA" | "AVALIE";
+    course?: Course | null;
+    grade?: Grade | null;
+    grade_id?: string; // Campo alternativo do backend
+    subject?: Subject; // Campo singular (fallback para compatibilidade)
+    subjects?: Subject[]; // Campo oficial (array de disciplinas)
+    subjects_info?: Subject[]; // Campo alternativo (fallback)
+    subjects_count?: number; // Quantidade de disciplinas
+    questions?: Array<Question | {
+        id: string;
+        number?: number;
+        title?: string;
+        text: string;
+        formattedText?: string;
+        question_type?: string;
+        type?: string;
+        command?: string;
+        value?: number;
+        points?: number;
+        difficulty?: string;
+        solution?: string;
+        options?: Array<{ id: string; text: string; isCorrect?: boolean }>;
+        alternatives?: Array<{ id?: string; text: string; isCorrect?: boolean }>;
+        subject?: Subject;
+        skills?: string[];
+    }>;
+    duration?: number; // Duração em minutos
+    max_score?: number | null;
+    createdAt?: string;
+    created_at?: string; // Campo alternativo
+    createdBy?: Author;
+    created_by?: Author; // Campo alternativo
+    startDateTime?: string; // Data de início quando ativada
+    endDateTime?: string; // Data de fim quando ativada
+    municipalities?: Municipality[];
+    municipalities_count?: number;
+    schools?: SchoolInfo[];
+    schools_count?: number;
+    classes?: string[]; // IDs das turmas selecionadas (fallback)
+    total_students?: number;
+    applied_classes_count?: number;
+    applied_classes?: AppliedClass[];
+    status?: string;
+    is_applied?: boolean;
+    is_active?: boolean;
+    archived?: boolean;
+    deleted_at?: string | null;
+}
+
+/**
+ * Função helper para padronizar acesso a disciplinas
+ * Verifica na ordem: subjects > subjects_info > subject
+ */
+export function getEvaluationSubjects(evaluation: Evaluation): Subject[] {
+    // Prioridade 1: subjects (campo oficial do backend)
+    if (evaluation.subjects && Array.isArray(evaluation.subjects) && evaluation.subjects.length > 0) {
+        return evaluation.subjects;
+    }
+
+    // Prioridade 2: subjects_info (fallback)
+    if (evaluation.subjects_info && Array.isArray(evaluation.subjects_info) && evaluation.subjects_info.length > 0) {
+        return evaluation.subjects_info;
+    }
+
+    // Prioridade 3: subject único (fallback para compatibilidade)
+    if (evaluation.subject && evaluation.subject.name) {
+        return [evaluation.subject];
+    }
+
+    return [];
+}
+
+/**
+ * Função helper para obter a contagem de disciplinas
+ */
+export function getEvaluationSubjectsCount(evaluation: Evaluation): number {
+    if (evaluation.subjects_count !== undefined) {
+        return evaluation.subjects_count;
+    }
+    return getEvaluationSubjects(evaluation).length;
+}

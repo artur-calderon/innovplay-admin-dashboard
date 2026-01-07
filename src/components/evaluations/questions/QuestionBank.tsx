@@ -91,12 +91,131 @@ const useDebounce = (value: string, delay: number) => {
   return debouncedValue;
 };
 
+/**
+ * Função utilitária para mapear períodos EJA para anos equivalentes
+ * 1º Período EJA = 1º Ano, 2º Período EJA = 2º Ano, etc.
+ */
+function getGradeIdsForEJA(
+  currentGradeId: string,
+  currentGradeName: string,
+  allGrades: Array<{ id: string; name: string }>
+): string[] {
+  if (!currentGradeName || !allGrades || allGrades.length === 0) {
+    return [currentGradeId];
+  }
+
+  const normalizedGradeName = currentGradeName.trim().toLowerCase();
+  
+  // Verificar se é EJA
+  const isEJA = normalizedGradeName.includes('período') || 
+                normalizedGradeName.includes('periodo') ||
+                normalizedGradeName.includes('eja') ||
+                allGrades.some(g => {
+                  const gradeLower = g.name.toLowerCase();
+                  return gradeLower.includes('eja') && g.id === currentGradeId;
+                });
+
+  if (!isEJA) {
+    return [currentGradeId];
+  }
+
+  // Extrair número do período (ex: "1º Período" -> 1)
+  const periodoMatch = normalizedGradeName.match(/(\d+)[º°o]?\s*per[ií]odo/i);
+  if (!periodoMatch) {
+    return [currentGradeId];
+  }
+
+  const periodoNum = parseInt(periodoMatch[1], 10);
+  
+  // Tentar múltiplas variações do nome do ano
+  const possibleYearNames = [
+    `${periodoNum}º Ano`,
+    `${periodoNum}° Ano`,
+    `${periodoNum}o Ano`,
+    `${periodoNum} Ano`,
+    `Ano ${periodoNum}`
+  ];
+  
+  // Buscar o ano equivalente nas séries disponíveis
+  // IMPORTANTE: Apenas séries dos Anos Iniciais (1º ao 5º ano)
+  // Excluir: Ensino Médio, Anos Finais (6º ao 9º), e EJA
+  const targetGrade = allGrades.find(g => {
+    const gradeName = g.name.trim().toLowerCase();
+    
+    // Excluir Ensino Médio
+    if (gradeName.includes('em') || gradeName.includes('médio') || gradeName.includes('medio')) {
+      return false;
+    }
+    
+    // Excluir Anos Finais (6º ao 9º ano)
+    if (gradeName.includes('6º') || gradeName.includes('6°') || gradeName.includes('6o') ||
+        gradeName.includes('7º') || gradeName.includes('7°') || gradeName.includes('7o') ||
+        gradeName.includes('8º') || gradeName.includes('8°') || gradeName.includes('8o') ||
+        gradeName.includes('9º') || gradeName.includes('9°') || gradeName.includes('9o')) {
+      return false;
+    }
+    
+    // Excluir EJA
+    if (gradeName.includes('eja') || gradeName.includes('período') || gradeName.includes('periodo')) {
+      return false;
+    }
+    
+    // Garantir que seja apenas Anos Iniciais (1º ao 5º ano)
+    // Verificar se o número do período está entre 1 e 5
+    if (periodoNum < 1 || periodoNum > 5) {
+      return false;
+    }
+    
+    // Verificar se corresponde ao ano dos Anos Iniciais
+    return possibleYearNames.some(name => 
+      gradeName === name.toLowerCase() ||
+      gradeName.includes(`${periodoNum}º ano`) ||
+      gradeName.includes(`${periodoNum}° ano`) ||
+      gradeName.includes(`${periodoNum}o ano`) ||
+      gradeName.includes(`${periodoNum} ano`)
+    );
+  });
+  
+  // Retornar o ID do ano equivalente ou o gradeId atual como fallback
+  if (targetGrade) {
+    return [targetGrade.id];
+  }
+  
+  return [currentGradeId];
+}
+
+/**
+ * Verifica se uma questão deve ser incluída baseado no mapeamento EJA
+ */
+function shouldIncludeQuestionForEJA(
+  question: Question,
+  evaluationGradeId: string | undefined,
+  evaluationGradeName: string | undefined,
+  allGrades: Array<{ id: string; name: string }>
+): boolean {
+  if (!evaluationGradeId || !evaluationGradeName || !question.grade) {
+    return true; // Se não temos informações suficientes, incluir a questão
+  }
+
+  // Obter gradeIds equivalentes para EJA
+  const equivalentGradeIds = getGradeIdsForEJA(
+    evaluationGradeId,
+    evaluationGradeName,
+    allGrades
+  );
+
+  // Se a questão pertence a um dos anos equivalentes, incluir
+  return equivalentGradeIds.includes(question.grade.id);
+}
+
 interface QuestionBankProps {
   open: boolean;
   onClose: () => void;
   onSelect: (question: Question) => void;
   subjects: Subject[];
   selectedSubjectId?: string;
+  gradeId?: string;
+  gradeName?: string;
 }
 
 export default function QuestionBank({
@@ -104,7 +223,9 @@ export default function QuestionBank({
   onClose,
   onSelect,
   subjects,
-  selectedSubjectId
+  selectedSubjectId,
+  gradeId,
+  gradeName
 }: QuestionBankProps) {
   // Estados principais
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -141,18 +262,27 @@ export default function QuestionBank({
   
   const { toast } = useToast();
 
+  // Buscar séries do backend
+  const fetchGrades = async () => {
+    try {
+      const response = await api.get("/grades/");
+      if (Array.isArray(response.data)) {
+        setGrades(response.data);
+      } else {
+        setGrades([]);
+      }
+    } catch (error) {
+      console.error("Erro ao buscar séries:", error);
+      setGrades([]);
+    }
+  };
+
   // Buscar dados iniciais
   useEffect(() => {
-    // Usar dados mockados em vez de API
-    const mockGrades: Grade[] = [
-      { id: "5", name: "5º Ano" },
-      { id: "6", name: "6º Ano" },
-      { id: "7", name: "7º Ano" },
-      { id: "8", name: "8º Ano" },
-      { id: "9", name: "9º Ano" }
-    ];
-    setGrades(mockGrades);
-  }, []);
+    if (open) {
+      fetchGrades();
+    }
+  }, [open]);
 
   
 
@@ -252,12 +382,19 @@ export default function QuestionBank({
       if (selectedSubjectId && selectedSubjectId !== 'all' && question.subject?.id !== selectedSubjectId) {
         return false;
       }
+
+      // Aplicar mapeamento EJA: se a avaliação é EJA, incluir questões do ano equivalente
+      if (gradeId && gradeName && grades.length > 0) {
+        if (!shouldIncludeQuestionForEJA(question, gradeId, gradeName, grades)) {
+          return false;
+        }
+      }
       
       return true;
     });
 
     return sortQuestions(filtered, sortBy);
-  }, [questions, debouncedSearchTerm, sortBy, selectedSubjectId]);
+  }, [questions, debouncedSearchTerm, sortBy, selectedSubjectId, gradeId, gradeName, grades]);
 
   const totalPages = Math.ceil(filteredAndSortedQuestions.length / pageSize);
   const paginatedQuestions = useMemo(() => {
@@ -391,7 +528,7 @@ export default function QuestionBank({
         <div className="space-y-4">
       {/* Barra de pesquisa */}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           placeholder="Buscar questões por título ou ID..."
           value={searchTerm}
@@ -632,8 +769,8 @@ export default function QuestionBank({
                 </div>
               </div>
               <div className="space-y-1">
-                <h3 className="text-lg font-semibold text-gray-700">Carregando Questões</h3>
-                <p className="text-sm text-gray-500">
+                <h3 className="text-lg font-semibold text-foreground">Carregando Questões</h3>
+                <p className="text-sm text-muted-foreground">
                   {selectedSubjectId && selectedSubjectId !== 'all' 
                     ? `Buscando questões de ${subjects.find(s => s.id === selectedSubjectId)?.name || 'disciplina selecionada'}...`
                     : 'Buscando questões disponíveis...'
@@ -644,7 +781,7 @@ export default function QuestionBank({
           </div>
 
           {/* Barra de progresso animada */}
-          <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+          <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
             <div className="h-2 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full animate-pulse">
               <div className="h-full bg-gradient-to-r from-transparent via-white/20 to-transparent animate-[shimmer_2s_infinite] w-full"></div>
             </div>
@@ -694,12 +831,12 @@ export default function QuestionBank({
 
           {/* Estatísticas de carregamento */}
           <div className="flex items-center justify-center py-2">
-            <div className="flex items-center gap-4 text-sm text-gray-500">
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
                 <span>Conectando com servidor</span>
               </div>
-              <div className="w-px h-4 bg-gray-300"></div>
+              <div className="w-px h-4 bg-border"></div>
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" style={{ animationDelay: '0.5s' }}></div>
                 <span>Processando filtros</span>
@@ -730,7 +867,7 @@ export default function QuestionBank({
                       onCheckedChange={(checked) => handleSelectOne(question.id, !!checked)}
                           className="transition-transform hover:scale-110"
                     />
-                        <span className="ml-2 text-xs text-gray-400 font-mono">
+                        <span className="ml-2 text-xs text-muted-foreground font-mono">
                           #{index + 1 + (currentPage - 1) * pageSize}
                         </span>
                       </div>
@@ -791,14 +928,14 @@ export default function QuestionBank({
             <Card className="question-loaded">
               <CardContent className="py-12 text-center">
                 <div className="flex flex-col items-center gap-4">
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
-                    <Search className="h-8 w-8 text-gray-400" />
+                  <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center">
+                    <Search className="h-8 w-8 text-muted-foreground" />
                   </div>
                   <div className="space-y-2">
-                    <p className="text-lg font-medium text-gray-700">
+                    <p className="text-lg font-medium text-foreground">
                   {error ? "Erro ao carregar questões" : "Nenhuma questão encontrada"}
                 </p>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-muted-foreground">
                       {error 
                         ? "Verifique sua conexão e tente novamente" 
                         : selectedSubjectId && selectedSubjectId !== 'all'

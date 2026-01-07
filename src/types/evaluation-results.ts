@@ -382,3 +382,175 @@ export function getProficiencyTableInfo(grade?: string, subject?: string, course
     }
   }
 } 
+
+// ===== NOVAS INTERFACES PARA RELATÓRIO COMPLETO =====
+
+export interface RelatorioCompletoAvaliacao {
+  id: string;
+  titulo: string;
+  descricao: string;
+  disciplinas: string[];
+}
+
+export interface TotalAlunosTurma {
+  turma: string;
+  matriculados: number;
+  avaliados: number;
+  percentual: number;
+  faltosos: number;
+}
+
+export interface TotalAlunosEscola {
+  escola: string;
+  matriculados: number;
+  avaliados: number;
+  percentual: number;
+  faltosos: number;
+}
+
+export interface TotalAlunosGeral {
+  matriculados: number;
+  avaliados: number;
+  percentual: number;
+  faltosos: number;
+}
+
+export interface TotalAlunos {
+  por_turma?: TotalAlunosTurma[];
+  por_escola?: TotalAlunosEscola[];
+  total_geral: TotalAlunosGeral;
+}
+
+export interface NivelAprendizagemTurma {
+  turma: string;
+  abaixo_do_basico: number;
+  basico: number;
+  adequado: number;
+  avancado: number;
+  total: number;
+}
+
+export interface NivelAprendizagemEscola {
+  escola: string;
+  abaixo_do_basico: number;
+  basico: number;
+  adequado: number;
+  avancado: number;
+  total: number;
+}
+
+export interface NivelAprendizagemGeral {
+  abaixo_do_basico: number;
+  basico: number;
+  adequado: number;
+  avancado: number;
+  total: number;
+}
+
+export interface NivelAprendizagemDisciplina {
+  por_turma?: NivelAprendizagemTurma[];
+  por_escola?: NivelAprendizagemEscola[];
+  geral?: NivelAprendizagemGeral;
+  total_geral?: NivelAprendizagemGeral;
+}
+
+export interface NiveisAprendizagem {
+  [disciplina: string]: NivelAprendizagemDisciplina;
+}
+
+export interface ProficienciaTurma {
+  turma: string;
+  proficiencia: number;
+}
+
+export interface ProficienciaEscola {
+  escola: string;
+  proficiencia?: number;
+  media?: number;
+  total_alunos?: number;
+}
+
+export interface ProficienciaDisciplina {
+  por_turma?: ProficienciaTurma[];
+  por_escola?: ProficienciaEscola[];
+  media_geral: number;
+}
+
+export interface Proficiencia {
+  por_disciplina: {
+    [disciplina: string]: ProficienciaDisciplina;
+  };
+  media_municipal_por_disciplina?: {
+    [disciplina: string]: number;
+  };
+}
+
+export interface NotaGeralTurma {
+  turma: string;
+  nota: number;
+}
+
+export interface NotaGeralEscola {
+  escola: string;
+  nota?: number;
+  media?: number;
+  total_alunos?: number;
+}
+
+export interface NotaGeralDisciplina {
+  por_turma?: NotaGeralTurma[];
+  por_escola?: NotaGeralEscola[];
+  media_geral: number;
+}
+
+export interface NotaGeral {
+  por_disciplina: {
+    [disciplina: string]: NotaGeralDisciplina;
+  };
+  media_municipal_por_disciplina?: {
+    [disciplina: string]: number;
+  };
+}
+
+export interface QuestaoHabilidade {
+  numero: number;
+  numero_questao: number;
+  acertos: number;
+  total: number;
+  percentual: number;
+  codigo: string;
+  descricao: string;
+}
+
+export interface Habilidade {
+  ranking: number;
+  codigo: string;
+  descricao: string;
+  acertos: number;
+  total: number;
+  percentual: number;
+  questoes: QuestaoHabilidade[];
+}
+
+export interface AcertosPorHabilidadeDisciplina {
+  habilidades: Habilidade[];
+}
+
+export interface AcertosPorHabilidade {
+  [disciplina: string]: AcertosPorHabilidadeDisciplina;
+}
+
+export interface RelatorioCompleto {
+  avaliacao: RelatorioCompletoAvaliacao;
+  total_alunos: TotalAlunos;
+  niveis_aprendizagem: NiveisAprendizagem;
+  proficiencia: Proficiencia;
+  nota_geral: NotaGeral;
+  acertos_por_habilidade: AcertosPorHabilidade;
+  escopo?: {
+    tipo: string;
+    id?: string;
+    school_id?: string | null;
+    city_id?: string | null;
+  };
+} 

@@ -43,6 +43,7 @@ interface ApiQuestion {
   grade?: { id: string; name: string };
   grade_id?: string;
   difficulty_level?: string;
+  difficulty?: string; // Campo alternativo da API
   question_type?: string;
   value?: number;
   correct_answer?: string;
@@ -82,6 +83,10 @@ interface QuestionBankProps {
     grade: string;
     questions: Question[];
   }) => void;
+  gradeId?: string;
+  gradeName?: string;
+  subjects?: Subject[];
+  selectedSubjectId?: string;
 }
 
 const DIFFICULTIES = ["Abaixo do Básico", "Básico", "Adequado", "Avançado"];
@@ -91,11 +96,132 @@ const QUESTION_TYPES = [
   { key: "trueFalse", label: "Verdadeiro/Falso" }
 ];
 
+/**
+ * Função utilitária para mapear períodos EJA para anos equivalentes
+ * 1º Período EJA = 1º Ano, 2º Período EJA = 2º Ano, etc.
+ */
+function getGradeIdsForEJA(
+  currentGradeId: string,
+  currentGradeName: string,
+  allGrades: Array<{ id: string; name: string }>
+): string[] {
+  if (!currentGradeName || !allGrades || allGrades.length === 0) {
+    return [currentGradeId];
+  }
+
+  const normalizedGradeName = currentGradeName.trim().toLowerCase();
+  
+  // Verificar se é EJA
+  const isEJA = normalizedGradeName.includes('período') || 
+                normalizedGradeName.includes('periodo') ||
+                normalizedGradeName.includes('eja') ||
+                allGrades.some(g => {
+                  const gradeLower = g.name.toLowerCase();
+                  return gradeLower.includes('eja') && g.id === currentGradeId;
+                });
+
+  if (!isEJA) {
+    return [currentGradeId];
+  }
+
+  // Extrair número do período (ex: "1º Período" -> 1)
+  const periodoMatch = normalizedGradeName.match(/(\d+)[º°o]?\s*per[ií]odo/i);
+  if (!periodoMatch) {
+    return [currentGradeId];
+  }
+
+  const periodoNum = parseInt(periodoMatch[1], 10);
+  
+  // Tentar múltiplas variações do nome do ano
+  const possibleYearNames = [
+    `${periodoNum}º Ano`,
+    `${periodoNum}° Ano`,
+    `${periodoNum}o Ano`,
+    `${periodoNum} Ano`,
+    `Ano ${periodoNum}`
+  ];
+  
+  // Buscar o ano equivalente nas séries disponíveis
+  // IMPORTANTE: Apenas séries dos Anos Iniciais (1º ao 5º ano)
+  // Excluir: Ensino Médio, Anos Finais (6º ao 9º), e EJA
+  const targetGrade = allGrades.find(g => {
+    const gradeName = g.name.trim().toLowerCase();
+    
+    // Excluir Ensino Médio
+    if (gradeName.includes('em') || gradeName.includes('médio') || gradeName.includes('medio')) {
+      return false;
+    }
+    
+    // Excluir Anos Finais (6º ao 9º ano)
+    if (gradeName.includes('6º') || gradeName.includes('6°') || gradeName.includes('6o') ||
+        gradeName.includes('7º') || gradeName.includes('7°') || gradeName.includes('7o') ||
+        gradeName.includes('8º') || gradeName.includes('8°') || gradeName.includes('8o') ||
+        gradeName.includes('9º') || gradeName.includes('9°') || gradeName.includes('9o')) {
+      return false;
+    }
+    
+    // Excluir EJA
+    if (gradeName.includes('eja') || gradeName.includes('período') || gradeName.includes('periodo')) {
+      return false;
+    }
+    
+    // Garantir que seja apenas Anos Iniciais (1º ao 5º ano)
+    // Verificar se o número do período está entre 1 e 5
+    if (periodoNum < 1 || periodoNum > 5) {
+      return false;
+    }
+    
+    // Verificar se corresponde ao ano dos Anos Iniciais
+    return possibleYearNames.some(name => 
+      gradeName === name.toLowerCase() ||
+      gradeName.includes(`${periodoNum}º ano`) ||
+      gradeName.includes(`${periodoNum}° ano`) ||
+      gradeName.includes(`${periodoNum}o ano`) ||
+      gradeName.includes(`${periodoNum} ano`)
+    );
+  });
+  
+  // Retornar o ID do ano equivalente ou o gradeId atual como fallback
+  if (targetGrade) {
+    return [targetGrade.id];
+  }
+  
+  return [currentGradeId];
+}
+
+/**
+ * Verifica se uma questão deve ser incluída baseado no mapeamento EJA
+ */
+function shouldIncludeQuestionForEJA(
+  question: Question,
+  evaluationGradeId: string | undefined,
+  evaluationGradeName: string | undefined,
+  allGrades: Array<{ id: string; name: string }>
+): boolean {
+  if (!evaluationGradeId || !evaluationGradeName || !question.grade) {
+    return true; // Se não temos informações suficientes, incluir a questão
+  }
+
+  // Obter gradeIds equivalentes para EJA
+  const equivalentGradeIds = getGradeIdsForEJA(
+    evaluationGradeId,
+    evaluationGradeName,
+    allGrades
+  );
+
+  // Se a questão pertence a um dos anos equivalentes, incluir
+  return equivalentGradeIds.includes(question.grade.id);
+}
+
 export function QuestionBank({
   open,
   onClose,
   subjectId,
   onQuestionSelected,
+  gradeId,
+  gradeName,
+  subjects: propsSubjects,
+  selectedSubjectId,
 }: QuestionBankProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -130,13 +256,15 @@ export function QuestionBank({
       fetchSubjects();
       fetchGrades();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
     if (open) {
       fetchQuestions();
     }
-  }, [filters, subjectId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, subjectId, open]);
 
   const fetchQuestions = async () => {
     try {
@@ -163,7 +291,7 @@ export function QuestionBank({
       }
 
       const convertedQuestions: Question[] = questionsData.map((apiQuestion) => {
-        const getQuestionType = (type: string | undefined): "multipleChoice" | "open" | "trueFalse" => {
+        const getQuestionType = (type: string | undefined): "multipleChoice" | "dissertativa" | "trueFalse" => {
           switch (type) {
             case "multipleChoice":
             case "multiple_choice":
@@ -171,7 +299,7 @@ export function QuestionBank({
             case "open":
             case "essay":
             case "dissertativa":
-              return "open";
+              return "dissertativa";
             case "trueFalse":
             case "true_false":
               return "trueFalse";
@@ -213,7 +341,7 @@ export function QuestionBank({
           text: apiQuestion.text || apiQuestion.formatted_text || "",
           title: apiQuestion.title || "",
           type: getQuestionType(apiQuestion.question_type),
-          difficulty: mapDifficulty(apiQuestion.difficulty || apiQuestion.difficulty_level),
+          difficulty: mapDifficulty(apiQuestion.difficulty_level || apiQuestion.difficulty),
           subjectId: apiQuestion.subject_id || "",
           subject: apiQuestion.subject ? {
             id: apiQuestion.subject.id,
@@ -224,17 +352,19 @@ export function QuestionBank({
             name: apiQuestion.grade.name
           } : undefined,
           value: apiQuestion.value || 1,
-          options: apiQuestion.options || apiQuestion.alternatives?.map(alt => ({
+          options: apiQuestion.alternatives?.map(alt => ({
             id: alt.id || "",
             text: alt.text,
             isCorrect: alt.isCorrect || false
           })) || [],
           created_by: apiQuestion.created_by || "",
-          skills: Array.isArray(apiQuestion.skill) ? apiQuestion.skill : (apiQuestion.skill ? [apiQuestion.skill] : []),
-          solution: apiQuestion.formatted_solution || apiQuestion.solution || "",
-          formattedText: apiQuestion.formatted_text || apiQuestion.formattedText,
-          formattedSolution: apiQuestion.formatted_solution || apiQuestion.formattedSolution,
-          secondStatement: apiQuestion.secondStatement || apiQuestion.second_statement || "",
+          skills: Array.isArray(apiQuestion.skill) && apiQuestion.skill.length > 0 
+            ? apiQuestion.skill[0] 
+            : (apiQuestion.skill && typeof apiQuestion.skill === 'string' ? apiQuestion.skill : undefined),
+          solution: apiQuestion.formatted_solution || apiQuestion.correct_answer || "",
+          formattedText: apiQuestion.formatted_text || "",
+          formattedSolution: apiQuestion.formatted_solution || "",
+          secondStatement: apiQuestion.second_statement || "",
         };
         return question;
       });
@@ -306,10 +436,17 @@ export function QuestionBank({
       const matchesGrade = !filters.grade || filters.grade === "all" || (question.grade && question.grade.id === filters.grade);
       const matchesDifficulty = !filters.difficulty || filters.difficulty === "all" || question.difficulty === filters.difficulty;
       const matchesType = !filters.type || filters.type === "all" || question.type === filters.type;
+
+      // Aplicar mapeamento EJA: se a avaliação é EJA, incluir questões do ano equivalente
+      if (gradeId && gradeName && grades.length > 0) {
+        if (!shouldIncludeQuestionForEJA(question, gradeId, gradeName, grades)) {
+          return false;
+        }
+      }
       
       return matchesSearch && matchesSubjectId && matchesSubject && matchesGrade && matchesDifficulty && matchesType;
     });
-  }, [questions, searchTerm, subjectId, filters]);
+  }, [questions, searchTerm, subjectId, filters, gradeId, gradeName, grades]);
 
   // Paginação
   const totalPages = Math.ceil(filteredQuestions.length / pageSize);
@@ -363,11 +500,11 @@ export function QuestionBank({
 
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty) {
-      case 'Avançado': return 'bg-green-800 text-green-100';
-      case 'Adequado': return 'bg-green-100 text-green-800';
-      case 'Básico': return 'bg-yellow-100 text-yellow-800';
-      case 'Abaixo do Básico': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'Avançado': return 'bg-green-800 dark:bg-green-900 text-green-100 dark:text-green-200';
+      case 'Adequado': return 'bg-green-100 dark:bg-green-950/30 text-green-800 dark:text-green-400';
+      case 'Básico': return 'bg-yellow-100 dark:bg-yellow-950/30 text-yellow-800 dark:text-yellow-400';
+      case 'Abaixo do Básico': return 'bg-red-100 dark:bg-red-950/30 text-red-800 dark:text-red-400';
+      default: return 'bg-muted text-foreground';
     }
   };
 
@@ -549,7 +686,7 @@ export function QuestionBank({
               <div className="space-y-3">
                 {paginatedQuestions.length > 0 ? (
                   <>
-                    <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-2 p-3 bg-muted dark:bg-muted/50 rounded-lg border border-border">
                       <Checkbox
                         checked={selectedQuestions.length === paginatedQuestions.length && paginatedQuestions.length > 0}
                         onCheckedChange={handleSelectAll}
@@ -561,8 +698,8 @@ export function QuestionBank({
 
                     {paginatedQuestions.map((question, index) => (
                       <Card key={question.id} className={cn(
-                        "transition-all duration-200 hover:shadow-md",
-                        selectedQuestions.includes(question.id) && "ring-2 ring-blue-500 bg-blue-50"
+                        "transition-all duration-200 hover:shadow-md dark:hover:shadow-lg",
+                        selectedQuestions.includes(question.id) && "ring-2 ring-blue-500 dark:ring-blue-400 bg-blue-50 dark:bg-blue-950/30"
                       )}>
                         <CardContent className="p-4">
                           <div className="flex items-start gap-3">
@@ -571,7 +708,7 @@ export function QuestionBank({
                                 checked={selectedQuestions.includes(question.id)}
                                 onCheckedChange={(checked) => toggleQuestionSelection(question.id)}
                               />
-                              <span className="ml-2 text-xs text-gray-400 font-mono">
+                              <span className="ml-2 text-xs text-muted-foreground font-mono">
                                 #{index + 1 + (currentPage - 1) * pageSize}
                               </span>
                             </div>
@@ -609,7 +746,7 @@ export function QuestionBank({
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleQuickAdd(question)}
-                                className="transition-colors hover:bg-green-50 hover:text-green-700"
+                                className="transition-colors hover:bg-green-50 dark:hover:bg-green-950/30 hover:text-green-700 dark:hover:text-green-400"
                                 title="Adicionar questão"
                               >
                                 <Plus className="h-4 w-4" />
@@ -618,7 +755,7 @@ export function QuestionBank({
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => setViewQuestion(question)}
-                                className="transition-colors hover:bg-blue-50 hover:text-blue-700"
+                                className="transition-colors hover:bg-blue-50 dark:hover:bg-blue-950/30 hover:text-blue-700 dark:hover:text-blue-400"
                                 title="Visualizar questão"
                               >
                                 <Eye className="h-4 w-4" />
@@ -633,14 +770,14 @@ export function QuestionBank({
                   <Card>
                     <CardContent className="py-12 text-center">
                       <div className="flex flex-col items-center gap-4">
-                        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
-                          <Search className="h-8 w-8 text-gray-400" />
+                        <div className="w-16 h-16 bg-muted dark:bg-muted/50 rounded-full flex items-center justify-center border border-border">
+                          <Search className="h-8 w-8 text-muted-foreground" />
                         </div>
                         <div className="space-y-2">
-                          <p className="text-lg font-medium text-gray-700">
+                          <p className="text-lg font-medium text-foreground">
                             {erro ? "Erro ao carregar questões" : "Nenhuma questão encontrada"}
                           </p>
-                          <p className="text-sm text-gray-500">
+                          <p className="text-sm text-muted-foreground">
                             {erro 
                               ? "Verifique sua conexão e tente novamente" 
                               : subjectId

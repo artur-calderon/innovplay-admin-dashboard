@@ -8,7 +8,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, Book, Check, List as ListIcon, Minus, Plus, Save, Eye, Heading1, Heading2, Heading3, List, Code, Type, Trash } from "lucide-react";
@@ -25,8 +25,9 @@ import TextAlign from '@tiptap/extension-text-align';
 import './QuestionForm.css';
 import MyEditor from './MyEditor';
 import './MyEditor.css';
-import { MultiSelect, Option } from "@/components/ui/multi-select";
+import { Option } from "@/components/ui/multi-select";
 import { useAuth } from "@/context/authContext";
+import SkillsSelector from "./SkillsSelector";
 
 // Form schema
 const questionSchema = z.object({
@@ -44,7 +45,7 @@ const questionSchema = z.object({
         })
     ).optional(),
     secondStatement: z.string().optional(),
-    skills: z.array(z.string()).optional(),
+    skills: z.array(z.string()).min(1, "Selecione pelo menos uma habilidade"),
     topics: z.string().optional(),
     questionType: z.enum(['multipleChoice', 'dissertativa']),
 }).refine((data) => {
@@ -63,6 +64,14 @@ type QuestionFormValues = z.infer<typeof questionSchema>;
 // Tipagem para resposta de habilidades na API
 interface ApiSkill {
     id: string;
+    code: string;
+    description: string;
+}
+
+// Tipagem para habilidades no SkillsSelector
+interface SkillOption {
+    id: string;
+    name: string;
     code: string;
     description: string;
 }
@@ -124,11 +133,10 @@ const QuestionPreview: React.FC<{ data: QuestionFormValues }> = ({ data }) => {
     const selectedSubject = subjects.find(s => s.id === data.subjectId);
     const selectedGrade = grades.find(g => g.id === data.grade);
     // Buscar nomes das habilidades (apenas os 7 primeiros caracteres)
-    const selectedSkills = (data.skills && Array.isArray(data.skills))
-        ? data.skills.map(skillId => {
-            const name = skillsOptions.find(opt => opt.id === skillId)?.name || skillId;
-            return name.substring(0, 6);
-        })
+    const selectedSkills = data.skills 
+        ? data.skills.map(skillId => 
+            skillsOptions.find(opt => opt.id === skillId)?.name.substring(0, 6) || skillId
+          )
         : [];
 
     // Initialize read-only Tiptap editor for the preview statement
@@ -178,9 +186,9 @@ const QuestionPreview: React.FC<{ data: QuestionFormValues }> = ({ data }) => {
                     <Badge variant="outline">{selectedSubject?.name || data.subjectId}</Badge>
                     <Badge variant="outline">{data.difficulty}</Badge>
                     <Badge variant="outline">Valor: {data.value}</Badge>
-                    {selectedSkills.length > 0 && (
-                        <Badge variant="outline">{selectedSkills.join(", ")}</Badge>
-                    )}
+                    {selectedSkills.map(skill => (
+                        <Badge key={skill} variant="outline">{skill}</Badge>
+                    ))}
                 </div>
             </div>
 
@@ -242,11 +250,12 @@ const QuestionFormReadOnly = ({
 }: QuestionFormReadOnlyProps) => {
     const [subjects, setSubjects] = useState<Subject[]>([]);
     const [grades, setGrades] = useState<{ id: string; name: string }[]>([]);
-    const [skills, setSkills] = useState<Option[]>([]);
+    const [skills, setSkills] = useState<SkillOption[]>([]);
     const [showPreview, setShowPreview] = useState(false);
     const [questionType, setQuestionType] = useState<'multipleChoice' | 'dissertativa'>('multipleChoice');
     const { toast } = useToast();
     const navigate = useNavigate();
+    const { user } = useAuth();
 
 
 
@@ -266,7 +275,7 @@ const QuestionFormReadOnly = ({
                 { text: "", isCorrect: false },
             ],
             secondStatement: "",
-            skills: [],
+            skills: [], // Array vazio ao invés de string vazia
             topics: "",
             questionType: 'multipleChoice',
         },
@@ -278,36 +287,71 @@ const QuestionFormReadOnly = ({
         name: "options"
     });
 
+    // Monitorar mudanças no formulário para debug
+    const watchedForm = useWatch({
+        control: form.control,
+        name: ["title", "text", "secondStatement", "options", "difficulty", "value", "solution", "skills"]
+    });
+
     useEffect(() => {
+        console.log('🔍 QuestionFormReadOnly - Formulário alterado:', watchedForm);
+        console.log('🔍 QuestionFormReadOnly - Estado atual do form:', form.getValues());
+    }, [watchedForm, form]);
+
+    useEffect(() => {
+        console.log('🔍 QuestionFormReadOnly - Configurando questionType:', questionType);
+        console.log('🔍 QuestionFormReadOnly - Opções antes da configuração:', form.getValues("options"));
+        
         form.setValue('questionType', questionType);
 
         // Limpar opções quando mudar para dissertativa
         if (questionType === 'dissertativa') {
+            console.log('🔍 QuestionFormReadOnly - Limpando opções para questão dissertativa');
             form.setValue('options', []);
             form.clearErrors('options');
         } else {
-            // Adicionar opções padrão quando mudar para múltipla escolha
-            form.setValue('options', [
-                { text: "", isCorrect: false },
-                { text: "", isCorrect: false },
-                { text: "", isCorrect: false },
-            ]);
+            // Adicionar opções padrão apenas se não existirem opções com texto
+            const currentOptions = form.getValues("options");
+            const hasOptionsWithText = currentOptions && currentOptions.some(opt => opt.text && opt.text.trim() !== '');
+            
+            console.log('🔍 QuestionFormReadOnly - Verificando opções existentes:', currentOptions);
+            console.log('🔍 QuestionFormReadOnly - Tem opções com texto?', hasOptionsWithText);
+            
+            if (!hasOptionsWithText) {
+                console.log('🔍 QuestionFormReadOnly - Adicionando opções padrão para questão de múltipla escolha');
+                form.setValue('options', [
+                    { text: "", isCorrect: false },
+                    { text: "", isCorrect: false },
+                    { text: "", isCorrect: false },
+                ]);
+            } else {
+                console.log('🔍 QuestionFormReadOnly - Mantendo opções existentes:', currentOptions);
+            }
         }
+        
+        console.log('🔍 QuestionFormReadOnly - Opções após configuração:', form.getValues("options"));
     }, [questionType, form]);
 
     // Função para adicionar alternativa
     const addOption = () => {
         if (fields.length < 5) {
+            console.log('🔍 QuestionFormReadOnly - Adicionando nova alternativa');
+            console.log('🔍 QuestionFormReadOnly - Estado do form antes de adicionar:', form.getValues());
             append({ text: "", isCorrect: false });
+            console.log('🔍 QuestionFormReadOnly - Opções após adicionar:', form.getValues("options"));
+            console.log('🔍 QuestionFormReadOnly - Estado completo do form após adicionar:', form.getValues());
         }
     };
 
     // Função para marcar uma alternativa como correta
     const handleRadioChange = (index: number) => {
         const currentOptions = form.getValues("options");
+        console.log('🔍 QuestionFormReadOnly - Marcando alternativa como correta:', index, currentOptions);
         currentOptions.forEach((option, i) => {
             update(i, { ...option, isCorrect: i === index });
         });
+        console.log('🔍 QuestionFormReadOnly - Opções após marcar correta:', form.getValues("options"));
+        console.log('🔍 QuestionFormReadOnly - Estado completo do form após marcar correta:', form.getValues());
     };
 
     useEffect(() => {
@@ -343,30 +387,23 @@ const QuestionFormReadOnly = ({
 
     useEffect(() => {
         const fetchSkills = async () => {
-            if (evaluationData.subject && evaluationData.grade) {
+            if (evaluationData.subject) {
+                console.log('🔍 QuestionFormReadOnly - Buscando habilidades para disciplina:', evaluationData.subject);
                 try {
-                    const [bySubjectRes, byGradeRes] = await Promise.all([
-                        api.get<ApiSkill[]>(`/skills/subject/${evaluationData.subject}`),
-                        api.get<ApiSkill[]>(`/skills/grade/${evaluationData.grade}`),
-                    ]);
-
-                    const bySubject: ApiSkill[] = Array.isArray(bySubjectRes.data) ? bySubjectRes.data : [];
-                    const byGrade: ApiSkill[] = Array.isArray(byGradeRes.data) ? byGradeRes.data : [];
-
-                    const byGradeCodes = new Set(byGrade.map((s) => s.code));
-                    let intersected = bySubject.filter((s) => byGradeCodes.has(s.code));
-                    // Fallback: se necessário, intersecta por id
-                    if (intersected.length === 0) {
-                        const byGradeIds = new Set(byGrade.map((s) => s.id));
-                        intersected = bySubject.filter((s) => byGradeIds.has(s.id));
+                    const response = await api.get(`/skills/subject/${evaluationData.subject}`);
+                    if (Array.isArray(response.data)) {
+                        const formattedSkills = response.data.map((skill: ApiSkill) => ({
+                            id: skill.id,
+                            name: `${skill.code} - ${skill.description}`,
+                            code: skill.code,
+                            description: skill.description
+                        }));
+                        console.log('🔍 QuestionFormReadOnly - Habilidades encontradas:', formattedSkills);
+                        setSkills(formattedSkills);
+                    } else {
+                        console.log('🔍 QuestionFormReadOnly - Nenhuma habilidade encontrada');
+                        setSkills([]);
                     }
-
-                    const formattedSkills: Option[] = intersected.map((skill) => ({
-                        id: skill.id,
-                        name: `${skill.code} - ${skill.description}`,
-                        code: skill.code,
-                    }));
-                    setSkills(formattedSkills);
                 } catch (error) {
                     console.error("Erro ao buscar habilidades:", error);
                     setSkills([]);
@@ -382,59 +419,127 @@ const QuestionFormReadOnly = ({
     }, [evaluationData.subject, evaluationData.grade, toast]);
 
     useEffect(() => {
+        console.log('🔍 QuestionFormReadOnly - Configurando subjectId:', evaluationData.subject);
+        console.log('🔍 QuestionFormReadOnly - Estado do form antes de configurar subjectId:', form.getValues());
         form.setValue('subjectId', evaluationData.subject);
+        console.log('🔍 QuestionFormReadOnly - Estado do form após configurar subjectId:', form.getValues());
     }, [evaluationData.subject, form]);
+
+    const htmlToText = (html: string) => {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = html;
+        return tempDiv.textContent || tempDiv.innerText || '';
+    }
 
     const handleFormSubmit = async (data: QuestionFormValues) => {
         try {
-            // LOG: Mostrar todos os dados do formulário antes do envio
-            console.log('=== DADOS DO FORMULÁRIO ANTES DO ENVIO ===');
-            console.log('Dados completos do formulário:', data);
-            console.log('Campo secondStatement:', data.secondStatement);
-            console.log('Tipo do secondStatement:', typeof data.secondStatement);
-            console.log('Tamanho do secondStatement:', data.secondStatement?.length);
-            console.log('==========================================');
+            // Debug: verificar dados do formulário
+            console.log('🔍 QuestionFormReadOnly - Dados do formulário:', data);
+            console.log('🔍 QuestionFormReadOnly - evaluationData:', evaluationData);
+            console.log('🔍 QuestionFormReadOnly - user:', user);
 
-            // Mapear o tipo da questão para o formato esperado pela API
-            const questionTypeForAPI = data.questionType === 'multipleChoice' ? 'multipleChoice' : 'dissertativa';
-            
+            // Corrigir: salvar solution como letra da alternativa correta (seguindo padrão do QuestionForm)
+            let solution = "";
+            if (data.questionType === 'multipleChoice' && data.options) {
+                const correctIndex = data.options.findIndex(opt => opt.isCorrect);
+                if (correctIndex !== -1) {
+                    solution = String.fromCharCode(65 + correctIndex); // "A", "B", ...
+                }
+            } else {
+                // Para questões dissertativas, usar o texto da resolução
+                solution = data.solution ? htmlToText(data.solution) : "";
+            }
+
             // Monta as opções com id baseado na letra (apenas para múltipla escolha)
             const options = data.questionType === 'multipleChoice' ? (data.options || []).map((opt, index) => ({
+                id: String.fromCharCode(65 + index), // "A", "B", "C", "D"...
                 text: opt.text,
                 isCorrect: opt.isCorrect,
             })) : [];
 
-            // skills como array de strings
-            const skills = Array.isArray(data.skills) ? data.skills : [];
+            console.log('🔍 QuestionFormReadOnly - Opções montadas:', options);
+            console.log('🔍 QuestionFormReadOnly - Verificando formato das opções:');
+            options.forEach((opt, index) => {
+                console.log(`  Opção ${index}:`, opt);
+            });
+
+            // skills como array
+            const skills = data.skills || [];
+            console.log('🔍 QuestionFormReadOnly - Habilidades selecionadas:', skills);
 
             // Encontrar o subject e grade para criar o objeto Question completo
             const selectedSubject = subjects.find(s => s.id === data.subjectId);
             const selectedGrade = grades.find(g => g.id === data.grade);
 
-            const question: Question = {
-                id: '', // Será gerado pelo backend
+            console.log('🔍 QuestionFormReadOnly - Subject encontrado:', selectedSubject);
+            console.log('🔍 QuestionFormReadOnly - Grade encontrada:', selectedGrade);
+
+            // Criar payload seguindo o mesmo padrão do QuestionForm
+            const payload = {
                 title: data.title,
-                text: data.text,
-                secondStatement: data.secondStatement || '',
-                type: questionTypeForAPI,
+                text: htmlToText(data.text),
+                formattedText: data.text,
+                type: data.questionType,
                 subjectId: data.subjectId,
-                subject: selectedSubject || { id: data.subjectId, name: '' },
-                grade: selectedGrade || { id: data.grade, name: '' },
+                educationStageId: evaluationData.course, // ID do curso
+                grade: data.grade, // UUID da série (string)
                 difficulty: data.difficulty,
                 value: Number(data.value),
-                solution: data.solution || '',
-                options,
-                skills,
-                created_by: '', // Será preenchido pelo backend
+                solution, // Letra da alternativa correta (A, B, C, D...)
+                formattedSolution: data.solution || '', // Texto HTML da resolução
+                options: data.questionType === 'multipleChoice' ? (data.options || []).map((opt, index) => ({
+                    id: String.fromCharCode(65 + index), // A, B, C, D, etc.
+                    text: opt.text,
+                    isCorrect: opt.isCorrect
+                })) : [],
+                skills: data.skills, // Array de strings (IDs)
+                secondStatement: data.secondStatement || '',
+                lastModifiedBy: user?.id || '',
+                createdBy: user?.id || '',
             };
 
-            // LOG: Mostrar o objeto Question que será enviado
-            console.log('=== OBJETO QUESTION QUE SERÁ ENVIADO ===');
-            console.log('Objeto Question completo:', question);
-            console.log('Campo secondStatement no objeto:', question.secondStatement);
-            console.log('==========================================');
+
+
+            // Criar objeto Question para compatibilidade com a interface
+            const question: Question = {
+                id: '', // Será gerado pelo backend
+                title: payload.title,
+                text: payload.text,
+                formattedText: payload.formattedText,
+                secondStatement: payload.secondStatement,
+                type: payload.type,
+                subjectId: payload.subjectId,
+                subject: selectedSubject || { id: data.subjectId, name: '' },
+                educationStage: evaluationData.course ? { id: evaluationData.course, name: '' } : undefined,
+                grade: selectedGrade ? { id: selectedGrade.id, name: selectedGrade.name } : undefined,
+                difficulty: payload.difficulty,
+                value: payload.value,
+                solution: payload.solution, // Garantir que é a letra da alternativa correta
+                formattedSolution: payload.formattedSolution,
+                options: payload.options,
+                skills: Array.isArray(payload.skills) && payload.skills.length > 0 ? payload.skills[0] : undefined, // ✅ CORREÇÃO: skills é uma string única, não array
+                created_by: payload.createdBy,
+                lastModifiedBy: payload.lastModifiedBy,
+            };
+
+
+
+            // Debug: verificar payload final
+            console.log('📤 QuestionFormReadOnly - Payload sendo enviado:', question);
+            console.log('📤 QuestionFormReadOnly - Campos específicos:');
+            console.log('  - solution (letra da alternativa correta):', question.solution);
+            console.log('  - formattedSolution (texto da resolução):', question.formattedSolution);
+            console.log('  - secondStatement:', question.secondStatement);
+            console.log('  - options:', question.options);
+            console.log('  - educationStage:', question.educationStage);
+            console.log('  - lastModifiedBy:', question.lastModifiedBy);
+            console.log('  - created_by:', question.created_by);
+
+
             await onQuestionAdded(question);
+            console.log('🔍 QuestionFormReadOnly - Formulário será resetado após envio');
             form.reset();
+            console.log('🔍 QuestionFormReadOnly - Formulário resetado, estado atual:', form.getValues());
             toast({
                 title: "Sucesso",
                 description: "Questão salva com sucesso!",
@@ -466,10 +571,10 @@ const QuestionFormReadOnly = ({
             </div>
 
             {showPreview ? (
-                <div className="bg-gray-50 rounded-xl border-2 border-gray-200 p-6">
+                <div className="bg-muted dark:bg-muted/50 rounded-xl border-2 border-border p-6">
                     <div className="flex items-center gap-2 mb-4">
-                        <Eye className="h-5 w-5 text-blue-600" />
-                        <h3 className="text-lg font-semibold text-gray-800">Preview da Questão</h3>
+                        <Eye className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                        <h3 className="text-lg font-semibold text-foreground">Preview da Questão</h3>
                     </div>
                     <QuestionPreview data={{ ...form.getValues(), questionType }} />
                 </div>
@@ -478,10 +583,10 @@ const QuestionFormReadOnly = ({
                     <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-8">
 
                         {/* Seção: Informações Básicas */}
-                        <div className="bg-blue-50 rounded-xl p-6 border border-blue-200">
+                        <div className="bg-blue-50 dark:bg-blue-950/30 rounded-xl p-6 border border-blue-200 dark:border-blue-800">
                             <div className="flex items-center gap-2 mb-4">
-                                <Book className="h-5 w-5 text-blue-600" />
-                                <h3 className="text-lg font-semibold text-gray-800">Informações Básicas</h3>
+                                <Book className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                                <h3 className="text-lg font-semibold text-foreground">Informações Básicas</h3>
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
@@ -491,7 +596,7 @@ const QuestionFormReadOnly = ({
                                         name="title"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel className="text-sm font-semibold text-gray-700">Titulo da Questão *</FormLabel>
+                                                <FormLabel className="text-sm font-semibold text-foreground">Titulo da Questão *</FormLabel>
                                                 <FormControl>
                                                     <Input
                                                         {...field}
@@ -510,12 +615,12 @@ const QuestionFormReadOnly = ({
                                     name="grade"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel className="text-sm font-semibold text-gray-700">Série *</FormLabel>
+                                            <FormLabel className="text-sm font-semibold text-foreground">Série *</FormLabel>
                                             <FormControl>
                                                 <Input
                                                     value={grades.find(g => g.id === evaluationData.grade)?.name || ""}
                                                     readOnly
-                                                    className="h-11 bg-gray-50"
+                                                    className="h-11 bg-muted"
                                                 />
                                             </FormControl>
                                             <FormMessage />
@@ -528,12 +633,12 @@ const QuestionFormReadOnly = ({
                                     name="subjectId"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel className="text-sm font-semibold text-gray-700">Disciplina *</FormLabel>
+                                            <FormLabel className="text-sm font-semibold text-foreground">Disciplina *</FormLabel>
                                             <FormControl>
                                                 <Input
                                                     value={subjects.find(s => s.id === evaluationData.subject)?.name || ""}
                                                     readOnly
-                                                    className="h-11 bg-gray-50"
+                                                    className="h-11 bg-muted"
                                                 />
                                             </FormControl>
                                             <FormMessage />
@@ -546,7 +651,7 @@ const QuestionFormReadOnly = ({
                                     name="difficulty"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel className="text-sm font-semibold text-gray-700">Dificuldade *</FormLabel>
+                                            <FormLabel className="text-sm font-semibold text-foreground">Dificuldade *</FormLabel>
                                             <FormControl>
                                                 <Select onValueChange={field.onChange} value={field.value}>
                                                     <SelectTrigger className="h-11">
@@ -590,7 +695,7 @@ const QuestionFormReadOnly = ({
                                     name="value"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel className="text-sm font-semibold text-gray-700">Valor da Questão *</FormLabel>
+                                            <FormLabel className="text-sm font-semibold text-foreground">Valor da Questão *</FormLabel>
                                             <FormControl>
                                                 <Input
                                                     {...field}
@@ -610,33 +715,37 @@ const QuestionFormReadOnly = ({
                                     name="skills"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel className="text-sm font-semibold text-gray-700">
+                                            <FormLabel className="text-sm font-semibold text-foreground">
                                                 Habilidades (BNCC)
-                                                <span className="text-gray-500 font-normal ml-1">
+                                                <span className="text-muted-foreground font-normal ml-1">
                                                     {skills.length > 0 ? `(${skills.length} disponíveis)` : ''}
                                                 </span>
                                             </FormLabel>
                                             <FormControl>
-                                                <MultiSelect
-                                                    options={skills}
+                                                <SkillsSelector
+                                                    skills={skills}
                                                     selected={field.value || []}
                                                     onChange={field.onChange}
-                                                    placeholder="Selecione as habilidades"
-                                                    className="w-full"
-                                                    label=""
+                                                    placeholder="Clique para abrir o seletor de habilidades"
+                                                    disabled={skills.length === 0}
+                                                    gradeId={evaluationData.grade}
+                                                    gradeName={grades.find(g => g.id === evaluationData.grade)?.name}
+                                                    subjectId={evaluationData.subject}
+                                                    subjectName={subjects.find(s => s.id === evaluationData.subject)?.name}
+                                                    allGrades={grades}
                                                 />
                                             </FormControl>
                                             <FormMessage />
                                             {(field.value || []).length > 0 && (
-                                                <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                                                    <div className="text-sm font-medium text-blue-800 mb-2">
+                                                <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+                                                    <div className="text-sm font-medium text-blue-800 dark:text-blue-300 mb-2">
                                                         Habilidades Selecionadas ({(field.value || []).length}):
                                                     </div>
                                                     <div className="flex flex-wrap gap-1">
                                                         {(field.value || []).map((skillId: string) => {
                                                             const skill = skills.find(opt => opt.id === skillId);
                                                             return skill ? (
-                                                                <Badge key={skillId} variant="outline" className="text-xs bg-white border-blue-300">
+                                                                <Badge key={skillId} variant="outline" className="text-xs bg-card dark:bg-card border-blue-300 dark:border-blue-700">
                                                                     {skill.code}
                                                                 </Badge>
                                                             ) : null;
@@ -651,10 +760,10 @@ const QuestionFormReadOnly = ({
                         </div>
 
                         {/* Seção: Tipo de Questão */}
-                        <div className="bg-purple-50 rounded-xl p-6 border border-purple-200">
+                        <div className="bg-purple-50 dark:bg-purple-950/30 rounded-xl p-6 border border-purple-200 dark:border-purple-800">
                             <div className="flex items-center gap-2 mb-4">
-                                <ListIcon className="h-5 w-5 text-purple-600" />
-                                <h3 className="text-lg font-semibold text-gray-800">Tipo de Questão</h3>
+                                <ListIcon className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                                <h3 className="text-lg font-semibold text-foreground">Tipo de Questão</h3>
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
@@ -664,8 +773,8 @@ const QuestionFormReadOnly = ({
                                     size="lg"
                                     onClick={() => setQuestionType('multipleChoice')}
                                     className={`w-full h-auto min-h-[4rem] p-4 ${questionType === 'multipleChoice'
-                                        ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg'
-                                        : 'hover:bg-purple-50 hover:border-purple-300'
+                                        ? 'bg-purple-600 dark:bg-purple-700 hover:bg-purple-700 dark:hover:bg-purple-600 text-white shadow-lg'
+                                        : 'hover:bg-purple-50 dark:hover:bg-purple-950/50 hover:border-purple-300 dark:hover:border-purple-700'
                                         }`}
                                 >
                                     <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3">
@@ -683,8 +792,8 @@ const QuestionFormReadOnly = ({
                                     size="lg"
                                     onClick={() => setQuestionType('dissertativa')}
                                     className={`w-full h-auto min-h-[4rem] p-4 ${questionType === 'dissertativa'
-                                        ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg'
-                                        : 'hover:bg-purple-50 hover:border-purple-300'
+                                        ? 'bg-purple-600 dark:bg-purple-700 hover:bg-purple-700 dark:hover:bg-purple-600 text-white shadow-lg'
+                                        : 'hover:bg-purple-50 dark:hover:bg-purple-950/50 hover:border-purple-300 dark:hover:border-purple-700'
                                         }`}
                                 >
                                     <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3">
@@ -699,10 +808,10 @@ const QuestionFormReadOnly = ({
                         </div>
 
                         {/* Seção: Enunciados */}
-                        <div className="bg-green-50 rounded-xl p-6 border border-green-200">
+                        <div className="bg-green-50 dark:bg-green-950/30 rounded-xl p-6 border border-green-200 dark:border-green-800">
                             <div className="flex items-center gap-2 mb-4">
-                                <Type className="h-5 w-5 text-green-600" />
-                                <h3 className="text-lg font-semibold text-gray-800">Enunciados</h3>
+                                <Type className="h-5 w-5 text-green-600 dark:text-green-400" />
+                                <h3 className="text-lg font-semibold text-foreground">Enunciados</h3>
                             </div>
 
                             <div className="space-y-6">
@@ -711,7 +820,7 @@ const QuestionFormReadOnly = ({
                                     name="text"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel className="text-sm font-semibold text-gray-700">Enunciado Principal *</FormLabel>
+                                            <FormLabel className="text-sm font-semibold text-foreground">Enunciado Principal *</FormLabel>
                                             <FormControl>
                                                 <MyEditor
                                                     value={field.value}
@@ -728,9 +837,9 @@ const QuestionFormReadOnly = ({
                                     name="secondStatement"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel className="text-sm font-semibold text-gray-700">
+                                            <FormLabel className="text-sm font-semibold text-foreground">
                                                 Segundo Enunciado
-                                                <span className="text-gray-500 font-normal ml-1">(opcional)</span>
+                                                <span className="text-muted-foreground font-normal ml-1">(opcional)</span>
                                             </FormLabel>
                                             <FormControl>
                                                 <MyEditor
@@ -747,11 +856,11 @@ const QuestionFormReadOnly = ({
 
                         {/* Seção: Alternativas (apenas para múltipla escolha) */}
                         {questionType === 'multipleChoice' && (
-                            <div className="bg-orange-50 rounded-xl p-6 border border-orange-200">
+                            <div className="bg-orange-50 dark:bg-orange-950/30 rounded-xl p-6 border border-orange-200 dark:border-orange-800">
                                 <div className="flex items-center justify-between mb-4">
                                     <div className="flex items-center gap-2">
-                                        <Check className="h-5 w-5 text-orange-600" />
-                                        <h3 className="text-lg font-semibold text-gray-800">Alternativas</h3>
+                                        <Check className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                                        <h3 className="text-lg font-semibold text-foreground">Alternativas</h3>
                                     </div>
                                     {fields.length < 5 && (
                                         <Button
@@ -759,7 +868,7 @@ const QuestionFormReadOnly = ({
                                             variant="outline"
                                             size="sm"
                                             onClick={addOption}
-                                            className="flex items-center gap-2 border-orange-300 text-orange-700 hover:bg-orange-100"
+                                            className="flex items-center gap-2 border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-400 hover:bg-orange-100 dark:hover:bg-orange-950/50"
                                         >
                                             <Plus className="h-4 w-4" />
                                             Adicionar Alternativa
@@ -769,20 +878,20 @@ const QuestionFormReadOnly = ({
 
                                 <div className="space-y-4">
                                     {fields.map((field, index) => (
-                                        <div key={field.id} className="flex items-center gap-4 p-4 bg-white rounded-lg border border-gray-200 shadow-sm">
+                                        <div key={field.id} className="flex items-center gap-4 p-4 bg-card rounded-lg border border-border shadow-sm">
                                             <button
                                                 type="button"
                                                 onClick={() => handleRadioChange(index)}
                                                 className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${form.watch("options")[index].isCorrect
-                                                    ? 'bg-green-500 border-green-500 text-white shadow-lg'
-                                                    : 'bg-white border-gray-300 hover:border-gray-400'
+                                                    ? 'bg-green-500 dark:bg-green-600 border-green-500 dark:border-green-600 text-white shadow-lg'
+                                                    : 'bg-card dark:bg-card border-border hover:border-border/80'
                                                     }`}
                                                 aria-label={`Marcar alternativa ${String.fromCharCode(65 + index)} como correta`}
                                             >
                                                 {form.watch("options")[index].isCorrect ? <Check className="w-4 h-4" /> : null}
                                             </button>
 
-                                            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center font-semibold text-gray-600">
+                                            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center font-semibold text-muted-foreground">
                                                 {String.fromCharCode(65 + index)}
                                             </div>
 
@@ -809,7 +918,7 @@ const QuestionFormReadOnly = ({
                                                     variant="ghost"
                                                     size="sm"
                                                     onClick={() => remove(index)}
-                                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                    className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30"
                                                     aria-label="Remover alternativa"
                                                 >
                                                     <Trash className="w-4 h-4" />
@@ -828,12 +937,12 @@ const QuestionFormReadOnly = ({
                         )}
 
                         {/* Seção: Resolução */}
-                        <div className="bg-indigo-50 rounded-xl p-6 border border-indigo-200">
+                        <div className="bg-indigo-50 dark:bg-indigo-950/30 rounded-xl p-6 border border-indigo-200 dark:border-indigo-800">
                             <div className="flex items-center gap-2 mb-4">
-                                <Save className="h-5 w-5 text-indigo-600" />
-                                <h3 className="text-lg font-semibold text-gray-800">
+                                <Save className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                                <h3 className="text-lg font-semibold text-foreground">
                                     Resolução
-                                    <span className="text-gray-500 font-normal ml-1">(opcional)</span>
+                                    <span className="text-muted-foreground font-normal ml-1">(opcional)</span>
                                 </h3>
                             </div>
 
@@ -842,7 +951,7 @@ const QuestionFormReadOnly = ({
                                 name="solution"
                                 render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel className="text-sm font-semibold text-gray-700">
+                                        <FormLabel className="text-sm font-semibold text-foreground">
                                             Explicação detalhada da resolução
                                         </FormLabel>
                                         <FormControl>
@@ -858,7 +967,7 @@ const QuestionFormReadOnly = ({
                         </div>
 
                         {/* Botões de ação */}
-                        <div className="flex flex-col sm:flex-row sm:justify-end gap-3 sm:gap-4 pt-6 border-t border-gray-200">
+                        <div className="flex flex-col sm:flex-row sm:justify-end gap-3 sm:gap-4 pt-6 border-t border-border">
                             <Button
                                 type="button"
                                 variant="outline"

@@ -1,0 +1,21 @@
+# Normalizar line endings para arquivos de código
+# Forçar LF (Unix) para todos os arquivos de código, independente do OS
+* text=auto eol=lf
+
+# Garantir que arquivos binários não sejam convertidos
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.exe binary
+*.dll binary
+*.so binary
+*.dylib binary
+
+# Arquivos de lock não devem ter line endings normalizados
+package-lock.json text eol=lf
+bun.lockb binary
+

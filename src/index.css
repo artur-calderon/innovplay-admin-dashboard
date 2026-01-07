@@ -1,10 +1,18 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  /* Grid personalizado para 13 colunas */
+  .grid-cols-13 {
+    grid-template-columns: repeat(13, minmax(0, 1fr));
+  }
   :root {
     /* Core Colors - Refined Palette */
     --background: 0 0% 100%;
@@ -73,41 +81,66 @@
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+
+    /* App Settings - Font and Size */
+    --app-font-family: 'Inter';
+    --app-font-size: 100%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 267 84% 65%;
-    --primary-foreground: 222.2 84% 4.9%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 267 84% 65%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Background - Preto com leve tom azul escuro */
+    --background: 220 15% 8%;
+    --foreground: 210 20% 98%;
+    
+    /* Card - Cinza escuro com tom azul sutil */
+    --card: 220 12% 11%;
+    --card-foreground: 210 20% 98%;
+    
+    /* Popover - Mesma paleta harmoniosa */
+    --popover: 220 12% 11%;
+    --popover-foreground: 210 20% 98%;
+    
+    /* Primary - Azul mais escuro e harmônico */
+    --primary: 217 65% 55%;
+    --primary-foreground: 210 20% 98%;
+    
+    /* Secondary - Cinza escuro com tom azul */
+    --secondary: 220 10% 15%;
+    --secondary-foreground: 210 20% 98%;
+    
+    /* Muted - Cinza muito escuro */
+    --muted: 220 8% 13%;
+    --muted-foreground: 215 15% 70%;
+    
+    /* Accent - Azul escuro harmonioso */
+    --accent: 217 30% 18%;
+    --accent-foreground: 210 20% 98%;
+    
+    /* Destructive - Mantém identidade visual */
+    --destructive: 0 65% 45%;
+    --destructive-foreground: 210 20% 98%;
+    
+    /* Border - Cinza muito escuro com leve azul */
+    --border: 220 10% 16%;
+    --input: 220 10% 16%;
+    --ring: 217 65% 55%;
+    
+    /* Chart Colors - Ajustados para modo escuro */
+    --chart-1: 217 65% 55%;
+    --chart-2: 200 60% 50%;
+    --chart-3: 30 75% 55%;
+    --chart-4: 280 60% 55%;
+    --chart-5: 340 70% 55%;
+    
+    /* Sidebar - Tons escuros harmoniosos */
+    --sidebar-background: 220 15% 6%;
+    --sidebar-foreground: 210 20% 95%;
+    --sidebar-primary: 217 70% 60%;
+    --sidebar-primary-foreground: 210 20% 98%;
+    --sidebar-accent: 220 10% 14%;
+    --sidebar-accent-foreground: 210 20% 95%;
+    --sidebar-border: 220 10% 12%;
+    --sidebar-ring: 217 70% 60%;
   }
 }
 
@@ -118,12 +151,23 @@
   
   body {
     @apply bg-background text-foreground font-sans;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    /* Font family será sobrescrito por JavaScript, mas mantém fallback */
+    font-family: var(--app-font-family, 'Inter'), -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    font-size: var(--app-font-size, 100%);
     font-feature-settings: 'cv11', 'ss01';
     font-variation-settings: 'opsz' 32;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* Previne o Radix UI de adicionar padding-right quando modais/selects abrem */
+    padding-right: 0 !important;
+  }
+  
+  html {
+    /* Garante que a largura da scrollbar é reservada - aplicar apenas no html */
+    overflow-y: scroll;
+    /* Previne qualquer scroll horizontal */
+    overflow-x: hidden;
   }
   
   /* Enhanced Typography */
@@ -199,15 +243,28 @@
     background-color: hsl(var(--muted-foreground) / 0.5);
   }
   
-  /* Enhanced Sidebar Gradient */
+  /* Enhanced Sidebar Gradient - Afirme Play (modo claro: azul/lilás suaves) */
   .sidebar-gradient {
-    background: linear-gradient(135deg, 
-      #8B5CF6 0%,
-      #7C3AED 20%,
-      #6D28D9 40%,
-      #5B21B6 60%,
-      #4C1D95 80%,
-      #3730A3 100%
+    background: linear-gradient(
+      135deg,
+      #F3F6FF 0%,
+      #E2ECFF 25%,
+      #E3DFFF 50%,
+      #F1E3FF 75%,
+      #FDF2FF 100%
+    );
+    background-attachment: fixed;
+  }
+
+  /* Modo escuro: mantém degradê mais intenso para contraste */
+  .dark .sidebar-gradient {
+    background: linear-gradient(
+      135deg,
+      #05071A 0%,
+      #101633 30%,
+      #1B1F4A 55%,
+      #3B2D7A 80%,
+      #7B3FE4 100%
     );
     background-attachment: fixed;
   }
@@ -876,9 +933,20 @@
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
+.dark .evaluation-question-card {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+}
+
 .evaluation-question-header {
   background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);
   border-bottom: 1px solid #c084fc;
+}
+
+.dark .evaluation-question-header {
+  background: hsl(var(--card));
+  border-bottom: 1px solid hsl(var(--border));
 }
 
 .evaluation-navigation-button {
@@ -916,3 +984,122 @@
     transform: translateY(0);
   }
 }
+
+/* ✅ NOVO: Estilos para sliders funcionais */
+.slider-input {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.slider-input::-webkit-slider-track {
+  background: #e5e7eb;
+  height: 8px;
+  border-radius: 4px;
+}
+
+.slider-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  background: #3b82f6;
+  cursor: pointer;
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+}
+
+.slider-input::-webkit-slider-thumb:hover {
+  background: #2563eb;
+  transform: scale(1.1);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.slider-input::-webkit-slider-thumb:active {
+  background: #1d4ed8;
+  transform: scale(1.05);
+}
+
+/* Firefox */
+.slider-input::-moz-range-track {
+  background: #e5e7eb;
+  height: 8px;
+  border-radius: 4px;
+  border: none;
+}
+
+.slider-input::-moz-range-thumb {
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  background: #3b82f6;
+  cursor: pointer;
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+}
+
+.slider-input::-moz-range-thumb:hover {
+  background: #2563eb;
+  transform: scale(1.1);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+  .slider-input::-moz-range-thumb:active {
+    background: #1d4ed8;
+    transform: scale(1.05);
+  }
+
+  /* ✅ NOVO: Animações para destacar campos com erro */
+  @keyframes field-error-pulse {
+    0%, 100% {
+      box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+    }
+    50% {
+      box-shadow: 0 0 0 8px rgba(239, 68, 68, 0.2);
+    }
+  }
+
+  .field-error-highlight {
+    animation: field-error-pulse 0.5s ease-in-out 2;
+    border-color: rgb(239, 68, 68) !important;
+  }
+
+  /* Prevenir layout shift nos filtros Select */
+  [data-radix-select-trigger] {
+    min-width: 0 !important;
+  }
+  
+  [data-radix-select-trigger] > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: block;
+  }
+
+  /* Prevenir que Radix UI manipule o body quando portais abrem */
+  body[style*="pointer-events"] {
+    pointer-events: auto !important;
+  }
+  
+  body[style*="overflow"] {
+    overflow: visible !important;
+  }
+  
+  /* Garantir que nenhum elemento adicione padding ao body */
+  body {
+    box-sizing: border-box !important;
+  }
+  
+  /* Prevenir movimento horizontal em qualquer situação */
+  * {
+    box-sizing: border-box;
+  }
+  
+  html, body {
+    width: 100%;
+    max-width: 100vw;
+  }

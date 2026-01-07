@@ -125,7 +125,12 @@ export function AddTeacherForm({ schoolId, schoolName, classes = [], onSuccess }
             const response = await api.post("/teacher", {
                 ...formData,
                 matricula: formData.registration || undefined,
-                escolas_ids: [schoolId],
+            });
+
+            // Vincular professor à escola
+            await api.post("/school-teacher", {
+                teacher_id: response.data.id,
+                school_id: schoolId
             });
 
             if (selectedClasses.length > 0) {
@@ -156,8 +161,9 @@ export function AddTeacherForm({ schoolId, schoolName, classes = [], onSuccess }
         if (!selectedTeacher) return;
         setIsLoading(true);
         try {
-            await api.post(`/teacher/${selectedTeacher.id}/schools`, {
-                escolas_ids: [schoolId],
+            await api.post("/school-teacher", {
+                teacher_id: selectedTeacher.id,
+                school_id: schoolId
             });
 
             if (selectedClasses.length > 0) {
@@ -192,11 +198,11 @@ export function AddTeacherForm({ schoolId, schoolName, classes = [], onSuccess }
                     Adicionar Professor
                 </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto">
-                <DialogHeader className="pb-4">
-                    <DialogTitle>Adicionar Professor - {schoolName}</DialogTitle>
+            <DialogContent className="w-full max-w-[95vw] sm:max-w-2xl lg:max-w-3xl max-h-[95vh] overflow-hidden flex flex-col">
+                <DialogHeader className="pb-3 border-b">
+                    <DialogTitle className="text-lg sm:text-xl">Adicionar Professor - {schoolName}</DialogTitle>
                 </DialogHeader>
-                <div className="grid gap-4 py-4">
+                <div className="grid gap-4 py-4 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400">
                     <div className="space-y-4">
                         <div className="space-y-2">
                             <Label>Buscar Professor</Label>
@@ -245,49 +251,68 @@ export function AddTeacherForm({ schoolId, schoolName, classes = [], onSuccess }
                         </div>
 
                         {!selectedTeacher && (
-                            <div className="space-y-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="name">Nome</Label>
-                                    <Input
-                                        id="name"
-                                        value={formData.name}
-                                        onChange={(e) =>
-                                            setFormData({ ...formData, name: e.target.value })
-                                        }
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="email">Email</Label>
-                                    <Input
-                                        id="email"
-                                        type="email"
-                                        value={formData.email}
-                                        onChange={(e) =>
-                                            setFormData({ ...formData, email: e.target.value })
-                                        }
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="password">Senha</Label>
-                                    <Input
-                                        id="password"
-                                        type="password"
-                                        value={formData.password}
-                                        onChange={(e) =>
-                                            setFormData({ ...formData, password: e.target.value })
-                                        }
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="registration">Matrícula (opcional)</Label>
-                                    <Input
-                                        id="registration"
-                                        value={formData.registration}
-                                        onChange={(e) =>
-                                            setFormData({ ...formData, registration: e.target.value })
-                                        }
-                                        placeholder="Digite a matrícula (opcional)"
-                                    />
+                            <div className="space-y-4 bg-gray-50 p-4 rounded-lg border">
+                                <h3 className="font-semibold text-sm text-gray-700 mb-3">Criar Novo Professor</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="name" className="flex items-center gap-1">
+                                            Nome
+                                            <span className="text-red-500">*</span>
+                                        </Label>
+                                        <Input
+                                            id="name"
+                                            value={formData.name}
+                                            onChange={(e) =>
+                                                setFormData({ ...formData, name: e.target.value })
+                                            }
+                                            placeholder="Nome completo"
+                                            className="h-11"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="email" className="flex items-center gap-1">
+                                            Email
+                                            <span className="text-red-500">*</span>
+                                        </Label>
+                                        <Input
+                                            id="email"
+                                            type="email"
+                                            value={formData.email}
+                                            onChange={(e) =>
+                                                setFormData({ ...formData, email: e.target.value })
+                                            }
+                                            placeholder="email@exemplo.com"
+                                            className="h-11"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="password" className="flex items-center gap-1">
+                                            Senha
+                                            <span className="text-red-500">*</span>
+                                        </Label>
+                                        <Input
+                                            id="password"
+                                            type="password"
+                                            value={formData.password}
+                                            onChange={(e) =>
+                                                setFormData({ ...formData, password: e.target.value })
+                                            }
+                                            placeholder="Digite uma senha"
+                                            className="h-11"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="registration">Matrícula (opcional)</Label>
+                                        <Input
+                                            id="registration"
+                                            value={formData.registration}
+                                            onChange={(e) =>
+                                                setFormData({ ...formData, registration: e.target.value })
+                                            }
+                                            placeholder="Número de matrícula"
+                                            className="h-11"
+                                        />
+                                    </div>
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="birthDate">Data de Nascimento</Label>
@@ -298,20 +323,27 @@ export function AddTeacherForm({ schoolId, schoolName, classes = [], onSuccess }
                                         onChange={(e) =>
                                             setFormData({ ...formData, birthDate: e.target.value })
                                         }
+                                        className="h-11 max-w-xs"
                                     />
                                 </div>
                             </div>
                         )}
 
-                        <div className="flex justify-end gap-2 pt-4">
-                            <Button variant="outline" onClick={() => setIsOpen(false)}>
+                        <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
+                            <Button 
+                                variant="outline" 
+                                onClick={() => setIsOpen(false)}
+                                className="order-2 sm:order-1 h-11"
+                            >
                                 Cancelar
                             </Button>
                             <Button
                                 onClick={selectedTeacher ? handleLinkTeacher : handleCreateTeacher}
                                 disabled={isLoading}
+                                className="order-1 sm:order-2 h-11"
                             >
-                                {selectedTeacher ? "Vincular" : "Criar"}
+                                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                {selectedTeacher ? "Vincular Professor" : "Criar Professor"}
                             </Button>
                         </div>
                     </div>

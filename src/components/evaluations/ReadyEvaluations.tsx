@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Eye, Pencil, Trash2, ChevronLeft, ChevronRight, Filter, RefreshCw, Play } from "lucide-react";
+import { Search, Eye, Pencil, Trash2, ChevronLeft, ChevronRight, Filter, RefreshCw, Play, MoreVertical, FileText, Download } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
+import { convertDateTimeLocalToISO } from "@/utils/date";
 import StartEvaluationModal from "./StartEvaluationModal";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -31,83 +32,51 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useEvaluations, useCache } from "@/hooks/use-cache";
+import { useEvaluations, useCache, useEvaluationsManager } from "@/hooks/use-cache";
 import { useAuth } from "@/context/authContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ErrorBoundary from "./ErrorBoundary";
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
-
-interface Evaluation {
-  id: string;
-  title: string;
-  subject: { id: string; name: string };
-  description: string;
-  createdAt: string;
-  type: string;
-  questions: Array<{
-    id: string;
-    title: string;
-    question_type: string;
-    command: string;
-  }>;
-  subjects_info: Array<{ id: string; name: string }>;
-  subjects?: Array<{ id: string; name: string }>; // Campo oficial do backend
-  subjects_count?: number; // Quantidade de disciplinas
-  model?: string;
-  status?: string;
-  grade?: { id: string; name: string };
-  created_by?: string;
-  createdBy?: { id: string; name: string }; // Campo do backend para informações do criador
-  duration?: number; // Duração em minutos
-  startDateTime?: string; // Data de início quando ativada
-  endDateTime?: string; // Data de fim quando ativada
-}
-
-interface Subject {
-  id: string;
-  name: string;
-}
-
-interface Grade {
-  id: string;
-  name: string;
-}
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Evaluation, Subject, Grade, getEvaluationSubjects, getEvaluationSubjectsCount } from "@/types/evaluation-types";
 
 interface ReadyEvaluationsProps {
   onUseEvaluation?: (evaluation: Evaluation) => void;
   showMyEvaluations?: boolean; // true = mostrar apenas minhas avaliações, false = mostrar todas
 }
 
+interface PaginationData {
+  total?: number;
+  pages?: number;
+  page?: number;
+  per_page?: number;
+  has_next?: boolean;
+  has_prev?: boolean;
+}
+
+interface FiltersData {
+  subject: string;
+  type: string;
+  model: string;
+  grade: string;
+}
+
 // Componente separado para listar disciplinas
 const SubjectsList = ({ evaluation }: { evaluation: Evaluation }) => {
-  // Função para extrair disciplinas
-  const getSubjects = () => {
-    // Prioridade 1: subjects (campo oficial do backend)
-    if (evaluation.subjects && Array.isArray(evaluation.subjects) && evaluation.subjects.length > 0) {
-      return evaluation.subjects;
-    }
-
-    // Prioridade 2: subjects_info (fallback)
-    if (evaluation.subjects_info && Array.isArray(evaluation.subjects_info) && evaluation.subjects_info.length > 0) {
-      return evaluation.subjects_info;
-    }
-
-    // Prioridade 3: subject único (fallback)
-    if (evaluation.subject && evaluation.subject.name) {
-      return [evaluation.subject];
-    }
-
-    return [];
-  };
-
-  const subjects = getSubjects();
-  const subjectsCount = evaluation.subjects_count || subjects.length;
+  // Usar função helper padronizada
+  const subjects = getEvaluationSubjects(evaluation);
+  const subjectsCount = getEvaluationSubjectsCount(evaluation);
 
   // Se não há disciplinas
   if (subjects.length === 0) {
     return (
       <div className="flex flex-wrap gap-1">
-        <Badge variant="secondary" className="text-xs text-gray-500">
+        <Badge variant="secondary" className="text-xs text-muted-foreground">
           Sem disciplina
         </Badge>
       </div>
@@ -152,18 +121,18 @@ const SubjectsList = ({ evaluation }: { evaluation: Evaluation }) => {
           </TooltipTrigger>
           <TooltipContent className="max-w-xs">
             <div className="space-y-2">
-              <p className="font-semibold text-sm text-gray-900">Outras disciplinas:</p>
+              <p className="font-semibold text-sm text-foreground">Outras disciplinas:</p>
               <div className="space-y-1">
                 {subjects.slice(2).map((subject, index) => (
                   <div key={subject.id || index} className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
-                    <span className="text-sm text-gray-700">{subject.name}</span>
+                    <div className="w-1.5 h-1.5 bg-blue-500 dark:bg-blue-400 rounded-full"></div>
+                    <span className="text-sm text-foreground">{subject.name}</span>
                   </div>
                 ))}
                 {subjectsCount > subjects.length && (
                   <div className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full"></div>
-                    <span className="text-sm text-gray-500">
+                    <div className="w-1.5 h-1.5 bg-muted-foreground rounded-full"></div>
+                    <span className="text-sm text-muted-foreground">
                       +{subjectsCount - subjects.length} disciplinas adicionais
                     </span>
                   </div>
@@ -189,6 +158,7 @@ const EvaluationsTable = ({
   itemsPerPage,
   subjects,
   grades,
+  showMyEvaluations,
   onPageChange,
   onFilterChange,
   onSearchChange,
@@ -200,18 +170,22 @@ const EvaluationsTable = ({
   onStartEvaluation,
   onRefresh,
   onClearFilters,
-  hasActiveFilters
+  hasActiveFilters,
+  onNavigateToPhysical,
+  onExport,
+  isExporting
 }: {
   evaluations: Evaluation[];
-  pagination: any;
+  pagination: PaginationData | null | undefined;
   isLoading: boolean;
   searchTerm: string;
-  filters: any;
+  filters: FiltersData;
   selectedIds: string[];
   currentPage: number;
   itemsPerPage: number;
   subjects: Subject[];
   grades: Grade[];
+  showMyEvaluations?: boolean;
   onPageChange: (page: number) => void;
   onFilterChange: (key: string, value: string) => void;
   onSearchChange: (value: string) => void;
@@ -224,6 +198,9 @@ const EvaluationsTable = ({
   onRefresh: () => void;
   onClearFilters: () => void;
   hasActiveFilters: boolean;
+  onNavigateToPhysical: (evaluationId: string) => void;
+  onExport: () => void;
+  isExporting: boolean;
 }) => {
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('pt-BR');
@@ -231,18 +208,18 @@ const EvaluationsTable = ({
 
   const getTypeColor = (type: string) => {
     switch (type?.toUpperCase()) {
-      case 'AVALIACAO': return 'bg-blue-100 text-blue-800';
-      case 'SIMULADO': return 'bg-green-100 text-green-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'AVALIACAO': return 'bg-blue-100 dark:bg-blue-950/30 text-blue-800 dark:text-blue-400';
+      case 'SIMULADO': return 'bg-green-100 dark:bg-green-950/30 text-green-800 dark:text-green-400';
+      default: return 'bg-muted text-foreground';
     }
   };
 
   const getModelColor = (model: string) => {
     switch (model?.toUpperCase()) {
-      case 'SAEB': return 'bg-purple-100 text-purple-800';
-      case 'PROVA': return 'bg-orange-100 text-orange-800';
-      case 'AVALIE': return 'bg-cyan-100 text-cyan-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'SAEB': return 'bg-purple-100 dark:bg-purple-950/30 text-purple-800 dark:text-purple-400';
+      case 'PROVA': return 'bg-orange-100 dark:bg-orange-950/30 text-orange-800 dark:text-orange-400';
+      case 'AVALIE': return 'bg-cyan-100 dark:bg-cyan-950/30 text-cyan-800 dark:text-cyan-400';
+      default: return 'bg-muted text-foreground';
     }
   };
 
@@ -257,10 +234,15 @@ const EvaluationsTable = ({
         evaluation?.id?.includes(searchTerm)
     );
 
-  // Usar paginação do backend
-  const currentItems = Array.isArray(searchTerm ? filteredEvaluations : evaluations)
-    ? (searchTerm ? filteredEvaluations : evaluations)
-    : [];
+  // ✅ CORREÇÃO: Aplicar paginação local quando showMyEvaluations é true e há filtro no frontend
+  // Isso garante que todas as avaliações filtradas sejam paginadas corretamente
+  const needsLocalPagination = showMyEvaluations && !searchTerm;
+  const currentItems = needsLocalPagination
+    ? evaluations.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+    : searchTerm
+    ? filteredEvaluations
+    : evaluations;
+  
   const totalPages = pagination?.pages || 1;
   const hasNextPage = pagination?.has_next || false;
   const hasPrevPage = pagination?.has_prev || false;
@@ -270,7 +252,7 @@ const EvaluationsTable = ({
       {/* Header com busca e filtros */}
       <div className="flex flex-col lg:flex-row gap-4">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Buscar avaliações..."
             value={searchTerm}
@@ -354,18 +336,29 @@ const EvaluationsTable = ({
 
       {/* Ações em lote */}
       {selectedIds.length > 0 && (
-        <div className="flex items-center justify-between bg-blue-50 p-3 rounded-lg">
-          <span className="text-sm text-blue-800">
+        <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-950/30 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
+          <span className="text-sm text-blue-800 dark:text-blue-400">
             {selectedIds.length} avaliação(ões) selecionada(s)
           </span>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => onDelete('bulk')}
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Excluir ({selectedIds.length})
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="default"
+              size="sm"
+              onClick={onExport}
+              disabled={isExporting}
+            >
+              <Download className={`h-4 w-4 mr-2 ${isExporting ? 'animate-spin' : ''}`} />
+              {isExporting ? 'Exportando...' : `Exportar Excel (${selectedIds.length})`}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => onDelete('bulk')}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Excluir ({selectedIds.length})
+            </Button>
+          </div>
         </div>
       )}
 
@@ -379,7 +372,12 @@ const EvaluationsTable = ({
                   <span>Lista de avaliações disponíveis</span>
                   {!isLoading && (
                     <span className="text-sm text-muted-foreground">
-                      {searchTerm ? filteredEvaluations.length : pagination?.total || 0} avaliação(ões) encontrada(s)
+                      {searchTerm 
+                        ? filteredEvaluations.length 
+                        : showMyEvaluations 
+                          ? evaluations.length 
+                          : pagination?.total || 0
+                      } avaliação(ões) encontrada(s)
                     </span>
                   )}
                 </div>
@@ -489,41 +487,55 @@ const EvaluationsTable = ({
                           </span>
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => onStartEvaluation(evaluation)}
-                              title="Aplicar Avaliação"
-                              className="text-green-600 hover:text-green-700"
-                            >
-                              <Play className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => onView(evaluation.id)}
-                              title="Visualizar"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => onEdit(evaluation.id)}
-                              title="Editar"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => onDelete(evaluation.id)}
-                              title="Excluir"
-                              className="text-red-500 hover:text-red-700"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                          <div className="flex justify-end">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={() => onStartEvaluation(evaluation)}
+                                  className="text-green-600 focus:text-green-700 cursor-pointer"
+                                >
+                                  <Play className="h-4 w-4 mr-2" />
+                                  Aplicar
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => onView(evaluation.id)}
+                                  className="cursor-pointer"
+                                >
+                                  <Eye className="h-4 w-4 mr-2" />
+                                  Ver
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => onEdit(evaluation.id)}
+                                  className="cursor-pointer"
+                                >
+                                  <Pencil className="h-4 w-4 mr-2" />
+                                  Editar
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => onDelete(evaluation.id)}
+                                  className="text-red-600 focus:text-red-700 cursor-pointer"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Excluir
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => onNavigateToPhysical(evaluation.id)}
+                                  className="text-blue-600 focus:text-blue-700 cursor-pointer"
+                                >
+                                  <FileText className="h-4 w-4 mr-2" />
+                                  Transformar em Física
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -558,7 +570,7 @@ const EvaluationsTable = ({
       {/* Paginação */}
       {!isLoading && !searchTerm && pagination && totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-muted-foreground">
             Mostrando {((currentPage - 1) * itemsPerPage) + 1} a {Math.min(currentPage * itemsPerPage, pagination.total)} de {pagination.total} avaliações
           </div>
           <div className="flex items-center space-x-2">
@@ -613,43 +625,17 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
   const [startModalOpen, setStartModalOpen] = useState(false);
   const [selectedEvaluationToStart, setSelectedEvaluationToStart] = useState<Evaluation | null>(null);
   const [forceUpdate, setForceUpdate] = useState(0); // Forçar re-render após exclusão
+  const [isExporting, setIsExporting] = useState(false);
   const itemsPerPage = 10;
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
 
-  // ✅ Verificação inicial de segurança
-  if (!navigate || !toast) {
-    return <div>Carregando...</div>;
-  }
+  // ✅ NOVO: Hook para gerenciar atualizações de avaliações
+  const { updateAfterCRUD, isUpdating } = useEvaluationsManager();
 
-  // ✅ Hook para todas as avaliações (mesma rota para todos)
-  const {
-    data: evaluationsData,
-    isLoading,
-    error: evaluationsError,
-    refetch,
-    invalidateCache,
-    invalidateEvaluationsCache
-  } = useEvaluations({
-    page: currentPage,
-    per_page: itemsPerPage,
-    ...(filters.subject !== 'all' && { subject_id: filters.subject }),
-    ...(filters.type !== 'all' && { type: filters.type }),
-    ...(filters.model !== 'all' && { model: filters.model }),
-    ...(filters.grade !== 'all' && { grade_id: filters.grade })
-  });
-
-  // ✅ Preparar dados das avaliações com verificações de segurança
-  const allEvaluations = Array.isArray(evaluationsData?.data) ? evaluationsData.data : [];
-  const pagination = evaluationsData?.pagination;
-
-  // ✅ Filtrar avaliações baseado na prop showMyEvaluations
-  const evaluations = showMyEvaluations
-    ? allEvaluations.filter(evaluation => evaluation.createdBy?.id === user.id)
-    : allEvaluations;
-
-  // ✅ NOVO: Hooks para dados de filtros (cache longo)
+  // ✅ NOVO: Hooks para dados de filtros (cache longo) - DEVE SER CHAMADO ANTES DE useEvaluations
+  // para manter a ordem dos hooks consistente
   const {
     data: subjects = [],
     isLoading: isLoadingSubjects
@@ -664,20 +650,170 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
     staleTime: 30 * 60 * 1000 // 30 minutos
   });
 
+  // ✅ CORREÇÃO: Preparar parâmetros de forma estável antes de chamar useEvaluations
+  // para garantir que os hooks sejam sempre chamados na mesma ordem
+  // Usar valores individuais dos filtros em vez do objeto inteiro para evitar mudanças desnecessárias
+  const evaluationParams = useMemo(() => ({
+    // Quando showMyEvaluations é true, buscar todas as avaliações (sem paginação no backend)
+    // para aplicar paginação local após filtrar
+    ...(showMyEvaluations && user?.id 
+      ? { 
+          page: 1, 
+          per_page: 1000, // Buscar muitas avaliações para filtrar no frontend
+          created_by: user.id 
+        }
+      : { 
+          page: currentPage, 
+          per_page: itemsPerPage 
+        }
+    ),
+    ...(filters.subject !== 'all' && { subject_id: filters.subject }),
+    ...(filters.type !== 'all' && { type: filters.type }),
+    ...(filters.model !== 'all' && { model: filters.model }),
+    ...(filters.grade !== 'all' && { grade_id: filters.grade })
+  }), [showMyEvaluations, user?.id, currentPage, itemsPerPage, filters.subject, filters.type, filters.model, filters.grade]);
+
+  // ✅ Hook para todas as avaliações (mesma rota para todos)
+  // ✅ CORREÇÃO: Quando showMyEvaluations é true, buscar todas as avaliações sem paginação
+  // para aplicar paginação local no frontend após filtrar
+  const {
+    data: evaluationsData,
+    isLoading,
+    error: evaluationsError,
+    refetch,
+    invalidateCache,
+    invalidateEvaluationsCache,
+    forceRefresh,
+    invalidateAfterCRUD
+  } = useEvaluations(evaluationParams);
+
+  // ✅ Preparar dados das avaliações com verificações de segurança
+  const rawEvaluations = Array.isArray(evaluationsData?.data) ? evaluationsData.data : [];
+  
+  // ✅ Filtrar avaliações ativas (não deletadas/arquivadas)
+  const allEvaluations = rawEvaluations
+    .filter((evaluation: Record<string, unknown>) => {
+      // Verificar se tem propriedades básicas de Evaluation
+      if (!evaluation || typeof evaluation !== 'object' || !evaluation.id) {
+        return false;
+      }
+      // Verificar se não está deletada/arquivada
+      const deletedAt = evaluation.deleted_at;
+      const archived = evaluation.archived;
+      const isActive = evaluation.is_active;
+      return !deletedAt && !archived && isActive !== false;
+    })
+    .map(evaluation => evaluation as unknown as Evaluation);
+  
+  // ✅ CORREÇÃO: Aplicar filtro no frontend sempre que showMyEvaluations é true
+  // como fallback caso o backend não aplique corretamente
+  const filteredEvaluations = showMyEvaluations && user?.id
+    ? allEvaluations.filter(evaluation => {
+        // Verificar tanto createdBy quanto created_by para compatibilidade
+        const createdByObj = evaluation.createdBy;
+        const createdById = createdByObj?.id;
+        
+        // Verificar created_by como objeto ou string
+        const createdByFallback = (evaluation as unknown as { created_by?: { id?: string } | string }).created_by;
+        const createdByFallbackId = typeof createdByFallback === 'object' && createdByFallback !== null
+          ? createdByFallback.id
+          : typeof createdByFallback === 'string'
+          ? createdByFallback
+          : undefined;
+        
+        return (createdById || createdByFallbackId) === user.id;
+      })
+    : allEvaluations;
+  
+  // ✅ CORREÇÃO: Ajustar paginação sempre que showMyEvaluations é true e há filtro aplicado no frontend
+  const backendPagination = evaluationsData?.pagination;
+  const adjustedPagination = showMyEvaluations && user?.id && backendPagination
+    ? {
+        ...backendPagination,
+        total: filteredEvaluations.length,
+        pages: Math.ceil(filteredEvaluations.length / itemsPerPage),
+        has_next: currentPage < Math.ceil(filteredEvaluations.length / itemsPerPage),
+        has_prev: currentPage > 1
+      }
+    : backendPagination;
+  
+  const pagination = adjustedPagination;
+
+  // ✅ CORREÇÃO: Usar avaliações filtradas
+  const evaluations = filteredEvaluations;
+
+  // ✅ MELHORADO: Função robusta para atualizar dados
+  const refreshData = useCallback(async () => {
+    console.log("🔄 Iniciando atualização de dados...");
+    
+    try {
+      // Usar a nova função forceRefresh que é mais robusta
+      await forceRefresh();
+      
+      // Atualizar timestamp de última atualização
+      setForceUpdate(prev => prev + 1);
+      
+      console.log("✅ Dados atualizados com sucesso");
+    } catch (error) {
+      console.error("❌ Erro ao atualizar dados:", error);
+    }
+  }, [forceRefresh]);
+
+  // ✅ MELHORADO: Função específica para atualizar após operações CRUD
+  const refreshAfterCRUD = useCallback(async () => {
+    console.log("🔄 Atualizando dados após operação CRUD...");
+    
+    try {
+      // Usar o hook de gerenciamento para uma atualização mais robusta
+      await updateAfterCRUD();
+      
+      // Fazer refetch dos dados atuais
+      await refetch();
+      
+      // Atualizar estado local
+      setForceUpdate(prev => prev + 1);
+      
+      console.log("✅ Dados atualizados após CRUD com sucesso");
+    } catch (error) {
+      console.error("❌ Erro ao atualizar dados após CRUD:", error);
+    }
+  }, [updateAfterCRUD, refetch]);
+
   const handlePageChange = (pageNumber: number) => {
     setCurrentPage(pageNumber);
   };
 
-  // ✅ NOVO: Resetar para primeira página quando filtros mudarem
+  // ✅ CORREÇÃO: Resetar para primeira página apenas quando filtros realmente mudarem
+  // Usar useMemo para estabilizar a string de filtros usando valores individuais
+  const filtersString = useMemo(() => {
+    return JSON.stringify({
+      subject: filters.subject,
+      type: filters.type,
+      model: filters.model,
+      grade: filters.grade
+    });
+  }, [
+    filters.subject,
+    filters.type,
+    filters.model,
+    filters.grade
+  ]);
+  
   useEffect(() => {
     setCurrentPage(1);
-  }, [filters]);
+  }, [filtersString, showMyEvaluations]);
 
   // ✅ NOVO: Forçar atualização quando forceUpdate mudar
   useEffect(() => {
     // Este useEffect força a re-renderização da interface
     // quando uma avaliação é excluída ou aplicada
   }, [forceUpdate]);
+
+  // ✅ NOVO: Listener para mudanças de avaliações (se implementado no futuro)
+  useEffect(() => {
+    // Aqui poderíamos implementar um listener para mudanças em tempo real
+    // Por exemplo, usando WebSocket ou polling
+  }, []);
 
   const handleView = (evaluationId: string) => {
     navigate(`/app/avaliacao/${evaluationId}`);
@@ -716,42 +852,30 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
         description: SUCCESS_MESSAGES.DATA_DELETED,
       });
 
-      // ✅ NOVO: Invalidar cache e recarregar dados
-      console.log("🔄 Invalidando cache e recarregando dados...");
-      invalidateEvaluationsCache();
+      // ✅ MELHORADO: Usar função específica para operações CRUD
+      await refreshAfterCRUD();
       
-      // Forçar atualização imediata do estado local
-      if (showMyEvaluations) {
-        // Se estamos mostrando apenas minhas avaliações, remover a avaliação excluída do estado local
-        const updatedEvaluations = allEvaluations.filter(evaluation => evaluation.id !== evaluationToDelete);
-        // Atualizar o estado local imediatamente
-        // Note: isso é uma solução temporária, o refetch deve resolver o problema
-      }
+    } catch (error: unknown) {
+      const apiError = error as { message?: string; response?: { status?: number; data?: { error?: string } } };
       
-      // Aguardar um pouco antes de fazer refetch para garantir que o cache foi limpo
-      setTimeout(() => {
-        refetch();
-        setForceUpdate(prev => prev + 1); // Forçar re-render
-      }, 100);
-    } catch (error: any) {
       console.error("❌ Erro detalhado ao excluir avaliação:", {
         error,
-        message: error.message,
-        response: error.response,
-        status: error.response?.status,
-        data: error.response?.data
+        message: apiError.message,
+        response: apiError.response,
+        status: apiError.response?.status,
+        data: apiError.response?.data
       });
 
       let errorMessage: string = ERROR_MESSAGES.SERVER_ERROR;
 
-      if (error.response?.status === 404) {
+      if (apiError.response?.status === 404) {
         errorMessage = ERROR_MESSAGES.DATA_NOT_FOUND;
-      } else if (error.response?.status === 403) {
+      } else if (apiError.response?.status === 403) {
         errorMessage = ERROR_MESSAGES.FORBIDDEN;
-      } else if (error.response?.status === 401) {
+      } else if (apiError.response?.status === 401) {
         errorMessage = ERROR_MESSAGES.UNAUTHORIZED;
-      } else if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
+      } else if (apiError.response?.data?.error) {
+        errorMessage = apiError.response.data.error;
       }
 
       toast({
@@ -778,44 +902,32 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
         description: SUCCESS_MESSAGES.DATA_DELETED,
       });
 
-      // ✅ NOVO: Invalidar cache e recarregar dados
-      console.log("🔄 Invalidando cache e recarregando dados...");
-      invalidateEvaluationsCache();
+      // ✅ MELHORADO: Usar função específica para operações CRUD
+      await refreshAfterCRUD();
+      setSelectedIds([]);
       
-      // Forçar atualização imediata do estado local
-      if (showMyEvaluations) {
-        // Se estamos mostrando apenas minhas avaliações, remover as avaliações excluídas do estado local
-        const updatedEvaluations = allEvaluations.filter(evaluation => !selectedIds.includes(evaluation.id));
-        // Atualizar o estado local imediatamente
-        // Note: isso é uma solução temporária, o refetch deve resolver o problema
-      }
+    } catch (error: unknown) {
+      const apiError = error as { message?: string; response?: { status?: number; data?: { error?: string } } };
       
-      // Aguardar um pouco antes de fazer refetch para garantir que o cache foi limpo
-      setTimeout(() => {
-        refetch();
-        setSelectedIds([]);
-        setForceUpdate(prev => prev + 1); // Forçar re-render
-      }, 100);
-    } catch (error: any) {
       console.error("❌ Erro detalhado ao excluir avaliações em massa:", {
         error,
-        message: error.message,
-        response: error.response,
-        status: error.response?.status,
-        data: error.response?.data,
+        message: apiError.message,
+        response: apiError.response,
+        status: apiError.response?.status,
+        data: apiError.response?.data,
         selectedIds
       });
 
       let errorMessage = "Não foi possível excluir as avaliações selecionadas";
 
-      if (error.response?.status === 404) {
+      if (apiError.response?.status === 404) {
         errorMessage = "Uma ou mais avaliações não foram encontradas";
-      } else if (error.response?.status === 403) {
+      } else if (apiError.response?.status === 403) {
         errorMessage = "Sem permissão para excluir estas avaliações";
-      } else if (error.response?.status === 401) {
+      } else if (apiError.response?.status === 401) {
         errorMessage = "Sessão expirada. Faça login novamente.";
-      } else if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
+      } else if (apiError.response?.data?.error) {
+        errorMessage = apiError.response.data.error;
       }
 
       toast({
@@ -825,6 +937,94 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
       });
     } finally {
       setDeleteDialogOpen(false);
+    }
+  };
+
+  const handleExportToExcel = async () => {
+    // Validação: verificar se há avaliações selecionadas
+    if (selectedIds.length === 0) {
+      toast({
+        title: "Nenhuma avaliação selecionada",
+        description: "Selecione pelo menos uma avaliação para exportar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsExporting(true);
+
+      // Preparar payload conforme especificação do backend
+      const payload = {
+        test_ids: selectedIds,
+      };
+
+      // Fazer requisição POST para o backend
+      const response = await api.post('/test/evolution/export-excel', payload, {
+        responseType: 'blob',
+      });
+
+      // Criar blob a partir da resposta
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+
+      // Extrair nome do arquivo do header Content-Disposition ou usar padrão
+      const contentDisposition = response.headers['content-disposition'];
+      let fileName = `exportacao-avaliacoes-${new Date().toISOString().split('T')[0]}.xlsx`;
+      
+      if (contentDisposition) {
+        const fileNameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (fileNameMatch && fileNameMatch[1]) {
+          fileName = fileNameMatch[1].replace(/['"]/g, '');
+        }
+      }
+
+      // Criar link temporário e fazer download
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "Exportação concluída!",
+        description: `Arquivo Excel gerado com sucesso para ${selectedIds.length} avaliação(ões).`,
+      });
+    } catch (error: any) {
+      console.error('Erro ao exportar para Excel:', error);
+
+      // Tratar erro que pode vir como blob (alguns backends retornam erro JSON como blob)
+      let errorMessage = "Não foi possível exportar as avaliações.";
+
+      if (error.response?.data instanceof Blob) {
+        try {
+          const text = await error.response.data.text();
+          const errorData = JSON.parse(text);
+          errorMessage = errorData.message || errorMessage;
+        } catch {
+          // Se não conseguir parsear, usar mensagem padrão
+        }
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.response?.status === 400) {
+        errorMessage = "Dados inválidos para exportação.";
+      } else if (error.response?.status === 404) {
+        errorMessage = "Rota de exportação não encontrada.";
+      } else if (error.response?.status === 500) {
+        errorMessage = "Erro interno do servidor ao gerar o arquivo.";
+      }
+
+      toast({
+        title: "Erro ao exportar",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -859,8 +1059,26 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
   };
 
   const handleStartEvaluation = (evaluation: Evaluation) => {
+    console.log("🚀 [ReadyEvaluations] handleStartEvaluation - Avaliação recebida:", {
+      id: evaluation.id,
+      title: evaluation.title,
+      classes: evaluation.classes,
+      classesType: typeof evaluation.classes,
+      classesIsArray: Array.isArray(evaluation.classes),
+      classesLength: Array.isArray(evaluation.classes) ? evaluation.classes.length : 'N/A',
+      classesContent: evaluation.classes,
+      // Verificar outros campos possíveis
+      applied_classes: evaluation.applied_classes,
+      applied_classes_count: evaluation.applied_classes_count,
+      // Log completo do objeto
+      fullEvaluation: JSON.stringify(evaluation, null, 2)
+    });
     setSelectedEvaluationToStart(evaluation);
     setStartModalOpen(true);
+  };
+
+  const handleNavigateToPhysical = (evaluationId: string) => {
+    navigate(`/app/avaliacao/${evaluationId}/fisica`);
   };
 
   const handleConfirmStartEvaluation = async (startDateTime: string, endDateTime: string, classIds: string[]) => {
@@ -869,11 +1087,28 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
     // Capturar timezone do usuário automaticamente
     const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+    // ✅ CORREÇÃO: Converter para ISO com timezone se ainda não estiver convertido
+    // Verificar se já está em formato ISO com timezone (contém timezone offset no formato +/-HH:MM)
+    // Um datetime-local tem formato "YYYY-MM-DDTHH:mm" (sem timezone)
+    // Um ISO com timezone tem formato "YYYY-MM-DDTHH:mm:ss+HH:MM" ou "YYYY-MM-DDTHH:mm:ss-HH:MM"
+    const isISOFormat = (dateStr: string) => {
+      // Verifica se tem timezone offset (formato +/-HH:MM no final)
+      const timezonePattern = /[+-]\d{2}:\d{2}$/;
+      return timezonePattern.test(dateStr);
+    };
+    
+    const startDateTimeISO = isISOFormat(startDateTime)
+      ? startDateTime
+      : convertDateTimeLocalToISO(startDateTime);
+    const endDateTimeISO = isISOFormat(endDateTime)
+      ? endDateTime
+      : convertDateTimeLocalToISO(endDateTime);
+
     console.log("🚀 Aplicando avaliação:", {
       evaluationId: selectedEvaluationToStart.id,
       classIds,
-      startDateTime,
-      endDateTime,
+      original: { startDateTime, endDateTime },
+      converted: { startDateTimeISO, endDateTimeISO },
       timezone: userTimezone
     });
 
@@ -881,8 +1116,8 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
       // ✅ FORMATO CORRETO - Enviar como um único request com array de classes
       const classesData = classIds.map(classId => ({
         class_id: classId,
-        application: startDateTime,
-        expiration: endDateTime
+        application: startDateTimeISO,
+        expiration: endDateTimeISO
       }));
 
       console.log("📡 Enviando dados para API:", {
@@ -897,32 +1132,29 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
 
       console.log("✅ Resposta da API:", response.data);
 
-      // ✅ NOVO: Invalidar cache e recarregar dados
-      invalidateEvaluationsCache();
-      
-      // Aguardar um pouco antes de fazer refetch para garantir que o cache foi limpo
-      setTimeout(() => {
-        refetch();
-        setForceUpdate(prev => prev + 1); // Forçar re-render
-      }, 100);
+      // ✅ MELHORADO: Usar função específica para operações CRUD
+      await refreshAfterCRUD();
 
       toast({
         title: "🎉 Avaliação aplicada com sucesso!",
         description: `A avaliação "${selectedEvaluationToStart.title}" foi aplicada para ${classIds.length} turma(s) e ficará disponível no horário configurado.`,
       });
-    } catch (error: any) {
+
+    } catch (error: unknown) {
+      const apiError = error as { response?: { status?: number; data?: { error?: string } } };
+      
       console.error("❌ Erro ao aplicar avaliação:", error);
 
       let errorMessage = "Erro ao aplicar avaliação. Tente novamente.";
 
-      if (error.response?.status === 404) {
+      if (apiError.response?.status === 404) {
         errorMessage = "Avaliação não encontrada";
-      } else if (error.response?.status === 403) {
+      } else if (apiError.response?.status === 403) {
         errorMessage = "Sem permissão para aplicar esta avaliação";
-      } else if (error.response?.status === 400) {
-        errorMessage = error.response.data?.error || "Dados inválidos para aplicação";
-      } else if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
+      } else if (apiError.response?.status === 400) {
+        errorMessage = apiError.response.data?.error || "Dados inválidos para aplicação";
+      } else if (apiError.response?.data?.error) {
+        errorMessage = apiError.response.data.error;
       }
 
       toast({
@@ -947,7 +1179,7 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
           <p className="text-muted-foreground mb-4">
             Erro ao carregar avaliações. Tente novamente.
           </p>
-          <Button onClick={() => refetch()}>
+          <Button onClick={() => refreshData()}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Tentar novamente
           </Button>
@@ -956,15 +1188,28 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
     );
   }
 
+  // ✅ NOVO: Indicador de atualização em andamento
+  const isAnyLoading = isLoading || isUpdating;
+
   // Renderizar a tabela de avaliações
   return (
     <ErrorBoundary>
       <TooltipProvider>
         <div className="space-y-6">
+          {/* ✅ NOVO: Indicador de atualização */}
+          {isUpdating && (
+            <div className="flex items-center justify-center p-4 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <RefreshCw className="h-4 w-4 mr-2 animate-spin text-blue-600 dark:text-blue-400" />
+              <span className="text-sm text-blue-700 dark:text-blue-400">
+                Atualizando lista de avaliações...
+              </span>
+            </div>
+          )}
+
           <EvaluationsTable
             evaluations={evaluations}
             pagination={pagination}
-            isLoading={isLoading}
+            isLoading={isAnyLoading}
             searchTerm={searchTerm}
             filters={filters}
             selectedIds={selectedIds}
@@ -972,6 +1217,7 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
             itemsPerPage={itemsPerPage}
             subjects={subjects}
             grades={grades}
+            showMyEvaluations={showMyEvaluations}
             onPageChange={handlePageChange}
             onFilterChange={handleFilterChange}
             onSearchChange={setSearchTerm}
@@ -981,9 +1227,12 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
             onEdit={handleEdit}
             onDelete={handleDelete}
             onStartEvaluation={handleStartEvaluation}
-            onRefresh={refetch}
+            onRefresh={refreshData}
             onClearFilters={clearFilters}
             hasActiveFilters={hasActiveFilters}
+            onNavigateToPhysical={handleNavigateToPhysical}
+            onExport={handleExportToExcel}
+            isExporting={isExporting}
           />
 
           {/* Dialog de confirmação de exclusão */}

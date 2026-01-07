@@ -1,9 +1,16 @@
 import { useState, useEffect } from "react";
 import Layout from "@/components/layout/Layout";
-import StatCard from "@/components/dashboard/StatCard";
-import RecentSchools from "@/components/dashboard/RecentSchools";
-import RecentEvaluations from "@/components/dashboard/RecentEvaluations";
-import QuestionsTable from "@/components/dashboard/QuestionsTable";
+// Componentes antigos removidos - substituídos pelos novos componentes da Fase 1
+
+// Novos componentes da Fase 1
+import SchoolRankingTable from "@/components/dashboard/SchoolRankingTable";
+import TopStudentsTable from "@/components/dashboard/TopStudentsTable";
+import RecentEvaluationsTable from "@/components/dashboard/RecentEvaluationsTable";
+import QuestionsList from "@/components/dashboard/QuestionsList";
+import ActionCards from "@/components/dashboard/ActionCards";
+import ModernStatCard from "@/components/dashboard/ModernStatCard";
+import PerformanceCard from "@/components/dashboard/PerformanceCard";
+
 import {
   Users,
   School,
@@ -14,100 +21,81 @@ import {
   Bell,
   Award,
   Trophy,
-  Tv
+  Tv,
+  TrendingUp,
+  Clock,
+  Target,
 } from "lucide-react";
 import { useAuth } from "@/context/authContext";
-import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import ProfessorDashboard from "./ProfessorDashboard";
-
-interface DashboardStats {
-  students: number;
-  schools: number;
-  evaluations: number;
-  games: number;
-  users: number;
-  onlineSupport: number;
-  notices: number;
-  certificates: number;
-  competitions: number;
-  olympics: number;
-  playTv: number;
-}
+import { fetchDashboardCountsByRole, DashboardCounts } from "@/lib/dashboard/fetch-dashboard-stats-by-role";
+import { useDashboardByRole } from "@/hooks/use-cache";
+import type { AdminDashboard, DiretorDashboard } from "@/types/dashboard";
 
 const Index = () => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [counts, setCounts] = useState<DashboardCounts | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Novo hook para buscar dados do dashboard por role
+  const dashboardData = user?.role ? useDashboardByRole(user.role) : null;
+  const dashboard = dashboardData?.data as AdminDashboard | DiretorDashboard | null;
+
   useEffect(() => {
-    // Only fetch dashboard stats for admin users
-    if (user?.role !== "aluno" && user?.role !== "professor") {
-      const fetchDashboardStats = async () => {
-        try {
-          setIsLoading(true);
+    if (!user?.id || !user?.role) {
+      return;
+    }
 
-          // Buscar dados reais da API com tratamento individual de erros
-          let comprehensiveStats = null;
-          let users = [];
+    const normalisedRole = String(user.role).toLowerCase();
+    if (normalisedRole === "aluno" || normalisedRole === "professor") {
+      return;
+    }
 
-          // Tentar buscar estatísticas abrangentes
-          try {
-            const comprehensiveStatsResponse = await api.get('/dashboard/comprehensive-stats');
-            comprehensiveStats = comprehensiveStatsResponse.data;
-          } catch (error) {
-            console.warn('⚠️ Erro ao buscar estatísticas abrangentes:', error);
-          }
+    let isMounted = true;
 
-          // Tentar buscar lista de usuários
-          try {
-            const usersResponse = await api.get('/users/list');
-            users = usersResponse.data?.users || [];
-          } catch (error) {
-            console.warn('⚠️ Erro ao buscar lista de usuários:', error);
-          }
+    async function loadDashboardCounts() {
+      try {
+        setIsLoading(true);
+        const metrics = await fetchDashboardCountsByRole({
+          role: user.role,
+          userId: user.id,
+        });
 
-          // Calcular estatísticas
-          setStats({
-            students: comprehensiveStats?.students || 0,
-            schools: comprehensiveStats?.schools || 0,
-            evaluations: comprehensiveStats?.evaluations || 0,
-            games: comprehensiveStats?.games || 0,
-            users: comprehensiveStats?.users || 0,
-            onlineSupport: Math.floor(Math.random() * 20) + 10, // Mock - não há endpoint específico
-            notices: Math.floor(Math.random() * 50) + 30, // Mock - não há endpoint específico
-            certificates: Math.floor(Math.random() * 300) + 200, // Mock - não há endpoint específico
-            competitions: Math.floor(Math.random() * 15) + 5, // Mock - não há endpoint específico
-            olympics: Math.floor(Math.random() * 10) + 3, // Mock - não há endpoint específico
-            playTv: Math.floor(Math.random() * 80) + 40, // Mock - não há endpoint específico
-          });
+        if (!isMounted) {
+          return;
+        }
 
-        } catch (error) {
-          console.error("Erro geral ao buscar estatísticas do dashboard:", error);
-
-          // Valores padrão em caso de erro geral
-          setStats({
-            students: 0,
-            schools: 0,
-            evaluations: 0,
-            games: 0,
-            users: 0,
-            onlineSupport: 0,
-            notices: 0,
-            certificates: 0,
-            competitions: 0,
-            olympics: 0,
-            playTv: 0,
-          });
-        } finally {
+        setCounts(metrics);
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
+        console.error("Erro ao carregar estatísticas do painel:", error);
+        toast({
+          title: "Erro",
+          description: "Não foi possível carregar as estatísticas do painel.",
+          variant: "destructive",
+        });
+        setCounts(null);
+      } finally {
+        if (isMounted) {
           setIsLoading(false);
         }
-      };
-
-      fetchDashboardStats();
+      }
     }
-  }, [toast, user?.role]);
+
+    loadDashboardCounts();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [toast, user?.role, user?.id]);
+
+  // Usar dados da nova API se disponível, senão usar fallback
+  const isLoadingDashboard = dashboardData?.isLoading ?? isLoading;
+  const hasNewDashboardData = dashboard !== null;
 
   // Check user role and render appropriate dashboard
   if (user?.role === "professor") {
@@ -125,101 +113,230 @@ const Index = () => {
         </span>
       </div>
 
-      {/* Stat Cards Grid - Responsive layout */}
-      <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
-        <StatCard
+      {/* Cards de Ação Rápida */}
+      <div className="mb-8">
+        <ActionCards />
+      </div>
+
+
+      {/* Cards Principais com Performance */}
+      <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-8">
+        <ModernStatCard
           icon={<Users size={20} className="sm:w-6 sm:h-6" />}
           title="Alunos"
-          value={stats?.students || 0}
-          color="bg-blue-500"
-          isLoading={isLoading}
+          value={
+            hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.students
+              : counts?.students ?? 0
+          }
+          subtitle="Total de estudantes"
+          performance={
+            (hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.students
+              : counts?.students ?? 0) > 1000
+              ? "excellent"
+              : (hasNewDashboardData && "summary" in dashboard
+                  ? dashboard.summary.students
+                  : counts?.students ?? 0) > 500
+              ? "good"
+              : "average"
+          }
+          isLoading={isLoadingDashboard}
         />
-        <StatCard
-          icon={<School size={20} className="sm:w-6 sm:h-6" />}
-          title="Escolas"
-          value={stats?.schools || 0}
-          color="bg-green-500"
-          isLoading={isLoading}
+        <ModernStatCard
+          icon={
+            (hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.classes > 0
+              : counts?.institution.label.includes("Turma")) ? (
+              <List size={20} className="sm:w-6 sm:h-6" />
+            ) : (
+              <School size={20} className="sm:w-6 sm:h-6" />
+            )
+          }
+          title={
+            hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.classes > 0
+                ? "Turmas"
+                : "Escolas"
+              : counts?.institution.label ?? "Instituições"
+          }
+          value={
+            hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.classes > 0
+                ? dashboard.summary.classes
+                : dashboard.summary.schools
+              : counts?.institution.count ?? 0
+          }
+          subtitle={
+            hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.classes > 0
+                ? "Turmas vinculadas"
+                : "Escolas cadastradas"
+              : counts?.institution.label.includes("Turma")
+              ? "Turmas vinculadas"
+              : "Instituições cadastradas"
+          }
+          performance={
+            (hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.classes > 0
+                ? dashboard.summary.classes
+                : dashboard.summary.schools
+              : counts?.institution.count ?? 0) > 50
+              ? "excellent"
+              : (hasNewDashboardData && "summary" in dashboard
+                  ? dashboard.summary.classes > 0
+                    ? dashboard.summary.classes
+                    : dashboard.summary.schools
+                  : counts?.institution.count ?? 0) > 20
+              ? "good"
+              : "average"
+          }
+          isLoading={isLoadingDashboard}
         />
-        <StatCard
+        <ModernStatCard
           icon={<List size={20} className="sm:w-6 sm:h-6" />}
           title="Avaliações"
-          value={stats?.evaluations || 0}
-          color="bg-amber-500"
-          isLoading={isLoading}
+          value={
+            hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.evaluations
+              : counts?.evaluations ?? 0
+          }
+          subtitle="Avaliações ativas"
+          performance={
+            (hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.evaluations
+              : counts?.evaluations ?? 0) > 100
+              ? "excellent"
+              : (hasNewDashboardData && "summary" in dashboard
+                  ? dashboard.summary.evaluations
+                  : counts?.evaluations ?? 0) > 50
+              ? "good"
+              : "average"
+          }
+          isLoading={isLoadingDashboard}
         />
-        <StatCard
+        <ModernStatCard
           icon={<Gamepad size={20} className="sm:w-6 sm:h-6" />}
           title="Jogos"
-          value={stats?.games || 0}
-          color="bg-purple-500"
-          isLoading={isLoading}
+          value={
+            hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.games ?? 0
+              : counts?.games ?? 0
+          }
+          subtitle="Jogos educacionais"
+          performance={
+            (hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.games ?? 0
+              : counts?.games ?? 0) > 20
+              ? "excellent"
+              : (hasNewDashboardData && "summary" in dashboard
+                  ? dashboard.summary.games ?? 0
+                  : counts?.games ?? 0) > 10
+              ? "good"
+              : "average"
+          }
+          isLoading={isLoadingDashboard}
         />
+      </div>
 
-        <StatCard
+      {/* Cards Secundários */}
+      <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-8">
+        <PerformanceCard
           icon={<User size={20} className="sm:w-6 sm:h-6" />}
           title="Usuários"
-          value={stats?.users || 0}
-          color="bg-indigo-500"
-          isLoading={isLoading}
+          value={
+            hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.users ?? 0
+              : counts?.users ?? 0
+          }
+          subtitle="Usuários do sistema"
+          performance={
+            (hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.users ?? 0
+              : counts?.users ?? 0) > 500
+              ? "excellent"
+              : (hasNewDashboardData && "summary" in dashboard
+                  ? dashboard.summary.users ?? 0
+                  : counts?.users ?? 0) > 200
+              ? "good"
+              : "average"
+          }
         />
-        <StatCard
+        <PerformanceCard
           icon={<Headset size={20} className="sm:w-6 sm:h-6" />}
-          title="Plantões Online"
-          value={stats?.onlineSupport || 0}
-          color="bg-pink-500"
-          isLoading={isLoading}
+          title="Questões no Banco"
+          value={
+            hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.questions ?? 0
+              : counts?.questions ?? 0
+          }
+          subtitle="Banco de questões"
+          performance={
+            (hasNewDashboardData && "summary" in dashboard
+              ? dashboard.summary.questions ?? 0
+              : counts?.questions ?? 0) > 150
+              ? "excellent"
+              : (hasNewDashboardData && "summary" in dashboard
+                  ? dashboard.summary.questions ?? 0
+                  : counts?.questions ?? 0) > 50
+              ? "good"
+              : "average"
+          }
         />
-        <StatCard
+        <PerformanceCard
           icon={<Bell size={20} className="sm:w-6 sm:h-6" />}
           title="Avisos"
-          value={stats?.notices || 0}
-          color="bg-red-500"
-          isLoading={isLoading}
+          value={
+            hasNewDashboardData && "secondary_cards" in dashboard
+              ? dashboard.secondary_cards.find((c) => c.id === "notices")?.value ?? "--"
+              : "--"
+          }
+          subtitle={
+            hasNewDashboardData && "secondary_cards" in dashboard
+              ? dashboard.secondary_cards.find((c) => c.id === "notices")?.status === "in_implementation"
+                ? "Em implementação"
+                : "Avisos"
+              : "Em implementação"
+          }
+          performance="average"
         />
-        <StatCard
+        <PerformanceCard
           icon={<Award size={20} className="sm:w-6 sm:h-6" />}
           title="Certificados"
-          value={stats?.certificates || 0}
-          color="bg-teal-500"
-          isLoading={isLoading}
+          value={
+            hasNewDashboardData && "secondary_cards" in dashboard
+              ? dashboard.secondary_cards.find((c) => c.id === "certificates")?.value ?? "--"
+              : "--"
+          }
+          subtitle={
+            hasNewDashboardData && "secondary_cards" in dashboard
+              ? dashboard.secondary_cards.find((c) => c.id === "certificates")?.status === "in_implementation"
+                ? "Em implementação"
+                : "Certificados"
+              : "Em implementação"
+          }
+          performance="average"
         />
-
-        <StatCard
-          icon={<Trophy size={20} className="sm:w-6 sm:h-6" />}
-          title="Competições"
-          value={stats?.competitions || 0}
-          color="bg-orange-500"
-          isLoading={isLoading}
-        />
-        <StatCard
-          icon={<Award size={20} className="sm:w-6 sm:h-6" />}
-          title="Olimpíadas"
-          value={stats?.olympics || 0}
-          color="bg-cyan-500"
-          isLoading={isLoading}
-        />
-        <StatCard
-          icon={<Tv size={20} className="sm:w-6 sm:h-6" />}
-          title="Play TV"
-          value={stats?.playTv || 0}
-          color="bg-yellow-500"
-          isLoading={isLoading}
-        />
-        {/* Empty slot to maintain grid alignment */}
-        <div className="hidden lg:block"></div>
       </div>
 
-      {/* Recent Schools and Evaluations */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
-        <RecentSchools />
-        <RecentEvaluations />
+      {/* Tabelas Interativas - Nova Seção */}
+      <div className="mb-8">
+        <div className="flex items-center gap-2 mb-6">
+          <Target className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+          <h2 className="text-xl font-semibold text-foreground">Análises e Rankings</h2>
+        </div>
+        
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          <SchoolRankingTable />
+          <TopStudentsTable />
+        </div>
+        
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          <RecentEvaluationsTable />
+          <QuestionsList />
+        </div>
       </div>
 
-      {/* Questions Table */}
-      <div className="mb-6 sm:mb-8">
-        <QuestionsTable />
-      </div>
     </div>
   );
 };

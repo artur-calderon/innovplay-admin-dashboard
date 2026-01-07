@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Eye, Pencil, Trash2, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown, Copy, AlertTriangle } from "lucide-react";
+import { Plus, Eye, Pencil, Trash2, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown, Copy } from "lucide-react";
 import { Question } from "@/components/evaluations/types";
 import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
@@ -56,7 +56,7 @@ interface QuestionApiResponse {
   topics: string[] | string;
   subject?: { id: string; name: string };
   grade?: { id: string; name: string };
-  createdBy: { id: string; name: string }; // Changed from created_by: string to match API response
+  createdBy?: string | { id: string; name?: string }; // API pode retornar string ou objeto
   solution?: string;
   formattedText?: string;
   formattedSolution?: string;
@@ -80,6 +80,22 @@ interface SortOption {
   key: keyof Question | 'difficulty' | 'subjectName' | 'gradeName';
   direction: 'asc' | 'desc';
 }
+
+const getQuestionCreatorId = (question: Question): string => {
+  if (!question) return "";
+  const rawCreator = (question as any).created_by ?? (question as any).createdBy ?? (question as any).creator;
+
+  if (typeof rawCreator === "string") {
+    return rawCreator;
+  }
+
+  if (rawCreator && typeof rawCreator === "object") {
+    if (typeof rawCreator.id === "string") return rawCreator.id;
+    if (typeof rawCreator.user_id === "string") return rawCreator.user_id;
+  }
+
+  return question.created_by || "";
+};
 
 const DIFFICULTIES = ['Abaixo do Básico', 'Básico', 'Adequado', 'Avançado'];
 const QUESTION_TYPES = [
@@ -346,16 +362,16 @@ const QuestionsPage = () => {
     return filteredAndSortedQuestions.slice(startIndex, startIndex + pageSize);
   }, [filteredAndSortedQuestions, currentPage, pageSize]);
 
-  // Definir filtro inicial para professores, tecadm, diretores e coordenadores
-  useEffect(() => {
-    if ((user.role === 'professor' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && filterType === 'my') {
-      setFilterType('all');
-    }
-  }, [user.role]); // Removido filterType da dependência para evitar loop infinito
+  // Definir filtro inicial para professores (removido - permite que professores escolham entre Minhas e Todas)
+  // useEffect(() => {
+  //   if (user.role === 'professor' && filterType === 'my') {
+  //     setFilterType('all');
+  //   }
+  // }, [user.role, filterType]);
 
-  // Limpar cache quando professor, tecadm, diretor ou coordenador acessa "Todas as Questões"
+  // Limpar cache quando professor acessa "Todas as Questões" (apenas na primeira vez)
   useEffect(() => {
-    if ((user.role === 'professor' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && filterType === 'all') {
+    if (user.role === 'professor' && filterType === 'all' && !fetchedKeys.has(`${filterType}-${user.id || 'all'}`)) {
       const cacheKey = `${filterType}-${user.id || 'all'}`;
       
       setQuestionsCache(prev => {
@@ -376,7 +392,7 @@ const QuestionsPage = () => {
         return newSet;
       });
     }
-  }, [user.role, filterType, user.id]);
+  }, [user.role, filterType, user.id, fetchedKeys]);
 
   // Fetch inicial de dados (executar em paralelo)
   useEffect(() => {
@@ -400,6 +416,8 @@ const QuestionsPage = () => {
   // Fetch questões com cache e retry
   const fetchQuestions = useCallback(async (isRetry = false, forceRefresh = false) => {
     const cacheKey = `${filterType}-${user.id || 'all'}`;
+    
+    
     
     // Verificar se já está fazendo fetch da mesma chave
     if (!forceRefresh && isCurrentlyFetching === cacheKey) {
@@ -471,11 +489,10 @@ const QuestionsPage = () => {
       }
       
       let response = await api.get("/questions/", { params });
+    
       
-      
-      
-      // Se usuário não recebeu questões, tentar abordagem alternativa
-      if ((user.role === 'professor' || user.role === 'tecadm' || user.role === 'diretor' || user.role === 'coordenador') && filterType === 'all' && 
+      // Se professor não recebeu questões, tentar abordagem alternativa
+      if (user.role === 'professor' && filterType === 'all' && 
           (!response.data || response.data.length === 0)) {
         // console.log('🔄 Primeira tentativa vazia, tentando endpoint alternativo...');
         
@@ -508,14 +525,54 @@ const QuestionsPage = () => {
         throw new Error('Dados inválidos recebidos do servidor');
       }
 
-              const normalizedQuestions: Question[] = response.data.map((q: QuestionApiResponse) => {
+      const normalizedQuestions: Question[] = response.data.map((q: QuestionApiResponse) => {
+        // Normalizar o tipo da questão
+        let normalizedType: "multipleChoice" | "trueFalse" | "dissertativa";
+        
+        if (q.type === "multiple_choice") {
+          normalizedType = "multipleChoice";
+        } else if (q.type === "true_false") {
+          normalizedType = "trueFalse";
+        } else if (q.type === "open" || q.type === "dissertativa") {
+          normalizedType = "dissertativa";
+        } else {
+          // Fallback: se tem opções, é múltipla escolha, senão é dissertativa
+          normalizedType = (q.options && q.options.length > 0) ? "multipleChoice" : "dissertativa";
+        }
+
+        const resolveCreatorId = (): string => {
+          if (!q) return "";
+
+          const candidate = q.createdBy;
+
+          if (typeof candidate === "string") {
+            return candidate;
+          }
+
+          if (candidate && typeof candidate === "object") {
+            if (typeof candidate.id === "string") {
+              return candidate.id;
+            }
+          }
+
+          const alt = (q as any);
+          return (
+            (typeof alt.created_by === "string" && alt.created_by) ||
+            (typeof alt.created_by_id === "string" && alt.created_by_id) ||
+            (typeof alt.creator_id === "string" && alt.creator_id) ||
+            (alt.creator && typeof alt.creator.id === "string" && alt.creator.id) ||
+            ""
+          );
+        };
+
+        const creatorId = resolveCreatorId();
         
         return {
           id: q.id,
           title: q.title,
           text: q.text,
           secondStatement: q.secondStatement || '',
-          type: q.type as "multipleChoice" | "dissertativa" | "trueFalse",
+          type: normalizedType,
           subjectId: q.subject?.id || '',
           subject: q.subject || { id: '', name: '' },
           grade: q.grade || { id: '', name: '' },
@@ -526,9 +583,18 @@ const QuestionsPage = () => {
           formattedSolution: q.formattedSolution,
           options: q.options || [],
           skills: Array.isArray(q.skills) ? q.skills : (q.skills && typeof q.skills === 'string' ? q.skills.split(',').map(s => s.trim()) : []),
-          created_by: q.createdBy.id, // Changed from q.created_by to q.createdBy.id
+          created_by: creatorId,
           educationStage: null
         };
+      });
+      
+      // Log das questões normalizadas
+      console.log('✅ Questões normalizadas:', {
+        total: normalizedQuestions.length,
+        byType: normalizedQuestions.reduce((acc, q) => {
+          acc[q.type] = (acc[q.type] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>)
       });
       
       // Salvar no cache
@@ -666,7 +732,7 @@ const QuestionsPage = () => {
   }, [user.id, filterType, questionsCache, retryCount, toast, isCurrentlyFetching, emptyResults, isDebugMode, isInitialLoad]);
 
   useEffect(() => {
-    if (user.id || filterType === 'all') {
+    if (user.id || filterType === 'all' || filterType === 'my') {
       fetchQuestions();
     }
   }, [user.id, filterType, fetchQuestions]);
@@ -680,12 +746,10 @@ const QuestionsPage = () => {
   useEffect(() => {
     const cacheKey = `${filterType}-${user.id || 'all'}`;
     
-    // Só limpar se estiver mudando para uma chave diferente
-    if (!fetchedKeys.has(cacheKey)) {
-      setError(null);
-      setRetryCount(0);
-    }
-  }, [filterType, user.id, fetchedKeys]);
+    // Limpar estados de erro e retry quando mudar de aba
+    setError(null);
+    setRetryCount(0);
+  }, [filterType, user.id]);
 
   // Limpar resultados vazios antigos periodicamente (limpeza de memória)
   useEffect(() => {
@@ -801,57 +865,6 @@ const QuestionsPage = () => {
     } finally {
       setDeleteQuestionId(null);
     }
-  };
-
-  // ✅ NOVA: Função para identificar questões com dados corrompidos
-  const identifyProblematicQuestions = () => {
-    const problematic = questions.filter(q => {
-      // Verificar problemas conhecidos de dados corrompidos
-      const hasMultipleCorrectOptions = q.options && q.options.filter(opt => opt.isCorrect).length > 1;
-      const hasTooManyOptions = q.options && q.options.length > 10;
-      const hasStrangeIds = q.options && q.options.some(opt => 
-        opt.id && (opt.id.includes('option-') && parseInt(opt.id.replace('option-', ''), 10) > 100)
-      );
-      const hasInvalidText = q.options && q.options.some(opt => 
-        opt.text && (opt.text.length === 1 && /[^\w\s]/.test(opt.text))
-      );
-      
-      return hasMultipleCorrectOptions || hasTooManyOptions || hasStrangeIds || hasInvalidText;
-    });
-
-    if (problematic.length > 0) {
-      // console.warn(`🚨 Encontradas ${problematic.length} questões com possíveis problemas:`, 
-      //   problematic.map(q => ({
-      //     id: q.id,
-      //     title: q.title,
-      //     optionsCount: q.options?.length || 0,
-      //     correctOptionsCount: q.options?.filter(opt => opt.isCorrect).length || 0,
-      //     issues: {
-      //       multipleCorrect: q.options && q.options.filter(opt => opt.isCorrect).length > 1,
-      //       tooManyOptions: q.options && q.options.length > 10,
-      //       strangeIds: q.options && q.options.some(opt => 
-      //         opt.id && opt.id.includes('option-') && parseInt(opt.id.replace('option-', ''), 10) > 100
-      //       ),
-      //       invalidText: q.options && q.options.some(opt => 
-      //         opt.text && opt.text.length === 1 && /[^\w\s]/.test(opt.text)
-      //       )
-      //     }
-      //   }))
-      // );
-      
-      toast({
-        title: `${problematic.length} questões problemáticas detectadas`,
-        description: "Verifique o console para detalhes. Essas questões podem ter problemas na exclusão.",
-        variant: "destructive",
-      });
-    } else {
-      toast({
-        title: "Nenhum problema detectado",
-        description: "Todas as questões parecem ter dados consistentes.",
-      });
-    }
-
-    return problematic;
   };
 
   const handleDuplicate = async (question: Question) => {
@@ -1126,12 +1139,11 @@ const QuestionsPage = () => {
     const handleDuplicateClick = useCallback(() => handleDuplicate(question), [question]);
     const handleSelect = useCallback((checked: boolean) => handleSelectOne(question.id, checked), [question.id]);
     
-    // Verificar se usuário pode editar/deletar
-    // Admin pode excluir qualquer questão
-    // Tecadm, diretor, coordenador e professor podem excluir apenas suas questões
-    const canEditDelete = user?.id === question.created_by || user?.role === 'admin';
+    // Verificar se usuário pode editar/deletar (se é o criador ou admin)
+    const creatorId = getQuestionCreatorId(question);
+    const canEditDelete = !!user && (user.role === 'admin' || (!!creatorId && creatorId === user.id));
     
-    
+   
 
     return (
       <div 
@@ -1170,7 +1182,7 @@ const QuestionsPage = () => {
         </div>
         
         {/* Meta info and actions */}
-        <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+        <div className="flex items-center justify-between pt-2 border-t border-border">
           <div className="flex flex-col xs:flex-row xs:items-center gap-1 xs:gap-3 text-xs text-muted-foreground">
             <span className="font-medium">
               {question.type === "multipleChoice" ? "Múltipla Escolha" : "Dissertativa"}
@@ -1185,7 +1197,7 @@ const QuestionsPage = () => {
               variant="ghost" 
               size="sm" 
               onClick={handleView}
-              className="h-8 w-8 p-0 hover:bg-blue-100"
+              className="h-8 w-8 p-0 hover:bg-blue-100 dark:hover:bg-blue-950/30"
               title="Visualizar"
             >
               <Eye className="h-3.5 w-3.5" />
@@ -1194,7 +1206,7 @@ const QuestionsPage = () => {
               variant="ghost" 
               size="sm" 
               onClick={handleDuplicateClick}
-              className="h-8 w-8 p-0 hover:bg-green-100"
+              className="h-8 w-8 p-0 hover:bg-green-100 dark:hover:bg-green-950/30"
               title="Duplicar questão"
             >
               <Copy className="h-3.5 w-3.5" />
@@ -1205,7 +1217,7 @@ const QuestionsPage = () => {
                   variant="ghost" 
                   size="sm" 
                   onClick={handleEdit}
-                  className="h-8 w-8 p-0 hover:bg-orange-100"
+                  className="h-8 w-8 p-0 hover:bg-orange-100 dark:hover:bg-orange-950/30"
                   title="Editar"
                 >
                   <Pencil className="h-3.5 w-3.5" />
@@ -1214,7 +1226,7 @@ const QuestionsPage = () => {
                   variant="ghost" 
                   size="sm" 
                   onClick={handleDeleteClick}
-                  className="h-8 w-8 p-0 hover:bg-red-100"
+                  className="h-8 w-8 p-0 hover:bg-red-100 dark:hover:bg-red-950/30"
                   title="Excluir"
                 >
                   <Trash2 className="h-3.5 w-3.5 text-destructive" />
@@ -1280,18 +1292,6 @@ const QuestionsPage = () => {
               <span className="sm:hidden">({selectedIds.length})</span>
             </Button>
           )}
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={identifyProblematicQuestions}
-            className="flex-1 sm:flex-none"
-            title="Identificar questões com dados corrompidos"
-          >
-            <AlertTriangle className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">Diagnóstico</span>
-            <span className="sm:hidden">Diagnóstico</span>
-          </Button>
 
           <Button
             size="sm"
@@ -1465,80 +1465,82 @@ const QuestionsPage = () => {
                 </tr>
               </thead>
               <tbody>
-                {paginatedQuestions.map((question, index) => (
-                  <tr 
-                    key={question.id} 
-                    className="border-b hover:bg-muted/20 transition-colors" 
-                    data-state={selectedIds.includes(question.id) && "selected"}
-                  >
-                    <td className="p-3">
-                      <Checkbox
-                        checked={selectedIds.includes(question.id)}
-                        onCheckedChange={(checked) => handleSelectOne(question.id, !!checked)}
-                        aria-label={`Selecionar questão ${question.id}`}
-                      />
-                    </td>
-                    <td className="px-3 py-2 text-sm font-mono">{((currentPage - 1) * pageSize) + index + 1}</td>
-                    <td className="px-3 py-2 max-w-xs truncate font-medium">{question.title}</td>
-                    <td className="px-3 py-2 text-sm">{question.subject?.name}</td>
-                    <td className="px-3 py-2 text-sm">{question.grade?.name}</td>
-                    <td className="px-3 py-2">
-                      <Badge 
-                        variant="outline"
-                        className={`text-xs ${getDifficultyColor(question.difficulty)}`}
-                      >
-                        {question.difficulty}
-                      </Badge>
-                    </td>
-                    <td className="px-3 py-2 text-sm">
-                      {question.type === "multipleChoice" ? "Múltipla Escolha" : "Dissertativa"}
-                    </td>
-                    <td className="px-3 py-2 text-sm font-mono">{question.value}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-1">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={() => setViewQuestion(question)}
-                          title="Visualizar"
+                {paginatedQuestions.map((question, index) => {
+                  const creatorId = getQuestionCreatorId(question);
+                  const canEditDeleteDesktop = !!user && (user.role === 'admin' || (!!creatorId && creatorId === user.id));
+
+                  return (
+                    <tr 
+                      key={question.id} 
+                      className="border-b hover:bg-muted/20 transition-colors" 
+                      data-state={selectedIds.includes(question.id) && "selected"}
+                    >
+                      <td className="p-3">
+                        <Checkbox
+                          checked={selectedIds.includes(question.id)}
+                          onCheckedChange={(checked) => handleSelectOne(question.id, !!checked)}
+                          aria-label={`Selecionar questão ${question.id}`}
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-sm font-mono">{((currentPage - 1) * pageSize) + index + 1}</td>
+                      <td className="px-3 py-2 max-w-xs truncate font-medium">{question.title}</td>
+                      <td className="px-3 py-2 text-sm">{question.subject?.name}</td>
+                      <td className="px-3 py-2 text-sm">{question.grade?.name}</td>
+                      <td className="px-3 py-2">
+                        <Badge 
+                          variant="outline"
+                          className={`text-xs ${getDifficultyColor(question.difficulty)}`}
                         >
-                          <Eye className="h-3 w-3" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={() => handleDuplicate(question)}
-                          title="Duplicar questão"
-                        >
-                          <Copy className="h-3 w-3" />
-                        </Button>
-                                {(() => {
-          const canEditDelete = user?.id === question.created_by || user?.role === 'admin';
-          return canEditDelete;
-        })() && (
-                          <>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              onClick={() => navigate(`/app/cadastros/questao/editar/${question.id}`)}
-                              title="Editar"
-                            >
-                              <Pencil className="h-3 w-3" />
-                            </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              onClick={() => setDeleteQuestionId(question.id)}
-                              title="Excluir"
-                            >
-                              <Trash2 className="h-3 w-3 text-destructive" />
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {question.difficulty}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-2 text-sm">
+                        {question.type === "multipleChoice" ? "Múltipla Escolha" : "Dissertativa"}
+                      </td>
+                      <td className="px-3 py-2 text-sm font-mono">{question.value}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => setViewQuestion(question)}
+                            title="Visualizar"
+                          >
+                            <Eye className="h-3 w-3" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => handleDuplicate(question)}
+                            title="Duplicar questão"
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                          {canEditDeleteDesktop && (
+                            <>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => navigate(`/app/cadastros/questao/editar/${question.id}`)}
+                                title="Editar"
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => setDeleteQuestionId(question.id)}
+                                title="Excluir"
+                              >
+                                <Trash2 className="h-3 w-3 text-destructive" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

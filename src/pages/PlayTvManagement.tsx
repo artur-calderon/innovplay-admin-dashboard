@@ -1,0 +1,528 @@
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useAuth } from '@/context/authContext';
+import { useNavigate } from 'react-router-dom';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Plus, RefreshCw, Tv, School, GraduationCap, BookOpen, Trash2, Eye } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { api } from '@/lib/api';
+import { CreatePlayTvVideoForm } from '@/components/playtv/CreatePlayTvVideoForm';
+import { VideoList } from '@/components/playtv/VideoList';
+import { PlayTvVideo, PlayTvFilters } from '@/types/playtv';
+import { getUserHierarchyContext } from '@/utils/userHierarchy';
+
+export default function PlayTvManagement() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const [videos, setVideos] = useState<PlayTvVideo[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('visualizar');
+  const [filters, setFilters] = useState<PlayTvFilters>({});
+  const [schools, setSchools] = useState<Array<{ id: string; name: string }>>([]);
+  const [grades, setGrades] = useState<Array<{ id: string; name: string }>>([]);
+  const [subjects, setSubjects] = useState<Array<{ id: string; name: string }>>([]);
+  const [userContext, setUserContext] = useState<{
+    municipio_id?: string;
+    escola_id?: string;
+    estado_id?: string;
+    turmas?: Array<{ class_id: string; school_id: string; grade_id: string; subject_id?: string }>;
+  }>({});
+  const [isLoadingContext, setIsLoadingContext] = useState(true);
+
+  // Verificar permissões
+  const allowedRoles = useMemo(() => ['admin', 'professor', 'diretor', 'coordenador', 'tecadm'], []);
+  const canCreate = allowedRoles.includes(user.role);
+
+  const loadUserContext = useCallback(async () => {
+    setIsLoadingContext(true);
+    try {
+      const context = await getUserHierarchyContext(user.id, user.role);
+      
+      // Buscar estado ID se tiver município com state
+      let estadoId: string | undefined;
+      if (context.municipality?.state) {
+        try {
+          const statesResponse = await api.get('/city/states');
+          const states = statesResponse.data || [];
+          const state = states.find((s: { nome: string }) => s.nome === context.municipality?.state);
+          estadoId = state?.id;
+        } catch (error) {
+          console.error('Erro ao buscar estado:', error);
+        }
+      }
+
+      // Converter turmas do professor para o formato esperado
+      const turmas = context.classes?.map(c => ({
+        class_id: c.class_id,
+        school_id: c.school_id,
+        grade_id: c.grade_id,
+        subject_id: undefined, // Turmas podem não ter subject_id direto
+      })) || [];
+
+      setUserContext({
+        municipio_id: context.municipality?.id,
+        escola_id: context.school?.id,
+        estado_id: estadoId,
+        turmas,
+      });
+    } catch (error) {
+      console.error('Erro ao carregar contexto do usuário:', error);
+      setUserContext({});
+    } finally {
+      setIsLoadingContext(false);
+    }
+  }, [user.id, user.role]);
+
+  useEffect(() => {
+    if (!allowedRoles.includes(user.role)) {
+      toast({
+        title: 'Acesso Negado',
+        description: 'Você não tem permissão para acessar esta página.',
+        variant: 'destructive',
+      });
+      navigate('/app');
+      return;
+    }
+    loadUserContext();
+  }, [user.id, user.role, allowedRoles, toast, navigate, loadUserContext]);
+
+  useEffect(() => {
+    if (!isLoadingContext && allowedRoles.includes(user.role)) {
+      loadVideos();
+      loadFilterOptions();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.role, filters, isLoadingContext, allowedRoles]);
+
+  const loadFilterOptions = async () => {
+    try {
+      // Carregar escolas, séries e disciplinas para filtros em paralelo
+      const [schoolsRes, subjectsRes, gradesRes] = await Promise.all([
+        api.get('/school/').catch(() => ({ data: [] })),
+        api.get('/subjects').catch(() => ({ data: [] })),
+        api.get('/grades/').catch(() => ({ data: [] })),
+      ]);
+
+      setSchools(Array.isArray(schoolsRes.data) ? schoolsRes.data : (schoolsRes.data?.data || []));
+      setSubjects(subjectsRes.data || []);
+      // Sempre carregar todas as séries disponíveis
+      setGrades(gradesRes.data || []);
+    } catch (error) {
+      console.error('Erro ao carregar opções de filtro:', error);
+    }
+  };
+
+  const loadVideos = async () => {
+    setIsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (filters.school) params.append('school', filters.school);
+      if (filters.grade) params.append('grade', filters.grade);
+      if (filters.subject) params.append('subject', filters.subject);
+
+      const response = await api.get(`/play-tv/videos?${params.toString()}`);
+      let allVideos = response.data || [];
+
+      // Filtrar vídeos baseado no role
+      allVideos = filterVideosByRole(allVideos);
+
+      setVideos(allVideos);
+    } catch (err) {
+      const error = err as {
+        response?: {
+          status?: number;
+          data?: {
+            message?: string;
+          };
+        };
+        message?: string;
+      };
+      // Se o endpoint não existir (404), apenas definir lista vazia sem mostrar erro
+      // O interceptor transforma o erro, então verificamos a mensagem ou o status original
+      const is404 = error.response?.status === 404 || 
+                    error.message?.includes('não encontrado') ||
+                    error.message?.includes('Not Found');
+      
+      if (is404) {
+        setVideos([]);
+        // Não logar erro para 404 em endpoints que podem não estar implementados ainda
+        return;
+      }
+      
+      console.error('Erro ao carregar vídeos:', error);
+      toast({
+        title: 'Erro',
+        description: error.response?.data?.message || error.message || 'Não foi possível carregar os vídeos.',
+        variant: 'destructive',
+      });
+      setVideos([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const filterVideosByRole = (videos: PlayTvVideo[]): PlayTvVideo[] => {
+    if (user.role === 'admin') {
+      return videos;
+    }
+
+    if (user.role === 'tecadm' && userContext.municipio_id) {
+      // Tecadmin vê vídeos do seu município (que está no seu estado)
+      // Filtrar vídeos onde pelo menos uma escola pertence ao município do tecadmin
+      return videos.filter(video => 
+        video.schools.some(school => {
+          // Assumindo que as escolas têm city_id que corresponde ao município
+          // Como não temos city_id direto nas escolas do vídeo, vamos verificar se
+          // a escola está na lista de escolas do município
+          // Por enquanto, retornar todos os vídeos se tiver município definido
+          // O backend deve filtrar corretamente
+          return true;
+        })
+      );
+    }
+
+    if ((user.role === 'diretor' || user.role === 'coordenador') && userContext.escola_id) {
+      return videos.filter(video => 
+        video.schools.some(school => school.id === userContext.escola_id)
+      );
+    }
+
+    if (user.role === 'professor' && userContext.turmas && userContext.turmas.length > 0) {
+      const allowedSchoolIds = new Set(userContext.turmas.map(t => t.school_id));
+      const allowedGradeIds = new Set(userContext.turmas.map(t => t.grade_id));
+      
+      return videos.filter(video => 
+        video.schools.some(school => allowedSchoolIds.has(school.id)) &&
+        allowedGradeIds.has(video.grade.id)
+      );
+    }
+
+    return videos;
+  };
+
+  const canDeleteVideo = (video: PlayTvVideo): boolean => {
+    if (user.role === 'admin') {
+      return true;
+    }
+
+    if (user.role === 'coordenador' || user.role === 'professor') {
+      return false;
+    }
+
+    if (user.role === 'tecadm' && userContext.municipio_id) {
+      // Tecadmin pode deletar vídeos do seu município
+      // Verificar se o vídeo tem escolas do município do tecadmin
+      // Como não temos city_id direto, vamos permitir se tiver escolas
+      // O backend deve validar corretamente
+      return video.schools.length > 0;
+    }
+
+    if ((user.role === 'diretor') && userContext.escola_id) {
+      return video.schools.some(school => school.id === userContext.escola_id);
+    }
+
+    return false;
+  };
+
+  const handleDeleteVideo = async (videoId: string) => {
+    if (!confirm('Tem certeza que deseja excluir este vídeo?')) return;
+
+    try {
+      await api.delete(`/play-tv/videos/${videoId}`);
+      toast({
+        title: 'Sucesso',
+        description: 'Vídeo excluído com sucesso.',
+      });
+      loadVideos();
+    } catch (err) {
+      const error = err as {
+        response?: {
+          data?: {
+            message?: string;
+          };
+        };
+      };
+      console.error('Erro ao excluir vídeo:', error);
+      toast({
+        title: 'Erro',
+        description: error.response?.data?.message || 'Não foi possível excluir o vídeo.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleVideoClick = (video: PlayTvVideo) => {
+    navigate(`/app/play-tv/${video.id}`);
+  };
+
+  const handleRefresh = () => {
+    loadVideos();
+  };
+
+  const handleVideoCreated = () => {
+    loadVideos();
+    setActiveTab('visualizar');
+  };
+
+
+  return (
+    <div className="container mx-auto py-8 px-4 space-y-8 max-w-7xl">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 pb-4 border-b">
+        <div className="space-y-2">
+          <h1 className="text-4xl font-bold tracking-tight flex items-center gap-3 bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent">
+            <Tv className="w-10 h-10 text-blue-600" />
+            Play TV
+          </h1>
+          <p className="text-muted-foreground text-lg">
+            {canCreate
+              ? 'Gerencie e cadastre vídeos educacionais para os alunos'
+              : 'Visualize os vídeos disponíveis'}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" onClick={handleRefresh} disabled={isLoading} className="shadow-sm">
+            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            Atualizar
+          </Button>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      {canCreate && (
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="visualizar">
+              <Eye className="w-4 h-4 mr-2" />
+              Visualizar Vídeos
+            </TabsTrigger>
+            <TabsTrigger value="cadastrar">
+              <Plus className="w-4 h-4 mr-2" />
+              Cadastrar Vídeo
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="visualizar" className="space-y-6 mt-6">
+            {/* Filtros */}
+            <Card className="shadow-sm border-border/50">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-xl flex items-center gap-2">
+                  <School className="w-5 h-5 text-primary" />
+                  Filtros
+                </CardTitle>
+                <CardDescription>Filtre os vídeos por escola, série ou disciplina</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Escola</label>
+                    <Select
+                      value={filters.school || 'all'}
+                      onValueChange={(value) => {
+                        setFilters({
+                          ...filters,
+                          school: value === 'all' ? undefined : value,
+                        });
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Todas as escolas" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas as escolas</SelectItem>
+                        {schools.map((school) => (
+                          <SelectItem key={school.id} value={school.id}>
+                            {school.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Série</label>
+                    <Select
+                      value={filters.grade || 'all'}
+                      onValueChange={(value) =>
+                        setFilters({
+                          ...filters,
+                          grade: value === 'all' ? undefined : value,
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Todas as séries" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas as séries</SelectItem>
+                        {grades.map((grade) => (
+                          <SelectItem key={grade.id} value={grade.id}>
+                            {grade.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Disciplina</label>
+                    <Select
+                      value={filters.subject || 'all'}
+                      onValueChange={(value) =>
+                        setFilters({
+                          ...filters,
+                          subject: value === 'all' ? undefined : value,
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Todas as disciplinas" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas as disciplinas</SelectItem>
+                        {subjects.map((subject) => (
+                          <SelectItem key={subject.id} value={subject.id}>
+                            {subject.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Lista de Vídeos */}
+            <VideoList 
+              videos={videos} 
+              isLoading={isLoading} 
+              onVideoClick={handleVideoClick}
+              onDeleteVideo={handleDeleteVideo}
+              userRole={user.role}
+              canDeleteVideo={canDeleteVideo}
+            />
+          </TabsContent>
+
+          <TabsContent value="cadastrar">
+            <CreatePlayTvVideoForm
+              onSuccess={handleVideoCreated}
+              userRole={user.role}
+              userMunicipioId={userContext.municipio_id}
+              userEscolaId={userContext.escola_id}
+              userEstadoId={userContext.estado_id}
+              userTurmas={userContext.turmas}
+            />
+          </TabsContent>
+        </Tabs>
+      )}
+
+      {!canCreate && (
+        <>
+          {/* Filtros */}
+          <Card className="shadow-sm border-border/50">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-xl flex items-center gap-2">
+                <School className="w-5 h-5 text-primary" />
+                Filtros
+              </CardTitle>
+              <CardDescription>Filtre os vídeos por escola, série ou disciplina</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Escola</label>
+                  <Select
+                    value={filters.school || 'all'}
+                    onValueChange={(value) => {
+                      setFilters({
+                        ...filters,
+                        school: value === 'all' ? undefined : value,
+                      });
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todas as escolas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas as escolas</SelectItem>
+                      {schools.map((school) => (
+                        <SelectItem key={school.id} value={school.id}>
+                          {school.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Série</label>
+                  <Select
+                    value={filters.grade || 'all'}
+                    onValueChange={(value) =>
+                      setFilters({
+                        ...filters,
+                        grade: value === 'all' ? undefined : value,
+                      })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todas as séries" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas as séries</SelectItem>
+                      {grades.map((grade) => (
+                        <SelectItem key={grade.id} value={grade.id}>
+                          {grade.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Disciplina</label>
+                  <Select
+                    value={filters.subject || 'all'}
+                    onValueChange={(value) =>
+                      setFilters({
+                        ...filters,
+                        subject: value === 'all' ? undefined : value,
+                      })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todas as disciplinas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas as disciplinas</SelectItem>
+                      {subjects.map((subject) => (
+                        <SelectItem key={subject.id} value={subject.id}>
+                          {subject.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Lista de Vídeos */}
+          <VideoList 
+            videos={videos} 
+            isLoading={isLoading} 
+            onVideoClick={handleVideoClick}
+            onDeleteVideo={handleDeleteVideo}
+            userRole={user.role}
+            canDeleteVideo={canDeleteVideo}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+

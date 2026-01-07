@@ -3,9 +3,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, Building } from "lucide-react";
 
 interface City {
   id: string;
@@ -63,6 +70,16 @@ export default function SchoolForm({ school, onClose, onSave, onDelete, isLoadin
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!formData.name.trim() || !formData.address.trim() || !formData.city_id) {
+      toast({
+        title: "Campos obrigatórios",
+        description: "Preencha nome, endereço e município antes de salvar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsDeleting(true);
 
     try {
@@ -100,24 +117,52 @@ export default function SchoolForm({ school, onClose, onSave, onDelete, isLoadin
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{school ? "Editar Escola" : "Nova Escola"}</DialogTitle>
+      <DialogContent className="w-full max-w-[95vw] sm:max-w-2xl lg:max-w-3xl max-h-[95vh] overflow-hidden flex flex-col">
+        <DialogHeader className="pb-3 border-b">
+          <DialogTitle className="text-lg sm:text-xl flex items-center gap-2">
+            <Building className="h-5 w-5 sm:h-6 sm:w-6 text-orange-600" />
+            {school ? "Editar Escola" : "Nova Escola"}
+          </DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
-          <div className="space-y-2">
-            <Label htmlFor="name">Nome da Escola</Label>
-            <Input
-              id="name"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              required
-              disabled={isLoading || isDeleting}
-              autoComplete="off"
-            />
+        <form onSubmit={handleSubmit} className="space-y-6 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 py-4" autoComplete="off">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="name" className="flex items-center gap-1">
+                Nome da Escola
+                <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="name"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                required
+                disabled={isLoading || isDeleting}
+                autoComplete="off"
+                className="h-11"
+                placeholder="Nome completo da instituição"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="domain" className="flex items-center gap-1">
+                Domínio
+              </Label>
+              <Input
+                id="domain"
+                value={formData.domain}
+                onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
+                disabled={isLoading || isDeleting}
+                autoComplete="off"
+                className="h-11"
+                placeholder="exemplo.com.br"
+              />
+            </div>
           </div>
+          
           <div className="space-y-2">
-            <Label htmlFor="address">Endereço</Label>
+            <Label htmlFor="address" className="flex items-center gap-1">
+              Endereço
+              <span className="text-red-500">*</span>
+            </Label>
             <Input
               id="address"
               value={formData.address}
@@ -125,45 +170,40 @@ export default function SchoolForm({ school, onClose, onSave, onDelete, isLoadin
               required
               disabled={isLoading || isDeleting}
               autoComplete="off"
+              className="h-11"
+              placeholder="Endereço completo da escola"
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="domain">Domínio</Label>
-            <Input
-              id="domain"
-              value={formData.domain}
-              onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
-              required
-              disabled={isLoading || isDeleting}
-              autoComplete="off"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="city">Município</Label>
-            <select
-              id="city"
+            <Label htmlFor="city" className="flex items-center gap-1">
+              Município
+              <span className="text-red-500">*</span>
+            </Label>
+            <Select
               value={formData.city_id}
-              onChange={(e) => setFormData({ ...formData, city_id: e.target.value })}
-              className="w-full p-2 border rounded-md"
-              required
+              onValueChange={(value) => setFormData({ ...formData, city_id: value })}
               disabled={isLoading || isDeleting}
-              autoComplete="off"
             >
-              <option value="">Selecione um município</option>
-              {cities.map((city) => (
-                <option key={city.id} value={city.id}>
-                  {city.name} - {city.state}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="h-11">
+                <SelectValue placeholder="Selecione um município" />
+              </SelectTrigger>
+              <SelectContent>
+                {cities.map((city) => (
+                  <SelectItem key={city.id} value={city.id}>
+                    {city.name} - {city.state}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
             {school && onDelete && (
               <Button 
                 type="button" 
                 variant="destructive" 
                 onClick={handleDelete}
                 disabled={isLoading || isDeleting}
+                className="h-11 order-3 sm:order-1"
               >
                 {isDeleting ? (
                   <>
@@ -171,23 +211,35 @@ export default function SchoolForm({ school, onClose, onSave, onDelete, isLoadin
                     Excluindo...
                   </>
                 ) : (
-                  "Excluir"
+                  "Excluir Escola"
                 )}
               </Button>
             )}
-            <Button type="button" variant="outline" onClick={onClose} disabled={isLoading || isDeleting}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={isLoading || isDeleting}>
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Salvando...
-                </>
-              ) : (
-                "Salvar"
-              )}
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-3 flex-1 sm:justify-end">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={onClose} 
+                disabled={isLoading || isDeleting}
+                className="h-11 order-2 sm:order-1"
+              >
+                Cancelar
+              </Button>
+              <Button 
+                type="submit" 
+                disabled={isLoading || isDeleting}
+                className="h-11 order-1 sm:order-2"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  school ? "Salvar Alterações" : "Criar Escola"
+                )}
+              </Button>
+            </div>
           </div>
         </form>
       </DialogContent>

@@ -132,16 +132,16 @@ export function LinkStudentModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5 text-green-600" />
+      <DialogContent className="w-full max-w-[95vw] sm:max-w-2xl lg:max-w-4xl h-[95vh] max-h-[95vh] overflow-hidden flex flex-col">
+        <DialogHeader className="pb-3 border-b bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/40 dark:via-emerald-950/30 dark:to-teal-950/20">
+          <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl text-foreground">
+            <Users className="h-5 w-5 sm:h-6 sm:w-6 text-green-600 dark:text-green-300" />
             Vincular Alunos à Turma
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-sm sm:text-base text-muted-foreground">
             Selecione os alunos que deseja vincular à turma <strong>{className}</strong>
             {['admin', 'tecadm'].includes(user?.role || '') && (
-              <span className="block mt-1 text-xs text-blue-600">
+              <span className="block mt-1 text-xs sm:text-sm text-blue-600 dark:text-blue-300">
                 ⚡ Visualizando todos os alunos do sistema
               </span>
             )}
@@ -156,24 +156,26 @@ export function LinkStudentModal({
               placeholder="Buscar alunos por nome, email ou matrícula..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
+              className="pl-10 h-11 text-sm sm:text-base"
             />
           </div>
 
           {/* Students List */}
-          <div className="flex-1 overflow-y-auto border rounded-lg">
+          <div className="flex-1 overflow-hidden border border-border rounded-lg bg-card min-h-[400px] max-h-[500px]">
             {isLoading ? (
-              <div className="flex items-center justify-center p-8">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                <span className="ml-2">Carregando alunos...</span>
+              <div className="flex flex-col items-center justify-center p-8 h-full">
+                <Loader2 className="h-6 w-6 sm:h-8 sm:w-8 animate-spin text-primary mb-3" />
+                <span className="text-sm sm:text-base text-muted-foreground">Carregando alunos...</span>
               </div>
             ) : filteredStudents.length === 0 ? (
-              <div className="text-center p-8">
-                <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">
+              <div className="flex flex-col items-center justify-center p-6 sm:p-8 h-full">
+                <div className="bg-green-50 dark:bg-green-950/40 p-4 rounded-full mb-4">
+                  <Users className="h-8 w-8 sm:h-12 sm:w-12 text-green-400 dark:text-green-300" />
+                </div>
+                <h3 className="text-base sm:text-lg font-semibold mb-2 text-center text-foreground">
                   {searchTerm ? "Nenhum aluno encontrado" : "Nenhum aluno disponível"}
                 </h3>
-                <p className="text-muted-foreground text-sm">
+                <p className="text-sm sm:text-base text-muted-foreground text-center max-w-sm">
                   {searchTerm 
                     ? "Tente ajustar os termos de busca"
                     : "Todos os alunos já estão vinculados a turmas"
@@ -181,48 +183,65 @@ export function LinkStudentModal({
                 </p>
               </div>
             ) : (
-              <div className="space-y-2 p-4">
-                {filteredStudents.map((student) => (
-                  <div
-                    key={student.id}
-                    className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    <Checkbox
-                      checked={selectedStudents.includes(student.id)}
-                      onCheckedChange={() => handleStudentToggle(student.id)}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-sm truncate">{student.name}</span>
-                        <Badge variant="secondary" className="text-xs">Aluno</Badge>
+              <div className="h-full overflow-y-auto scrollbar-thin scrollbar-thumb-green-300 scrollbar-track-transparent hover:scrollbar-thumb-green-400 dark:scrollbar-thumb-green-700 dark:scrollbar-track-green-950/40 scroll-smooth">
+                <div className="space-y-2 sm:space-y-3 p-3 sm:p-4">
+                  {filteredStudents.map((student) => (
+                    <div
+                      key={student.id}
+                      className="flex items-center gap-3 p-3 sm:p-4 border rounded-lg hover:bg-muted transition-colors border-border"
+                    >
+                      <Checkbox
+                        checked={selectedStudents.includes(student.id)}
+                        onCheckedChange={() => handleStudentToggle(student.id)}
+                        className="flex-shrink-0"
+                      />
+                      <div className="flex-shrink-0">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-green-100 dark:bg-green-950/30 rounded-full flex items-center justify-center">
+                          <Users className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 dark:text-green-300" />
+                        </div>
                       </div>
-                      <div className="text-xs text-muted-foreground space-y-1">
-                        <div className="truncate">{student.email || student.user?.email}</div>
-                        {student.registration && (
-                          <div>Matrícula: {student.registration}</div>
-                        )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mb-1">
+                          <span className="font-medium text-sm sm:text-base truncate text-foreground">{student.name}</span>
+                          <Badge variant="secondary" className="text-xs bg-green-50 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-200 dark:border-green-800 w-fit">
+                            Aluno
+                          </Badge>
+                        </div>
+                        <div className="text-xs sm:text-sm text-muted-foreground space-y-1">
+                          <div className="truncate">{student.email || student.user?.email}</div>
+                          {student.registration && (
+                            <div className="text-muted-foreground/75">Matrícula: {student.registration}</div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             )}
           </div>
         </div>
 
-        <DialogFooter className="flex items-center justify-between">
-          <div className="text-sm text-muted-foreground">
-            {selectedStudents.length} aluno(s) selecionado(s)
+        <DialogFooter className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t bg-gray-50/50 dark:bg-muted px-4 sm:px-6 py-3">
+          <div className="text-xs sm:text-sm text-muted-foreground order-2 sm:order-1">
+            <span className="font-medium">{selectedStudents.length}</span> aluno(s) selecionado(s)
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose} disabled={isLinking}>
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto order-1 sm:order-2">
+            <Button 
+              variant="outline" 
+              onClick={onClose} 
+              disabled={isLinking}
+              className="h-10 order-2 sm:order-1"
+            >
               Cancelar
             </Button>
             <Button 
               onClick={handleLinkStudents} 
               disabled={selectedStudents.length === 0 || isLinking}
+              className="h-10 order-1 sm:order-2 bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-400"
             >
               {isLinking && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Users className="mr-2 h-4 w-4" />
               Vincular ({selectedStudents.length})
             </Button>
           </div>

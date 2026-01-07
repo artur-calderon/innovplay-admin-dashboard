@@ -12,13 +12,16 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useEvaluationActions, useQuestions } from "@/stores/useEvaluationStore";
+import { useEvaluationActions, useQuestions, useQuestionActions } from "@/stores/useEvaluationStore";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/authContext";
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "./results/constants";
+import { scrollToFirstError, getFieldLabel } from "@/utils/formValidation";
+import { useEvaluationsManager } from "@/hooks/use-cache";
 
 interface CreateEvaluationStep2Props {
   data: {
@@ -40,9 +43,12 @@ interface CreateEvaluationStep2Props {
     duration?: string;
     classes?: string[];
     municipality?: string;
+    questions?: Question[];
   };
   onBack: () => void;
-  onComplete?: () => void;
+  onComplete?: (updatedQuestions?: Question[]) => void;
+  editMode?: boolean;
+  evaluationId?: string;
 }
 
 interface QuestionsBySubject {
@@ -53,6 +59,8 @@ export const CreateEvaluationStep2 = ({
   data,
   onBack,
   onComplete,
+  editMode = false,
+  evaluationId,
 }: CreateEvaluationStep2Props) => {
   const [loading, setLoading] = useState(false);
   const [questionsBySubject, setQuestionsBySubject] = useState<QuestionsBySubject>({});
@@ -61,13 +69,52 @@ export const CreateEvaluationStep2 = ({
   const [showCreateQuestion, setShowCreateQuestion] = useState(false);
   const [selectedSubjectForQuestion, setSelectedSubjectForQuestion] = useState<string>("");
   const [previewQuestion, setPreviewQuestion] = useState<Question | null>(null);
+  const [gradeName, setGradeName] = useState<string>("");
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { updateAfterCRUD } = useEvaluationsManager();
 
   // Usar o store para criação de avaliação
   const { createEvaluation } = useEvaluationActions();
-  const allQuestions = useQuestions(); // Pegar questões do store
+  const allQuestions = useQuestions();
+  const { setQuestions, clearQuestions, addQuestion } = useQuestionActions();
+
+  // Carregar nome da série
+  useEffect(() => {
+    const fetchGradeName = async () => {
+      if (data.grade) {
+        try {
+          const response = await api.get(`/grades/${data.grade}`);
+          if (response.data && response.data.name) {
+            setGradeName(response.data.name);
+          } else {
+            // Tentar buscar todas as séries e encontrar pelo ID
+            const gradesResponse = await api.get("/grades/");
+            if (Array.isArray(gradesResponse.data)) {
+              const grade = gradesResponse.data.find((g: { id: string; name: string }) => g.id === data.grade);
+              if (grade) {
+                setGradeName(grade.name);
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Erro ao buscar nome da série:", error);
+          setGradeName("");
+        }
+      }
+    };
+    fetchGradeName();
+  }, [data.grade]);
+
+  // Carregar questões existentes quando entrar na edição
+  useEffect(() => {
+    if (data.questions && data.questions.length > 0) {
+      setQuestions(data.questions);
+    } else {
+      clearQuestions();
+    }
+  }, [data.questions, setQuestions, clearQuestions]);
 
   // Inicializar estrutura de questões por disciplina
   useEffect(() => {
@@ -77,6 +124,24 @@ export const CreateEvaluationStep2 = ({
     });
     setQuestionsBySubject(initialQuestionsBySubject);
   }, [data.subjects]);
+
+  // Atualizar questionsBySubject quando questões do store mudarem
+  useEffect(() => {
+    if (allQuestions.length > 0) {
+      const updatedQuestionsBySubject: QuestionsBySubject = {};
+      data.subjects.forEach(subject => {
+        const subjectQuestions = allQuestions.filter(q => {
+          const questionWithSubjectId = q as { subjectId?: string; subject?: { id?: string }; subject_id?: string };
+          return questionWithSubjectId.subjectId === subject.id || 
+                 questionWithSubjectId.subject?.id === subject.id ||
+                 questionWithSubjectId.subject_id === subject.id;
+        });
+        
+        updatedQuestionsBySubject[subject.id] = subjectQuestions;
+      });
+      setQuestionsBySubject(updatedQuestionsBySubject);
+    }
+  }, [allQuestions, data.subjects]);
 
   const handleAddFromBank = (subjectId: string) => {
     setSelectedSubjectForQuestion(subjectId);
@@ -89,109 +154,48 @@ export const CreateEvaluationStep2 = ({
   };
 
   const handleQuestionCreated = (question: Question) => {
-    if (selectedSubjectForQuestion) {
-      setQuestionsBySubject(prev => ({
-        ...prev,
-        [selectedSubjectForQuestion]: [...(prev[selectedSubjectForQuestion] || []), question]
-      }));
-
-      toast({
-        title: "Questão criada e adicionada",
-        description: SUCCESS_MESSAGES.DATA_SAVED,
-      });
-    }
+    addQuestion(question);
+    
     setShowCreateQuestion(false);
-    setSelectedSubjectForQuestion("");
-  };
-
-  const handleRemoveQuestion = (subjectId: string, questionIndex: number) => {
-    setQuestionsBySubject(prev => ({
-      ...prev,
-      [subjectId]: prev[subjectId].filter((_, i) => i !== questionIndex)
-    }));
     toast({
-      title: "Questão removida",
-      description: "A questão foi removida da avaliação.",
+      title: "Questão criada",
+      description: "Nova questão adicionada à avaliação",
     });
   };
 
   const handleQuestionSelected = (question: Question) => {
-    if (selectedSubjectForQuestion) {
-      if (question.subject?.id !== selectedSubjectForQuestion) {
-        toast({
-          title: "Erro",
-          description: ERROR_MESSAGES.DATA_NOT_FOUND,
-          variant: "destructive",
-        });
-        return;
-      }
+    addQuestion(question);
+    
+    toast({
+      title: "Questão adicionada",
+      description: "Questão adicionada à avaliação",
+    });
+  };
 
-      const currentQuestions = questionsBySubject[selectedSubjectForQuestion] || [];
-      const isAlreadyAdded = currentQuestions.some(q => q.id === question.id);
-
-      if (isAlreadyAdded) {
-        toast({
-          title: "Atenção",
-          description: "Esta questão já foi adicionada a esta disciplina.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      setQuestionsBySubject(prev => ({
-        ...prev,
-        [selectedSubjectForQuestion]: [...(prev[selectedSubjectForQuestion] || []), question]
-      }));
-
-      toast({
-        title: "Questão adicionada",
-        description: "A questão foi adicionada à avaliação.",
-      });
-    }
+  const handleRemoveQuestion = (questionId: string) => {
+    const updatedQuestions = allQuestions.filter(q => q.id !== questionId);
+    setQuestions(updatedQuestions);
+    
+    toast({
+      title: "Questão removida",
+      description: "Questão removida da avaliação",
+    });
   };
 
   const handleViewQuestion = async (question: Question) => {
     try {
-      // Se a questão já tem dados completos, usar diretamente
-      if (question.options && question.options.length > 0 && question.formattedText) {
-        setPreviewQuestion(question);
-        setShowQuestionPreview(true);
-        return;
-      }
-
-      // Se não tem dados completos, buscar da API
       if (question.id && question.id !== 'preview') {
-        const response = await api.get<Question>(`/questions/${question.id}`);
-        const fullQuestion = response.data;
-        
-        // Normalizar a questão com dados completos
-        const skillsValue = fullQuestion.skills as string[] | string | undefined;
-        const normalizedQuestion: Question = {
-          ...fullQuestion,
-          skills: Array.isArray(skillsValue) 
-            ? skillsValue 
-            : typeof skillsValue === 'string' && skillsValue.trim().length > 0
-              ? skillsValue.split(',').map(s => s.trim())
-              : [],
-          options: fullQuestion.options || [],
-          secondStatement: fullQuestion.secondStatement || '',
-          solution: fullQuestion.solution || fullQuestion.formattedSolution || '',
-          formattedText: fullQuestion.formattedText || fullQuestion.text,
-          formattedSolution: fullQuestion.formattedSolution || fullQuestion.solution,
-        };
-
-        setPreviewQuestion(normalizedQuestion);
-        setShowQuestionPreview(true);
+        const response = await api.get(`/questions/${question.id}`);
+        setPreviewQuestion(response.data);
       } else {
-        // Para questões novas (preview), usar os dados disponíveis
         setPreviewQuestion(question);
-        setShowQuestionPreview(true);
       }
+      setShowQuestionPreview(true);
     } catch (error) {
-      console.error("Erro ao carregar detalhes da questão:", error);
+      console.error("Erro ao buscar questão:", error);
       toast({
         title: "Erro",
-        description: "Não foi possível carregar os detalhes da questão.",
+        description: "Não foi possível carregar a questão",
         variant: "destructive",
       });
     }
@@ -203,81 +207,101 @@ export const CreateEvaluationStep2 = ({
 
       if (!user) {
         toast({
-          title: "Erro de Autenticação",
-          description: "Você precisa estar logado para criar uma avaliação.",
+          title: "Erro",
+          description: "Usuário não autenticado",
           variant: "destructive",
         });
-        setLoading(false);
         return;
       }
-
-      if (!data.title || data.title.trim() === "") {
-        toast({
-          title: "Erro de Validação",
-          description: "O título da avaliação é obrigatório.",
-          variant: "destructive",
-        });
-        setLoading(false);
-        return;
-      }
-
-      if (!data.course || !data.grade || !data.subjects || data.subjects.length === 0) {
-        toast({
-          title: "Erro de Validação",
-          description: "Curso, série e disciplina são obrigatórios.",
-          variant: "destructive",
-        });
-        setLoading(false);
-        return;
-      }
-
-      const allQuestions = Object.values(questionsBySubject).flat();
 
       if (allQuestions.length === 0) {
+        // Scroll para a seção de questões
+        const questionsSection = document.querySelector('[data-section="questions"]');
+        if (questionsSection) {
+          questionsSection.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'center' 
+          });
+        }
+        
         toast({
-          title: "Erro de Validação",
-          description: "Adicione pelo menos uma questão à avaliação.",
+          title: "Erro",
+          description: ERROR_MESSAGES.INVALID_QUESTIONS,
           variant: "destructive",
         });
-        setLoading(false);
         return;
       }
 
-      // Helper para normalizar o tipo para o formato aceito pelo backend
-      const normalizeQuestionType = (t?: string) => {
-        const s = (t || '').toLowerCase();
-        if (s === 'multiplechoice' || s === 'multiple_choice') return 'multiple_choice';
-        if (s === 'truefalse' || s === 'true_false') return 'true_false';
-        return 'essay';
-      };
+      // Validar se todas as questões têm alternativas válidas
+      const invalidQuestions = allQuestions.filter(q => {
+        if (q.type === 'multipleChoice' && (!q.options || q.options.length === 0)) return true;
+        if (q.type === 'multipleChoice' && !q.options.some(opt => opt.isCorrect)) return true;
+        return false;
+      });
 
-      // Estruturar dados da avaliação no formato que o backend espera
+      if (invalidQuestions.length > 0) {
+        // Scroll para a seção de questões
+        const questionsSection = document.querySelector('[data-section="questions"]');
+        if (questionsSection) {
+          questionsSection.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'center' 
+          });
+        }
+        
+        toast({
+          title: "Erro de Validação",
+          description: `${invalidQuestions.length} questão(ões): ${ERROR_MESSAGES.INVALID_QUESTIONS}`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // ✅ CORREÇÃO: Se estiver em modo de edição, delegar para o EditEvaluation
+      if (editMode && onComplete) {
+        console.log("📝 Modo de edição: delegando questões para EditEvaluation");
+        onComplete(allQuestions);
+        return;
+      }
+
+      // ✅ CORREÇÃO: Fluxo de criação (apenas quando não estiver editando)
+      // ✅ CORREÇÃO: Log dos dados que serão enviados ao backend
+      const classesToSend = data.selectedClasses?.map(c => c.id) || data.classes || [];
+      const schoolsToSend = data.selectedSchools?.map(s => s.id) || data.schools || [];
+      
+      console.log('📤 CreateEvaluationStep2 - Dados que serão enviados ao backend:', {
+        selectedClasses: data.selectedClasses?.map(c => ({ id: c.id, name: c.name, school: c.school?.name })),
+        classes: data.classes,
+        classesToSend,
+        classesCount: classesToSend.length,
+        selectedSchools: data.selectedSchools?.map(s => ({ id: s.id, name: s.name })),
+        schools: data.schools,
+        schoolsToSend,
+        schoolsCount: schoolsToSend.length
+      });
+      
       const backendEvaluationData = {
-        title: data.title.trim(),
-        description: data.description?.trim() || "Avaliação criada via painel administrativo",
+        title: data.title,
+        description: data.description || "",
         type: data.type,
         model: data.model,
         course: data.course,
-        created_by: user?.id || "",
-        subject: data.subjects[0]?.id || data.subject, // Disciplina principal
         grade: data.grade,
-        grade_id: data.grade,
-        duration: parseInt(data.duration || "60"), // ✅ ADICIONADO: Campo duration em minutos
-        intructions: "Leia atentamente cada questão antes de responder",
-        max_score: allQuestions.reduce((total, q) => total + (q.value || 0), 0),
-        time_limit: data.endDateTime || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+        subject: data.subject,
+        time_limit: data.startDateTime || new Date().toISOString(),
         end_time: data.endDateTime || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+        duration: data.duration ? parseInt(data.duration, 10) : 60,
         evaluation_mode: "virtual",
         municipalities: data.municipalities || [],
-        schools: data.selectedSchools?.map(s => s.id) || data.schools || [],
-        classes: data.selectedClasses?.map(c => c.id) || data.classes || [], // ✅ CORREÇÃO: Adicionar campo classes
-        subjects: data.subjects.map(subject => subject.id), // Corrigido: enviar array de IDs
+        schools: schoolsToSend, // ✅ CORREÇÃO: Usar apenas escolas selecionadas
+        classes: classesToSend, // ✅ CORREÇÃO: Usar apenas turmas selecionadas
+        subjects: data.subjects.map(subject => subject.id),
         subjects_info: data.subjects.map(subject => ({
           subject: subject.id,
-          weight: Math.round(100 / data.subjects.length) // Peso igual para todas as disciplinas
+          weight: Math.round(100 / data.subjects.length)
         })),
+        created_by: user?.id || "",
         questions: allQuestions.map((question, index) => {
-          // Se a questão já tem ID (vem do banco), usar apenas id e number
           if (question.id && question.id !== 'preview') {
             return {
               id: question.id,
@@ -285,81 +309,69 @@ export const CreateEvaluationStep2 = ({
             };
           }
 
-          // Se é uma nova questão, enviar todos os dados
-          const normalizedType = normalizeQuestionType(question.type);
-
-          // Calcular opções e solução para múltipla escolha
-          const options = normalizedType === 'multiple_choice'
-            ? (question.options || []).map((opt, optIndex) => ({
-                id: opt.id || String.fromCharCode(65 + optIndex),
-                text: opt.text,
-              }))
-            : [];
-
-          const correctIndex = (question.options || []).findIndex((o) => o.isCorrect);
-          const solution = normalizedType === 'multiple_choice'
-            ? (correctIndex >= 0 ? String.fromCharCode(65 + correctIndex) : '')
-            : (question.formattedSolution || question.solution || '');
-
           return {
             number: index + 1,
             text: question.text,
             formattedText: question.formattedText || question.text,
-            subjectId: question.subjectId,
-            subject_id: question.subjectId,
-            title: question.title,
-            description: question.title,
-            command: question.title,
-            subtitle: question.title,
-            options,
-            skills: question.skills || [],
-            grade: { id: question.grade?.id || data.grade },
-            difficulty: question.difficulty,
-            solution,
-            formattedSolution: question.formattedSolution || question.solution || "",
-            type: question.type === 'multipleChoice' ? 'multipleChoice' : 'dissertativa',
-            value: question.value || 0,
-            topics: [],
-            secondStatement: question.secondStatement || '',
-            created_by: user?.id || ""
+             subjectId: question.subjectId,
+             title: question.title,
+             description: question.title,
+             command: question.title,
+             subtitle: question.title,
+             secondStatement: question.secondStatement || '',
+             options: question.options?.map((opt, optIndex) => ({
+               id: String.fromCharCode(65 + optIndex),
+               text: opt.text,
+               isCorrect: opt.isCorrect
+             })) || [],
+             skills: question.skills || "", // String única (ID da habilidade)
+             grade: question.grade?.id || data.grade,
+             difficulty: question.difficulty,
+             solution: question.solution || "",
+             formattedSolution: question.formattedSolution || question.solution || "",
+             type: question.type === 'multipleChoice' ? 'multiple_choice' : 'open',
+             value: question.value || 0,
+             topics: [],
+             educationStageId: data.course,
+             created_by: user?.id || "",
+             lastModifiedBy: user?.id || ""
           };
         })
       };
 
-      // ✅ DEBUG: Log para verificar se duration está sendo enviado
-      console.log("📤 Criando avaliação com dados no formato do backend:", {
-        ...backendEvaluationData,
-        duration: backendEvaluationData.duration,
-        totalQuestions: allQuestions.length,
-        selectedClasses: data.selectedClasses?.map(c => c.name),
-        selectedSchools: data.selectedSchools?.map(s => s.name)
-      });
-
-      // Criar avaliação no backend usando o endpoint correto
       const response = await api.post("/test", backendEvaluationData);
-      const newEvaluation = response.data;
-      console.log("✅ Avaliação criada com ID:", newEvaluation.id);
+      
+      if (response.status === 201 || response.status === 200) {
+        // Invalidar cache após criar avaliação
+        await updateAfterCRUD();
 
-      const selectedClassesCount = data.selectedClasses?.length || 0;
-      const questionsCount = allQuestions.length;
+        toast({
+          title: SUCCESS_MESSAGES.EVALUATION_CREATED,
+          description: `Avaliação "${data.title}" criada com sucesso!`,
+        });
 
-      toast({
-        title: "🎉 Sucesso!",
-        description: `Avaliação criada com ${questionsCount} questões para ${selectedClassesCount || 'todas as'} turma${selectedClassesCount > 1 ? 's' : ''}!`,
-      });
+        clearQuestions();
 
-      if (onComplete) {
-        onComplete();
+        // 🔧 CORREÇÃO: Sempre redirecionar para página inicial
+        navigate("/app/avaliacoes");
+      }
+    } catch (error: unknown) {
+      const apiError = error as { response?: { data?: { message?: string; error?: string } }; message?: string };
+      
+      console.error("Erro ao criar avaliação:", error);
+      
+      let errorMessage: string = ERROR_MESSAGES.EVALUATION_CREATE_FAILED;
+      if (apiError?.response?.data?.message) {
+        errorMessage = apiError.response.data.message;
+      } else if (apiError?.response?.data?.error) {
+        errorMessage = apiError.response.data.error;
+      } else if (apiError?.message) {
+        errorMessage = apiError.message;
       }
 
-      // Redirecionar para lista de avaliações
-      navigate("/app/avaliacoes");
-
-    } catch (error) {
-      console.error("❌ Erro ao criar avaliação:", error);
       toast({
-        title: "Erro Inesperado",
-        description: "Não foi possível criar a avaliação. Verifique o console para mais detalhes.",
+        title: ERROR_MESSAGES.EVALUATION_CREATE_FAILED,
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -368,190 +380,187 @@ export const CreateEvaluationStep2 = ({
   };
 
   const getTotalQuestions = () => {
-    return Object.values(questionsBySubject).reduce((total, questions) => total + questions.length, 0);
+    return allQuestions.length;
   };
 
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case 'Avançado': return 'bg-green-800 text-green-100';
-      case 'Adequado': return 'bg-green-100 text-green-800';
-      case 'Básico': return 'bg-yellow-100 text-yellow-800';
-      case 'Abaixo do Básico': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const getTypeLabel = (type: string) => {
-    switch (type) {
-      case 'multipleChoice': return 'Múltipla Escolha';
-      case 'dissertativa': return 'Dissertativa';
-      case 'trueFalse': return 'Verdadeiro/Falso';
-      default: return type;
-    }
+  const getQuestionsForSubject = (subjectId: string) => {
+    return allQuestions.filter(q => {
+      const questionWithSubjectId = q as { subjectId?: string; subject?: { id?: string }; subject_id?: string };
+      return questionWithSubjectId.subjectId === subjectId || 
+             questionWithSubjectId.subject?.id === subjectId ||
+             questionWithSubjectId.subject_id === subjectId;
+    });
   };
 
   return (
     <div className="space-y-6">
+      {/* Header com resumo */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">📝 Questões por Disciplina</h2>
-          <div className="text-sm text-muted-foreground mt-1">
-            {data.subjects?.length > 0 ? (
-              <>
-                <span className="font-medium">{data.subjects.length} disciplina{data.subjects.length > 1 ? 's' : ''} selecionada{data.subjects.length > 1 ? 's' : ''}:</span>
-                <span className="ml-2">
-                  {data.subjects.map((subject, index) => (
-                    <span key={subject.id}>
-                      {subject.name}
-                      {index < data.subjects.length - 1 && ", "}
-                    </span>
-                  ))}
-                </span>
-              </>
-            ) : (
-              "Nenhuma disciplina selecionada"
-            )}
-          </div>
-        </div>
-        <div className="text-right">
-          <div className="text-2xl font-bold text-primary">
-            {getTotalQuestions()}
-          </div>
-          <div className="text-sm text-muted-foreground">
-            questões totais
-          </div>
+          <h2 className="text-xl font-semibold">Questões da Avaliação</h2>
+          <p className="text-sm text-muted-foreground">
+            Total: {getTotalQuestions()} questão(ões) selecionada(s)
+          </p>
         </div>
       </div>
 
-      <Card>
-        <CardContent className="pt-6">
-          {data.subjects?.length > 0 ? (
-            <div className="space-y-6">
-              {data.subjects.map((subject) => {
-                const subjectQuestions = questionsBySubject[subject.id] || [];
-                return (
-                  <Card key={subject.id}>
-                    <CardContent className="pt-6">
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-                        <div>
-                          <h3 className="text-lg font-semibold flex items-center gap-2">
-                            <Book className="h-5 w-5 text-primary" />
-                            {subject.name}
-                            <Badge variant="secondary" className="text-xs">
-                              {subjectQuestions.length} questões
-                            </Badge>
-                          </h3>
+      {/* Questões por disciplina */}
+      <div className="space-y-6" data-section="questions">
+        {data.subjects.map((subject) => {
+          const subjectQuestions = getQuestionsForSubject(subject.id);
+          
+          return (
+            <Card key={subject.id}>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Book className="h-5 w-5" />
+                    <h3 className="text-lg font-medium">{subject.name}</h3>
+                    <Badge variant="outline">
+                      {subjectQuestions.length} questão(ões)
+                    </Badge>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleAddFromBank(subject.id)}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Banco de Questões
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleCreateNewQuestion(subject.id)}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Nova Questão
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Lista de questões */}
+                <div className="space-y-3">
+                  {subjectQuestions.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Book className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                      <p>Nenhuma questão adicionada para {subject.name}</p>
+                      <p className="text-sm">Use os botões acima para adicionar questões</p>
+                    </div>
+                  ) : (
+                    subjectQuestions.map((question, index) => (
+                      <div
+                        key={question.id || index}
+                        className="flex items-center justify-between p-3 border rounded-lg bg-muted"
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Badge variant="secondary">#{index + 1}</Badge>
+                            <span className="text-sm font-medium">
+                              {question.title || `Questão ${index + 1}`}
+                            </span>
+                          </div>
+                          <p className="text-sm text-muted-foreground line-clamp-2">
+                            {question.text || "Sem texto disponível"}
+                          </p>
+                          {question.options && question.options.length > 0 && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {question.options.length} alternativas
+                            </p>
+                          )}
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex gap-2">
                           <Button
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
-                            onClick={() => handleCreateNewQuestion(subject.id)}
-                            className="flex items-center gap-2"
+                            onClick={() => handleViewQuestion(question)}
                           >
-                            <Plus className="h-4 w-4" />
-                            Nova Questão
+                            <Eye className="h-4 w-4" />
                           </Button>
                           <Button
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
-                            onClick={() => handleAddFromBank(subject.id)}
-                            className="flex items-center gap-2"
+                            onClick={() => handleRemoveQuestion(question.id || "")}
                           >
-                            <Book className="h-4 w-4" />
-                            Banco de Questões
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
                       </div>
+                    ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
 
-                      {subjectQuestions.length > 0 ? (
-                        <div className="space-y-3">
-                          {subjectQuestions.map((question, index) => (
-                            <Card key={question.id || index} className="bg-muted/30 hover:bg-muted/50 transition-colors">
-                              <CardContent className="p-4">
-                                <div className="flex items-start justify-between gap-4">
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-foreground line-clamp-2 mb-2">
-                                      {question.title || question.text}
-                                    </p>
-                                    <div className="flex flex-wrap gap-1">
-                                      <Badge className={getDifficultyColor(question.difficulty)} variant="secondary">
-                                        {question.difficulty}
-                                      </Badge>
-                                      <Badge variant="outline">
-                                        {getTypeLabel(question.type)}
-                                      </Badge>
-                                      <Badge variant="outline">
-                                        {question.value} pt{question.value !== 1 ? 's' : ''}
-                                      </Badge>
-                                      {question.subject && (
-                                        <Badge variant="outline" className="text-xs">
-                                          {question.subject.name}
-                                        </Badge>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-1">
-                                    <Button 
-                                      variant="ghost" 
-                                      size="icon" 
-                                      onClick={() => handleViewQuestion(question)}
-                                      className="hover:bg-blue-50 hover:text-blue-600"
-                                    >
-                                      <Eye className="h-4 w-4" />
-                                    </Button>
-                                    <Button 
-                                      variant="ghost" 
-                                      size="icon" 
-                                      onClick={() => handleRemoveQuestion(subject.id, index)} 
-                                      className="text-destructive hover:text-destructive hover:bg-red-50"
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-8 text-muted-foreground text-sm bg-muted/30 rounded-lg">
-                          <div className="flex flex-col items-center gap-2">
-                            <Book className="h-8 w-8 text-muted-foreground/50" />
-                            <p>Nenhuma questão adicionada para {subject.name}.</p>
-                            <p className="text-xs">Use os botões acima para adicionar questões.</p>
-                          </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              <div className="flex flex-col items-center gap-2">
-                <Book className="h-12 w-12 text-muted-foreground/50" />
-                <p>Nenhuma disciplina selecionada.</p>
-              </div>
-            </div>
+      {/* Botões de ação */}
+      <div className="flex justify-between">
+        <Button variant="outline" onClick={onBack}>
+          Voltar
+        </Button>
+        <Button 
+          onClick={handleSubmit} 
+          disabled={loading || getTotalQuestions() === 0}
+        >
+          {loading ? (editMode ? "Salvando..." : "Criando...") : (editMode ? "Salvar Alterações" : "Finalizar Avaliação")}
+        </Button>
+      </div>
+
+      {/* Modais */}
+      <Dialog open={showQuestionBank} onOpenChange={setShowQuestionBank}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Banco de Questões</DialogTitle>
+            <DialogDescription>
+              Selecione questões do banco para adicionar à avaliação
+            </DialogDescription>
+          </DialogHeader>
+          <QuestionBank
+            open={showQuestionBank}
+            subjectId={selectedSubjectForQuestion}
+            onQuestionSelected={handleQuestionSelected}
+            onClose={() => setShowQuestionBank(false)}
+            gradeId={data.grade}
+            gradeName={gradeName}
+            subjects={data.subjects}
+            selectedSubjectId={selectedSubjectForQuestion}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showQuestionPreview} onOpenChange={setShowQuestionPreview}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Visualizar Questão</DialogTitle>
+            <DialogDescription>
+              Prévia completa da questão com alternativas e resolução
+            </DialogDescription>
+          </DialogHeader>
+          {previewQuestion && (
+            <QuestionPreview
+              question={previewQuestion}
+              onClose={() => setShowQuestionPreview(false)}
+            />
           )}
-        </CardContent>
-      </Card>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showCreateQuestion} onOpenChange={setShowCreateQuestion}>
-        <DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Criar Nova Questão</DialogTitle>
+            <DialogDescription>
+              Crie uma nova questão para adicionar à avaliação
+            </DialogDescription>
           </DialogHeader>
           <QuestionFormReadOnly
             open={showCreateQuestion}
-            onClose={() => {
-              setShowCreateQuestion(false);
-              setSelectedSubjectForQuestion("");
-            }}
+            onClose={() => setShowCreateQuestion(false)}
             onQuestionAdded={handleQuestionCreated}
-            questionNumber={questionsBySubject[selectedSubjectForQuestion]?.length + 1 || 1}
+            questionNumber={getTotalQuestions() + 1}
             evaluationData={{
               course: data.course,
               grade: data.grade,
@@ -560,56 +569,6 @@ export const CreateEvaluationStep2 = ({
           />
         </DialogContent>
       </Dialog>
-
-      <QuestionBank
-        open={showQuestionBank}
-        onClose={() => {
-          setShowQuestionBank(false);
-          setSelectedSubjectForQuestion("");
-        }}
-        subjectId={selectedSubjectForQuestion || null}
-        onQuestionSelected={handleQuestionSelected}
-      />
-
-      <Dialog open={showQuestionPreview} onOpenChange={setShowQuestionPreview}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Visualizar Questão</DialogTitle>
-          </DialogHeader>
-          {previewQuestion && (
-            <QuestionPreview question={previewQuestion} />
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <div className="flex justify-between items-center gap-2 pt-4 border-t">
-        <Button
-          variant="outline"
-          onClick={onBack}
-          disabled={loading}
-        >
-          ← Voltar
-        </Button>
-
-        <div className="flex items-center gap-3">
-          <div className="text-sm text-muted-foreground">
-            {getTotalQuestions() > 0 ? (
-              <span className="flex items-center gap-2">
-                ✅ <strong>{getTotalQuestions()}</strong> questões adicionadas
-              </span>
-            ) : (
-              <span className="text-orange-600">⚠️ Adicione pelo menos uma questão</span>
-            )}
-          </div>
-          <Button
-            onClick={handleSubmit}
-            disabled={loading || getTotalQuestions() === 0}
-            className="min-w-32"
-          >
-            {loading ? "Criando..." : "🚀 Criar Avaliação"}
-          </Button>
-        </div>
-      </div>
     </div>
   );
 };

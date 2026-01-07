@@ -26,6 +26,7 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/authContext";
 import { 
   Users, 
   Plus, 
@@ -85,9 +86,12 @@ interface Grade {
 }
 
 interface CreateClassFormProps {
-  schoolId: string;
+  schoolId?: string;
   schoolName?: string;
   onSuccess?: () => void;
+  // Para permitir seleção de escola quando não houver schoolId
+  showSchoolSelector?: boolean;
+  availableSchools?: Array<{ id: string; name: string }>;
 }
 
 interface ClassPreview {
@@ -98,14 +102,19 @@ interface ClassPreview {
   room?: string;
 }
 
-export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClassFormProps) {
+export function CreateClassForm({ schoolId, schoolName, onSuccess, showSchoolSelector, availableSchools }: CreateClassFormProps) {
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [educationStages, setEducationStages] = useState<EducationStage[]>([]);
   const [grades, setGrades] = useState<Grade[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [classesToCreate, setClassesToCreate] = useState<ClassPreview[]>([]);
+  const [selectedSchoolId, setSelectedSchoolId] = useState<string>(schoolId || "");
   const { toast } = useToast();
+  
+  // Use schoolId da prop ou do estado selecionado
+  const currentSchoolId = schoolId || selectedSchoolId;
 
   const form = useForm<ClassFormValues>({
     resolver: zodResolver(classSchema),
@@ -147,22 +156,53 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
 
   useEffect(() => {
     const fetchEducationStages = async () => {
+      // Admin: buscar todos os cursos sem restrição
+      if (user?.role === 'admin') {
+        try {
+          const response = await api.get("/education_stages/all");
+          setEducationStages(Array.isArray(response.data) ? response.data : []);
+        } catch (error) {
+          toast({
+            title: "Erro",
+            description: "Erro ao carregar cursos",
+            variant: "destructive",
+          });
+          setEducationStages([]);
+        }
+        return;
+      }
+      
+      // Para outros usuários: buscar cursos vinculados à escola específica
+      if (!currentSchoolId) {
+        setEducationStages([]);
+        return;
+      }
+      
       try {
-        const response = await api.get("/education_stages/");
-        setEducationStages(response.data);
+        // Buscar cursos vinculados à escola específica
+        const response = await api.get(`/school/${currentSchoolId}/courses`);
+        const data = response.data;
+        
+        // A resposta tem formato: { school_id, school_name, courses: [...] }
+        if (data?.courses && Array.isArray(data.courses)) {
+          setEducationStages(data.courses);
+        } else {
+          setEducationStages([]);
+        }
       } catch (error) {
         toast({
           title: "Erro",
           description: "Erro ao carregar cursos",
           variant: "destructive",
         });
+        setEducationStages([]);
       }
     };
 
     if (open) {
       fetchEducationStages();
     }
-  }, [open, toast]);
+  }, [open, currentSchoolId, user?.role, toast]);
 
   useEffect(() => {
     const fetchGrades = async () => {
@@ -172,7 +212,7 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
       }
 
       try {
-        const response = await api.get(`/grades/education-stage/${selectedStage}`);
+        const response = await api.get(`/grades/by-education-stage/${selectedStage}`);
         setGrades(response.data);
       } catch (error) {
         console.error("Error fetching grades:", error);
@@ -218,6 +258,7 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
     };
 
     generatePreview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedGrade, selectedLetters, selectedNumbers, customName, nameType, grades, shift, capacity, room]);
 
   const handleLetterToggle = (letter: string) => {
@@ -249,6 +290,15 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
   };
 
   const handleSubmit = async (data: ClassFormValues) => {
+    if (!currentSchoolId) {
+      toast({
+        title: "Erro",
+        description: "Selecione uma escola primeiro",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     if (classesToCreate.length === 0) {
       toast({
         title: "Erro",
@@ -265,7 +315,7 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
           name: nameType === 'custom' ? data.customName : 
                 nameType === 'letter' ? classPreview.name.split(' ').pop() :
                 classPreview.name.split(' ').pop(),
-          school_id: schoolId,
+          school_id: currentSchoolId,
           grade_id: data.gradeId,
           description: data.description || undefined,
           capacity: data.capacity ? parseInt(data.capacity) : undefined,
@@ -287,11 +337,12 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
       form.reset();
       setOpen(false);
       onSuccess?.();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error creating classes:", error);
+      const errorMessage = (error as { response?: { data?: { error?: string } } })?.response?.data?.error || "Erro ao criar turma(s)";
       toast({
         title: "Erro",
-        description: error.response?.data?.error || "Erro ao criar turma(s)",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -349,6 +400,28 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    {/* Seletor de escola quando showSchoolSelector estiver ativo */}
+                    {showSchoolSelector && availableSchools && (
+                      <div className="space-y-2">
+                        <Label>Escola *</Label>
+                        <Select 
+                          value={selectedSchoolId} 
+                          onValueChange={setSelectedSchoolId}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione uma escola" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableSchools.map((school) => (
+                              <SelectItem key={school.id} value={school.id}>
+                                {school.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <FormField
                         control={form.control}
@@ -356,10 +429,18 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>Curso *</FormLabel>
-                            <Select onValueChange={field.onChange} value={field.value}>
+                            <Select 
+                              onValueChange={field.onChange} 
+                              value={field.value}
+                              disabled={!currentSchoolId && user?.role !== 'admin'}
+                            >
                               <FormControl>
                                 <SelectTrigger>
-                                  <SelectValue placeholder="Selecione o curso" />
+                                  <SelectValue placeholder={
+                                    user?.role === 'admin' ? "Selecione o curso" : 
+                                    !currentSchoolId ? "Selecione uma escola primeiro" : 
+                                    "Selecione o curso"
+                                  } />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
@@ -576,7 +657,7 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="grid grid-cols-6 md:grid-cols-13 gap-2">
+                      <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-13 gap-2">
                         {letters.map((letter) => (
                           <Button
                             key={letter}
@@ -584,7 +665,7 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
                             variant={selectedLetters.includes(letter) ? "default" : "outline"}
                             size="sm"
                             onClick={() => handleLetterToggle(letter)}
-                            className={`h-10 w-10 ${selectedLetters.includes(letter) ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
+                            className={`h-9 w-9 sm:h-10 sm:w-10 ${selectedLetters.includes(letter) ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
                           >
                             {letter}
                           </Button>
@@ -639,7 +720,7 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="grid grid-cols-5 md:grid-cols-10 gap-2">
+                      <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2">
                         {numbers.map((number) => (
                           <Button
                             key={number}
@@ -647,7 +728,7 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
                             variant={selectedNumbers.includes(number) ? "default" : "outline"}
                             size="sm"
                             onClick={() => handleNumberToggle(number)}
-                            className={`h-10 w-10 ${selectedNumbers.includes(number) ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
+                            className={`h-9 w-9 sm:h-10 sm:w-10 ${selectedNumbers.includes(number) ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
                           >
                             {number}
                           </Button>
@@ -725,40 +806,40 @@ export function CreateClassForm({ schoolId, schoolName, onSuccess }: CreateClass
                         </p>
                       </div>
                     ) : (
-                      <div className="grid gap-3">
+                      <div className="grid gap-3 sm:gap-4">
                         {classesToCreate.map((classPreview, index) => (
                           <div 
                             key={index}
-                            className="flex items-center justify-between p-4 border rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50"
+                            className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 sm:p-4 border rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 hover:shadow-md transition-shadow"
                           >
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center font-semibold">
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <div className="w-9 h-9 sm:w-10 sm:h-10 bg-blue-600 text-white rounded-full flex items-center justify-center font-semibold flex-shrink-0">
                                 {classPreview.name.split(' ').pop()}
                               </div>
-                              <div>
-                                <h4 className="font-semibold text-gray-900">
+                              <div className="min-w-0 flex-1">
+                                <h4 className="font-semibold text-sm sm:text-base text-gray-900 truncate">
                                   {classPreview.name}
                                 </h4>
-                                <div className="flex items-center gap-4 text-sm text-gray-600">
+                                <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm text-gray-600 mt-1">
                                   <span className="flex items-center gap-1">
                                     {getShiftIcon(shift)} {classPreview.shift}
                                   </span>
                                   {classPreview.capacity && (
                                     <span className="flex items-center gap-1">
-                                      <Users className="h-4 w-4" />
+                                      <Users className="h-3 w-3 sm:h-4 sm:w-4" />
                                       {classPreview.capacity} alunos
                                     </span>
                                   )}
                                   {classPreview.room && (
-                                    <span className="flex items-center gap-1">
-                                      <School className="h-4 w-4" />
-                                      {classPreview.room}
+                                    <span className="flex items-center gap-1 truncate">
+                                      <School className="h-3 w-3 sm:h-4 sm:w-4" />
+                                      <span className="truncate">{classPreview.room}</span>
                                     </span>
                                   )}
                                 </div>
                               </div>
                             </div>
-                            <Check className="h-5 w-5 text-green-600" />
+                            <Check className="h-5 w-5 text-green-600 flex-shrink-0 self-end sm:self-center" />
                           </div>
                         ))}
                       </div>

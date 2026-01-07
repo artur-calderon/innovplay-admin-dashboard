@@ -178,6 +178,16 @@ export default function Instituicao() {
   const handleSaveInstituicao = async (instituicao: Partial<Instituicao>) => {
     setIsSaving(true);
     try {
+      if (!instituicao.name?.trim() || !instituicao.address?.trim() || !instituicao.city_id) {
+        toast({
+          title: "Campos obrigatórios",
+          description: "Informe nome, endereço e município antes de salvar.",
+          variant: "destructive",
+        });
+        setIsSaving(false);
+        return;
+      }
+
       if (selectedInstituicao) {
         // Atualizar instituição existente
         const response = await api.put(`/school/${selectedInstituicao.id}`, instituicao);
@@ -393,115 +403,121 @@ export default function Instituicao() {
       </div>
 
       {/* Search and Filters */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-        <div className="relative flex-1 w-full sm:max-w-sm">
+      <div className="space-y-3 sm:space-y-4">
+        {/* Search Bar */}
+        <div className="relative w-full">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar instituições..."
+            placeholder="Buscar instituições por nome, cidade ou domínio..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
+            className="pl-10 h-11"
           />
         </div>
-        
-        {/* Filtros: Estado, Município e Escola */}
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <Select
-            value={selectedState}
-            onValueChange={(value) => {
-              setSelectedState(value);
-              setSelectedCityId('ALL');
-              setSelectedSchoolId('ALL');
-            }}
-          >
-            <SelectTrigger className="w-full sm:w-32">
-              <SelectValue placeholder="Estado" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Todos</SelectItem>
-              {availableStates.map((state) => (
-                <SelectItem key={state} value={state}>{state}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
 
-          <Select
-            value={selectedCityId}
-            onValueChange={(value) => {
-              setSelectedCityId(value);
-              setSelectedSchoolId('ALL');
-            }}
-            disabled={availableCities.length === 0}
-          >
-            <SelectTrigger className="w-full sm:w-40">
-              <SelectValue placeholder="Município" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Todos</SelectItem>
-              {availableCities.map((city) => (
-                <SelectItem key={city.id} value={city.id}>{city.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        {/* Filters Row */}
+        <div className="flex flex-col lg:flex-row gap-3">
+          {/* Location Filters */}
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 flex-1">
+            <Select
+              value={selectedState}
+              onValueChange={(value) => {
+                setSelectedState(value);
+                setSelectedCityId('ALL');
+                setSelectedSchoolId('ALL');
+              }}
+            >
+              <SelectTrigger className="h-10 w-full sm:w-auto sm:min-w-[140px]">
+                <SelectValue placeholder="Estado" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos os Estados</SelectItem>
+                {availableStates.map((state) => (
+                  <SelectItem key={state} value={state}>{state}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          <Select
-            value={selectedSchoolId}
-            onValueChange={(value) => setSelectedSchoolId(value)}
-            disabled={availableSchools.length === 0}
-          >
-            <SelectTrigger className="w-full sm:w-40">
-              <SelectValue placeholder="Escola" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Todas</SelectItem>
-              {availableSchools.map((sch) => (
-                <SelectItem key={sch.id} value={sch.id}>{sch.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+            <Select
+              value={selectedCityId}
+              onValueChange={(value) => {
+                setSelectedCityId(value);
+                setSelectedSchoolId('ALL');
+              }}
+              disabled={availableCities.length === 0}
+            >
+              <SelectTrigger className="h-10 w-full sm:w-auto sm:min-w-[160px]">
+                <SelectValue placeholder="Município" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos os Municípios</SelectItem>
+                {availableCities.map((city) => (
+                  <SelectItem key={city.id} value={city.id}>{city.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <Select value={sortBy} onValueChange={(value: 'name' | 'city' | 'domain') => setSortBy(value)}>
-            <SelectTrigger className="w-full sm:w-32">
-              <SelectValue placeholder="Ordenar por" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="name">Nome</SelectItem>
-              <SelectItem value="city">Cidade</SelectItem>
-              <SelectItem value="domain">Domínio</SelectItem>
-            </SelectContent>
-          </Select>
-          
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-            className="w-10 h-10 p-0"
-          >
-            {sortOrder === 'asc' ? '↑' : '↓'}
-          </Button>
-          
-          <Button
-            variant="outline"
-            onClick={() => setViewMode(viewMode === 'cards' ? 'table' : 'cards')}
-            className="w-full sm:w-auto"
-          >
-            {viewMode === 'cards' ? 'Tabela' : 'Cards'}
-          </Button>
-          
-          <Button
-            variant="outline"
-            onClick={fetchInstituicoes}
-            disabled={isLoading}
-            className="w-full sm:w-auto"
-          >
-            {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              "Atualizar"
-            )}
-          </Button>
+            <Select
+              value={selectedSchoolId}
+              onValueChange={(value) => setSelectedSchoolId(value)}
+              disabled={availableSchools.length === 0}
+            >
+              <SelectTrigger className="h-10 w-full sm:w-auto sm:min-w-[160px]">
+                <SelectValue placeholder="Escola" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todas as Escolas</SelectItem>
+                {availableSchools.map((sch) => (
+                  <SelectItem key={sch.id} value={sch.id}>{sch.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Sort and View Options */}
+          <div className="flex flex-wrap gap-2 sm:gap-3">
+            <Select value={sortBy} onValueChange={(value: 'name' | 'city' | 'domain') => setSortBy(value)}>
+              <SelectTrigger className="h-10 w-auto min-w-[140px]">
+                <SelectValue placeholder="Ordenar por" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="name">Nome</SelectItem>
+                <SelectItem value="city">Cidade</SelectItem>
+                <SelectItem value="domain">Domínio</SelectItem>
+              </SelectContent>
+            </Select>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+              className="h-10 w-10 p-0 flex-shrink-0"
+              title={sortOrder === 'asc' ? 'Ordenação Crescente' : 'Ordenação Decrescente'}
+            >
+              {sortOrder === 'asc' ? '↑' : '↓'}
+            </Button>
+            
+            <Button
+              variant="outline"
+              onClick={() => setViewMode(viewMode === 'cards' ? 'table' : 'cards')}
+              className="h-10 px-4"
+            >
+              {viewMode === 'cards' ? 'Tabela' : 'Cards'}
+            </Button>
+            
+            <Button
+              variant="outline"
+              onClick={fetchInstituicoes}
+              disabled={isLoading}
+              className="h-10 px-4"
+            >
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Atualizar"
+              )}
+            </Button>
+          </div>
         </div>
       </div>
 

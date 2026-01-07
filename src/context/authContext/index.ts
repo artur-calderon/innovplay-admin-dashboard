@@ -2,6 +2,49 @@ import { create } from 'zustand'
 import { api } from '@/lib/api'
 import { toast } from 'react-toastify'
 import { AxiosError } from 'axios'
+import { loadAndApplySettings } from '@/hooks/useSettings'
+
+export interface AvatarConfig {
+    seed?: string;
+    flip?: boolean;
+    rotate?: number;
+    scale?: number;
+    radius?: number;
+    size?: number;
+    backgroundColor?: string[];
+    backgroundType?: string[];
+    backgroundRotation?: number[];
+    translateX?: number;
+    translateY?: number;
+    clip?: boolean;
+    randomizeIds?: boolean;
+    beard?: string[];
+    beardProbability?: number;
+    earrings?: string[];
+    earringsColor?: string[];
+    earringsProbability?: number;
+    eyebrows?: string[];
+    eyebrowsColor?: string[];
+    eyes?: string[];
+    eyesColor?: string[];
+    freckles?: string[];
+    frecklesColor?: string[];
+    frecklesProbability?: number;
+    glasses?: string[];
+    glassesColor?: string[];
+    glassesProbability?: number;
+    hair?: string[];
+    hairAccessories?: string[];
+    hairAccessoriesColor?: string[];
+    hairAccessoriesProbability?: number;
+    hairColor?: string[];
+    head?: string[];
+    mouth?: string[];
+    mouthColor?: string[];
+    nose?: string[];
+    noseColor?: string[];
+    skinColor?: string[];
+}
 
 interface User {
     id: string,
@@ -17,6 +60,7 @@ interface User {
     gender: string,
     nationality: string,
     birth_date: string,
+    avatar_config?: AvatarConfig | null,
 }
 
 interface ApiError {
@@ -32,10 +76,12 @@ interface AuthContext {
     autoLogin: () => Promise<any>,
     logout: () => Promise<void>,
     setUser: (user: User) => void,
-    persistUser: () => Promise<boolean>
+    persistUser: () => Promise<boolean>,
+    updateAvatarConfig: (config: AvatarConfig) => Promise<void>,
+    fetchUserDetails: (userId: string) => Promise<void>,
 }
 
-export const useAuth = create<AuthContext>((set) => ({
+export const useAuth = create<AuthContext>((set, get) => ({
     loading: false,
     user: {
         id: '',
@@ -51,15 +97,36 @@ export const useAuth = create<AuthContext>((set) => ({
         gender: '',
         nationality: '',
         birth_date: '',
+        avatar_config: null,
     },
     setUser: (user) => {
         set({ user })
+    },
+    fetchUserDetails: async (userId: string) => {
+        if (!userId) {
+            return;
+        }
+
+        try {
+            const response = await api.get(`/users/${userId}`);
+            const detailedUser = response.data?.user ?? response.data;
+            if (detailedUser) {
+                set((state) => ({
+                    user: {
+                        ...state.user,
+                        ...detailedUser,
+                    }
+                }));
+            }
+        } catch (error) {
+            console.error('Erro ao buscar detalhes completos do usuário:', error);
+        }
     },
     autoLogin: async () => {
         set({ loading: true })
         try {
             const response = await api.post("/login/", {
-                registration: "moises@innovplay.com",
+                registration: "moises@afirmeplay.com.br",
                 password: "12345678"
             })
 
@@ -69,8 +136,12 @@ export const useAuth = create<AuthContext>((set) => ({
 
             // ✅ CORRIGIDO: Usar a instância da API corretamente
             api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`
-
             set({ user: response.data.user })
+
+            if (response.data.user?.id) {
+                await loadAndApplySettings(response.data.user.id)
+                await get().fetchUserDetails(response.data.user.id)
+            }
 
             return response;
         } catch (error: unknown) {
@@ -97,13 +168,17 @@ export const useAuth = create<AuthContext>((set) => ({
             toast.success("Login realizado com sucesso!", {
                 autoClose: 3000, // 3 segundos para sucesso
             });
-            console.log(response.data)
             localStorage.setItem('token', response.data.token)
 
             // ✅ CORRIGIDO: Usar a instância da API corretamente
             api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`
 
             set({ user: response.data.user })
+
+            if (response.data.user?.id) {
+                await loadAndApplySettings(response.data.user.id)
+                await get().fetchUserDetails(response.data.user.id)
+            }
 
             // Adicionar um pequeno delay para o toast ser visível
             await new Promise(resolve => setTimeout(resolve, 1000));
@@ -122,11 +197,28 @@ export const useAuth = create<AuthContext>((set) => ({
         try {
             await api.post("/logout/")
             localStorage.removeItem('token')
+            
+            // ✅ NOVO: Limpar filtros da página de resultados ao fazer logout
+            sessionStorage.removeItem('results_filters')
 
             // ✅ CORRIGIDO: Usar a instância da API corretamente
             delete api.defaults.headers.common['Authorization']
 
-            set({
+            // Resetar tema, fonte e tamanho de fonte para padrões no DOM apenas
+            // NÃO limpar localStorage - as configurações devem permanecer salvas para quando o usuário fizer login novamente
+            try {
+                document.documentElement.classList.remove('dark');
+                document.documentElement.style.setProperty('--app-font-family', 'Inter');
+                document.documentElement.style.setProperty('--app-font-size', '100%');
+                if (document.body) {
+                    document.body.style.fontFamily = 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif';
+                    document.body.style.fontSize = '100%';
+                }
+            } catch (error) {
+                console.warn("Erro ao resetar estilos:", error);
+            }
+
+                set({
                 user: {
                     id: '',
                     name: '',
@@ -141,6 +233,7 @@ export const useAuth = create<AuthContext>((set) => ({
                     gender: '',
                     nationality: '',
                     birth_date: '',
+                    avatar_config: null,
                 }
             })
             window.location.href = '/';
@@ -160,19 +253,29 @@ export const useAuth = create<AuthContext>((set) => ({
             api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
             const response = await api.get('/persist-user/');
-            if (response.data && response.data.user) {
+            if (response.data) {
+                const persistedUser = response.data.user ?? response.data;
+
                 if (response.data.token) {
                     localStorage.setItem('token', response.data.token);
                     api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
                 }
 
-                set((state) => ({
-                    user: {
-                        ...state.user,
-                        ...response.data.user,
+                if (persistedUser) {
+                    set((state) => ({
+                        user: {
+                            ...state.user,
+                            ...persistedUser,
+                        }
+                    }));
+
+                    const targetId = persistedUser.id;
+                    if (targetId) {
+                        await loadAndApplySettings(targetId)
+                        await get().fetchUserDetails(targetId)
                     }
-                }));
-                return true;
+                    return true;
+                }
             }
             return false;
         } catch (error: unknown) {
@@ -180,6 +283,34 @@ export const useAuth = create<AuthContext>((set) => ({
             localStorage.removeItem('token');
             delete api.defaults.headers.common['Authorization'];
             return false;
+        }
+    },
+    updateAvatarConfig: async (config: AvatarConfig) => {
+        try {
+            const currentUser = get().user;
+            if (!currentUser.id) {
+                throw new Error('Usuário não autenticado');
+            }
+
+            const response = await api.put(`/users/${currentUser.id}`, {
+                avatar_config: config
+            });
+
+            if (response.data && response.data.user) {
+                set((state) => ({
+                    user: {
+                        ...state.user,
+                        ...response.data.user,
+                    }
+                }));
+                toast.success('Avatar atualizado com sucesso!');
+            }
+        } catch (error: unknown) {
+            console.error('Erro ao atualizar avatar:', error);
+            const axiosError = error as AxiosError<ApiError>;
+            const errorMessage = axiosError.response?.data?.erro || axiosError.response?.data?.error || 'Erro ao atualizar avatar';
+            toast.error(errorMessage);
+            throw error;
         }
     }
 }))

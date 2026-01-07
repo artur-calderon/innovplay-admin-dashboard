@@ -301,7 +301,28 @@ export const ERROR_MESSAGES = {
   UNAUTHORIZED: 'Acesso não autorizado',
   FORBIDDEN: 'Acesso negado',
   SERVER_ERROR: 'Erro interno do servidor',
-  TIMEOUT_ERROR: 'Tempo limite excedido'
+  TIMEOUT_ERROR: 'Tempo limite excedido',
+  // Mensagens específicas do fluxo de avaliações
+  EVALUATION_NOT_FOUND: 'Avaliação não encontrada',
+  EVALUATION_CREATE_FAILED: 'Erro ao criar avaliação. Tente novamente.',
+  EVALUATION_UPDATE_FAILED: 'Erro ao atualizar avaliação. Tente novamente.',
+  EVALUATION_DELETE_FAILED: 'Erro ao excluir avaliação. Tente novamente.',
+  EVALUATION_APPLY_FAILED: 'Erro ao aplicar avaliação. Tente novamente.',
+  EVALUATION_LOAD_FAILED: 'Erro ao carregar avaliação. Tente novamente.',
+  EVALUATION_INVALID_DATA: 'Dados inválidos para a avaliação',
+  INVALID_CLASSES_SCHOOLS: 'Algumas turmas não pertencem às escolas selecionadas',
+  INVALID_QUESTIONS: 'Questões inválidas. Verifique se todas têm alternativas e resposta correta.',
+  INVALID_DATES: 'Datas inválidas. Verifique se a data de término é posterior à data de início.',
+  EVALUATION_START_FAILED: 'Erro ao iniciar avaliação. Tente novamente.',
+  EVALUATION_RESULTS_NOT_AVAILABLE: 'Resultados ainda não disponíveis. Aguarde o processamento.',
+  EVALUATION_ALREADY_COMPLETED: 'Esta avaliação já foi concluída.',
+  EVALUATION_EXPIRED: 'Esta avaliação expirou.',
+  EVALUATION_NOT_AVAILABLE: 'Avaliação não disponível no momento.',
+  RETRY_FAILED: 'Não foi possível conectar após várias tentativas. Verifique sua conexão.',
+  VALIDATION_REQUIRED_FIELD: 'Campo obrigatório não preenchido',
+  VALIDATION_INVALID_FORMAT: 'Formato inválido',
+  VALIDATION_MIN_LENGTH: 'Valor muito curto',
+  VALIDATION_MAX_LENGTH: 'Valor muito longo'
 } as const;
 
 /**
@@ -313,7 +334,18 @@ export const SUCCESS_MESSAGES = {
   DATA_UPDATED: 'Dados atualizados com sucesso',
   DATA_DELETED: 'Dados excluídos com sucesso',
   EXPORT_COMPLETED: 'Exportação concluída com sucesso',
-  REFRESH_COMPLETED: 'Dados atualizados com sucesso'
+  REFRESH_COMPLETED: 'Dados atualizados com sucesso',
+  // Mensagens específicas do fluxo de avaliações
+  EVALUATION_CREATED: 'Avaliação criada com sucesso!',
+  EVALUATION_UPDATED: 'Avaliação atualizada com sucesso!',
+  EVALUATION_DELETED: 'Avaliação excluída com sucesso!',
+  EVALUATION_APPLIED: 'Avaliação aplicada com sucesso!',
+  EVALUATION_STARTED: 'Avaliação iniciada com sucesso!',
+  EVALUATION_COMPLETED: 'Avaliação concluída com sucesso!',
+  EVALUATION_SAVED: 'Avaliação salva com sucesso!',
+  QUESTIONS_SAVED: 'Questões salvas com sucesso!',
+  CLASSES_UPDATED: 'Turmas atualizadas com sucesso!',
+  INVALID_CLASSES_REMOVED: 'Turmas inválidas removidas automaticamente'
 } as const;
 
 // ===== CONSTANTES DE UI =====

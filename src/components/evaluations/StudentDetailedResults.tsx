@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,9 +16,11 @@ import {
     GraduationCap,
     School
 } from "lucide-react";
-import { useParams } from "react-router-dom";
+import { useLocation, useParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
+import StudentBulletin, { type DisciplineStatsMap } from "./StudentBulletin";
+import { loadBulletinStatsFromStorage } from "./utils/bulletinStorage";
 
 interface StudentDetailedResultsProps {
     onBack: () => void;
@@ -56,7 +58,7 @@ interface StudentInfo {
 interface EvaluationInfo {
     titulo?: string;
     data_aplicacao?: string;
-    disciplina?: string;
+    disciplina?: string | string[];
     escola?: string;
     serie?: string;
 }
@@ -109,6 +111,7 @@ class ErrorBoundary extends React.Component<
 // Componente interno que contém a lógica principal
 function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) {
     const { id: evaluationId, studentId } = useParams<{ id: string; studentId: string }>();
+    const location = useLocation<{ disciplineStats?: DisciplineStatsMap }>();
     const { toast } = useToast();
 
     const [studentData, setStudentData] = useState<StudentData | null>(null);
@@ -116,6 +119,20 @@ function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) 
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [studentName, setStudentName] = useState<string | null>(null);
+    const [testSubjects, setTestSubjects] = useState<string[]>([]);
+
+    const initialDisciplineStats = useMemo<DisciplineStatsMap | undefined>(() => {
+        if (!evaluationId || !studentId) {
+            return undefined;
+        }
+
+        const stateStats = location.state?.disciplineStats;
+        if (stateStats && Object.keys(stateStats).length > 0) {
+            return stateStats;
+        }
+
+        return loadBulletinStatsFromStorage<DisciplineStatsMap | undefined>(evaluationId, studentId) || undefined;
+    }, [evaluationId, studentId, location.state]);
 
     const loadStudentData = useCallback(async () => {
         if (!evaluationId || !studentId) {
@@ -129,7 +146,7 @@ function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) 
             setError(null);
 
             // 1. Disparar chamadas essenciais em paralelo
-            const [currentResult, evaluationInfo] = await Promise.all([
+            const [currentResult, evaluationInfo, testEvaluation] = await Promise.all([
                 EvaluationResultsApiService.getStudentDetailedResults(evaluationId, studentId).catch((err: Error) => {
                     console.error('Erro ao buscar resultado do aluno:', err);
                     return null;
@@ -137,8 +154,12 @@ function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) 
                 EvaluationResultsApiService.getEvaluationById(evaluationId).catch((err: Error) => {
                     console.warn('Erro ao buscar informações da avaliação:', err);
                     return null;
+                }),
+                EvaluationResultsApiService.getTestEvaluationById(evaluationId).catch((err: Error) => {
+                    console.warn('Erro ao buscar dados de teste (subjects):', err);
+                    return null;
                 })
-            ]) as [StudentData | null, EvaluationInfo | null];
+            ]) as [StudentData | null, EvaluationInfo | null, unknown | null];
 
             // 3. Buscar dados da turma/série dos alunos da avaliação (opcional)
             let classInfo = null;
@@ -174,6 +195,28 @@ function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) 
             console.log('🔍 DEBUG - Dados detalhados do aluno:', currentResult);
             setStudentData(currentResult);
             setStudentName(foundStudentName);
+
+            // Extrair disciplinas do objeto de teste quando disponível
+            try {
+                const te = testEvaluation as { subjects?: Array<{ name?: string }>; subjects_info?: Array<{ name?: string }>; subject?: { name?: string } } | null;
+                const subjectsFromArray = Array.isArray(te?.subjects)
+                    ? te!.subjects.map(s => s?.name).filter(Boolean) as string[]
+                    : Array.isArray(te?.subjects_info)
+                        ? te!.subjects_info.map(s => s?.name).filter(Boolean) as string[]
+                        : [];
+                const singleSubject = te?.subject?.name ? [te.subject.name] : [];
+                const fromEvaluationInfo = evaluationInfo?.disciplina
+                    ? (Array.isArray(evaluationInfo.disciplina) ? evaluationInfo.disciplina : String(evaluationInfo.disciplina).split(',').map(v => v.trim()).filter(v => v.length > 0))
+                    : [];
+                const merged = Array.from(new Set([...
+                    subjectsFromArray,
+                    ...singleSubject,
+                    ...fromEvaluationInfo
+                ]));
+                setTestSubjects(merged);
+            } catch {
+                setTestSubjects([]);
+            }
 
             // 2. Consolidar informações da avaliação com prioridade
             const finalEvaluationData: StudentEvaluation = {
@@ -289,6 +332,19 @@ function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) 
     const proficiencia = studentData?.proficiencia || 0;
     const classificacao = studentData?.classificacao || 'Não classificado';
 
+    function getDisciplinesList(value?: string | string[]): string[] {
+        if (!value) return [];
+        if (Array.isArray(value)) return value.filter(Boolean).map(v => String(v).trim()).filter(v => v.length > 0);
+        // suporta string única ou lista separada por vírgulas
+        return value
+            .split(',')
+            .map(v => v.trim())
+            .filter(v => v.length > 0);
+    }
+
+    const disciplinesRaw = testSubjects.length > 0 ? testSubjects : (currentEvaluation?.disciplina as unknown as (string | string[] | undefined));
+    const disciplines = getDisciplinesList(disciplinesRaw);
+
     return (
         <div className="container mx-auto px-4 py-6 space-y-6">
             {/* Header */}
@@ -304,6 +360,24 @@ function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) 
                     </p>
                 </div>
             </div>
+
+            {/* Escola (topo do layout) */}
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium flex items-center gap-2">
+                        <School className="h-4 w-4 text-purple-600" />
+                        Escola
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="text-2xl font-bold text-purple-600">
+                        {currentEvaluation?.escola || 'Não informada'}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                        Instituição de ensino
+                    </p>
+                </CardContent>
+            </Card>
 
             {/* Informações do Aluno */}
             <div className="grid gap-4 md:grid-cols-3">
@@ -341,43 +415,27 @@ function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) 
                     </CardContent>
                 </Card>
 
-                <Card>
-                    <CardHeader className="pb-3">
-                        <CardTitle className="text-sm font-medium flex items-center gap-2">
-                            <School className="h-4 w-4 text-purple-600" />
-                            Escola
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-purple-600">
-                            {currentEvaluation?.escola || 'Não informada'}
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            Instituição de ensino
-                        </p>
-                    </CardContent>
-                </Card>
+                {currentEvaluation?.turma && currentEvaluation.turma !== 'Não informada' && (
+                    <Card>
+                        <CardHeader className="pb-3">
+                            <CardTitle className="text-sm font-medium flex items-center gap-2">
+                                <Users className="h-4 w-4 text-orange-600" />
+                                Turma
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold text-orange-600">
+                                {currentEvaluation.turma}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Turma do aluno
+                            </p>
+                        </CardContent>
+                    </Card>
+                )}
             </div>
 
-            {/* Turma */}
-            {currentEvaluation?.turma && currentEvaluation.turma !== 'Não informada' && (
-                <Card>
-                    <CardHeader className="pb-3">
-                        <CardTitle className="text-sm font-medium flex items-center gap-2">
-                            <Users className="h-4 w-4 text-orange-600" />
-                            Turma
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-orange-600">
-                            {currentEvaluation.turma}
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            Turma do aluno
-                        </p>
-                    </CardContent>
-                </Card>
-            )}
+
 
             {/* Estatísticas da Avaliação */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -444,7 +502,7 @@ function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) 
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold text-orange-600">
-                            {proficiencia ? proficiencia.toFixed(0) : 'N/A'}
+                            {proficiencia ? proficiencia.toString() : 'N/A'}
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
                             Nível: {classificacao}
@@ -475,11 +533,11 @@ function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) 
                                 <div className="flex justify-between text-sm">
                                     <span>Nível de Proficiência Alcançado</span>
                                     <span className="font-bold">
-                                        {proficiencia ? proficiencia.toFixed(0) : 0} pontos
+                                        {proficiencia ? proficiencia.toString() : 0} pontos
                                     </span>
                                 </div>
                                 <Progress 
-                                    value={Math.min((proficiencia / 500) * 100, 100)} 
+                                    value={Math.min((proficiencia / 412.5) * 100, 100)} 
                                     className="h-3" 
                                 />
                             </div>
@@ -503,8 +561,18 @@ function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) 
                             <p className="text-lg">{currentEvaluation?.titulo || 'N/A'}</p>
                         </div>
                         <div>
-                            <h4 className="font-medium text-sm text-gray-600">Disciplina</h4>
-                            <p className="text-lg">{currentEvaluation?.disciplina || 'N/A'}</p>
+                            <h4 className="font-medium text-sm text-gray-600">Disciplinas</h4>
+                            {disciplines.length > 0 ? (
+                                <div className="flex flex-wrap gap-2 mt-1">
+                                    {disciplines.map((d) => (
+                                        <Badge key={d} variant="outline" className="bg-blue-50 text-blue-800 border-blue-200">
+                                            {d}
+                                        </Badge>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-lg">N/A</p>
+                            )}
                         </div>
                         <div>
                             <h4 className="font-medium text-sm text-gray-600">Data de Aplicação</h4>
@@ -524,6 +592,15 @@ function StudentDetailedResultsContent({ onBack }: StudentDetailedResultsProps) 
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Boletim de Questões */}
+            {evaluationId && studentId && (
+                <StudentBulletin
+                    testId={evaluationId}
+                    studentId={studentId}
+                    initialDisciplineStats={initialDisciplineStats}
+                />
+            )}
 
             {/* Botão de Atualização */}
             <div className="flex justify-center">

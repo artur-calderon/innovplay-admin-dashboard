@@ -1,32 +1,225 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useAuth } from "@/context/authContext";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  Medal, 
-  Coins, 
-  Trophy,
-  Star,
-  Target,
-  BookOpen,
-  Award,
-  User,
-  BarChart3,
-  LineChart,
-  PieChart,
-  Activity,
-  Zap,
-  Calendar,
-  Flame,
-  ArrowUp,
-  ArrowDown
-} from "lucide-react";
+import { User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { api } from "@/lib/api";
+import StatsCards from "@/components/dashboard/StatsCards";
+import MedalhasCard from "@/components/dashboard/MedalhasCard";
+import InnovCoinsCard from "@/components/dashboard/InnovCoinsCard";
+import RankingCard from "@/components/dashboard/RankingCard";
+import EvolutionChart from "@/components/dashboard/EvolutionChart";
+
+// Interface para avaliações do aluno
+interface StudentEvaluation {
+  id: string;
+  titulo: string;
+  data_aplicacao: string;
+  disciplina: string;
+  serie: string;
+  escola: string;
+  turma?: string;
+}
+
+// Interface para dados específicos de uma avaliação
+interface StudentEvaluationResults {
+  test_id: string;
+  student_id: string;
+  student_db_id: string;
+  total_questions: number;
+  answered_questions: number;
+  correct_answers: number;
+  score_percentage: number;
+  total_score: number;
+  max_possible_score: number;
+  proficiency: number;
+  proficiencia: number; // Campo com acento da API
+  grade: number;
+  classification: string;
+  classificacao: string; // Campo com acento da API
+  calculated_at: string;
+  answers: unknown[];
+  rankings?: {
+    class?: ApiRankingGroup;
+    school?: ApiRankingGroup;
+    municipality?: ApiRankingGroup;
+  };
+}
+
+// Interface para avaliações completadas do aluno
+interface StudentCompletedResponse {
+  student: {
+    id: string;
+    name: string;
+    user_id: string;
+  };
+  total_completed: number;
+  returned_count: number;
+  pagination: {
+    limit: number;
+    offset: number;
+    has_more: boolean;
+  };
+  evaluations: Array<{
+    test_id: string;
+    title: string;
+    description: string;
+    type: string;
+    subject: {
+      id: string;
+      name: string;
+    };
+    grade: {
+      id: string;
+      name: string;
+    };
+    subjects_info: Array<{
+      id: string;
+      name: string;
+    }>;
+    total_questions: number;
+    application_info: {
+      application: string;
+      expiration: string;
+    };
+    student_results: {
+      correct_answers: number;
+      total_questions: number;
+      score_percentage: number;
+      grade: number;
+      proficiency: number;
+      classification: string;
+      calculated_at: string;
+    };
+  }>;
+}
+
+// Interface para dados de comparação entre avaliações
+interface StudentCompareResponse {
+  student: {
+    id: string;
+    user_id: string;
+    name: string;
+  };
+  evaluations: Array<{
+    order: number;
+    id: string;
+    title: string;
+    created_at: string;
+    application_date: string;
+  }>;
+  total_evaluations: number;
+  comparisons: Array<{
+    from_evaluation: {
+      id: string;
+      title: string;
+      order: number;
+    };
+    to_evaluation: {
+      id: string;
+      title: string;
+      order: number;
+    };
+    general_comparison: {
+      student_grade: {
+        evaluation_1: number;
+        evaluation_2: number;
+        evolution: EvolutionData;
+      };
+      student_proficiency: {
+        evaluation_1: number;
+        evaluation_2: number;
+        evolution: EvolutionData;
+      };
+      student_classification: {
+        evaluation_1: string;
+        evaluation_2: string;
+      };
+      correct_answers: {
+        evaluation_1: number;
+        evaluation_2: number;
+        evolution: EvolutionData;
+      };
+      total_questions: {
+        evaluation_1: number;
+        evaluation_2: number;
+      };
+      score_percentage: {
+        evaluation_1: number;
+        evaluation_2: number;
+        evolution: EvolutionData;
+      };
+    };
+    subject_comparison: Record<string, {
+      subject_id: string;
+      student_grade: {
+        evaluation_1: number;
+        evaluation_2: number;
+        evolution: EvolutionData;
+      };
+      student_proficiency: {
+        evaluation_1: number;
+        evaluation_2: number;
+        evolution: EvolutionData;
+      };
+      student_classification: {
+        evaluation_1: string;
+        evaluation_2: string;
+      };
+      correct_answers: {
+        evaluation_1: number;
+        evaluation_2: number;
+        evolution: EvolutionData;
+      };
+      total_questions: {
+        evaluation_1: number;
+        evaluation_2: number;
+      };
+    }>;
+  }>;
+  total_comparisons: number;
+}
+
+interface EvolutionData {
+  value: number;
+  percentage: number;
+  direction: 'increase' | 'decrease' | 'stable';
+}
+
+interface ApiRankingEntry {
+  position: number;
+  student_id: string;
+  student_name: string;
+  proficiency: number | string;
+}
+
+interface ApiRankingGroup {
+  position?: number;
+  total_students?: number;
+  current_student?: ApiRankingEntry;
+  ranking?: ApiRankingEntry[];
+}
+
+interface RankingCardData {
+  posicaoAtual: number;
+  pontos: number;
+  mudancaPosicao: number;
+  lista: Array<{
+    id: number;
+    nome: string;
+    acertos: number;
+    total: number;
+    posicao: number;
+    pontos: number;
+    avatar?: string;
+  }>;
+  proximoObjetivo: {
+    posicao: number;
+    pontosNecessarios: number;
+    progresso: number;
+  };
+}
 
 interface StudentStats {
   proficiencia: { value: number; change: number; trend: 'up' | 'down' };
@@ -102,6 +295,67 @@ interface StudentStats {
 type ChartType = 'bar' | 'line' | 'area' | 'pie';
 type PeriodType = 'week' | 'month' | 'year';
 
+const emptyRankingCardData: RankingCardData = {
+  posicaoAtual: 0,
+  pontos: 0,
+  mudancaPosicao: 0,
+  lista: [],
+  proximoObjetivo: {
+    posicao: 1,
+    pontosNecessarios: 0,
+    progresso: 0
+  }
+};
+
+const normalizeNumber = (value: unknown): number => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (typeof value === 'string') {
+    const parsed = parseFloat(value.replace(',', '.'));
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+};
+
+const transformRankingGroupToCardData = (group?: ApiRankingGroup): RankingCardData => {
+  if (!group || !group.current_student) {
+    return { ...emptyRankingCardData };
+  }
+
+  const rankingList = (group.ranking ?? []).map((item) => ({
+    id: item.position,
+    nome: item.student_name,
+    acertos: 0,
+    total: 0,
+    posicao: item.position,
+    pontos: normalizeNumber(item.proficiency)
+  }));
+
+  const currentPosition = group.current_student?.position ?? group.position ?? 0;
+  const currentProficiency = normalizeNumber(group.current_student?.proficiency);
+  const previousRank = rankingList.find((item) => item.posicao === currentPosition - 1);
+  const pontosNecessarios = previousRank
+    ? Math.max(0, normalizeNumber(previousRank.pontos) - currentProficiency)
+    : 0;
+
+  const progresso = group.total_students && currentPosition
+    ? Math.round(((group.total_students - currentPosition + 1) / group.total_students) * 100)
+    : 0;
+
+  return {
+    posicaoAtual: currentPosition,
+    pontos: currentProficiency,
+    mudancaPosicao: 0,
+    lista: rankingList,
+    proximoObjetivo: {
+      posicao: Math.max(1, currentPosition - 1),
+      pontosNecessarios,
+      progresso: Math.min(100, Math.max(0, progresso))
+    }
+  };
+};
+
 const StudentDashboard = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -109,10 +363,24 @@ const StudentDashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [chartType, setChartType] = useState<ChartType>('bar');
   const [period, setPeriod] = useState<PeriodType>('week');
-  const [rankingFilter, setRankingFilter] = useState<'geral' | 'semanal' | 'mensal'>('geral');
+  const [rankingFilter, setRankingFilter] = useState<'turma' | 'escola' | 'municipio'>('turma');
+  
+  // Estados para avaliações
+  const [evaluations, setEvaluations] = useState<StudentEvaluation[]>([]);
+  const [selectedEvaluation, setSelectedEvaluation] = useState<string | null>(null);
+  const [evaluationResults, setEvaluationResults] = useState<StudentEvaluationResults | null>(null);
+  const [isLoadingEvaluations, setIsLoadingEvaluations] = useState(true);
+  
+  // Estados para gráfico de evolução
+  const [comparisonData, setComparisonData] = useState<StudentCompareResponse | null>(null);
+  const [isLoadingComparison, setIsLoadingComparison] = useState(false);
+  const [hasLoadedData, setHasLoadedData] = useState(false);
+  
+  // Ref para rastrear a última avaliação carregada e evitar chamadas duplicadas
+  const lastLoadedEvaluationRef = useRef<string | null>(null);
 
   // Dados mockados baseados na imagem + dados de estatísticas
-  const mockStats: StudentStats = {
+  const mockStats: StudentStats = useMemo(() => ({
     proficiencia: { value: 119, change: 2.1, trend: 'up' },
     nota: { value: 6.5, change: -3.4, trend: 'down' },
     nivel: { value: 'Abaixo do Básico', change: -3.1, trend: 'down' },
@@ -200,47 +468,20 @@ const StudentDashboard = () => {
         tendencia: 'up'
       }
     }
-  };
+  }), []);
 
-  // Diferentes datasets de ranking para cada filtro
-  const rankingData = {
-    geral: {
-      posicaoAtual: 5,
-      pontos: 1000,
-      mudancaPosicao: 2,
-      lista: [
-        { id: 1, nome: 'Lucas Silva', acertos: 58, total: 60, posicao: 1, pontos: 1200 },
-        { id: 2, nome: 'Maria Souza', acertos: 56, total: 60, posicao: 2, pontos: 1150 },
-        { id: 3, nome: 'Pedro Oliveira', acertos: 54, total: 60, posicao: 3, pontos: 1100 },
-        { id: 4, nome: 'Ana Costa', acertos: 52, total: 60, posicao: 4, pontos: 1050 },
-        { id: 5, nome: 'João Lima', acertos: 50, total: 60, posicao: 5, pontos: 1000 },
-        { id: 6, nome: 'Beatriz Ramos', acertos: 48, total: 60, posicao: 6, pontos: 950 },
-        { id: 7, nome: 'Rafael Martins', acertos: 47, total: 60, posicao: 7, pontos: 900 },
-        { id: 8, nome: 'Gabriela Dias', acertos: 45, total: 60, posicao: 8, pontos: 850 },
-        { id: 9, nome: 'Carlos Mendes', acertos: 44, total: 60, posicao: 9, pontos: 800 },
-        { id: 10, nome: 'Fernanda Rocha', acertos: 42, total: 60, posicao: 10, pontos: 750 },
-      ],
-      proximoObjetivo: {
-        posicao: 4,
-        pontosNecessarios: 50,
-        progresso: 80
-      }
-    },
-    semanal: {
+  // Dados mockados para ranking (mantidos como fallback)
+  const mockRankingData = {
+    turma: {
       posicaoAtual: 3,
-      pontos: 245,
+      pontos: 285.5,
       mudancaPosicao: 1,
       lista: [
-        { id: 1, nome: 'Pedro Oliveira', acertos: 15, total: 15, posicao: 1, pontos: 285 },
-        { id: 2, nome: 'Maria Souza', acertos: 14, total: 15, posicao: 2, pontos: 270 },
-        { id: 3, nome: 'João Lima', acertos: 13, total: 15, posicao: 3, pontos: 245 },
-        { id: 4, nome: 'Ana Costa', acertos: 12, total: 15, posicao: 4, pontos: 230 },
-        { id: 5, nome: 'Lucas Silva', acertos: 11, total: 15, posicao: 5, pontos: 215 },
-        { id: 6, nome: 'Gabriela Dias', acertos: 10, total: 15, posicao: 6, pontos: 200 },
-        { id: 7, nome: 'Rafael Martins', acertos: 9, total: 15, posicao: 7, pontos: 185 },
-        { id: 8, nome: 'Beatriz Ramos', acertos: 8, total: 15, posicao: 8, pontos: 170 },
-        { id: 9, nome: 'Carlos Mendes', acertos: 7, total: 15, posicao: 9, pontos: 155 },
-        { id: 10, nome: 'Fernanda Rocha', acertos: 6, total: 15, posicao: 10, pontos: 140 },
+        { id: 1, nome: 'Ana Oliveira', acertos: 18, total: 20, posicao: 1, pontos: 320.0 },
+        { id: 2, nome: 'Carlos Lima', acertos: 17, total: 20, posicao: 2, pontos: 310.5 },
+        { id: 3, nome: 'Pedro Costa', acertos: 15, total: 20, posicao: 3, pontos: 285.5 },
+        { id: 4, nome: 'Maria Silva', acertos: 14, total: 20, posicao: 4, pontos: 280.0 },
+        { id: 5, nome: 'João Santos', acertos: 13, total: 20, posicao: 5, pontos: 275.0 },
       ],
       proximoObjetivo: {
         posicao: 2,
@@ -248,25 +489,47 @@ const StudentDashboard = () => {
         progresso: 60
       }
     },
-    mensal: {
-      posicaoAtual: 7,
-      pontos: 485,
-      mudancaPosicao: -2,
+    escola: {
+      posicaoAtual: 15,
+      pontos: 285.5,
+      mudancaPosicao: 2,
       lista: [
-        { id: 1, nome: 'Maria Souza', acertos: 45, total: 48, posicao: 1, pontos: 620 },
-        { id: 2, nome: 'Lucas Silva', acertos: 44, total: 48, posicao: 2, pontos: 595 },
-        { id: 3, nome: 'Ana Costa', acertos: 42, total: 48, posicao: 3, pontos: 570 },
-        { id: 4, nome: 'Pedro Oliveira', acertos: 40, total: 48, posicao: 4, pontos: 545 },
-        { id: 5, nome: 'Gabriela Dias', acertos: 39, total: 48, posicao: 5, pontos: 520 },
-        { id: 6, nome: 'Rafael Martins', acertos: 37, total: 48, posicao: 6, pontos: 510 },
-        { id: 7, nome: 'João Lima', acertos: 35, total: 48, posicao: 7, pontos: 485 },
-        { id: 8, nome: 'Beatriz Ramos', acertos: 34, total: 48, posicao: 8, pontos: 460 },
-        { id: 9, nome: 'Carlos Mendes', acertos: 32, total: 48, posicao: 9, pontos: 435 },
-        { id: 10, nome: 'Fernanda Rocha', acertos: 30, total: 48, posicao: 10, pontos: 410 },
+        { id: 1, nome: 'Lucas Ferreira', acertos: 20, total: 20, posicao: 1, pontos: 380.0 },
+        { id: 2, nome: 'Maria Silva', acertos: 19, total: 20, posicao: 2, pontos: 350.0 },
+        { id: 3, nome: 'João Santos', acertos: 18, total: 20, posicao: 3, pontos: 345.5 },
+        { id: 4, nome: 'Ana Costa', acertos: 17, total: 20, posicao: 4, pontos: 340.0 },
+        { id: 5, nome: 'Carlos Lima', acertos: 16, total: 20, posicao: 5, pontos: 335.0 },
+        { id: 6, nome: 'Beatriz Ramos', acertos: 15, total: 20, posicao: 6, pontos: 330.0 },
+        { id: 7, nome: 'Rafael Martins', acertos: 15, total: 20, posicao: 7, pontos: 325.0 },
+        { id: 8, nome: 'Gabriela Dias', acertos: 15, total: 20, posicao: 8, pontos: 320.0 },
+        { id: 9, nome: 'Fernanda Rocha', acertos: 15, total: 20, posicao: 9, pontos: 315.0 },
+        { id: 10, nome: 'Pedro Costa', acertos: 15, total: 20, posicao: 15, pontos: 285.5 },
       ],
       proximoObjetivo: {
-        posicao: 6,
-        pontosNecessarios: 25,
+        posicao: 14,
+        pontosNecessarios: 10,
+        progresso: 80
+      }
+    },
+    municipio: {
+      posicaoAtual: 89,
+      pontos: 285.5,
+      mudancaPosicao: -5,
+      lista: [
+        { id: 1, nome: 'Lucas Ferreira', acertos: 20, total: 20, posicao: 1, pontos: 380.0 },
+        { id: 2, nome: 'Maria Silva', acertos: 19, total: 20, posicao: 2, pontos: 375.0 },
+        { id: 3, nome: 'João Santos', acertos: 19, total: 20, posicao: 3, pontos: 370.0 },
+        { id: 4, nome: 'Ana Costa', acertos: 18, total: 20, posicao: 4, pontos: 365.0 },
+        { id: 5, nome: 'Carlos Lima', acertos: 18, total: 20, posicao: 5, pontos: 360.0 },
+        { id: 6, nome: 'Beatriz Ramos', acertos: 17, total: 20, posicao: 6, pontos: 355.0 },
+        { id: 7, nome: 'Rafael Martins', acertos: 17, total: 20, posicao: 7, pontos: 350.0 },
+        { id: 8, nome: 'Gabriela Dias', acertos: 16, total: 20, posicao: 8, pontos: 345.0 },
+        { id: 9, nome: 'Fernanda Rocha', acertos: 16, total: 20, posicao: 9, pontos: 340.0 },
+        { id: 10, nome: 'Pedro Costa', acertos: 15, total: 20, posicao: 89, pontos: 285.5 },
+      ],
+      proximoObjetivo: {
+        posicao: 88,
+        pontosNecessarios: 5,
         progresso: 50
       }
     }
@@ -274,336 +537,417 @@ const StudentDashboard = () => {
 
   // Função para obter dados do ranking baseado no filtro
   const getCurrentRankingData = () => {
-    return rankingData[rankingFilter];
+    const rankings = evaluationResults?.rankings;
+    const rankingKeyMap: Record<typeof rankingFilter, keyof NonNullable<StudentEvaluationResults['rankings']>> = {
+      turma: 'class',
+      escola: 'school',
+      municipio: 'municipality'
+    };
+
+    if (rankings) {
+      const apiGroup = rankings[rankingKeyMap[rankingFilter]];
+      const transformed = transformRankingGroupToCardData(apiGroup);
+
+      if (transformed.lista.length > 0 || transformed.posicaoAtual > 0) {
+        return transformed;
+      }
+    }
+
+    if (stats?.ranking) {
+      return stats.ranking;
+    }
+
+    console.log('⚠️ Dados de ranking indisponíveis, retornando estrutura vazia');
+    return emptyRankingCardData;
   };
 
   // Função para alterar filtro do ranking
-  const handleRankingFilterChange = (filter: 'geral' | 'semanal' | 'mensal') => {
+  const handleRankingFilterChange = (filter: 'turma' | 'escola' | 'municipio') => {
     setRankingFilter(filter);
   };
 
+  // Função para mapear dados completados para formato de avaliações
+  const mapCompletedToEvaluations = (apiData: StudentCompletedResponse): StudentEvaluation[] => {
+    console.log('🔄 Mapeando dados completados para formato de avaliações...');
+    console.log('📊 Dados da API:', apiData);
+    
+    return apiData.evaluations.map(evaluation => ({
+      id: evaluation.test_id,
+      titulo: evaluation.title,
+      disciplina: evaluation.subject.name,
+      data_aplicacao: evaluation.application_info.application,
+      serie: evaluation.grade.name,
+      escola: apiData.student.name,
+      turma: evaluation.grade.name
+    }));
+  };
+
+  // Função para buscar avaliações do aluno
+  const fetchStudentEvaluations = useCallback(async (userId: string): Promise<StudentEvaluation[]> => {
+    console.log('🔍 Buscando avaliações completadas do aluno:', `/test/student/completed`);
+    const response = await api.get(`/test/student/completed`);
+    console.log('📊 Resposta completa da API:', response.data);
+    
+    const completedData: StudentCompletedResponse = response.data;
+    console.log('📊 Dados completados:', completedData);
+    console.log('📊 Total de avaliações completadas:', completedData.total_completed);
+    console.log('📊 Avaliações retornadas:', completedData.returned_count);
+    
+    // Mapear os dados da nova API para o formato esperado
+    const mappedEvaluations = mapCompletedToEvaluations(completedData);
+    
+    console.log('📊 Avaliações mapeadas:', mappedEvaluations);
+    return mappedEvaluations;
+  }, []);
+
+  // Função para buscar dados específicos de uma avaliação
+  const fetchEvaluationResults = async (testId: string, studentId: string): Promise<StudentEvaluationResults> => {
+    console.log('🔍 Buscando resultados da avaliação:', `/evaluation-results/${testId}/student/${studentId}/results`);
+    const response = await api.get(`/evaluation-results/${testId}/student/${studentId}/results`);
+    console.log('📊 Resultados da avaliação:', response.data);
+    console.log('🏆 Rankings retornados pela API:', response.data?.rankings);
+    return response.data;
+  };
+
+  // Função para buscar dados de comparação entre avaliações
+  const fetchStudentComparison = async (studentId: string, testIds: string[]): Promise<StudentCompareResponse> => {
+    console.log('🔍 Buscando comparação entre avaliações:', `/test/student/compare`);
+    console.log('📊 IDs das avaliações:', testIds);
+    
+    // Primeiro buscar avaliações completadas para validar
+    const completedResponse = await api.get(`/test/student/completed`);
+    const completedData: StudentCompletedResponse = completedResponse.data;
+    
+    // Filtrar apenas as avaliações solicitadas que existem nas completadas
+    const availableTestIds = completedData.evaluations
+      .map(evaluation => evaluation.test_id)
+      .filter(id => testIds.includes(id));
+    
+    console.log('📊 IDs disponíveis para comparação:', availableTestIds);
+    
+    if (availableTestIds.length === 0) {
+      throw new Error('Nenhuma avaliação completada encontrada para comparação');
+    }
+    
+    const response = await api.post('/test/student/compare', {
+      student_id: studentId,
+      test_ids: availableTestIds
+    });
+    
+    console.log('📊 Dados de comparação:', response.data);
+    return response.data;
+  };
+
+  // Função para mapear dados específicos de uma avaliação para a interface atual
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const mapEvaluationResultsToStats = useCallback((evaluationResults: StudentEvaluationResults, selectedEval: StudentEvaluation): StudentStats => {
+    console.log('🔄 Mapeando dados específicos da avaliação para interface...');
+    console.log('📊 Dados da avaliação:', evaluationResults);
+    console.log('📊 Avaliação selecionada:', selectedEval);
+    
+    // Usar classificacao (com acento) se disponível, senão usar classification
+    const classification = evaluationResults.classificacao || evaluationResults.classification || 'N/A';
+    console.log('📊 Classificação encontrada:', classification);
+    
+    // Usar proficiencia (com acento) se disponível, senão usar proficiency
+    const proficiency = normalizeNumber(evaluationResults.proficiencia ?? evaluationResults.proficiency);
+    console.log('📊 Proficiência encontrada:', proficiency);
+
+    const gradeValue = normalizeNumber(evaluationResults.grade);
+    const correctAnswers = normalizeNumber(evaluationResults.correct_answers);
+
+    const rankingFromApi =
+      [
+        evaluationResults.rankings?.class,
+        evaluationResults.rankings?.school,
+        evaluationResults.rankings?.municipality,
+      ]
+        .map((group) => transformRankingGroupToCardData(group))
+        .find((data) => data.lista.length > 0 || data.posicaoAtual > 0) ?? emptyRankingCardData;
+
+    const rankingData = rankingFromApi.lista.length > 0 ? rankingFromApi : mockStats.ranking;
+    
+    return {
+      proficiencia: { 
+        value: proficiency, 
+        change: 0, 
+        trend: 'up' 
+      },
+      nota: { 
+        value: gradeValue, 
+        change: 0, 
+        trend: 'up' 
+      },
+      nivel: { 
+        value: classification, 
+        change: 0, 
+        trend: 'up' 
+      },
+      acertos: { 
+        value: correctAnswers, 
+        change: 0, 
+        trend: 'up' 
+      },
+      // Manter dados gamificados como mockados
+      medalhas: mockStats.medalhas,
+      moedas: mockStats.moedas,
+      ranking: rankingData,
+      estatisticas: {
+        semana: [
+          { day: 'Seg', nota: 7.2, avaliacao: 'Matemática' },
+          { day: 'Ter', nota: 8.5, avaliacao: 'Português' },
+          { day: 'Qua', nota: 6.8, avaliacao: 'História' },
+          { day: 'Qui', nota: 9.1, avaliacao: 'Ciências' },
+          { day: 'Sex', nota: 7.7, avaliacao: 'Geografia' },
+          { day: 'Sáb', nota: 8.9, avaliacao: 'Inglês' },
+          { day: 'Dom', nota: 7.5, avaliacao: 'Arte' },
+        ],
+        mes: [
+          { week: 'Sem 1', nota: 7.8, avaliacoes: 12 },
+          { week: 'Sem 2', nota: 8.2, avaliacoes: 15 },
+          { week: 'Sem 3', nota: 7.1, avaliacoes: 10 },
+          { week: 'Sem 4', nota: 8.6, avaliacoes: 18 },
+        ],
+        ano: [
+          { month: 'Jan', nota: 7.2, avaliacoes: 45 },
+          { month: 'Fev', nota: 7.8, avaliacoes: 52 },
+          { month: 'Mar', nota: 8.1, avaliacoes: 48 },
+          { month: 'Abr', nota: 7.5, avaliacoes: 51 },
+          { month: 'Mai', nota: 8.3, avaliacoes: 49 },
+          { month: 'Jun', nota: 7.9, avaliacoes: 47 },
+        ],
+        resumo: {
+          media: evaluationResults.grade,
+          melhorNota: evaluationResults.grade,
+          streak: 1,
+          metaAlcancada: evaluationResults.grade >= 7.0,
+          progresso: Math.min(100, (evaluationResults.grade / 10) * 100),
+          totalAvaliacoes: 1,
+          tendencia: evaluationResults.grade >= 7.0 ? 'up' : 'stable'
+        }
+      }
+    };
+  }, []);
+
+  // Função para carregar dados de uma avaliação específica
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const loadEvaluationData = useCallback(async (evaluationId: string) => {
+    if (!user?.id || !evaluationId) {
+      console.log('⚠️ Dados insuficientes para carregar avaliação:', { userId: user?.id, evaluationId });
+      return;
+    }
+    
+    // Validação: garantir que o evaluationId corresponde ao selectedEvaluation
+    if (evaluationId !== selectedEvaluation) {
+      console.warn('⚠️ Tentativa de carregar avaliação diferente da selecionada:', {
+        requested: evaluationId,
+        selected: selectedEvaluation
+      });
+      return;
+    }
+    
+    try {
+      console.log('🔍 Carregando dados da avaliação:', evaluationId);
+      const evaluationResults = await fetchEvaluationResults(evaluationId, user.id);
+      const selectedEval = evaluations.find(evaluation => evaluation.id === evaluationId);
+      
+      if (selectedEval) {
+        // Validar novamente antes de setar os dados
+        if (evaluationId === selectedEvaluation) {
+          const mappedStats = mapEvaluationResultsToStats(evaluationResults, selectedEval);
+          setStats(mappedStats);
+          setEvaluationResults(evaluationResults);
+          // Atualizar ref apenas após carregar com sucesso
+          lastLoadedEvaluationRef.current = evaluationId;
+        } else {
+          console.warn('⚠️ Avaliação mudou durante o carregamento, ignorando dados antigos');
+        }
+      } else {
+        console.warn('⚠️ Avaliação não encontrada na lista:', evaluationId);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar dados da avaliação:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar os dados da avaliação selecionada.",
+        variant: "destructive",
+      });
+    }
+  }, [user?.id, evaluations, selectedEvaluation, toast]);
+
+  // Função principal para carregar dados
+  const loadStudentData = async () => {
+    try {
+      setIsLoading(true);
+      setIsLoadingEvaluations(true);
+      
+      if (!user?.id) {
+        throw new Error('ID do usuário não encontrado');
+      }
+
+      // 1. Buscar avaliações do aluno PRIMEIRO
+      console.log('🔍 Buscando avaliações do aluno...');
+      const studentEvaluations = await fetchStudentEvaluations(user.id);
+      console.log('📊 Avaliações encontradas:', studentEvaluations);
+      setEvaluations(studentEvaluations);
+      
+      if (studentEvaluations.length > 0) {
+        // 2. Selecionar automaticamente a primeira avaliação
+        const firstEvaluation = studentEvaluations[0];
+        console.log('✅ Primeira avaliação selecionada:', firstEvaluation);
+        console.log('✅ ID da primeira avaliação:', firstEvaluation.id);
+        setSelectedEvaluation(firstEvaluation.id);
+        
+        // 3. AGORA carregar dados da primeira avaliação (após ter a lista)
+        console.log('🔍 Carregando dados da primeira avaliação:', firstEvaluation.id);
+        await loadEvaluationData(firstEvaluation.id);
+      } else {
+        // 4. Se não houver avaliações, não há nada para exibir
+        console.log('⚠️ Nenhuma avaliação encontrada');
+      }
+        
+    } catch (error) {
+      console.error('Erro ao carregar dados do aluno:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar seus dados.",
+        variant: "destructive",
+      });
+        
+      // Em caso de erro, usar dados mockados como último recurso
+      console.error('Erro no carregamento, usando dados mockados:', error);
+      setStats(mockStats);
+    } finally {
+      setIsLoading(false);
+      setIsLoadingEvaluations(false);
+    }
+  };
+
   useEffect(() => {
-    const loadStudentStats = async () => {
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (hasLoadedData || !user?.id) return;
+    
+    const loadStudentData = async () => {
       try {
         setIsLoading(true);
-        // Simular delay de carregamento
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        setStats(mockStats);
+        setIsLoadingEvaluations(true);
+        setHasLoadedData(true);
+        
+        if (!user?.id) {
+          throw new Error('ID do usuário não encontrado');
+        }
+
+        // 1. Buscar avaliações do aluno PRIMEIRO
+        console.log('🔍 Buscando avaliações do aluno...');
+        const studentEvaluations = await fetchStudentEvaluations(user.id);
+        console.log('📊 Avaliações encontradas:', studentEvaluations);
+        setEvaluations(studentEvaluations);
+        
+        if (studentEvaluations.length > 0) {
+          // 2. Selecionar automaticamente a primeira avaliação
+          // O useEffect abaixo irá detectar a mudança e carregar os dados automaticamente
+          const firstEvaluation = studentEvaluations[0];
+          console.log('✅ Primeira avaliação selecionada:', firstEvaluation);
+          console.log('✅ ID da primeira avaliação:', firstEvaluation.id);
+          setSelectedEvaluation(firstEvaluation.id);
+        } else {
+          // 3. Se não houver avaliações, não há nada para exibir
+          console.log('⚠️ Nenhuma avaliação encontrada');
+        }
+          
       } catch (error) {
-        console.error('Erro ao carregar estatísticas do aluno:', error);
+        console.error('Erro ao carregar dados do aluno:', error);
         toast({
           title: "Erro",
-          description: "Não foi possível carregar suas estatísticas.",
+          description: "Não foi possível carregar seus dados.",
           variant: "destructive",
         });
+        setHasLoadedData(false);
+        
+        // Em caso de erro, usar dados mockados como último recurso
+        console.error('Erro no carregamento, usando dados mockados:', error);
+        setStats(mockStats);
       } finally {
         setIsLoading(false);
+        setIsLoadingEvaluations(false);
       }
     };
 
-    loadStudentStats();
-  }, [toast]);
+    loadStudentData();
+  }, [user?.id]);
 
-  const StatCard = ({ 
-    title, 
-    value, 
-    change, 
-    trend, 
-    icon: Icon,
-    color = "bg-blue-500"
-  }: {
-    title: string;
-    value: string | number;
-    change: number;
-    trend: 'up' | 'down';
-    icon: React.ElementType;
-    color?: string;
-  }) => (
-    <Card className="relative overflow-hidden hover:shadow-lg transition-shadow duration-300">
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between">
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-muted-foreground">{title}</p>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold">{value}</span>
-              <Badge 
-                variant={trend === 'up' ? 'default' : 'destructive'}
-                className={`text-xs ${trend === 'up' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}
-              >
-                {trend === 'up' ? <TrendingUp className="w-3 h-3 mr-1" /> : <TrendingDown className="w-3 h-3 mr-1" />}
-                {Math.abs(change)}%
-              </Badge>
-            </div>
-          </div>
-          <div className={`p-3 rounded-full ${color} text-white`}>
-            <Icon className="w-6 h-6" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-
-  const EstatisticasChart = () => {
-    const getCurrentData = () => {
-      switch (period) {
-        case 'week':
-          return stats?.estatisticas.semana || [];
-        case 'month':
-          return stats?.estatisticas.mes || [];
-        case 'year':
-          return stats?.estatisticas.ano || [];
-        default:
-          return [];
+  // useEffect que monitora selectedEvaluation e carrega dados automaticamente
+  useEffect(() => {
+    if (selectedEvaluation && user?.id && evaluations.length > 0) {
+      // Verificar se a avaliação selecionada existe na lista
+      const evaluationExists = evaluations.find(e => e.id === selectedEvaluation);
+      if (evaluationExists) {
+        // Evitar carregar a mesma avaliação novamente
+        if (lastLoadedEvaluationRef.current !== selectedEvaluation) {
+          console.log('🔄 selectedEvaluation mudou, carregando dados:', selectedEvaluation);
+          loadEvaluationData(selectedEvaluation);
+        } else {
+          console.log('ℹ️ Avaliação já carregada, ignorando:', selectedEvaluation);
+        }
+      } else {
+        console.warn('⚠️ Avaliação selecionada não encontrada na lista:', selectedEvaluation);
       }
-    };
+    }
+  }, [selectedEvaluation, user?.id, evaluations.length, loadEvaluationData]);
 
-    const data = getCurrentData();
-    const maxValue = Math.max(...data.map(item => 'nota' in item ? item.nota : 0));
-    const minValue = Math.min(...data.map(item => 'nota' in item ? item.nota : 0));
+  // Função para carregar dados de comparação
+  const loadComparisonData = useCallback(async () => {
+    if (!user?.id || evaluations.length < 2) {
+      console.log('⚠️ Dados insuficientes para comparação:', { userId: user?.id, evaluationsCount: evaluations.length });
+      return;
+    }
+    
+    try {
+      setIsLoadingComparison(true);
+      console.log('🔍 Carregando dados de comparação...');
+      
+      // Pegar os IDs das avaliações disponíveis
+      const testIds = evaluations.map(evaluation => evaluation.id);
+      console.log('📊 IDs das avaliações para comparação:', testIds);
+      
+      const comparisonResponse = await fetchStudentComparison(user.id, testIds);
+      setComparisonData(comparisonResponse);
+      
+      console.log('✅ Dados de comparação carregados:', comparisonResponse);
+    } catch (error) {
+      console.error('Erro ao carregar dados de comparação:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar os dados de comparação entre avaliações.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingComparison(false);
+    }
+  }, [user?.id, evaluations, toast]);
 
-    const getLabel = (item: { day?: string; week?: string; month?: string; nota: number }) => {
-      if ('day' in item) return item.day;
-      if ('week' in item) return item.week;
-      if ('month' in item) return item.month;
-      return '';
-    };
+  // Carregar dados de comparação quando as avaliações estiverem disponíveis
+  useEffect(() => {
+    if (evaluations.length >= 2 && !comparisonData) {
+      loadComparisonData();
+    }
+  }, [evaluations, comparisonData]);
 
-    const getValue = (item: { nota: number }) => {
-      return item.nota || 0;
-    };
-
-    const renderChart = () => {
-      switch (chartType) {
-        case 'bar':
-          return (
-            <div className="h-64 flex items-end justify-between gap-2 px-2">
-              {data.map((item, index) => (
-                <div key={index} className="flex flex-col items-center flex-1 group">
-                  <div 
-                    className="w-full bg-gradient-to-t from-blue-600 to-blue-400 rounded-t-lg min-h-[20px] transition-all duration-500 hover:from-purple-600 hover:to-purple-400 cursor-pointer shadow-lg"
-                    style={{ height: `${(getValue(item) / 10) * 200}px` }}
-                    title={`${getLabel(item)}: ${getValue(item)}`}
-                  />
-                  <span className="text-xs text-muted-foreground mt-2 font-medium group-hover:text-purple-600 transition-colors">
-                    {getLabel(item)}
-                  </span>
-                  <span className="text-xs font-bold text-blue-600 group-hover:text-purple-600 transition-colors">
-                    {getValue(item).toFixed(1)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          );
-        
-        case 'line':
-          return (
-            <div className="h-64 relative px-2">
-              <svg className="w-full h-full" viewBox="0 0 400 200">
-                <defs>
-                  <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#3B82F6" />
-                    <stop offset="100%" stopColor="#8B5CF6" />
-                  </linearGradient>
-                </defs>
-                <polyline
-                  points={data.map((item, index) => 
-                    `${(index / (data.length - 1)) * 380 + 10},${200 - (getValue(item) / 10) * 180}`
-                  ).join(' ')}
-                  fill="none"
-                  stroke="url(#lineGradient)"
-                  strokeWidth="3"
-                  className="drop-shadow-sm"
-                />
-                {data.map((item, index) => (
-                  <circle
-                    key={index}
-                    cx={(index / (data.length - 1)) * 380 + 10}
-                    cy={200 - (getValue(item) / 10) * 180}
-                    r="4"
-                    fill="#3B82F6"
-                    className="hover:fill-purple-600 transition-colors cursor-pointer"
-                  />
-                ))}
-              </svg>
-              <div className="flex justify-between mt-2">
-                {data.map((item, index) => (
-                  <div key={index} className="text-xs text-center">
-                    <div className="text-muted-foreground">{getLabel(item)}</div>
-                    <div className="font-bold text-blue-600">{getValue(item).toFixed(1)}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-
-        case 'area':
-          return (
-            <div className="h-64 relative px-2">
-              <svg className="w-full h-full" viewBox="0 0 400 200">
-                <defs>
-                  <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.6" />
-                    <stop offset="100%" stopColor="#3B82F6" stopOpacity="0.1" />
-                  </linearGradient>
-                </defs>
-                <polygon
-                  points={`10,200 ${data.map((item, index) => 
-                    `${(index / (data.length - 1)) * 380 + 10},${200 - (getValue(item) / 10) * 180}`
-                  ).join(' ')} ${380 + 10},200`}
-                  fill="url(#areaGradient)"
-                  className="drop-shadow-sm"
-                />
-                <polyline
-                  points={data.map((item, index) => 
-                    `${(index / (data.length - 1)) * 380 + 10},${200 - (getValue(item) / 10) * 180}`
-                  ).join(' ')}
-                  fill="none"
-                  stroke="#3B82F6"
-                  strokeWidth="2"
-                />
-              </svg>
-              <div className="flex justify-between mt-2">
-                {data.map((item, index) => (
-                  <div key={index} className="text-xs text-center">
-                    <div className="text-muted-foreground">{getLabel(item)}</div>
-                    <div className="font-bold text-blue-600">{getValue(item).toFixed(1)}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-
-        default:
-          return null;
-      }
-    };
-
-    return (
-      <div className="space-y-6">
-        {/* Header com controles */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg">
-              <Activity className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold">Estatísticas de Performance</h3>
-              <p className="text-sm text-muted-foreground">Notas das suas avaliações</p>
-            </div>
-          </div>
-          
-          {/* Controles de período e tipo de gráfico */}
-          <div className="flex flex-col sm:flex-row gap-2">
-            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-              <Button
-                size="sm"
-                variant={period === 'week' ? 'default' : 'ghost'}
-                onClick={() => setPeriod('week')}
-                className="text-xs"
-              >
-                Semana
-              </Button>
-              <Button
-                size="sm"
-                variant={period === 'month' ? 'default' : 'ghost'}
-                onClick={() => setPeriod('month')}
-                className="text-xs"
-              >
-                Mês
-              </Button>
-              <Button
-                size="sm"
-                variant={period === 'year' ? 'default' : 'ghost'}
-                onClick={() => setPeriod('year')}
-                className="text-xs"
-              >
-                Ano
-              </Button>
-            </div>
-            
-            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-              <Button
-                size="sm"
-                variant={chartType === 'bar' ? 'default' : 'ghost'}
-                onClick={() => setChartType('bar')}
-                className="text-xs"
-              >
-                <BarChart3 className="w-3 h-3" />
-              </Button>
-              <Button
-                size="sm"
-                variant={chartType === 'line' ? 'default' : 'ghost'}
-                onClick={() => setChartType('line')}
-                className="text-xs"
-              >
-                <LineChart className="w-3 h-3" />
-              </Button>
-              <Button
-                size="sm"
-                variant={chartType === 'area' ? 'default' : 'ghost'}
-                onClick={() => setChartType('area')}
-                className="text-xs"
-              >
-                <Activity className="w-3 h-3" />
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* Estatísticas de resumo gamificadas */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg p-3 text-white">
-            <div className="flex items-center gap-2">
-              <Target className="w-4 h-4" />
-              <span className="text-xs font-medium">Média</span>
-            </div>
-            <p className="text-lg font-bold">{stats?.estatisticas.resumo.media}</p>
-          </div>
-          
-          <div className="bg-gradient-to-br from-yellow-500 to-orange-500 rounded-lg p-3 text-white">
-            <div className="flex items-center gap-2">
-              <Star className="w-4 h-4" />
-              <span className="text-xs font-medium">Melhor</span>
-            </div>
-            <p className="text-lg font-bold">{stats?.estatisticas.resumo.melhorNota}</p>
-          </div>
-          
-          <div className="bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg p-3 text-white">
-            <div className="flex items-center gap-2">
-              <Flame className="w-4 h-4" />
-              <span className="text-xs font-medium">Streak</span>
-            </div>
-            <p className="text-lg font-bold">{stats?.estatisticas.resumo.streak} dias</p>
-          </div>
-          
-          <div className="bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg p-3 text-white">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4" />
-              <span className="text-xs font-medium">Total</span>
-            </div>
-            <p className="text-lg font-bold">{stats?.estatisticas.resumo.totalAvaliacoes}</p>
-          </div>
-        </div>
-
-        {/* Gráfico principal */}
-        <div className="bg-gray-50 rounded-lg p-4">
-          {renderChart()}
-        </div>
-
-        {/* Progresso da meta */}
-        <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium">Meta do Mês</span>
-            <Badge className={`${stats?.estatisticas.resumo.metaAlcancada ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-              {stats?.estatisticas.resumo.metaAlcancada ? '🎉 Alcançada!' : '💪 Em progresso'}
-            </Badge>
-          </div>
-          <Progress value={stats?.estatisticas.resumo.progresso} className="h-3 mb-2" />
-          <p className="text-xs text-muted-foreground">{stats?.estatisticas.resumo.progresso}% da meta mensal</p>
-        </div>
-      </div>
-    );
+  // Função para lidar com mudança de avaliação
+  const handleEvaluationChange = (evaluationId: string) => {
+    if (!evaluationId) {
+      console.warn('⚠️ ID da avaliação não fornecido');
+      return;
+    }
+    
+    console.log('🔄 Mudando para avaliação:', evaluationId);
+    // Apenas setar selectedEvaluation - o useEffect irá detectar e carregar os dados automaticamente
+    setSelectedEvaluation(evaluationId);
   };
+
+
+
+
 
   if (isLoading) {
     return (
@@ -621,376 +965,78 @@ const StudentDashboard = () => {
     );
   }
 
+
   return (
     <div className="container mx-auto py-6 px-4 max-w-7xl">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8">
-        <div className="flex items-center gap-4">
-          <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg">
-            <User className="w-8 h-8 text-white" />
+        <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-shrink-0">
+          <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg flex-shrink-0">
+            <User className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Olá, {user?.name || "Aluno"}!</h1>
-            <p className="text-gray-600">Painel do Aluno</p>
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 truncate">Olá, {user?.name || "Aluno"}!</h1>
+            <p className="text-sm sm:text-base text-gray-600">Painel do Aluno</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="bg-green-100 text-green-800 px-3 py-1">
-            1º Avaliação
-          </Badge>
+        
+        {/* Select de Avaliações */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {evaluations.length > 0 && (
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-gray-700">Avaliação:</label>
+              <select
+                value={selectedEvaluation || ''}
+                onChange={(e) => handleEvaluationChange(e.target.value)}
+                disabled={isLoadingEvaluations}
+                className="px-3 py-1 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                {evaluations.map((evaluation) => (
+                  <option key={evaluation.id} value={evaluation.id}>
+                    {evaluation.titulo} - {evaluation.disciplina}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {selectedEvaluation && (
+            <Badge variant="outline" className="bg-green-100 text-green-800 px-2 sm:px-3 py-1 text-xs sm:text-sm">
+              Avaliação Específica
+            </Badge>
+          )}
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <StatCard
-          title="Proficiência"
-          value={stats?.proficiencia.value || 0}
-          change={stats?.proficiencia.change || 0}
-          trend={stats?.proficiencia.trend || 'up'}
-          icon={Target}
-          color="bg-green-500"
-        />
-        <StatCard
-          title="Nota"
-          value={stats?.nota.value || 0}
-          change={stats?.nota.change || 0}
-          trend={stats?.nota.trend || 'down'}
-          icon={BookOpen}
-          color="bg-red-500"
-        />
-        <StatCard
-          title="Nível de Classificação"
-          value={stats?.nivel.value || 'N/A'}
-          change={stats?.nivel.change || 0}
-          trend={stats?.nivel.trend || 'down'}
-          icon={Award}
-          color="bg-yellow-500"
-        />
-        <StatCard
-          title="Acertos"
-          value={stats?.acertos.value || 0}
-          change={stats?.acertos.change || 0}
-          trend={stats?.acertos.trend || 'up'}
-          icon={Star}
-          color="bg-green-500"
-        />
-      </div>
+      {stats && <StatsCards stats={stats} />}
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 items-start">
-        {/* Medalhas e Moedas - Professional Cards */}
-        <div className="xl:col-span-1 space-y-6">
-          {/* Medalhas Gamificadas */}
-          <Card className="hover:shadow-lg transition-shadow duration-300">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-3 text-lg">
-                <div className="p-2 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-lg">
-                  <Medal className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <div>Coleção de Medalhas</div>
-                  <div className="text-xs text-muted-foreground font-normal">Suas conquistas</div>
-                </div>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              {/* Medalhas Conquistadas */}
-              <div className="grid grid-cols-3 gap-3 mb-4">
-                <div className="text-center p-2 bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-lg border border-yellow-300">
-                  <div className="w-8 h-8 bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-full flex items-center justify-center mx-auto mb-1">
-                    <Medal className="w-4 h-4 text-white" />
-                  </div>
-                  <div className="text-xs font-medium text-yellow-700">Primeira Nota 10</div>
-                </div>
-                <div className="text-center p-2 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg border border-blue-300">
-                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-1">
-                    <Star className="w-4 h-4 text-white" />
-                  </div>
-                  <div className="text-xs font-medium text-blue-700">Streak 7 dias</div>
-                </div>
-                <div className="text-center p-2 bg-gradient-to-br from-purple-100 to-purple-200 rounded-lg border border-purple-300">
-                  <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-1">
-                    <Trophy className="w-4 h-4 text-white" />
-                  </div>
-                  <div className="text-xs font-medium text-purple-700">Top 10</div>
-                </div>
-              </div>
+      {/* Layout Principal - 3 cards em cima, comparação embaixo */}
+      <div className="space-y-6">
+        {/* Top Row - 3 Cards lado a lado */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+          {/* Medalhas */}
+          {stats && <MedalhasCard medalhas={stats.medalhas} />}
 
-              {/* Progresso Geral */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Progresso da Coleção</span>
-                  <span className="text-sm text-blue-600 font-bold">{stats?.medalhas.total}/12</span>
-                </div>
-                <Progress value={stats?.medalhas.percentage} className="h-3" />
-                <div className="text-xs text-muted-foreground">
-                  {stats?.medalhas.percentage}% das medalhas conquistadas
-                </div>
-              </div>
+          {/* AfirmeCoins */}
+          {stats && <InnovCoinsCard moedas={stats.moedas} />}
 
-              {/* Próximas Medalhas */}
-              <div className="mt-4 p-3 bg-gradient-to-r from-orange-50 to-red-50 rounded-lg border border-orange-200">
-                <div className="flex items-center gap-2 mb-2">
-                  <Zap className="w-4 h-4 text-orange-600" />
-                  <span className="text-sm font-medium text-orange-700">Próximas Conquistas</span>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-gray-300 rounded-full opacity-50"></div>
-                    <span className="text-xs text-gray-600">Estudioso - 5 avaliações em sequência</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-gray-300 rounded-full opacity-50"></div>
-                    <span className="text-xs text-gray-600">Matemático - 3 notas 10 em matemática</span>
-                  </div>
-                </div>
-              </div>
+          {/* Ranking */}
+          {stats && (
+            <RankingCard 
+              ranking={getCurrentRankingData()} 
+              rankingFilter={rankingFilter}
+              onRankingFilterChange={handleRankingFilterChange}
+              userName={user?.name}
+            />
+          )}
+          </div>
 
-              {/* Stats das Medalhas */}
-              <div className="grid grid-cols-2 gap-2 mt-3">
-                <div className="text-center p-2 bg-yellow-50 rounded border border-yellow-200">
-                  <div className="text-lg font-bold text-yellow-600">3</div>
-                  <div className="text-xs text-yellow-700">Ouro</div>
-                </div>
-                <div className="text-center p-2 bg-gray-50 rounded border border-gray-200">
-                  <div className="text-lg font-bold text-gray-600">1</div>
-                  <div className="text-xs text-gray-700">Prata</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Moedas Gamificadas */}
-          <Card className="hover:shadow-lg transition-shadow duration-300">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-3 text-lg">
-                <div className="p-2 bg-gradient-to-br from-yellow-500 to-amber-500 rounded-lg">
-                  <Coins className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <div>InnovCoins</div>
-                  <div className="text-xs text-muted-foreground font-normal">Sua economia</div>
-                </div>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              {/* Saldo Atual */}
-              <div className="text-center p-4 bg-gradient-to-br from-yellow-50 to-amber-50 rounded-lg border border-yellow-200 mb-4">
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-amber-500 rounded-full flex items-center justify-center">
-                    <Coins className="w-6 h-6 text-white" />
-                  </div>
-                </div>
-                <div className="text-3xl font-bold text-yellow-600 mb-1">{stats?.moedas.total}</div>
-                <div className="text-sm text-yellow-700">InnovCoins disponíveis</div>
-                <div className="text-xs text-green-600 flex items-center justify-center gap-1 mt-1">
-                  <ArrowUp className="w-3 h-3" />
-                  +{stats?.moedas.ganhasHoje} hoje
-                </div>
-              </div>
-
-              {/* Maneiras de Ganhar */}
-              <div className="space-y-2 mb-4">
-                <div className="text-sm font-medium text-gray-700 mb-2">Como ganhar mais:</div>
-                <div className="flex items-center justify-between p-2 bg-green-50 rounded border border-green-200">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
-                      <BookOpen className="w-3 h-3 text-white" />
-                    </div>
-                    <span className="text-xs">Fazer avaliação</span>
-                  </div>
-                  <span className="text-xs font-bold text-green-600">+2 coins</span>
-                </div>
-                <div className="flex items-center justify-between p-2 bg-blue-50 rounded border border-blue-200">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
-                      <Star className="w-3 h-3 text-white" />
-                    </div>
-                    <span className="text-xs">Nota acima de 8</span>
-                  </div>
-                  <span className="text-xs font-bold text-blue-600">+5 coins</span>
-                </div>
-                <div className="flex items-center justify-between p-2 bg-purple-50 rounded border border-purple-200">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center">
-                      <Flame className="w-3 h-3 text-white" />
-                    </div>
-                    <span className="text-xs">Streak 7 dias</span>
-                  </div>
-                  <span className="text-xs font-bold text-purple-600">+10 coins</span>
-                </div>
-              </div>
-
-              {/* Loja Preview */}
-              <div className="p-3 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-200">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-4 h-4 bg-indigo-500 rounded-full flex items-center justify-center">
-                    <span className="text-white text-xs">🛍️</span>
-                  </div>
-                  <span className="text-sm font-medium text-indigo-700">Loja de Recompensas</span>
-                </div>
-                <div className="space-y-1">
-                  {stats?.moedas.loja.map((item, index) => (
-                    <div key={index} className="flex items-center justify-between">
-                      <span className={`text-xs ${item.disponivel ? 'text-indigo-600' : 'text-gray-400'}`}>
-                        {item.item}
-                      </span>
-                      <span className={`text-xs font-bold ${item.disponivel ? 'text-indigo-700' : 'text-gray-500'}`}>
-                        {item.preco} coins
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Histórico Rápido */}
-              <div className="mt-4">
-                <div className="text-sm font-medium text-gray-700 mb-2">Últimas transações:</div>
-                <div className="space-y-1 text-xs">
-                  {stats?.moedas.historico.map((transacao, index) => (
-                    <div key={index} className="flex items-center justify-between py-1">
-                      <span className="text-gray-600">{transacao.acao}</span>
-                      <span className="text-green-600 font-medium">+{transacao.valor}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Estatísticas */}
-        <div className="xl:col-span-2">
-          <Card className="hover:shadow-lg transition-shadow duration-300">
-            <CardContent className="p-6">
-              <EstatisticasChart />
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Ranking Gamificado */}
-        <div className="xl:col-span-1">
-          <Card className="hover:shadow-lg transition-shadow duration-300">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-lg">
-                  <Trophy className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <div className="text-lg font-semibold">Ranking</div>
-                  <div className="text-xs text-muted-foreground">Sua posição atual</div>
-                </div>
-              </CardTitle>
-              
-              {/* Filtros do Ranking */}
-              <div className="flex gap-1 bg-gray-100 rounded-lg p-1 mt-3">
-                <Button 
-                  size="sm" 
-                  variant={rankingFilter === 'geral' ? 'default' : 'ghost'} 
-                  className="text-xs px-2 py-1"
-                  onClick={() => handleRankingFilterChange('geral')}
-                >
-                  Geral
-                </Button>
-                <Button 
-                  size="sm" 
-                  variant={rankingFilter === 'semanal' ? 'default' : 'ghost'} 
-                  className="text-xs px-2 py-1"
-                  onClick={() => handleRankingFilterChange('semanal')}
-                >
-                  Semanal
-                </Button>
-                <Button 
-                  size="sm" 
-                  variant={rankingFilter === 'mensal' ? 'default' : 'ghost'} 
-                  className="text-xs px-2 py-1"
-                  onClick={() => handleRankingFilterChange('mensal')}
-                >
-                  Mensal
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {/* Sua Posição Destacada */}
-              <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-3 mb-4 border-2 border-blue-200 flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">{user?.name ? user.name.charAt(0).toUpperCase() : 'J'}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm text-gray-900 truncate">Você está em</div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Badge className="bg-blue-100 text-blue-800 text-xs px-2 py-1">{getCurrentRankingData().posicaoAtual}º lugar</Badge>
-                    {getCurrentRankingData().mudancaPosicao !== 0 && (
-                      <span className={`text-xs flex items-center gap-1 font-medium ${getCurrentRankingData().mudancaPosicao > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {getCurrentRankingData().mudancaPosicao > 0 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
-                        {getCurrentRankingData().mudancaPosicao > 0 ? '+' : ''}{getCurrentRankingData().mudancaPosicao} posição{Math.abs(getCurrentRankingData().mudancaPosicao) > 1 ? 's' : ''}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-2xl font-bold text-blue-600 leading-none">{getCurrentRankingData().pontos}</div>
-                  <div className="text-xs text-muted-foreground">pontos</div>
-                </div>
-              </div>
-
-              {/* Top 3 Destacado */}
-              <div className="grid grid-cols-3 gap-2 mb-4">
-                {getCurrentRankingData().lista.slice(0, 3).map((item, index) => {
-                  const medals = ['🥇', '🥈', '🥉'];
-                  const colors = [
-                    { bg: 'bg-yellow-50', border: 'border-yellow-200', icon: 'bg-yellow-500', text: 'text-yellow-600' },
-                    { bg: 'bg-gray-50', border: 'border-gray-200', icon: 'bg-gray-400', text: 'text-gray-600' },
-                    { bg: 'bg-orange-50', border: 'border-orange-200', icon: 'bg-orange-500', text: 'text-orange-600' }
-                  ];
-                  return (
-                    <div key={item.id} className={`text-center p-2 ${colors[index].bg} rounded-lg border ${colors[index].border}`}>
-                      <div className={`w-8 h-8 ${colors[index].icon} rounded-full flex items-center justify-center mx-auto mb-1`}>
-                        <span className="text-white font-bold text-xs">{medals[index]}</span>
-                      </div>
-                      <div className="text-xs font-medium truncate">{item.nome}</div>
-                      <div className={`text-xs ${colors[index].text} font-bold`}>{item.pontos.toLocaleString()}</div>
-                    </div>
-                  );
-                })}
-              </div>
-                
-              {/* Lista Completa */}
-              <div className="space-y-1 max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300">
-                {getCurrentRankingData().lista.slice(3).map((item, index) => (
-                  <div key={item.id} className="flex items-center gap-3 py-2 px-2 hover:bg-gray-50 rounded-lg transition-all duration-200 group">
-                    <div className="w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                      <span className="text-xs font-bold text-gray-600 group-hover:text-blue-600">
-                        {item.posicao}
-                      </span>
-                    </div>
-                    <Avatar className="w-6 h-6">
-                      <AvatarFallback className="text-xs bg-gray-200">
-                        {item.nome.split(' ').map(n => n[0]).join('')}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium truncate">{item.nome}</div>
-                    </div>
-                    <div className="text-xs font-bold text-gray-600">{item.pontos}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Próximo Objetivo */}
-              <div className="mt-4 p-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
-                <div className="flex items-center gap-2 mb-2">
-                  <Target className="w-4 h-4 text-green-600" />
-                  <span className="text-sm font-medium text-green-700">Próximo Objetivo</span>
-                </div>
-                <div className="text-xs text-green-600 mb-1">
-                  Faltam apenas <span className="font-bold">{getCurrentRankingData().proximoObjetivo.pontosNecessarios} pontos</span> para alcançar o {getCurrentRankingData().proximoObjetivo.posicao}º lugar!
-                </div>
-                <Progress value={getCurrentRankingData().proximoObjetivo.progresso} className="h-2" />
-              </div>
-            </CardContent>
-          </Card>
+        {/* Bottom Row - Gráfico de Evolução */}
+        <div className="w-full">
+          <EvolutionChart 
+            data={comparisonData as unknown as any} // eslint-disable-line @typescript-eslint/no-explicit-any
+            isLoading={isLoadingComparison}
+          />
         </div>
       </div>
     </div>

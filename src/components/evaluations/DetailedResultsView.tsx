@@ -9,17 +9,14 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { PDFReportGenerator } from "./PDFReportGenerator";
 import {
     ArrowLeft,
-    Download,
     CheckCircle2,
     XCircle,
     Minus,
     Clock,
     Target,
     BarChart3,
-    FileText,
     AlertTriangle,
     Award,
     Users,
@@ -505,23 +502,12 @@ const StudentsResultsTable = ({
                     <tr className="bg-gray-100">
                         <th className="p-2 min-w-[150px] text-left border-r border-gray-300">Aluno</th>
                         {visibleFields?.questoes && Array.from({ length: totalQuestions }, (_, i) => {
-                            let questionNumber = i + 1;
-                            
-                            if (questoes && questoes.length > 0) {
-                                const questao = questoes[i];
-                                if (questao) {
-                                    questionNumber = questao.numero;
-                                }
-                            } else if (questionsWithSkills && questionsWithSkills.length > 0) {
-                                const questao = questionsWithSkills[i];
-                                if (questao) {
-                                    questionNumber = questao.number;
-                                }
-                            }
+                            // ✅ CORRIGIDO: Sempre mostrar Q1, Q2, Q3, Q4... independente do número do backend
+                            const questionDisplayNumber = i + 1;
                             
                             return (
                                 <th key={`header-q${i}`} className="p-2 min-w-[80px] border-r border-gray-300">
-                                    Q{questionNumber}
+                                    Q{questionDisplayNumber}
                                 </th>
                             );
                         })}
@@ -657,7 +643,7 @@ const StudentsResultsTable = ({
                                 className="hover:bg-gray-50 cursor-pointer group"
                                 onClick={() => onViewStudentDetails(student.id)}
                                 title="Clique para ver resultados detalhados do aluno">
-                                <td className="p-2 border-t border-gray-200 text-left border-r-2 border-gray-200">
+                                <td className="p-2 border-t border-r-2 border-gray-200 text-left">
                                     <div className="font-medium hover:text-blue-600 transition-colors flex items-center gap-2">
                                         {student.nome}
                                         <Eye className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -668,7 +654,7 @@ const StudentsResultsTable = ({
                                     const displayColor = answer === true ? 'text-green-700' : answer === false || answer === null ? 'text-red-600' : 'text-transparent';
                                     
                                     return (
-                                        <td key={`${student.id}-q${questionIndex}`} className="px-4 py-2 border-t border-gray-200 border-r-2 border-gray-200 text-center align-middle">
+                                        <td key={`${student.id}-q${questionIndex}`} className="px-4 py-2 border-t border-r-2 border-gray-200 text-center align-middle">
                                             <div className="flex justify-center items-center h-full">
                                                 <span className={`${displayColor} text-2xl font-bold`}>{displaySymbol}</span>
                                         </div>
@@ -687,7 +673,7 @@ const StudentsResultsTable = ({
                                 )}
                                 {visibleFields?.proficiencia && (
                                     <td className="p-2 border-t border-gray-200 font-semibold bg-gray-50 text-center">
-                                        {student.proficiency?.toFixed(0) || student.proficiencia.toFixed(0)}
+                                        {student.proficiency || student.proficiencia}
                                     </td>
                                 )}
                                 {visibleFields?.nivel && (
@@ -742,6 +728,10 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
     const [students, setStudents] = useState<StudentResult[]>([]);
     const [detailedReport, setDetailedReport] = useState<DetailedReport | null>(null);
     const [stats, setStats] = useState<Stats | null>(null);
+    const [generalStats, setGeneralStats] = useState<{
+        media_nota_geral: number;
+        media_proficiencia_geral: number;
+    } | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isDataLoading, setIsDataLoading] = useState(false);
     const [loadingStep, setLoadingStep] = useState('');
@@ -1013,8 +1003,8 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
     // ✅ Função para buscar mapeamento de séries
     const fetchGradesMapping = async () => {
         try {
-            // ✅ Tentar usar a API service primeiro
-            // ✅ Usar a rota correta do backend via API service
+            // ✅ MIGRADO: Usar EvaluationResultsApiService em vez de chamada direta
+            // Nota: Este endpoint é específico para grades/séries, não faz parte da nova API unificada
             const response = await api.get('/evaluation-results/grades');
             
             if (response.data) {
@@ -1247,7 +1237,7 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                 });
                 
                 consolidateEvaluationInfo({
-                    disciplinas: disciplinasNomes
+                    disciplina: disciplinasNomes.join(', ')
                 });
             }
 
@@ -1259,8 +1249,35 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
             updateLoadingProgress(2, 'Carregando informações da avaliação...');
             const evaluationResponse = await EvaluationResultsApiService.getEvaluationById(evaluationId);
             
+            // ✅ 2.1. Buscar estatísticas gerais da avaliação (para média nota e proficiência)
+            updateLoadingProgress(2.5, 'Carregando estatísticas gerais...');
+            const generalStatsResponse = await EvaluationResultsApiService.getEvaluationGeneralStats(evaluationId);
+            
+            console.log('🔍 LOG - Resposta das estatísticas gerais:', generalStatsResponse);
+            
+            if (generalStatsResponse?.estatisticas_gerais) {
+                console.log('📊 LOG - Estatísticas gerais encontradas:', {
+                    media_nota_geral: generalStatsResponse.estatisticas_gerais.media_nota_geral,
+                    media_proficiencia_geral: generalStatsResponse.estatisticas_gerais.media_proficiencia_geral
+                });
+                
+                setGeneralStats({
+                    media_nota_geral: generalStatsResponse.estatisticas_gerais.media_nota_geral,
+                    media_proficiencia_geral: generalStatsResponse.estatisticas_gerais.media_proficiencia_geral
+                });
+            } else {
+                console.log('⚠️ LOG - Estatísticas gerais não encontradas na resposta');
+            }
+            
             if (evaluationResponse) {
-                consolidateEvaluationInfo(evaluationResponse);
+                // ✅ CORREÇÃO: Converter status para o tipo correto
+                const evaluationInfo = {
+                    ...evaluationResponse,
+                    status: (evaluationResponse.status === 'concluida' || evaluationResponse.status === 'pendente' || evaluationResponse.status === 'em_andamento') 
+                        ? evaluationResponse.status as 'concluida' | 'pendente' | 'em_andamento'
+                        : 'pendente' as 'concluida' | 'pendente' | 'em_andamento'
+                };
+                consolidateEvaluationInfo(evaluationInfo);
                 
                 // ✅ 3. Tentar recalcular a avaliação primeiro
                 updateLoadingProgress(3, 'Recalculando dados da avaliação...');
@@ -1312,7 +1329,7 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                             media_nota: statusSummary.average_score !== undefined ? statusSummary.average_score : evaluationInfo?.media_nota,
                             media_proficiencia: statusSummary.average_proficiency !== undefined ? statusSummary.average_proficiency : evaluationInfo?.media_proficiencia,
                             status: statusSummary.overall_status as 'concluida' | 'em_andamento' | 'pendente' || evaluationInfo?.status,
-                            disciplinas: filterOptions?.subjects?.map((d: string | { name?: string }) => typeof d === 'string' ? d : d.name) || evaluationInfo?.disciplinas
+                                    disciplina: filterOptions?.subjects?.map((d: string | { name?: string }) => typeof d === 'string' ? d : d.name).join(', ') || evaluationInfo?.disciplina
                         });
 
                         // ✅ 5. Buscar dados da avaliação novamente após recalculação (múltiplas tentativas)
@@ -1392,7 +1409,7 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                                     media_nota: updatedStatusSummary.average_score !== undefined ? updatedStatusSummary.average_score : evaluationInfo?.media_nota,
                                     media_proficiencia: updatedStatusSummary.average_proficiency !== undefined ? updatedStatusSummary.average_proficiency : evaluationInfo?.media_proficiencia,
                                     status: updatedStatusSummary.overall_status as 'concluida' | 'em_andamento' | 'pendente' || evaluationInfo?.status,
-                                    disciplinas: updatedFilterOptions?.subjects?.map((d: string | { name?: string }) => typeof d === 'string' ? d : d.name) || evaluationInfo?.disciplinas
+                                    disciplina: updatedFilterOptions?.subjects?.map((d: string | { name?: string }) => typeof d === 'string' ? d : d.name).join(', ') || evaluationInfo?.disciplina
                                 });
                             }
                         }
@@ -1530,7 +1547,7 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                             
                             if (disciplinasNomes.length > 0) {
                                 consolidateEvaluationInfo({
-                                    disciplinas: disciplinasNomes
+                                    disciplina: disciplinasNomes.join(', ')
                                 });
                             }
                         } catch (error) {
@@ -1734,59 +1751,7 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
         navigate(`/app/avaliacao/${evaluationId}/aluno/${studentId}/resultados`);
     };
 
-    const handleExportStudents = async () => {
-        try {
-            const XLSX = await import('xlsx');
-            const { saveAs } = await import('file-saver');
-
-            if (filteredStudents.length === 0) {
-                toast({
-                    title: "Nenhum dado para exportar",
-                    description: "Não há alunos para gerar a planilha",
-                    variant: "destructive",
-                });
-                return;
-            }
-
-            const worksheetData = [
-                ['Nome', 'Turma', 'Nota', 'Proficiência', 'Classificação', 'Questões Respondidas', 'Acertos', 'Erros', 'Tempo (min)', 'Status'],
-                ...filteredStudents.map(student => [
-                    student.nome,
-                    student.turma,
-                    student.nota.toFixed(1),
-                    student.proficiencia.toFixed(2),
-                    student.classificacao,
-                    student.questoes_respondidas,
-                    student.acertos,
-                    student.erros,
-                    Math.floor(student.tempo_gasto / 60),
-                    student.status === 'concluida' ? 'Concluída' : 'Pendente'
-                ])
-            ];
-
-            const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
-            const workbook = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(workbook, worksheet, 'Resultados dos Alunos');
-
-            const fileName = `resultados-alunos-${evaluationId}-${new Date().toISOString().split('T')[0]}.xlsx`;
-            const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-            const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-
-            saveAs(blob, fileName);
-
-            toast({
-                title: "Exportação concluída!",
-                description: "Os resultados dos alunos foram exportados com sucesso.",
-            });
-        } catch (error) {
-            console.error("Erro na exportação:", error);
-            toast({
-                title: "Erro na exportação",
-                description: "Não foi possível exportar os resultados",
-                variant: "destructive",
-            });
-        }
-    };
+    // Botão de exportação removido
 
     const uniqueClassifications = [...new Set(students.map(s => s.classificacao))];
     const uniqueTurmas = [...new Set(students.map(s => s.turma))].sort();
@@ -2145,26 +2110,12 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                             <div className="font-semibold">
                                 {(() => {
                                     // ✅ VERIFICAÇÃO DE ESTABILIDADE - só mostrar se dados estiverem estáveis
-                                    const hasStableDisciplinas = evaluationInfo.disciplinas && 
-                                        evaluationInfo.disciplinas.length > 0 && 
-                                        evaluationInfo.disciplinas.every(d => d && d.trim() !== '');
-                                    
                                     const hasStableDisciplina = evaluationInfo.disciplina && 
                                         evaluationInfo.disciplina.trim() !== '' && 
                                         evaluationInfo.disciplina !== 'N/A';
                                     
                                     // ✅ CORRIGIDO: Mostrar dados mesmo se não estiverem completamente estáveis
-                                    if (hasStableDisciplinas) {
-                                        return (
-                                            <div className="flex flex-wrap gap-1">
-                                                {evaluationInfo.disciplinas.map((disciplina, index) => (
-                                                    <Badge key={index} variant="secondary" className="text-xs">
-                                                        {disciplina}
-                                                    </Badge>
-                                                ))}
-                                            </div>
-                                        );
-                                    } else if (hasStableDisciplina) {
+                                    if (hasStableDisciplina) {
                                         return formatFieldValue(evaluationInfo.disciplina, 'Disciplina não informada');
                                     } else if (!isDataStable) {
                                         return <span className="text-gray-400">Carregando...</span>;
@@ -2623,12 +2574,36 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                                         
                                         <div className="flex items-center justify-between text-sm">
                                             <span className="text-muted-foreground">Média Nota:</span>
-                                            <span className="font-medium">{averageScore.toFixed(1)}</span>
+                                            <span className="font-medium">
+                                                {(() => {
+                                                    const value = generalStats?.media_nota_geral !== undefined 
+                                                        ? generalStats.media_nota_geral.toFixed(1)
+                                                        : averageScore.toFixed(1);
+                                                    console.log('🎯 LOG - Média Nota renderizada:', {
+                                                        generalStats: generalStats?.media_nota_geral,
+                                                        averageScore,
+                                                        finalValue: value
+                                                    });
+                                                    return value;
+                                                })()}
+                                            </span>
                                         </div>
                                         
                                         <div className="flex items-center justify-between text-sm">
                                             <span className="text-muted-foreground">Proficiência:</span>
-                                            <span className="font-medium">{averageProficiency.toFixed(1)}</span>
+                                            <span className="font-medium">
+                                                {(() => {
+                                                    const value = generalStats?.media_proficiencia_geral !== undefined 
+                                                        ? generalStats.media_proficiencia_geral.toFixed(1)
+                                                        : averageProficiency.toFixed(1);
+                                                    console.log('🎯 LOG - Proficiência renderizada:', {
+                                                        generalStats: generalStats?.media_proficiencia_geral,
+                                                        averageProficiency,
+                                                        finalValue: value
+                                                    });
+                                                    return value;
+                                                })()}
+                                            </span>
                                         </div>
                                         
                                         {/* Distribuição de classificação */}
@@ -2708,19 +2683,7 @@ export default function DetailedResultsView({ onBack }: DetailedResultsViewProps
                                     Cards
                                 </Button>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <PDFReportGenerator
-                                    evaluationInfo={evaluationInfo}
-                                    students={students}
-                                    detailedReport={detailedReport}
-                                    studentDetailedAnswers={studentDetailedAnswers}
-                                    skillsMapping={skillsMapping}
-                                />
-                                <Button onClick={handleExportStudents} variant="outline">
-                                    <Download className="h-4 w-4 mr-2" />
-                                    Exportar Excel
-                                </Button>
-                            </div>
+                            <div className="flex items-center gap-2"></div>
                         </div>
                     </CardTitle>
                     {/* Resumo da situação */}

@@ -84,8 +84,36 @@ export default function QuestionSelectionStep({
   const [difficultyFilter, setDifficultyFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [previewData, setPreviewData] = useState<QuestionPreviewData>({ question: {} as Question, isOpen: false });
+  const [gradeName, setGradeName] = useState<string>("");
   
   const { toast } = useToast();
+
+  // Carregar nome da série
+  useEffect(() => {
+    const fetchGradeName = async () => {
+      if (evaluationData.grade) {
+        try {
+          const response = await api.get(`/grades/${evaluationData.grade}`);
+          if (response.data && response.data.name) {
+            setGradeName(response.data.name);
+          } else {
+            // Tentar buscar todas as séries e encontrar pelo ID
+            const gradesResponse = await api.get("/grades/");
+            if (Array.isArray(gradesResponse.data)) {
+              const grade = gradesResponse.data.find((g: { id: string; name: string }) => g.id === evaluationData.grade);
+              if (grade) {
+                setGradeName(grade.name);
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Erro ao buscar nome da série:", error);
+          setGradeName("");
+        }
+      }
+    };
+    fetchGradeName();
+  }, [evaluationData.grade]);
 
   // Carregar questões baseadas nas disciplinas selecionadas
   useEffect(() => {
@@ -253,9 +281,9 @@ export default function QuestionSelectionStep({
     return (
       <div className="space-y-6">
         <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-gray-200 rounded w-1/3"></div>
-          <div className="h-32 bg-gray-200 rounded"></div>
-          <div className="h-64 bg-gray-200 rounded"></div>
+          <div className="h-8 bg-muted rounded w-1/3"></div>
+          <div className="h-32 bg-muted rounded"></div>
+          <div className="h-64 bg-muted rounded"></div>
         </div>
       </div>
     );
@@ -292,7 +320,7 @@ export default function QuestionSelectionStep({
                   </div>
                   <div className="grid gap-2">
                     {questions.map((question, index) => (
-                      <div key={question.id} className="flex items-center justify-between p-3 border rounded-lg bg-gray-50">
+                      <div key={question.id} className="flex items-center justify-between p-3 border rounded-lg bg-muted">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-sm font-medium">Q{index + 1}</span>
@@ -303,7 +331,7 @@ export default function QuestionSelectionStep({
                               {question.value} pts
                             </Badge>
                           </div>
-                          <p className="text-sm text-gray-700 line-clamp-2">
+                          <p className="text-sm text-foreground line-clamp-2">
                             {question.text}
                           </p>
                         </div>
@@ -332,9 +360,9 @@ export default function QuestionSelectionStep({
             </div>
           ) : (
             <div className="text-center py-8">
-              <FileText className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-              <p className="text-gray-500 mb-2">Nenhuma questão selecionada</p>
-              <p className="text-sm text-gray-400">
+              <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-muted-foreground mb-2">Nenhuma questão selecionada</p>
+              <p className="text-sm text-muted-foreground">
                 Use os filtros abaixo ou o banco de questões para adicionar questões
               </p>
             </div>
@@ -363,7 +391,7 @@ export default function QuestionSelectionStep({
           {/* Filtros */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Buscar questões..."
                 value={searchTerm}
@@ -512,6 +540,10 @@ export default function QuestionSelectionStep({
         onClose={() => setShowQuestionBank(false)}
         subjectId={null}
         onQuestionSelected={handleQuestionFromBank}
+        gradeId={evaluationData.grade}
+        gradeName={gradeName}
+        subjects={evaluationData.subjects}
+        selectedSubjectId={undefined}
       />
 
       {/* Question Preview Modal */}
@@ -536,7 +568,7 @@ export default function QuestionSelectionStep({
                 <Label className="text-sm font-medium">Alternativas:</Label>
                 <div className="mt-2 space-y-2">
                   {previewData.question.options.map((option, index) => (
-                    <div key={index} className={`p-2 rounded border ${option.isCorrect ? 'bg-green-50 border-green-200' : 'bg-gray-50'}`}>
+                    <div key={index} className={`p-2 rounded border ${option.isCorrect ? 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800' : 'bg-muted'}`}>
                       <span className="font-medium">
                         {String.fromCharCode(65 + index)}) 
                       </span>

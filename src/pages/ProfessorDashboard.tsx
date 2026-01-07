@@ -30,7 +30,11 @@ import { quickLinksApi, QuickLink } from "./EditQuickLinks";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
-// import RecentEvaluations from "@/components/dashboard/RecentEvaluations";
+import ProfessorMetrics from "@/components/dashboard/ProfessorMetrics";
+import ProfessorEvaluations from "@/components/dashboard/ProfessorEvaluations";
+import ProfessorNotifications from "@/components/dashboard/ProfessorNotifications";
+import EnhancedQuickActions from "@/components/dashboard/EnhancedQuickActions";
+import { AvatarPreview } from "@/components/profile/AvatarPreview";
 
 // Mapeamento de ícones para converter strings em componentes
 const iconMap = {
@@ -97,14 +101,18 @@ const ProfessorDashboard = () => {
     const loadSchool = async () => {
       if (!user?.id) return;
       try {
-        // 1) Tentar rota direta do usuário -> escola (se existir/permitida)
+        // 1) Tentar buscar informações do usuário para obter escola
         try {
-          const schoolResp = await api.get(`/users/school/${user.id}`);
-          const school = schoolResp.data?.school || schoolResp.data;
-          const name: unknown = school?.name || school?.nome;
-          if (name) {
-            setSchoolName(String(name));
-            return;
+          const userResp = await api.get(`/users/${user.id}`);
+          const userData = userResp.data;
+          
+          // Se o usuário for um aluno, buscar escola do aluno
+          if (userData.role === 'aluno' && userData.student?.school) {
+            const schoolName = userData.student.school.name || userData.student.school.nome;
+            if (schoolName) {
+              setSchoolName(schoolName);
+              return;
+            }
           }
         } catch (e) {
           // Ignorar 404/sem permissão e seguir fallback por função/role
@@ -191,15 +199,22 @@ const ProfessorDashboard = () => {
   };
 
   return (
-    <div className="container mx-auto py-6 px-4">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className="container mx-auto py-6 px-4 space-y-8">
+      {/* Header com informações do usuário */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* User Info Card */}
         <div className="lg:col-span-1">
           <Card className="h-[20rem] bg-gradient-to-br from-innov-blue to-innov-purple text-white shadow-lg">
             <CardContent className="flex flex-col items-center justify-center h-full">
-              <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center text-3xl font-bold mb-4">
-                {user?.name ? user.name.charAt(0).toUpperCase() : "P"}
-              </div>
+              {user?.avatar_config ? (
+                <div className="mb-4">
+                  <AvatarPreview config={user.avatar_config} size={80} />
+                </div>
+              ) : (
+                <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center text-3xl font-bold mb-4">
+                  {user?.name ? user.name.charAt(0).toUpperCase() : "P"}
+                </div>
+              )}
               <h2 className="text-xl font-bold">{formatDisplayName(user?.name)}</h2>
               <p className="text-sm opacity-80">{formatRole(user?.role)}</p>
               {schoolName && (
@@ -211,19 +226,18 @@ const ProfessorDashboard = () => {
           </Card>
         </div>
 
-        {/* Quick Links e Comunicados */}
-        <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Quick Links */}
-          <Card className="md:col-span-2">
+        {/* Quick Links */}
+        <div className="lg:col-span-3">
+          <Card className="h-[20rem]">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Atalhos rápidos</CardTitle>
               <Pencil className="h-4 w-4 text-muted-foreground hover:text-innov-purple cursor-pointer transition-colors" onClick={handleEditQuickLinks} />
             </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-4">
+            <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-4 overflow-y-auto">
               {isLoading ? (
                 // Skeleton loading para atalhos
                 <>
-                  {[...Array(4)].map((_, index) => (
+                  {[...Array(6)].map((_, index) => (
                     <div key={index} className="flex items-center gap-3 animate-pulse">
                       <Skeleton className="h-12 w-12 rounded-full bg-gray-200" />
                       <div className="flex-1">
@@ -233,7 +247,7 @@ const ProfessorDashboard = () => {
                   ))}
                 </>
               ) : quickLinks.length === 0 ? (
-                <div className="col-span-2 text-center text-muted-foreground py-8">
+                <div className="col-span-full text-center text-muted-foreground py-8">
                   <div className="flex flex-col items-center gap-2">
                     <div className="p-3 rounded-full bg-gray-100">
                       <Pencil className="h-6 w-6 text-gray-400" />
@@ -248,7 +262,7 @@ const ProfessorDashboard = () => {
                   return (
                     <div 
                       key={index} 
-                      className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-all duration-200 hover:shadow-sm"
+                      className="flex items-center gap-3 cursor-pointer hover:bg-muted p-2 rounded-lg transition-all duration-200 hover:shadow-sm"
                       onClick={() => navigate(link.href)}
                     >
                       <div className="p-3 rounded-full bg-innov-purple/10 flex-shrink-0">
@@ -261,56 +275,27 @@ const ProfessorDashboard = () => {
               )}
             </CardContent>
           </Card>
-
-          {/* Comunicados COC - Placeholder for now, can be refined later */}
-          <Card className="md:col-span-2">
-            <CardHeader>
-              <CardTitle>Comunicados InnovPlay</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-full bg-innov-purple/10">
-                        <List className="h-6 w-6 text-innov-purple" />
-                    </div>
-                    <div>
-                        <h4 className="font-semibold">Tem novidade no ar!</h4>
-                        <p className="text-sm text-muted-foreground">Estante de Inovação. Um novo espaço para você ficar por dentro de todos os produtos...</p>
-                    </div>
-                </div>
-                 <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-full bg-innov-purple/10">
-                        <List className="h-6 w-6 text-innov-purple" />
-                    </div>
-                    <div>
-                        <h4 className="font-semibold">Está disponível: Fala, Professor!</h4>
-                        <p className="text-sm text-muted-foreground">Confira aqui como acessar a ferramenta</p>
-                    </div>
-                </div>
-                 <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-full bg-innov-purple/10">
-                        <List className="h-6 w-6 text-innov-purple" />
-                    </div>
-                    <div>
-                        <h4 className="font-semibold">Jornada COC: Conheça os recursos de Avaliações!</h4>
-                        <p className="text-sm text-muted-foreground">Clique no link e saiba mais sobre funcionalidades.</p>
-                    </div>
-                </div>
-                 <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-full bg-innov-purple/10">
-                        <List className="h-6 w-6 text-innov-purple" />
-                    </div>
-                    <div>
-                        <h4 className="font-semibold">Jornada COC: Conheça os recursos de Aprendizagem!</h4>
-                        <p className="text-sm text-muted-foreground">Acesse as novas funcionalidades da Jornada...</p>
-                    </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
         </div>
       </div>
+
+      {/* Métricas de Performance */}
+      <ProfessorMetrics />
+
+      {/* Grid principal com avaliações, notificações e ações */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+        {/* Avaliações Recentes */}
+        <div className="xl:col-span-2">
+          <ProfessorEvaluations />
+        </div>
+
+        {/* Notificações */}
+        <div>
+          <ProfessorNotifications />
+        </div>
+      </div>
+
+      {/* Ações Rápidas */}
+      <EnhancedQuickActions />
     </div>
   );
 };

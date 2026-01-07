@@ -1,5 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { api } from '@/lib/api';
+import { DashboardApiService } from '@/services/dashboardApi';
+import type {
+  AdminDashboard,
+  DiretorDashboard,
+  ProfessorDashboard,
+} from '@/types/dashboard';
 
 // Configurações de cache
 const CACHE_CONFIG = {
@@ -21,20 +27,21 @@ interface CacheHookOptions {
   enabled?: boolean;
   staleTime?: number;
   cacheKey?: string;
-  onError?: (error: any) => void;
+  onError?: (error: Error | unknown) => void;
+  skipInitialFetch?: boolean; // ✅ NOVO: Pular fetch inicial
 }
 
 // Cache global em memória
-const cache = new Map<string, CacheItem<any>>();
+const cache = new Map<string, CacheItem<unknown>>();
 
 // Utilitário para gerar chave de cache
-const generateCacheKey = (url: string, params?: any): string => {
+const generateCacheKey = (url: string, params?: Record<string, unknown>): string => {
   const paramString = params ? JSON.stringify(params) : '';
   return `${url}${paramString}`;
 };
 
 // Verificar se o cache está válido
-const isCacheValid = (cacheItem: CacheItem<any>): boolean => {
+const isCacheValid = (cacheItem: CacheItem<unknown>): boolean => {
   return Date.now() - cacheItem.timestamp < cacheItem.ttl;
 };
 
@@ -62,11 +69,12 @@ export function useCache<T>(
     enabled = true,
     staleTime = 0,
     cacheKey: customCacheKey,
-    onError
+    onError,
+    skipInitialFetch = false // ✅ NOVO: Por padrão, fazer fetch inicial
   } = options;
 
   // Função para fazer fetch dos dados
-  const fetchData = useCallback(async (params?: any, forceRefresh = false) => {
+  const fetchData = useCallback(async (params?: Record<string, unknown>, forceRefresh = false) => {
     if (!enabled) return;
 
     const cacheKey = customCacheKey || generateCacheKey(url, params);
@@ -74,23 +82,37 @@ export function useCache<T>(
 
     // Se há cache válido e não é refresh forçado, usar cache
     if (cachedItem && isCacheValid(cachedItem) && !forceRefresh) {
-      setData(cachedItem.data);
+      setData(cachedItem.data as T);
       setIsLoading(false);
       setError(null);
-      return cachedItem.data;
+      return cachedItem.data as T;
     }
 
     // Se há cache, mas está stale, mostrar dados stale enquanto revalida
     if (cachedItem && !forceRefresh) {
-      setData(cachedItem.data);
+      setData(cachedItem.data as T);
       setIsValidating(true);
     } else {
       setIsLoading(true);
     }
 
     try {
+      // Log específico para rota de avaliações (lista de avaliações)
+      const isEvaluationsListRoute = url === '/test/' || url === '/test';
+      if (isEvaluationsListRoute) {
+        console.log("📡 [useCache] Fazendo requisição GET para:", url, "com params:", params);
+      }
+      
       const response = await api.get(url, params ? { params } : undefined);
       const newData = response.data;
+
+      // Log específico para rota de avaliações (lista de avaliações)
+      if (isEvaluationsListRoute) {
+        console.log("📋 [useCache] Resposta BRUTA COMPLETA da API para:", url);
+        console.log("📋 [useCache] Response completa:", response);
+        console.log("📋 [useCache] Response.data (JSON completo):", JSON.stringify(response.data, null, 2));
+        console.log("📋 [useCache] Response.data (objeto):", response.data);
+      }
 
       // Atualizar cache
       const ttl = getTTL(url);
@@ -103,13 +125,14 @@ export function useCache<T>(
       setData(newData);
       setError(null);
       return newData;
-    } catch (err: any) {
-      setError(err);
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      setError(error);
       if (onError) onError(err);
 
       // Se há cache, mesmo expirado, usar em caso de erro
       if (cachedItem) {
-        setData(cachedItem.data);
+        setData(cachedItem.data as T);
       }
 
       throw err;
@@ -139,12 +162,12 @@ export function useCache<T>(
   }, []);
 
   // Função para refetch
-  const refetch = useCallback((params?: any) => {
+  const refetch = useCallback((params?: Record<string, unknown>) => {
     return fetchData(params, true);
   }, [fetchData]);
 
   // Função para mutate (atualizar cache diretamente)
-  const mutate = useCallback((newData: T, params?: any) => {
+  const mutate = useCallback((newData: T, params?: Record<string, unknown>) => {
     const cacheKey = customCacheKey || generateCacheKey(url, params);
     const ttl = getTTL(url);
 
@@ -157,12 +180,12 @@ export function useCache<T>(
     setData(newData);
   }, [url, customCacheKey]);
 
-  // Fetch inicial
+  // ✅ CORREÇÃO: Fetch inicial apenas se não for pulado
   useEffect(() => {
-    if (enabled) {
+    if (enabled && !skipInitialFetch) {
       fetchData();
     }
-  }, [fetchData, enabled]);
+  }, [fetchData, enabled, skipInitialFetch]);
 
   return {
     data,
@@ -185,11 +208,41 @@ export function useEvaluations(params: {
   type?: string;
   model?: string;
   grade_id?: string;
+  created_by?: string;
 } = {}) {
-  const cacheKey = `evaluations-${JSON.stringify(params)}`;
+  // ✅ CORREÇÃO: Usar useRef para rastrear os parâmetros anteriores (deve ser chamado antes de useCache)
+  const prevParamsRef = useRef<string>('');
+  
+  // ✅ CORREÇÃO: Calcular paramsString de forma estável usando dependências explícitas
+  // IMPORTANTE: useMemo deve ser chamado antes de useCache para manter a ordem dos hooks
+  const paramsString = useMemo(() => {
+    return JSON.stringify({
+      page: params.page,
+      per_page: params.per_page,
+      status: params.status,
+      subject_id: params.subject_id,
+      type: params.type,
+      model: params.model,
+      grade_id: params.grade_id,
+      created_by: params.created_by
+    });
+  }, [
+    params.page,
+    params.per_page,
+    params.status,
+    params.subject_id,
+    params.type,
+    params.model,
+    params.grade_id,
+    params.created_by
+  ]);
+  
+  // ✅ CORREÇÃO: Calcular cacheKey de forma estável
+  const cacheKey = useMemo(() => `evaluations-${paramsString}`, [paramsString]);
 
+  // ✅ CORREÇÃO: useCache deve ser chamado sempre na mesma posição
   const result = useCache<{
-    data: any[];
+    data: Array<Record<string, unknown>>;
     pagination: {
       page: number;
       per_page: number;
@@ -202,22 +255,89 @@ export function useEvaluations(params: {
     };
   }>('/test/', {
     cacheKey,
-    staleTime: 2 * 60 * 1000 // 2 minutos
+    staleTime: 2 * 60 * 1000, // 2 minutos
+    skipInitialFetch: true // ✅ CORREÇÃO: Pular fetch inicial do useCache, fazer manualmente com parâmetros
   });
+  
+  // ✅ CORREÇÃO: useEffect deve ser chamado sempre na mesma posição após useCache
+  // Fazer fetch inicial e quando os parâmetros mudarem
+  useEffect(() => {
+    // Fazer fetch inicial (quando prevParamsRef está vazio) ou quando os parâmetros mudarem
+    if (prevParamsRef.current === '' || prevParamsRef.current !== paramsString) {
+      prevParamsRef.current = paramsString;
+      // Usar refetch com os parâmetros corretos
+      result.refetch(params as Record<string, unknown>).catch((error: unknown) => {
+        console.error('Erro ao buscar avaliações:', error);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paramsString]);
 
-  // Função para invalidar cache de avaliações de forma abrangente
+  // ✅ MELHORADO: Função para invalidar cache de avaliações de forma mais abrangente
   const invalidateEvaluationsCache = useCallback(() => {
+    console.log("🗑️ Invalidando cache de avaliações...");
+    
     // Invalidar cache específico desta instância
     result.invalidateCache();
     
     // Invalidar todas as chaves de cache relacionadas a avaliações
     result.invalidateCacheByPattern('evaluations-');
+    
+    // ✅ NOVO: Invalidar também cache de estatísticas que podem ser afetadas
+    result.invalidateCacheByPattern('evaluation-stats');
+    result.invalidateCacheByPattern('/evaluations/stats');
+    
+    console.log("✅ Cache de avaliações invalidado com sucesso");
   }, [result]);
+
+  // ✅ NOVO: Função para forçar refresh imediato
+  const forceRefresh = useCallback(async () => {
+    console.log("🔄 Forçando refresh de avaliações...");
+    
+    try {
+      // Invalidar cache primeiro
+      invalidateEvaluationsCache();
+      
+      // Aguardar um pouco para garantir que o cache foi limpo
+      await new Promise(resolve => setTimeout(resolve, 150));
+      
+      // Fazer refetch
+      const newData = await result.refetch();
+      
+      console.log("✅ Refresh forçado concluído");
+      return newData;
+    } catch (error) {
+      console.error("❌ Erro no refresh forçado:", error);
+      throw error;
+    }
+  }, [invalidateEvaluationsCache, result]);
+
+  // ✅ NOVO: Função para invalidar cache após operações CRUD
+  const invalidateAfterCRUD = useCallback(async () => {
+    console.log("🔄 Invalidando cache após operação CRUD...");
+    
+    try {
+      // Invalidar cache de avaliações
+      invalidateEvaluationsCache();
+      
+      // Aguardar um pouco para garantir que o cache foi limpo
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Fazer refetch para garantir dados atualizados
+      await result.refetch();
+      
+      console.log("✅ Cache invalidado e dados atualizados após CRUD");
+    } catch (error) {
+      console.error("❌ Erro ao invalidar cache após CRUD:", error);
+    }
+  }, [invalidateEvaluationsCache, result]);
 
   // Garantir que sempre retornamos um objeto válido
   return {
     ...result,
     invalidateEvaluationsCache,
+    forceRefresh,
+    invalidateAfterCRUD,
     data: result.data || {
       data: [],
       pagination: {
@@ -234,9 +354,70 @@ export function useEvaluations(params: {
   };
 }
 
+// ✅ NOVO: Hook personalizado para gerenciar atualizações de avaliações
+export function useEvaluationsManager() {
+  const [lastUpdate, setLastUpdate] = useState(Date.now());
+  const [isUpdating, setIsUpdating] = useState(false);
 
+  // Função para forçar atualização de todas as instâncias de avaliações
+  const forceUpdateAllEvaluations = useCallback(async () => {
+    console.log("🔄 Forçando atualização de todas as avaliações...");
+    
+    setIsUpdating(true);
+    try {
+      // Invalidar todas as chaves de cache relacionadas a avaliações
+      for (const key of cache.keys()) {
+        if (key.includes('evaluations-') || key.includes('/test/')) {
+          cache.delete(key);
+        }
+      }
+      
+      // Invalidar cache de estatísticas
+      for (const key of cache.keys()) {
+        if (key.includes('evaluation-stats') || key.includes('/evaluations/stats')) {
+          cache.delete(key);
+        }
+      }
+      
+      // Atualizar timestamp
+      setLastUpdate(Date.now());
+      
+      console.log("✅ Cache de avaliações limpo com sucesso");
+    } catch (error) {
+      console.error("❌ Erro ao limpar cache de avaliações:", error);
+    } finally {
+      setIsUpdating(false);
+    }
+  }, []);
 
-// Hook específico para estatísticas
+  // Função para atualizar após operações CRUD
+  const updateAfterCRUD = useCallback(async () => {
+    console.log("🔄 Atualizando após operação CRUD...");
+    
+    setIsUpdating(true);
+    try {
+      await forceUpdateAllEvaluations();
+      
+      // Aguardar um pouco para garantir que o cache foi limpo
+      await new Promise(resolve => setTimeout(resolve, 250));
+      
+      console.log("✅ Atualização após CRUD concluída");
+    } catch (error) {
+      console.error("❌ Erro na atualização após CRUD:", error);
+    } finally {
+      setIsUpdating(false);
+    }
+  }, [forceUpdateAllEvaluations]);
+
+  return {
+    lastUpdate,
+    isUpdating,
+    forceUpdateAllEvaluations,
+    updateAfterCRUD
+  };
+}
+
+// Hook específico para estatísticas de avaliações
 export function useEvaluationStats() {
   return useCache<{
     total: number;
@@ -252,6 +433,167 @@ export function useEvaluationStats() {
   }>('/evaluations/stats', {
     staleTime: 60 * 1000 // 1 minuto
   });
+}
+
+// ===== NOVOS HOOKS PARA ENDPOINTS DE DASHBOARD =====
+
+// Hook para métricas gerais do dashboard
+export function useDashboardStats() {
+  return useCache<{
+    total_evaluations: number;
+    active_evaluations: number;
+    completed_evaluations: number;
+    total_students: number;
+    average_completion_rate: number;
+    pending_evaluations: number;
+    this_month_evaluations: number;
+  }>('/dashboard/stats', {
+    staleTime: 2 * 60 * 1000 // 2 minutos
+  });
+}
+
+// Hook para estatísticas ampliadas do dashboard
+export function useComprehensiveDashboardStats() {
+  return useCache<{
+    evaluations: {
+      total: number;
+      by_status: Record<string, number>;
+      by_type: Record<string, number>;
+      by_subject: Record<string, number>;
+    };
+    students: {
+      total: number;
+      active: number;
+      by_grade: Record<string, number>;
+    };
+    schools: {
+      total: number;
+      with_evaluations: number;
+      by_municipality: Record<string, number>;
+    };
+    performance: {
+      average_score: number;
+      average_proficiency: number;
+      completion_rate: number;
+    };
+  }>('/dashboard/comprehensive-stats', {
+    staleTime: 5 * 60 * 1000 // 5 minutos
+  });
+}
+
+// Hook para estatísticas globais de resultados
+export function useGlobalResultsStats() {
+  return useCache<{
+    total_avaliacoes_concluidas: number;
+    total_avaliacoes_pendentes: number;
+    media_nota_global: number;
+    total_alunos: number;
+    tempo_medio_execucao: number;
+    disciplina_melhor_desempenho: {
+      nome: string;
+      media_nota: number;
+      media_proficiencia: number;
+    };
+  }>('/evaluation-results/stats', {
+    staleTime: 3 * 60 * 1000 // 3 minutos
+  });
+}
+
+// Hook para estatísticas de status das avaliações (para gráficos de pizza/donut)
+export function useEvaluationStatusStats() {
+  return useCache<{
+    total_evaluations: number;
+    by_status: Array<{
+      status: string;
+      count: number;
+      percentage: number;
+      label: string;
+    }>;
+    last_updated: string;
+  }>('/evaluation-results/avaliacoes/estatisticas-status', {
+    staleTime: 2 * 60 * 1000 // 2 minutos
+  });
+}
+
+// Hook para lista de avaliações com agregados (para tabelas/rankings)
+export function useEvaluationsListWithAggregates(
+  page: number = 1,
+  perPage: number = 10,
+  filters?: {
+    status?: string;
+    subject?: string;
+    municipality?: string;
+    school?: string;
+  }
+) {
+  const params = new URLSearchParams({
+    page: page.toString(),
+    per_page: perPage.toString(),
+  });
+
+  if (filters?.status) params.append('status', filters.status);
+  if (filters?.subject) params.append('subject', filters.subject);
+  if (filters?.municipality) params.append('municipality', filters.municipality);
+  if (filters?.school) params.append('school', filters.school);
+
+  return useCache<{
+    data: Array<{
+      id: string;
+      titulo: string;
+      disciplina: string;
+      municipio: string;
+      escola: string;
+      status: string;
+      total_alunos: number;
+      alunos_concluidos: number;
+      media_nota: number;
+      ultima_atualizacao: string;
+      progress_percentage: number;
+    }>;
+    pagination: {
+      current_page: number;
+      per_page: number;
+      total: number;
+      total_pages: number;
+    };
+  }>(`/evaluation-results/list?${params}`, {
+    staleTime: 1 * 60 * 1000, // 1 minuto
+    cacheKey: `evaluations-list-${page}-${perPage}-${JSON.stringify(filters || {})}`
+  });
+}
+
+// ===== HOOKS PARA OPERAÇÕES ESPECÍFICAS DE AVALIAÇÕES =====
+
+// Hook para verificação em lote de status (operação mais pesada, cache maior)
+export function useBulkEvaluationStatusCheck() {
+  const [isChecking, setIsChecking] = useState(false);
+  const [lastCheck, setLastCheck] = useState<Date | null>(null);
+  
+  const checkAllEvaluations = useCallback(async (filters?: {
+    municipio?: string;
+    escola?: string;
+    status?: string;
+  }) => {
+    setIsChecking(true);
+    try {
+      // Importar o serviço dinamicamente para evitar dependência circular
+      const { EvaluationResultsApiService } = await import('@/services/evaluationResultsApi');
+      const result = await EvaluationResultsApiService.verificarTodasAvaliacoes(filters);
+      setLastCheck(new Date());
+      return result;
+    } catch (error) {
+      console.error('Erro ao verificar todas as avaliações:', error);
+      return null;
+    } finally {
+      setIsChecking(false);
+    }
+  }, []);
+
+  return {
+    checkAllEvaluations,
+    isChecking,
+    lastCheck
+  };
 }
 
 // Hook para limpeza de cache
@@ -289,4 +631,112 @@ export function useCacheManager() {
     getCacheSize,
     getCacheInfo
   };
+}
+
+// ===== HOOKS PARA DASHBOARDS POR ROLE =====
+
+// Hook base para dashboards
+function useDashboardData<T>(
+  fetchFn: () => Promise<T | null>,
+  cacheKey: string
+) {
+  const [data, setData] = useState<T | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const result = await fetchFn();
+      if (result) {
+        setData(result);
+      } else {
+        setError(new Error("Dados não disponíveis"));
+      }
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      setError(error);
+      console.error(`Erro ao buscar ${cacheKey}:`, error);
+    } finally {
+      setIsLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cacheKey]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const refetch = useCallback(() => {
+    return fetchData();
+  }, [fetchData]);
+
+  return { data, isLoading, error, refetch };
+}
+
+// Hook para dashboard Admin
+export function useAdminDashboard() {
+  return useDashboardData<AdminDashboard>(
+    () => DashboardApiService.getAdminDashboard(),
+    "admin-dashboard"
+  );
+}
+
+// Hook para dashboard TecAdm
+export function useTecAdmDashboard() {
+  return useDashboardData<AdminDashboard>(
+    () => DashboardApiService.getTecAdmDashboard(),
+    "tecadm-dashboard"
+  );
+}
+
+// Hook para dashboard Diretor
+export function useDiretorDashboard() {
+  return useDashboardData<DiretorDashboard>(
+    () => DashboardApiService.getDiretorDashboard(),
+    "diretor-dashboard"
+  );
+}
+
+// Hook para dashboard Coordenador
+export function useCoordenadorDashboard() {
+  return useDashboardData<DiretorDashboard>(
+    () => DashboardApiService.getCoordenadorDashboard(),
+    "coordenador-dashboard"
+  );
+}
+
+// Hook para dashboard Professor
+export function useProfessorDashboard() {
+  return useDashboardData<ProfessorDashboard>(
+    () => DashboardApiService.getProfessorDashboard(),
+    "professor-dashboard"
+  );
+}
+
+// Hook genérico que retorna o dashboard baseado no role
+export function useDashboardByRole(role: string) {
+  const normalizedRole = role.toLowerCase();
+
+  switch (normalizedRole) {
+    case "admin":
+      return useAdminDashboard();
+    case "tecadm":
+      return useTecAdmDashboard();
+    case "diretor":
+      return useDiretorDashboard();
+    case "coordenador":
+      return useCoordenadorDashboard();
+    case "professor":
+      return useProfessorDashboard();
+    default:
+      // Retorna um hook vazio para roles não reconhecidos
+      return {
+        data: null,
+        isLoading: false,
+        error: new Error(`Role não reconhecido: ${role}`),
+        refetch: async () => null,
+      };
+  }
 } 

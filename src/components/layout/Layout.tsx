@@ -4,6 +4,7 @@ import { Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Outlet } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { useScrollToTop } from "@/hooks/useScrollToTop";
 
 type LayoutProps = {
   children: ReactNode;
@@ -12,6 +13,9 @@ type LayoutProps = {
 export default function Layout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  
+  // Scroll to top on route change
+  useScrollToTop();
 
   useEffect(() => {
     const checkIfMobile = () => {
@@ -43,11 +47,11 @@ export default function Layout() {
   }, [isMobileMenuOpen]);
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-background">
       {/* Mobile Header with Menu Button */}
       <header className={cn(
         "md:hidden fixed top-0 left-0 right-0 z-[60]",
-        "bg-white/95 backdrop-blur-md border-b border-gray-200/80",
+        "bg-background/95 backdrop-blur-md border-b border-border",
         "px-4 py-3 flex items-center justify-between shadow-sm"
       )}>
         <Button
@@ -55,10 +59,10 @@ export default function Layout() {
           size="icon"
           className={cn(
             "h-9 w-9 rounded-lg transition-all duration-200",
-            "hover:bg-gray-100 active:scale-95",
+            "hover:bg-accent active:scale-95",
             isMobileMenuOpen 
-              ? "bg-gray-100 text-gray-900" 
-              : "text-gray-600 hover:text-gray-900"
+              ? "bg-accent text-foreground" 
+              : "text-muted-foreground hover:text-foreground"
           )}
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
         >
@@ -106,7 +110,7 @@ export default function Layout() {
       <main className={cn(
         "flex-1 overflow-y-auto relative",
         "pt-16 md:pt-0", // Top padding for mobile header
-        "bg-gray-50 min-h-screen"
+        "bg-background min-h-screen"
       )}>
         {/* Content Container */}
         <div className="px-4 py-4 md:p-6">
