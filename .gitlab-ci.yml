@@ -128,19 +128,41 @@ container_run:
         - |
             set -e
 
-            docker container rm -f "$CONTAINER_NAME" || true
+            echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Verificando network '$ENVIRONMENT'"
 
-            docker container run -d \
-              --name "$CONTAINER_NAME" \
-              --network "$ENVIRONMENT" \
-              -p "$HOST_PORT:$CONTAINER_PORT" \
-              "$IMAGE_TAG"
+            NETWORK_ID=$(docker network ls -f name="^${ENVIRONMENT}$" -q)
 
-            sleep 10
+            if [ -z "$NETWORK_ID" ]; then
+                docker network create "$ENVIRONMENT"
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Network '$ENVIRONMENT' criada."
+            else
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Network '$ENVIRONMENT' já existe."
+            fi
 
-            docker inspect -f "{{.State.Running}}" "$CONTAINER_NAME" | grep true
+            docker container run \
+                --network "$ENVIRONMENT" \
+                -p "$HOST_PORT:$CONTAINER_PORT" \
+                --name "$CONTAINER_NAME" \
+                -d "$IMAGE_TAG"
 
-            echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Frontend '$CONTAINER_NAME' rodando com sucesso."
+            CONTAINER_ID=$(docker container ls -a -f name="^${CONTAINER_NAME}$" -q)
+
+            if [ -z "$CONTAINER_ID" ]; then
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Falha ao criar o container '$CONTAINER_NAME'."
+                exit 1
+            else
+                sleep 10
+
+                IS_RUNNING=$(docker inspect -f "{{.State.Running}}" "$CONTAINER_ID")
+
+                if [ "$IS_RUNNING" = "true" ]; then
+                    echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Container '$CONTAINER_NAME' está em execução."
+                else
+                    echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Container '$CONTAINER_NAME' foi criado mas parou."
+                    docker logs "$CONTAINER_ID"
+                    exit 1
+                fi
+            fi
 
 # ---------------- CLEAN ENV ----------------
 
