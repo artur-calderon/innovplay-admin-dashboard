@@ -130,6 +130,7 @@ export default function AnaliseAvaliacoes() {
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [isProcessingReport, setIsProcessingReport] = useState(false);
+  const [processingTime, setProcessingTime] = useState(0);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -404,10 +405,21 @@ export default function AnaliseAvaliacoes() {
             : { cityId: selectedMunicipality };
           
           // ✅ NOVO: Verificar status antes de buscar (para mostrar feedback visual)
+          let wasProcessing = false;
+          let timerInterval: NodeJS.Timeout | null = null;
+          
           try {
             const status = await EvaluationResultsApiService.checkReportStatus(selectedEvaluation, options);
             if (status.status === 'processing') {
+              wasProcessing = true;
               setIsProcessingReport(true);
+              setProcessingTime(0);
+              
+              // Iniciar timer para mostrar tempo decorrido
+              timerInterval = setInterval(() => {
+                setProcessingTime(prev => prev + 1);
+              }, 1000);
+              
               toast({
                 title: "Gerando relatório",
                 description: "O relatório está sendo processado. Isso pode levar alguns minutos...",
@@ -418,21 +430,42 @@ export default function AnaliseAvaliacoes() {
             console.log('Não foi possível verificar status inicial:', statusError);
           }
           
-          // Buscar relatório (método já implementa polling internamente)
-          const relatorio = await EvaluationResultsApiService.getRelatorioCompleto(selectedEvaluation, options);
-          
-          setIsProcessingReport(false);
-          setApiData(relatorio);
-          
-          // Determinar o modo de renderização baseado nos dados retornados
-          if (relatorio.total_alunos.por_escola && relatorio.total_alunos.por_escola.length > 0) {
-            setRenderMode('escola');
-          } else if (relatorio.total_alunos.por_turma && relatorio.total_alunos.por_turma.length > 0) {
-            setRenderMode('turma');
+          try {
+            // Buscar relatório (método já implementa polling internamente)
+            const relatorio = await EvaluationResultsApiService.getRelatorioCompleto(selectedEvaluation, options);
+            
+            // Limpar timer se existir
+            if (timerInterval) {
+              clearInterval(timerInterval);
+            }
+            
+            setIsProcessingReport(false);
+            setProcessingTime(0);
+            setApiData(relatorio);
+            
+            // Determinar o modo de renderização baseado nos dados retornados
+            if (relatorio.total_alunos.por_escola && relatorio.total_alunos.por_escola.length > 0) {
+              setRenderMode('escola');
+            } else if (relatorio.total_alunos.por_turma && relatorio.total_alunos.por_turma.length > 0) {
+              setRenderMode('turma');
+            }
+            
+            if (wasProcessing) {
+              toast({
+                title: "Relatório pronto",
+                description: "O relatório foi gerado com sucesso!",
+              });
+            }
+          } finally {
+            // Garantir que o timer seja limpo
+            if (timerInterval) {
+              clearInterval(timerInterval);
+            }
           }
         } catch (error) {
           console.error("Erro ao carregar dados:", error);
           setIsProcessingReport(false);
+          setProcessingTime(0);
           
           const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
           const isTimeout = errorMessage.includes('Timeout') || errorMessage.includes('timeout');
@@ -546,12 +579,20 @@ export default function AnaliseAvaliacoes() {
             {isProcessingReport ? (
               <>
                 <p className="text-lg font-medium text-foreground mb-2">Gerando relatório...</p>
-                <p className="text-muted-foreground text-center max-w-md">
+                <p className="text-muted-foreground text-center max-w-md mb-2">
                   O relatório está sendo processado em background. Isso pode levar alguns minutos.
                 </p>
+                {processingTime > 0 && (
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Tempo decorrido: {Math.floor(processingTime / 60)}m {processingTime % 60}s
+                  </p>
+                )}
                 <div className="mt-4 w-full max-w-md">
                   <Progress value={undefined} className="h-2" />
                 </div>
+                <p className="text-xs text-muted-foreground mt-4 text-center max-w-md">
+                  Por favor, aguarde. O processamento pode levar até 10 minutos para relatórios grandes.
+                </p>
               </>
             ) : (
               <p className="text-muted-foreground">Carregando dados da análise...</p>

@@ -2181,47 +2181,64 @@ export class EvaluationResultsApiService {
     }
   }
 
-  // ✅ NOVO: Verificar status do relatório
+  // ✅ ATUALIZADO: Verificar status do relatório (não lança erro em HTTP 5xx para permitir retry)
   static async checkReportStatus(
     evaluationId: string,
     options?: { schoolId?: string; cityId?: string }
   ): Promise<ReportStatus> {
+    const params = new URLSearchParams();
+    
+    if (options?.schoolId) {
+      params.append('school_id', options.schoolId);
+    } else if (options?.cityId) {
+      params.append('city_id', options.cityId);
+    }
+    
+    const url = `/reports/status/${evaluationId}${params.toString() ? `?${params.toString()}` : ''}`;
+    
     try {
-      const params = new URLSearchParams();
-      
-      if (options?.schoolId) {
-        params.append('school_id', options.schoolId);
-      } else if (options?.cityId) {
-        params.append('city_id', options.cityId);
-      }
-      
-      const url = `/reports/status/${evaluationId}${params.toString() ? `?${params.toString()}` : ''}`;
       const response = await api.get(url);
-      
       return response.data;
-    } catch (error) {
-      console.error('❌ Erro ao verificar status do relatório:', error);
+    } catch (error: unknown) {
+      // ✅ Não lançar erro - deixar o polling continuar tentando
+      // O método pollUntilReady vai tratar o erro e continuar
+      const axiosError = error as { response?: { status?: number; data?: unknown }; message?: string };
+      
+      // Re-lançar o erro para que pollUntilReady possa tratá-lo
       throw error;
     }
   }
 
-  // ✅ NOVO: Fazer polling até o relatório ficar pronto
+  // ✅ ATUALIZADO: Fazer polling até o relatório ficar pronto (com timeout adequado e tratamento de erros)
   static async pollUntilReady(
     evaluationId: string,
     options?: { schoolId?: string; cityId?: string },
-    maxAttempts: number = 30,
-    pollInterval: number = 2000
+    maxAttempts: number = 120, // 10 minutos (120 * 5s = 600s)
+    pollInterval: number = 5000 // 5 segundos
   ): Promise<RelatorioCompleto> {
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      // Aguardar antes de verificar (exceto na primeira tentativa)
-      if (attempt > 0) {
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-      }
-      
+    const startTime = Date.now();
+    let attempts = 0;
+    
+    while (attempts < maxAttempts) {
       try {
+        // Verificar status do relatório
         const status = await this.checkReportStatus(evaluationId, options);
         
+        // ✅ CONTINUAR enquanto status for "processing"
+        if (status.status === 'processing') {
+          const elapsed = Math.floor((Date.now() - startTime) / 1000);
+          console.log(`Relatório processando... (tentativa ${attempts + 1}/${maxAttempts}, ${elapsed}s decorridos)`);
+          
+          // Aguardar antes da próxima verificação
+          await new Promise(resolve => setTimeout(resolve, pollInterval));
+          attempts++;
+          continue;
+        }
+        
+        // ✅ PARAR apenas quando status for "ready"
         if (status.status === 'ready') {
+          console.log('Relatório pronto! Buscando dados completos...');
+          
           // Relatório pronto - buscar dados completos
           const params = new URLSearchParams();
           if (options?.schoolId) {
@@ -2236,26 +2253,52 @@ export class EvaluationResultsApiService {
           return response.data;
         }
         
-        // Continuar polling se ainda estiver processando
-        if (status.status === 'processing') {
-          continue;
-        }
-        
         // Se status for 'not_found', lançar erro
         if (status.status === 'not_found') {
           throw new Error('Relatório não encontrado');
         }
-      } catch (error) {
-        // Se for o último attempt, lançar erro
-        if (attempt === maxAttempts - 1) {
-          throw new Error('Timeout: Relatório não ficou pronto a tempo');
-        }
-        // Caso contrário, continuar tentando
+        
+        // Status desconhecido - continuar tentando
+        console.warn(`Status desconhecido: ${status.status}, continuando polling...`);
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        attempts++;
         continue;
+        
+      } catch (error: unknown) {
+        const axiosError = error as { response?: { status?: number }; message?: string };
+        
+        // ✅ NÃO PARAR em erros HTTP (exceto 404 que indica not_found)
+        if (axiosError.response) {
+          const httpStatus = axiosError.response.status;
+          
+          // 404 = not_found, pode parar
+          if (httpStatus === 404) {
+            throw new Error('Relatório não encontrado');
+          }
+          
+          // Outros erros HTTP (500, 503, etc.) - continuar tentando
+          console.warn(`HTTP ${httpStatus} ao verificar status, continuando polling... (tentativa ${attempts + 1}/${maxAttempts})`);
+          await new Promise(resolve => setTimeout(resolve, pollInterval));
+          attempts++;
+          continue;
+        }
+        
+        // Erro de rede ou outro erro - continuar tentando até timeout
+        console.error('Erro ao verificar status:', error);
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        attempts++;
+        
+        // Se for o último attempt, lançar erro de timeout
+        if (attempts >= maxAttempts) {
+          const elapsedMinutes = Math.floor((Date.now() - startTime) / 60000);
+          throw new Error(`Timeout: O relatório demorou mais de ${elapsedMinutes} minutos para processar. Tente novamente em alguns instantes.`);
+        }
       }
     }
     
-    throw new Error('Timeout: Relatório não ficou pronto a tempo');
+    // Timeout após todas as tentativas
+    const elapsedMinutes = Math.floor((Date.now() - startTime) / 60000);
+    throw new Error(`Timeout: O relatório demorou mais de ${elapsedMinutes} minutos para processar. Tente novamente em alguns instantes.`);
   }
 
   // ✅ ATUALIZADO: Buscar relatório completo de uma avaliação com suporte a polling
