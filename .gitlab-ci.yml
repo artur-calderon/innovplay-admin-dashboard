@@ -151,7 +151,7 @@ trigger-api-pipeline:
 
                 echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Aguardando container da API '$API_CONTAINER'..."
 
-                TIMEOUT=120
+                TIMEOUT=500
                 ELAPSED=0
 
                 until docker container inspect -f '{{.State.Running}}' "$API_CONTAINER" 2>/dev/null | grep -q true; do
