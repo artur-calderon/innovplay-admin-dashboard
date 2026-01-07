@@ -12,7 +12,7 @@ workflow:
     rules:
         - if: "$CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME != 'dev'"
           variables:
-              ENVIRONMENT: local
+              ENVIRONMENT: dev
               RUNNER: local
               IMAGE_TAG: "$APP:local"
               CONTAINER_NAME: "$APP-local"
