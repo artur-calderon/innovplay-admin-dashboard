@@ -10,41 +10,28 @@ variables:
 
 workflow:
     rules:
-        # MR (local / dev preview)
         - if: "$CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME != 'dev'"
           variables:
-              ENVIRONMENT: dev
+              ENVIRONMENT: local
               RUNNER: local
               IMAGE_TAG: "$APP:local"
               CONTAINER_NAME: "$APP-local"
-              HOST_PORT: 8002
               VITE_API_BASE_URL: /api
-              API_HOST: demo-api.afirmeplay.com.br
-
-        # branch dev (VPS dev)
+              API_CONTAINER: innovplay_api-local
         - if: "$CI_COMMIT_BRANCH == 'dev'"
           variables:
               ENVIRONMENT: dev
               IMAGE_TAG: "$APP:dev"
               CONTAINER_NAME: "$APP-dev"
               HOST_PORT: 8001
-              API_HOST: demo-api.afirmeplay.com.br
-
-        # branch main (prod)
         - if: "$CI_COMMIT_BRANCH == 'main'"
-          variables:
-              ENVIRONMENT: prod
-              IMAGE_TAG: "$APP:latest"
-              CONTAINER_NAME: "$APP"
-              HOST_PORT: 8000
-              API_HOST: demo-api.afirmeplay.com.br
-
         - when: never
 
 stages:
     - validate_pipeline
     - prebuild
     - build
+    - predeploy
     - deploy
     - clean
 
@@ -56,7 +43,40 @@ stages:
     variables:
         GIT_STRATEGY: none
 
-# ---------------- VALIDATION ----------------
+.clean_job:
+    script:
+        - |
+            CONTAINER_IDS=$(docker container ls -a -f ancestor="$IMAGE_TAG" -q)
+
+            if [ -z "$CONTAINER_IDS" ]; then
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Container do app não existe."
+            else
+                for ID in $CONTAINER_IDS; do
+                    IS_RUNNING=$(docker inspect -f "{{.State.Running}}" "$ID")
+
+                    if [ "$IS_RUNNING" = "true" ]; then
+                        docker container stop "$ID"
+
+                        echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Container do app com id '$ID' foi parado."
+                    else
+                        echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Container do app com id '$ID' já está parado."
+                    fi
+
+                    docker container rm "$ID"
+
+                    echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Container do app com id '$ID' foi removido."
+                done
+            fi
+        - |
+            IMAGE_ID=$(docker image ls -f reference="$IMAGE_TAG" -q)
+
+            if [ -z "$IMAGE_ID" ]; then
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Imagem '$IMAGE_TAG' não existe."
+            else
+                docker image rm "$IMAGE_ID"
+
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Imagem '$IMAGE_TAG' com id '$IMAGE_ID' foi removida."
+            fi
 
 invalid_merge_request:
     stage: validate_pipeline
@@ -70,19 +90,15 @@ invalid_merge_request:
             echo "$(date '+[%Y-%m-%d %H:%M:%S]') - MR para 'main' só é permitido a partir da branch 'dev'."
             exit 1
 
-# ---------------- CLEAN IMAGE ----------------
-
 image_clean:
     stage: prebuild
     extends:
         - .set_runner_tag
         - .set_none_git_strategy
-    script:
+        - .clean_job
+    before_script:
         - |
-            docker container ls -a -f ancestor="$IMAGE_TAG" -q | xargs -r docker rm -f
-            docker image ls -f reference="$IMAGE_TAG" -q | xargs -r docker rmi -f
-
-# ---------------- BUILD ----------------
+            command -v docker >/dev/null || { echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Docker não disponível"; exit 1; }
 
 image_build:
     stage: build
@@ -94,17 +110,74 @@ image_build:
         - |
             set -e
 
-            echo "VITE_API_BASE_URL=/api" > .env
+            echo "VITE_API_BASE_URL=$VITE_API_BASE_URL" > .env
 
-            echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Instalando envsubst"
+            echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Instalando dependência envsubst"
             apk add --no-cache gettext
 
-            echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Gerando nginx.conf"
-            envsubst '$API_HOST' < nginx.conf.template > nginx.conf
+            envsubst '$API_CONTAINER' < nginx.conf.template > nginx.conf
 
             docker build --no-cache -t "$IMAGE_TAG" .
 
-# ---------------- DEPLOY ----------------
+            IMAGE_ID=$(docker image ls -f reference="$IMAGE_TAG" -q)
+
+            if [ -z "$IMAGE_ID" ]; then
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Imagem '$IMAGE_TAG' não foi encontrada após o build."
+                exit 1
+            else
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Imagem '$IMAGE_TAG' criada com id '$IMAGE_ID'."
+            fi
+
+trigger-api-pipeline:
+    stage: predeploy
+    extends:
+        - .set_runner_tag
+        - .set_none_git_strategy
+    environment:
+        name: $ENVIRONMENT
+    rules:
+        - if: "$ENVIRONMENT == 'local'"
+    script:
+        - |
+            CONTAINER_ID=$(docker container ls -a -f name=^${API_CONTAINER}$ -q)
+
+            if [ -z "$CONTAINER_ID" ]; then
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Instalando dependência curl"
+                apk add --no-cache curl
+
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Disparando pipeline do backend..."
+
+                curl -X POST --fail -F token=$API_TRIGGER_TOKEN -F ref=main $API_TRIGGER_URL
+
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Aguardando container da API '$API_CONTAINER'..."
+
+                TIMEOUT=500
+                ELAPSED=0
+
+                until docker container inspect -f '{{.State.Running}}' "$API_CONTAINER" 2>/dev/null | grep -q true; do
+                    sleep 5
+                    ELAPSED=$((ELAPSED + 5))
+
+                    echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Aguardando... ($ELAPSED/$TIMEOUT)"
+
+                    if [ $ELAPSED -ge $TIMEOUT ]; then
+                        echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Container '$API_CONTAINER' não iniciou dentro do tempo esperado."
+                        exit 1
+                    fi
+                done
+
+                echo "[OK] Container da API está em execução."
+            else
+                IS_RUNNING=$(docker inspect -f "{{.State.Running}}" "$CONTAINER_ID")
+
+                if [ "$IS_RUNNING" = "true" ]; then
+                    echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Container '$API_CONTAINER' já está ativo."
+                else
+                    docker container start "$API_CONTAINER"
+
+                    echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Container '$API_CONTAINER' iniciado."
+                fi
+            fi
 
 container_run:
     stage: deploy
@@ -118,54 +191,46 @@ container_run:
         - |
             set -e
 
-            echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Verificando network '$ENVIRONMENT'"
+            docker container run --network "$ENVIRONMENT" -p "$HOST_PORT:$CONTAINER_PORT" --name "$CONTAINER_NAME" -d "$IMAGE_TAG"
 
-            NETWORK_ID=$(docker network ls -f name="^${ENVIRONMENT}$" -q)
-
-            if [ -z "$NETWORK_ID" ]; then
-                docker network create "$ENVIRONMENT"
-                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Network '$ENVIRONMENT' criada."
-            else
-                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Network '$ENVIRONMENT' já existe."
-            fi
-
-            docker container run \
-                --network "$ENVIRONMENT" \
-                -p "$HOST_PORT:$CONTAINER_PORT" \
-                --name "$CONTAINER_NAME" \
-                -d "$IMAGE_TAG"
-
-            CONTAINER_ID=$(docker container ls -a -f name="^${CONTAINER_NAME}$" -q)
+            CONTAINER_ID=$(docker container ls -a -f ancestor="$IMAGE_TAG" -q)
 
             if [ -z "$CONTAINER_ID" ]; then
                 echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Falha ao criar o container '$CONTAINER_NAME'."
                 exit 1
             else
-                sleep 10
+                sleep 30
 
                 IS_RUNNING=$(docker inspect -f "{{.State.Running}}" "$CONTAINER_ID")
 
                 if [ "$IS_RUNNING" = "true" ]; then
-                    echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Container '$CONTAINER_NAME' está em execução."
+                    echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Container '$CONTAINER_NAME' criado com id '$CONTAINER_ID'."
                 else
-                    echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Container '$CONTAINER_NAME' foi criado mas parou."
-                    docker logs "$CONTAINER_ID"
+                    echo "$(date '+[%Y-%m-%d %H:%M:%S]') - O container '$CONTAINER_NAME' foi criado mas parou."
                     exit 1
                 fi
             fi
-
-# ---------------- CLEAN ENV ----------------
 
 environment_clean:
     stage: clean
     extends:
         - .set_none_git_strategy
+        - .clean_job
     environment:
         name: $ENVIRONMENT
         action: stop
     rules:
-        - if: "$ENVIRONMENT == 'dev'"
+        - if: "$ENVIRONMENT == 'local'"
           when: manual
     allow_failure: true
-    script:
-        - echo "Stopping environment $ENVIRONMENT"
+    after_script:
+        - |
+            NETWORK=$(docker network ls -f name="^${ENVIRONMENT}$" -q)
+
+            if [ -z "$NETWORK" ]; then
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Network '$ENVIRONMENT' não existe."
+            else
+                docker network rm "$NETWORK"
+
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Network '$ENVIRONMENT' foi removida."
+            fi
