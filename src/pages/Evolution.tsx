@@ -159,6 +159,9 @@ export default function Evolution() {
     initializeData();
   }, [autoLogin, loadInitialFilters, toast]);
 
+  // Limite máximo de avaliações para comparação (suportado pelo sistema)
+  const MAX_EVALUATIONS = 10;
+
   // Função para adicionar avaliação ao carrinho (validação acontece apenas quando há 2+ avaliações)
   const handleAddEvaluation = useCallback((evaluationId: string) => {
     const evaluation = availableEvaluationsForPicker.find(e => e.id === evaluationId);
@@ -167,6 +170,16 @@ export default function Evolution() {
     // Adicionar diretamente ao carrinho com verificação atômica dentro do setState
     // Isso previne race conditions em cliques rápidos
     setSelectedEvaluationsForComparison(prev => {
+      // Verificar limite máximo
+      if (prev.length >= MAX_EVALUATIONS) {
+        toast({
+          title: "Limite de avaliações atingido",
+          description: `Você pode comparar no máximo ${MAX_EVALUATIONS} avaliações por vez. Remova uma avaliação antes de adicionar outra.`,
+          variant: "destructive",
+        });
+        return prev; // Retornar estado inalterado
+      }
+      
       // Verificar duplicata dentro do setState (garantido que usa o estado mais recente)
       if (prev.some(e => e.id === evaluationId)) {
         // Se já existe, retornar estado inalterado e mostrar toast
@@ -180,9 +193,10 @@ export default function Evolution() {
       
       // Se não existe, adicionar e mostrar toast de sucesso
       const newState = [...prev, evaluation];
+      const remaining = MAX_EVALUATIONS - newState.length;
       const message = prev.length === 0
-        ? `"${evaluation.titulo}" foi adicionada à comparação. Selecione mais uma avaliação para comparar.`
-        : `"${evaluation.titulo}" foi adicionada à comparação.`;
+        ? `"${evaluation.titulo}" foi adicionada à comparação. Selecione mais uma avaliação para comparar.${remaining > 0 ? ` (${remaining} restantes)` : ''}`
+        : `"${evaluation.titulo}" foi adicionada à comparação.${remaining > 0 ? ` (${remaining} restantes)` : ' (limite atingido)'}`;
       
       toast({
         title: "Avaliação adicionada",
@@ -726,6 +740,12 @@ export default function Evolution() {
 
       // Processar dados para os gráficos
       const processed = processComparisonData(comparison);
+      console.log('📊 Dados processados:', {
+        totalEvaluations: comparison.total_evaluations,
+        evaluationNames: processed.evaluationNames,
+        evaluationNamesCount: processed.evaluationNames.length,
+        generalData: processed.generalData,
+      });
       setProcessedData(processed);
       // Visibilidade de gráficos agora é controlada localmente em EvolutionCharts
 
@@ -899,7 +919,12 @@ export default function Evolution() {
                     Avaliações Selecionadas
                   </DialogTitle>
                   <DialogDescription>
-                    {selectedEvaluationsForComparison.length} avaliação(ões) selecionada(s) para comparação
+                    {selectedEvaluationsForComparison.length} de {MAX_EVALUATIONS} avaliação(ões) selecionada(s) para comparação
+                    {selectedEvaluationsForComparison.length >= MAX_EVALUATIONS && (
+                      <span className="block mt-1 text-amber-600 dark:text-amber-400 text-xs">
+                        Limite máximo atingido. Remova uma avaliação para adicionar outra.
+                      </span>
+                    )}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 mt-4">
@@ -1444,9 +1469,16 @@ export default function Evolution() {
                       </div>
                     )}
                     {!isLoadingFilters && filteredEvaluations.length > 0 && (
-                      <Badge variant="outline" className="bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800">
-                        {filteredEvaluations.length} encontrada(s)
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800">
+                          {filteredEvaluations.length} encontrada(s)
+                        </Badge>
+                        {selectedEvaluationsForComparison.length > 0 && (
+                          <Badge variant="outline" className="bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800">
+                            {selectedEvaluationsForComparison.length}/{MAX_EVALUATIONS} selecionada(s)
+                          </Badge>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1488,13 +1520,15 @@ export default function Evolution() {
                               ? 'bg-green-50 dark:bg-green-950/20 border-green-300 dark:border-green-800'
                               : isInvalid
                               ? 'bg-red-50 dark:bg-red-950/20 border-red-300 dark:border-red-800 opacity-60'
+                              : selectedEvaluationsForComparison.length >= MAX_EVALUATIONS
+                              ? 'bg-muted/50 border-border opacity-50 cursor-not-allowed'
                               : 'bg-card border-border hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md'
                           }`}
                         >
                           <div className="flex items-start gap-3">
                             <Checkbox
                               checked={isAlreadyAdded}
-                              disabled={isInvalid}
+                              disabled={isInvalid || (!isAlreadyAdded && selectedEvaluationsForComparison.length >= MAX_EVALUATIONS)}
                               onCheckedChange={(checked) => {
                                 if (checked && !isAlreadyAdded) {
                                   handleAddEvaluation(evaluation.id);
