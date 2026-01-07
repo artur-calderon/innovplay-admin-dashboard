@@ -10,6 +10,7 @@ variables:
 
 workflow:
     rules:
+        # MR (local / dev preview)
         - if: "$CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME != 'dev'"
           variables:
               ENVIRONMENT: dev
@@ -18,23 +19,25 @@ workflow:
               CONTAINER_NAME: "$APP-local"
               HOST_PORT: 8002
               VITE_API_BASE_URL: /api
-              API_CONTAINER: innovplay_api-dev
+              API_HOST: demo-api.afirmeplay.com.br
 
+        # branch dev (VPS dev)
         - if: "$CI_COMMIT_BRANCH == 'dev'"
           variables:
               ENVIRONMENT: dev
               IMAGE_TAG: "$APP:dev"
               CONTAINER_NAME: "$APP-dev"
               HOST_PORT: 8001
-              API_CONTAINER: innovplay_api-dev
+              API_HOST: demo-api.afirmeplay.com.br
 
+        # branch main (prod)
         - if: "$CI_COMMIT_BRANCH == 'main'"
           variables:
               ENVIRONMENT: prod
               IMAGE_TAG: "$APP:latest"
               CONTAINER_NAME: "$APP"
               HOST_PORT: 8000
-              API_CONTAINER: innovplay_api
+              API_HOST: demo-api.afirmeplay.com.br
 
         - when: never
 
@@ -91,26 +94,15 @@ image_build:
         - |
             set -e
 
-            echo "VITE_API_BASE_URL=$VITE_API_BASE_URL" > .env
+            echo "VITE_API_BASE_URL=/api" > .env
 
-            echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Instalando dependência envsubst"
+            echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Instalando envsubst"
             apk add --no-cache gettext
 
             echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Gerando nginx.conf"
-            envsubst '$API_CONTAINER' < nginx.conf.template > nginx.conf
-
-            ls -la nginx.conf
+            envsubst '$API_HOST' < nginx.conf.template > nginx.conf
 
             docker build --no-cache -t "$IMAGE_TAG" .
-
-            IMAGE_ID=$(docker image ls -f reference="$IMAGE_TAG" -q)
-
-            if [ -z "$IMAGE_ID" ]; then
-                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Imagem '$IMAGE_TAG' não foi encontrada após o build."
-                exit 1
-            else
-                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Imagem '$IMAGE_TAG' criada com id '$IMAGE_ID'."
-            fi
 
 # ---------------- DEPLOY ----------------
 
