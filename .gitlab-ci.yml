@@ -95,9 +95,24 @@ image_build:
 
             echo "VITE_API_BASE_URL=$VITE_API_BASE_URL" > .env
 
-            echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Buildando imagem frontend"
+            echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Instalando dependência envsubst"
+            apk add --no-cache gettext
+
+            echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Gerando nginx.conf"
+            envsubst '$API_CONTAINER' < nginx.conf.template > nginx.conf
+
+            ls -la nginx.conf
 
             docker build --no-cache -t "$IMAGE_TAG" .
+
+            IMAGE_ID=$(docker image ls -f reference="$IMAGE_TAG" -q)
+
+            if [ -z "$IMAGE_ID" ]; then
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Imagem '$IMAGE_TAG' não foi encontrada após o build."
+                exit 1
+            else
+                echo "$(date '+[%Y-%m-%d %H:%M:%S]') - Imagem '$IMAGE_TAG' criada com id '$IMAGE_ID'."
+            fi
 
 # ---------------- DEPLOY ----------------
 
