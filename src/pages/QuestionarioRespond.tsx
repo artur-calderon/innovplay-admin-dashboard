@@ -82,6 +82,8 @@ const QuestionarioRespond = () => {
     const questionId = question.id;
     const response = responses[questionId];
     const questionType = question.type || question.tipo;
+    const subQuestions = question.subQuestions || question.subPerguntas || [];
+    const hasSubQuestions = subQuestions.length > 0;
     
     if (response === undefined || response === null || response === '') {
       return false;
@@ -89,6 +91,17 @@ const QuestionarioRespond = () => {
     
     // Para questões de matriz/múltipla escolha
     if (typeof response === 'object' && !Array.isArray(response)) {
+      // ✅ Se a questão tem subperguntas, verificar se todas foram respondidas
+      // (qualquer valor é válido, incluindo todas "Não")
+      if (hasSubQuestions) {
+        // Verificar se todas as subperguntas têm resposta
+        return subQuestions.every(subQ => {
+          const subResponse = response[subQ.id];
+          return subResponse !== undefined && subResponse !== null && subResponse !== '';
+        });
+      }
+      
+      // Se não tem subperguntas, usar lógica original
       if (questionType === 'multipla_escolha') {
         // Para múltipla escolha, verificar se pelo menos uma opção é "Sim"
         const hasAtLeastOneYes = Object.values(response).some(value => value === 'Sim');
@@ -99,6 +112,56 @@ const QuestionarioRespond = () => {
       }
     }
     
+    return true;
+  }, [responses]);
+
+  // ✅ Função para verificar se todas as subperguntas foram respondidas
+  const areAllSubQuestionsAnswered = useCallback((question: Question): boolean => {
+    const subQuestions = question.subQuestions || question.subPerguntas || [];
+    
+    // Se não tem subperguntas, considerar como completo
+    if (subQuestions.length === 0) {
+      return true;
+    }
+    
+    const questionId = question.id;
+    const response = responses[questionId];
+    const questionType = question.type || question.tipo;
+    
+    // Se não há resposta ou não é um objeto, não está completo
+    if (!response || typeof response !== 'object' || Array.isArray(response)) {
+      return false;
+    }
+    
+    // Verificar cada subpergunta individualmente
+    for (const subQ of subQuestions) {
+      const subResponse = response[subQ.id];
+      
+      // Se a subpergunta não tem resposta, não está completo
+      if (subResponse === undefined || subResponse === null) {
+        return false;
+      }
+      
+      // Validações específicas por tipo de questão
+      if (questionType === 'matriz_selecao' || questionType === 'matriz_selecao_complexa') {
+        // Para matriz de seleção, resposta não pode ser string vazia
+        if (subResponse === '') {
+          return false;
+        }
+      }
+      
+      // Para matriz_slider, verificar se é um número válido
+      if (questionType === 'matriz_slider') {
+        if (typeof subResponse !== 'number' || isNaN(subResponse)) {
+          return false;
+        }
+      }
+      
+      // Para multipla_escolha, qualquer valor (incluindo "Não") é válido
+      // desde que não seja undefined/null
+    }
+    
+    // Todas as subperguntas foram respondidas
     return true;
   }, [responses]);
 
@@ -390,18 +453,49 @@ const QuestionarioRespond = () => {
       ? currentQuestion.required 
       : (currentQuestion.obrigatoria !== undefined ? currentQuestion.obrigatoria : false);
     
-    // Validar se a questão foi respondida (se for obrigatória)
-    if (isRequired && !isQuestionAnswered(currentQuestion)) {
+    // ✅ Verificar se a questão tem subperguntas e se todas foram respondidas
+    const subQuestions = currentQuestion.subQuestions || currentQuestion.subPerguntas || [];
+    const hasSubQuestions = subQuestions.length > 0;
+    
+    if (hasSubQuestions && !areAllSubQuestionsAnswered(currentQuestion)) {
       setValidationErrors(prev => ({
         ...prev,
-        [currentQuestion.id]: 'Esta questão é obrigatória'
+        [currentQuestion.id]: 'Todas as subperguntas devem ser respondidas'
       }));
       toast({
-        title: "Questão obrigatória não respondida",
-        description: "Por favor, responda esta questão antes de continuar.",
+        title: "Subperguntas não respondidas",
+        description: "Por favor, responda todas as subperguntas antes de continuar.",
         variant: "destructive",
       });
       return;
+    }
+    
+    // ✅ Validar se a questão foi respondida (se for obrigatória)
+    // Para questões com subperguntas, se todas foram respondidas, considerar como respondida
+    // (mesmo que todas sejam "Não")
+    if (isRequired) {
+      const isAnswered = hasSubQuestions 
+        ? areAllSubQuestionsAnswered(currentQuestion) // Se tem subperguntas, verificar se todas foram respondidas
+        : isQuestionAnswered(currentQuestion); // Se não tem, usar validação normal
+      
+      if (!isAnswered) {
+        setValidationErrors(prev => ({
+          ...prev,
+          [currentQuestion.id]: hasSubQuestions 
+            ? 'Todas as subperguntas devem ser respondidas'
+            : 'Esta questão é obrigatória'
+        }));
+        toast({
+          title: hasSubQuestions 
+            ? "Subperguntas não respondidas"
+            : "Questão obrigatória não respondida",
+          description: hasSubQuestions
+            ? "Por favor, responda todas as subperguntas antes de continuar."
+            : "Por favor, responda esta questão antes de continuar.",
+          variant: "destructive",
+        });
+        return;
+      }
     }
     
     // Salvar antes de avançar
@@ -1009,7 +1103,20 @@ const QuestionarioRespond = () => {
   const remainingQuestions = totalQuestions - currentQuestionNumber;
 
   // Verificar se pode avançar
-  const canProceed = currentQuestion ? isQuestionAnswered(currentQuestion) : false;
+  // ✅ Se a questão tem subperguntas, verificar se todas foram respondidas
+  // ✅ Se não tem subperguntas, usar a validação normal
+  const canProceed = currentQuestion ? (() => {
+    const subQuestions = currentQuestion.subQuestions || currentQuestion.subPerguntas || [];
+    const hasSubQuestions = subQuestions.length > 0;
+    
+    if (hasSubQuestions) {
+      // Para questões com subperguntas, verificar se todas foram respondidas
+      return areAllSubQuestionsAnswered(currentQuestion);
+    } else {
+      // Para questões sem subperguntas, usar validação normal
+      return isQuestionAnswered(currentQuestion);
+    }
+  })() : false;
 
   return (
     <div className="min-h-screen bg-gray-50">
