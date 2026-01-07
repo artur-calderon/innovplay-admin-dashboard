@@ -10,33 +10,31 @@ variables:
 
 workflow:
     rules:
-        # Merge Request → dev (preview)
         - if: "$CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME != 'dev'"
           variables:
-              ENVIRONMENT: dev
+              ENVIRONMENT: local
               RUNNER: local
-              IMAGE_TAG: "$APP:dev"
-              CONTAINER_NAME: "$APP-dev"
-              HOST_PORT: 8001
-              VITE_API_BASE_URL: https://demo.afimeplay.com.br/api
+              IMAGE_TAG: "$APP:local"
+              CONTAINER_NAME: "$APP-local"
+              HOST_PORT: 8002
+              VITE_API_BASE_URL: /api
+              API_CONTAINER: innovplay_api-local
 
-        # Branch dev
         - if: "$CI_COMMIT_BRANCH == 'dev'"
           variables:
               ENVIRONMENT: dev
               IMAGE_TAG: "$APP:dev"
               CONTAINER_NAME: "$APP-dev"
               HOST_PORT: 8001
-              VITE_API_BASE_URL: https://demo.afimeplay.com.br/api
+              API_CONTAINER: innovplay_api-dev
 
-        # Branch main
         - if: "$CI_COMMIT_BRANCH == 'main'"
           variables:
               ENVIRONMENT: prod
               IMAGE_TAG: "$APP:latest"
               CONTAINER_NAME: "$APP"
               HOST_PORT: 8000
-              VITE_API_BASE_URL: https://api.afimeplay.com.br
+              API_CONTAINER: innovplay_api
 
         - when: never
 
