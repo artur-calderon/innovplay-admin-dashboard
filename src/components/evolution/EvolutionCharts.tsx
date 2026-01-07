@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -286,23 +286,33 @@ const makeDeltaLabelRenderer = (
   );
 };
 
-function mergeByName(rows: EvolutionData[]): EvolutionData[] {
-  const map = new Map<string, EvolutionData>();
+type EvolutionDataWithDynamicKeys = EvolutionData & {
+  [key: string]: string | number | null | undefined;
+};
+
+function mergeByName(rows: EvolutionData[]): EvolutionDataWithDynamicKeys[] {
+  const map = new Map<string, EvolutionDataWithDynamicKeys>();
   for (const r of rows) {
     const key = (r?.name || 'Geral').trim();
     const cur = map.get(key) || { name: key };
-    const merged: any = { name: key };
+    const merged: EvolutionDataWithDynamicKeys = { name: key };
     
     // Mesclar todas as etapas dinamicamente (até 10 etapas)
     for (let i = 1; i <= 10; i++) {
       const etapaKey = `etapa${i}`;
-      merged[etapaKey] = safe((r as any)[etapaKey]) ?? (cur as any)[etapaKey];
+      const rValue = (r as EvolutionDataWithDynamicKeys)[etapaKey];
+      const curValue = (cur as EvolutionDataWithDynamicKeys)[etapaKey];
+      merged[etapaKey] = safe(typeof rValue === 'number' ? rValue : undefined) ?? 
+                        (typeof curValue === 'number' ? curValue : undefined);
     }
     
     // Mesclar todas as variações dinamicamente
     for (let i = 1; i <= 9; i++) {
       const variacaoKey = `variacao_${i}_${i + 1}`;
-      merged[variacaoKey] = safe((r as any)[variacaoKey]) ?? (cur as any)[variacaoKey];
+      const rValue = (r as EvolutionDataWithDynamicKeys)[variacaoKey];
+      const curValue = (cur as EvolutionDataWithDynamicKeys)[variacaoKey];
+      merged[variacaoKey] = safe(typeof rValue === 'number' ? rValue : undefined) ?? 
+                           (typeof curValue === 'number' ? curValue : undefined);
     }
     
     map.set(key, merged);
@@ -314,8 +324,10 @@ function mergeByName(rows: EvolutionData[]): EvolutionData[] {
       const variacaoKey = `variacao_${i}_${i + 1}`;
       const etapa1Key = `etapa${i}`;
       const etapa2Key = `etapa${i + 1}`;
-      if ((v as any)[variacaoKey] === undefined) {
-        (v as any)[variacaoKey] = pct((v as any)[etapa1Key], (v as any)[etapa2Key]);
+      if (v[variacaoKey] === undefined) {
+        const etapa1Value = typeof v[etapa1Key] === 'number' ? v[etapa1Key] : undefined;
+        const etapa2Value = typeof v[etapa2Key] === 'number' ? v[etapa2Key] : undefined;
+        v[variacaoKey] = pct(etapa1Value, etapa2Value);
       }
     }
   }
@@ -327,9 +339,9 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
   const [hiddenByChart, setHiddenByChart] = useState<Record<string, Set<string>>>({});
   const [collapsedCharts, setCollapsedCharts] = useState<Set<string>>(new Set());
 
-  function getHidden(chartId: string): Set<string> {
+  const getHidden = useCallback((chartId: string): Set<string> => {
     return hiddenByChart[chartId] ?? new Set<string>();
-  }
+  }, [hiddenByChart]);
 
   function handleToggle(chartId: string, name: string) {
     setHiddenByChart(prev => {
@@ -437,9 +449,10 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
     const r = merged[0];
     // Coletar todas as etapas dinamicamente
     const etapas: number[] = [];
+    const rTyped = r as EvolutionDataWithDynamicKeys;
     for (let i = 1; i <= 10; i++) {
       const etapaKey = `etapa${i}`;
-      const value = safe((r as any)[etapaKey]);
+      const value = safe(typeof rTyped[etapaKey] === 'number' ? rTyped[etapaKey] : undefined);
       if (value !== undefined) {
         etapas.push(value);
       }
@@ -476,27 +489,52 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
       const r = merged[0];
       const chartDataArray: Record<string, unknown>[] = [];
       
+      const rTyped = r as EvolutionDataWithDynamicKeys;
+      console.log('🔍 EvolutionCharts - chartData:', {
+        evaluationNames: data.evaluationNames,
+        evaluationNamesCount: data.evaluationNames.length,
+        mergedData: rTyped,
+        etapaKeys: Object.keys(rTyped).filter(k => k.startsWith('etapa')),
+      });
+      
       // Construir dados dinamicamente para todas as avaliações
       data.evaluationNames.forEach((evalName, index) => {
         if (hidden.has(evalName)) return;
         
         const etapaKey = `etapa${index + 1}`;
-        const etapaValue = safe((r as any)[etapaKey]);
+        const etapaValue = safe(typeof rTyped[etapaKey] === 'number' ? rTyped[etapaKey] : undefined);
+        
+        console.log(`🔍 Avaliação ${index + 1} (${evalName}):`, {
+          etapaKey,
+          etapaValue,
+          exists: rTyped[etapaKey] !== undefined,
+        });
         
         if (etapaValue !== undefined) {
           // Calcular variação
           let variacao = 0;
           if (index > 0) {
             const variacaoKey = `variacao_${index}_${index + 1}`;
-            const variacaoValue = safe((r as any)[variacaoKey]);
+            const variacaoValue = safe(typeof rTyped[variacaoKey] === 'number' ? rTyped[variacaoKey] : undefined);
             if (variacaoValue !== undefined) {
-              variacao = variacaoValue;
+              // Validar variação (limitar valores extremos)
+              if (Math.abs(variacaoValue) > 1000) {
+                console.warn(`⚠️ Variação extrema detectada: ${variacaoValue}% entre ${index} e ${index + 1}. Limitando a ±1000%`);
+                variacao = variacaoValue > 0 ? 1000 : -1000;
+              } else {
+                variacao = variacaoValue;
+              }
             } else {
               // Se não houver variação calculada, calcular manualmente
               const prevEtapaKey = `etapa${index}`;
-              const prevValue = safe((r as any)[prevEtapaKey]);
+              const prevValue = safe(typeof rTyped[prevEtapaKey] === 'number' ? rTyped[prevEtapaKey] : undefined);
               if (prevValue !== undefined && prevValue > 0) {
                 variacao = ((etapaValue - prevValue) / prevValue) * 100;
+                // Validar variação calculada
+                if (Math.abs(variacao) > 1000) {
+                  console.warn(`⚠️ Variação calculada extrema: ${variacao}% entre ${index} e ${index + 1}. Limitando a ±1000%`);
+                  variacao = variacao > 0 ? 1000 : -1000;
+                }
               }
             }
           }
@@ -515,7 +553,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
       // Para disciplinas, retornar array vazio (será tratado no loop)
       return [];
     }
-  }, [data, activeTab, hiddenByChart]);
+  }, [data, activeTab, getHidden]);
 
   // Dados segmentados para gráfico de notas (aba geral)
   const segmentedGeneral = useMemo(
@@ -532,6 +570,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
       if (merged.length === 0) return [];
       
       const r = merged[0];
+      const rTyped = r as EvolutionDataWithDynamicKeys;
       const chartDataArray: Record<string, unknown>[] = [];
       
       // Construir dados de proficiência dinamicamente para todas as avaliações
@@ -539,7 +578,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
         if (hidden.has(evalName)) return;
         
         const etapaKey = `etapa${index + 1}`;
-        const etapaValue = safe((r as any)[etapaKey]);
+        const etapaValue = safe(typeof rTyped[etapaKey] === 'number' ? rTyped[etapaKey] : undefined);
         
         if (etapaValue !== undefined) {
           chartDataArray.push({
@@ -554,7 +593,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
     } else {
       return [];
     }
-  }, [data, activeTab, hiddenByChart]);
+  }, [data, activeTab, getHidden]);
 
   // Dados segmentados para gráfico de proficiência (aba geral)
   const segmentedProficiency = useMemo(
@@ -1112,11 +1151,12 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
           if (merged.length === 0) return false;
 
           const r = merged[0];
+          const rTyped = r as EvolutionDataWithDynamicKeys;
           // A disciplina é considerada válida se tiver dados em TODAS as avaliações selecionadas,
           // qualquer que seja a quantidade (2, 3, 4, ...).
           const hasAllEvaluations = data.evaluationNames.every((_, index) => {
             const etapaKey = `etapa${index + 1}`;
-            return safe((r as any)[etapaKey]) !== undefined;
+            return safe(typeof rTyped[etapaKey] === 'number' ? rTyped[etapaKey] : undefined) !== undefined;
           });
 
           return hasAllEvaluations;
@@ -1142,10 +1182,11 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                 if (merged.length === 0) return false;
                 
                 const r = merged[0];
+                const rTyped = r as EvolutionDataWithDynamicKeys;
                 // Verificar se a disciplina tem dados em todas as avaliações dinamicamente
                 const hasAllEvaluations = data.evaluationNames.every((evalName, index) => {
                   const etapaKey = `etapa${index + 1}`;
-                  return safe((r as any)[etapaKey]) !== undefined;
+                  return safe(typeof rTyped[etapaKey] === 'number' ? rTyped[etapaKey] : undefined) !== undefined;
                 });
                 
                 return hasAllEvaluations;
@@ -1156,6 +1197,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
               if (merged.length === 0) return null;
               
               const r = merged[0];
+              const rTyped = r as EvolutionDataWithDynamicKeys;
               const subjectChartData: Record<string, unknown>[] = [];
               const subjectColors = getSubjectColors(subject, subjectIndex);
               const hiddenSubjectNota = getHidden(`subject-${subject}-nota`);
@@ -1165,7 +1207,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                 if (hiddenSubjectNota.has(evalName)) return;
                 
                 const etapaKey = `etapa${index + 1}`;
-                const etapaValue = safe((r as any)[etapaKey]);
+                const etapaValue = safe(typeof rTyped[etapaKey] === 'number' ? rTyped[etapaKey] : undefined);
                 
                 if (etapaValue !== undefined) {
                   subjectChartData.push({
@@ -1186,21 +1228,20 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
               const hiddenSubjectProf = getHidden(`subject-${subject}-prof`);
               
               // Verificar se há dados de proficiência em todas as avaliações dinamicamente
-              const hasAllProficiencyEvaluations = mergedProficiency.length > 0 && 
+              const profTyped = mergedProficiency.length > 0 ? mergedProficiency[0] as EvolutionDataWithDynamicKeys : null;
+              const hasAllProficiencyEvaluations = mergedProficiency.length > 0 && profTyped &&
                 data.evaluationNames.every((evalName, index) => {
                   const etapaKey = `etapa${index + 1}`;
-                  return safe((mergedProficiency[0] as any)[etapaKey]) !== undefined;
+                  return safe(typeof profTyped[etapaKey] === 'number' ? profTyped[etapaKey] : undefined) !== undefined;
                 });
               
-              if (mergedProficiency.length > 0 && hasAllProficiencyEvaluations) {
-                const prof = mergedProficiency[0];
-                
+              if (mergedProficiency.length > 0 && hasAllProficiencyEvaluations && profTyped) {
                 // Dados de proficiência dinamicamente para todas as avaliações
                 data.evaluationNames.forEach((evalName, index) => {
                   if (hiddenSubjectProf.has(evalName)) return;
                   
                   const etapaKey = `etapa${index + 1}`;
-                  const etapaValue = safe((prof as any)[etapaKey]);
+                  const etapaValue = safe(typeof profTyped[etapaKey] === 'number' ? profTyped[etapaKey] : undefined);
                   
                   if (etapaValue !== undefined) {
                     proficiencyChartData.push({
@@ -1462,10 +1503,11 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                 if (merged.length === 0) return false;
                 
                 const r = merged[0];
+                const rTyped = r as EvolutionDataWithDynamicKeys;
                 // Verificar se o nível tem dados em todas as avaliações dinamicamente
                 const hasAllEvaluations = data.evaluationNames.every((evalName, index) => {
                   const etapaKey = `etapa${index + 1}`;
-                  return safe((r as any)[etapaKey]) !== undefined;
+                  return safe(typeof rTyped[etapaKey] === 'number' ? rTyped[etapaKey] : undefined) !== undefined;
                 });
                 
                 return hasAllEvaluations;
@@ -1476,6 +1518,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                 if (merged.length === 0) return null;
                 
                 const r = merged[0];
+                const rTyped = r as EvolutionDataWithDynamicKeys;
                 const levelChartData: Record<string, unknown>[] = [];
                 const hiddenLevel = getHidden(`level-${levelName}`);
                 
@@ -1494,7 +1537,7 @@ export function EvolutionCharts({ data, isLoading = false }: EvolutionChartsProp
                   if (hiddenLevel.has(evalName)) return;
                   
                   const etapaKey = `etapa${index + 1}`;
-                  const etapaValue = safe((r as any)[etapaKey]);
+                  const etapaValue = safe(typeof rTyped[etapaKey] === 'number' ? rTyped[etapaKey] : undefined);
                   
                   if (etapaValue !== undefined) {
                     levelChartData.push({

@@ -145,11 +145,11 @@ const makeDeltaLabelRenderer = (
         x={x}
         y={Math.max(y - 20, 20)}
         textAnchor="middle"
-        fontSize={9}
+        fontSize={11}
         fontWeight={700}
         fill={color}
         stroke="#ffffff"
-        strokeWidth={1.2}
+        strokeWidth={2}
         paintOrder="stroke fill"
       >
         {text}
@@ -358,7 +358,12 @@ export const EvolutionPDFLayout = ({ processedData, evaluationNames }: Evolution
         color: '#000000',
         boxSizing: 'border-box',
         overflow: 'visible',
-        pageBreakInside: 'auto'
+        pageBreakInside: 'auto',
+        WebkitFontSmoothing: 'antialiased',
+        MozOsxFontSmoothing: 'grayscale',
+        textRendering: 'optimizeLegibility',
+        imageRendering: 'crisp-edges',
+        shapeRendering: 'geometricPrecision'
       }}
     >
       {/* Cabeçalho */}
@@ -488,12 +493,12 @@ export const EvolutionPDFLayout = ({ processedData, evaluationNames }: Evolution
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis 
                     dataKey="name" 
-                    tick={{ fontSize: 8, fill: '#374151' }}
+                    tick={{ fontSize: 10, fill: '#374151', fontWeight: 500 }}
                     angle={-25}
                     textAnchor="end"
                     height={50}
                   />
-                  <YAxis domain={[0, 10]} tick={{ fontSize: 8, fill: '#374151' }} />
+                  <YAxis domain={[0, 10]} tick={{ fontSize: 10, fill: '#374151', fontWeight: 500 }} />
                   <Tooltip content={<CustomTooltip />} />
                   <Bar 
                     dataKey="nota" 
@@ -502,9 +507,11 @@ export const EvolutionPDFLayout = ({ processedData, evaluationNames }: Evolution
                     radius={[2, 2, 0, 0]}
                     label={{ 
                       position: 'center', 
-                      fontSize: 8, 
-                      fill: '#1f2937',
+                      fontSize: 11, 
+                      fill: '#ffffff',
                       fontWeight: 'bold',
+                      stroke: '#1f2937',
+                      strokeWidth: 0.5,
                       formatter: (value: number) => value.toFixed(1).replace('.', ',')
                     }}
                   >
@@ -545,6 +552,40 @@ export const EvolutionPDFLayout = ({ processedData, evaluationNames }: Evolution
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
+            {/* Legenda do gráfico de Nota Geral */}
+            <div style={{ 
+              marginTop: '8px', 
+              padding: '8px 12px', 
+              backgroundColor: '#f9fafb', 
+              border: '1px solid #e5e7eb', 
+              borderRadius: '4px',
+              fontSize: '9px',
+              color: '#374151',
+              lineHeight: '1.5'
+            }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ width: '18px', height: '14px', backgroundColor: '#81338A', borderRadius: '2px' }}></div>
+                  <span><strong>Barras:</strong> Nota média por avaliação</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ width: '24px', height: '3px', backgroundColor: '#10B981' }}></div>
+                  <span><strong>Verde:</strong> Crescimento</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ width: '24px', height: '3px', backgroundColor: '#EF4444' }}></div>
+                  <span><strong>Vermelho:</strong> Queda</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ width: '24px', height: '3px', backgroundColor: '#6B7280' }}></div>
+                  <span><strong>Cinza:</strong> Estável</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#10B981' }}>+X%</span>
+                  <span>Variação percentual</span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -574,14 +615,14 @@ export const EvolutionPDFLayout = ({ processedData, evaluationNames }: Evolution
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis 
                     dataKey="name" 
-                    tick={{ fontSize: 8, fill: '#374151' }}
+                    tick={{ fontSize: 10, fill: '#374151', fontWeight: 500 }}
                     angle={-25}
                     textAnchor="end"
                     height={50}
                   />
                   <YAxis 
                     domain={[0, 425]} 
-                    tick={{ fontSize: 8, fill: '#374151' }} 
+                    tick={{ fontSize: 10, fill: '#374151', fontWeight: 500 }} 
                     tickFormatter={(value) => value.toFixed(0)}
                   />
                   <Tooltip content={<CustomProficiencyTooltip />} />
@@ -592,9 +633,11 @@ export const EvolutionPDFLayout = ({ processedData, evaluationNames }: Evolution
                     radius={[2, 2, 0, 0]}
                     label={{ 
                       position: 'center', 
-                      fontSize: 8, 
-                      fill: '#1f2937',
+                      fontSize: 11, 
+                      fill: '#ffffff',
                       fontWeight: 'bold',
+                      stroke: '#1f2937',
+                      strokeWidth: 0.5,
                       formatter: (value: number) => value.toFixed(1).replace('.', ',')
                     }}
                   >
@@ -634,6 +677,40 @@ export const EvolutionPDFLayout = ({ processedData, evaluationNames }: Evolution
                   </Line>
                 </ComposedChart>
               </ResponsiveContainer>
+            </div>
+            {/* Legenda do gráfico de Proficiência Geral */}
+            <div style={{ 
+              marginTop: '8px', 
+              padding: '8px 12px', 
+              backgroundColor: '#f9fafb', 
+              border: '1px solid #e5e7eb', 
+              borderRadius: '4px',
+              fontSize: '9px',
+              color: '#374151',
+              lineHeight: '1.5'
+            }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ width: '18px', height: '14px', backgroundColor: '#059669', borderRadius: '2px' }}></div>
+                  <span><strong>Barras:</strong> Proficiência por avaliação</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ width: '24px', height: '3px', backgroundColor: '#059669' }}></div>
+                  <span><strong>Verde:</strong> Crescimento</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ width: '24px', height: '3px', backgroundColor: '#DC2626' }}></div>
+                  <span><strong>Vermelho:</strong> Queda</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ width: '24px', height: '3px', backgroundColor: '#1f2937' }}></div>
+                  <span><strong>Cinza:</strong> Estável</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#059669' }}>+X%</span>
+                  <span>Variação percentual</span>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -749,12 +826,12 @@ export const EvolutionPDFLayout = ({ processedData, evaluationNames }: Evolution
                         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                         <XAxis 
                           dataKey="name" 
-                          tick={{ fontSize: 8, fill: '#374151' }}
+                          tick={{ fontSize: 10, fill: '#374151', fontWeight: 500 }}
                           angle={-25}
                           textAnchor="end"
                           height={50}
                         />
-                        <YAxis domain={[0, 10]} tick={{ fontSize: 8, fill: '#374151' }} />
+                        <YAxis domain={[0, 10]} tick={{ fontSize: 10, fill: '#374151', fontWeight: 500 }} />
                         <Tooltip content={<CustomTooltip />} />
                         <Bar 
                           dataKey="nota" 
@@ -763,9 +840,11 @@ export const EvolutionPDFLayout = ({ processedData, evaluationNames }: Evolution
                           radius={[2, 2, 0, 0]}
                           label={{ 
                             position: 'center', 
-                            fontSize: 8, 
+                            fontSize: 11, 
                             fill: '#ffffff',
                             fontWeight: 'bold',
+                            stroke: '#1f2937',
+                            strokeWidth: 0.5,
                             formatter: (value: number) => value.toFixed(1).replace('.', ',')
                           }}
                         >
@@ -806,6 +885,36 @@ export const EvolutionPDFLayout = ({ processedData, evaluationNames }: Evolution
                       </ComposedChart>
                     </ResponsiveContainer>
                   </div>
+                  {/* Legenda do gráfico de Notas por Disciplina */}
+                  <div style={{ 
+                    marginTop: '8px', 
+                    padding: '8px 12px', 
+                    backgroundColor: '#f9fafb', 
+                    border: '1px solid #e5e7eb', 
+                    borderRadius: '4px',
+                    fontSize: '9px',
+                    color: '#374151',
+                    lineHeight: '1.5'
+                  }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ width: '18px', height: '14px', backgroundColor: subjectColor, borderRadius: '2px' }}></div>
+                        <span><strong>Barras:</strong> Nota média</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ width: '24px', height: '3px', backgroundColor: '#10B981' }}></div>
+                        <span><strong>Verde:</strong> Crescimento</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ width: '24px', height: '3px', backgroundColor: '#EF4444' }}></div>
+                        <span><strong>Vermelho:</strong> Queda</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ width: '24px', height: '3px', backgroundColor: '#6B7280' }}></div>
+                        <span><strong>Cinza:</strong> Estável</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Gráfico de Proficiência (se disponível) */}
@@ -833,14 +942,14 @@ export const EvolutionPDFLayout = ({ processedData, evaluationNames }: Evolution
                           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                           <XAxis 
                             dataKey="name" 
-                            tick={{ fontSize: 8, fill: '#374151' }}
+                            tick={{ fontSize: 10, fill: '#374151', fontWeight: 500 }}
                             angle={-25}
                             textAnchor="end"
                             height={50}
                           />
                           <YAxis 
                             domain={getProficiencyDomain(subject)} 
-                            tick={{ fontSize: 8, fill: '#374151' }} 
+                            tick={{ fontSize: 10, fill: '#374151', fontWeight: 500 }} 
                             tickFormatter={(value) => value.toFixed(0)}
                           />
                           <Tooltip content={<CustomProficiencyTooltip />} />
@@ -851,9 +960,11 @@ export const EvolutionPDFLayout = ({ processedData, evaluationNames }: Evolution
                             radius={[2, 2, 0, 0]}
                             label={{ 
                               position: 'center', 
-                              fontSize: 8, 
+                              fontSize: 11, 
                               fill: '#ffffff',
                               fontWeight: 'bold',
+                              stroke: '#1f2937',
+                              strokeWidth: 0.5,
                               formatter: (value: number) => value.toFixed(1).replace('.', ',')
                             }}
                           >
@@ -893,6 +1004,36 @@ export const EvolutionPDFLayout = ({ processedData, evaluationNames }: Evolution
                           </Line>
                         </ComposedChart>
                       </ResponsiveContainer>
+                    </div>
+                    {/* Legenda do gráfico de Proficiência por Disciplina */}
+                    <div style={{ 
+                      marginTop: '8px', 
+                      padding: '8px 12px', 
+                      backgroundColor: '#f9fafb', 
+                      border: '1px solid #e5e7eb', 
+                      borderRadius: '4px',
+                      fontSize: '9px',
+                      color: '#374151',
+                      lineHeight: '1.5'
+                    }}>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div style={{ width: '18px', height: '14px', backgroundColor: subjectColor, borderRadius: '2px' }}></div>
+                          <span><strong>Barras:</strong> Proficiência</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div style={{ width: '24px', height: '3px', backgroundColor: '#10B981' }}></div>
+                          <span><strong>Verde:</strong> Crescimento</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div style={{ width: '24px', height: '3px', backgroundColor: '#EF4444' }}></div>
+                          <span><strong>Vermelho:</strong> Queda</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div style={{ width: '24px', height: '3px', backgroundColor: '#6B7280' }}></div>
+                          <span><strong>Cinza:</strong> Estável</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -996,14 +1137,14 @@ export const EvolutionPDFLayout = ({ processedData, evaluationNames }: Evolution
                       <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                       <XAxis 
                         dataKey="name" 
-                        tick={{ fontSize: 8, fill: '#374151' }}
+                        tick={{ fontSize: 10, fill: '#374151', fontWeight: 500 }}
                         angle={-25}
                         textAnchor="end"
                         height={50}
                       />
                       <YAxis 
                         domain={[0, 'dataMax + 5']} 
-                        tick={{ fontSize: 8, fill: '#374151' }} 
+                        tick={{ fontSize: 10, fill: '#374151', fontWeight: 500 }} 
                         allowDecimals={false}
                       />
                       <Tooltip content={<CustomLevelTooltip />} />
@@ -1014,9 +1155,11 @@ export const EvolutionPDFLayout = ({ processedData, evaluationNames }: Evolution
                         radius={[2, 2, 0, 0]}
                         label={{ 
                           position: 'center', 
-                          fontSize: 8, 
+                          fontSize: 11, 
                           fill: '#ffffff',
                           fontWeight: 'bold',
+                          stroke: '#1f2937',
+                          strokeWidth: 0.5,
                           formatter: (value: number) => value.toFixed(0)
                         }}
                       >
@@ -1056,6 +1199,36 @@ export const EvolutionPDFLayout = ({ processedData, evaluationNames }: Evolution
                       </Line>
                     </ComposedChart>
                   </ResponsiveContainer>
+                </div>
+                {/* Legenda do gráfico de Níveis de Proficiência */}
+                <div style={{ 
+                  marginTop: '8px', 
+                  padding: '8px 12px', 
+                  backgroundColor: '#f9fafb', 
+                  border: '1px solid #e5e7eb', 
+                  borderRadius: '4px',
+                  fontSize: '9px',
+                  color: '#374151',
+                  lineHeight: '1.5'
+                }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ width: '18px', height: '14px', backgroundColor: levelColor, borderRadius: '2px' }}></div>
+                      <span><strong>Barras:</strong> Alunos no nível "{levelName}"</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ width: '24px', height: '3px', backgroundColor: '#10B981' }}></div>
+                      <span><strong>Verde:</strong> Aumento</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ width: '24px', height: '3px', backgroundColor: '#EF4444' }}></div>
+                      <span><strong>Vermelho:</strong> Diminuição</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ width: '24px', height: '3px', backgroundColor: '#6B7280' }}></div>
+                      <span><strong>Cinza:</strong> Estável</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             );
