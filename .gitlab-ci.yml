@@ -140,3 +140,5 @@ environment_clean:
         - if: "$ENVIRONMENT == 'dev'"
           when: manual
     allow_failure: true
+    script:
+        - echo "Stopping environment $ENVIRONMENT"
