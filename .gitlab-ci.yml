@@ -10,34 +10,33 @@ variables:
 
 workflow:
     rules:
-        # MR (local / dev preview)
-        - if: "$CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME != 'dev'"
+        # MR / local
+        - if: "$CI_PIPELINE_SOURCE == 'merge_request_event'"
           variables:
               ENVIRONMENT: dev
               RUNNER: local
               IMAGE_TAG: "$APP:local"
               CONTAINER_NAME: "$APP-local"
               HOST_PORT: 8002
-              VITE_API_BASE_URL: /api
-              API_HOST: demo-api.afirmeplay.com.br
+              API_UPSTREAM: demo-api.afirmeplay.com.br
 
-        # branch dev (VPS dev)
+        # dev na VPS
         - if: "$CI_COMMIT_BRANCH == 'dev'"
           variables:
               ENVIRONMENT: dev
               IMAGE_TAG: "$APP:dev"
               CONTAINER_NAME: "$APP-dev"
               HOST_PORT: 8001
-              API_HOST: demo-api.afirmeplay.com.br
+              API_UPSTREAM: innovplay_api-dev:5000
 
-        # branch main (prod)
+        # prod
         - if: "$CI_COMMIT_BRANCH == 'main'"
           variables:
               ENVIRONMENT: prod
               IMAGE_TAG: "$APP:latest"
               CONTAINER_NAME: "$APP"
               HOST_PORT: 8000
-              API_HOST: demo-api.afirmeplay.com.br
+              API_UPSTREAM: innovplay_api:5000
 
         - when: never
 
