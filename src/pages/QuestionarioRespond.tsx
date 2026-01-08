@@ -300,22 +300,38 @@ const QuestionarioRespond = () => {
   };
 
   // ✅ Função auxiliar para limpar respostas de múltipla escolha que tenham todas as subperguntas como "Não"
+  // ✅ CORREÇÃO: Questões obrigatórias NUNCA são removidas, mesmo se todas as respostas forem "Não"
   const cleanMultipleChoiceResponses = (responsesToClean: Record<string, any>): Record<string, any> => {
     const cleaned = { ...responsesToClean };
     
+    if (!questionario) return cleaned;
+    
+    // Criar mapa de questões para acesso rápido
+    const questionsMap = new Map(questionario.questions.map(q => [q.id, q]));
+    
     Object.keys(cleaned).forEach(questionId => {
-      const question = questionario?.questions.find(q => q.id === questionId);
-      const questionType = question?.type || question?.tipo;
+      const question = questionsMap.get(questionId);
+      if (!question) return;
+      
+      const questionType = question.type || question.tipo;
+      const isRequired = question.required !== undefined 
+        ? question.required 
+        : (question.obrigatoria !== undefined ? question.obrigatoria : false);
       const response = cleaned[questionId];
       
+      // ✅ Questões obrigatórias NUNCA são removidas
+      if (isRequired) {
+        return; // Continuar para próxima questão
+      }
+      
+      // Questões não obrigatórias: remover se todas forem "Não"
       if (questionType === 'multipla_escolha' && 
           typeof response === 'object' && 
           !Array.isArray(response) &&
           Object.keys(response).length > 0) {
-        // Se todas as subperguntas são "Não", remover a resposta (não enviar)
         const allNo = Object.values(response).every(value => value === 'Não');
         if (allNo) {
-          console.log(`🗑️ Removendo resposta de múltipla escolha ${questionId} - todas as subperguntas são "Não"`);
+          console.log(`🗑️ Removendo resposta de múltipla escolha ${questionId} - todas as subperguntas são "Não" (não obrigatória)`);
           delete cleaned[questionId];
         }
       }
@@ -325,18 +341,32 @@ const QuestionarioRespond = () => {
   };
 
   // ✅ Função para achatar respostas de matriz (subperguntas) para o formato esperado pelo backend
+  // ✅ Garante que questões obrigatórias sempre são processadas corretamente
   const flattenMatrixResponses = (responsesToFlatten: Record<string, any>): Record<string, any> => {
     const flattened: Record<string, any> = {};
     
+    if (!questionario) return flattened;
+    
+    // Criar mapa de questões para acesso rápido
+    const questionsMap = new Map(questionario.questions.map(q => [q.id, q]));
+    
     Object.entries(responsesToFlatten).forEach(([questionId, response]) => {
-      const question = questionario?.questions.find(q => q.id === questionId);
+      const question = questionsMap.get(questionId);
+      
+      if (!question) {
+        // Se não encontrou a questão, manter como está (questão simples)
+        flattened[questionId] = response;
+        return;
+      }
+      
       // Verificar tanto subQuestions quanto subPerguntas (para compatibilidade)
-      const subQuestions = question?.subQuestions || question?.subPerguntas || [];
+      const subQuestions = question.subQuestions || question.subPerguntas || [];
       const hasSubQuestions = subQuestions.length > 0;
       
       // Se é uma questão com subperguntas (matriz), achatar as subperguntas para o nível raiz
       if (hasSubQuestions && typeof response === 'object' && !Array.isArray(response)) {
         // Para questões de matriz, colocar cada subpergunta no nível raiz
+        // ✅ Garante que todas as subperguntas são enviadas, mesmo se todas forem "Não"
         Object.entries(response).forEach(([subQuestionId, subResponse]) => {
           flattened[subQuestionId] = subResponse;
         });
@@ -544,6 +574,8 @@ const QuestionarioRespond = () => {
       if (isRequired) {
         const questionId = question.id;
         const response = responses[questionId];
+        const subQuestions = question.subQuestions || question.subPerguntas || [];
+        const hasSubQuestions = subQuestions.length > 0;
         
         // Verificar dependências
         if (question.dependsOn) {
@@ -557,33 +589,36 @@ const QuestionarioRespond = () => {
           }
         }
         
-        // Verificar se a resposta está vazia
+        // ✅ CORREÇÃO: Usar a mesma lógica da navegação
+        // Se a questão tem subperguntas, verificar se todas foram respondidas
+        // (qualquer valor é válido, incluindo todas "Não")
         let isEmpty = false;
-        const questionType = question.type || question.tipo;
         
-        if (response === undefined || response === null || response === '') {
-          isEmpty = true;
-        } else if (typeof response === 'object' && !Array.isArray(response)) {
-          // Para questões de múltipla escolha, verificar se pelo menos uma opção foi marcada como "Sim"
-          if (questionType === 'multipla_escolha') {
-            // Verificar se pelo menos uma subpergunta tem valor "Sim"
-            const hasAtLeastOneYes = Object.values(response).some(value => value === 'Sim');
-            isEmpty = !hasAtLeastOneYes;
-            
-            // ✅ ADICIONAR: Se todas as subperguntas são "Não", considerar como vazio
-            // Isso evita enviar um objeto com todas as respostas como "Não" para o backend
-            const allNo = Object.keys(response).length > 0 && Object.values(response).every(value => value === 'Não');
-            if (allNo) {
-              isEmpty = true;
+        if (hasSubQuestions) {
+          // Para questões com subperguntas, verificar se todas foram respondidas
+          isEmpty = !areAllSubQuestionsAnswered(question);
+        } else {
+          // Para questões sem subperguntas, usar validação normal
+          const questionType = question.type || question.tipo;
+          
+          if (response === undefined || response === null || response === '') {
+            isEmpty = true;
+          } else if (typeof response === 'object' && !Array.isArray(response)) {
+            // Para questões de múltipla escolha sem subperguntas, verificar se pelo menos uma opção foi marcada como "Sim"
+            if (questionType === 'multipla_escolha') {
+              const hasAtLeastOneYes = Object.values(response).some(value => value === 'Sim');
+              isEmpty = !hasAtLeastOneYes;
+            } else {
+              // Para outras matrizes, verificar se pelo menos uma resposta foi dada
+              isEmpty = Object.keys(response).length === 0;
             }
-          } else {
-            // Para outras matrizes, verificar se pelo menos uma subpergunta foi respondida
-            isEmpty = Object.keys(response).length === 0;
           }
         }
         
         if (isEmpty) {
-          errors[questionId] = 'Esta questão é obrigatória';
+          errors[questionId] = hasSubQuestions 
+            ? 'Todas as subperguntas devem ser respondidas'
+            : 'Esta questão é obrigatória';
         }
       }
     });
