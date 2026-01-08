@@ -434,6 +434,23 @@ export default function AnaliseAvaliacoes() {
             // Buscar relatório (método já implementa polling internamente)
             const relatorio = await EvaluationResultsApiService.getRelatorioCompleto(selectedEvaluation, options);
             
+            // ✅ LOG: Ver o que está sendo retornado pela API
+            console.log('📊 LOG - Resultado da rota getRelatorioCompleto:');
+            console.log('  - Filtros aplicados:', {
+              selectedState,
+              selectedMunicipality,
+              selectedSchool,
+              selectedEvaluation,
+              options
+            });
+            console.log('  - Dados completos retornados:', relatorio);
+            console.log('  - total_alunos:', relatorio.total_alunos);
+            console.log('  - por_escola:', relatorio.total_alunos?.por_escola);
+            console.log('  - por_turma:', relatorio.total_alunos?.por_turma);
+            console.log('  - niveis_aprendizagem:', relatorio.niveis_aprendizagem);
+            console.log('  - proficiencia:', relatorio.proficiencia);
+            console.log('  - nota_geral:', relatorio.nota_geral);
+            
             // Limpar timer se existir
             if (timerInterval) {
               clearInterval(timerInterval);
@@ -443,11 +460,17 @@ export default function AnaliseAvaliacoes() {
             setProcessingTime(0);
             setApiData(relatorio);
             
-            // Determinar o modo de renderização baseado nos dados retornados
-            if (relatorio.total_alunos.por_escola && relatorio.total_alunos.por_escola.length > 0) {
-              setRenderMode('escola');
-            } else if (relatorio.total_alunos.por_turma && relatorio.total_alunos.por_turma.length > 0) {
+            // ✅ CORREÇÃO: Determinar o modo de renderização baseado na seleção da escola
+            // Se uma escola específica foi selecionada (não "all"), mostrar turmas
+            // Se "all" foi selecionado, mostrar escolas
+            if (selectedSchool !== 'all') {
+              // Escola específica selecionada -> mostrar turmas
               setRenderMode('turma');
+              console.log('  - Modo definido como: turma (escola específica selecionada)');
+            } else {
+              // "Todas" as escolas -> mostrar escolas
+              setRenderMode('escola');
+              console.log('  - Modo definido como: escola (todas as escolas)');
             }
             
             if (wasProcessing) {

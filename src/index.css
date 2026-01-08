@@ -13,6 +13,28 @@
   .grid-cols-13 {
     grid-template-columns: repeat(13, minmax(0, 1fr));
   }
+
+  /* Tema de Olimpíadas */
+  .olimpiada-theme {
+    --olimpiada-gold: #FFD700;
+    --olimpiada-amber: #FFBF00;
+    --olimpiada-yellow: #FFE44D;
+    --olimpiada-orange: #FF8C00;
+  }
+
+  .olimpiada-theme .card {
+    background: linear-gradient(135deg, rgba(255, 215, 0, 0.1) 0%, rgba(255, 191, 0, 0.1) 100%);
+    border-color: rgba(255, 215, 0, 0.3);
+  }
+
+  .olimpiada-theme .btn-primary {
+    background: linear-gradient(135deg, #FFD700 0%, #FFBF00 100%);
+    color: #000;
+  }
+
+  .olimpiada-theme .btn-primary:hover {
+    background: linear-gradient(135deg, #FFBF00 0%, #FF8C00 100%);
+  }
   :root {
     /* Core Colors - Refined Palette */
     --background: 0 0% 100%;
