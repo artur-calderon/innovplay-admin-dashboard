@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { flushSync } from "react-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -170,6 +171,12 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
     const totalEmBranco = aluno.total_em_branco_geral ?? Math.max(0, totalQuestoes - totalRespondidas);
     const totalErros = Math.max(0, totalRespondidas - totalAcertos - totalEmBranco);
 
+    // Determinar status: verificar se participou (respondeu pelo menos uma questão)
+    // Não apenas confiar em status_geral, mas também verificar se há respostas
+    const statusFromField = (aluno.status_geral ?? 'pendente') === 'concluida';
+    const participou = totalRespondidas > 0 || totalAcertos > 0 || totalErros > 0;
+    const statusFinal = statusFromField || participou ? 'concluida' : 'pendente';
+
     studentsMap.set(aluno.id, {
       id: aluno.id,
       nome: aluno.nome,
@@ -180,7 +187,7 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
       acertos: totalAcertos,
       erros: totalErros,
       questoes_respondidas: totalRespondidas || totalQuestoes,
-      status: (aluno.status_geral ?? 'pendente') === 'concluida' ? 'concluida' : 'pendente',
+      status: statusFinal,
       respostas: {}
     });
   });
@@ -231,6 +238,9 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
         }
       });
 
+      // Verificar se o aluno respondeu alguma questão para determinar status
+      const hasAnsweredAny = Array.isArray(aluno.respostas_por_questao) && aluno.respostas_por_questao.some(r => r.respondeu);
+      
       if (!geralIds.has(aluno.id)) {
         const totalQuestoesDisciplina =
           aluno.total_questoes_disciplina ?? aluno.respostas_por_questao?.length ?? 0;
@@ -242,8 +252,8 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
         student.acertos += totalAcertos;
         student.erros += totalErros;
         student.questoes_respondidas += totalRespondidas || totalQuestoesDisciplina;
-        // Verificar se o aluno respondeu alguma questão para determinar status
-        const hasAnsweredAny = Array.isArray(aluno.respostas_por_questao) && aluno.respostas_por_questao.some(r => r.respondeu);
+        
+        // Marcar como concluida se participou
         if (hasAnsweredAny && student.status !== 'concluida') {
           student.status = 'concluida';
         }
@@ -256,6 +266,12 @@ const mapUnifiedStudents = (tabela: TabelaDetalhadaPorDisciplina): StudentResult
         }
         if (!student.proficiencia) {
           student.proficiencia = Number(aluno.proficiencia ?? 0);
+        }
+      } else {
+        // Aluno está em geral.alunos - verificar se participou mesmo que status_geral não indique
+        // Isso garante que alunos que participaram sejam marcados corretamente
+        if (hasAnsweredAny && student.status !== 'concluida') {
+          student.status = 'concluida';
         }
       }
     });
@@ -273,6 +289,7 @@ export default function AcertoNiveis() {
   const { toast } = useToast();
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingSchools, setIsLoadingSchools] = useState(false);
   const [states, setStates] = useState<Array<{ id: string; nome: string }>>([]);
   const [municipalities, setMunicipalities] = useState<Array<{ id: string; nome: string }>>([]);
   const [evaluations, setEvaluations] = useState<Array<{ id: string; titulo: string; data_aplicacao?: string }>>([]);
@@ -440,31 +457,34 @@ export default function AcertoNiveis() {
     if ((selectedSchoolId || selectedGradeId) && allTabelaDetalhada?.disciplinas) {
       const validIds = new Set<string>();
       
-      allTabelaDetalhada.disciplinas.forEach(disciplina => {
-        disciplina.alunos?.forEach(aluno => {
-          let matches = true;
-          
-          // Filtrar por escola
+      // Pré-calcular valores de comparação para evitar múltiplos finds
+      const selectedSchool = selectedSchoolId ? schools.find(s => s.id === selectedSchoolId) : null;
+      const selectedGrade = selectedGradeId ? grades.find(g => g.id === selectedGradeId) : null;
+      const escolaNome = selectedSchool?.nome;
+      const serieNome = selectedGrade?.nome;
+      
+      // Otimização: iterar apenas uma vez sobre todas as disciplinas
+      for (const disciplina of allTabelaDetalhada.disciplinas) {
+        if (!disciplina.alunos) continue;
+        
+        for (const aluno of disciplina.alunos) {
+          // Verificar escola
           if (selectedSchoolId) {
-            const selectedSchool = schools.find(s => s.id === selectedSchoolId);
-            if (selectedSchool && aluno.escola !== selectedSchool.nome && aluno.escola !== selectedSchoolId) {
-              matches = false;
+            if (escolaNome && aluno.escola !== escolaNome && aluno.escola !== selectedSchoolId) {
+              continue; // Pular este aluno
             }
           }
           
-          // Filtrar por série
-          if (selectedGradeId && matches) {
-            const selectedGrade = grades.find(g => g.id === selectedGradeId);
-            if (selectedGrade && aluno.serie !== selectedGrade.nome && aluno.serie !== selectedGradeId) {
-              matches = false;
+          // Verificar série
+          if (selectedGradeId) {
+            if (serieNome && aluno.serie !== serieNome && aluno.serie !== selectedGradeId) {
+              continue; // Pular este aluno
             }
           }
           
-          if (matches) {
-            validIds.add(aluno.id);
-          }
-        });
-      });
+          validIds.add(aluno.id);
+        }
+      }
       
       filtered = filtered.filter(s => validIds.has(s.id));
     }
@@ -1068,7 +1088,17 @@ export default function AcertoNiveis() {
     setClasses([]);
     setEstatisticasGerais(null);
     setOpcoesProximosFiltros(null);
-    if (!evaluationId) return;
+    
+    if (!evaluationId) {
+      setIsLoadingSchools(false);
+      return;
+    }
+    
+    // ✅ Indicador de carregamento de escolas - ATIVAR IMEDIATAMENTE com flushSync para renderização síncrona
+    flushSync(() => {
+      setIsLoadingSchools(true);
+    });
+    
     try {
       setIsLoading(true);
       
@@ -1078,8 +1108,37 @@ export default function AcertoNiveis() {
         EvaluationResultsApiService.getSkillsByEvaluation(evaluationId).catch(() => [])
       ]);
 
-      const { students: unifiedStudents, report, tabelaDetalhada: tabelaDetalhadaUnificada, estatisticas, opcoesProximosFiltros: opcoes } =
-        await fetchEvaluationData(evaluationId);
+      if (!info) throw new Error("Avaliação não encontrada");
+
+      // Processar informações da avaliação primeiro
+      const evaluationData = info as unknown as Record<string, unknown>;
+      
+      // ✅ OTIMIZAÇÃO: Carregar escolas em paralelo com fetchEvaluationData
+      const [fetchDataResult, escolasFromApi] = await Promise.all([
+        fetchEvaluationData(evaluationId),
+        (selectedState && selectedMunicipality && evaluationId)
+          ? EvaluationResultsApiService.getFilterSchoolsByEvaluation({
+              estado: selectedState,
+              municipio: selectedMunicipality,
+              avaliacao: evaluationId
+            }).catch(() => [])
+          : Promise.resolve([])
+      ]);
+
+      const { students: unifiedStudents, report, tabelaDetalhada: tabelaDetalhadaUnificada, estatisticas, opcoesProximosFiltros: opcoes } = fetchDataResult;
+      
+      // ✅ OTIMIZAÇÃO: Popular escolas imediatamente - priorizar opcoes, senão usar API
+      if (opcoes?.escolas && Array.isArray(opcoes.escolas) && opcoes.escolas.length > 0) {
+        const escolasFromOpcoes = opcoes.escolas.map((esc: { id: string; name: string }) => ({
+          id: esc.id,
+          nome: esc.name
+        }));
+        setSchools(escolasFromOpcoes);
+      } else if (Array.isArray(escolasFromApi) && escolasFromApi.length > 0) {
+        setSchools(escolasFromApi);
+      }
+      
+      setIsLoadingSchools(false);
       
       // ✅ OTIMIZAÇÃO: Armazenar todos os dados carregados para filtragem no frontend
       setAllStudents(unifiedStudents);
@@ -1093,25 +1152,16 @@ export default function AcertoNiveis() {
           setOpcoesProximosFiltros(opcoes as unknown as { [key: string]: unknown; series?: Array<{ id: string; name: string }>; } | null);
         }
 
-      if (!info) throw new Error("Avaliação não encontrada");
-
-      // Processar informações da avaliação primeiro
-      const evaluationData = info as unknown as Record<string, unknown>;
-      console.log('Dados da avaliação recebidos:', info);
-      console.log('Campo série:', evaluationData.serie);
-
       // Priorizar série do endpoint antes de usar extractSerie
       let serieExtraida = 'N/A';
       
       // 1. Tentar obter série das estatísticas gerais do endpoint
       if (estatisticas?.serie && estatisticas.serie !== 'N/A' && estatisticas.serie !== '') {
         serieExtraida = estatisticas.serie;
-        console.log('Série obtida de estatisticas_gerais:', serieExtraida);
       }
       // 2. Tentar obter série de opcoes_proximos_filtros (se houver apenas uma série)
       else if (opcoes?.series && opcoes.series.length === 1) {
         serieExtraida = opcoes.series[0].name;
-        console.log('Série obtida de opcoes_proximos_filtros:', serieExtraida);
       }
       // 3. Se não houver série do endpoint, usar extractSerie como fallback
       else {
@@ -1155,7 +1205,6 @@ export default function AcertoNiveis() {
         };
 
         serieExtraida = extractSerie(evaluationData);
-        console.log('Série extraída via extractSerie:', serieExtraida);
       }
 
       // Criar mapeamento robusto de skills (UUID normalizado -> código real)
@@ -1171,46 +1220,15 @@ export default function AcertoNiveis() {
       }
       setSkillsMapping(newSkillsMapping);
 
-      // ✅ OTIMIZAÇÃO: Carregar escolas para a avaliação
-      // Primeiro tentar usar opcoes_proximos_filtros se disponível
-      if (selectedState && selectedMunicipality && evaluationId) {
-        try {
-          let escolas: Array<{ id: string; nome: string }> = [];
-          
-          // Tentar usar escolas de opcoes_proximos_filtros primeiro (já vem na resposta)
-          if (opcoes?.escolas && Array.isArray(opcoes.escolas) && opcoes.escolas.length > 0) {
-            escolas = opcoes.escolas.map((esc: { id: string; name: string }) => ({
-              id: esc.id,
-              nome: esc.name
-            }));
-            setSchools(escolas);
-          } else {
-            // Se não estiver em opcoes_proximos_filtros, fazer requisição
-            escolas = await EvaluationResultsApiService.getFilterSchoolsByEvaluation({
-              estado: selectedState,
-              municipio: selectedMunicipality,
-              avaliacao: evaluationId
-            });
-            setSchools(escolas);
+      // Tentar extrair série das escolas se não estiver na avaliação
+      const escolasAtuais = schools.length > 0 ? schools : (opcoes?.escolas ? opcoes.escolas.map((esc: { id: string; name: string }) => ({ id: esc.id, nome: esc.name })) : []);
+      if (serieExtraida === 'N/A' && escolasAtuais.length > 0) {
+        const escolaComSerie = escolasAtuais.find(esc => esc.nome && (esc.nome.includes('º') || esc.nome.includes('ano')));
+        if (escolaComSerie) {
+          const serieMatch = escolaComSerie.nome.match(/(\d+º|\d+º ano|\d+ ano)/i);
+          if (serieMatch) {
+            serieExtraida = serieMatch[1];
           }
-          
-          // Tentar extrair série das escolas se não estiver na avaliação
-          if (serieExtraida === 'N/A' && escolas.length > 0) {
-            const escolaComSerie = escolas.find(esc => esc.nome && (esc.nome.includes('º') || esc.nome.includes('ano')));
-            if (escolaComSerie) {
-              const serieMatch = escolaComSerie.nome.match(/(\d+º|\d+º ano|\d+ ano)/i);
-              if (serieMatch) {
-                console.log('Série extraída da escola:', serieMatch[1]);
-                setEvaluationInfo(prev => prev ? {
-                  ...prev,
-                  serie: serieMatch[1]
-                } : null);
-              }
-            }
-          }
-        } catch (e) {
-          // Ignorar falhas silenciosamente, apenas não popula escolas
-          console.error('Erro ao carregar escolas:', e);
         }
       }
       
@@ -1239,23 +1257,17 @@ export default function AcertoNiveis() {
           const turma = alunosComSerie[0].turma;
           const serieMatch = turma.match(/(\d+º|\d+º ano|\d+ ano)/i);
           if (serieMatch) {
-            console.log('Série extraída da turma:', serieMatch[1]);
-            setEvaluationInfo((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    serie: serieMatch[1]
-                  }
-                : null
-            );
+            serieExtraida = serieMatch[1];
           }
         }
       }
     } catch (e) {
       console.error('Erro ao carregar dados:', e);
       toast({ title: "Erro", description: "Falha ao carregar dados da avaliação", variant: "destructive" });
+      setIsLoadingSchools(false); // Garantir que o loading seja resetado em caso de erro
     } finally {
       setIsLoading(false);
+      setIsLoadingSchools(false); // Garantir que o loading seja resetado
     }
   };
 
@@ -2630,15 +2642,74 @@ export default function AcertoNiveis() {
       let studentsToUse = students;
       
       if (studentsToUse.length === 0 && tabelaDetalhada) {
-        console.log('PDF: Reconstruindo students a partir de tabelaDetalhada');
         studentsToUse = mapUnifiedStudents(tabelaDetalhada);
-        console.log(`PDF: ${studentsToUse.length} alunos reconstruídos`);
       }
       
       if (studentsToUse.length === 0 && detailedReport?.alunos) {
-        console.log('PDF: Usando alunos de detailedReport');
         studentsToUse = mapDetailedStudentsToResults(detailedReport.alunos);
-        console.log(`PDF: ${studentsToUse.length} alunos do detailedReport`);
+      }
+      
+      // Função auxiliar para normalizar nome de turma (case-insensitive, trim)
+      const normalizeTurmaName = (nome: string | undefined): string => {
+        return (nome || '').trim().toUpperCase();
+      };
+      
+      // Aplicar filtro de turma se uma turma foi selecionada
+      if (selectedClassId) {
+        const selectedClass = classes.find(c => c.id === selectedClassId);
+        if (selectedClass) {
+          const turmaSelecionadaNormalizada = normalizeTurmaName(selectedClass.nome);
+          
+          // Filtrar com comparação normalizada (otimizado: normalizar uma vez e comparar)
+          studentsToUse = studentsToUse.filter(s => {
+            const turmaAlunoNormalizada = normalizeTurmaName(s.turma);
+            return turmaAlunoNormalizada === turmaSelecionadaNormalizada;
+          });
+          
+          // Se não encontrou alunos, verificar se há alunos que participaram em tabelaDetalhada
+          if (studentsToUse.length === 0 && tabelaDetalhada) {
+            const alunosParticipantes: StudentResult[] = [];
+            const alunosIdsProcessados = new Set<string>(); // Otimização: usar Set ao invés de find
+            
+            tabelaDetalhada.disciplinas?.forEach(disciplina => {
+              disciplina.alunos?.forEach(aluno => {
+                const turmaAlunoNormalizada = normalizeTurmaName(aluno.turma);
+                if (turmaAlunoNormalizada === turmaSelecionadaNormalizada && !alunosIdsProcessados.has(aluno.id)) {
+                  // Verificar se o aluno participou (respondeu pelo menos uma questão)
+                  const participou = Array.isArray(aluno.respostas_por_questao) && 
+                                     aluno.respostas_por_questao.some(r => r.respondeu);
+                  
+                  if (participou) {
+                    alunosIdsProcessados.add(aluno.id);
+                    const totalQuestoesDisciplina = aluno.total_questoes_disciplina ?? aluno.respostas_por_questao?.length ?? 0;
+                    const totalRespondidas = aluno.total_respondidas ?? totalQuestoesDisciplina;
+                    const totalAcertos = aluno.total_acertos ?? 0;
+                    const totalEmBranco = Math.max(0, totalQuestoesDisciplina - totalRespondidas);
+                    const totalErros = aluno.total_erros ?? Math.max(0, totalRespondidas - totalAcertos - totalEmBranco);
+                    
+                    alunosParticipantes.push({
+                      id: aluno.id,
+                      nome: aluno.nome,
+                      turma: aluno.turma || '',
+                      nota: Number(aluno.nota ?? 0),
+                      proficiencia: Number(aluno.proficiencia ?? 0),
+                      classificacao: (aluno.nivel_proficiencia || 'Abaixo do Básico') as StudentResult['classificacao'],
+                      acertos: totalAcertos,
+                      erros: totalErros,
+                      questoes_respondidas: totalRespondidas,
+                      status: 'concluida',
+                      respostas: {}
+                    });
+                  }
+                }
+              });
+            });
+            
+            if (alunosParticipantes.length > 0) {
+              studentsToUse = alunosParticipantes;
+            }
+          }
+        }
       }
       
       if (studentsToUse.length === 0) {
@@ -2661,7 +2732,6 @@ export default function AcertoNiveis() {
         turmasMap.get(turma)!.push(s);
       });
       
-      console.log(`PDF: ${studentsToUse.length} alunos agrupados em ${turmasMap.size} turma(s)`);
       
       // Ordenar turmas alfabeticamente
       const turmasOrdenadas = Array.from(turmasMap.keys()).sort((a, b) => a.localeCompare(b));
@@ -2869,17 +2939,26 @@ export default function AcertoNiveis() {
                      <Select 
                        value={selectedSchoolId || "all"} 
                        onValueChange={(value) => handleSelectSchool(value === "all" ? "" : value)}
-                       disabled={userHierarchyContext?.restrictions.canSelectSchool === false}
+                       disabled={!selectedEvaluationId || isLoadingSchools || userHierarchyContext?.restrictions.canSelectSchool === false}
                      >
                        <SelectTrigger className="w-full">
-                         <SelectValue placeholder="Todas as escolas" />
+                         {isLoadingSchools && selectedEvaluationId ? (
+                           <div className="flex items-center gap-2 text-muted-foreground w-full">
+                             <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
+                             <span className="truncate">Carregando escolas...</span>
+                           </div>
+                         ) : (
+                           <SelectValue placeholder={selectedEvaluationId ? "Todas as escolas" : "Primeiro selecione uma avaliação"} />
+                         )}
                        </SelectTrigger>
-                       <SelectContent>
-                         <SelectItem value="all">Todas</SelectItem>
-                         {schools.map(sc => (
-                           <SelectItem key={sc.id} value={sc.id}>{sc.nome}</SelectItem>
-                         ))}
-                       </SelectContent>
+                       {!isLoadingSchools && (
+                         <SelectContent>
+                           <SelectItem value="all">Todas</SelectItem>
+                           {schools.map(sc => (
+                             <SelectItem key={sc.id} value={sc.id}>{sc.nome}</SelectItem>
+                           ))}
+                         </SelectContent>
+                       )}
                      </Select>
                    </div>
                    <div>
