@@ -96,6 +96,11 @@ const PlantaoOnline = React.lazy(() => import("./pages/PlantaoOnline"));
 const PlantaoOnlineStudent = React.lazy(() => import("./pages/PlantaoOnlineStudent"));
 const AnswerSheetGenerator = React.lazy(() => import("./pages/AnswerSheetGenerator"));
 
+// Lazy loading para Olimpíadas
+const Olimpiadas = React.lazy(() => import("./pages/Olimpiadas"));
+const OlimpiadasStudent = React.lazy(() => import("./pages/OlimpiadasStudent"));
+const OlimpiadaStudent = React.lazy(() => import("./pages/OlimpiadaStudent"));
+
 // Loading component
 const LoadingSpinner = () => (
   <div className="flex items-center justify-center min-h-[50vh]">
@@ -165,7 +170,11 @@ const App = () => {
               <Route path="/aluno/torneio/:torneioId" element={<PrivateRoute><TorneioExecucao /></PrivateRoute>} />
               <Route path="/aluno/competicao/:competitionId" element={<PrivateRoute><CompeticaoExecucao /></PrivateRoute>} />
               <Route path="/aluno/competicoes/:competitionId/resultados" element={<PrivateRoute><CompeticaoResultados /></PrivateRoute>} />
-              <Route path="/aluno/olimpiadas" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/aluno/olimpiadas" element={<PrivateRoute><OlimpiadasStudent /></PrivateRoute>} />
+              <Route path="/aluno/olimpiada/:id/fazer" element={<FullscreenLayout />}>
+                <Route index element={<PrivateRoute><OlimpiadaStudent /></PrivateRoute>} />
+              </Route>
+              <Route path="/aluno/olimpiada/:id/resultado" element={<PrivateRoute><StudentResult /></PrivateRoute>} />
               <Route path="/aluno/questionario" element={<PrivateRoute><QuestionarioList /></PrivateRoute>} />
               <Route path="/aluno/questionario/responder/:formId" element={<PrivateRoute><QuestionarioRespond /></PrivateRoute>} />
 
@@ -211,7 +220,8 @@ const App = () => {
               <Route path="/app/competicao/:competitionId" element={<PrivateRoute><CompeticaoExecucao /></PrivateRoute>} />
               <Route path="/app/competicoes/:competitionId/resultados" element={<PrivateRoute><CompeticaoResultados /></PrivateRoute>} />
               <Route path="/app/torneio/:torneioId" element={<PrivateRoute><TorneioExecucao /></PrivateRoute>} />
-              <Route path="/app/olimpiadas" element={<PrivateRoute><EmBreve /></PrivateRoute>} />
+              <Route path="/app/olimpiadas" element={<PrivateRoute><Olimpiadas /></PrivateRoute>} />
+              <Route path="/app/olimpiada/:id" element={<PrivateRoute><ViewEvaluation /></PrivateRoute>} />
               <Route path="/app/city" element={<PrivateRoute><Cities /></PrivateRoute>} />
               <Route path="/app/turma/:id" element={<PrivateRoute><ClassDetails /></PrivateRoute>} />
               <Route path="/app/escola/:id" element={<PrivateRoute><SchoolDetails /></PrivateRoute>} />
