@@ -10,10 +10,8 @@ import {
   Users, 
   CheckCircle2, 
   Clock, 
-  Edit, 
   Eye,
-  Play,
-  MoreVertical
+  Play
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -21,7 +19,6 @@ import { ptBR } from 'date-fns/locale';
 
 interface OlimpiadaCardProps {
   olimpiada: OlimpiadaCardData;
-  onEdit?: (id: string) => void;
   onView?: (id: string) => void;
   onViewResults?: (id: string) => void;
   onApply?: (id: string) => void;
@@ -34,7 +31,7 @@ const getStatusConfig = (status: OlimpiadaStatus) => {
       return {
         label: 'Rascunho',
         color: 'bg-gray-500',
-        icon: Edit,
+        icon: Clock,
       };
     case 'scheduled':
       return {
@@ -71,7 +68,6 @@ const getStatusConfig = (status: OlimpiadaStatus) => {
 
 export function OlimpiadaCard({
   olimpiada,
-  onEdit,
   onView,
   onViewResults,
   onApply,
@@ -83,42 +79,44 @@ export function OlimpiadaCard({
   return (
     <Card
       className={cn(
-        'group relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:scale-[1.02]',
+        'group relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:scale-[1.01] sm:hover:scale-[1.02]',
         'bg-gradient-to-br from-yellow-50 via-amber-50 to-orange-50',
         'dark:from-yellow-950/20 dark:via-amber-950/20 dark:to-orange-950/20',
         'border-yellow-200 dark:border-yellow-800',
+        'w-full',
         className
       )}
     >
       {/* Decorative elements */}
-      <div className="absolute top-0 right-0 w-32 h-32 opacity-10">
-        <div className="absolute top-4 right-4 text-6xl">🏆</div>
+      <div className="absolute top-0 right-0 w-24 h-24 sm:w-32 sm:h-32 opacity-10">
+        <div className="absolute top-2 right-2 sm:top-4 sm:right-4 text-4xl sm:text-6xl">🏆</div>
       </div>
 
       <CardHeader className="relative">
-        <div className="flex items-start justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-2">
-              <Trophy className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-              <CardTitle className="text-xl font-bold text-yellow-900 dark:text-yellow-100 truncate">
+              <Trophy className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0" />
+              <CardTitle className="text-lg sm:text-xl font-bold text-yellow-900 dark:text-yellow-100 truncate">
                 {olimpiada.title}
               </CardTitle>
             </div>
             {olimpiada.description && (
-              <CardDescription className="text-sm text-yellow-800/80 dark:text-yellow-200/80 line-clamp-2">
+              <CardDescription className="text-xs sm:text-sm text-yellow-800/80 dark:text-yellow-200/80 line-clamp-2">
                 {olimpiada.description}
               </CardDescription>
             )}
           </div>
           <Badge
             className={cn(
-              'flex items-center gap-1',
+              'flex items-center gap-1 w-fit',
               statusConfig.color,
-              'text-white border-0'
+              'text-white border-0 text-xs sm:text-sm'
             )}
           >
             <StatusIcon className="h-3 w-3" />
-            {statusConfig.label}
+            <span className="hidden sm:inline">{statusConfig.label}</span>
+            <span className="sm:hidden">{statusConfig.label.split(' ')[0]}</span>
           </Badge>
         </div>
       </CardHeader>
@@ -148,17 +146,17 @@ export function OlimpiadaCard({
         )}
 
         {/* Stats */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           {olimpiada.startDateTime && (
-            <div className="flex items-center gap-2 text-sm">
-              <Calendar className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-              <span className="text-yellow-900 dark:text-yellow-100">
+            <div className="flex items-center gap-2 text-xs sm:text-sm">
+              <Calendar className="h-3 w-3 sm:h-4 sm:w-4 text-yellow-600 dark:text-yellow-400 flex-shrink-0" />
+              <span className="text-yellow-900 dark:text-yellow-100 truncate">
                 {format(new Date(olimpiada.startDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
               </span>
             </div>
           )}
-          <div className="flex items-center gap-2 text-sm">
-            <Users className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+          <div className="flex items-center gap-2 text-xs sm:text-sm">
+            <Users className="h-3 w-3 sm:h-4 sm:w-4 text-yellow-600 dark:text-yellow-400 flex-shrink-0" />
             <span className="text-yellow-900 dark:text-yellow-100">
               {olimpiada.completedStudents || 0}/{olimpiada.totalStudents || 0} alunos
             </span>
@@ -188,48 +186,44 @@ export function OlimpiadaCard({
         )}
       </CardContent>
 
-      <CardFooter className="relative flex gap-2">
-        {onView && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onView(olimpiada.id)}
-            className="flex-1 border-yellow-300 dark:border-yellow-700 text-yellow-900 dark:text-yellow-100 hover:bg-yellow-100 dark:hover:bg-yellow-900/30"
-          >
-            <Eye className="h-4 w-4 mr-2" />
-            Ver
-          </Button>
-        )}
-        {onEdit && olimpiada.status === 'draft' && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onEdit(olimpiada.id)}
-            className="flex-1 border-yellow-300 dark:border-yellow-700 text-yellow-900 dark:text-yellow-100 hover:bg-yellow-100 dark:hover:bg-yellow-900/30"
-          >
-            <Edit className="h-4 w-4 mr-2" />
-            Editar
-          </Button>
-        )}
-        {onViewResults && (olimpiada.status === 'active' || olimpiada.status === 'completed') && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onViewResults(olimpiada.id)}
-            className="flex-1 border-yellow-300 dark:border-yellow-700 text-yellow-900 dark:text-yellow-100 hover:bg-yellow-100 dark:hover:bg-yellow-900/30"
-          >
-            <Medal className="h-4 w-4 mr-2" />
-            Resultados
-          </Button>
-        )}
+      <CardFooter className="relative flex flex-col gap-3">
+        {/* Botões principais (Ver e Resultados) */}
+        <div className="grid grid-cols-2 gap-2">
+          {onView && (
+            <Button
+              variant="outline"
+              size="default"
+              onClick={() => onView(olimpiada.id)}
+              className="border-yellow-300 dark:border-yellow-700 text-yellow-900 dark:text-yellow-100 hover:bg-yellow-100 dark:hover:bg-yellow-900/30"
+            >
+              <Eye className="h-4 w-4 mr-2" />
+              Ver
+            </Button>
+          )}
+          {onViewResults && (
+            <Button
+              variant="outline"
+              size="default"
+              onClick={() => onViewResults(olimpiada.id)}
+              className="border-yellow-300 dark:border-yellow-700 text-yellow-900 dark:text-yellow-100 hover:bg-yellow-100 dark:hover:bg-yellow-900/30"
+              disabled={(olimpiada.completedStudents || 0) === 0}
+              title={(olimpiada.completedStudents || 0) === 0 ? 'Nenhum resultado disponível ainda' : 'Ver resultados'}
+            >
+              <Medal className="h-4 w-4 mr-2" />
+              Resultados
+            </Button>
+          )}
+        </div>
+        
+        {/* Botão Aplicar em linha separada e maior */}
         {onApply && olimpiada.status === 'scheduled' && (
           <Button
-            size="sm"
+            size="lg"
             onClick={() => onApply(olimpiada.id)}
-            className="flex-1 bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-white"
+            className="w-full bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-white font-semibold shadow-md"
           >
-            <Play className="h-4 w-4 mr-2" />
-            Aplicar
+            <Play className="h-5 w-5 mr-2" />
+            Aplicar Olimpíada
           </Button>
         )}
       </CardFooter>

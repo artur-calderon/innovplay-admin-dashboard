@@ -29,6 +29,7 @@ export interface OlimpiadaFormData {
   selectedClasses?: ClassInfo[]; // Informações completas das turmas
   questions: string[]; // IDs das questões
   startDateTime?: string;
+  endDateTime?: string;
   duration: string | number;
   evaluation_mode?: "virtual" | "physical";
   created_by?: string;

@@ -338,6 +338,16 @@ export default function Evolution() {
                 
                 evaluationsWithDetails = detailedResponse.resultados_detalhados.avaliacoes
                   .filter(evaluation => {
+                    // Excluir olimpíadas
+                    const type = evaluation.type || evaluation.tipo;
+                    const title = evaluation.titulo || evaluation.title || '';
+                    const isOlimpiada = type === 'OLIMPIADA' || 
+                                       title.includes('[OLIMPÍADA]') || 
+                                       title.toUpperCase().includes('OLIMPÍADA');
+                    if (isOlimpiada) {
+                      return false;
+                    }
+                    
                     const evalId = String(evaluation.id).trim().toLowerCase();
                     const found = comparisonIds.has(evalId);
                     if (!found) {
@@ -373,7 +383,17 @@ export default function Evolution() {
               );
               
               // Mapear todas as avaliações da API de comparação, usando detalhes quando disponíveis
-              const mappedEvaluations = comparisonResponse.opcoes.avaliacoes.map(evaluation => {
+              // Filtrar olimpíadas primeiro
+              const filteredComparisonEvaluations = comparisonResponse.opcoes.avaliacoes.filter(evaluation => {
+                const type = evaluation.type || evaluation.tipo;
+                const title = evaluation.titulo || evaluation.title || '';
+                const isOlimpiada = type === 'OLIMPIADA' || 
+                                   title.includes('[OLIMPÍADA]') || 
+                                   title.toUpperCase().includes('OLIMPÍADA');
+                return !isOlimpiada;
+              });
+              
+              const mappedEvaluations = filteredComparisonEvaluations.map(evaluation => {
                 const evalId = String(evaluation.id).trim().toLowerCase();
                 const existingDetail = detailsMap.get(evalId);
                 
@@ -451,9 +471,19 @@ export default function Evolution() {
               const detailedResponse = await EvaluationResultsApiService.getEvaluationsList(1, 100, filters);
               
               if (detailedResponse?.resultados_detalhados?.avaliacoes) {
-                // Filtrar apenas avaliações com status concluída/finalizada
+                // Filtrar apenas avaliações com status concluída/finalizada E excluir olimpíadas
                 const evaluationsWithResults = detailedResponse.resultados_detalhados.avaliacoes
                   .filter(evaluation => {
+                    // Excluir olimpíadas
+                    const type = evaluation.type || evaluation.tipo;
+                    const title = evaluation.titulo || evaluation.title || '';
+                    const isOlimpiada = type === 'OLIMPIADA' || 
+                                       title.includes('[OLIMPÍADA]') || 
+                                       title.toUpperCase().includes('OLIMPÍADA');
+                    if (isOlimpiada) {
+                      return false;
+                    }
+                    
                     const status = (evaluation.status || '').toLowerCase();
                     return status === 'concluida' || status === 'finalized' || status === 'finalizada';
                   })
