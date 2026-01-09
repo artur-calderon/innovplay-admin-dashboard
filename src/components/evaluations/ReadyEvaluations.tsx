@@ -690,13 +690,24 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
   // ✅ Preparar dados das avaliações com verificações de segurança
   const rawEvaluations = Array.isArray(evaluationsData?.data) ? evaluationsData.data : [];
   
-  // ✅ Filtrar avaliações ativas (não deletadas/arquivadas)
+  // ✅ Filtrar avaliações ativas (não deletadas/arquivadas) E excluir olimpíadas
   const allEvaluations = rawEvaluations
     .filter((evaluation: Record<string, unknown>) => {
       // Verificar se tem propriedades básicas de Evaluation
       if (!evaluation || typeof evaluation !== 'object' || !evaluation.id) {
         return false;
       }
+      
+      // Excluir olimpíadas (type="OLIMPIADA" ou título contendo [OLIMPÍADA])
+      const type = evaluation.type as string;
+      const title = (evaluation.title as string) || '';
+      const isOlimpiada = type === 'OLIMPIADA' || 
+                         title.includes('[OLIMPÍADA]') || 
+                         title.toUpperCase().includes('OLIMPÍADA');
+      if (isOlimpiada) {
+        return false;
+      }
+      
       // Verificar se não está deletada/arquivada
       const deletedAt = evaluation.deleted_at;
       const archived = evaluation.archived;

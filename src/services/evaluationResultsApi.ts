@@ -514,6 +514,19 @@ export class EvaluationResultsApiService {
 
       const response = await api.get(`/evaluation-results/avaliacoes?${params}`);
 
+      // Filtrar olimpíadas dos resultados
+      if (response.data?.resultados_detalhados?.avaliacoes) {
+        response.data.resultados_detalhados.avaliacoes = 
+          response.data.resultados_detalhados.avaliacoes.filter((evaluation: any) => {
+            const type = evaluation.type || evaluation.tipo;
+            const title = evaluation.titulo || evaluation.title || '';
+            const isOlimpiada = type === 'OLIMPIADA' || 
+                               title.includes('[OLIMPÍADA]') || 
+                               title.toUpperCase().includes('OLIMPÍADA');
+            return !isOlimpiada;
+          });
+      }
+
       return response.data;
     } catch (error: unknown) {
               // Erro ao buscar avaliações

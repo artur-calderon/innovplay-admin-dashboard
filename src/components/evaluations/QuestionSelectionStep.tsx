@@ -44,6 +44,7 @@ interface QuestionSelectionStepProps {
   evaluationData: EvaluationFormData;
   selectedQuestions: Question[];
   onQuestionsChange: (questions: Question[]) => void;
+  gradeName?: string; // Nome da série opcional (para evitar chamada de API)
 }
 
 interface ApiQuestion {
@@ -73,7 +74,8 @@ interface QuestionPreviewData {
 export default function QuestionSelectionStep({
   evaluationData, 
   selectedQuestions,
-  onQuestionsChange 
+  onQuestionsChange,
+  gradeName: propGradeName
 }: QuestionSelectionStepProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [availableQuestions, setAvailableQuestions] = useState<Question[]>([]);
@@ -84,43 +86,76 @@ export default function QuestionSelectionStep({
   const [difficultyFilter, setDifficultyFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [previewData, setPreviewData] = useState<QuestionPreviewData>({ question: {} as Question, isOpen: false });
-  const [gradeName, setGradeName] = useState<string>("");
+  const [gradeName, setGradeName] = useState<string>(propGradeName || "");
+  const [error, setError] = useState<string | null>(null);
   
   const { toast } = useToast();
 
-  // Carregar nome da série
+  // Garantir que evaluationData.subjects seja sempre um array válido
+  const safeSubjects = Array.isArray(evaluationData?.subjects) ? evaluationData.subjects : [];
+  const safeGrade = evaluationData?.grade || '';
+
+  // Carregar nome da série (só se não foi passado como prop)
   useEffect(() => {
+    setError(null);
+    
+    // Se o nome da série já foi passado como prop, usar diretamente
+    if (propGradeName) {
+      setGradeName(propGradeName);
+      return;
+    }
+
     const fetchGradeName = async () => {
-      if (evaluationData.grade) {
+      if (!safeGrade) {
+        setGradeName("");
+        return;
+      }
+
+      try {
+        // Primeiro tentar buscar todas as séries (endpoint mais confiável)
+        const gradesResponse = await api.get("/grades");
+        if (Array.isArray(gradesResponse.data)) {
+          const grade = gradesResponse.data.find((g: { id: string; name: string }) => 
+            String(g.id) === String(safeGrade)
+          );
+          if (grade && grade.name) {
+            setGradeName(grade.name);
+            return;
+          }
+        }
+        
+        // Fallback: tentar endpoint específico
         try {
-          const response = await api.get(`/grades/${evaluationData.grade}`);
+          const response = await api.get(`/grades/${safeGrade}`);
           if (response.data && response.data.name) {
             setGradeName(response.data.name);
           } else {
-            // Tentar buscar todas as séries e encontrar pelo ID
-            const gradesResponse = await api.get("/grades/");
-            if (Array.isArray(gradesResponse.data)) {
-              const grade = gradesResponse.data.find((g: { id: string; name: string }) => g.id === evaluationData.grade);
-              if (grade) {
-                setGradeName(grade.name);
-              }
-            }
+            setGradeName(safeGrade);
           }
-        } catch (error) {
-          console.error("Erro ao buscar nome da série:", error);
-          setGradeName("");
+        } catch (specificError) {
+          // Se o endpoint específico falhar, usar o ID como fallback
+          console.warn("Não foi possível buscar o nome da série, usando ID:", safeGrade);
+          setGradeName(safeGrade);
         }
+      } catch (error: any) {
+        // Erro ao buscar todas as séries - usar ID como fallback
+        console.warn("Erro ao buscar nome da série, usando ID como fallback:", error);
+        setGradeName(safeGrade);
+        // Não definir erro aqui, apenas usar fallback
       }
     };
+    
     fetchGradeName();
-  }, [evaluationData.grade]);
+  }, [safeGrade, propGradeName]);
 
-  // Carregar questões baseadas nas disciplinas selecionadas
+  // Carregar questões baseadas nas disciplinas selecionadas (apenas quando necessário)
   useEffect(() => {
-    if (evaluationData.subjects.length > 0) {
-      fetchQuestionsForSubjects();
-    }
-  }, [evaluationData.subjects]);
+    // Não carregar automaticamente - deixar o usuário usar o QuestionBank
+    // Isso evita erros de API no carregamento inicial
+    // if (safeSubjects.length > 0) {
+    //   fetchQuestionsForSubjects();
+    // }
+  }, [safeSubjects]);
 
   // Aplicar filtros
   useEffect(() => {
@@ -129,14 +164,14 @@ export default function QuestionSelectionStep({
     // Filtro por termo de busca
     if (searchTerm) {
       filtered = filtered.filter(q => 
-        q.text.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        q.subject.name.toLowerCase().includes(searchTerm.toLowerCase())
+        q.text?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (q.subject?.name && q.subject.name.toLowerCase().includes(searchTerm.toLowerCase()))
       );
     }
 
     // Filtro por disciplina
     if (selectedSubjectFilter !== "all") {
-      filtered = filtered.filter(q => q.subject.id === selectedSubjectFilter);
+      filtered = filtered.filter(q => q.subject?.id === selectedSubjectFilter);
     }
 
     // Filtro por dificuldade
@@ -158,23 +193,35 @@ export default function QuestionSelectionStep({
   }, [availableQuestions, searchTerm, selectedSubjectFilter, difficultyFilter, typeFilter, selectedQuestions]);
 
   const fetchQuestionsForSubjects = async () => {
+    if (!safeSubjects || safeSubjects.length === 0) {
+      setAvailableQuestions([]);
+      return;
+    }
+
     try {
       setIsLoading(true);
-      const subjectIds = evaluationData.subjects.map(s => s.id);
+      setError(null);
+      const subjectIds = safeSubjects.map(s => s.id);
       
       // Buscar questões para todas as disciplinas selecionadas
       const promises = subjectIds.map(subjectId => 
         api.get(`/questions/?subject_id=${subjectId}`)
       );
       
-      const responses = await Promise.all(promises);
+      const responses = await Promise.allSettled(promises);
       
       // Combinar todas as questões
       const allQuestions: Question[] = [];
-      responses.forEach(response => {
-        if (response.data && Array.isArray(response.data)) {
-          const transformedQuestions = response.data.map(transformApiQuestion);
-          allQuestions.push(...transformedQuestions);
+      responses.forEach((result, index) => {
+        if (result.status === 'fulfilled' && result.value.data && Array.isArray(result.value.data)) {
+          try {
+            const transformedQuestions = result.value.data.map(transformApiQuestion);
+            allQuestions.push(...transformedQuestions);
+          } catch (transformError) {
+            console.warn(`Erro ao transformar questões da disciplina ${subjectIds[index]}:`, transformError);
+          }
+        } else if (result.status === 'rejected') {
+          console.warn(`Erro ao buscar questões da disciplina ${subjectIds[index]}:`, result.reason);
         }
       });
 
@@ -185,11 +232,13 @@ export default function QuestionSelectionStep({
 
       setAvailableQuestions(uniqueQuestions);
       
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao buscar questões:", error);
+      const errorMessage = error?.response?.data?.message || error?.message || ERROR_MESSAGES.NETWORK_ERROR;
+      setError(errorMessage);
       toast({
         title: "Erro",
-        description: ERROR_MESSAGES.NETWORK_ERROR,
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -198,24 +247,48 @@ export default function QuestionSelectionStep({
   };
 
   const transformApiQuestion = (apiQuestion: ApiQuestion): Question => {
-    return {
-      id: apiQuestion.id,
-      title: apiQuestion.title || "",
-      text: apiQuestion.text,
-      formattedText: apiQuestion.formatted_text,
-      subjectId: apiQuestion.subject_id,
-      subject: apiQuestion.subject || { id: apiQuestion.subject_id, name: "Disciplina não definida" },
-      grade: apiQuestion.grade || { id: apiQuestion.grade_id || "", name: "Série não definida" },
-      difficulty: apiQuestion.difficulty_level || "Básico",
-      type: apiQuestion.question_type === "essay" ? "dissertativa" : 
-            apiQuestion.question_type === "trueFalse" ? "trueFalse" : "multipleChoice",
-      value: String(apiQuestion.value || 1.0),
-      solution: apiQuestion.correct_answer || "",
-      formattedSolution: apiQuestion.formatted_solution,
-      options: apiQuestion.alternatives || [],
-      skills: Array.isArray(apiQuestion.skill) ? apiQuestion.skill : [apiQuestion.skill || ""],
-      created_by: apiQuestion.created_by || "",
-    };
+    try {
+      const currentGradeName = gradeName || propGradeName || "Série não definida";
+      return {
+        id: apiQuestion.id || "",
+        title: apiQuestion.title || "",
+        text: apiQuestion.text || "",
+        formattedText: apiQuestion.formatted_text || apiQuestion.text || "",
+        subjectId: apiQuestion.subject_id || "",
+        subject: apiQuestion.subject || { id: apiQuestion.subject_id || "", name: "Disciplina não definida" },
+        grade: apiQuestion.grade || { id: apiQuestion.grade_id || safeGrade, name: currentGradeName },
+        difficulty: apiQuestion.difficulty_level || "Básico",
+        type: apiQuestion.question_type === "essay" ? "open" : 
+              apiQuestion.question_type === "trueFalse" ? "trueFalse" : "multipleChoice",
+        value: String(apiQuestion.value || 1.0),
+        solution: apiQuestion.correct_answer || "",
+        formattedSolution: apiQuestion.formatted_solution || apiQuestion.correct_answer || "",
+        options: apiQuestion.alternatives || [],
+        skills: Array.isArray(apiQuestion.skill) ? apiQuestion.skill : [apiQuestion.skill || ""],
+        created_by: apiQuestion.created_by || "",
+      };
+    } catch (error) {
+      console.error("Erro ao transformar questão:", error, apiQuestion);
+      const currentGradeName = gradeName || propGradeName || "Série não definida";
+      // Retornar uma questão mínima válida para evitar quebrar o componente
+      return {
+        id: apiQuestion.id || "",
+        title: "",
+        text: apiQuestion.text || "Questão inválida",
+        formattedText: apiQuestion.formatted_text || apiQuestion.text || "",
+        subjectId: apiQuestion.subject_id || "",
+        subject: { id: apiQuestion.subject_id || "", name: "Disciplina não definida" },
+        grade: { id: apiQuestion.grade_id || safeGrade, name: currentGradeName },
+        difficulty: "Básico",
+        type: "multipleChoice",
+        value: "1.0",
+        solution: "",
+        formattedSolution: "",
+        options: [],
+        skills: [],
+        created_by: "",
+      };
+    }
   };
 
   const handleAddQuestion = (question: Question) => {
@@ -264,14 +337,16 @@ export default function QuestionSelectionStep({
     const bySubject: { [key: string]: { subject: Subject; questions: Question[] } } = {};
     
     selectedQuestions.forEach(question => {
-      const subjectId = question.subject.id;
-      if (!bySubject[subjectId]) {
-        bySubject[subjectId] = {
-          subject: question.subject,
-          questions: []
-        };
+      const subjectId = question.subject?.id;
+      if (subjectId && question.subject) {
+        if (!bySubject[subjectId]) {
+          bySubject[subjectId] = {
+            subject: question.subject,
+            questions: []
+          };
+        }
+        bySubject[subjectId].questions.push(question);
       }
-      bySubject[subjectId].questions.push(question);
     });
     
     return bySubject;
@@ -406,7 +481,7 @@ export default function QuestionSelectionStep({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas as disciplinas</SelectItem>
-                {evaluationData.subjects.map((subject) => (
+                {safeSubjects.map((subject) => (
                   <SelectItem key={subject.id} value={subject.id}>
                     {subject.name}
                   </SelectItem>
@@ -455,6 +530,26 @@ export default function QuestionSelectionStep({
             </div>
           )}
 
+          {/* Mensagem de Erro */}
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                {error}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Mensagem informativa - usar QuestionBank para adicionar questões */}
+          {filteredQuestions.length === 0 && !isLoading && (
+            <Alert>
+              <BookOpen className="h-4 w-4" />
+              <AlertDescription>
+                Use o botão "Banco de Questões" abaixo para adicionar questões à olimpíada.
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Lista de Questões Disponíveis */}
           {filteredQuestions.length > 0 ? (
             <div className="border rounded-lg overflow-hidden">
@@ -487,7 +582,7 @@ export default function QuestionSelectionStep({
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="text-xs">
-                          {question.subject.name}
+                          {question.subject?.name || 'Disciplina não definida'}
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -540,9 +635,9 @@ export default function QuestionSelectionStep({
         onClose={() => setShowQuestionBank(false)}
         subjectId={null}
         onQuestionSelected={handleQuestionFromBank}
-        gradeId={evaluationData.grade}
+        gradeId={safeGrade}
         gradeName={gradeName}
-        subjects={evaluationData.subjects}
+        subjects={safeSubjects}
         selectedSubjectId={undefined}
       />
 

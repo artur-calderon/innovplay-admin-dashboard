@@ -67,7 +67,15 @@ export class CertificatesApiService {
           const data = response.data;
           // O endpoint retorna em resultados_detalhados.avaliacoes
           if (data?.resultados_detalhados?.avaliacoes && Array.isArray(data.resultados_detalhados.avaliacoes)) {
-            evaluations = data.resultados_detalhados.avaliacoes;
+            // Filtrar olimpíadas
+            evaluations = data.resultados_detalhados.avaliacoes.filter((evaluation: any) => {
+              const type = evaluation.type || evaluation.tipo;
+              const title = evaluation.titulo || evaluation.title || '';
+              const isOlimpiada = type === 'OLIMPIADA' || 
+                                 title.includes('[OLIMPÍADA]') || 
+                                 title.toUpperCase().includes('OLIMPÍADA');
+              return !isOlimpiada;
+            });
             
             // Extrair avaliações únicas do objeto evaluation dentro de cada resultado
             // Como os resultados são agregados, precisamos extrair o ID da avaliação do objeto evaluation

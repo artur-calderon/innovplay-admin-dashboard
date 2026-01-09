@@ -126,9 +126,31 @@ export default function StudentAgenda() {
     }
   };
 
+  // Helper para verificar se a string de data contém informação de hora
+  const hasTimeInfo = (dateStr: string | undefined): boolean => {
+    if (!dateStr) return false;
+    // Verifica se contém 'T' (formato ISO) ou ':' (formato de hora)
+    return dateStr.includes('T') || (dateStr.includes(':') && dateStr.length > 10);
+  };
+
   // Callback para clique em evento (visualizar detalhes)
   const handleStudentEventClick = async (clickInfo: EventClickArg) => {
     const eventData = clickInfo.event;
+    
+    // Log para ver os dados do evento retornado
+    console.log('=== DADOS DO EVENTO RETORNADO (StudentAgenda) ===');
+    console.log('ID:', eventData.id);
+    console.log('Title:', eventData.title);
+    console.log('Start (string):', eventData.startStr);
+    console.log('End (string):', eventData.endStr);
+    console.log('Start (Date):', eventData.start);
+    console.log('End (Date):', eventData.end);
+    console.log('allDay:', eventData.allDay);
+    console.log('extendedProps:', eventData.extendedProps);
+    console.log('Has time in start:', hasTimeInfo(eventData.startStr));
+    console.log('Has time in end:', hasTimeInfo(eventData.endStr));
+    console.log('================================================');
+    
     setSelectedEvent({
       id: eventData.id,
       title: eventData.title,
@@ -223,12 +245,42 @@ export default function StudentAgenda() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 text-sm">
-            {selectedEvent?.extendedProps?.subject && (<div>Disciplina: {selectedEvent.extendedProps.subject}</div>)}
-            {selectedEvent?.extendedProps?.teacher && (<div>Professor: {selectedEvent.extendedProps.teacher}</div>)}
-            {selectedEvent?.extendedProps?.location && (<div>Local: {selectedEvent.extendedProps.location}</div>)}
+            {selectedEvent?.extendedProps?.subject && (
+              <div>
+                <strong>Disciplina:</strong> {selectedEvent.extendedProps.subject}
+              </div>
+            )}
+            {selectedEvent?.extendedProps?.teacher && (
+              <div>
+                <strong>Professor:</strong> {selectedEvent.extendedProps.teacher}
+              </div>
+            )}
+            {selectedEvent?.extendedProps?.location && (
+              <div>
+                <strong>Local:</strong> {selectedEvent.extendedProps.location}
+              </div>
+            )}
             {selectedEvent?.start && (
               <div>
-                Horário: {format(new Date(selectedEvent.start), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                <strong>
+                  {hasTimeInfo(selectedEvent.start as string) ? 'Início:' : 'Data:'}
+                </strong>{' '}
+                {hasTimeInfo(selectedEvent.start as string)
+                  ? format(new Date(selectedEvent.start as string), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
+                  : format(new Date(selectedEvent.start as string), "dd/MM/yyyy", { locale: ptBR })
+                }
+              </div>
+            )}
+            {selectedEvent?.end && hasTimeInfo(selectedEvent.end as string) && (
+              <div>
+                <strong>Fim:</strong>{' '}
+                {format(new Date(selectedEvent.end as string), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+              </div>
+            )}
+            {selectedEvent?.end && !hasTimeInfo(selectedEvent.end as string) && (
+              <div>
+                <strong>Até:</strong>{' '}
+                {format(new Date(selectedEvent.end as string), "dd/MM/yyyy", { locale: ptBR })}
               </div>
             )}
           </div>

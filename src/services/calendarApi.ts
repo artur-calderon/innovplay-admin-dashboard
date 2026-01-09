@@ -7,6 +7,7 @@ export interface CalendarEventDTO {
   start: string;
   end: string;
   allDay: boolean;
+  timezone?: string;
   extendedProps?: Record<string, any>;
 }
 
@@ -46,6 +47,8 @@ export interface CalendarTarget {
   serie_nome?: string;
   escola_id?: string;
   escola_nome?: string;
+  city_id?: string;        // ID do município (para escolas)
+  municipio_nome?: string; // Nome do município (para escolas)
 }
 
 export interface CalendarTargetsResponse {
@@ -61,7 +64,11 @@ export function mapDtoToFullCalendar(e: CalendarEventDTO): EventInput {
     start: e.start,
     end: e.end,
     allDay: e.allDay,
-    extendedProps: e.extendedProps || {},
+    extendedProps: {
+      ...(e.extendedProps || {}),
+      // Preservar timezone em extendedProps para uso no frontend
+      ...(e.timezone && { timezone: e.timezone }),
+    },
   } as EventInput;
 }
 
