@@ -10,6 +10,13 @@ export interface Olimpiada extends Omit<Evaluation, 'type'> {
   // Futuro: adicionar selected_students quando backend suportar
   classes?: string[];
   selected_students?: string[]; // Para uso futuro
+  // Campos de timezone para formatação correta de datas
+  timeZone?: string;
+  applicationTimeZone?: string;
+  availability?: {
+    timezone?: string;
+    time_zone?: string;
+  };
 }
 
 /**

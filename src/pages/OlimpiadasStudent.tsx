@@ -7,8 +7,6 @@ import { Trophy, Medal, Calendar, Clock, Play, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { OlimpiadasApiService } from '@/services/olimpiadasApi';
 import { Olimpiada } from '@/types/olimpiada-types';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 
 export default function OlimpiadasStudent() {
   const navigate = useNavigate();
@@ -24,6 +22,17 @@ export default function OlimpiadasStudent() {
     setLoading(true);
     try {
       const response = await OlimpiadasApiService.getStudentOlimpiadas();
+      
+      // Log para debug: verificar dados recebidos
+      console.log('📋 Olimpíadas recebidas:', response.map(o => ({
+        id: o.id,
+        title: o.title,
+        startDateTime: o.startDateTime,
+        timeZone: o.timeZone,
+        applicationTimeZone: o.applicationTimeZone,
+        availability: o.availability
+      })));
+      
       setOlimpiadas(response);
     } catch (error) {
       console.error('Erro ao carregar olimpíadas:', error);
@@ -40,6 +49,73 @@ export default function OlimpiadasStudent() {
   const handleStartOlimpiada = (id: string) => {
     navigate(`/aluno/olimpiada/${id}/fazer`);
   };
+
+  // Funções para formatação de data com timezone (mesmo padrão usado em StudentEvaluations.tsx)
+  const DEFAULT_TIME_ZONE = (() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Sao_Paulo";
+    } catch (error) {
+      return "America/Sao_Paulo";
+    }
+  })();
+
+  function resolveTimeZone(candidate?: string): string {
+    if (!candidate) {
+      return DEFAULT_TIME_ZONE;
+    }
+
+    try {
+      // Validar timezone usando Intl
+      new Intl.DateTimeFormat("pt-BR", { timeZone: candidate });
+      return candidate;
+    } catch (error) {
+      return DEFAULT_TIME_ZONE;
+    }
+  }
+
+  function getOlimpiadaTimeZone(olimpiada?: Olimpiada): string {
+    if (!olimpiada) {
+      return DEFAULT_TIME_ZONE;
+    }
+
+    const candidate =
+      olimpiada.applicationTimeZone ||
+      olimpiada.timeZone ||
+      olimpiada.availability?.time_zone ||
+      olimpiada.availability?.timezone;
+
+    return resolveTimeZone(candidate);
+  }
+
+  function formatDateTimeForDisplay(value?: string, timeZone?: string): string | null {
+    if (!value) {
+      return null;
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      return null;
+    }
+
+    const safeTimeZone = resolveTimeZone(timeZone);
+
+    const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
+      timeZone: safeTimeZone,
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric"
+    });
+
+    const timeFormatter = new Intl.DateTimeFormat("pt-BR", {
+      timeZone: safeTimeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    });
+
+    return `${dateFormatter.format(date)} às ${timeFormatter.format(date)}`;
+  }
 
   const isAvailable = (olimpiada: Olimpiada) => {
     if (!olimpiada.startDateTime) return true;
@@ -128,7 +204,10 @@ export default function OlimpiadasStudent() {
                     <div className="flex items-center gap-2 text-yellow-900 dark:text-yellow-100">
                       <Calendar className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
                       <span>
-                        {format(new Date(olimpiada.startDateTime), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                        {(() => {
+                          const timeZone = getOlimpiadaTimeZone(olimpiada);
+                          return formatDateTimeForDisplay(olimpiada.startDateTime, timeZone) || "Data não definida";
+                        })()}
                       </span>
                     </div>
                   )}

@@ -540,6 +540,8 @@ export class OlimpiadasApiService {
             application_info?: {
               application?: string;
               expiration?: string;
+              timezone?: string;
+              time_zone?: string;
             };
             availability?: unknown;
             student_status?: unknown;
@@ -561,6 +563,13 @@ export class OlimpiadasApiService {
             startDateTime: testObj.startDateTime || testObj.time_limit || testObj.application_info?.application,
             endDateTime: testObj.application_info?.expiration,
             subjects: testObj.subjects_info || (testObj.subjects as Array<{ id: string; name: string }>) || [],
+            // Campos de timezone para formatação correta de datas
+            timeZone: testObj.application_info?.time_zone || testObj.application_info?.timezone,
+            applicationTimeZone: testObj.application_info?.time_zone || testObj.application_info?.timezone,
+            availability: {
+              timezone: testObj.application_info?.timezone,
+              time_zone: testObj.application_info?.time_zone
+            },
             // Campos adicionais que podem ser úteis
             ...(testObj as Record<string, unknown>)
           };
