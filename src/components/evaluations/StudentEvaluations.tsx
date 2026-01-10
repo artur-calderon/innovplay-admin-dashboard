@@ -230,7 +230,20 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
     return null;
   }
 
-  const date = new Date(value);
+  // ✅ CORREÇÃO: Se a data não tem timezone (não termina com Z nem tem +/-HH:MM),
+  // assumir que está em UTC e adicionar 'Z' para forçar interpretação correta
+  let dateString = value;
+  const hasTimezone = value.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(value);
+  
+  if (!hasTimezone) {
+    // Backend retorna data em UTC mas sem o 'Z'
+    // Adicionar 'Z' para forçar interpretação como UTC
+    dateString = value.includes('.') 
+      ? value.split('.')[0] + 'Z' // Remover microsegundos e adicionar Z
+      : value + 'Z';
+  }
+
+  const date = new Date(dateString);
 
   if (Number.isNaN(date.getTime())) {
     return null;

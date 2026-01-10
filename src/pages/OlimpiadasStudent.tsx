@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, Medal, Calendar, Clock, Play, Loader2 } from 'lucide-react';
+import { Trophy, Medal, Calendar, Clock, Play, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { OlimpiadasApiService } from '@/services/olimpiadasApi';
 import { Olimpiada } from '@/types/olimpiada-types';
@@ -23,15 +23,41 @@ export default function OlimpiadasStudent() {
     try {
       const response = await OlimpiadasApiService.getStudentOlimpiadas();
       
-      // Log para debug: verificar dados recebidos
-      console.log('📋 Olimpíadas recebidas:', response.map(o => ({
-        id: o.id,
-        title: o.title,
-        startDateTime: o.startDateTime,
-        timeZone: o.timeZone,
-        applicationTimeZone: o.applicationTimeZone,
-        availability: o.availability
-      })));
+      // Log SUPER detalhado para debug de timezone no aluno
+      const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const userOffset = new Date().getTimezoneOffset();
+      
+      console.log('👨‍🎓 [ALUNO] Timezone do navegador do aluno:', {
+        timezone: userTimezone,
+        offset_minutos: userOffset,
+        offset_horas: userOffset / 60,
+        hora_atual: new Date().toLocaleString('pt-BR')
+      });
+      
+      console.log('📋 [ALUNO] Olimpíadas recebidas:');
+      response.forEach((o, index) => {
+        const timeZone = getOlimpiadaTimeZone(o);
+        const startDate = o.startDateTime ? new Date(o.startDateTime) : null;
+        const endDate = o.endDateTime ? new Date(o.endDateTime) : null;
+        
+        console.log(`\n${index + 1}. ${o.title} (${o.id}):`);
+        console.log('   📅 Datas recebidas do backend:');
+        console.log('      - startDateTime:', o.startDateTime);
+        console.log('      - endDateTime:', o.endDateTime);
+        console.log('      - timeZone da olimpíada:', timeZone);
+        console.log('      - applicationTimeZone:', o.applicationTimeZone);
+        
+        if (startDate) {
+          console.log('   🕐 Interpretação da data de início:');
+          console.log('      - Como string:', o.startDateTime);
+          console.log('      - Como Date.toISOString():', startDate.toISOString());
+          console.log('      - Como Date.getHours():', startDate.getHours());
+          console.log('      - toLocaleString (sem TZ):', startDate.toLocaleString('pt-BR'));
+          console.log('      - toLocaleString (com TZ da olimpíada):', startDate.toLocaleString('pt-BR', { timeZone: timeZone }));
+          console.log('      - toLocaleString (com TZ do navegador):', startDate.toLocaleString('pt-BR', { timeZone: userTimezone }));
+          console.log('      - formatDateTimeForDisplay:', formatDateTimeForDisplay(o.startDateTime, timeZone));
+        }
+      });
       
       setOlimpiadas(response);
     } catch (error) {
@@ -50,7 +76,6 @@ export default function OlimpiadasStudent() {
     navigate(`/aluno/olimpiada/${id}/fazer`);
   };
 
-  // Funções para formatação de data com timezone (mesmo padrão usado em StudentEvaluations.tsx)
   const DEFAULT_TIME_ZONE = (() => {
     try {
       return Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Sao_Paulo";
@@ -73,26 +98,30 @@ export default function OlimpiadasStudent() {
     }
   }
 
-  function getOlimpiadaTimeZone(olimpiada?: Olimpiada): string {
-    if (!olimpiada) {
-      return DEFAULT_TIME_ZONE;
-    }
-
-    const candidate =
-      olimpiada.applicationTimeZone ||
-      olimpiada.timeZone ||
-      olimpiada.availability?.time_zone ||
-      olimpiada.availability?.timezone;
-
-    return resolveTimeZone(candidate);
-  }
-
   function formatDateTimeForDisplay(value?: string, timeZone?: string): string | null {
     if (!value) {
       return null;
     }
 
-    const date = new Date(value);
+    // ✅ CORREÇÃO: Se a data não tem timezone (não termina com Z nem tem +/-HH:MM),
+    // assumir que está em UTC e adicionar 'Z' para forçar interpretação correta
+    let dateString = value;
+    const hasTimezone = value.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(value);
+    
+    if (!hasTimezone) {
+      // Backend retorna data em UTC mas sem o 'Z'
+      // Adicionar 'Z' para forçar interpretação como UTC
+      dateString = value.includes('.') 
+        ? value.split('.')[0] + 'Z' // Remover microsegundos e adicionar Z
+        : value + 'Z';
+      
+      console.log('⚠️ Data sem timezone detectada, assumindo UTC:', {
+        original: value,
+        corrigida: dateString
+      });
+    }
+
+    const date = new Date(dateString);
 
     if (Number.isNaN(date.getTime())) {
       return null;
@@ -117,11 +146,63 @@ export default function OlimpiadasStudent() {
     return `${dateFormatter.format(date)} às ${timeFormatter.format(date)}`;
   }
 
-  const isAvailable = (olimpiada: Olimpiada) => {
-    if (!olimpiada.startDateTime) return true;
-    const now = new Date();
-    const startDate = new Date(olimpiada.startDateTime);
-    return now >= startDate;
+  function getOlimpiadaTimeZone(olimpiada?: Olimpiada): string {
+    if (!olimpiada) {
+      return DEFAULT_TIME_ZONE;
+    }
+
+    const candidate =
+      olimpiada.applicationTimeZone ||
+      olimpiada.timeZone ||
+      olimpiada.availability?.time_zone ||
+      olimpiada.availability?.timezone;
+
+    return resolveTimeZone(candidate);
+  }
+
+  // ✅ PADRONIZADO: Função para verificar se a olimpíada está expirada (mesmo padrão de StudentEvaluations)
+  const isExpired = (olimpiada: Olimpiada): boolean => {
+    return (
+      olimpiada.student_status?.status === 'expirada' ||
+      olimpiada.availability?.status === 'expired'
+    );
+  };
+
+  // ✅ PADRONIZADO: Função para obter badge de status (mesmo padrão de StudentEvaluations)
+  const getStatusBadge = (olimpiada: Olimpiada) => {
+    const { student_status, availability } = olimpiada;
+
+    // Verificar se está concluída primeiro
+    if (student_status?.has_completed) {
+      return (
+        <Badge variant="secondary" className="flex items-center gap-1">
+          <CheckCircle className="h-3 w-3" />
+          Concluída
+        </Badge>
+      );
+    }
+
+    // Verificar se está expirada (tanto no student_status quanto no availability)
+    if (isExpired(olimpiada)) {
+      return (
+        <Badge variant="destructive" className="flex items-center gap-1">
+          <AlertCircle className="h-3 w-3" />
+          Expirada
+        </Badge>
+      );
+    }
+
+    // Verificar se está agendada (not_started)
+    if (availability?.status === 'not_started') {
+      return (
+        <Badge variant="outline" className="flex items-center gap-1 bg-blue-50 text-blue-700 border-blue-300">
+          <Calendar className="h-3 w-3" />
+          Agendada
+        </Badge>
+      );
+    }
+
+    return null;
   };
 
   if (loading) {
@@ -181,6 +262,8 @@ export default function OlimpiadasStudent() {
                       </p>
                     )}
                   </div>
+                  {/* ✅ PADRONIZADO: Badge de status (mesmo padrão de StudentEvaluations) */}
+                  {getStatusBadge(olimpiada)}
                 </div>
               </CardHeader>
 
@@ -206,7 +289,20 @@ export default function OlimpiadasStudent() {
                       <span>
                         {(() => {
                           const timeZone = getOlimpiadaTimeZone(olimpiada);
-                          return formatDateTimeForDisplay(olimpiada.startDateTime, timeZone) || "Data não definida";
+                          const formatted = formatDateTimeForDisplay(olimpiada.startDateTime, timeZone);
+                          
+                          // Log para debug
+                          if (olimpiada.id) {
+                            console.log(`📅 Formatando data para olimpíada ${olimpiada.id}:`, {
+                              original: olimpiada.startDateTime,
+                              timeZone: timeZone,
+                              formatted: formatted,
+                              dateObj: new Date(olimpiada.startDateTime).toISOString(),
+                              localString: new Date(olimpiada.startDateTime).toLocaleString('pt-BR', { timeZone: timeZone })
+                            });
+                          }
+                          
+                          return formatted || "Data não definida";
                         })()}
                       </span>
                     </div>
@@ -219,14 +315,27 @@ export default function OlimpiadasStudent() {
                   )}
                 </div>
 
-                <Button
-                  onClick={() => handleStartOlimpiada(olimpiada.id)}
-                  disabled={!isAvailable(olimpiada)}
-                  className="w-full bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-white"
-                >
-                  <Play className="h-4 w-4 mr-2" />
-                  {isAvailable(olimpiada) ? 'Fazer Olimpíada' : 'Aguardando início'}
-                </Button>
+                {/* ✅ PADRONIZADO: Botão com verificação de status expirado (mesmo padrão de StudentEvaluations) */}
+                {isExpired(olimpiada) ? (
+                  <Button
+                    disabled
+                    className="w-full bg-gray-400 text-white cursor-not-allowed"
+                  >
+                    <AlertCircle className="h-4 w-4 mr-2" />
+                    Expirada
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={() => handleStartOlimpiada(olimpiada.id)}
+                    disabled={!(olimpiada.availability?.is_available === true && olimpiada.student_status?.can_start === true)}
+                    className="w-full bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Play className="h-4 w-4 mr-2" />
+                    {(olimpiada.availability?.is_available === true && olimpiada.student_status?.can_start === true) 
+                      ? 'Fazer Olimpíada' 
+                      : 'Aguardando início'}
+                  </Button>
+                )}
               </CardContent>
             </Card>
           ))}

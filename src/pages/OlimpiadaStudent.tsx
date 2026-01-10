@@ -9,6 +9,7 @@ import { EvaluationApiService } from '@/services/evaluationApi';
 import { OlimpiadasApiService } from '@/services/olimpiadasApi';
 import TakeEvaluation from '@/components/evaluations/TakeEvaluation';
 import { TestData } from '@/types/evaluation-types';
+import { api } from '@/lib/api';
 
 export default function OlimpiadaStudent() {
   const { id } = useParams<{ id: string }>();
@@ -18,6 +19,8 @@ export default function OlimpiadaStudent() {
   const [testData, setTestData] = useState<TestData | null>(null);
   const [hasCompleted, setHasCompleted] = useState(false);
   const [results, setResults] = useState<any>(null);
+  const [canStart, setCanStart] = useState(false);
+  const [canStartReason, setCanStartReason] = useState<string>('');
 
   useEffect(() => {
     if (id) {
@@ -25,18 +28,150 @@ export default function OlimpiadaStudent() {
     }
   }, [id]);
 
+  const DEFAULT_TIME_ZONE = (() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Sao_Paulo";
+    } catch (error) {
+      return "America/Sao_Paulo";
+    }
+  })();
+
+  function resolveTimeZone(candidate?: string): string {
+    if (!candidate) {
+      return DEFAULT_TIME_ZONE;
+    }
+
+    try {
+      // Validar timezone usando Intl
+      new Intl.DateTimeFormat("pt-BR", { timeZone: candidate });
+      return candidate;
+    } catch (error) {
+      return DEFAULT_TIME_ZONE;
+    }
+  }
+
+  function formatDateTimeForDisplay(value?: string, timeZone?: string): string | null {
+    if (!value) {
+      return null;
+    }
+
+    // ✅ CORREÇÃO: Se a data não tem timezone (não termina com Z nem tem +/-HH:MM),
+    // assumir que está em UTC e adicionar 'Z' para forçar interpretação correta
+    let dateString = value;
+    const hasTimezone = value.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(value);
+    
+    if (!hasTimezone) {
+      // Backend retorna data em UTC mas sem o 'Z'
+      // Adicionar 'Z' para forçar interpretação como UTC
+      dateString = value.includes('.') 
+        ? value.split('.')[0] + 'Z' // Remover microsegundos e adicionar Z
+        : value + 'Z';
+    }
+
+    const date = new Date(dateString);
+
+    if (Number.isNaN(date.getTime())) {
+      return null;
+    }
+
+    const safeTimeZone = resolveTimeZone(timeZone);
+
+    const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
+      timeZone: safeTimeZone,
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric"
+    });
+
+    const timeFormatter = new Intl.DateTimeFormat("pt-BR", {
+      timeZone: safeTimeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    });
+
+    return `${dateFormatter.format(date)} às ${timeFormatter.format(date)}`;
+  }
+
   const loadOlimpiada = async () => {
     if (!id) return;
 
     setLoading(true);
     try {
-      // Buscar dados da olimpíada
+      // Buscar dados da olimpíada (inclui informações de timezone)
       const olimpiada = await OlimpiadasApiService.getOlimpiada(id);
       
       // Buscar dados do teste (questões)
       const test = await EvaluationApiService.getTestData(id);
       
+      // Preservar informações de timezone da olimpíada no testData
+      // Isso garante que as datas sejam exibidas corretamente
+      if (test && olimpiada) {
+        // Adicionar timezone ao testData se disponível
+        const timeZone = 
+          olimpiada.applicationTimeZone ||
+          olimpiada.timeZone ||
+          olimpiada.availability?.time_zone ||
+          olimpiada.availability?.timezone ||
+          DEFAULT_TIME_ZONE;
+        
+        // Log para debug
+        console.log('📅 Timezone da olimpíada:', {
+          id,
+          timeZone,
+          startDateTime: olimpiada.startDateTime,
+          endDateTime: olimpiada.endDateTime,
+          formattedStart: formatDateTimeForDisplay(olimpiada.startDateTime, timeZone),
+          formattedEnd: formatDateTimeForDisplay(olimpiada.endDateTime, timeZone)
+        });
+      }
+      
       setTestData(test);
+      
+      // ✅ PADRONIZADO: Verificar se pode iniciar usando endpoint can-start (mesmo padrão de StudentEvaluations)
+      try {
+        const response = await api.get(`/student-answers/student/${id}/can-start`);
+        const canStartData = response.data;
+
+        console.log("🔍 [OlimpiadaStudent] Resposta do can-start:", canStartData);
+
+        if (canStartData.can_start) {
+          setCanStart(true);
+        } else {
+          setCanStart(false);
+          setCanStartReason(canStartData.reason || "Não foi possível iniciar a olimpíada");
+          toast({
+            title: "Não é possível iniciar",
+            description: canStartData.reason || "Não foi possível iniciar a olimpíada",
+            variant: "destructive",
+          });
+        }
+      } catch (error: unknown) {
+        const apiError = error as { message?: string; response?: { data?: { error?: string; message?: string }; status?: number }; config?: { url?: string } };
+        
+        console.error("❌ [OlimpiadaStudent] Erro ao verificar se pode iniciar:", error);
+        console.error("Detalhes do erro:", {
+          message: apiError.message,
+          response: apiError.response?.data,
+          status: apiError.response?.status,
+          url: apiError.config?.url
+        });
+
+        let errorMessage = "Erro ao verificar disponibilidade da olimpíada";
+
+        if (apiError.response?.data?.error) {
+          errorMessage = apiError.response.data.error;
+        } else if (apiError.response?.data?.message) {
+          errorMessage = apiError.response.data.message;
+        }
+
+        setCanStart(false);
+        toast({
+          title: "Erro",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
       
       // Verificar se já completou
       try {
@@ -155,6 +290,26 @@ export default function OlimpiadaStudent() {
                 Voltar para Olimpíadas
               </Button>
             </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // ✅ PADRONIZADO: Verificar se pode iniciar antes de renderizar TakeEvaluation
+  if (!canStart) {
+    return (
+      <div className="container mx-auto py-6 px-4">
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Trophy className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <p className="text-muted-foreground mb-4">
+              {canStartReason || "Não é possível iniciar a olimpíada no momento"}
+            </p>
+            <Button onClick={() => navigate('/aluno/olimpiadas')} className="mt-4">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Voltar para Olimpíadas
+            </Button>
           </CardContent>
         </Card>
       </div>

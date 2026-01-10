@@ -494,8 +494,8 @@ export function CreateOlimpiadaModal({
       } else {
         await OlimpiadasApiService.createOlimpiada(formData);
         toast({
-          title: 'Olimpíada criada e aplicada!',
-          description: 'A olimpíada foi criada e aplicada automaticamente para as turmas selecionadas.',
+          title: 'Olimpíada criada!',
+          description: 'A olimpíada foi criada com sucesso. Use o botão "Aplicar" para enviá-la aos alunos.',
         });
       }
 

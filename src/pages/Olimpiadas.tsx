@@ -188,29 +188,6 @@ export default function Olimpiadas() {
   const confirmApply = async () => {
     if (!applyingOlimpiadaId) return;
 
-    // Validar datas
-    if (!applyStartDateTime || !applyEndDateTime) {
-      toast({
-        title: 'Erro',
-        description: 'Por favor, preencha as datas de início e fim',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    // Validar que fim é posterior ao início
-    const startDate = new Date(applyStartDateTime);
-    const endDate = new Date(applyEndDateTime);
-    
-    if (endDate <= startDate) {
-      toast({
-        title: 'Erro',
-        description: 'A data de término deve ser posterior à data de início',
-        variant: 'destructive',
-      });
-      return;
-    }
-
     setIsApplying(true);
 
     try {
@@ -250,19 +227,111 @@ export default function Olimpiadas() {
         return;
       }
 
-      // Converter datetime-local para ISO com timezone antes de enviar
-      // Mesmo padrão usado em StartEvaluationModal.tsx
-      const startDateTimeISO = convertDateTimeLocalToISO(applyStartDateTime);
-      const endDateTimeISO = convertDateTimeLocalToISO(applyEndDateTime);
+      // ✅ USAR HORÁRIO ATUAL DO NAVEGADOR (não do formulário)
+      // Capturar data/hora exata no momento do clique
+      const now = new Date();
+      
+      // Data de início: agora
+      const startDateTime = now;
+      
+      // Data de término: usar a data do formulário se fornecida, caso contrário usar duração padrão
+      let endDateTime: Date;
+      if (applyEndDateTime) {
+        // Se o admin forneceu data de término, converter de datetime-local para Date
+        // datetime-local vem sem timezone, então interpretar como hora local
+        endDateTime = new Date(applyEndDateTime);
+        
+        // Validar que a data de término é posterior à de início
+        if (endDateTime <= now) {
+          toast({
+            title: 'Erro',
+            description: 'A data de término deve ser posterior ao momento atual',
+            variant: 'destructive',
+          });
+          setIsApplying(false);
+          return;
+        }
+      } else {
+        // Caso contrário, usar duração da olimpíada + margem de segurança
+        // Adicionar 30 minutos extras além da duração para garantir que não expire durante a realização
+        const durationMinutes = olimpiada.duration || 120;
+        const safetyMarginMinutes = 30; // Margem de segurança
+        const totalMinutes = durationMinutes + safetyMarginMinutes;
+        const durationMs = totalMinutes * 60 * 1000; // converter minutos para ms
+        endDateTime = new Date(now.getTime() + durationMs);
+        
+        console.log('⏰ Calculando data de término:', {
+          duracao_olimpiada_minutos: durationMinutes,
+          margem_seguranca_minutos: safetyMarginMinutes,
+          total_minutos: totalMinutes,
+          inicio: now.toLocaleString('pt-BR'),
+          termino_calculado: endDateTime.toLocaleString('pt-BR'),
+          diferenca_minutos: totalMinutes
+        });
+      }
+      
+      // Converter para ISO com timezone usando a função que preserva o horário local
+      const startDateTimeISO = convertDateTimeLocalToISO(
+        `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+      );
+      
+      const endDateTimeISO = convertDateTimeLocalToISO(
+        `${endDateTime.getFullYear()}-${String(endDateTime.getMonth() + 1).padStart(2, '0')}-${String(endDateTime.getDate()).padStart(2, '0')}T${String(endDateTime.getHours()).padStart(2, '0')}:${String(endDateTime.getMinutes()).padStart(2, '0')}`
+      );
+      
+      // ✅ VALIDAÇÃO CRÍTICA: Verificar se a data de término é posterior à de início
+      const startDateObj = new Date(startDateTimeISO);
+      const endDateObj = new Date(endDateTimeISO);
+      
+      if (endDateObj <= startDateObj) {
+        toast({
+          title: 'Erro',
+          description: 'A data de término deve ser posterior à data de início',
+          variant: 'destructive',
+        });
+        setIsApplying(false);
+        return;
+      }
 
       // Obter timezone do usuário
       const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-      console.log('🚀 Aplicando olimpíada (Olimpiadas.tsx):', {
+      // Log SUPER detalhado para debug de timezone
+      console.log('🚀 Aplicando olimpíada (Olimpiadas.tsx) - USANDO HORÁRIO ATUAL:');
+      console.log('1️⃣ Horário no momento do clique:');
+      console.log('   - Data/hora atual:', now.toISOString());
+      console.log('   - Hora local:', now.toLocaleString('pt-BR'));
+      console.log('   - Timezone do navegador:', userTimezone);
+      console.log('   - Offset (minutos):', now.getTimezoneOffset());
+      
+      console.log('2️⃣ Datas calculadas:');
+      console.log('   - Início:', {
+        local: startDateTime.toLocaleString('pt-BR'),
+        iso: startDateTime.toISOString(),
+        timestamp: startDateTime.getTime()
+      });
+      console.log('   - Término:', {
+        local: endDateTime.toLocaleString('pt-BR'),
+        iso: endDateTime.toISOString(),
+        timestamp: endDateTime.getTime(),
+        diferenca_minutos: (endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60)
+      });
+      
+      console.log('3️⃣ Conversão para ISO com timezone:');
+      console.log('   - Início convertido:', startDateTimeISO);
+      console.log('   - Término convertido:', endDateTimeISO);
+      console.log('   - Validação:', {
+        startDateObj: new Date(startDateTimeISO).toISOString(),
+        endDateObj: new Date(endDateTimeISO).toISOString(),
+        isEndAfterStart: new Date(endDateTimeISO) > new Date(startDateTimeISO),
+        diferenca_minutos: (new Date(endDateTimeISO).getTime() - new Date(startDateTimeISO).getTime()) / (1000 * 60)
+      });
+      
+      console.log('4️⃣ Dados que serão enviados ao backend:', {
         olimpiadaId: applyingOlimpiadaId,
-        classIds,
-        original: { startDateTime: applyStartDateTime, endDateTime: applyEndDateTime },
-        converted: { startDateTimeISO, endDateTimeISO },
+        classes: classIds,
+        startDateTime: startDateTimeISO,
+        endDateTime: endDateTimeISO,
         timezone: userTimezone
       });
 
