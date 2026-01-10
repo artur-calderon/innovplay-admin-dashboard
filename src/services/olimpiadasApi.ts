@@ -98,38 +98,9 @@ export class OlimpiadasApiService {
           type: result.type
         });
 
-        // Aplicar automaticamente a olimpíada após criação
-        // Usar datas padrão: início em 1 hora, fim em 2 horas
-        if (classesArray.length > 0) {
-          try {
-            const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-            const now = new Date();
-            const startDateTime = new Date(now.getTime() + 60 * 60 * 1000); // 1 hora a partir de agora
-            const endDateTime = new Date(now.getTime() + 2 * 60 * 60 * 1000); // 2 horas a partir de agora
-            
-            // Converter para ISO com timezone
-            const startDateTimeISO = toLocalOffsetISO(startDateTime);
-            const endDateTimeISO = toLocalOffsetISO(endDateTime);
-            
-            console.log('🔄 Aplicando olimpíada automaticamente após criação...');
-            
-            await this.applyOlimpiada(
-              result.id,
-              classesArray,
-              startDateTimeISO,
-              endDateTimeISO,
-              userTimezone
-            );
-            
-            console.log('✅ Olimpíada aplicada automaticamente com sucesso');
-          } catch (applyError) {
-            // Não falhar a criação se a aplicação falhar - apenas logar o erro
-            console.warn('⚠️ Olimpíada criada com sucesso, mas falhou ao aplicar automaticamente:', applyError);
-            console.warn('⚠️ A olimpíada pode ser aplicada manualmente posteriormente');
-          }
-        } else {
-          console.log('ℹ️ Olimpíada criada sem turmas, não será aplicada automaticamente');
-        }
+        // ✅ REMOVIDO: Aplicação automática após criação
+        // O admin deve aplicar manualmente usando o botão "Aplicar" com as datas escolhidas
+        console.log('ℹ️ Olimpíada criada. Use o botão "Aplicar" para enviar aos alunos.');
       }
       
       return result;
@@ -224,6 +195,18 @@ export class OlimpiadasApiService {
           result.type = 'OLIMPIADA';
         } else if (result.type === 'OLIMPIADA') {
           // Já está marcado como olimpíada
+        }
+        
+        // Mapear campos de timezone para garantir formatação correta de datas
+        // O backend pode retornar application_info com timezone
+        if (result.application_info) {
+          result.timeZone = result.application_info.time_zone || result.application_info.timezone;
+          result.applicationTimeZone = result.application_info.time_zone || result.application_info.timezone;
+          if (!result.availability) {
+            result.availability = {};
+          }
+          result.availability.timezone = result.application_info.timezone;
+          result.availability.time_zone = result.application_info.time_zone;
         }
       }
       
@@ -374,17 +357,79 @@ export class OlimpiadasApiService {
         expiration: endDateTimeISO
       }));
 
-      console.log('📡 Aplicando olimpíada:', {
-        id,
-        classes: classes.length,
-        original: { startDateTime, endDateTime },
-        converted: { startDateTimeISO, endDateTimeISO },
-        timezone: userTimezone
+      // ✅ VALIDAÇÃO: Verificar se as datas estão corretas antes de enviar
+      const startDateObj = new Date(startDateTimeISO);
+      const endDateObj = new Date(endDateTimeISO);
+      const now = new Date();
+      const diffMinutes = (endDateObj.getTime() - startDateObj.getTime()) / (1000 * 60);
+      
+      console.log('📡 [olimpiadasApi] Enviando dados para backend:', {
+        endpoint: `/test/${id}/apply`,
+        payload: {
+          classes: classesData,
+          timezone: userTimezone
+        },
+        datas_enviadas: {
+          application: startDateTimeISO,
+          expiration: endDateTimeISO
+        },
+        validacao: {
+          inicio: {
+            iso: startDateObj.toISOString(),
+            local: startDateObj.toLocaleString('pt-BR'),
+            timestamp: startDateObj.getTime()
+          },
+          termino: {
+            iso: endDateObj.toISOString(),
+            local: endDateObj.toLocaleString('pt-BR'),
+            timestamp: endDateObj.getTime()
+          },
+          agora: {
+            iso: now.toISOString(),
+            local: now.toLocaleString('pt-BR'),
+            timestamp: now.getTime()
+          },
+          diferenca_minutos: diffMinutes,
+          termino_esta_no_futuro: endDateObj > now,
+          termino_apos_inicio: endDateObj > startDateObj
+        }
       });
+      
+      // ✅ VALIDAÇÃO FINAL: Garantir que a data de término está no futuro
+      if (endDateObj <= now) {
+        console.error('❌ ERRO: Data de término está no passado!', {
+          endDateTimeISO,
+          endDateObj: endDateObj.toISOString(),
+          now: now.toISOString(),
+          diferenca_ms: endDateObj.getTime() - now.getTime()
+        });
+        throw new Error('A data de término não pode estar no passado');
+      }
+      
+      if (endDateObj <= startDateObj) {
+        console.error('❌ ERRO: Data de término não é posterior à de início!', {
+          startDateTimeISO,
+          endDateTimeISO,
+          diferenca_ms: endDateObj.getTime() - startDateObj.getTime()
+        });
+        throw new Error('A data de término deve ser posterior à data de início');
+      }
 
       const response = await api.post(`/test/${id}/apply`, {
         classes: classesData,
         timezone: userTimezone
+      });
+      
+      console.log('✅ [olimpiadasApi] Resposta do backend:', {
+        status: response.status,
+        data: response.data,
+        // Log das datas retornadas se disponíveis
+        applied_classes: response.data?.applied_classes?.map((ac: any) => ({
+          class_id: ac.class_id,
+          application: ac.application,
+          expiration: ac.expiration,
+          timezone: ac.timezone
+        }))
       });
 
       console.log('✅ Olimpíada aplicada com sucesso:', response.data);
@@ -476,13 +521,36 @@ export class OlimpiadasApiService {
       const allTests = response.data?.tests || [];
       
       console.log('📋 Total de testes retornados pelo /test/my-class/tests:', allTests.length);
-      console.log('📋 Todos os testes (primeiros 5):', allTests.slice(0, 5).map((t: unknown) => ({
-        test_id: (t as { test_id?: string }).test_id,
-        title: (t as { title?: string }).title,
-        type: (t as { type?: string }).type,
-        availability: (t as { availability?: unknown }).availability,
-        student_status: (t as { student_status?: unknown }).student_status
-      })));
+      console.log('📋 Todos os testes (primeiros 5):', allTests.slice(0, 5).map((t: unknown) => {
+        const test = t as { 
+          test_id?: string;
+          title?: string;
+          type?: string;
+          availability?: unknown;
+          student_status?: unknown;
+          application_info?: {
+            application?: string;
+            expiration?: string;
+            timezone?: string;
+            time_zone?: string;
+          };
+        };
+        return {
+          test_id: test.test_id,
+          title: test.title,
+          type: test.type,
+          availability: test.availability,
+          student_status: test.student_status,
+          application_info: test.application_info,
+          // Log completo do application_info
+          application_info_detalhado: test.application_info ? {
+            application: test.application_info.application,
+            expiration: test.application_info.expiration,
+            timezone: test.application_info.timezone,
+            time_zone: test.application_info.time_zone
+          } : null
+        };
+      }));
       
       // TEMPORÁRIO: Filtrar todas as avaliações do tipo PROVA para aparecerem como olimpíadas
       // TODO: Voltar a filtrar apenas por título contendo [OLIMPÍADA] quando o sistema estiver estável
@@ -547,32 +615,123 @@ export class OlimpiadasApiService {
             student_status?: unknown;
           };
           
+          // Log SUPER detalhado do que está chegando do backend
+          console.log('🔍 [olimpiadasApi] Dados brutos do teste do backend:', {
+            test_id: testObj.test_id,
+            title: testObj.title,
+            application_info: testObj.application_info,
+            startDateTime: testObj.startDateTime,
+            time_limit: testObj.time_limit,
+            availability: testObj.availability,
+            // Detalhar application_info se existir
+            application_info_detalhado: testObj.application_info ? {
+              application: testObj.application_info.application,
+              expiration: testObj.application_info.expiration,
+              timezone: testObj.application_info.timezone,
+              time_zone: testObj.application_info.time_zone,
+              // Parsear as datas para ver como estão sendo interpretadas
+              application_parsed: testObj.application_info.application ? {
+                original: testObj.application_info.application,
+                asDate: new Date(testObj.application_info.application).toISOString(),
+                asLocaleString: new Date(testObj.application_info.application).toLocaleString('pt-BR'),
+                hours: new Date(testObj.application_info.application).getHours(),
+                timezoneOffset: new Date(testObj.application_info.application).getTimezoneOffset()
+              } : null,
+              expiration_parsed: testObj.application_info.expiration ? {
+                original: testObj.application_info.expiration,
+                asDate: new Date(testObj.application_info.expiration).toISOString(),
+                asLocaleString: new Date(testObj.application_info.expiration).toLocaleString('pt-BR'),
+                hours: new Date(testObj.application_info.expiration).getHours(),
+                timezoneOffset: new Date(testObj.application_info.expiration).getTimezoneOffset()
+              } : null
+            } : 'application_info não existe'
+          });
+          
           const id = testObj.test_id || testObj.id || '';
           let title = testObj.title || '';
           
           // Remover prefixo [OLIMPÍADA] do título se existir
           title = title.replace(/\[OLIMPÍADA\]\s?/gi, '').trim();
           
-          // Mapear campos para o formato Olimpiada
+          // ✅ PADRONIZADO: Usar exatamente o mesmo padrão de StudentEvaluations.tsx
+          const applicationTimeZone =
+            testObj.application_info?.timezone ||
+            testObj.application_info?.time_zone ||
+            (testObj.availability as { timezone?: string; time_zone?: string })?.time_zone ||
+            (testObj.availability as { timezone?: string; time_zone?: string })?.timezone;
+
+          // Resolver timezone (função local similar ao StudentEvaluations)
+          const resolveTimeZone = (candidate?: string): string => {
+            const DEFAULT_TIME_ZONE = (() => {
+              try {
+                return Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Sao_Paulo";
+              } catch (error) {
+                return "America/Sao_Paulo";
+              }
+            })();
+            
+            if (!candidate) {
+              return DEFAULT_TIME_ZONE;
+            }
+
+            try {
+              new Intl.DateTimeFormat("pt-BR", { timeZone: candidate });
+              return candidate;
+            } catch (error) {
+              return DEFAULT_TIME_ZONE;
+            }
+          };
+
+          const resolvedTimeZone = resolveTimeZone(applicationTimeZone);
+          
+          // ✅ PADRONIZADO: Mapear exatamente como StudentEvaluations.tsx
           const olimpiada: Olimpiada = {
             id,
             title,
             description: testObj.description,
             type: 'OLIMPIADA' as const,
             duration: testObj.duration,
-            startDateTime: testObj.startDateTime || testObj.time_limit || testObj.application_info?.application,
+            // ✅ CRÍTICO: Usar application_info.application e expiration (mesmo padrão de avaliações)
+            startDateTime: testObj.application_info?.application || new Date().toISOString(),
             endDateTime: testObj.application_info?.expiration,
             subjects: testObj.subjects_info || (testObj.subjects as Array<{ id: string; name: string }>) || [],
-            // Campos de timezone para formatação correta de datas
-            timeZone: testObj.application_info?.time_zone || testObj.application_info?.timezone,
-            applicationTimeZone: testObj.application_info?.time_zone || testObj.application_info?.timezone,
-            availability: {
-              timezone: testObj.application_info?.timezone,
-              time_zone: testObj.application_info?.time_zone
+            // ✅ PADRONIZADO: Usar availability e student_status diretamente do backend (mesmo padrão de StudentEvaluations)
+            // O backend já retorna no formato correto, apenas garantir que existe
+            availability: (testObj.availability as {
+              is_available: boolean;
+              status: "available" | "not_available" | "not_yet_available" | "expired" | "completed" | "not_started";
+              timezone?: string;
+              time_zone?: string;
+            }) || {
+              is_available: false,
+              status: 'not_available' as const
             },
-            // Campos adicionais que podem ser úteis
-            ...(testObj as Record<string, unknown>)
+            student_status: (testObj.student_status as {
+              has_completed: boolean;
+              status: "nao_iniciada" | "em_andamento" | "finalizada" | "expirada" | "corrigida" | "revisada";
+              can_start: boolean;
+              score?: number;
+              grade?: number;
+            }) || {
+              has_completed: false,
+              status: 'nao_iniciada' as const,
+              can_start: false
+            },
+            // Campos de timezone para formatação correta de datas
+            timeZone: resolvedTimeZone,
+            applicationTimeZone: applicationTimeZone
           };
+          
+          console.log('✅ Olimpíada mapeada (padrão StudentEvaluations):', {
+            id: olimpiada.id,
+            title: olimpiada.title,
+            startDateTime: olimpiada.startDateTime,
+            endDateTime: olimpiada.endDateTime,
+            timeZone: olimpiada.timeZone,
+            applicationTimeZone: olimpiada.applicationTimeZone,
+            availability: olimpiada.availability,
+            student_status: olimpiada.student_status
+          });
           
           return olimpiada;
         });

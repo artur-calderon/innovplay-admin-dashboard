@@ -13,9 +13,19 @@ export interface Olimpiada extends Omit<Evaluation, 'type'> {
   // Campos de timezone para formatação correta de datas
   timeZone?: string;
   applicationTimeZone?: string;
+  // ✅ PADRONIZADO: Usar mesma estrutura de availability e student_status que avaliações
   availability?: {
+    is_available: boolean;
+    status: "available" | "not_available" | "not_yet_available" | "expired" | "completed" | "not_started";
     timezone?: string;
     time_zone?: string;
+  };
+  student_status?: {
+    has_completed: boolean;
+    status: "nao_iniciada" | "em_andamento" | "finalizada" | "expirada" | "corrigida" | "revisada";
+    can_start: boolean;
+    score?: number;
+    grade?: number;
   };
 }
 
