@@ -157,7 +157,7 @@ export default function StudentAgendaOptimized() {
         />
       </div>
       <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md w-[95vw] sm:w-full">
           <DialogHeader>
             <DialogTitle>{selected?.title}</DialogTitle>
             <DialogDescription>{selected?.extendedProps?.description || 'Sem descrição'}</DialogDescription>

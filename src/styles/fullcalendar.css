@@ -585,6 +585,17 @@
   text-overflow: ellipsis;
 }
 
+/* Cor padrão para eventos sem tipo específico - Roxo/Violeta (cor padrão do sistema) */
+.fc-event:not(.fc-event-type-exam):not(.fc-event-type-event):not(.fc-event-type-holiday):not(.fc-event-type-class):not(.fc-event-type-meeting):not(.fc-event-type-task):not(.fc-event-type-assignment) {
+  background-color: #8b5cf6 !important; /* violet-500 - cor roxa padrão */
+  border-color: #7c3aed !important; /* violet-600 */
+}
+
+.dark .fc-event:not(.fc-event-type-exam):not(.fc-event-type-event):not(.fc-event-type-holiday):not(.fc-event-type-class):not(.fc-event-type-meeting):not(.fc-event-type-task):not(.fc-event-type-assignment) {
+  background-color: #7c3aed !important; /* violet-600 mais escuro para dark mode */
+  border-color: #6d28d9 !important; /* violet-700 */
+}
+
 /* --- AJUSTES PARA A VISÃO DE MÊS (dayGridMonth) --- */
 .fc-daygrid-event {
   margin-bottom: 3px;
@@ -672,6 +683,15 @@
   width: 3px;
   background-color: var(--fc-event-border-color);
   border-radius: 0 2px 2px 0;
+}
+
+/* Barra lateral para eventos sem tipo - usar roxo */
+.fc-event:not(.fc-event-type-exam):not(.fc-event-type-event):not(.fc-event-type-holiday):not(.fc-event-type-class):not(.fc-event-type-meeting):not(.fc-event-type-task):not(.fc-event-type-assignment)::before {
+  background-color: #7c3aed !important; /* violet-600 */
+}
+
+.dark .fc-event:not(.fc-event-type-exam):not(.fc-event-type-event):not(.fc-event-type-holiday):not(.fc-event-type-class):not(.fc-event-type-meeting):not(.fc-event-type-task):not(.fc-event-type-assignment)::before {
+  background-color: #6d28d9 !important; /* violet-700 */
 }
 
 /* Tipos de evento específicos - Cores mais vibrantes com suporte dark mode */

@@ -4,7 +4,7 @@ import { DateSelectArg, EventApi, EventClickArg, EventInput } from '@fullcalenda
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import listPlugin from '@fullcalendar/list';
-import interactionPlugin from '@fullcalendar/interaction';
+import interactionPlugin, { DateClickArg } from '@fullcalendar/interaction';
 import ptBrLocale from '@fullcalendar/core/locales/pt-br';
 import '../styles/fullcalendar.css';
 
@@ -41,8 +41,12 @@ export default function AdminAgendaOptimized() {
   const { user } = useAuth();
   const [currentEvents, setCurrentEvents] = useState<CustomEventInput[]>([]);
   const calendarRef = useRef<FullCalendar>(null);
+  
+  // Proteção contra eventos duplicados no FullCalendar (mobile)
+  const lastOpenTimeRef = useRef<number>(0);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isSuccessOpen, setIsSuccessOpen] = useState(false);
@@ -89,7 +93,6 @@ export default function AdminAgendaOptimized() {
       setIsLoadingTargets(true);
       try {
         const data = await CalendarService.getTargets();
-        console.log('Targets carregados:', data);
         setTargetsData(data);
       } catch (error) {
         console.error('Erro ao carregar targets:', error);
@@ -280,6 +283,14 @@ export default function AdminAgendaOptimized() {
   };
 
   const handleDateSelect = (selectInfo: DateSelectArg) => {
+    // Proteção contra eventos duplicados no mobile (debounce de 300ms)
+    const now = Date.now();
+    if (now - lastOpenTimeRef.current < 300) {
+      return;
+    }
+    
+    lastOpenTimeRef.current = now;
+    
     const start = new Date(selectInfo.start);
     const end = new Date(selectInfo.end);
     setFormData((f) => ({
@@ -291,8 +302,38 @@ export default function AdminAgendaOptimized() {
       endTime: end.toISOString().slice(0, 16),
       allDay: !!selectInfo.allDay,
     }));
+    
     setIsCreateOpen(true);
     selectInfo.view.calendar.unselect();
+  };
+
+  // Handler para dateClick (fallback para mobile onde select pode não funcionar)
+  const handleDateClick = (clickInfo: DateClickArg) => {
+    // Proteção contra eventos duplicados no mobile (debounce de 300ms)
+    const now = Date.now();
+    if (now - lastOpenTimeRef.current < 300) {
+      return;
+    }
+    
+    lastOpenTimeRef.current = now;
+    
+    // Criar um intervalo de 1 dia (início e fim do mesmo dia)
+    const start = new Date(clickInfo.date);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(clickInfo.date);
+    end.setHours(23, 59, 59, 999);
+    
+    setFormData((f) => ({
+      ...f,
+      title: '',
+      description: '',
+      location: '',
+      startTime: start.toISOString().slice(0, 16),
+      endTime: end.toISOString().slice(0, 16),
+      allDay: clickInfo.allDay,
+    }));
+    
+    setIsCreateOpen(true);
   };
 
   // Helper para verificar se a string de data contém informação de hora
@@ -304,20 +345,6 @@ export default function AdminAgendaOptimized() {
 
   const handleEventClick = (clickInfo: EventClickArg) => {
     const e = clickInfo.event;
-    
-    // Log para ver os dados do evento retornado
-    console.log('=== DADOS DO EVENTO RETORNADO ===');
-    console.log('ID:', e.id);
-    console.log('Title:', e.title);
-    console.log('Start (string):', e.startStr);
-    console.log('End (string):', e.endStr);
-    console.log('Start (Date):', e.start);
-    console.log('End (Date):', e.end);
-    console.log('allDay:', e.allDay);
-    console.log('extendedProps:', e.extendedProps);
-    console.log('Has time in start:', hasTimeInfo(e.startStr));
-    console.log('Has time in end:', hasTimeInfo(e.endStr));
-    console.log('================================');
     
     setSelected({
       id: e.id,
@@ -353,20 +380,6 @@ export default function AdminAgendaOptimized() {
       
       // Se houver hora, forçar all_day: false
       const allDayValue = hasTime ? false : !!formData.allDay;
-      
-      // Log para ver os dados que serão enviados
-      console.log('=== DADOS ENVIADOS PARA O BACKEND (createEvent) ===');
-      console.log('formData.startTime (original):', formData.startTime);
-      console.log('formData.endTime (original):', formData.endTime);
-      console.log('start_at (ISO):', startISO);
-      console.log('end_at (ISO):', endISO);
-      console.log('formData.allDay (original):', formData.allDay);
-      console.log('hasTimeInStart:', hasTimeInStart);
-      console.log('hasTimeInEnd:', hasTimeInEnd);
-      console.log('all_day (enviado):', allDayValue);
-      console.log('visibility_scope:', visibility_scope);
-      console.log('targets:', targets);
-      console.log('==================================================');
       
       const created = await CalendarService.createEvent({
         title: formData.title,
@@ -432,18 +445,6 @@ export default function AdminAgendaOptimized() {
       // Se houver hora, forçar all_day: false
       const allDayValue = hasTime ? false : !!formData.allDay;
       
-      // Log para ver os dados que serão enviados
-      console.log('=== DADOS ENVIADOS PARA O BACKEND (updateEvent) ===');
-      console.log('formData.startTime (original):', formData.startTime);
-      console.log('formData.endTime (original):', formData.endTime);
-      console.log('start_at (ISO):', startISO);
-      console.log('end_at (ISO):', endISO);
-      console.log('formData.allDay (original):', formData.allDay);
-      console.log('hasTimeInStart:', hasTimeInStart);
-      console.log('hasTimeInEnd:', hasTimeInEnd);
-      console.log('all_day (enviado):', allDayValue);
-      console.log('==================================================');
-      
       await CalendarService.updateEvent(String(selected.id), {
         title: formData.title,
         description: formData.description,
@@ -508,12 +509,15 @@ export default function AdminAgendaOptimized() {
           // --- CONFIGURAÇÃO DE TAMANHO E EVENTOS ---
           height="auto"
           dayMaxEvents={3}
-          dayMaxEventRows={false}
+          dayMaxEventRows={2}
           moreLinkClick="popover"
+          moreLinkText="mais eventos"
+          dayPopoverFormat={{ month: 'long', day: 'numeric', weekday: 'long' }}
           eventMaxStack={3}
           eventOverlap={false}
 
           select={handleDateSelect}
+          dateClick={handleDateClick}
           eventClick={handleEventClick}
           eventClassNames={getEventClassNames}
           eventMinHeight={48}
@@ -533,6 +537,7 @@ export default function AdminAgendaOptimized() {
       {/* Criar evento */}
       <Dialog open={isCreateOpen} onOpenChange={(open) => {
         setIsCreateOpen(open);
+        
         if (!open) {
           resetTargetsForm();
           setFormData({
@@ -547,13 +552,36 @@ export default function AdminAgendaOptimized() {
           });
         }
       }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent 
+          className="max-w-2xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full !top-[50%] !left-[50%] !translate-x-[-50%] !translate-y-[-50%]"
+          onInteractOutside={(e) => {
+            // No mobile, prevenir fechamento acidental por toque fora
+            const isMobile = window.innerWidth < 640;
+            if (isMobile) {
+              e.preventDefault();
+            }
+          }}
+          onEscapeKeyDown={(e) => {
+            // No mobile, prevenir fechamento por ESC
+            const isMobile = window.innerWidth < 640;
+            if (isMobile) {
+              e.preventDefault();
+            }
+          }}
+          onPointerDownOutside={(e) => {
+            // No mobile, prevenir fechamento por pointer down
+            const isMobile = window.innerWidth < 640;
+            if (isMobile) {
+              e.preventDefault();
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle>Criar Novo Evento</DialogTitle>
             <DialogDescription>Preencha os dados do evento que será exibido para alunos e professores</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="title">Título</Label>
                 <Input id="title" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} placeholder="Título do evento" />
@@ -563,7 +591,7 @@ export default function AdminAgendaOptimized() {
               <Label htmlFor="description">Descrição</Label>
               <Textarea id="description" value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} placeholder="Descrição do evento" />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="start">Data/Hora Início</Label>
                 <Input id="start" type="datetime-local" value={formData.startTime} onChange={(e) => setFormData({ ...formData, startTime: e.target.value })} />
@@ -815,7 +843,7 @@ export default function AdminAgendaOptimized() {
 
       {/* Visualizar evento */}
       <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg w-[95vw] sm:w-full">
           <DialogHeader>
             <DialogTitle>{selected?.title || 'Evento'}</DialogTitle>
             <DialogDescription>{selected?.extendedProps?.description || 'Sem descrição'}</DialogDescription>
@@ -861,13 +889,13 @@ export default function AdminAgendaOptimized() {
 
       {/* Editar evento */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
           <DialogHeader>
             <DialogTitle>Editar Evento</DialogTitle>
             <DialogDescription>Atualize os dados do evento</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-title">Título</Label>
                 <Input id="edit-title" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} />
@@ -889,7 +917,7 @@ export default function AdminAgendaOptimized() {
               <Label htmlFor="edit-description">Descrição</Label>
               <Textarea id="edit-description" value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-start">Início</Label>
                 <Input id="edit-start" type="datetime-local" value={formData.startTime} onChange={(e) => setFormData({ ...formData, startTime: e.target.value })} />
@@ -899,7 +927,7 @@ export default function AdminAgendaOptimized() {
                 <Input id="edit-end" type="datetime-local" value={formData.endTime} onChange={(e) => setFormData({ ...formData, endTime: e.target.value })} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-location">Local</Label>
                 <Input id="edit-location" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} />
@@ -919,7 +947,7 @@ export default function AdminAgendaOptimized() {
 
       {/* Sucesso */}
       <Dialog open={isSuccessOpen} onOpenChange={setIsSuccessOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md w-[95vw] sm:w-full">
           <DialogHeader>
             <DialogTitle>Sucesso</DialogTitle>
             <DialogDescription>{createdTitle} foi criado com sucesso e publicado.</DialogDescription>
