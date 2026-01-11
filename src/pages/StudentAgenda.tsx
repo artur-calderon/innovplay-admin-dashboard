@@ -80,7 +80,8 @@ function renderStudentEventContent(eventInfo: EventContentArg) {
       eventStyles = { bgColor: 'bg-amber-500', borderColor: 'border-amber-600', textColor: 'text-amber-950' };
       break;
     default:
-      eventStyles = { bgColor: 'bg-secondary', borderColor: 'border-border', textColor: 'text-secondary-foreground' };
+      // Cor roxa padrão do sistema para eventos sem tipo específico
+      eventStyles = { bgColor: 'bg-[#8b5cf6]', borderColor: 'border-[#7c3aed]', textColor: 'text-white' };
   }
 
   // Check view type for optimized rendering
@@ -237,7 +238,7 @@ export default function StudentAgenda() {
               </CardContent>
             </Card>
       <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md w-[95vw] sm:w-full">
           <DialogHeader>
             <DialogTitle>{selectedEvent?.title}</DialogTitle>
             <DialogDescription>
