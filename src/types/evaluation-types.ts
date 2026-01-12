@@ -109,6 +109,7 @@ export interface SessionStatusResponse {
 
 export interface SubmitTestRequest {
     session_id: string;
+    test_id?: string; // ✅ Incluir test_id para o backend identificar o tipo (OLIMPIADA vs AVALIACAO)
     answers: {
         question_id: string;
         answer: string;

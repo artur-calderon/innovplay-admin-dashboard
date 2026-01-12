@@ -283,21 +283,35 @@ export function CreateOlimpiadaModal({
         
         // ✅ PRIORIDADE: Se houver série selecionada, buscar apenas escolas com aquela série
         if (grade) {
-          const response = await api.get(`/school/by-grade/${grade}`);
-          schoolsData = response.data?.schools || [];
-          
-          // Filtrar escolas pelo município selecionado
-          // O endpoint /school/by-grade retorna escolas de todos os municípios
-          // Precisamos filtrar apenas as do município selecionado
-          if (schoolsData.length > 0) {
-            // Buscar todas as escolas do município para comparar
-            const municipalitySchoolsResponse = await api.get(`/school/city/${municipality}`);
-            const municipalitySchoolIds = (municipalitySchoolsResponse.data || []).map((s: School) => s.id);
+          try {
+            const response = await api.get(`/school/by-grade/${grade}`);
+            schoolsData = response.data?.schools || [];
             
-            // Filtrar apenas escolas que estão no município E têm turmas da série
-            schoolsData = schoolsData.filter((school: School) => 
-              municipalitySchoolIds.includes(school.id)
-            );
+            // Filtrar escolas pelo município selecionado
+            // O endpoint /school/by-grade retorna escolas de todos os municípios
+            // Precisamos filtrar apenas as do município selecionado
+            if (schoolsData.length > 0) {
+              // Buscar todas as escolas do município para comparar
+              const municipalitySchoolsResponse = await api.get(`/school/city/${municipality}`);
+              const municipalitySchoolIds = (municipalitySchoolsResponse.data || []).map((s: School) => s.id);
+              
+              // Filtrar apenas escolas que estão no município E têm turmas da série
+              schoolsData = schoolsData.filter((school: School) => 
+                municipalitySchoolIds.includes(school.id)
+              );
+            }
+          } catch (err: any) {
+            // Ignorar silenciosamente erros 404 (séries sem escolas com turmas)
+            const errorMessage = err?.message || '';
+            const isNotFound = err?.response?.status === 404 || 
+                               errorMessage.includes('não encontrado') || 
+                               errorMessage.includes('not found');
+            
+            if (!isNotFound) {
+              console.warn(`Erro ao buscar escolas por série ${grade}:`, err);
+            }
+            // Se der erro, usar array vazio (não há escolas com turmas desta série)
+            schoolsData = [];
           }
         } else {
           // Se NÃO houver série, buscar todas as escolas do município
@@ -953,18 +967,40 @@ export function CreateOlimpiadaModal({
             subjectId={selectedSubjectForQuestion}
             onQuestionSelected={(question) => {
               // Verificar se a questão já foi adicionada
-              if (selectedQuestions.some(q => q.id === question.id)) {
+              const questionId = question.id;
+              if (!questionId) {
                 toast({
-                  title: "Questão já adicionada",
-                  description: "Esta questão já está na olimpíada",
+                  title: "Erro",
+                  description: "Questão inválida - sem ID",
                   variant: "destructive",
                 });
                 return;
               }
-              setSelectedQuestions([...selectedQuestions, question]);
-              toast({
-                title: "Questão adicionada",
-                description: "Questão adicionada à olimpíada",
+              
+              // ✅ CORRIGIDO: Usar função de atualização de estado para garantir que o estado anterior seja usado
+              setSelectedQuestions(prev => {
+                // Verificar se já existe
+                if (prev.some(q => q.id === questionId)) {
+                  toast({
+                    title: "Questão já adicionada",
+                    description: "Esta questão já está na olimpíada",
+                    variant: "destructive",
+                  });
+                  return prev; // Retornar estado anterior sem mudanças
+                }
+                
+                // Adicionar questão com subjectId correto
+                const questionWithSubject = {
+                  ...question,
+                  subjectId: selectedSubjectForQuestion || question.subjectId || question.subject?.id || question.subject_id,
+                };
+                
+                toast({
+                  title: "Questão adicionada",
+                  description: "Questão adicionada à olimpíada",
+                });
+                
+                return [...prev, questionWithSubject];
               });
             }}
             onClose={() => setShowQuestionBank(false)}
@@ -1005,12 +1041,32 @@ export function CreateOlimpiadaModal({
             open={showCreateQuestion}
             onClose={() => setShowCreateQuestion(false)}
             onQuestionAdded={(question) => {
-              setSelectedQuestions([...selectedQuestions, question]);
-              setShowCreateQuestion(false);
-              toast({
-                title: "Questão criada",
-                description: "Nova questão adicionada à olimpíada",
+              // ✅ CORRIGIDO: Usar função de atualização de estado para garantir que o estado anterior seja usado
+              setSelectedQuestions(prev => {
+                // Verificar se já existe
+                if (prev.some(q => q.id === question.id)) {
+                  toast({
+                    title: "Questão já adicionada",
+                    description: "Esta questão já está na olimpíada",
+                    variant: "destructive",
+                  });
+                  return prev;
+                }
+                
+                // Adicionar questão com subjectId correto
+                const questionWithSubject = {
+                  ...question,
+                  subjectId: selectedSubjectForQuestion || question.subjectId || question.subject?.id || question.subject_id,
+                };
+                
+                toast({
+                  title: "Questão criada",
+                  description: "Nova questão adicionada à olimpíada",
+                });
+                
+                return [...prev, questionWithSubject];
               });
+              setShowCreateQuestion(false);
             }}
             questionNumber={selectedQuestions.length + 1}
             evaluationData={{

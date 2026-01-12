@@ -21,12 +21,59 @@ export default function OlimpiadaStudent() {
   const [results, setResults] = useState<any>(null);
   const [canStart, setCanStart] = useState(false);
   const [canStartReason, setCanStartReason] = useState<string>('');
+  const [shouldStopPolling, setShouldStopPolling] = useState(false);
 
   useEffect(() => {
     if (id) {
       loadOlimpiada();
     }
   }, [id]);
+
+  // ✅ NOVO: Monitorar status da sessão periodicamente para detectar quando foi finalizada
+  // IMPORTANTE: Este useEffect deve estar ANTES de qualquer return condicional para seguir as regras dos hooks
+  useEffect(() => {
+    // Parar polling se não há condições para continuar
+    if (!id || !canStart || hasCompleted || shouldStopPolling) return;
+
+    const checkSessionStatus = async () => {
+      try {
+        const sessionInfo = await EvaluationApiService.getTestSessionInfo(id);
+        
+        // Parar polling se sessão não existe mais
+        if (!sessionInfo.session_exists) {
+          setShouldStopPolling(true);
+          return;
+        }
+        
+        // Parar polling e redirecionar se finalizada
+        if (sessionInfo.status === 'finalizada' || sessionInfo.status === 'completed') {
+          setShouldStopPolling(true);
+          console.log('✅ [OlimpiadaStudent] Olimpíada finalizada, redirecionando para /aluno/olimpiadas');
+          navigate('/aluno/olimpiadas');
+          return;
+        }
+        
+        // Parar polling se expirada
+        if (sessionInfo.status === 'expirada' || sessionInfo.is_expired) {
+          setShouldStopPolling(true);
+          return;
+        }
+      } catch (error: any) {
+        // ✅ CORRIGIDO: Parar polling em caso de erro 404 ou 410 (sessão não existe ou expirada)
+        if (error?.response?.status === 404 || error?.response?.status === 410) {
+          console.log('🛑 [OlimpiadaStudent] Sessão não encontrada ou expirada, parando polling');
+          setShouldStopPolling(true);
+          return;
+        }
+        // Ignorar outros erros silenciosamente para evitar spam no console
+      }
+    };
+
+    // Verificar a cada 3 segundos
+    const interval = setInterval(checkSessionStatus, 3000);
+
+    return () => clearInterval(interval);
+  }, [id, canStart, hasCompleted, shouldStopPolling, navigate]);
 
   const DEFAULT_TIME_ZONE = (() => {
     try {
@@ -126,7 +173,22 @@ export default function OlimpiadaStudent() {
         });
       }
       
-      setTestData(test);
+      // ✅ CRÍTICO: Mesclar duration da olimpíada como fallback se test.duration vier null
+      // O backend pode retornar duration null para olimpíadas mas corretamente para avaliações
+      const finalDuration = test.duration || olimpiada.duration || 60;
+      
+      console.log('🔍 [OlimpiadaStudent] Preparando dados do teste:', {
+        testId: test.id,
+        testDuration: test.duration,
+        olimpiadaDuration: olimpiada.duration,
+        finalDuration: finalDuration,
+        willUseFallback: !test.duration
+      });
+      
+      setTestData({
+        ...test,
+        duration: finalDuration // ✅ Garantir que duration nunca seja null/undefined
+      });
       
       // ✅ PADRONIZADO: Verificar se pode iniciar usando endpoint can-start (mesmo padrão de StudentEvaluations)
       try {
@@ -176,7 +238,7 @@ export default function OlimpiadaStudent() {
       // Verificar se já completou
       try {
         const sessionInfo = await EvaluationApiService.getTestSessionInfo(id);
-        if (sessionInfo.status === 'finalizada') {
+        if (sessionInfo.status === 'finalizada' || sessionInfo.status === 'completed') {
           setHasCompleted(true);
           // Buscar resultados
           const resultsData = await OlimpiadasApiService.getOlimpiadaResults(id);
@@ -187,6 +249,11 @@ export default function OlimpiadaStudent() {
       } catch (error) {
         // Sessão não existe ainda, pode fazer a olimpíada
         console.log('Sessão não encontrada, aluno pode fazer a olimpíada');
+      }
+
+      // Verificar se o tipo está correto
+      if (test && test.type !== 'OLIMPIADA' && test.type !== 'OLIMPÍADA') {
+        console.warn('⚠️ [OlimpiadaStudent] testData.type não é OLIMPIADA:', test.type);
       }
     } catch (error) {
       console.error('Erro ao carregar olimpíada:', error);
