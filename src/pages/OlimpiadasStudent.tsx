@@ -3,20 +3,74 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, Medal, Calendar, Clock, Play, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { Trophy, Medal, Calendar, Clock, Play, Loader2, AlertCircle, CheckCircle, X, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { OlimpiadasApiService } from '@/services/olimpiadasApi';
+import { EvaluationApiService } from '@/services/evaluationApi';
 import { Olimpiada } from '@/types/olimpiada-types';
+import { api } from '@/lib/api';
 
 export default function OlimpiadasStudent() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [olimpiadas, setOlimpiadas] = useState<Olimpiada[]>([]);
   const [loading, setLoading] = useState(true);
+  // ✅ TEMPORÁRIO: Estado para sessões ativas
+  const [activeSessions, setActiveSessions] = useState<Array<{ session_id: string; test_id: string; test_title?: string }>>([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
 
   useEffect(() => {
     loadOlimpiadas();
+    // ✅ TEMPORÁRIO: Carregar sessões ativas
+    loadActiveSessions();
   }, []);
+
+  // ✅ TEMPORÁRIO: Função para carregar sessões ativas
+  const loadActiveSessions = async () => {
+    setLoadingSessions(true);
+    try {
+      // Tentar buscar sessões ativas do aluno
+      const response = await api.get('/student-answers/my-sessions');
+      const sessions = response.data?.sessions || response.data || [];
+      
+      // Filtrar apenas sessões em andamento
+      const active = sessions.filter((s: any) => 
+        s.status === 'em_andamento' || 
+        s.status === 'in_progress' || 
+        s.status === 'active'
+      );
+      
+      setActiveSessions(active);
+    } catch (error) {
+      console.error('Erro ao carregar sessões ativas:', error);
+      // Não mostrar erro ao usuário, apenas logar
+    } finally {
+      setLoadingSessions(false);
+    }
+  };
+
+  // ✅ TEMPORÁRIO: Função para encerrar sessão
+  const handleEndSession = async (sessionId: string) => {
+    try {
+      await EvaluationApiService.endSession(sessionId, 'manual');
+      toast({
+        title: 'Sessão encerrada',
+        description: 'A sessão foi encerrada com sucesso. Você pode iniciar uma nova avaliação ou olimpíada.',
+        variant: 'default',
+      });
+      // Recarregar sessões ativas
+      await loadActiveSessions();
+      // Recarregar olimpíadas para atualizar status
+      await loadOlimpiadas();
+    } catch (error: any) {
+      console.error('Erro ao encerrar sessão:', error);
+      toast({
+        title: 'Erro',
+        description: error?.response?.data?.message || 'Erro ao encerrar sessão',
+        variant: 'destructive',
+      });
+    }
+  };
 
   const loadOlimpiadas = async () => {
     setLoading(true);
@@ -227,6 +281,71 @@ export default function OlimpiadasStudent() {
         </p>
       </div>
 
+      {/* ✅ TEMPORÁRIO: Card para encerrar sessões ativas */}
+      {activeSessions.length > 0 && (
+        <Card className="border-orange-300 bg-orange-50 dark:bg-orange-950/20">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-orange-600" />
+              <CardTitle className="text-lg text-orange-900 dark:text-orange-100">
+                ⚠️ TEMPORÁRIO: Sessões Ativas Encontradas
+              </CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-orange-800 dark:text-orange-200">
+              Você tem {activeSessions.length} sessão(ões) ativa(s) que podem estar impedindo o início de novas avaliações ou olimpíadas.
+            </p>
+            <div className="space-y-2">
+              {activeSessions.map((session) => (
+                <div
+                  key={session.session_id}
+                  className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-md border border-orange-200 dark:border-orange-800"
+                >
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      Sessão: {session.session_id.substring(0, 8)}...
+                    </p>
+                    {session.test_title && (
+                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                        {session.test_title}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    onClick={() => handleEndSession(session.session_id)}
+                    variant="destructive"
+                    size="sm"
+                    className="ml-4"
+                  >
+                    <X className="h-4 w-4 mr-2" />
+                    Encerrar Sessão
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <Button
+              onClick={loadActiveSessions}
+              variant="outline"
+              size="sm"
+              disabled={loadingSessions}
+            >
+              {loadingSessions ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Carregando...
+                </>
+              ) : (
+                <>
+                  <AlertCircle className="h-4 w-4 mr-2" />
+                  Atualizar
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {olimpiadas.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
@@ -238,7 +357,18 @@ export default function OlimpiadasStudent() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {olimpiadas.map((olimpiada) => (
+          {olimpiadas.map((olimpiada) => {
+            // Log para debug
+            console.log('🔍 [OlimpiadasStudent] Renderizando olimpíada:', {
+              id: olimpiada.id,
+              title: olimpiada.title,
+              has_completed: olimpiada.student_status?.has_completed,
+              status: olimpiada.student_status?.status,
+              score: olimpiada.student_status?.score,
+              student_status: olimpiada.student_status
+            });
+
+            return (
             <Card
               key={olimpiada.id}
               className="group relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:scale-[1.02] bg-gradient-to-br from-yellow-50 via-amber-50 to-orange-50 dark:from-yellow-950/20 dark:via-amber-950/20 dark:to-orange-950/20 border-yellow-200 dark:border-yellow-800"
@@ -324,6 +454,14 @@ export default function OlimpiadasStudent() {
                     <AlertCircle className="h-4 w-4 mr-2" />
                     Expirada
                   </Button>
+                ) : olimpiada.student_status?.has_completed ? (
+                  <Button
+                    onClick={() => navigate(`/aluno/olimpiada/${olimpiada.id}/resultado`)}
+                    className="w-full bg-gradient-to-r from-yellow-600 to-amber-600 hover:from-yellow-700 hover:to-amber-700 text-white"
+                  >
+                    <Trophy className="h-4 w-4 mr-2" />
+                    Ver Resultado
+                  </Button>
                 ) : (
                   <Button
                     onClick={() => handleStartOlimpiada(olimpiada.id)}
@@ -338,7 +476,8 @@ export default function OlimpiadasStudent() {
                 )}
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
