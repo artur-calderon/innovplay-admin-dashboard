@@ -49,13 +49,9 @@ export class OlimpiadasApiService {
         ? data.classes 
         : (data.classes ? [data.classes] : []);
 
-      // Garantir que o título tenha o prefixo [OLIMPÍADA] para identificação
-      const titleWithPrefix = data.title.includes('[OLIMPÍADA]') 
-        ? data.title 
-        : `[OLIMPÍADA] ${data.title}`;
-
+      // Enviar título sem modificações (sem prefixo [OLIMPÍADA])
       const payload = {
-        title: titleWithPrefix,
+        title: data.title,
         description: data.description || '',
         type: 'OLIMPIADA', // Enviando como OLIMPIADA para a tabela test
         model: data.model || 'PROVA',
@@ -87,10 +83,6 @@ export class OlimpiadasApiService {
       if (result) {
         // Adicionar flag para identificar como olimpíada no frontend
         result.type = 'OLIMPIADA';
-        // Garantir que o título tenha o prefixo (caso o backend tenha removido)
-        if (result.title && !result.title.includes('[OLIMPÍADA]')) {
-          result.title = `[OLIMPÍADA] ${result.title}`;
-        }
         
         console.log('✅ Olimpíada criada com sucesso:', {
           id: result.id,
@@ -207,6 +199,15 @@ export class OlimpiadasApiService {
           }
           result.availability.timezone = result.application_info.timezone;
           result.availability.time_zone = result.application_info.time_zone;
+          
+          // ✅ CRÍTICO: Mapear application e expiration para startDateTime e endDateTime
+          // Isso é necessário para que a validação de período funcione corretamente
+          if (result.application_info.application && !result.startDateTime) {
+            result.startDateTime = result.application_info.application;
+          }
+          if (result.application_info.expiration && !result.endDateTime) {
+            result.endDateTime = result.application_info.expiration;
+          }
         }
       }
       
@@ -237,13 +238,9 @@ export class OlimpiadasApiService {
         });
       }
 
-      // Garantir que título tenha o prefixo [OLIMPÍADA]
-      const titleWithPrefix = data.title && !data.title.includes('[OLIMPÍADA]') 
-        ? `[OLIMPÍADA] ${data.title}` 
-        : data.title;
-
+      // Enviar título sem modificações (sem prefixo [OLIMPÍADA])
       const payload: Record<string, unknown> = {
-        ...(titleWithPrefix && { title: titleWithPrefix }),
+        ...(data.title && { title: data.title }),
         ...(data.description !== undefined && { description: data.description }),
         type: 'OLIMPIADA', // Enviando como OLIMPIADA para a tabela test
         ...(data.model && { model: data.model }),
@@ -288,10 +285,6 @@ export class OlimpiadasApiService {
       const result = response.data;
       if (result) {
         result.type = 'OLIMPIADA';
-        // Remover prefixo do título no retorno
-        if (result.title && result.title.includes('[OLIMPÍADA]')) {
-          result.title = result.title.replace('[OLIMPÍADA] ', '');
-        }
       }
       
       return result;

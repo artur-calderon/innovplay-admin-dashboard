@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -198,7 +198,11 @@ const ClassificationBadge = ({ classification }: { classification: string }) => 
 export default function StudentResult() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
+  
+  // Detectar se é uma olimpíada pela URL
+  const isOlimpiada = location.pathname.includes('/olimpiada/');
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -538,20 +542,30 @@ export default function StudentResult() {
   const passedGood = (gradeRounded ?? (scoreRounded != null ? scoreRounded / 10 : 0)) >= 7;
 
   // Usar título da avaliação de test ou evaluationData
-  const evaluationTitle = test?.title || evaluationData?.data?.evaluation_name || "Resultado da Avaliação";
+  const evaluationTitle = test?.title || evaluationData?.data?.evaluation_name || (isOlimpiada ? "Resultado da Olimpíada" : "Resultado da Avaliação");
+  
+  // Títulos e navegação personalizados para olimpíadas
+  const pageTitle = isOlimpiada ? "Resultado da Olimpíada" : "Resultado da Avaliação";
+  const backButtonText = isOlimpiada ? "Voltar às Olimpíadas" : "Voltar às Avaliações";
+  const backButtonPath = isOlimpiada ? "/aluno/olimpiadas" : "/aluno/avaliacoes";
+  const myItemsButtonText = isOlimpiada ? "Minhas Olimpíadas" : "Minhas Avaliações";
+  const myItemsButtonPath = isOlimpiada ? "/aluno/olimpiadas" : "/aluno/avaliacoes";
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold dark:text-gray-100">Resultado da Avaliação</h1>
+          <h1 className="text-2xl font-bold dark:text-gray-100">{pageTitle}</h1>
           <p className="text-muted-foreground">{evaluationTitle}</p>
         </div>
-        <Button variant="ghost" onClick={() => navigate("/aluno/avaliacoes")}>Minhas Avaliações</Button>
+        <Button variant="ghost" onClick={() => navigate(myItemsButtonPath)}>{myItemsButtonText}</Button>
       </div>
 
       <Card className="overflow-hidden">
-        <CardHeader className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white">
+        <CardHeader className={isOlimpiada 
+          ? "bg-gradient-to-r from-yellow-600 via-amber-600 to-orange-600 text-white"
+          : "bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white"
+        }>
           <div className="flex items-center justify-between">
             <CardTitle className="text-xl">Seu desempenho</CardTitle>
             {locked ? (
@@ -578,7 +592,7 @@ export default function StudentResult() {
                 Resultados disponíveis após finalizar a avaliação
               </p>
               <div className="mt-6">
-                <Button onClick={() => navigate("/aluno/avaliacoes")} className="bg-gray-800 hover:bg-gray-900">Voltar às Avaliações</Button>
+                <Button onClick={() => navigate(backButtonPath)} className="bg-gray-800 hover:bg-gray-900">{backButtonText}</Button>
               </div>
             </div>
           ) : (
@@ -588,8 +602,16 @@ export default function StudentResult() {
                 {/* Nota Circular - Elemento Principal */}
                 <div className="lg:col-span-1 flex justify-center">
                   <div className="relative flex items-center justify-center">
-                    <div className="absolute -z-10 h-56 w-56 rounded-full bg-gradient-to-tr from-purple-200 via-pink-200 to-yellow-100 blur-2xl" />
-                    <div className="relative h-48 w-48 rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 p-1">
+                    <div className={`absolute -z-10 h-56 w-56 rounded-full blur-2xl ${
+                      isOlimpiada 
+                        ? "bg-gradient-to-tr from-yellow-200 via-amber-200 to-orange-100" 
+                        : "bg-gradient-to-tr from-purple-200 via-pink-200 to-yellow-100"
+                    }`} />
+                    <div className={`relative h-48 w-48 rounded-full p-1 ${
+                      isOlimpiada 
+                        ? "bg-gradient-to-br from-yellow-600 to-amber-600" 
+                        : "bg-gradient-to-br from-indigo-600 to-purple-600"
+                    }`}>
                       <div className="h-full w-full rounded-full bg-white flex flex-col items-center justify-center">
                         <div className="text-xs uppercase tracking-wide text-gray-500">Sua Nota</div>
                         <div className={`text-5xl font-extrabold ${passedGood ? "text-green-600" : "text-orange-600"}`}>
@@ -692,7 +714,7 @@ export default function StudentResult() {
                   )}
                   
                   <div>
-                    <Button variant="outline" onClick={() => navigate("/aluno/avaliacoes")}>Voltar às avaliações</Button>
+                    <Button variant="outline" onClick={() => navigate(backButtonPath)}>{backButtonText}</Button>
                   </div>
                 </div>
               </div>

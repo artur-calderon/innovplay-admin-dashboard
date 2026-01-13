@@ -57,6 +57,8 @@ export interface TestData {
     total_questions?: number; // ✅ NOVO: Campo alternativo do backend
     instructions: string;
     questions: Question[];
+    startDateTime?: string; // ✅ NOVO: Data/hora de início (usado para validação de período em olimpíadas)
+    endDateTime?: string; // ✅ NOVO: Data/hora de término (usado para validação de período em olimpíadas)
 }
 
 export interface StudentAnswer {
@@ -109,6 +111,7 @@ export interface SessionStatusResponse {
 
 export interface SubmitTestRequest {
     session_id: string;
+    test_id?: string; // ✅ Incluir test_id para o backend identificar o tipo (OLIMPIADA vs AVALIACAO)
     answers: {
         question_id: string;
         answer: string;
