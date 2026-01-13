@@ -177,17 +177,30 @@ export default function OlimpiadaStudent() {
       // O backend pode retornar duration null para olimpíadas mas corretamente para avaliações
       const finalDuration = test.duration || olimpiada.duration || 60;
       
+      // ✅ CRÍTICO: Incluir startDateTime e endDateTime da olimpíada no testData
+      // Isso é necessário para que a validação de período funcione corretamente no useEvaluation
+      // As avaliações recebem esses campos diretamente do getTestData, mas olimpíadas precisam
+      // buscar de getOlimpiada que retorna em application_info
+      const startDateTime = olimpiada.startDateTime || olimpiada.application_info?.application;
+      const endDateTime = olimpiada.endDateTime || olimpiada.application_info?.expiration;
+      
       console.log('🔍 [OlimpiadaStudent] Preparando dados do teste:', {
         testId: test.id,
         testDuration: test.duration,
         olimpiadaDuration: olimpiada.duration,
         finalDuration: finalDuration,
-        willUseFallback: !test.duration
+        willUseFallback: !test.duration,
+        startDateTime: startDateTime,
+        endDateTime: endDateTime,
+        hasStartDateTime: !!startDateTime,
+        hasEndDateTime: !!endDateTime
       });
       
       setTestData({
         ...test,
-        duration: finalDuration // ✅ Garantir que duration nunca seja null/undefined
+        duration: finalDuration, // ✅ Garantir que duration nunca seja null/undefined
+        startDateTime: startDateTime, // ✅ CRÍTICO: Incluir data de início para validação de período
+        endDateTime: endDateTime // ✅ CRÍTICO: Incluir data de término para validação de período
       });
       
       // ✅ PADRONIZADO: Verificar se pode iniciar usando endpoint can-start (mesmo padrão de StudentEvaluations)

@@ -467,16 +467,13 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
   const loadActiveSessions = useCallback(async () => {
     setLoadingSessions(true);
     try {
-      // Tentar buscar sessões ativas do aluno
-      const response = await api.get('/student-answers/my-sessions');
-      const sessions = response.data?.sessions || response.data || [];
+      // Buscar todas as sessões do aluno usando a rota oficial do backend
+      const response = await api.get('/student-answers/student/sessions');
+      const sessions = response.data?.sessions || [];
       
       // Filtrar apenas sessões em andamento
-      const active = sessions.filter((s: any) => 
-        s.status === 'em_andamento' || 
-        s.status === 'in_progress' || 
-        s.status === 'active'
-      );
+      // A rota retorna status: 'em_andamento', 'finalizada', 'expirada', etc.
+      const active = sessions.filter((s: any) => s.status === 'em_andamento');
       
       setActiveSessions(active);
     } catch (error) {

@@ -199,6 +199,15 @@ export class OlimpiadasApiService {
           }
           result.availability.timezone = result.application_info.timezone;
           result.availability.time_zone = result.application_info.time_zone;
+          
+          // ✅ CRÍTICO: Mapear application e expiration para startDateTime e endDateTime
+          // Isso é necessário para que a validação de período funcione corretamente
+          if (result.application_info.application && !result.startDateTime) {
+            result.startDateTime = result.application_info.application;
+          }
+          if (result.application_info.expiration && !result.endDateTime) {
+            result.endDateTime = result.application_info.expiration;
+          }
         }
       }
       
