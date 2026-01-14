@@ -144,16 +144,10 @@ export class OlimpiadasApiService {
         allTests = response.data.data || response.data || [];
       }
       
-      // TEMPORÁRIO: Filtrar todas as avaliações do tipo PROVA para aparecerem como olimpíadas
-      // TODO: Voltar a filtrar apenas por título contendo [OLIMPÍADA] quando o sistema estiver estável
+      // Filtrar apenas avaliações do tipo OLIMPIADA
       const olimpiadas = allTests
         .filter((test: Evaluation) => {
-          const isOlimpiada = 
-            test.model === 'PROVA' ||
-            test.type === 'OLIMPIADA' || 
-            (test.title && (test.title.includes('[OLIMPÍADA]') || test.title.toUpperCase().includes('OLIMPÍADA')));
-          
-          return isOlimpiada;
+          return test.type === 'OLIMPIADA';
         })
         .map((test: Evaluation) => ({
           ...test,
@@ -444,52 +438,53 @@ export class OlimpiadasApiService {
     averageScore: number;
   }> {
     try {
-      const response = await api.get('/test-sessions/results', {
-        params: { test_id: olimpiadaId },
-      });
+      // Usar endpoint de evaluation-results que é mais estável e não tem problemas de CORS
+      const response = await api.get(`/evaluation-results/relatorio-detalhado/${olimpiadaId}`);
+
+      // O endpoint retorna { alunos: [...] } onde cada aluno tem os dados completos
+      const alunos = response.data?.alunos || [];
 
       // Transformar dados do backend para formato de olimpíada
-      const results: OlimpiadaResult[] = (response.data?.results || response.data || []).map(
-        (item: unknown) => ({
-          id: (item as { id?: string }).id || '',
+      const results: OlimpiadaResult[] = alunos
+        .filter((aluno: any) => aluno.status === 'concluida') // Apenas alunos que concluíram
+        .map((aluno: any) => ({
+          id: aluno.id || '',
           olimpiada_id: olimpiadaId,
-          student_id: (item as { student_id?: string }).student_id || '',
-          student_name: (item as { student_name?: string; nome?: string }).student_name || 
-                       (item as { nome?: string }).nome || '',
-          score: (item as { score?: number; nota?: number }).score || 
-                (item as { nota?: number }).nota || 0,
-          proficiency: (item as { proficiency?: number; proficiencia?: number }).proficiency || 
-                       (item as { proficiencia?: number }).proficiencia || 0,
-          classification: (item as { classification?: string; classificacao?: string }).classification || 
-                          (item as { classificacao?: string }).classificacao || '',
-          correct_answers: (item as { correct_answers?: number; acertos?: number }).correct_answers || 
-                          (item as { acertos?: number }).acertos || 0,
-          total_questions: (item as { total_questions?: number; total_questoes?: number }).total_questions || 
-                          (item as { total_questoes?: number }).total_questoes || 0,
-          completed_at: (item as { completed_at?: string; submitted_at?: string }).completed_at || 
-                        (item as { submitted_at?: string }).submitted_at || new Date().toISOString(),
-        })
-      );
+          student_id: aluno.id || '',
+          student_name: aluno.nome || '',
+          score: aluno.nota || 0,
+          proficiency: aluno.proficiencia || 0,
+          classification: aluno.classificacao || aluno.nivel || '',
+          correct_answers: aluno.acertos || 0,
+          total_questions: aluno.total_questoes || 0,
+          completed_at: aluno.completed_at || new Date().toISOString(),
+        }));
 
       // Criar ranking ordenado por score
       const ranking: OlimpiadaRanking[] = results
-        .map((result, index) => ({
-          position: index + 1,
-          student_id: result.student_id,
-          student_name: result.student_name,
-          score: result.score,
-          proficiency: result.proficiency,
-          classification: result.classification,
-          correct_answers: result.correct_answers,
-          total_questions: result.total_questions,
-        }))
+        .map((result) => {
+          const alunoOriginal = alunos.find((a: any) => a.id === result.student_id);
+          return {
+            position: 0, // Será atualizado após ordenação
+            student_id: result.student_id,
+            student_name: result.student_name,
+            student_avatar: alunoOriginal?.avatar || undefined,
+            school: alunoOriginal?.escola || undefined,
+            class: alunoOriginal?.turma || undefined,
+            score: result.score,
+            proficiency: result.proficiency,
+            classification: result.classification,
+            correct_answers: result.correct_answers,
+            total_questions: result.total_questions,
+          };
+        })
         .sort((a, b) => b.score - a.score)
         .map((item, index) => ({ ...item, position: index + 1 }));
 
       return {
         results,
         ranking,
-        totalStudents: response.data?.total_students || results.length,
+        totalStudents: alunos.length,
         completedStudents: results.length,
         averageScore: results.length > 0
           ? results.reduce((sum, r) => sum + r.score, 0) / results.length
@@ -545,46 +540,11 @@ export class OlimpiadasApiService {
         };
       }));
       
-      // TEMPORÁRIO: Filtrar todas as avaliações do tipo PROVA para aparecerem como olimpíadas
-      // TODO: Voltar a filtrar apenas por título contendo [OLIMPÍADA] quando o sistema estiver estável
+      // Filtrar apenas avaliações do tipo OLIMPIADA
       const olimpiadas = allTests
         .filter((test: unknown) => {
-          const testObj = test as { 
-            type?: string; 
-            title?: string; 
-            test_id?: string;
-            model?: string;
-          };
-          const title = testObj.title || '';
-          const type = testObj.type || '';
-          const model = testObj.model || '';
-          
-          // TEMPORÁRIO: Aceitar todas as avaliações do tipo PROVA
-          const isOlimpiada = 
-            model === 'PROVA' ||
-            type === 'OLIMPIADA' || 
-            title.toUpperCase().includes('[OLIMPÍADA]') || 
-            title.toUpperCase().includes('OLIMPÍADA') ||
-            title.toUpperCase().includes('OLIMPIADA');
-          
-          if (isOlimpiada) {
-            console.log('✅ Olimpíada encontrada:', {
-              test_id: testObj.test_id,
-              title: title,
-              type: type,
-              model: model
-            });
-          } else {
-            // Log para debug - ver quais testes estão sendo ignorados
-            console.log('❌ Não é olimpíada:', {
-              test_id: testObj.test_id,
-              title: title.substring(0, 50),
-              type: type,
-              model: model
-            });
-          }
-          
-          return isOlimpiada;
+          const testObj = test as { type?: string };
+          return testObj.type === 'OLIMPIADA';
         })
         .map((test: unknown) => {
           const testObj = test as {

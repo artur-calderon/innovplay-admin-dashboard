@@ -126,4 +126,17 @@ export interface OlimpiadaCardData {
   completedStudents?: number;
   subjects?: Subject[];
   created_at?: string;
+  // Informações adicionais para filtros
+  estado?: string | null;
+  municipio?: string | null;
+  serie?: string | null;
+  turma?: string | null;
+  // Arrays para permitir múltiplos valores (quando olimpíada tem várias turmas)
+  estados?: string[];
+  municipios?: string[];
+  series?: string[];
+  turmas?: string[];
+  classes?: string[];
+  schools?: string[];
+  municipalities?: string[];
 }

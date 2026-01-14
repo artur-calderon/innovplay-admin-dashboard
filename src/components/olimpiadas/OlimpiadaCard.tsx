@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,17 +11,21 @@ import {
   CheckCircle2, 
   Clock, 
   Eye,
-  Play
+  Play,
+  Trash2,
+  RefreshCw
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { EvaluationResultsApiService } from '@/services/evaluationResultsApi';
 
 interface OlimpiadaCardProps {
   olimpiada: OlimpiadaCardData;
   onView?: (id: string) => void;
   onViewResults?: (id: string) => void;
   onApply?: (id: string) => void;
+  onDelete?: (id: string) => void;
   className?: string;
 }
 
@@ -71,10 +75,80 @@ export function OlimpiadaCard({
   onView,
   onViewResults,
   onApply,
+  onDelete,
   className,
 }: OlimpiadaCardProps) {
   const statusConfig = getStatusConfig(olimpiada.status);
   const StatusIcon = statusConfig.icon;
+  const [participantsCount, setParticipantsCount] = useState(olimpiada.completedStudents || 0);
+  const [isLoadingParticipants, setIsLoadingParticipants] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+
+  // Estado para total de alunos também
+  const [totalCount, setTotalCount] = useState(olimpiada.totalStudents || 0);
+
+  // Inicializar estados com valores da prop
+  useEffect(() => {
+    setParticipantsCount(olimpiada.completedStudents || 0);
+    setTotalCount(olimpiada.totalStudents || 0);
+  }, [olimpiada.completedStudents, olimpiada.totalStudents]);
+
+  // Atualizar participantes em tempo real para olimpíadas ativas ou quando não há dados
+  useEffect(() => {
+    // Buscar dados sempre para garantir que temos os valores corretos
+    // 1. Olimpíada está ativa (atualização em tempo real)
+    // 2. Não tem dados de participantes ou total (buscar uma vez para preencher)
+    // 3. Olimpíada está concluída (mostrar dados finais)
+    const shouldFetch = olimpiada.status === 'active' || 
+                       olimpiada.status === 'completed' ||
+                       (olimpiada.completedStudents === 0 && olimpiada.totalStudents === 0);
+
+    const fetchParticipants = async () => {
+      try {
+        setIsLoadingParticipants(true);
+        const detailedReport = await EvaluationResultsApiService.getDetailedReport(olimpiada.id);
+        if (detailedReport?.alunos && Array.isArray(detailedReport.alunos)) {
+          const alunos = detailedReport.alunos;
+          const total = alunos.length;
+          const completed = alunos.filter((a: any) => a.status === 'concluida').length;
+          
+          // Sempre atualizar, mesmo se for 0
+          setParticipantsCount(completed);
+          setTotalCount(total);
+          setLastUpdate(new Date());
+        } else {
+          // Se não houver alunos no relatório, manter valores originais
+          console.log(`Olimpíada ${olimpiada.id} não possui dados de alunos ainda`);
+        }
+      } catch (error) {
+        // Se falhar (ex: olimpíada ainda não foi aplicada), manter valores originais
+        const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+        // Não logar erro se for 404 ou se a olimpíada ainda não foi aplicada
+        if (!errorMessage.includes('404') && !errorMessage.includes('não possui')) {
+          console.warn(`Erro ao buscar participantes para olimpíada ${olimpiada.id}:`, error);
+        }
+        // Não resetar valores em caso de erro para não perder dados já carregados
+      } finally {
+        setIsLoadingParticipants(false);
+      }
+    };
+
+    if (shouldFetch) {
+      // Buscar imediatamente
+      fetchParticipants();
+
+      // Atualizar a cada 30 segundos apenas para olimpíadas ativas
+      if (olimpiada.status === 'active') {
+        const interval = setInterval(fetchParticipants, 30000);
+        return () => clearInterval(interval);
+      }
+    }
+  }, [olimpiada.id, olimpiada.status]);
+
+  // Usar o contador atualizado se disponível, senão usar o valor original
+  // Priorizar valores atualizados, mas manter valores originais se atualizados forem 0 e originais não
+  const displayParticipants = participantsCount >= 0 ? participantsCount : (olimpiada.completedStudents || 0);
+  const displayTotal = totalCount > 0 ? totalCount : (olimpiada.totalStudents || 0);
 
   return (
     <Card
@@ -84,6 +158,7 @@ export function OlimpiadaCard({
         'dark:from-yellow-950/20 dark:via-amber-950/20 dark:to-orange-950/20',
         'border-yellow-200 dark:border-yellow-800',
         'w-full',
+        'flex flex-col',
         className
       )}
     >
@@ -92,36 +167,38 @@ export function OlimpiadaCard({
         <div className="absolute top-2 right-2 sm:top-4 sm:right-4 text-4xl sm:text-6xl">🏆</div>
       </div>
 
-      <CardHeader className="relative">
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
-              <Trophy className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0" />
-              <CardTitle className="text-lg sm:text-xl font-bold text-yellow-900 dark:text-yellow-100 truncate">
-                {olimpiada.title}
-              </CardTitle>
+      <CardHeader className="relative flex-shrink-0">
+        <div className="flex flex-col gap-2 w-full">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-2">
+                <Trophy className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0" />
+                <CardTitle className="text-base sm:text-lg md:text-xl font-bold text-yellow-900 dark:text-yellow-100 line-clamp-2 break-words">
+                  {olimpiada.title}
+                </CardTitle>
+              </div>
+              {olimpiada.description && (
+                <CardDescription className="text-xs sm:text-sm text-yellow-800/80 dark:text-yellow-200/80 line-clamp-2 break-words">
+                  {olimpiada.description}
+                </CardDescription>
+              )}
             </div>
-            {olimpiada.description && (
-              <CardDescription className="text-xs sm:text-sm text-yellow-800/80 dark:text-yellow-200/80 line-clamp-2">
-                {olimpiada.description}
-              </CardDescription>
-            )}
+            <Badge
+              className={cn(
+                'flex items-center gap-1 flex-shrink-0',
+                statusConfig.color,
+                'text-white border-0 text-xs'
+              )}
+            >
+              <StatusIcon className="h-3 w-3" />
+              <span className="hidden xs:inline">{statusConfig.label}</span>
+              <span className="xs:hidden">{statusConfig.label.split(' ')[0]}</span>
+            </Badge>
           </div>
-          <Badge
-            className={cn(
-              'flex items-center gap-1 w-fit',
-              statusConfig.color,
-              'text-white border-0 text-xs sm:text-sm'
-            )}
-          >
-            <StatusIcon className="h-3 w-3" />
-            <span className="hidden sm:inline">{statusConfig.label}</span>
-            <span className="sm:hidden">{statusConfig.label.split(' ')[0]}</span>
-          </Badge>
         </div>
       </CardHeader>
 
-      <CardContent className="relative space-y-4">
+      <CardContent className="relative space-y-4 flex-1">
         {/* Subjects */}
         {olimpiada.subjects && olimpiada.subjects.length > 0 && (
           <div className="flex flex-wrap gap-2">
@@ -146,7 +223,7 @@ export function OlimpiadaCard({
         )}
 
         {/* Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
           {olimpiada.startDateTime && (
             <div className="flex items-center gap-2 text-xs sm:text-sm">
               <Calendar className="h-3 w-3 sm:h-4 sm:w-4 text-yellow-600 dark:text-yellow-400 flex-shrink-0" />
@@ -158,59 +235,83 @@ export function OlimpiadaCard({
           <div className="flex items-center gap-2 text-xs sm:text-sm">
             <Users className="h-3 w-3 sm:h-4 sm:w-4 text-yellow-600 dark:text-yellow-400 flex-shrink-0" />
             <span className="text-yellow-900 dark:text-yellow-100">
-              {olimpiada.completedStudents || 0}/{olimpiada.totalStudents || 0} alunos
+              {isLoadingParticipants && displayTotal === 0 ? (
+                <span className="text-muted-foreground">Carregando...</span>
+              ) : (
+                `${displayParticipants}/${displayTotal} alunos`
+              )}
             </span>
+            {(olimpiada.status === 'active' || isLoadingParticipants) && (
+              <div className="flex items-center gap-1 ml-1" title={`Atualizado em tempo real${lastUpdate ? ` - ${format(lastUpdate, "HH:mm:ss")}` : ''}`}>
+                {isLoadingParticipants ? (
+                  <RefreshCw className="h-3 w-3 text-yellow-600 dark:text-yellow-400 animate-spin" />
+                ) : (
+                  olimpiada.status === 'active' && (
+                    <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                  )
+                )}
+              </div>
+            )}
           </div>
         </div>
 
         {/* Progress bar */}
-        {olimpiada.totalStudents && olimpiada.totalStudents > 0 && (
+        {displayTotal > 0 ? (
           <div className="space-y-1">
             <div className="flex justify-between text-xs text-yellow-800 dark:text-yellow-200">
               <span>Progresso</span>
               <span>
-                {Math.round(
-                  ((olimpiada.completedStudents || 0) / olimpiada.totalStudents) * 100
-                )}%
+                {Math.round((displayParticipants / displayTotal) * 100)}%
               </span>
             </div>
             <div className="h-2 bg-yellow-200 dark:bg-yellow-900 rounded-full overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-yellow-400 to-amber-500 transition-all duration-300"
                 style={{
-                  width: `${((olimpiada.completedStudents || 0) / olimpiada.totalStudents) * 100}%`,
+                  width: `${Math.min((displayParticipants / displayTotal) * 100, 100)}%`,
                 }}
               />
             </div>
           </div>
-        )}
+        ) : isLoadingParticipants ? (
+          <div className="space-y-1">
+            <div className="flex justify-between text-xs text-yellow-800 dark:text-yellow-200">
+              <span>Progresso</span>
+              <span className="text-muted-foreground">Carregando...</span>
+            </div>
+            <div className="h-2 bg-yellow-200 dark:bg-yellow-900 rounded-full overflow-hidden">
+              <div className="h-full bg-yellow-300 dark:bg-yellow-800 animate-pulse" style={{ width: '50%' }} />
+            </div>
+          </div>
+        ) : null}
       </CardContent>
 
-      <CardFooter className="relative flex flex-col gap-3">
+      <CardFooter className="relative flex flex-col gap-2 sm:gap-3 flex-shrink-0">
         {/* Botões principais (Ver e Resultados) */}
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-2 w-full">
           {onView && (
             <Button
-              variant="outline"
-              size="default"
+              size="sm"
               onClick={() => onView(olimpiada.id)}
-              className="border-yellow-300 dark:border-yellow-700 text-yellow-900 dark:text-yellow-100 hover:bg-yellow-100 dark:hover:bg-yellow-900/30"
+              className="bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-white font-semibold shadow-md border-0 text-xs sm:text-sm"
             >
-              <Eye className="h-4 w-4 mr-2" />
-              Ver
+              <Eye className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span className="hidden xs:inline">Ver</span>
+              <span className="xs:hidden">Ver</span>
             </Button>
           )}
           {onViewResults && (
             <Button
               variant="outline"
-              size="default"
+              size="sm"
               onClick={() => onViewResults(olimpiada.id)}
-              className="border-yellow-300 dark:border-yellow-700 text-yellow-900 dark:text-yellow-100 hover:bg-yellow-100 dark:hover:bg-yellow-900/30"
-              disabled={(olimpiada.completedStudents || 0) === 0}
-              title={(olimpiada.completedStudents || 0) === 0 ? 'Nenhum resultado disponível ainda' : 'Ver resultados'}
+              className="border-yellow-300 dark:border-yellow-700 text-yellow-900 dark:text-yellow-100 hover:bg-yellow-100 dark:hover:bg-yellow-900/30 text-xs sm:text-sm"
+              disabled={displayParticipants === 0}
+              title={displayParticipants === 0 ? 'Nenhum resultado disponível ainda' : 'Ver resultados'}
             >
-              <Medal className="h-4 w-4 mr-2" />
-              Resultados
+              <Medal className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span className="hidden xs:inline">Resultados</span>
+              <span className="xs:hidden">Res.</span>
             </Button>
           )}
         </div>
@@ -218,12 +319,28 @@ export function OlimpiadaCard({
         {/* Botão Aplicar em linha separada e maior */}
         {onApply && olimpiada.status === 'scheduled' && (
           <Button
-            size="lg"
+            size="default"
             onClick={() => onApply(olimpiada.id)}
-            className="w-full bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-white font-semibold shadow-md"
+            className="w-full bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-white font-semibold shadow-md text-xs sm:text-sm"
           >
-            <Play className="h-5 w-5 mr-2" />
-            Aplicar Olimpíada
+            <Play className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+            <span className="hidden sm:inline">Aplicar Olimpíada</span>
+            <span className="sm:hidden">Aplicar</span>
+          </Button>
+        )}
+
+        {/* Botão Deletar */}
+        {onDelete && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onDelete(olimpiada.id)}
+            className="w-full h-8 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-700 dark:hover:text-red-300 text-xs"
+            title="Excluir olimpíada"
+          >
+            <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
+            <span className="hidden xs:inline">Excluir</span>
+            <span className="xs:hidden">Del</span>
           </Button>
         )}
       </CardFooter>
