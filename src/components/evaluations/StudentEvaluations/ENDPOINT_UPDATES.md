@@ -79,7 +79,7 @@ static async checkActiveSession(testId: string): Promise<TestSession | null> {
 ```typescript
 // NOVA FUNÇÃO
 static async getMySessions(): Promise<TestSession[]> {
-  const response = await api.get('/student-answers/my-sessions');
+  const response = await api.get('/student-answers/student/sessions');
   return response.data.sessions || [];
 }
 ```
@@ -153,7 +153,7 @@ const handleConfirmStart = async () => {
 
 ### **3. Buscar Sessões do Usuário**
 - **Endpoint Antigo**: `GET /student-answers/students/{studentId}/sessions`
-- **Endpoint Novo**: `GET /student-answers/my-sessions`
+- **Endpoint Novo**: `GET /student-answers/student/sessions`
 
 ## 🔧 **ENDPOINTS QUE NÃO MUDARAM**
 
@@ -203,7 +203,7 @@ const session = await EvaluationApiService.checkActiveSession("test-123");
 ```typescript
 // Verificar se retorna sessões do usuário logado
 const sessions = await EvaluationApiService.getMySessions();
-// Deve fazer requisição para: GET /student-answers/my-sessions
+// Deve fazer requisição para: GET /student-answers/student/sessions
 ```
 
 ## ⚠️ **PONTOS DE ATENÇÃO**

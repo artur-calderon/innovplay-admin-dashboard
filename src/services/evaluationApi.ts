@@ -97,8 +97,12 @@ export class EvaluationApiService {
             console.log('📊 Estrutura da resposta:', {
                 id: response.data.id,
                 title: response.data.title,
+                type: response.data.type, // ✅ Verificar se é OLIMPIADA
                 subject: response.data.subject,
                 duration: response.data.duration,
+                durationIsNull: response.data.duration === null, // ✅ Diagnosticar duration null
+                durationIsUndefined: response.data.duration === undefined, // ✅ Diagnosticar duration undefined
+                durationValue: response.data.duration,
                 totalQuestions: response.data.totalQuestions,
                 total_questions: response.data.total_questions, // Verificar se existe este campo
                 questions: response.data.questions,
@@ -211,10 +215,39 @@ export class EvaluationApiService {
         }
     }
 
+    // ✅ TEMPORÁRIO: Encerrar sessão sem submeter respostas
+    static async endSession(sessionId: string, reason: 'finished' | 'timeout' | 'manual' = 'manual'): Promise<{
+        message: string;
+        session_id: string;
+        status: string;
+        submitted_at: string;
+        duration_minutes: number;
+        total_questions: number;
+        correct_answers: number;
+        score: number;
+        grade: number;
+    }> {
+        console.log('Encerrando sessão sem submeter respostas:', { sessionId, reason });
+
+        try {
+            const response = await api.post(`/student-answers/sessions/${sessionId}/end`, {
+                reason
+            });
+            console.log('Sessão encerrada com sucesso:', response.data);
+            return response.data;
+        } catch (error: unknown) {
+            const apiError = error as { response?: { data?: unknown; status?: number } };
+            console.error('Erro ao encerrar sessão:', error);
+            console.error('Detalhes do erro:', apiError.response?.data);
+            throw error;
+        }
+    }
+
     // Finalizar teste
     static async submitTest(data: SubmitTestRequest): Promise<SubmitTestResponse> {
         console.log('🚀 Enviando dados para finalizar teste:', {
             sessionId: data.session_id,
+            testId: data.test_id,
             answersCount: data.answers?.length || 0,
             endpoint: '/student-answers/submit'
         });
@@ -236,7 +269,16 @@ export class EvaluationApiService {
                     abortController?.abort();
                 }, timeoutMs);
 
-                const response = await api.post('/student-answers/submit', data, {
+                // ✅ Montar payload com test_id se disponível
+                const payload = {
+                    session_id: data.session_id,
+                    ...(data.test_id && { test_id: data.test_id }), // Incluir test_id para o backend identificar o tipo
+                    answers: data.answers
+                };
+
+                console.log('📤 Payload completo sendo enviado:', payload);
+
+                const response = await api.post('/student-answers/submit', payload, {
                     signal: abortController.signal,
                     timeout: timeoutMs
                 });

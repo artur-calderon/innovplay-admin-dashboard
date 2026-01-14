@@ -405,6 +405,47 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             });
             return;
         }
+
+        // ✅ NOVO: Validar período de disponibilidade antes de submeter
+        if (testData.startDateTime && testData.endDateTime) {
+            const now = new Date();
+            const startDate = new Date(testData.startDateTime);
+            const endDate = new Date(testData.endDateTime);
+
+            console.log('🔍 Validação de período de disponibilidade:', {
+                now: now.toISOString(),
+                startDateTime: testData.startDateTime,
+                endDateTime: testData.endDateTime,
+                startDate: startDate.toISOString(),
+                endDate: endDate.toISOString(),
+                isAfterStart: now >= startDate,
+                isBeforeEnd: now <= endDate,
+                isPeriodValid: now >= startDate && now <= endDate
+            });
+
+            if (now < startDate) {
+                console.error('❌ Avaliação ainda não começou');
+                toast({
+                    title: "⏰ Avaliação não iniciada",
+                    description: "O período de disponibilidade desta avaliação ainda não começou.",
+                    variant: "destructive",
+                });
+                setEvaluationState('error');
+                return;
+            }
+
+            if (now > endDate) {
+                console.error('❌ Período de disponibilidade expirado');
+                toast({
+                    title: "⏰ Período expirado",
+                    description: "O período de disponibilidade desta avaliação expirou. Não é possível submeter respostas.",
+                    variant: "destructive",
+                });
+                setIsTimeUp(true);
+                setEvaluationState('expired');
+                return;
+            }
+        }
         
         // ✅ MELHORADO: Validação completa dos dados antes do envio
         if (!answers || Object.keys(answers).length === 0) {
@@ -459,9 +500,20 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             testId: testId
         });
 
-        // ✅ NOVO: Validar sessão antes de submeter
+        // ✅ NOVO: Validar sessão e sincronizar timer com backend antes de submeter
         try {
             const sessionInfo = await EvaluationApiService.getTestSessionInfo(testId);
+            
+            console.log('🔍 Validação de sessão antes de submeter:', {
+                sessionExists: sessionInfo.session_exists,
+                sessionId: sessionInfo.session_id,
+                testId: sessionInfo.test_id,
+                status: sessionInfo.status,
+                isExpired: sessionInfo.is_expired,
+                remainingTimeMinutes: sessionInfo.remaining_time_minutes,
+                localTimeRemaining: Math.floor(timeRemaining / 60)
+            });
+            
             if (sessionInfo.session_exists && sessionInfo.test_id && sessionInfo.test_id !== testId) {
                 console.error('❌ Sessão não pertence ao teste atual antes de submeter:', {
                     requestedTestId: testId,
@@ -476,11 +528,29 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 setEvaluationState('error');
                 return;
             }
+            
             if (sessionInfo.session_exists && sessionInfo.session_id !== session.session_id) {
                 console.warn('⚠️ Session ID não corresponde:', {
                     currentSessionId: session.session_id,
                     backendSessionId: sessionInfo.session_id
                 });
+            }
+            
+            // ✅ NOVO: Verificar se a sessão expirou no backend
+            if (sessionInfo.session_exists && (sessionInfo.is_expired || sessionInfo.remaining_time_minutes <= 0)) {
+                console.error('❌ Sessão expirada no backend:', {
+                    isExpired: sessionInfo.is_expired,
+                    remainingTimeMinutes: sessionInfo.remaining_time_minutes,
+                    sessionId: sessionInfo.session_id
+                });
+                toast({
+                    title: "⏰ Tempo esgotado",
+                    description: "O tempo limite foi excedido. Não é possível submeter respostas.",
+                    variant: "destructive",
+                });
+                setIsTimeUp(true);
+                setEvaluationState('expired');
+                return;
             }
         } catch (error) {
             // Se getTestSessionInfo falhar (404), pode ser que a sessão não existe mais
@@ -493,6 +563,18 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                     variant: "destructive",
                 });
                 setEvaluationState('error');
+                return;
+            }
+            // ✅ NOVO: Parar se receber erro 410 (sessão expirada)
+            if (apiError.response?.status === 410) {
+                console.error('❌ Sessão expirada (410) ao verificar antes de submeter');
+                toast({
+                    title: "⏰ Sessão expirada",
+                    description: "A sessão expirou. Não é possível submeter respostas.",
+                    variant: "destructive",
+                });
+                setIsTimeUp(true);
+                setEvaluationState('expired');
                 return;
             }
             // Para outros erros, continuar tentando submeter
@@ -549,6 +631,7 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
             
             results = await EvaluationApiService.submitTest({
                 session_id: session.session_id,
+                test_id: testId, // ✅ Incluir test_id para o backend identificar o tipo
                 answers: answersArray
             });
 
@@ -658,6 +741,17 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                 // ✅ MELHORADO: Tratamento específico para erro 410 (sessão expirada ou inválida)
                 console.log('⚠️ Sessão expirada (410) - avaliação ou tempo limite expirado');
                 
+                // ✅ NOVO: Parar TODOS os timers imediatamente
+                console.log('🛑 Parando todos os timers após erro 410...');
+                if (timerRef.current) {
+                    clearInterval(timerRef.current);
+                    timerRef.current = null;
+                }
+                if (syncTimerRef.current) {
+                    clearInterval(syncTimerRef.current);
+                    syncTimerRef.current = null;
+                }
+                
                 // ✅ NOVO: Log detalhado da resposta de erro
                 console.log('🔍 Detalhes do erro 410:', {
                     errorData: errorData,
@@ -724,17 +818,15 @@ export function useEvaluation({ testId }: UseEvaluationProps) {
                     variant: "destructive",
                 });
                 
-                // Marcar como expirada e não permitir nova tentativa
+                // ✅ MELHORADO: Parar timers, marcar como expirada e limpar dados
                 setIsTimeUp(true);
                 setEvaluationState('expired');
                 
-                // ✅ NOVO: Se for erro de sessão de outro teste, limpar dados
-                if (isSessionMismatch) {
-                    localStorage.removeItem(`test_session_${testId}`);
-                    localStorage.removeItem(`test_answers_${testId}`);
-                    sessionStorage.removeItem("current_evaluation");
-                    sessionStorage.removeItem("evaluation_session");
-                }
+                // Limpar dados do localStorage
+                localStorage.removeItem(`test_session_${testId}`);
+                localStorage.removeItem(`test_answers_${testId}`);
+                sessionStorage.removeItem("current_evaluation");
+                sessionStorage.removeItem("evaluation_session");
                 
                 return;
             } else if (isNetworkError || isTimeoutError) {

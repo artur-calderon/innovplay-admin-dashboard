@@ -13,6 +13,15 @@ export interface Olimpiada extends Omit<Evaluation, 'type'> {
   // Campos de timezone para formatação correta de datas
   timeZone?: string;
   applicationTimeZone?: string;
+  // ✅ NOVO: application_info retornado pelo backend com datas de aplicação
+  application_info?: {
+    application?: string; // Data/hora de início
+    expiration?: string; // Data/hora de término
+    timezone?: string;
+    time_zone?: string;
+    class_test_id?: string;
+    current_time?: string;
+  };
   // ✅ PADRONIZADO: Usar mesma estrutura de availability e student_status que avaliações
   availability?: {
     is_available: boolean;
