@@ -105,54 +105,8 @@ export function CreateOlimpiadaModal({
           api.get('/city/states'),
         ]);
         
-        // Filtrar cursos que têm turmas
-        // Buscar todas as escolas para verificar quais cursos têm turmas
-        const allCourses = coursesRes.data || [];
-        const coursesWithClasses = new Set<string>();
-        
-        try {
-          // Buscar todas as escolas (ou pelo menos algumas para verificar)
-          // Como não temos município ainda, vamos buscar por estado ou usar endpoint de séries
-          // Alternativa: buscar séries e verificar quais cursos têm séries com turmas
-          const allGradesRes = await api.get('/grades/');
-          const allGrades = allGradesRes.data || [];
-          
-          // Para cada série, verificar se tem escolas com turmas
-          for (const grade of allGrades) {
-            try {
-              const schoolsRes = await api.get(`/school/by-grade/${grade.id}`);
-              if (schoolsRes.data?.schools && schoolsRes.data.schools.length > 0) {
-                // Esta série tem turmas, então o curso dela também tem
-                if (grade.education_stage_id) {
-                  coursesWithClasses.add(grade.education_stage_id);
-                }
-              }
-            } catch (err: any) {
-              // Ignorar silenciosamente erros 404 (séries sem turmas)
-              // A API converte 404 em Error('Recurso não encontrado no servidor.')
-              const errorMessage = err?.message || '';
-              const isNotFound = err?.response?.status === 404 || 
-                                 errorMessage.includes('não encontrado') || 
-                                 errorMessage.includes('not found');
-              
-              // Apenas logar erros inesperados (não 404)
-              if (!isNotFound) {
-                console.warn(`Erro ao verificar série ${grade.id}:`, err);
-              }
-            }
-          }
-        } catch (err) {
-          console.warn('Erro ao verificar cursos com turmas, usando todos:', err);
-          // Se der erro, usar todos os cursos
-          allCourses.forEach((c: Course) => coursesWithClasses.add(c.id));
-        }
-        
-        // Filtrar apenas cursos que têm turmas
-        const filteredCourses = allCourses.filter((c: Course) => 
-          coursesWithClasses.has(c.id)
-        );
-        
-        setCourses(filteredCourses);
+        // Usar todos os cursos disponíveis (sem verificação de turmas para evitar muitas requisições)
+        setCourses(coursesRes.data || []);
         setAllSubjects(subjectsRes.data || []);
         setStates(statesRes.data || []);
         
@@ -176,7 +130,6 @@ export function CreateOlimpiadaModal({
   }, [isOpen, olimpiadaId, toast]);
 
   // Carregar séries quando curso mudar
-  // Filtrar apenas séries que têm turmas
   useEffect(() => {
     if (!course) {
       setGrades([]);
@@ -191,34 +144,8 @@ export function CreateOlimpiadaModal({
     const loadGrades = async () => {
       try {
         const response = await api.get(`/grades/education-stage/${course}`);
-        const allGrades = response.data || [];
-        
-        // Filtrar apenas séries que têm turmas (escolas com turmas daquela série)
-        const gradesWithClasses: Grade[] = [];
-        
-        for (const grade of allGrades) {
-          try {
-            const schoolsRes = await api.get(`/school/by-grade/${grade.id}`);
-            if (schoolsRes.data?.schools && schoolsRes.data.schools.length > 0) {
-              // Esta série tem turmas
-              gradesWithClasses.push(grade);
-            }
-          } catch (err: any) {
-            // Ignorar silenciosamente erros 404 (séries sem turmas)
-            // A API converte 404 em Error('Recurso não encontrado no servidor.')
-            const errorMessage = err?.message || '';
-            const isNotFound = err?.response?.status === 404 || 
-                               errorMessage.includes('não encontrado') || 
-                               errorMessage.includes('not found');
-            
-            // Apenas logar erros inesperados (não 404)
-            if (!isNotFound) {
-              console.warn(`Erro ao verificar série ${grade.id}:`, err);
-            }
-          }
-        }
-        
-        setGrades(gradesWithClasses);
+        // Usar todas as séries do curso (sem verificação de turmas para evitar muitas requisições)
+        setGrades(response.data || []);
       } catch (err) {
         console.error('Erro ao carregar séries:', err);
         setGrades([]);

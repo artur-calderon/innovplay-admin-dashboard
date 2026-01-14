@@ -167,7 +167,24 @@ export default function ViewEvaluation() {
     fetchEvaluation();
   }, [id, toast]);
 
+  // Função auxiliar para verificar se é uma olimpíada
+  const isOlimpiada = () => {
+    return evaluation?.type === 'OLIMPIADA' || 
+           evaluation?.title?.includes('[OLIMPÍADA]') ||
+           evaluation?.title?.toUpperCase().includes('OLIMPÍADA');
+  };
+
+  // Função auxiliar para navegar de volta baseado no tipo
+  const navigateBack = () => {
+    if (isOlimpiada()) {
+      navigate("/app/olimpiadas");
+    } else {
+      navigate("/app/avaliacoes");
+    }
+  };
+
   const handleEdit = () => {
+    // Para olimpíadas, ainda usar a rota de edição de avaliação (mesma estrutura)
     navigate(`/app/avaliacao/${id}/editar`);
   };
 
@@ -190,12 +207,61 @@ export default function ViewEvaluation() {
         description: SUCCESS_MESSAGES.EVALUATION_DELETED,
       });
 
-      navigate("/app/avaliacoes");
-    } catch (error) {
-      console.error("Erro ao excluir avaliação:", error);
+      navigateBack();
+    } catch (error: unknown) {
+      const apiError = error as { 
+        message?: string; 
+        response?: { 
+          status?: number; 
+          data?: { 
+            error?: string;
+            details?: string;
+          } 
+        } 
+      };
+      
+      console.error("❌ Erro detalhado ao excluir:", {
+        error,
+        message: apiError.message,
+        response: apiError.response,
+        status: apiError.response?.status,
+        data: apiError.response?.data
+      });
+
+      let errorMessage = ERROR_MESSAGES.EVALUATION_DELETE_FAILED;
+
+      if (apiError.response?.status === 404) {
+        errorMessage = ERROR_MESSAGES.DATA_NOT_FOUND;
+      } else if (apiError.response?.status === 403) {
+        errorMessage = ERROR_MESSAGES.FORBIDDEN;
+      } else if (apiError.response?.status === 401) {
+        errorMessage = ERROR_MESSAGES.UNAUTHORIZED;
+      } else if (apiError.response?.status === 500) {
+        // Erro interno do servidor - pode ser problema de banco de dados
+        const errorData = apiError.response?.data as { error?: string; details?: string };
+        const errorDetails = errorData?.details || '';
+        const errorText = errorData?.error || '';
+        
+        // Verificar se é erro de tabela não existente (especificamente competition_results)
+        if (errorDetails.includes('does not exist') || 
+            errorDetails.includes('relation') || 
+            errorDetails.includes('competition_results') ||
+            errorText.includes('competition_results')) {
+          errorMessage = 'Erro no banco de dados. Entre em contato com o suporte técnico.';
+        } else if (errorData?.error) {
+          errorMessage = errorData.error;
+        } else {
+          errorMessage = 'Erro interno do servidor. Tente novamente mais tarde.';
+        }
+      } else if (apiError.response?.data?.error) {
+        errorMessage = apiError.response.data.error;
+      } else if (apiError.message) {
+        errorMessage = apiError.message;
+      }
+
       toast({
         title: "Erro",
-        description: ERROR_MESSAGES.EVALUATION_DELETE_FAILED,
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -205,7 +271,7 @@ export default function ViewEvaluation() {
   };
 
   const handleBack = () => {
-    navigate("/app/avaliacoes");
+    navigateBack();
   };
 
   const handleStartEvaluation = () => {
@@ -267,7 +333,7 @@ export default function ViewEvaluation() {
 
       toast({
         title: SUCCESS_MESSAGES.EVALUATION_APPLIED,
-        description: `A avaliação "${evaluation.title}" foi aplicada para ${classIds.length} turma(s) e ficará disponível no horário configurado.`,
+        description: `A ${entityName} "${evaluation.title}" foi aplicada para ${classIds.length} turma(s) e ficará disponível no horário configurado.`,
       });
 
       setShowStartEvaluationModal(false);
@@ -469,15 +535,22 @@ export default function ViewEvaluation() {
     );
   }
 
+  // Verificar se é uma olimpíada para adaptar textos (mesmo que evaluation seja null, podemos verificar pelo ID na URL)
+  // Para o caso de evaluation null, assumir que não é olimpíada (padrão)
+  const isOlimpiadaType = evaluation ? isOlimpiada() : false;
+  const entityName = isOlimpiadaType ? 'olimpíada' : 'avaliação';
+  const entityNameCapitalized = isOlimpiadaType ? 'Olimpíada' : 'Avaliação';
+  const entityNamePlural = isOlimpiadaType ? 'Olimpíadas' : 'Avaliações';
+
   if (!evaluation) {
     return (
       <div className="container mx-auto px-2 md:px-4 py-4 md:py-6">
         <div className="text-center py-12">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Avaliação não encontrada</h2>
-          <p className="text-gray-600 dark:text-gray-400 mb-4">A avaliação que você está procurando não foi encontrada.</p>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">{entityNameCapitalized} não encontrada</h2>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">A {entityName} que você está procurando não foi encontrada.</p>
           <Button onClick={handleBack}>
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Voltar para Avaliações
+            Voltar para {entityNamePlural}
           </Button>
         </div>
       </div>
@@ -499,7 +572,7 @@ export default function ViewEvaluation() {
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink onClick={handleBack} className="cursor-pointer">
-              Avaliações
+              {entityNamePlural}
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
@@ -525,7 +598,7 @@ export default function ViewEvaluation() {
           </div>
           <h1 className="text-xl md:text-2xl font-bold dark:text-gray-100">{evaluation.title}</h1>
           <p className="text-muted-foreground">
-            Visualize os detalhes e questões da avaliação
+            Visualize os detalhes e questões da {entityName}
           </p>
         </div>
         
@@ -534,10 +607,13 @@ export default function ViewEvaluation() {
             variant="default" 
             size="sm" 
             onClick={handleStartEvaluation}
-            className="bg-green-600 hover:bg-green-700 text-white"
+            className={isOlimpiadaType 
+              ? "bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-white" 
+              : "bg-green-600 hover:bg-green-700 text-white"
+            }
           >
             <Play className="h-4 w-4 mr-2" />
-            Aplicar Avaliação
+            {isOlimpiadaType ? 'Aplicar Olimpíada' : 'Aplicar Avaliação'}
           </Button>
           <Button variant="outline" size="sm" onClick={handleEdit}>
             <Pencil className="h-4 w-4 mr-2" />
@@ -706,7 +782,7 @@ export default function ViewEvaluation() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Users className="h-5 w-5" />
-              Aplicação da Prova
+              Aplicação da {entityNameCapitalized}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -734,7 +810,7 @@ export default function ViewEvaluation() {
                 <div className="flex items-center gap-2 mb-3">
                   <Users className="h-5 w-5 text-green-600 dark:text-green-400" />
                   <span className="font-semibold text-green-800 dark:text-green-300">
-                    {totalStudents} alunos receberam a prova
+                    {totalStudents} alunos receberam a {entityName}
                   </span>
                 </div>
                 <p className="text-sm text-green-700 dark:text-green-400 mb-4">
@@ -786,7 +862,7 @@ export default function ViewEvaluation() {
                 <div className="flex items-center gap-2 mb-3">
                   <Users className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
                   <span className="font-semibold text-yellow-800 dark:text-yellow-300">
-                    {totalStudents} alunos agendados para receber a prova
+                    {totalStudents} alunos agendados para receber a {entityName}
                   </span>
                 </div>
                 <p className="text-sm text-yellow-700 dark:text-yellow-400 mb-4">
@@ -831,7 +907,7 @@ export default function ViewEvaluation() {
                   </span>
                 </div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Esta avaliação ainda não foi agendada para nenhuma turma.
+                  Esta {entityName} ainda não foi agendada para nenhuma turma.
                 </p>
               </div>
             )}
@@ -944,7 +1020,7 @@ export default function ViewEvaluation() {
                       IDs das turmas: {evaluation.classes.join(', ')}
                     </p>
                     <p className="text-xs text-yellow-600 dark:text-yellow-500 mt-2">
-                      Detalhes completos das turmas serão exibidos após a aplicação da avaliação.
+                      Detalhes completos das turmas serão exibidos após a aplicação da {entityName}.
                     </p>
                   </div>
                 );
@@ -959,7 +1035,7 @@ export default function ViewEvaluation() {
                       </span>
                     </div>
                     <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Esta avaliação ainda não foi associada a nenhuma turma.
+                      Esta {entityName} ainda não foi associada a nenhuma turma.
                     </p>
                   </div>
                 );
@@ -976,7 +1052,7 @@ export default function ViewEvaluation() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <FileText className="h-5 w-5" />
-                Questões da Avaliação
+                Questões da {entityNameCapitalized}
               </CardTitle>
             </CardHeader>
             <CardContent className="text-center py-12">
@@ -989,7 +1065,7 @@ export default function ViewEvaluation() {
                     Nenhuma questão encontrada
                   </h3>
                   <p className="text-gray-600 dark:text-gray-400 mb-4">
-                    Esta avaliação ainda não possui questões cadastradas.
+                    Esta {entityName} ainda não possui questões cadastradas.
                   </p>
                   <Button onClick={handleEdit} variant="outline">
                     <Pencil className="h-4 w-4 mr-2" />
@@ -1218,7 +1294,7 @@ export default function ViewEvaluation() {
         )}
       </div>
 
-      {/* Modal de Aplicar Avaliação */}
+      {/* Modal de Aplicar {entityNameCapitalized} */}
       <StartEvaluationModal
         isOpen={showStartEvaluationModal}
         onClose={() => setShowStartEvaluationModal(false)}
@@ -1232,7 +1308,7 @@ export default function ViewEvaluation() {
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir a avaliação "{evaluation?.title}"?
+              Tem certeza que deseja excluir a {entityName} "{evaluation?.title}"?
               Esta ação não pode ser desfeita e todas as questões associadas serão perdidas.
             </AlertDialogDescription>
           </AlertDialogHeader>

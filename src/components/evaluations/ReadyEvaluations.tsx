@@ -698,12 +698,9 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
         return false;
       }
       
-      // Excluir olimpíadas (type="OLIMPIADA" ou título contendo [OLIMPÍADA])
+      // Excluir olimpíadas
       const type = evaluation.type as string;
-      const title = (evaluation.title as string) || '';
-      const isOlimpiada = type === 'OLIMPIADA' || 
-                         title.includes('[OLIMPÍADA]') || 
-                         title.toUpperCase().includes('OLIMPÍADA');
+      const isOlimpiada = type === 'OLIMPIADA';
       if (isOlimpiada) {
         return false;
       }
@@ -885,6 +882,23 @@ export function ReadyEvaluations({ onUseEvaluation, showMyEvaluations = false }:
         errorMessage = ERROR_MESSAGES.FORBIDDEN;
       } else if (apiError.response?.status === 401) {
         errorMessage = ERROR_MESSAGES.UNAUTHORIZED;
+      } else if (apiError.response?.status === 500) {
+        // Erro interno do servidor - pode ser problema de banco de dados
+        const errorData = apiError.response?.data as { error?: string; details?: string };
+        const errorDetails = errorData?.details || '';
+        const errorText = errorData?.error || '';
+        
+        // Verificar se é erro de tabela não existente
+        if (errorDetails.includes('does not exist') || 
+            errorDetails.includes('relation') || 
+            errorDetails.includes('competition_results') ||
+            errorText.includes('competition_results')) {
+          errorMessage = 'Erro no banco de dados. Entre em contato com o suporte técnico.';
+        } else if (errorData?.error) {
+          errorMessage = errorData.error;
+        } else {
+          errorMessage = 'Erro interno do servidor. Tente novamente mais tarde.';
+        }
       } else if (apiError.response?.data?.error) {
         errorMessage = apiError.response.data.error;
       }

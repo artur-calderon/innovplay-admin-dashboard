@@ -358,6 +358,11 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
           console.warn('Dados de avaliação incompletos:', testData);
           return false;
         }
+        // Excluir olimpíadas
+        const type = testData.type || '';
+        if (type === 'OLIMPIADA') {
+          return false;
+        }
         // ✅ NOVO: Incluir todas as avaliações, não apenas as não concluídas
         return true;
       });

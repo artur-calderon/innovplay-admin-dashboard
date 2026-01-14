@@ -1,12 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import { Trophy, Plus, Search, Loader2, Medal, Eye, Edit, Play, CalendarDays, Clock, BarChart3, Users } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Trophy, Plus, Search, Loader2, Medal, Eye, Edit, Play, CalendarDays, Clock, BarChart3, Users, Trash2, Filter, X, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { OlimpiadasApiService } from '@/services/olimpiadasApi';
+import { api } from '@/lib/api';
 import { OlimpiadaCardData, OlimpiadaStatus } from '@/types/olimpiada-types';
 import { OlimpiadaCard } from '@/components/olimpiadas/OlimpiadaCard';
 import { CreateOlimpiadaModal } from '@/components/olimpiadas/CreateOlimpiadaModal';
@@ -15,6 +17,9 @@ import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { convertDateTimeLocalToISO } from '@/utils/date';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { EvaluationResultsApiService } from '@/services/evaluationResultsApi';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 export default function Olimpiadas() {
   const { toast } = useToast();
@@ -22,6 +27,12 @@ export default function Olimpiadas() {
   const [olimpiadas, setOlimpiadas] = useState<OlimpiadaCardData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<OlimpiadaStatus | 'all'>('all');
+  const [subjectFilter, setSubjectFilter] = useState<string>('all');
+  const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month' | 'past'>('all');
+  const [sortBy, setSortBy] = useState<'title' | 'date' | 'participants' | 'status'>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [showFilters, setShowFilters] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showResultsModal, setShowResultsModal] = useState(false);
   const [selectedOlimpiadaId, setSelectedOlimpiadaId] = useState<string | null>(null);
@@ -32,6 +43,9 @@ export default function Olimpiadas() {
   const [applyingOlimpiada, setApplyingOlimpiada] = useState<OlimpiadaCardData | null>(null);
   const [isApplying, setIsApplying] = useState(false);
   const [showAllResultsModal, setShowAllResultsModal] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [olimpiadaToDelete, setOlimpiadaToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     loadOlimpiadas();
@@ -43,18 +57,38 @@ export default function Olimpiadas() {
       const response = await OlimpiadasApiService.getOlimpiadas();
       // Garantir que response.data seja um array
       const olimpiadasArray = Array.isArray(response.data) ? response.data : [];
-      const olimpiadasData = olimpiadasArray.map((olimpiada: any) => ({
-        id: olimpiada.id,
-        title: olimpiada.title,
-        description: olimpiada.description,
-        status: getStatus(olimpiada),
-        startDateTime: olimpiada.startDateTime || olimpiada.time_limit,
-        endDateTime: olimpiada.endDateTime || olimpiada.end_time,
-        totalStudents: olimpiada.total_students || 0,
-        completedStudents: olimpiada.completed_students || 0,
-        subjects: olimpiada.subjects || olimpiada.subjects_info || [],
-        created_at: olimpiada.created_at || olimpiada.createdAt,
-      }));
+      
+      // Mapear dados das olimpíadas e buscar informações das turmas para filtros
+      const olimpiadasData = await Promise.all(
+        olimpiadasArray.map(async (olimpiada: any) => {
+          // Tentar obter dados do backend primeiro
+          let totalStudents = olimpiada.total_students || 
+                             olimpiada.total_alunos || 
+                             olimpiada.totalStudents || 
+                             0;
+          let completedStudents = olimpiada.completed_students || 
+                                 olimpiada.alunos_participantes || 
+                                 olimpiada.completedStudents || 
+                                 0;
+
+          return {
+            id: olimpiada.id,
+            title: olimpiada.title,
+            description: olimpiada.description,
+            status: getStatus(olimpiada),
+            startDateTime: olimpiada.startDateTime || olimpiada.time_limit,
+            endDateTime: olimpiada.endDateTime || olimpiada.end_time,
+            totalStudents,
+            completedStudents,
+            subjects: olimpiada.subjects || olimpiada.subjects_info || [],
+            created_at: olimpiada.created_at || olimpiada.createdAt,
+            classes: olimpiada.classes || [],
+            schools: olimpiada.schools || [],
+            municipalities: olimpiada.municipalities || [],
+          };
+        })
+      );
+      
       setOlimpiadas(olimpiadasData);
     } catch (error) {
       console.error('Erro ao carregar olimpíadas:', error);
@@ -105,18 +139,221 @@ export default function Olimpiadas() {
     return 'active';
   };
 
-  const filteredOlimpiadas = olimpiadas.filter(olimpiada =>
-    olimpiada.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    olimpiada.description?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Extrair todas as disciplinas únicas para o filtro
+  const allSubjects = useMemo(() => {
+    const subjectsSet = new Set<string>();
+    olimpiadas.forEach(olimpiada => {
+      olimpiada.subjects?.forEach(subject => {
+        subjectsSet.add(subject.id);
+      });
+    });
+    return Array.from(subjectsSet).map(id => {
+      const olimpiada = olimpiadas.find(o => o.subjects?.some(s => s.id === id));
+      const subject = olimpiada?.subjects?.find(s => s.id === id);
+      return { id, name: subject?.name || id };
+    });
+  }, [olimpiadas]);
+
+  const filteredOlimpiadas = useMemo(() => {
+    let filtered = olimpiadas;
+
+    // Filtro de busca por texto
+    if (searchTerm) {
+      filtered = filtered.filter(olimpiada =>
+        olimpiada.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        olimpiada.description?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Filtro por status
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(olimpiada => olimpiada.status === statusFilter);
+    }
+
+    // Filtro por disciplina
+    if (subjectFilter !== 'all') {
+      filtered = filtered.filter(olimpiada =>
+        olimpiada.subjects?.some(subject => subject.id === subjectFilter)
+      );
+    }
+
+
+    // Filtro por data
+    if (dateFilter !== 'all') {
+      const now = new Date();
+      filtered = filtered.filter(olimpiada => {
+        if (!olimpiada.startDateTime) return false;
+        const startDate = new Date(olimpiada.startDateTime);
+        
+        switch (dateFilter) {
+          case 'today':
+            return startDate.toDateString() === now.toDateString();
+          case 'week':
+            const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            return startDate >= weekAgo;
+          case 'month':
+            const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+            return startDate >= monthAgo;
+          case 'past':
+            return startDate < now;
+          default:
+            return true;
+        }
+      });
+    }
+
+    return filtered;
+  }, [olimpiadas, searchTerm, statusFilter, subjectFilter, dateFilter]);
+
+  // Verificar se há filtros ativos
+  const hasActiveFilters = 
+    statusFilter !== 'all' || 
+    subjectFilter !== 'all' || 
+    dateFilter !== 'all' || 
+    searchTerm.length > 0;
+
+  // Ordenar olimpíadas
+  const sortedOlimpiadas = useMemo(() => {
+    const sorted = [...filteredOlimpiadas];
+    
+    sorted.sort((a, b) => {
+      let comparison = 0;
+      
+      switch (sortBy) {
+        case 'title':
+          comparison = a.title.localeCompare(b.title, 'pt-BR');
+          break;
+        case 'date':
+          const dateA = a.startDateTime ? new Date(a.startDateTime).getTime() : 0;
+          const dateB = b.startDateTime ? new Date(b.startDateTime).getTime() : 0;
+          comparison = dateA - dateB;
+          break;
+        case 'participants':
+          const participantsA = a.completedStudents || 0;
+          const participantsB = b.completedStudents || 0;
+          comparison = participantsA - participantsB;
+          break;
+        case 'status':
+          const statusOrder: Record<OlimpiadaStatus, number> = {
+            'active': 1,
+            'scheduled': 2,
+            'completed': 3,
+            'draft': 4,
+            'cancelled': 5,
+          };
+          comparison = (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99);
+          break;
+        default:
+          return 0;
+      }
+      
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+    
+    return sorted;
+  }, [filteredOlimpiadas, sortBy, sortOrder]);
 
   const handleView = (id: string) => {
     navigate(`/app/olimpiada/${id}`);
   };
 
   const handleViewResults = (id: string) => {
+    // Verificar se há alunos participantes antes de abrir o modal
+    const olimpiada = olimpiadas.find(o => o.id === id);
+    if (olimpiada && (olimpiada.completedStudents || 0) === 0) {
+      toast({
+        title: 'Nenhum resultado disponível',
+        description: 'Ainda não há alunos que completaram esta olimpíada.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setSelectedOlimpiadaId(id);
     setShowResultsModal(true);
+  };
+
+  const handleDelete = (id: string) => {
+    setOlimpiadaToDelete(id);
+    setShowDeleteDialog(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!olimpiadaToDelete) {
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+      await api.delete(`/test/${olimpiadaToDelete}`);
+
+      toast({
+        title: 'Sucesso',
+        description: 'Olimpíada excluída com sucesso',
+      });
+
+      // Recarregar lista de olimpíadas
+      await loadOlimpiadas();
+    } catch (error: unknown) {
+      const apiError = error as { 
+        message?: string; 
+        response?: { 
+          status?: number; 
+          data?: { 
+            error?: string;
+            details?: string;
+          } 
+        } 
+      };
+      
+      console.error("❌ Erro detalhado ao excluir olimpíada:", {
+        error,
+        message: apiError.message,
+        response: apiError.response,
+        status: apiError.response?.status,
+        data: apiError.response?.data
+      });
+
+      let errorMessage = 'Erro ao excluir olimpíada';
+
+      if (apiError.response?.status === 404) {
+        errorMessage = 'Olimpíada não encontrada';
+      } else if (apiError.response?.status === 403) {
+        errorMessage = 'Você não tem permissão para excluir esta olimpíada';
+      } else if (apiError.response?.status === 401) {
+        errorMessage = 'Não autorizado';
+      } else if (apiError.response?.status === 500) {
+        // Erro interno do servidor - pode ser problema de banco de dados
+        const errorData = apiError.response?.data;
+        const errorDetails = errorData?.details || '';
+        const errorText = errorData?.error || '';
+        
+        // Verificar se é erro de tabela não existente
+        if (errorDetails.includes('does not exist') || 
+            errorDetails.includes('relation') || 
+            errorDetails.includes('competition_results') ||
+            errorText.includes('competition_results')) {
+          errorMessage = 'Erro no banco de dados. Entre em contato com o suporte técnico.';
+        } else if (errorData?.error) {
+          errorMessage = errorData.error;
+        } else {
+          errorMessage = 'Erro interno do servidor. Tente novamente mais tarde.';
+        }
+      } else if (apiError.response?.data?.error) {
+        errorMessage = apiError.response.data.error;
+      } else if (apiError.message) {
+        errorMessage = apiError.message;
+      }
+
+      toast({
+        title: 'Erro ao excluir olimpíada',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteDialog(false);
+      setOlimpiadaToDelete(null);
+    }
   };
 
   const handleApply = async (id: string) => {
@@ -461,23 +698,215 @@ export default function Olimpiadas() {
         </Card>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar olimpíadas..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10"
-        />
-      </div>
+      {/* Filtros e Busca */}
+      <Card className="border-yellow-200 dark:border-yellow-800">
+        <CardContent className="p-4 space-y-4">
+          {/* Barra de busca */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar olimpíadas por título ou descrição..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+
+          {/* Botão para expandir/recolher filtros */}
+          <div className="flex items-center justify-between">
+            <Collapsible open={showFilters} onOpenChange={setShowFilters}>
+              <CollapsibleTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-yellow-300 dark:border-yellow-700 text-yellow-900 dark:text-yellow-100 hover:bg-yellow-100 dark:hover:bg-yellow-900/30"
+                >
+                  <Filter className="h-4 w-4 mr-2" />
+                  Filtros Avançados
+                  {hasActiveFilters && (
+                    <Badge variant="secondary" className="ml-2 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs">
+                      {[
+                        statusFilter !== 'all' ? 1 : 0, 
+                        subjectFilter !== 'all' ? 1 : 0, 
+                        dateFilter !== 'all' ? 1 : 0, 
+                        searchTerm.length > 0 ? 1 : 0
+                      ].reduce((a, b) => a + b, 0)}
+                    </Badge>
+                  )}
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-4 mt-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {/* Filtro por Status */}
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Status</Label>
+                    <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as OlimpiadaStatus | 'all')}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Todos os status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos os status</SelectItem>
+                        <SelectItem value="scheduled">Agendadas</SelectItem>
+                        <SelectItem value="active">Ativas</SelectItem>
+                        <SelectItem value="completed">Concluídas</SelectItem>
+                        <SelectItem value="draft">Rascunhos</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Filtro por Disciplina */}
+                  {allSubjects.length > 0 && (
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Disciplina</Label>
+                      <Select value={subjectFilter} onValueChange={setSubjectFilter}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Todas as disciplinas" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todas as disciplinas</SelectItem>
+                          {allSubjects.map(subject => (
+                            <SelectItem key={subject.id} value={subject.id}>
+                              {subject.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {/* Filtro por Data */}
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Data</Label>
+                    <Select value={dateFilter} onValueChange={(value) => setDateFilter(value as typeof dateFilter)}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Todas as datas" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas as datas</SelectItem>
+                        <SelectItem value="today">Hoje</SelectItem>
+                        <SelectItem value="week">Última semana</SelectItem>
+                        <SelectItem value="month">Último mês</SelectItem>
+                        <SelectItem value="past">Passadas</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Ordenação - Botão de ícone */}
+                <div className="flex items-center justify-end pt-2 border-t">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="border-yellow-300 dark:border-yellow-700 text-yellow-900 dark:text-yellow-100 hover:bg-yellow-100 dark:hover:bg-yellow-900/30"
+                        title={`Ordenar por ${sortBy === 'date' ? 'Data' : sortBy === 'title' ? 'Título' : sortBy === 'participants' ? 'Participantes' : 'Status'} (${sortOrder === 'asc' ? 'Crescente' : 'Decrescente'})`}
+                      >
+                        <ArrowUpDown className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuLabel>Ordenar por</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setSortBy('date');
+                          if (sortBy === 'date') {
+                            setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                          } else {
+                            setSortOrder('desc');
+                          }
+                        }}
+                        className="flex items-center justify-between"
+                      >
+                        <span>Data</span>
+                        {sortBy === 'date' && (
+                          sortOrder === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                        )}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setSortBy('title');
+                          if (sortBy === 'title') {
+                            setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                          } else {
+                            setSortOrder('asc');
+                          }
+                        }}
+                        className="flex items-center justify-between"
+                      >
+                        <span>Título</span>
+                        {sortBy === 'title' && (
+                          sortOrder === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                        )}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setSortBy('participants');
+                          if (sortBy === 'participants') {
+                            setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                          } else {
+                            setSortOrder('desc');
+                          }
+                        }}
+                        className="flex items-center justify-between"
+                      >
+                        <span>Participantes</span>
+                        {sortBy === 'participants' && (
+                          sortOrder === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                        )}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setSortBy('status');
+                          if (sortBy === 'status') {
+                            setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                          } else {
+                            setSortOrder('asc');
+                          }
+                        }}
+                        className="flex items-center justify-between"
+                      >
+                        <span>Status</span>
+                        {sortBy === 'status' && (
+                          sortOrder === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                        )}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+
+                {/* Botão para limpar filtros */}
+                {hasActiveFilters && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setSearchTerm('');
+                      setStatusFilter('all');
+                      setSubjectFilter('all');
+                      setDateFilter('all');
+                      setSortBy('date');
+                      setSortOrder('desc');
+                    }}
+                    className="w-full sm:w-auto"
+                  >
+                    <X className="h-4 w-4 mr-2" />
+                    Limpar Filtros
+                  </Button>
+                )}
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Olimpíadas Grid */}
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-yellow-600" />
         </div>
-      ) : filteredOlimpiadas.length === 0 ? (
+      ) : sortedOlimpiadas.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
             <Trophy className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
@@ -497,13 +926,14 @@ export default function Olimpiadas() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
-          {filteredOlimpiadas.map((olimpiada) => (
+          {sortedOlimpiadas.map((olimpiada) => (
             <OlimpiadaCard
               key={olimpiada.id}
               olimpiada={olimpiada}
               onView={handleView}
               onViewResults={handleViewResults}
               onApply={handleApply}
+              onDelete={handleDelete}
             />
           ))}
         </div>
@@ -530,6 +960,47 @@ export default function Olimpiadas() {
           olimpiadaId={selectedOlimpiadaId}
         />
       )}
+
+      {/* Dialog de confirmação de exclusão */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar exclusão</DialogTitle>
+            <DialogDescription>
+              Tem certeza que deseja excluir esta olimpíada? Esta ação não pode ser desfeita.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowDeleteDialog(false);
+                setOlimpiadaToDelete(null);
+              }}
+              disabled={isDeleting}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmDelete}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Excluindo...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Confirmar
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal de Resultados de Todas as Olimpíadas */}
       <Dialog open={showAllResultsModal} onOpenChange={setShowAllResultsModal}>
