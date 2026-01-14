@@ -1636,7 +1636,11 @@ export class EvaluationResultsApiService {
         municipio: filters.municipio,
         escola: filters.escola
       });
-      return response.avaliacoes || [];
+      const avaliacoes = response.avaliacoes || [];
+      return avaliacoes.filter((evaluation: any) => {
+        const type = evaluation.type || evaluation.tipo;
+        return type !== 'OLIMPIADA';
+      });
     } catch (error) {
       console.error('Erro ao buscar avaliações para filtros:', error);
       return [];
