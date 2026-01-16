@@ -290,19 +290,28 @@ export default function PhysicalTestPage() {
         setCorrectionProgress(prev => Math.min(prev + 10, 90));
       }, 200);
 
-      // Preparar payload com parâmetros de blocos
+      // Preparar payload com parâmetros de blocos no formato esperado pelo backend
       const payload: any = {};
 
       if (separateBySubject) {
-        // Se separar por disciplina, enviar apenas essa opção
-        payload.use_blocks = true;
-        payload.separate_by_subject = true;
+        // Se separar por disciplina, enviar blocks_config com separate_by_subject
+        payload.blocks_config = {
+          use_blocks: true,
+          separate_by_subject: true
+        };
       } else if (useBlocks) {
         // Se usar blocos normais, enviar configurações de blocos
-        payload.use_blocks = true;
-        payload.num_blocks = numBlocks;
-        payload.questions_per_block = questionsPerBlock;
-        payload.separate_by_subject = false;
+        payload.blocks_config = {
+          use_blocks: true,
+          num_blocks: numBlocks,
+          questions_per_block: questionsPerBlock,
+          separate_by_subject: false
+        };
+      } else {
+        // Se não usar blocos, enviar blocks_config com use_blocks: false
+        payload.blocks_config = {
+          use_blocks: false
+        };
       }
 
       // Adicionar use_hybrid ao payload

@@ -73,6 +73,12 @@ export default function AnswerSheetGenerator() {
   const [totalQuestoes, setTotalQuestoes] = useState<number>(0);
   const [gabaritoManual, setGabaritoManual] = useState<Record<number, 'A' | 'B' | 'C' | 'D'>>({});
   const [department, setDepartment] = useState<string>('Secretaria Municipal de Educação');
+  
+  // Estados para alternativas personalizadas
+  const [questionsOptions, setQuestionsOptions] = useState<Record<number, ('A' | 'B' | 'C' | 'D')[]>>({});
+  const [useGlobalAlternatives, setUseGlobalAlternatives] = useState<boolean>(true);
+  const [globalAlternatives, setGlobalAlternatives] = useState<('A' | 'B' | 'C' | 'D')[]>(['A', 'B', 'C', 'D']);
+  const [editingQuestionAlternatives, setEditingQuestionAlternatives] = useState<number | null>(null);
 
   // Estados para configuração de blocos
   const [useBlocks, setUseBlocks] = useState(false);
@@ -233,48 +239,56 @@ export default function AnswerSheetGenerator() {
       setIsLoadingSchools(true);
       setNoSchoolsMessage('');
       
-      // Buscar todas as escolas do município
-      const response = await api.get(`/school/city/${selectedMunicipio}`);
-      const allSchoolsData = response.data?.schools || response.data || [];
+      let schoolsData: SchoolType[] = [];
       
-      // Se não houver série selecionada, mostrar todas as escolas
-      if (!selectedSerie) {
-        setSchools(allSchoolsData);
-        if (allSchoolsData.length === 0) {
+      // ✅ PRIORIDADE: Se houver série selecionada, buscar apenas escolas com aquela série
+      if (selectedSerie) {
+        try {
+          const response = await api.get(`/school/by-grade/${selectedSerie}`);
+          schoolsData = response.data?.schools || [];
+          
+          // Filtrar escolas pelo município selecionado
+          // O endpoint /school/by-grade retorna escolas de todos os municípios
+          // Precisamos filtrar apenas as do município selecionado
+          if (schoolsData.length > 0) {
+            // Buscar todas as escolas do município para comparar
+            const municipalitySchoolsResponse = await api.get(`/school/city/${selectedMunicipio}`);
+            const municipalitySchoolIds = (municipalitySchoolsResponse.data?.schools || municipalitySchoolsResponse.data || []).map((s: SchoolType) => s.id);
+            
+            // Filtrar apenas escolas que estão no município E têm turmas da série
+            schoolsData = schoolsData.filter((school: SchoolType) => 
+              municipalitySchoolIds.includes(school.id)
+            );
+          }
+          
+          if (schoolsData.length === 0) {
+            setNoSchoolsMessage('Nenhuma escola encontrada com turmas cadastradas para esta série neste município.');
+          }
+        } catch (err: any) {
+          // Ignorar silenciosamente erros 404 (séries sem escolas com turmas)
+          const errorMessage = err?.message || '';
+          const isNotFound = err?.response?.status === 404 || 
+                             errorMessage.includes('não encontrado') || 
+                             errorMessage.includes('not found');
+          
+          if (isNotFound) {
+            setNoSchoolsMessage('Nenhuma escola encontrada com turmas cadastradas para esta série neste município.');
+            schoolsData = [];
+          } else {
+            throw err;
+          }
+        }
+      } else {
+        // Se NÃO houver série, buscar todas as escolas do município
+        const response = await api.get(`/school/city/${selectedMunicipio}`);
+        schoolsData = response.data?.schools || response.data || [];
+        
+        if (schoolsData.length === 0) {
           setNoSchoolsMessage('Nenhuma escola encontrada para este município.');
         }
-        return;
       }
       
-      // Se houver série selecionada, filtrar apenas escolas que têm turmas para essa série
-      const schoolsWithTurmas: SchoolType[] = [];
-      
-      for (const school of allSchoolsData) {
-        try {
-          // Buscar turmas da escola
-          const turmasResponse = await api.get(`/classes/school/${school.id}`);
-          const turmasData = turmasResponse.data || [];
-          
-          // Verificar se há turmas para a série selecionada
-          const hasTurmasForSerie = turmasData.some((turma: { grade_id?: string; grade?: { id?: string } }) => {
-            const gradeId = turma.grade_id || turma.grade?.id;
-            return gradeId === selectedSerie;
-          });
-          
-          if (hasTurmasForSerie) {
-            schoolsWithTurmas.push(school);
-          }
-        } catch (error) {
-          // Se der erro ao buscar turmas de uma escola, ignorar essa escola
-          console.warn(`Erro ao buscar turmas da escola ${school.id}:`, error);
-        }
-      }
-      
-      setSchools(schoolsWithTurmas);
-      
-      if (schoolsWithTurmas.length === 0) {
-        setNoSchoolsMessage('Nenhuma escola encontrada com turmas cadastradas para a série selecionada.');
-      }
+      setSchools(schoolsData);
     } catch (error) {
       console.error('Erro ao carregar escolas:', error);
       toast({
@@ -408,6 +422,7 @@ export default function AnswerSheetGenerator() {
     if (Number.isNaN(parsed) || parsed <= 0) {
       setTotalQuestoes(0);
       setGabaritoManual({});
+      setQuestionsOptions({});
       return;
     }
 
@@ -423,11 +438,37 @@ export default function AnswerSheetGenerator() {
       }
       return updated;
     });
+
+    // Limpar/resetar questionsOptions quando número de questões muda
+    setQuestionsOptions(prev => {
+      const updated: Record<number, ('A' | 'B' | 'C' | 'D')[]> = {};
+      for (let i = 1; i <= safeTotal; i += 1) {
+        if (prev[i]) {
+          updated[i] = prev[i];
+        }
+      }
+      return updated;
+    });
   };
 
   const handleChangeRespostaQuestao = (numeroQuestao: number, alternativa: string) => {
     const alternativaUpper = alternativa.toUpperCase();
     if (!['A', 'B', 'C', 'D'].includes(alternativaUpper)) {
+      return;
+    }
+
+    // Obter alternativas disponíveis para esta questão
+    const availableAlternatives = useGlobalAlternatives
+      ? globalAlternatives
+      : (questionsOptions[numeroQuestao] || ['A', 'B', 'C', 'D']);
+
+    // Validar se a alternativa está disponível para esta questão
+    if (!availableAlternatives.includes(alternativaUpper as 'A' | 'B' | 'C' | 'D')) {
+      toast({
+        title: 'Alternativa inválida',
+        description: `A alternativa ${alternativaUpper} não está disponível para a questão ${numeroQuestao}.`,
+        variant: 'destructive',
+      });
       return;
     }
 
@@ -439,6 +480,189 @@ export default function AnswerSheetGenerator() {
 
   const handleClearGabarito = () => {
     setGabaritoManual({});
+  };
+
+  // Funções para gerenciar alternativas
+  const getAvailableAlternatives = (questionNumber: number): ('A' | 'B' | 'C' | 'D')[] => {
+    if (useGlobalAlternatives) {
+      return globalAlternatives;
+    }
+    return questionsOptions[questionNumber] || ['A', 'B', 'C', 'D'];
+  };
+
+  const handleToggleGlobalAlternative = (alternative: 'A' | 'B' | 'C' | 'D', checked: boolean) => {
+    if (checked) {
+      // Adicionar alternativa
+      if (globalAlternatives.length >= 4) {
+        toast({
+          title: 'Erro',
+          description: 'Máximo de 4 alternativas (A, B, C, D).',
+          variant: 'destructive',
+        });
+        return;
+      }
+      const newAlternatives = [...globalAlternatives, alternative].sort() as ('A' | 'B' | 'C' | 'D')[];
+      setGlobalAlternatives(newAlternatives);
+    } else {
+      // Remover alternativa
+      if (globalAlternatives.length <= 2) {
+        toast({
+          title: 'Erro',
+          description: 'Selecione pelo menos 2 alternativas.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      const newAlternatives = globalAlternatives.filter(alt => alt !== alternative);
+      setGlobalAlternatives(newAlternatives);
+      
+      // Limpar respostas que usam a alternativa removida
+      setGabaritoManual(prev => {
+        const updated = { ...prev };
+        let clearedCount = 0;
+        for (let i = 1; i <= totalQuestoes; i += 1) {
+          if (updated[i] === alternative) {
+            delete updated[i];
+            clearedCount++;
+          }
+        }
+        if (clearedCount > 0) {
+          toast({
+            title: 'Respostas removidas',
+            description: `${clearedCount} questão(ões) tiveram a resposta removida pois a alternativa não está mais disponível.`,
+            variant: 'default',
+          });
+        }
+        return updated;
+      });
+    }
+  };
+
+  const handleToggleQuestionAlternative = (questionNumber: number, alternative: 'A' | 'B' | 'C' | 'D', checked: boolean) => {
+    const currentAlternatives = questionsOptions[questionNumber] || ['A', 'B', 'C', 'D'];
+    
+    if (checked) {
+      // Adicionar alternativa
+      if (currentAlternatives.length >= 4) {
+        toast({
+          title: 'Erro',
+          description: 'Máximo de 4 alternativas (A, B, C, D).',
+          variant: 'destructive',
+        });
+        return;
+      }
+      const newAlternatives = [...currentAlternatives, alternative].sort() as ('A' | 'B' | 'C' | 'D')[];
+      setQuestionsOptions(prev => ({
+        ...prev,
+        [questionNumber]: newAlternatives,
+      }));
+    } else {
+      // Remover alternativa
+      if (currentAlternatives.length <= 2) {
+        toast({
+          title: 'Erro',
+          description: 'Selecione pelo menos 2 alternativas.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      const newAlternatives = currentAlternatives.filter(alt => alt !== alternative);
+      setQuestionsOptions(prev => ({
+        ...prev,
+        [questionNumber]: newAlternatives,
+      }));
+      
+      // Limpar resposta se usar a alternativa removida
+      const currentAnswer = gabaritoManual[questionNumber];
+      if (currentAnswer === alternative) {
+        setGabaritoManual(prev => {
+          const updated = { ...prev };
+          delete updated[questionNumber];
+          return updated;
+        });
+        toast({
+          title: 'Resposta removida',
+          description: `A resposta da questão ${questionNumber} foi removida pois a alternativa não está mais disponível.`,
+          variant: 'default',
+        });
+      }
+    }
+  };
+
+  const handleApplyGlobalToAll = () => {
+    if (globalAlternatives.length < 2) {
+      toast({
+        title: 'Erro',
+        description: 'Selecione pelo menos 2 alternativas antes de aplicar.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    // Aplicar alternativas globais a todas as questões
+    const newOptions: Record<number, ('A' | 'B' | 'C' | 'D')[]> = {};
+    for (let i = 1; i <= totalQuestoes; i += 1) {
+      newOptions[i] = [...globalAlternatives];
+    }
+    setQuestionsOptions(newOptions);
+    setUseGlobalAlternatives(false);
+    
+    // Limpar respostas inválidas
+    setGabaritoManual(prev => {
+      const updated = { ...prev };
+      let clearedCount = 0;
+      for (let i = 1; i <= totalQuestoes; i += 1) {
+        if (updated[i] && !globalAlternatives.includes(updated[i])) {
+          delete updated[i];
+          clearedCount++;
+        }
+      }
+      if (clearedCount > 0) {
+        toast({
+          title: 'Respostas removidas',
+          description: `${clearedCount} questão(ões) tiveram a resposta removida pois não está mais disponível.`,
+          variant: 'default',
+        });
+      }
+      return updated;
+    });
+    
+    toast({
+      title: 'Alternativas aplicadas',
+      description: `Alternativas globais aplicadas a todas as ${totalQuestoes} questões.`,
+    });
+  };
+
+  const buildQuestionsOptions = (): Record<string, string[]> | undefined => {
+    // Se modo global e todas questões têm padrão ['A', 'B', 'C', 'D'], pode omitir
+    const sortedGlobal = [...globalAlternatives].sort();
+    if (useGlobalAlternatives && JSON.stringify(sortedGlobal) === JSON.stringify(['A', 'B', 'C', 'D'])) {
+      return undefined; // Omitir do payload (backend usa padrão)
+    }
+
+    // Se modo individual, verificar se todas têm o mesmo padrão
+    if (!useGlobalAlternatives) {
+      const allDefault = Array.from({ length: totalQuestoes }, (_, i) => {
+        const num = i + 1;
+        const options = questionsOptions[num] || ['A', 'B', 'C', 'D'];
+        const sortedOptions = [...options].sort();
+        return JSON.stringify(sortedOptions) === JSON.stringify(['A', 'B', 'C', 'D']);
+      }).every(Boolean);
+
+      if (allDefault) {
+        return undefined; // Omitir do payload
+      }
+    }
+
+    // Construir objeto com chaves como strings
+    const result: Record<string, string[]> = {};
+    for (let i = 1; i <= totalQuestoes; i += 1) {
+      const alternatives = useGlobalAlternatives
+        ? globalAlternatives
+        : (questionsOptions[i] || ['A', 'B', 'C', 'D']);
+      result[i.toString()] = [...alternatives];
+    }
+    return result;
   };
 
 
@@ -470,6 +694,15 @@ export default function AnswerSheetGenerator() {
     for (let i = 1; i <= totalQuestoes; i += 1) {
       if (!gabaritoManual[i]) {
         return false;
+      }
+      
+      // Validar que a resposta está nas alternativas disponíveis
+      const availableAlternatives = useGlobalAlternatives
+        ? globalAlternatives
+        : (questionsOptions[i] || ['A', 'B', 'C', 'D']);
+      
+      if (!availableAlternatives.includes(gabaritoManual[i])) {
+        return false; // Resposta inválida
       }
     }
 
@@ -594,6 +827,12 @@ export default function AnswerSheetGenerator() {
           grade_name: serieData?.name || '',
         }
       };
+
+      // Adicionar questions_options se necessário
+      const questionsOptionsData = buildQuestionsOptions();
+      if (questionsOptionsData) {
+        payload.questions_options = questionsOptionsData;
+      }
 
       // Configurar blocos
       if (separateBySubject) {
@@ -1157,7 +1396,94 @@ export default function AnswerSheetGenerator() {
             </CardContent>
           </Card>
 
-          {/* Card 3: Questões e Gabarito */}
+          {/* Card 3: Alternativas Disponíveis */}
+          {totalQuestoes > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-purple-600 text-xs font-bold text-white">
+                    A
+                  </span>
+                  Alternativas Disponíveis
+                </CardTitle>
+                <CardDescription>
+                  Configure quais alternativas estarão disponíveis no cartão resposta (mínimo 2, máximo D)
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="use-global-alternatives"
+                    checked={useGlobalAlternatives}
+                    onCheckedChange={(checked) => {
+                      setUseGlobalAlternatives(checked === true);
+                      if (checked === true) {
+                        // Limpar configurações individuais ao voltar para global
+                        setQuestionsOptions({});
+                      }
+                    }}
+                  />
+                  <Label htmlFor="use-global-alternatives" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Aplicar as mesmas alternativas a todas as questões
+                  </Label>
+                </div>
+
+                {useGlobalAlternatives ? (
+                  <div className="space-y-4 pl-6 border-l-2 border-purple-200">
+                    <div className="space-y-2">
+                      <Label>Alternativas Globais</Label>
+                      <div className="flex gap-4">
+                        {(['A', 'B', 'C', 'D'] as const).map((alt) => (
+                          <div key={alt} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`global-alt-${alt}`}
+                              checked={globalAlternatives.includes(alt)}
+                              onCheckedChange={(checked) => handleToggleGlobalAlternative(alt, checked === true)}
+                              disabled={!globalAlternatives.includes(alt) && globalAlternatives.length >= 4}
+                            />
+                            <Label
+                              htmlFor={`global-alt-${alt}`}
+                              className="text-sm font-medium cursor-pointer"
+                            >
+                              {alt}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {globalAlternatives.length < 2 && (
+                          <span className="text-red-500">Selecione pelo menos 2 alternativas.</span>
+                        )}
+                        {globalAlternatives.length >= 2 && (
+                          <span className="text-green-600">
+                            {globalAlternatives.length} alternativa(s) selecionada(s): {globalAlternatives.join(', ')}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleApplyGlobalToAll}
+                      disabled={globalAlternatives.length < 2}
+                    >
+                      Aplicar a todas as questões
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-2 pl-6 border-l-2 border-purple-200">
+                    <Label>Modo Individual</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Configure alternativas específicas para cada questão usando o botão "Configurar" em cada questão abaixo.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Card 4: Questões e Gabarito */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -1236,7 +1562,7 @@ export default function AnswerSheetGenerator() {
                       Gabarito ({totalQuestoes} questão(ões))
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Selecione a alternativa correta (A, B, C ou D) para cada número de questão.
+                      Selecione a alternativa correta para cada número de questão. As alternativas disponíveis podem ser personalizadas acima.
                     </p>
                   </div>
 
@@ -1256,8 +1582,8 @@ export default function AnswerSheetGenerator() {
                               Questão {numeroQuestao}
                             </span>
                           </div>
-                          <div className="flex gap-2">
-                            {['A', 'B', 'C', 'D'].map((alternativa) => {
+                          <div className="flex gap-2 items-center">
+                            {getAvailableAlternatives(numeroQuestao).map((alternativa) => {
                               const isAtiva = respostaSelecionada === alternativa;
                               return (
                                 <button
@@ -1278,6 +1604,17 @@ export default function AnswerSheetGenerator() {
                                 </button>
                               );
                             })}
+                            {!useGlobalAlternatives && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8 px-2 text-xs ml-2"
+                                onClick={() => setEditingQuestionAlternatives(numeroQuestao)}
+                              >
+                                Configurar
+                              </Button>
+                            )}
                           </div>
                         </div>
                       );
@@ -1293,6 +1630,86 @@ export default function AnswerSheetGenerator() {
                   )}
                 </div>
               )}
+
+              {/* Dialog para configurar alternativas individuais */}
+              <Dialog open={editingQuestionAlternatives !== null} onOpenChange={(open) => {
+                if (!open) setEditingQuestionAlternatives(null);
+              }}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>
+                      Configurar Alternativas - Questão {editingQuestionAlternatives}
+                    </DialogTitle>
+                    <DialogDescription>
+                      Selecione quais alternativas estarão disponíveis para esta questão (mínimo 2).
+                    </DialogDescription>
+                  </DialogHeader>
+                  {editingQuestionAlternatives !== null && (
+                    <div className="space-y-4 py-4">
+                      <div className="flex gap-4">
+                        {(['A', 'B', 'C', 'D'] as const).map((alt) => {
+                          const currentAlternatives = questionsOptions[editingQuestionAlternatives] || ['A', 'B', 'C', 'D'];
+                          const isChecked = currentAlternatives.includes(alt);
+                          return (
+                            <div key={alt} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={`question-${editingQuestionAlternatives}-alt-${alt}`}
+                                checked={isChecked}
+                                onCheckedChange={(checked) => 
+                                  handleToggleQuestionAlternative(editingQuestionAlternatives, alt, checked === true)
+                                }
+                                disabled={!isChecked && currentAlternatives.length >= 4}
+                              />
+                              <Label
+                                htmlFor={`question-${editingQuestionAlternatives}-alt-${alt}`}
+                                className="text-sm font-medium cursor-pointer"
+                              >
+                                {alt}
+                              </Label>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {(() => {
+                          const currentAlternatives = questionsOptions[editingQuestionAlternatives] || ['A', 'B', 'C', 'D'];
+                          if (currentAlternatives.length < 2) {
+                            return <span className="text-red-500">Selecione pelo menos 2 alternativas.</span>;
+                          }
+                          return (
+                            <span className="text-green-600">
+                              {currentAlternatives.length} alternativa(s) selecionada(s): {currentAlternatives.join(', ')}
+                            </span>
+                          );
+                        })()}
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            // Resetar para padrão
+                            setQuestionsOptions(prev => {
+                              const updated = { ...prev };
+                              delete updated[editingQuestionAlternatives!];
+                              return updated;
+                            });
+                            setEditingQuestionAlternatives(null);
+                          }}
+                        >
+                          Usar Padrão (A, B, C, D)
+                        </Button>
+                        <Button
+                          type="button"
+                          onClick={() => setEditingQuestionAlternatives(null)}
+                        >
+                          Fechar
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </DialogContent>
+              </Dialog>
             </CardContent>
           </Card>
 
