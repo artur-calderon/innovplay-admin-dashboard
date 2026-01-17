@@ -480,10 +480,7 @@ export function CreatePlayTvVideoForm({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Send className="w-5 h-5" />
-          Cadastrar Novo Vídeo
-        </CardTitle>
+        <CardTitle>Cadastrar Novo Vídeo</CardTitle>
         <CardDescription>
           Adicione um vídeo para os alunos assistirem
         </CardDescription>

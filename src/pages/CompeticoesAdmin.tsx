@@ -365,14 +365,12 @@ const CompeticoesAdmin = () => {
         <>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-full flex items-center justify-center shadow-lg">
-            <Trophy className="w-7 h-7 text-white" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold">Gerenciar Competições</h1>
-            <p className="text-muted-foreground">Crie e gerencie competições semanais</p>
-          </div>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <Trophy className="w-8 h-8 text-blue-600" />
+            Gerenciar Competições
+          </h1>
+          <p className="text-muted-foreground">Crie e gerencie competições semanais</p>
         </div>
         <div className="flex items-center gap-2">
           {viewMode === 'form' && (

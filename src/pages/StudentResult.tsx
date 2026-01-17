@@ -183,7 +183,7 @@ const ClassificationBadge = ({ classification }: { classification: string }) => 
       case 'abaixo do básico':
         return 'bg-red-100 text-red-800 border-red-200';
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+        return 'bg-muted text-foreground border-border';
     }
   };
 
@@ -555,7 +555,10 @@ export default function StudentResult() {
     <div className="container mx-auto px-4 py-8 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold dark:text-gray-100">{pageTitle}</h1>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <BarChart3 className="w-8 h-8 text-blue-600" />
+            {pageTitle}
+          </h1>
           <p className="text-muted-foreground">{evaluationTitle}</p>
         </div>
         <Button variant="ghost" onClick={() => navigate(myItemsButtonPath)}>{myItemsButtonText}</Button>
@@ -585,14 +588,14 @@ export default function StudentResult() {
         <CardContent className="p-6">
           {locked ? (
             <div className="flex flex-col items-center justify-center text-center py-8">
-              <Lock className="h-10 w-10 text-gray-500 mb-3" />
+              <Lock className="h-10 w-10 text-muted-foreground mb-3" />
               <p className="text-gray-700 mb-1">Complete a avaliação para ver seus resultados.</p>
-              <p className="text-gray-600 flex items-center gap-2">
+              <p className="text-muted-foreground flex items-center gap-2">
                 <Clock className="h-4 w-4" />
                 Resultados disponíveis após finalizar a avaliação
               </p>
               <div className="mt-6">
-                <Button onClick={() => navigate(backButtonPath)} className="bg-gray-800 hover:bg-gray-900">{backButtonText}</Button>
+                <Button onClick={() => navigate(backButtonPath)} className="bg-primary hover:bg-primary/90">{backButtonText}</Button>
               </div>
             </div>
           ) : (
@@ -613,13 +616,13 @@ export default function StudentResult() {
                         : "bg-gradient-to-br from-indigo-600 to-purple-600"
                     }`}>
                       <div className="h-full w-full rounded-full bg-white flex flex-col items-center justify-center">
-                        <div className="text-xs uppercase tracking-wide text-gray-500">Sua Nota</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground">Sua Nota</div>
                         <div className={`text-5xl font-extrabold ${passedGood ? "text-green-600" : "text-orange-600"}`}>
                           {gradeRounded != null ? (Math.ceil(gradeRounded * 10) / 10).toString().replace('.', ',') : "-"}
                         </div>
-                        <div className="text-xs text-gray-500">de 10</div>
+                        <div className="text-xs text-muted-foreground">de 10</div>
                         {scoreRounded != null && (
-                          <div className="mt-2 text-sm text-gray-600">({scoreRounded}% acertos)</div>
+                          <div className="mt-2 text-sm text-muted-foreground">({scoreRounded}% acertos)</div>
                         )}
                       </div>
                     </div>
@@ -708,7 +711,7 @@ export default function StudentResult() {
 
                   {/* Informações adicionais */}
                   {endDate && (
-                    <div className="text-sm text-gray-600">
+                    <div className="text-sm text-muted-foreground">
                       Prazo da avaliação: {format(parseISO(endDate.toISOString()), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                     </div>
                   )}

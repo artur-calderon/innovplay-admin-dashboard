@@ -25,6 +25,7 @@ import {
   TrendingUp,
   Clock,
   Target,
+  LayoutDashboard,
 } from "lucide-react";
 import { useAuth } from "@/context/authContext";
 import { useToast } from "@/hooks/use-toast";
@@ -107,7 +108,10 @@ const Index = () => {
     <div className="mobile-container">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
-        <h1 className="mobile-title font-bold">Painel Administrativo</h1>
+        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+          <LayoutDashboard className="w-8 h-8 text-blue-600" />
+          Painel Administrativo
+        </h1>
         <span className="text-sm sm:text-base text-muted-foreground">
           Bem vindo! {user.name ? user.name : "Usuário"}
         </span>

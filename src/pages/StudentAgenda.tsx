@@ -171,7 +171,10 @@ export default function StudentAgenda() {
     <div className="container mx-auto px-4 py-6 space-y-6">
       {/* Header */}
       <div className="space-y-2">
-        <h1 className="text-3xl font-bold">📅 Agenda Acadêmica</h1>
+        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+          <Calendar className="w-8 h-8 text-blue-600" />
+          Agenda Acadêmica
+        </h1>
                   <p className="text-muted-foreground">
           Acompanhe suas aulas, provas e eventos acadêmicos
         </p>

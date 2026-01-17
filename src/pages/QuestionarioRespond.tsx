@@ -763,7 +763,7 @@ const QuestionarioRespond = () => {
         className={`w-full max-w-3xl mx-auto ${hasError ? 'border-red-500' : ''}`}
       >
         <div className="mb-6">
-          <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+          <h2 className="text-2xl font-semibold text-foreground mb-2">
             {questionText}
           </h2>
           {isRequired && (
@@ -786,7 +786,7 @@ const QuestionarioRespond = () => {
                     className={`flex items-center gap-4 cursor-pointer p-4 rounded-lg border-2 transition-all ${
                       currentResponse === option 
                         ? 'bg-blue-50 border-blue-500 shadow-sm' 
-                        : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50 hover:bg-opacity-50'
+                        : 'bg-card border-border hover:border-blue-300 hover:bg-blue-50 hover:bg-opacity-50'
                     }`}
                   >
                     <input
@@ -797,7 +797,7 @@ const QuestionarioRespond = () => {
                       onChange={(e) => handleResponseChange(questionId, e.target.value)}
                       className="w-5 h-5 text-blue-600 focus:ring-blue-500 focus:ring-2"
                     />
-                    <span className={`text-base ${currentResponse === option ? 'text-gray-900 font-medium' : 'text-gray-700'}`}>
+                    <span className={`text-base ${currentResponse === option ? 'text-foreground font-medium' : 'text-foreground'}`}>
                       {option}
                     </span>
                   </label>
@@ -808,12 +808,12 @@ const QuestionarioRespond = () => {
             {/* Múltipla Escolha - Tabela */}
             {(questionType === 'multipla_escolha') && (
               <div className="mt-6 overflow-x-auto">
-                <table className="w-full border-collapse bg-white rounded-lg shadow-sm">
+                <table className="w-full border-collapse bg-card rounded-lg shadow-sm">
                   <thead>
-                    <tr className="bg-gray-50 border-b-2 border-gray-200">
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Item</th>
+                    <tr className="bg-muted border-b-2 border-border">
+                      <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Item</th>
                       {options.map((option: string, optIndex: number) => (
-                        <th key={optIndex} className="px-6 py-4 text-center text-sm font-semibold text-gray-900">
+                        <th key={optIndex} className="px-6 py-4 text-center text-sm font-semibold text-foreground">
                           {option}
                         </th>
                       ))}
@@ -826,11 +826,11 @@ const QuestionarioRespond = () => {
                       return (
                         <tr 
                           key={subQ.id} 
-                          className={`border-b border-gray-200 hover:bg-gray-50 transition-colors ${
-                            subIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                          className={`border-b border-border hover:bg-muted transition-colors ${
+                            subIndex % 2 === 0 ? 'bg-card' : 'bg-muted/50'
                           }`}
                         >
-                          <td className="px-6 py-4 text-base text-gray-900 font-medium">
+                          <td className="px-6 py-4 text-base text-foreground font-medium">
                             {subQ.text || subQ.texto}
                           </td>
                           {options.map((option: string, optIndex: number) => {
@@ -862,12 +862,12 @@ const QuestionarioRespond = () => {
             {/* Matriz de Seleção - Tabela */}
             {(questionType === 'matriz_selecao') && (
               <div className="mt-6 overflow-x-auto">
-                <table className="w-full border-collapse bg-white rounded-lg shadow-sm">
+                <table className="w-full border-collapse bg-card rounded-lg shadow-sm">
                   <thead>
-                    <tr className="bg-gray-50 border-b-2 border-gray-200">
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Item</th>
+                    <tr className="bg-muted border-b-2 border-border">
+                      <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Item</th>
                       {options.map((option: string, optIndex: number) => (
-                        <th key={optIndex} className="px-6 py-4 text-center text-sm font-semibold text-gray-900">
+                        <th key={optIndex} className="px-6 py-4 text-center text-sm font-semibold text-foreground">
                           {option}
                         </th>
                       ))}
@@ -882,11 +882,11 @@ const QuestionarioRespond = () => {
                       return (
                         <tr 
                           key={subQ.id} 
-                          className={`border-b border-gray-200 hover:bg-gray-50 transition-colors ${
-                            subIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                          className={`border-b border-border hover:bg-muted transition-colors ${
+                            subIndex % 2 === 0 ? 'bg-card' : 'bg-muted/50'
                           }`}
                         >
-                          <td className="px-6 py-4 text-base text-gray-900 font-medium">
+                          <td className="px-6 py-4 text-base text-foreground font-medium">
                             {subQ.text || subQ.texto}
                           </td>
                           {options.map((option: string, optIndex: number) => {
@@ -924,7 +924,7 @@ const QuestionarioRespond = () => {
                     : '';
                   return (
                     <div key={subQ.id}>
-                      <p className="text-base font-medium text-gray-900 mb-3">
+                      <p className="text-base font-medium text-foreground mb-3">
                         {subQ.text || subQ.texto}
                       </p>
                       <div className="space-y-3">
@@ -936,7 +936,7 @@ const QuestionarioRespond = () => {
                               className={`flex items-center gap-4 cursor-pointer p-4 rounded-lg border-2 transition-all ${
                                 isSelected 
                                   ? 'bg-blue-50 border-blue-500 shadow-sm' 
-                                  : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50 hover:bg-opacity-50'
+                                  : 'bg-card border-border hover:border-blue-300 hover:bg-blue-50 hover:bg-opacity-50'
                               }`}
                             >
                               <input
@@ -947,7 +947,7 @@ const QuestionarioRespond = () => {
                                 onChange={(e) => handleMatrixResponse(questionId, subQ.id, e.target.value)}
                                 className="w-5 h-5 text-blue-600 focus:ring-blue-500 focus:ring-2"
                               />
-                              <span className={`text-base ${isSelected ? 'text-gray-900 font-medium' : 'text-gray-700'}`}>
+                              <span className={`text-base ${isSelected ? 'text-foreground font-medium' : 'text-foreground'}`}>
                                 {option}
                               </span>
                             </label>
@@ -970,16 +970,16 @@ const QuestionarioRespond = () => {
                     max={question.max || 100}
                     value={sliderValue}
                     onChange={(e) => handleSliderChange(questionId, parseInt(e.target.value))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                    className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
                     style={{
                       background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb 100%)`,
                       WebkitAppearance: 'none',
                       appearance: 'none'
                     }}
                   />
-                  <div className="flex justify-between text-xs text-gray-500 mt-2">
+                  <div className="flex justify-between text-xs text-muted-foreground mt-2">
                     <span>{question.min || 0}</span>
-                    <span className="font-medium text-gray-700">
+                    <span className="font-medium text-foreground">
                       Valor: <span className="text-blue-600 font-semibold">{sliderValue}</span>
                     </span>
                     <span>{question.max || 100}</span>
@@ -998,16 +998,16 @@ const QuestionarioRespond = () => {
                     max={question.max || 100}
                     value={sliderValue}
                     onChange={(e) => handleSliderChange(questionId, parseInt(e.target.value))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                    className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
                     style={{
                       background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb 100%)`,
                       WebkitAppearance: 'none',
                       appearance: 'none'
                     }}
                   />
-                  <div className="flex justify-between text-xs text-gray-500 mt-2">
+                  <div className="flex justify-between text-xs text-muted-foreground mt-2">
                     <span>{question.min || 0}</span>
-                    <span className="font-medium text-gray-700">
+                    <span className="font-medium text-foreground">
                       Valor: <span className="text-blue-600 font-semibold">{sliderValue}</span>
                     </span>
                     <span>{question.max || 100}</span>
@@ -1015,7 +1015,7 @@ const QuestionarioRespond = () => {
                 </div>
                 {question.optionText && (
                   <div className="mt-2">
-                    <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50 transition-colors">
+                    <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-muted transition-colors">
                       <input
                         type="checkbox"
                         checked={currentResponse?.optionChecked || false}
@@ -1036,7 +1036,7 @@ const QuestionarioRespond = () => {
                   const subSliderValue = sliderValues[`${questionId}_${subQ.id}`] ?? (question.min !== undefined ? question.min : 0);
                   return (
                     <div key={subQ.id} className="ml-4">
-                      <p className="text-sm font-medium text-gray-700 mb-2">
+                      <p className="text-sm font-medium text-foreground mb-2">
                         {subQ.text || subQ.texto}
                       </p>
                       <div className="relative">
@@ -1050,16 +1050,16 @@ const QuestionarioRespond = () => {
                             setSliderValues(prev => ({ ...prev, [`${questionId}_${subQ.id}`]: value }));
                             handleMatrixResponse(questionId, subQ.id, value);
                           }}
-                          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                          className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
                           style={{
                             background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((subSliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb ${((subSliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb 100%)`,
                             WebkitAppearance: 'none',
                             appearance: 'none'
                           }}
                         />
-                        <div className="flex justify-between text-xs text-gray-500 mt-2">
+                        <div className="flex justify-between text-xs text-muted-foreground mt-2">
                           <span>{question.min || 0}</span>
-                          <span className="font-medium text-gray-700">
+                          <span className="font-medium text-foreground">
                             Valor: <span className="text-blue-600 font-semibold">{subSliderValue}</span>
                           </span>
                           <span>{question.max || 100}</span>
@@ -1081,7 +1081,7 @@ const QuestionarioRespond = () => {
                   className="w-full"
                   placeholder="Digite sua resposta aqui..."
                 />
-                <div className="flex justify-between text-xs text-gray-500">
+                <div className="flex justify-between text-xs text-muted-foreground">
                   <span>Resposta livre</span>
                   <span>{(currentResponse as string)?.length || 0} caracteres</span>
                 </div>
@@ -1111,7 +1111,7 @@ const QuestionarioRespond = () => {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <AlertCircle className="h-16 w-16 text-gray-400 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            <h3 className="text-lg font-semibold text-foreground mb-2">
               Questionário não encontrado
             </h3>
             <p className="text-gray-600 mb-4">
@@ -1154,9 +1154,9 @@ const QuestionarioRespond = () => {
   })() : false;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-muted">
       {/* Header Moderno */}
-      <div className="bg-white border-b shadow-sm">
+      <div className="bg-card border-b shadow-sm">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex-1">
@@ -1196,11 +1196,11 @@ const QuestionarioRespond = () => {
       {/* Conteúdo Principal */}
       <div className="container mx-auto px-6 py-8">
         {currentQuestion ? (
-          <div className="bg-white rounded-lg shadow-sm p-8 min-h-[400px]">
+          <div className="bg-card rounded-lg shadow-sm p-8 min-h-[400px]">
             {renderQuestion(currentQuestion)}
           </div>
         ) : (
-          <div className="bg-white rounded-lg shadow-sm p-8 text-center">
+          <div className="bg-card rounded-lg shadow-sm p-8 text-center">
             <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <p className="text-gray-600">Nenhuma questão disponível no momento.</p>
           </div>
@@ -1229,7 +1229,7 @@ const QuestionarioRespond = () => {
       </div>
 
       {/* Botões de Navegação Fixos */}
-      <div className="fixed bottom-0 left-0 md:left-16 lg:left-64 right-0 bg-white border-t shadow-lg z-[60]">
+      <div className="fixed bottom-0 left-0 md:left-16 lg:left-64 right-0 bg-card border-t shadow-lg z-[60]">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <Button

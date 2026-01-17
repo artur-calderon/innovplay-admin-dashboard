@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, Save, Loader2 } from "lucide-react";
+import { ArrowLeft, Save, Loader2, FileCheck } from "lucide-react";
 import { CreateEvaluationStep1 } from "@/components/evaluations/CreateEvaluationStep1";
 import { CreateEvaluationStep2 } from "@/components/evaluations/CreateEvaluationStep2";
 import { EvaluationFormData, Question as FormQuestion, Question } from "@/components/evaluations/types";
@@ -404,7 +404,10 @@ const EditEvaluation = () => {
                 
                 <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-2xl font-bold">Editar Avaliação</h1>
+                        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+                          <FileCheck className="w-8 h-8 text-blue-600" />
+                          Editar Avaliação
+                        </h1>
                         <p className="text-muted-foreground">
                             Edite as informações da avaliação "{originalEvaluation.title}"
                         </p>

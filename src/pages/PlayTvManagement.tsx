@@ -270,22 +270,22 @@ export default function PlayTvManagement() {
 
 
   return (
-    <div className="container mx-auto py-8 px-4 space-y-8 max-w-7xl">
+    <div className="container mx-auto py-6 space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 pb-4 border-b">
-        <div className="space-y-2">
-          <h1 className="text-4xl font-bold tracking-tight flex items-center gap-3 bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent">
-            <Tv className="w-10 h-10 text-blue-600" />
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <Tv className="w-8 h-8 text-blue-600" />
             Play TV
           </h1>
-          <p className="text-muted-foreground text-lg">
+          <p className="text-muted-foreground">
             {canCreate
               ? 'Gerencie e cadastre vídeos educacionais para os alunos'
               : 'Visualize os vídeos disponíveis'}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button variant="outline" onClick={handleRefresh} disabled={isLoading} className="shadow-sm">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={handleRefresh} disabled={isLoading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             Atualizar
           </Button>
@@ -294,24 +294,24 @@ export default function PlayTvManagement() {
 
       {/* Tabs */}
       {canCreate && (
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="visualizar">
-              <Eye className="w-4 h-4 mr-2" />
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full max-w-md grid-cols-2">
+            <TabsTrigger value="visualizar" className="flex items-center gap-2">
+              <Eye className="w-4 h-4" />
               Visualizar Vídeos
             </TabsTrigger>
-            <TabsTrigger value="cadastrar">
-              <Plus className="w-4 h-4 mr-2" />
+            <TabsTrigger value="cadastrar" className="flex items-center gap-2">
+              <Plus className="w-4 h-4" />
               Cadastrar Vídeo
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="visualizar" className="space-y-6 mt-6">
             {/* Filtros */}
-            <Card className="shadow-sm border-border/50">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-xl flex items-center gap-2">
-                  <School className="w-5 h-5 text-primary" />
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <School className="h-5 w-5" />
                   Filtros
                 </CardTitle>
                 <CardDescription>Filtre os vídeos por escola, série ou disciplina</CardDescription>
@@ -423,10 +423,10 @@ export default function PlayTvManagement() {
       {!canCreate && (
         <>
           {/* Filtros */}
-          <Card className="shadow-sm border-border/50">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-xl flex items-center gap-2">
-                <School className="w-5 h-5 text-primary" />
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <School className="h-5 w-5" />
                 Filtros
               </CardTitle>
               <CardDescription>Filtre os vídeos por escola, série ou disciplina</CardDescription>

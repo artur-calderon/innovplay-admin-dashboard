@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PlusCircle, Search, Edit, Trash2, Building, Loader2, Eye, Users, GraduationCap, UserPlus, ArrowLeft, Filter, Settings } from "lucide-react";
+import { PlusCircle, Search, Edit, Trash2, Building, Loader2, Eye, Users, GraduationCap, UserPlus, ArrowLeft, Filter, Settings, School } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
@@ -389,7 +389,10 @@ export default function Instituicao() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Gerenciar Instituições</h1>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <School className="w-8 h-8 text-blue-600" />
+            Gerenciar Instituições
+          </h1>
           <p className="text-muted-foreground text-sm md:text-base">
             Cadastre e gerencie as instituições de ensino
           </p>

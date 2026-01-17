@@ -64,30 +64,31 @@ export const VideoList = ({
   const canDelete = canDeleteVideo || (() => isAdmin);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       {videos.map((video) => {
         const showDeleteButton = onDeleteVideo && canDelete(video);
         
         return (
           <Card
             key={video.id}
-            className="group cursor-pointer hover:shadow-lg transition-shadow relative"
+            className="hover:shadow-md transition-shadow relative group"
             onClick={() => handleVideoClick(video)}
           >
             {showDeleteButton && (
               <Button
-                variant="destructive"
-                size="icon"
-                className="absolute top-2 right-2 z-10 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                variant="outline"
+                size="sm"
+                className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
                 onClick={(e) => handleDeleteClick(e, video.id)}
+                title="Excluir vídeo"
               >
                 <Trash2 className="w-4 h-4" />
               </Button>
             )}
-            <CardHeader className="pb-3">
+            <CardHeader>
               <div className="flex justify-between items-start">
                 <CardTitle className="text-lg line-clamp-2">{video.title || 'Vídeo sem título'}</CardTitle>
-                <Badge variant="secondary" className="ml-2">
+                <Badge variant="secondary">
                   {video.subject.name}
                 </Badge>
               </div>

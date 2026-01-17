@@ -20,7 +20,8 @@ import {
   Target,
   Calendar,
   Settings,
-  Loader2
+  Loader2,
+  FileText
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { questionsAlunoJovem, questionsAlunoVelho, professorQuestions, diretorQuestions, secretarioQuestions } from '../data';
@@ -498,24 +499,24 @@ const FormCreate = () => {
     };
 
     return (
-      <div key={question.id} className="p-4 border rounded-lg bg-gray-50">
+      <div key={question.id} className="p-4 border rounded-lg bg-card">
         <div className="flex items-start gap-3">
-          <span className="text-sm font-medium text-gray-500 mt-1">
+          <span className="text-sm font-medium text-muted-foreground mt-1">
             {index + 1}.
           </span>
           <div className="flex-1">
-            <h4 className="font-medium text-gray-900 mb-2">
+            <h4 className="font-medium text-foreground mb-2">
               {question.texto || question.text}
             </h4>
             
             {(question.tipo === 'selecao_unica' || question.type === 'selecao_unica') && (
               <div className="space-y-2">
                 {(question.opcoes || question.options)?.map((option: string, optIndex: number) => (
-                  <label key={optIndex} className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200">
-                    <span className="flex items-center justify-center w-6 h-6 bg-gray-100 rounded-full text-xs font-medium text-gray-600">
+                  <label key={optIndex} className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-muted transition-colors duration-200">
+                    <span className="flex items-center justify-center w-6 h-6 bg-muted rounded-full text-xs font-medium text-muted-foreground">
                       {String.fromCharCode(65 + optIndex)}
                     </span>
-                    <span className="text-sm text-gray-700">{option}</span>
+                    <span className="text-sm text-foreground">{option}</span>
                   </label>
                 ))}
               </div>
@@ -525,11 +526,11 @@ const FormCreate = () => {
               <div className="space-y-2">
                 {(question.subPerguntas || question.subQuestions)?.map((subQ: SubQuestion, subIndex: number) => (
                   <div key={subQ.id} className="ml-4">
-                    <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200">
-                      <span className="flex items-center justify-center w-6 h-6 bg-gray-100 rounded-full text-xs font-medium text-gray-600">
+                    <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-muted transition-colors duration-200">
+                      <span className="flex items-center justify-center w-6 h-6 bg-muted rounded-full text-xs font-medium text-muted-foreground">
                         {String.fromCharCode(65 + subIndex)}
                       </span>
-                      <span className="text-sm text-gray-700">{subQ.texto || subQ.text}</span>
+                      <span className="text-sm text-foreground">{subQ.texto || subQ.text}</span>
                     </label>
                   </div>
                 ))}
@@ -540,16 +541,16 @@ const FormCreate = () => {
               <div className="space-y-3">
                 {(question.subPerguntas || question.subQuestions)?.map((subQ: SubQuestion, subIndex: number) => (
                   <div key={subQ.id} className="ml-4">
-                    <p className="text-sm font-medium text-gray-700 mb-2">
+                    <p className="text-sm font-medium text-foreground mb-2">
                       {subQ.texto || subQ.text}
                     </p>
                     <div className="grid grid-cols-2 gap-2">
                       {(question.opcoes || question.options)?.map((option: string, optIndex: number) => (
-                        <label key={optIndex} className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200">
-                          <span className="flex items-center justify-center w-6 h-6 bg-gray-100 rounded-full text-xs font-medium text-gray-600">
+                        <label key={optIndex} className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-muted transition-colors duration-200">
+                          <span className="flex items-center justify-center w-6 h-6 bg-muted rounded-full text-xs font-medium text-muted-foreground">
                             {String.fromCharCode(65 + optIndex)}
                           </span>
-                          <span className="text-sm text-gray-600">{option}</span>
+                          <span className="text-sm text-muted-foreground">{option}</span>
                         </label>
                       ))}
                     </div>
@@ -562,16 +563,16 @@ const FormCreate = () => {
               <div className="space-y-3">
                 {(question.subPerguntas || question.subQuestions)?.map((subQ: SubQuestion, subIndex: number) => (
                   <div key={subQ.id} className="ml-4">
-                    <p className="text-sm font-medium text-gray-700 mb-2">
+                    <p className="text-sm font-medium text-foreground mb-2">
                       {subQ.texto || subQ.text}
                     </p>
                     <div className="grid grid-cols-1 gap-2">
                       {(question.opcoes || question.options)?.map((option: string, optIndex: number) => (
-                        <label key={optIndex} className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200">
-                          <span className="flex items-center justify-center w-6 h-6 bg-gray-100 rounded-full text-xs font-medium text-gray-600">
+                        <label key={optIndex} className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-muted transition-colors duration-200">
+                          <span className="flex items-center justify-center w-6 h-6 bg-muted rounded-full text-xs font-medium text-muted-foreground">
                             {String.fromCharCode(65 + optIndex)}
                           </span>
-                          <span className="text-sm text-gray-600">{option}</span>
+                          <span className="text-sm text-muted-foreground">{option}</span>
                         </label>
                       ))}
                     </div>
@@ -584,7 +585,7 @@ const FormCreate = () => {
               <div className="space-y-3">
                 {(question.subPerguntas || question.subQuestions)?.map((subQ: SubQuestion, subIndex: number) => (
                   <div key={subQ.id} className="ml-4">
-                    <p className="text-sm font-medium text-gray-700 mb-2">
+                    <p className="text-sm font-medium text-foreground mb-2">
                       {subQ.texto || subQ.text}
                     </p>
                     <div className="relative">
@@ -593,7 +594,7 @@ const FormCreate = () => {
                         min={question.min || 0}
                         max={question.max || 100}
                         value={sliderValues[`${question.id}_${subQ.id}`] ?? Math.floor(((question.min || 0) + (question.max || 100)) / 2)}
-                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider-input"
+                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer slider-input"
                         style={{
                           background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((sliderValues[`${question.id}_${subQ.id}`] ?? Math.floor(((question.min || 0) + (question.max || 100)) / 2)) - (question.min || 0)) / ((question.max || 100) - (question.min || 0)) * 100}%, #e5e7eb ${((sliderValues[`${question.id}_${subQ.id}`] ?? Math.floor(((question.min || 0) + (question.max || 100)) / 2)) - (question.min || 0)) / ((question.max || 100) - (question.min || 0)) * 100}%, #e5e7eb 100%)`,
                           WebkitAppearance: 'none',
@@ -607,9 +608,9 @@ const FormCreate = () => {
                           }));
                         }}
                       />
-                      <div className="flex justify-between text-xs text-gray-500 mt-2">
+                      <div className="flex justify-between text-xs text-muted-foreground mt-2">
                         <span>{question.min || 0}</span>
-                        <span className="font-medium text-gray-700">
+                        <span className="font-medium text-foreground">
                           Valor: <span className="text-blue-600 font-semibold">
                             {sliderValues[`${question.id}_${subQ.id}`] ?? Math.floor(((question.min || 0) + (question.max || 100)) / 2)}
                           </span>
@@ -630,7 +631,7 @@ const FormCreate = () => {
                     min={question.min || 0}
                     max={question.max || 100}
                     value={sliderValue}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider-input"
+                    className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer slider-input"
                     style={{
                       background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb 100%)`,
                       WebkitAppearance: 'none',
@@ -641,9 +642,9 @@ const FormCreate = () => {
                       handleSliderChange(question.id, value);
                     }}
                   />
-                  <div className="flex justify-between text-xs text-gray-500 mt-2">
+                  <div className="flex justify-between text-xs text-muted-foreground mt-2">
                     <span>{question.min || 0}</span>
-                    <span className="font-medium text-gray-700">
+                    <span className="font-medium text-foreground">
                       Valor: <span className="text-blue-600 font-semibold">
                         {sliderValue}
                       </span>
@@ -653,9 +654,9 @@ const FormCreate = () => {
                 </div>
                 {question.optionText && (
                   <div className="mt-2">
-                    <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200">
+                    <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-muted transition-colors duration-200">
                       <input type="checkbox" className="w-4 h-4 text-blue-600 rounded" />
-                      <span className="text-sm text-gray-600">{question.optionText}</span>
+                      <span className="text-sm text-muted-foreground">{question.optionText}</span>
                     </label>
                   </div>
                 )}
@@ -670,7 +671,7 @@ const FormCreate = () => {
                     min={question.min || 0}
                     max={question.max || 100}
                     value={sliderValue}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider-input"
+                    className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer slider-input"
                     style={{
                       background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb ${((sliderValue - (question.min || 0)) / ((question.max || 100) - (question.min || 0))) * 100}%, #e5e7eb 100%)`,
                       WebkitAppearance: 'none',
@@ -681,9 +682,9 @@ const FormCreate = () => {
                       handleSliderChange(question.id, value);
                     }}
                   />
-                  <div className="flex justify-between text-xs text-gray-500 mt-2">
+                  <div className="flex justify-between text-xs text-muted-foreground mt-2">
                     <span>{question.min || 0}</span>
-                    <span className="font-medium text-gray-700">
+                    <span className="font-medium text-foreground">
                       Valor: <span className="text-blue-600 font-semibold">
                         {sliderValue}
                       </span>
@@ -697,13 +698,13 @@ const FormCreate = () => {
             {(question.tipo === 'textarea' || question.type === 'textarea') && (
               <div className="space-y-2">
                 <textarea 
-                  className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200" 
+                  className="w-full p-3 border border-border rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200" 
                   rows={4}
                   placeholder="Digite sua resposta aqui..."
                   value={textareaValues[question.id] || ''}
                   onChange={(e) => handleTextareaChange(question.id, e.target.value)}
                 />
-                <div className="flex justify-between text-xs text-gray-500">
+                <div className="flex justify-between text-xs text-muted-foreground">
                   <span>Resposta livre</span>
                   <span>{textareaValues[question.id]?.length || 0} caracteres</span>
                 </div>
@@ -940,7 +941,7 @@ const FormCreate = () => {
     return (
       <div className="container mx-auto p-6">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">Tipo de questionário não encontrado</h1>
+          <h1 className="text-2xl font-bold text-foreground mb-4">Tipo de questionário não encontrado</h1>
           <Button onClick={() => navigate('/app/questionarios/cadastro')}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Voltar
@@ -963,8 +964,11 @@ const FormCreate = () => {
           Voltar
         </Button>
         <div className="flex-1">
-          <h1 className="text-3xl font-bold text-gray-900">Criar Questionário</h1>
-          <p className="text-gray-600 mt-1">Configure e envie um novo questionário</p>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <FileText className="w-8 h-8 text-blue-600" />
+            Criar Questionário
+          </h1>
+          <p className="text-muted-foreground mt-1">Configure e envie um novo questionário</p>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="flex items-center gap-1">
@@ -978,25 +982,25 @@ const FormCreate = () => {
       <div className="flex items-center justify-center space-x-8">
         <div className={`flex items-center gap-2 ${currentStep === 'config' ? 'text-blue-600' : 'text-gray-400'}`}>
           <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-            currentStep === 'config' ? 'bg-blue-600 text-white' : 'bg-gray-200'
+            currentStep === 'config' ? 'bg-blue-600 text-white' : 'bg-muted'
           }`}>
             1
           </div>
           <span className="font-medium">Configuração</span>
         </div>
-        <div className={`w-16 h-0.5 ${currentStep === 'preview' || currentStep === 'send' ? 'bg-blue-600' : 'bg-gray-200'}`}></div>
+        <div className={`w-16 h-0.5 ${currentStep === 'preview' || currentStep === 'send' ? 'bg-blue-600' : 'bg-muted'}`}></div>
         <div className={`flex items-center gap-2 ${currentStep === 'preview' ? 'text-blue-600' : 'text-gray-400'}`}>
           <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-            currentStep === 'preview' ? 'bg-blue-600 text-white' : 'bg-gray-200'
+            currentStep === 'preview' ? 'bg-blue-600 text-white' : 'bg-muted'
           }`}>
             2
           </div>
           <span className="font-medium">Visualização</span>
         </div>
-        <div className={`w-16 h-0.5 ${currentStep === 'send' ? 'bg-blue-600' : 'bg-gray-200'}`}></div>
+        <div className={`w-16 h-0.5 ${currentStep === 'send' ? 'bg-blue-600' : 'bg-muted'}`}></div>
         <div className={`flex items-center gap-2 ${currentStep === 'send' ? 'text-blue-600' : 'text-gray-400'}`}>
           <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-            currentStep === 'send' ? 'bg-blue-600 text-white' : 'bg-gray-200'
+            currentStep === 'send' ? 'bg-blue-600 text-white' : 'bg-muted'
           }`}>
             3
           </div>
@@ -1109,12 +1113,12 @@ const FormCreate = () => {
                     <h4 className="font-medium text-gray-900">
                       {formConfig.targetGroups.map(id => targetGroups.find(g => g.id === id)?.name).join(', ')}
                     </h4>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-muted-foreground">
                       {formConfig.targetGroups.map(id => targetGroups.find(g => g.id === id)?.description).join(', ')}
                     </p>
                   </div>
                 </div>
-                <p className="text-xs text-gray-500 mt-2">
+                <p className="text-xs text-muted-foreground mt-2">
                   O grupo de destino é definido automaticamente baseado no tipo de questionário selecionado.
                 </p>
               </div>
@@ -1152,7 +1156,7 @@ const FormCreate = () => {
                       <button
                         type="button"
                         onClick={() => setSearchTermUsers('')}
-                        className="text-gray-400 hover:text-gray-600 transition-colors"
+                        className="text-gray-400 hover:text-muted-foreground transition-colors"
                       >
                         <svg
                           className="h-4 w-4"
@@ -1189,7 +1193,7 @@ const FormCreate = () => {
                   {loadingTecAdminUsers ? (
                     <div className="flex items-center justify-center p-8">
                       <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
-                      <span className="ml-2 text-sm text-gray-600">Carregando usuários TecAdmin...</span>
+                      <span className="ml-2 text-sm text-muted-foreground">Carregando usuários TecAdmin...</span>
                     </div>
                   ) : (
                     <div className="divide-y">
@@ -1207,7 +1211,7 @@ const FormCreate = () => {
                             <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
                               formConfig.selectedTecAdminUsers.includes(user.id) || formConfig.selectAllTecAdminUsers
                                 ? 'border-blue-500 bg-blue-500'
-                                : 'border-gray-300'
+                                : 'border-border'
                             }`}>
                               {(formConfig.selectedTecAdminUsers.includes(user.id) || formConfig.selectAllTecAdminUsers) && (
                                 <CheckCircle className="h-3 w-3 text-white" />
@@ -1215,13 +1219,13 @@ const FormCreate = () => {
                             </div>
                             <div className="flex-1">
                               <h4 className="font-medium text-gray-900">{user.name}</h4>
-                              <div className="flex items-center gap-4 text-sm text-gray-600">
+                              <div className="flex items-center gap-4 text-sm text-muted-foreground">
                                 <span>{user.email}</span>
-                                <span className="text-xs text-gray-500">
+                                <span className="text-xs text-muted-foreground">
                                   {user.status || 'ativo'}
                                 </span>
                                 {user.last_login && (
-                                  <span className="text-xs text-gray-500">
+                                  <span className="text-xs text-muted-foreground">
                                     Último acesso: {new Date(user.last_login).toLocaleDateString('pt-BR')}
                                   </span>
                                 )}
@@ -1231,7 +1235,7 @@ const FormCreate = () => {
                         </div>
                       ))}
                       {filteredTecAdminUsers.length === 0 && !loadingTecAdminUsers && (
-                        <div className="p-8 text-center text-gray-500">
+                        <div className="p-8 text-center text-muted-foreground">
                           <UserCheck className="h-8 w-8 mx-auto mb-2 text-gray-400" />
                           <p>
                             {searchTermUsers 
@@ -1254,7 +1258,7 @@ const FormCreate = () => {
                     </div>
                   )}
                 </div>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-muted-foreground">
                   {formConfig.selectAllTecAdminUsers 
                     ? `Todos os ${filteredTecAdminUsers.length} usuários selecionados`
                     : `${formConfig.selectedTecAdminUsers.length} de ${filteredTecAdminUsers.length} usuários selecionados`
@@ -1297,7 +1301,7 @@ const FormCreate = () => {
                       <button
                         type="button"
                         onClick={() => setSearchTerm('')}
-                        className="text-gray-400 hover:text-gray-600 transition-colors"
+                        className="text-gray-400 hover:text-muted-foreground transition-colors"
                       >
                         <svg
                           className="h-4 w-4"
@@ -1334,7 +1338,7 @@ const FormCreate = () => {
                   {loadingSchools ? (
                     <div className="flex items-center justify-center p-8">
                       <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
-                      <span className="ml-2 text-sm text-gray-600">Carregando escolas...</span>
+                      <span className="ml-2 text-sm text-muted-foreground">Carregando escolas...</span>
                     </div>
                   ) : (
                     <div className="divide-y">
@@ -1352,7 +1356,7 @@ const FormCreate = () => {
                             <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
                               formConfig.selectedSchools.includes(school.id) || formConfig.selectAllSchools
                                 ? 'border-blue-500 bg-blue-500'
-                                : 'border-gray-300'
+                                : 'border-border'
                             }`}>
                               {(formConfig.selectedSchools.includes(school.id) || formConfig.selectAllSchools) && (
                                 <CheckCircle className="h-3 w-3 text-white" />
@@ -1360,22 +1364,22 @@ const FormCreate = () => {
                             </div>
                             <div className="flex-1">
                               <h4 className="font-medium text-gray-900">{school.name}</h4>
-                              <div className="flex items-center gap-4 text-sm text-gray-600">
+                              <div className="flex items-center gap-4 text-sm text-muted-foreground">
                                 <span>
                                   {school.city ? `${school.city.name}, ${school.city.state}` : 'Localização não informada'}
                                 </span>
                                 {school.address && (
-                                  <span className="text-xs text-gray-500">
+                                  <span className="text-xs text-muted-foreground">
                                     {school.address}
                                   </span>
                                 )}
                                 {school.students_count && (
-                                  <span className="text-xs text-gray-500">
+                                  <span className="text-xs text-muted-foreground">
                                     {school.students_count} alunos
                                   </span>
                                 )}
                                 {school.classes_count && (
-                                  <span className="text-xs text-gray-500">
+                                  <span className="text-xs text-muted-foreground">
                                     {school.classes_count} turmas
                                   </span>
                                 )}
@@ -1385,7 +1389,7 @@ const FormCreate = () => {
                         </div>
                       ))}
                       {filteredSchools.length === 0 && !loadingSchools && (
-                        <div className="p-8 text-center text-gray-500">
+                        <div className="p-8 text-center text-muted-foreground">
                           <Building2 className="h-8 w-8 mx-auto mb-2 text-gray-400" />
                           <p>
                             {searchTerm 
@@ -1408,7 +1412,7 @@ const FormCreate = () => {
                     </div>
                   )}
                 </div>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-muted-foreground">
                   {formConfig.selectAllSchools 
                     ? `Todas as ${filteredSchools.length} escolas selecionadas`
                     : `${formConfig.selectedSchools.length} de ${filteredSchools.length} escolas selecionadas`
@@ -1459,7 +1463,7 @@ const FormCreate = () => {
               <div className="space-y-4">
                 <div className="p-6 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg border">
                   <h2 className="text-2xl font-bold text-gray-900 mb-2">{formConfig.title}</h2>
-                  <p className="text-gray-700 mb-4">{formConfig.description}</p>
+                  <p className="text-foreground mb-4">{formConfig.description}</p>
                   {formConfig.instructions && (
                     <div className="p-4 bg-yellow-50 border-l-4 border-yellow-400 rounded">
                       <p className="text-sm text-yellow-800">
@@ -1467,7 +1471,7 @@ const FormCreate = () => {
                       </p>
                     </div>
                   )}
-                  <div className="flex items-center gap-4 mt-4 text-sm text-gray-600">
+                  <div className="flex items-center gap-4 mt-4 text-sm text-muted-foreground">
                     <div className="flex items-center gap-1">
                       <Target className="h-4 w-4" />
                       <span>Público: {formConfig.targetGroups.map(id => targetGroups.find(g => g.id === id)?.name).join(', ')}</span>

@@ -55,7 +55,10 @@ export default function StudentCertificates() {
     return (
       <div className="container mx-auto p-6 space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">Meus Certificados</h1>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <Award className="w-8 h-8 text-blue-600" />
+            Meus Certificados
+          </h1>
           <p className="text-muted-foreground mt-2">
             Visualize e imprima seus certificados de desempenho
           </p>
@@ -81,7 +84,10 @@ export default function StudentCertificates() {
     return (
       <div className="container mx-auto p-6 space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">Meus Certificados</h1>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <Award className="w-8 h-8 text-blue-600" />
+            Meus Certificados
+          </h1>
           <p className="text-muted-foreground mt-2">
             Visualize e imprima seus certificados de desempenho
           </p>

@@ -11,6 +11,7 @@ import ptBrLocale from '@fullcalendar/core/locales/pt-br';
 import '../styles/fullcalendar.css';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Calendar } from 'lucide-react';
 import { CalendarApi as CalendarService } from "@/services/calendarApi";
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
@@ -104,18 +105,26 @@ export default function StudentAgendaOptimized() {
     });
     setIsViewOpen(true);
     if (!e.extendedProps?.read) {
-      try { await CalendarService.markRead(e.id); } catch {}
+      try { 
+        await CalendarService.markRead(e.id); 
+      } catch (error) {
+        // Silenciosamente ignora erros ao marcar como lido
+        console.error('Erro ao marcar evento como lido:', error);
+      }
     }
   };
 
   return (
     <div className="p-4">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Minha Agenda</h1>
-        <p className="text-gray-600">Acompanhe seus eventos e atividades escolares</p>
+        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3 mb-2">
+          <Calendar className="w-8 h-8 text-blue-600" />
+          Minha Agenda
+        </h1>
+        <p className="text-muted-foreground">Acompanhe seus eventos e atividades escolares</p>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border">
+      <div className="bg-card rounded-lg shadow-sm border">
         <FullCalendar
           ref={calendarRef}
           plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}

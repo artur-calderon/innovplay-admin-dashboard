@@ -184,7 +184,10 @@ export default function Certificates() {
     return (
       <div className="container mx-auto p-6 space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">Certificados</h1>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <Award className="w-8 h-8 text-blue-600" />
+            Certificados
+          </h1>
           <p className="text-muted-foreground mt-2">
             {user.role === 'admin' 
               ? 'Visualize todas as avaliações do sistema para gerenciar certificados'
@@ -210,7 +213,10 @@ export default function Certificates() {
             Voltar
           </Button>
           <div>
-            <h1 className="text-3xl font-bold">Personalizar Certificado</h1>
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+              <Award className="w-8 h-8 text-blue-600" />
+              Personalizar Certificado
+            </h1>
             <p className="text-muted-foreground mt-2">
               Personalize o certificado que será enviado aos alunos
             </p>
@@ -234,7 +240,10 @@ export default function Certificates() {
             Voltar
           </Button>
           <div>
-            <h1 className="text-3xl font-bold">Gerenciar Certificados</h1>
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+              <Award className="w-8 h-8 text-blue-600" />
+              Gerenciar Certificados
+            </h1>
             <p className="text-muted-foreground mt-2">
               Personalize e aprove certificados para os alunos aprovados
             </p>

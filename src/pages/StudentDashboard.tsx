@@ -975,8 +975,8 @@ const StudentDashboard = () => {
             <User className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 truncate">Olá, {user?.name || "Aluno"}!</h1>
-            <p className="text-sm sm:text-base text-gray-600">Painel do Aluno</p>
+            <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-foreground truncate">Olá, {user?.name || "Aluno"}!</h1>
+            <p className="text-sm sm:text-base text-muted-foreground">Painel do Aluno</p>
           </div>
         </div>
         
@@ -984,7 +984,7 @@ const StudentDashboard = () => {
         <div className="flex items-center gap-2 flex-shrink-0">
           {evaluations.length > 0 && (
             <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-gray-700">Avaliação:</label>
+              <label className="text-sm font-medium text-foreground">Avaliação:</label>
               <select
                 value={selectedEvaluation || ''}
                 onChange={(e) => handleEvaluationChange(e.target.value)}

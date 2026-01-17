@@ -579,7 +579,10 @@ export default function EvaluationCorrection() {
               Voltar
             </Button>
             <div>
-              <h1 className="text-2xl font-bold">Correção de Avaliação</h1>
+              <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+                <ClipboardList className="w-8 h-8 text-blue-600" />
+                Correção de Avaliação
+              </h1>
               <p className="text-muted-foreground">{selectedEvaluation.testTitle}</p>
             </div>
           </div>
@@ -1037,7 +1040,10 @@ export default function EvaluationCorrection() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Correção de Avaliações</h1>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <ClipboardList className="w-8 h-8 text-blue-600" />
+            Correção de Avaliações
+          </h1>
           <p className="text-muted-foreground">
             Gerencie avaliações virtuais e visualize avaliações aplicadas
           </p>

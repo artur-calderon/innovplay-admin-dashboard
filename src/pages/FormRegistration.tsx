@@ -23,7 +23,8 @@ import {
   Loader2,
   Trash2,
   RotateCcw,
-  Eye
+  Eye,
+  FileText
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { FormType } from '@/types/forms';
@@ -927,8 +928,11 @@ const FormRegistration = () => {
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Cadastro de Questionários</h1>
-          <p className="text-gray-600 mt-2">
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <FileText className="w-8 h-8 text-blue-600" />
+            Cadastro de Questionários
+          </h1>
+          <p className="text-muted-foreground mt-2">
             Selecione os filtros para determinar o público-alvo e configure o questionário
           </p>
         </div>
@@ -1228,7 +1232,7 @@ const FormRegistration = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 text-sm text-gray-600">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Target className="h-4 w-4" />
                 <span>
                   Total de perguntas: {
@@ -1276,7 +1280,7 @@ const FormRegistration = () => {
             <h3 className="text-lg font-medium text-foreground mb-2">
               Selecione um Tipo de Formulário
             </h3>
-            <p className="text-gray-600 text-center max-w-md">
+            <p className="text-muted-foreground text-center max-w-md">
               Com a escola selecionada, você pode criar formulários para <strong>Professores</strong> ou <strong>Diretores</strong>. 
               Selecione uma série para criar formulários para alunos.
             </p>
@@ -1294,7 +1298,7 @@ const FormRegistration = () => {
             <h3 className="text-lg font-medium text-foreground mb-2">
               Formulário de Secretário Disponível
             </h3>
-            <p className="text-gray-600 text-center max-w-md">
+            <p className="text-muted-foreground text-center max-w-md">
               Com o município selecionado, você pode criar um formulário para <strong>Secretário Municipal de Educação</strong>.
             </p>
           </CardContent>
@@ -1311,7 +1315,7 @@ const FormRegistration = () => {
             <h3 className="text-lg font-medium text-foreground mb-2">
               Selecione os filtros obrigatórios
             </h3>
-            <p className="text-gray-600 text-center max-w-md">
+            <p className="text-muted-foreground text-center max-w-md">
               Para criar um questionário, você precisa selecionar: <strong>Estado</strong>, <strong>Município</strong> e pelo menos uma <strong>Escola</strong>.
             </p>
           </CardContent>
@@ -1340,7 +1344,7 @@ const FormRegistration = () => {
             {/* Barra de busca e ações */}
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Buscar perguntas..."
                   value={searchQuestionTerm}
@@ -1408,7 +1412,7 @@ const FormRegistration = () => {
                       className={`p-4 border rounded-lg transition-colors ${
                         isSelected
                           ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-700'
-                          : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750'
+                          : 'bg-card dark:bg-card border-gray-200 dark:border-border hover:bg-muted dark:hover:bg-muted'
                       }`}
                     >
                       <div className="flex items-start gap-3">
@@ -1419,7 +1423,7 @@ const FormRegistration = () => {
                           {isSelected ? (
                             <CheckSquare className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                           ) : (
-                            <Square className="h-5 w-5 text-gray-400" />
+                            <Square className="h-5 w-5 text-muted-foreground" />
                           )}
                         </div>
                         <div 
@@ -1427,7 +1431,7 @@ const FormRegistration = () => {
                           onClick={() => toggleQuestionSelection(question.id)}
                         >
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="text-sm font-medium text-gray-500">
+                            <span className="text-sm font-medium text-muted-foreground">
                               {question.id}
                             </span>
                             {question.obrigatoria !== false && (
@@ -1441,7 +1445,7 @@ const FormRegistration = () => {
                               </Badge>
                             )}
                           </div>
-                          <p className="text-sm text-gray-900 dark:text-gray-100 line-clamp-2">
+                          <p className="text-sm text-foreground dark:text-gray-100 line-clamp-2">
                             {questionText}
                           </p>
                           {(question.subPerguntas || question.subQuestions) && (
@@ -1523,7 +1527,7 @@ const FormRegistration = () => {
             <div className="flex-1 overflow-y-auto space-y-4 pr-2">
               {/* ID e Tipo */}
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-500">
+                <span className="text-sm font-medium text-muted-foreground">
                   {viewingQuestion.id}
                 </span>
                 {viewingQuestion.obrigatoria !== false && (
@@ -1540,10 +1544,10 @@ const FormRegistration = () => {
 
               {/* Texto da Pergunta */}
               <div>
-                <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                <Label className="text-sm font-medium text-foreground dark:text-gray-300 mb-2 block">
                   Pergunta:
                 </Label>
-                <p className="text-base text-gray-900 dark:text-gray-100">
+                <p className="text-base text-foreground dark:text-gray-100">
                   {viewingQuestion.texto || viewingQuestion.text || 'Sem texto'}
                 </p>
               </div>
@@ -1551,16 +1555,16 @@ const FormRegistration = () => {
               {/* Opções */}
               {(viewingQuestion.opcoes || viewingQuestion.options) && (
                 <div>
-                  <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                  <Label className="text-sm font-medium text-foreground dark:text-gray-300 mb-2 block">
                     Opções de Resposta:
                   </Label>
                   <div className="space-y-2">
                     {(viewingQuestion.opcoes || viewingQuestion.options || []).map((opcao: string, index: number) => (
                       <div
                         key={index}
-                        className="p-2 bg-gray-50 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700"
+                        className="p-2 bg-muted dark:bg-card rounded border border-gray-200 dark:border-border"
                       >
-                        <span className="text-sm text-gray-700 dark:text-gray-300">
+                        <span className="text-sm text-foreground dark:text-gray-300">
                           {index + 1}. {opcao}
                         </span>
                       </div>
@@ -1572,7 +1576,7 @@ const FormRegistration = () => {
               {/* Sub-perguntas */}
               {(viewingQuestion.subPerguntas || viewingQuestion.subQuestions) && (
                 <div>
-                  <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                  <Label className="text-sm font-medium text-foreground dark:text-gray-300 mb-2 block">
                     Sub-perguntas:
                   </Label>
                   <div className="space-y-2">
@@ -1585,7 +1589,7 @@ const FormRegistration = () => {
                           <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
                             {subPergunta.id || `Sub-${index + 1}`}:
                           </span>
-                          <span className="text-sm text-gray-700 dark:text-gray-300">
+                          <span className="text-sm text-foreground dark:text-gray-300">
                             {subPergunta.texto || subPergunta.text || 'Sem texto'}
                           </span>
                         </div>
