@@ -269,8 +269,8 @@ export default function OlimpiadasStudent() {
   return (
     <div className="container mx-auto py-6 px-4 space-y-6">
       <div>
-        <h1 className="text-3xl font-bold flex items-center gap-2 text-yellow-900 dark:text-yellow-100">
-          <Trophy className="h-8 w-8 text-yellow-600" />
+        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+          <Trophy className="w-8 h-8 text-blue-600" />
           Olimpíadas Disponíveis
         </h1>
         <p className="text-muted-foreground mt-1">
@@ -297,14 +297,14 @@ export default function OlimpiadasStudent() {
               {activeSessions.map((session) => (
                 <div
                   key={session.session_id}
-                  className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-md border border-orange-200 dark:border-orange-800"
+                  className="flex items-center justify-between p-3 bg-card rounded-md border border-orange-200 dark:border-orange-800"
                 >
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                    <p className="text-sm font-medium text-foreground">
                       Sessão: {session.session_id.substring(0, 8)}...
                     </p>
                     {session.test_title && (
-                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                      <p className="text-xs text-muted-foreground">
                         {session.test_title}
                       </p>
                     )}
@@ -379,7 +379,7 @@ export default function OlimpiadasStudent() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-2">
                       <Trophy className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-                      <CardTitle className="text-xl font-bold text-yellow-900 dark:text-yellow-100 truncate">
+                      <CardTitle className="text-xl font-bold text-foreground truncate">
                         {olimpiada.title}
                       </CardTitle>
                     </div>
@@ -401,7 +401,7 @@ export default function OlimpiadasStudent() {
                       <Badge
                         key={subject.id}
                         variant="outline"
-                        className="bg-yellow-100/50 dark:bg-yellow-900/20 border-yellow-300 dark:border-yellow-700 text-yellow-900 dark:text-yellow-100"
+                        className="bg-yellow-100/50 dark:bg-yellow-900/20 border-yellow-300 dark:border-yellow-700 text-foreground"
                       >
                         {subject.name}
                       </Badge>
@@ -411,7 +411,7 @@ export default function OlimpiadasStudent() {
 
                 <div className="space-y-2 text-sm">
                   {olimpiada.startDateTime && (
-                    <div className="flex items-center gap-2 text-yellow-900 dark:text-yellow-100">
+                    <div className="flex items-center gap-2 text-foreground">
                       <Calendar className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
                       <span>
                         {(() => {
@@ -435,7 +435,7 @@ export default function OlimpiadasStudent() {
                     </div>
                   )}
                   {olimpiada.duration && (
-                    <div className="flex items-center gap-2 text-yellow-900 dark:text-yellow-100">
+                    <div className="flex items-center gap-2 text-foreground">
                       <Clock className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
                       <span>{olimpiada.duration} minutos</span>
                     </div>
@@ -446,7 +446,7 @@ export default function OlimpiadasStudent() {
                 {isExpired(olimpiada) ? (
                   <Button
                     disabled
-                    className="w-full bg-gray-400 text-white cursor-not-allowed"
+                    className="w-full bg-muted text-white cursor-not-allowed"
                   >
                     <AlertCircle className="h-4 w-4 mr-2" />
                     Expirada

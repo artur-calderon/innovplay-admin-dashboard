@@ -19,7 +19,8 @@ import {
     Link,
     User,
     Globe,
-    Search
+    Search,
+    School
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useAuth } from '@/context/authContext';
@@ -39,6 +40,7 @@ const DISCIPLINAS = [
     'Artes',
     'Educação Física',
     'Inglês',
+    'Ensino Religioso',
 ];
 
 const GamesManagement = () => {
@@ -56,6 +58,15 @@ const GamesManagement = () => {
     const [activeTab, setActiveTab] = useState('my_games'); // 'my_games' ou 'all_games'
     const [editError, setEditError] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
+    
+    // Estados para filtros de visualização
+    const [selectedState, setSelectedState] = useState('all');
+    const [selectedGrade, setSelectedGrade] = useState('all');
+    const [selectedSubject, setSelectedSubject] = useState('all');
+    const [states, setStates] = useState([]);
+    const [grades, setGrades] = useState([]);
+    const [subjects, setSubjects] = useState([]);
+    const [isLoadingFilters, setIsLoadingFilters] = useState(false);
     
     // Estados para edição de turmas
     const [editingClasses, setEditingClasses] = useState([]);
@@ -81,18 +92,85 @@ const GamesManagement = () => {
     // Verificar se o usuário pode criar jogos
     const canCreateGames = ['admin', 'tecadm', 'professor', 'diretor', 'coordenador'].includes(user?.role);
 
+    // Carregar opções de filtros
+    const loadFilterOptions = async () => {
+        try {
+            setIsLoadingFilters(true);
+            const [statesRes, gradesRes, subjectsRes] = await Promise.all([
+                EvaluationResultsApiService.getFilterStates().catch(() => []),
+                api.get('/grades/').catch(() => ({ data: [] })),
+                api.get('/subjects').catch(() => ({ data: [] })),
+            ]);
+
+            setStates((statesRes || []).map(state => ({
+                id: state.id,
+                name: state.nome
+            })));
+            setGrades(gradesRes.data || []);
+            setSubjects(subjectsRes.data || []);
+        } catch (error) {
+            console.error('Erro ao carregar opções de filtro:', error);
+        } finally {
+            setIsLoadingFilters(false);
+        }
+    };
+
+    // Carregar opções de filtros ao montar componente
+    useEffect(() => {
+        loadFilterOptions();
+    }, []);
+
     // Buscar jogos
     const fetchGames = async (showMyGames = true) => {
         try {
             setIsLoading(true);
             
-            // Se showMyGames=true, usar parâmetro my_games=true
+            // Construir parâmetros de filtro
             const params = showMyGames ? { my_games: 'true' } : {};
+            if (selectedState !== 'all') {
+                params.state = selectedState;
+            }
+            if (selectedGrade !== 'all') {
+                params.grade = selectedGrade;
+            }
+            if (selectedSubject !== 'all') {
+                params.subject = selectedSubject;
+            }
+            
             const response = await api.get('/games', { params });
             
             // Buscar jogos da estrutura correta da API
             const gamesData = response.data.jogos || [];
-            setGames(gamesData);
+            
+            // Aplicar filtros no frontend caso a API não suporte
+            let filteredGames = gamesData;
+            if (selectedState !== 'all' || selectedGrade !== 'all' || selectedSubject !== 'all') {
+                filteredGames = gamesData.filter(game => {
+                    // Filtrar por disciplina (subject)
+                    // Pode ser string (do array DISCIPLINAS) ou ID (da API)
+                    if (selectedSubject !== 'all') {
+                        const gameSubject = game.subject;
+                        const selectedSubjectObj = subjects.find(s => s.id === selectedSubject);
+                        const selectedSubjectName = selectedSubjectObj?.name || 
+                                                   selectedSubjectObj?.nome ||
+                                                   selectedSubject;
+                        // Comparar tanto por ID quanto por nome (case-insensitive)
+                        const gameSubjectLower = gameSubject?.toLowerCase();
+                        const selectedSubjectLower = selectedSubjectName?.toLowerCase();
+                        if (gameSubject !== selectedSubject && 
+                            gameSubject !== selectedSubjectName &&
+                            gameSubjectLower !== selectedSubjectLower) {
+                            return false;
+                        }
+                    }
+                    // Nota: Filtros de estado e série podem precisar de dados adicionais do jogo
+                    // que podem não estar disponíveis na resposta atual
+                    // Se a API não suportar esses filtros, eles serão aplicados no backend
+                    return true;
+                });
+            }
+            
+            setGames(filteredGames);
         } catch (error) {
             console.error('Erro ao buscar jogos:', error);
             toast.error('Erro ao carregar os jogos');
@@ -105,7 +183,8 @@ const GamesManagement = () => {
     useEffect(() => {
         // Por padrão, mostrar apenas os jogos do usuário
         fetchGames(activeTab === 'my_games');
-    }, [activeTab]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab, selectedState, selectedGrade, selectedSubject]);
 
     // Verificar se o usuário pode editar/excluir um jogo
     const canEditGame = (game) => {
@@ -464,7 +543,10 @@ const GamesManagement = () => {
         <div className="container mx-auto py-6 space-y-6">
             <div className="flex justify-between items-center">
                 <div>
-                    <h2 className="text-2xl font-bold">Gerenciamento de Jogos</h2>
+                    <h2 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+                        <Gamepad2 className="w-8 h-8 text-blue-600" />
+                        Gerenciamento de Jogos
+                    </h2>
                     <p className="text-muted-foreground">
                         {activeTab === 'my_games' 
                             ? 'Gerencie os jogos que você criou' 
@@ -505,6 +587,88 @@ const GamesManagement = () => {
                     </TabsList>
                 </Tabs>
             )}
+
+            {/* Filtros */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <School className="h-5 w-5" />
+                        Filtros
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Estado</label>
+                            <Select
+                                value={selectedState}
+                                onValueChange={setSelectedState}
+                                disabled={isLoadingFilters}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Todos os estados" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todos os estados</SelectItem>
+                                    {states.map((state) => (
+                                        <SelectItem key={state.id} value={state.id}>
+                                            {state.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Série</label>
+                            <Select
+                                value={selectedGrade}
+                                onValueChange={setSelectedGrade}
+                                disabled={isLoadingFilters}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Todas as séries" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todas as séries</SelectItem>
+                                    {grades.map((grade) => (
+                                        <SelectItem key={grade.id} value={grade.id}>
+                                            {grade.name || grade.nome}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Disciplina</label>
+                            <Select
+                                value={selectedSubject}
+                                onValueChange={setSelectedSubject}
+                                disabled={isLoadingFilters}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Todas as disciplinas" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todas as disciplinas</SelectItem>
+                                    {subjects.map((subject) => (
+                                        <SelectItem key={subject.id} value={subject.id}>
+                                            {subject.name || subject.nome}
+                                        </SelectItem>
+                                    ))}
+                                    {/* Fallback para disciplinas hardcoded caso API não retorne */}
+                                    {subjects.length === 0 && DISCIPLINAS.map((disciplina) => (
+                                        <SelectItem key={disciplina} value={disciplina}>
+                                            {disciplina}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
 
             {/* Campo de Busca */}
             <div className="relative">

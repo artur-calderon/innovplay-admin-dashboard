@@ -2048,7 +2048,10 @@ export default function Results() {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Resultados das Avaliações</h1>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <BarChart3 className="w-8 h-8 text-blue-600" />
+            Resultados das Avaliações
+          </h1>
           <p className="text-muted-foreground">
             Acompanhe o desempenho das avaliações e gere relatórios
           </p>

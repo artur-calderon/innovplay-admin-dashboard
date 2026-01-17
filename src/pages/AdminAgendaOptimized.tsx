@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FormMultiSelect, FormOption } from "@/components/ui/form-multi-select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Edit, Trash2, AlertCircle } from 'lucide-react';
+import { Edit, Trash2, AlertCircle, Calendar } from 'lucide-react';
 import { CalendarApi as CalendarService, type CalendarTargetsResponse, type CalendarTarget } from "@/services/calendarApi";
 import { toLocalOffsetISO } from "@/utils/date";
 import { toast } from 'react-toastify';
@@ -485,7 +485,10 @@ export default function AdminAgendaOptimized() {
   return (
     <div className="p-4">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-foreground mb-2">Agenda Administrativa</h1>
+        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3 mb-2">
+          <Calendar className="w-8 h-8 text-blue-600" />
+          Agenda Administrativa
+        </h1>
         <p className="text-muted-foreground">Gerencie eventos e atividades da instituição</p>
       </div>
 

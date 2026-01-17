@@ -227,8 +227,8 @@ export default function PlayTvStudent() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold flex items-center gap-2">
-            <Tv className="w-6 h-6 text-blue-600" />
+          <h2 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <Tv className="w-8 h-8 text-blue-600" />
             Play TV
           </h2>
           <p className="text-muted-foreground">Assista aos vídeos educacionais disponíveis para sua série</p>

@@ -26,6 +26,7 @@ const DISCIPLINAS = [
     'Artes',
     'Educação Física',
     'Inglês',
+    'Ensino Religioso',
 ];
 
 const WordwallGameForm = () => {
@@ -755,24 +756,24 @@ const WordwallGameForm = () => {
 
                     {/* Seção para Professor */}
                     {user?.role === 'professor' && (
-                        <div className="space-y-4 p-4 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+                        <div className="space-y-4 p-4 bg-muted rounded-lg border border-border">
                             <div className="flex items-start gap-2">
-                                <AlertCircle className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                                <AlertCircle className="h-5 w-5 text-foreground mt-0.5 flex-shrink-0" />
                                 <div className="flex-1">
-                                    <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-1">
+                                    <h4 className="font-medium text-foreground mb-1">
                                         Vinculação Automática
                                     </h4>
-                                    <p className="text-sm text-blue-700 dark:text-blue-300 mb-3">
+                                    <p className="text-sm text-muted-foreground mb-3">
                                         Este jogo será vinculado automaticamente às suas turmas.
                                     </p>
                                     {isLoadingTeacherClasses ? (
-                                        <div className="flex items-center gap-2 text-sm text-blue-600">
+                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                             <Loader2 className="h-4 w-4 animate-spin" />
                                             Carregando suas turmas...
                                         </div>
                                     ) : teacherClasses.length > 0 ? (
                                         <div className="space-y-2">
-                                            <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                                            <p className="text-sm font-medium text-foreground">
                                                 Suas turmas:
                                             </p>
                                             <div className="flex flex-wrap gap-2">
@@ -795,14 +796,14 @@ const WordwallGameForm = () => {
 
                     {/* Seção para Diretor/Coordenador */}
                     {['diretor', 'coordenador'].includes(user?.role) && (
-                        <div className="space-y-4 p-4 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200 dark:border-amber-800">
+                        <div className="space-y-4 p-4 bg-muted rounded-lg border border-border">
                             <div className="flex items-start gap-2">
-                                <School className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                                <School className="h-5 w-5 text-foreground mt-0.5 flex-shrink-0" />
                                 <div className="flex-1">
-                                    <h4 className="font-medium text-amber-900 dark:text-amber-100 mb-1">
+                                    <h4 className="font-medium text-foreground mb-1">
                                         Vincular Jogo
                                     </h4>
-                                    <p className="text-sm text-amber-700 dark:text-amber-300 mb-4">
+                                    <p className="text-sm text-muted-foreground mb-4">
                                         Selecione turmas específicas e/ou séries para vincular este jogo.
                                     </p>
                                     
@@ -885,14 +886,14 @@ const WordwallGameForm = () => {
 
                     {/* Seção para Admin/Tecadm */}
                     {['admin', 'tecadm'].includes(user?.role) && (
-                        <div className="space-y-4 p-4 bg-purple-50 dark:bg-purple-950/30 rounded-lg border border-purple-200 dark:border-purple-800">
+                        <div className="space-y-4 p-4 bg-muted rounded-lg border border-border">
                             <div className="flex items-start gap-2">
-                                <Globe className="h-5 w-5 text-purple-600 dark:text-purple-400 mt-0.5 flex-shrink-0" />
+                                <Globe className="h-5 w-5 text-foreground mt-0.5 flex-shrink-0" />
                                 <div className="flex-1">
-                                    <h4 className="font-medium text-purple-900 dark:text-purple-100 mb-1">
+                                    <h4 className="font-medium text-foreground mb-1">
                                         Opções de Vinculação
                                     </h4>
-                                    <p className="text-sm text-purple-700 dark:text-purple-300 mb-4">
+                                    <p className="text-sm text-muted-foreground mb-4">
                                         Selecione turmas, escolas e/ou séries para vincular este jogo. Você pode combinar múltiplas opções.
                                     </p>
                                     
@@ -1025,8 +1026,8 @@ const WordwallGameForm = () => {
                                         
                                         {/* Preview */}
                                         {(selectedClassIds.length > 0 || selectedSchoolIds.length > 0 || selectedGradeIds.length > 0) && (
-                                            <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-md border border-purple-300">
-                                                <p className="text-sm font-medium text-purple-900 dark:text-purple-100">
+                                            <div className="p-3 bg-muted rounded-md border border-border">
+                                                <p className="text-sm font-medium text-foreground">
                                                     {isCalculatingPreview ? (
                                                         <span className="flex items-center gap-2">
                                                             <Loader2 className="h-4 w-4 animate-spin" />

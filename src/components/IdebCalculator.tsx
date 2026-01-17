@@ -131,9 +131,9 @@ export default function IdebCalculator() {
     return (
         <div className="container mx-auto p-6 space-y-6">
             {/* Header */}
-            <div className="text-center space-y-2">
-                <h1 className="text-3xl font-bold text-gray-900 flex items-center justify-center gap-2">
-                    <Calculator className="h-8 w-8 text-blue-600" />
+            <div className="space-y-2">
+                <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+                    <Calculator className="w-8 h-8 text-blue-600" />
                     Calculadora SAEB/IDEB
                 </h1>
                 <p className="text-gray-600 max-w-2xl mx-auto">

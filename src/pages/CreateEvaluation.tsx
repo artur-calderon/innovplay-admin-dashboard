@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Save, FileCheck } from "lucide-react";
 import { CreateEvaluationStep1 } from "@/components/evaluations/CreateEvaluationStep1";
 import { CreateEvaluationStep2 } from "@/components/evaluations/CreateEvaluationStep2";
 import { EvaluationFormData } from "@/components/evaluations/types";
@@ -84,7 +84,10 @@ const CreateEvaluation = () => {
         
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Criar Avaliação</h1>
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+              <FileCheck className="w-8 h-8 text-blue-600" />
+              Criar Avaliação
+            </h1>
             <p className="text-muted-foreground">
               Crie uma nova avaliação com questões do banco de questões
             </p>

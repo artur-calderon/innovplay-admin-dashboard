@@ -2133,7 +2133,10 @@ export default function RelatorioEscolar() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Relatório Escolar</h1>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <FileText className="w-8 h-8 text-blue-600" />
+            Relatório Escolar
+          </h1>
           <p className="text-muted-foreground mt-2">
             Relatórios escolares detalhados do seu município
           </p>

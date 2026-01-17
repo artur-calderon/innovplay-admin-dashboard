@@ -94,7 +94,7 @@ const Competicoes = () => {
       agendada: { label: 'Agendada', className: 'bg-yellow-100 dark:bg-yellow-950/30 text-yellow-800 dark:text-yellow-400' },
       aberta: { label: 'Inscrições Abertas', className: 'bg-green-100 dark:bg-green-950/30 text-green-800 dark:text-green-400' },
       em_andamento: { label: 'Em Andamento', className: 'bg-blue-100 dark:bg-blue-950/30 text-blue-800 dark:text-blue-400' },
-      finalizada: { label: 'Finalizada', className: 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-400' }
+      finalizada: { label: 'Finalizada', className: 'bg-muted text-muted-foreground' }
     };
 
     const config = configs[status] || configs.agendada;
@@ -176,14 +176,12 @@ const Competicoes = () => {
     <div className="container mx-auto py-6 px-4 max-w-7xl">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8">
-        <div className="flex items-center gap-4">
-          <div className="w-16 h-16 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-full flex items-center justify-center shadow-lg">
-            <Trophy className="w-8 h-8 text-white" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Competições</h1>
-            <p className="text-muted-foreground">Participe de competições e ganhe InnovCoins!</p>
-          </div>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <Trophy className="w-8 h-8 text-blue-600" />
+            Competições
+          </h1>
+          <p className="text-muted-foreground">Participe de competições e ganhe InnovCoins!</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={loadCompetitions} disabled={isLoading}>

@@ -19,7 +19,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Eye, Pencil, Trash2, Search } from "lucide-react";
+import { Plus, Eye, Pencil, Trash2, Search, Users } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { z } from "zod";
@@ -253,7 +253,10 @@ export default function Students() {
     <>
       <div className="container mx-auto px-2 md:px-4 py-4 md:py-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-          <h1 className="text-xl md:text-2xl font-bold">Alunos da escola {escolaAtual.name}</h1>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <Users className="w-8 h-8 text-blue-600" />
+            Alunos da escola {escolaAtual.name}
+          </h1>
 
           <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
             <div className="relative flex-grow">

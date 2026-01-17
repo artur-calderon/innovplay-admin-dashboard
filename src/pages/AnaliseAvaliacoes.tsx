@@ -523,7 +523,10 @@ export default function AnaliseAvaliacoes() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Análise das Avaliações</h1>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <BarChart3 className="w-8 h-8 text-blue-600" />
+            Análise das Avaliações
+          </h1>
           <p className="text-muted-foreground mt-2">
             Análise detalhada das avaliações do seu município
           </p>

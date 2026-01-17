@@ -107,7 +107,7 @@ const QuestionarioList = () => {
       case 'secretario':
         return 'bg-indigo-500';
       default:
-        return 'bg-gray-500';
+        return 'bg-card0';
     }
   };
 
@@ -183,7 +183,7 @@ const QuestionarioList = () => {
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="flex flex-col items-center gap-4">
             <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-            <p className="text-gray-600">Carregando questionários...</p>
+            <p className="text-muted-foreground">Carregando questionários...</p>
           </div>
         </div>
       </div>
@@ -195,8 +195,11 @@ const QuestionarioList = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Questionários</h1>
-          <p className="text-gray-600 mt-2">
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <FileText className="w-8 h-8 text-blue-600" />
+            Questionários
+          </h1>
+          <p className="text-muted-foreground mt-2">
             Responda aos questionários disponíveis para você
           </p>
         </div>
@@ -238,11 +241,11 @@ const QuestionarioList = () => {
       {filteredQuestionarios.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <FileText className="h-16 w-16 text-gray-400 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            <FileText className="h-16 w-16 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold text-foreground mb-2">
               Nenhum questionário encontrado
             </h3>
-            <p className="text-gray-600 text-center max-w-md">
+            <p className="text-muted-foreground text-center max-w-md">
               {filterStatus === 'all'
                 ? 'Você não possui questionários disponíveis no momento.'
                 : `Não há questionários com status "${filterStatus}" no momento.`}
@@ -287,7 +290,7 @@ const QuestionarioList = () => {
                     <Badge variant="secondary" className="text-xs">
                       {getFormTypeLabel(questionario.formType)}
                     </Badge>
-                    <span className="text-gray-600">
+                    <span className="text-muted-foreground">
                       {questionario.totalQuestions} {questionario.totalQuestions !== 1 ? 'questões' : 'questão'}
                     </span>
                   </div>
@@ -295,7 +298,7 @@ const QuestionarioList = () => {
                   {/* Progresso */}
                   {questionario.status !== 'pending' && (
                     <div className="space-y-1">
-                      <div className="flex items-center justify-between text-xs text-gray-600">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span>Progresso</span>
                         <span className="font-medium">{questionario.progress.toFixed(0)}%</span>
                       </div>
@@ -304,7 +307,7 @@ const QuestionarioList = () => {
                   )}
 
                   {/* Datas */}
-                  <div className="space-y-2 text-xs text-gray-600">
+                  <div className="space-y-2 text-xs text-muted-foreground">
                     {questionario.sentAt && (
                       <div className="flex items-center gap-2">
                         <Calendar className="h-3 w-3" />
@@ -331,7 +334,7 @@ const QuestionarioList = () => {
                       ? 'bg-red-100 border border-red-300'
                       : daysUntilDeadline <= 3 && questionario.status !== 'completed'
                       ? 'bg-yellow-100 border border-yellow-300'
-                      : 'bg-gray-50 border border-gray-200'
+                      : 'bg-card border border-border'
                   }`}>
                     <div className="flex items-center gap-2 text-xs">
                       <Clock className={`h-3 w-3 ${
@@ -339,14 +342,14 @@ const QuestionarioList = () => {
                           ? 'text-red-600'
                           : daysUntilDeadline <= 3 && questionario.status !== 'completed'
                           ? 'text-yellow-600'
-                          : 'text-gray-600'
+                          : 'text-muted-foreground'
                       }`} />
                       <span className={
                         deadlineExpired && questionario.status !== 'completed'
                           ? 'text-red-700 font-medium'
                           : daysUntilDeadline <= 3 && questionario.status !== 'completed'
                           ? 'text-yellow-700 font-medium'
-                          : 'text-gray-700'
+                          : 'text-foreground'
                       }>
                         {deadlineExpired && questionario.status !== 'completed'
                           ? `Prazo expirado em ${new Date(questionario.deadline).toLocaleDateString('pt-BR')}`

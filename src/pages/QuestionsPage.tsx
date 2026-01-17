@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Eye, Pencil, Trash2, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown, Copy } from "lucide-react";
+import { Plus, Eye, Pencil, Trash2, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown, Copy, HelpCircle } from "lucide-react";
 import { Question } from "@/components/evaluations/types";
 import { useAuth } from "@/context/authContext";
 import { api } from "@/lib/api";
@@ -1257,7 +1257,10 @@ const QuestionsPage = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
         <div className="flex items-center gap-2 flex-wrap">
-          <h1 className="text-xl sm:text-2xl font-bold">Questões</h1>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <HelpCircle className="w-8 h-8 text-blue-600" />
+            Questões
+          </h1>
           <div className="flex items-center gap-1">
             {error && (
               <Badge variant="destructive" className="text-xs">

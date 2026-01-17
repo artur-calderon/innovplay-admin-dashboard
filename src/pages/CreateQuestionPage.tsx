@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, Plus, HelpCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { Question } from "@/components/evaluations/types";
@@ -59,7 +59,10 @@ const CreateQuestionPage = () => {
               <Plus className="h-8 w-8 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-foreground">Criar Nova Questão</h1>
+              <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+                <HelpCircle className="w-8 h-8 text-blue-600" />
+                Criar Nova Questão
+              </h1>
               <p className="text-gray-600 dark:text-muted-foreground text-lg mt-1">
                 Adicione uma nova questão ao banco de questões da plataforma
               </p>

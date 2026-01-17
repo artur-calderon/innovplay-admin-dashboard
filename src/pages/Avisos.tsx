@@ -93,10 +93,10 @@ export default function Avisos() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="space-y-1">
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <AlertCircle className="w-8 h-8 text-orange-500" />
+            <AlertCircle className="w-8 h-8 text-blue-600" />
             Avisos
           </h1>
-          <p className="text-gray-600">
+          <p className="text-muted-foreground">
             {canCreate 
               ? 'Visualize e gerencie avisos importantes do sistema'
               : 'Visualize avisos importantes do sistema'}

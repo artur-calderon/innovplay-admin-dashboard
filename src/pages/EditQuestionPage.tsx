@@ -2,7 +2,7 @@ import React from 'react';
 import { useParams } from 'react-router-dom';
 import QuestionForm from '@/components/evaluations/questions/QuestionForm';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Edit3 } from 'lucide-react';
+import { ArrowLeft, Edit3, HelpCircle } from 'lucide-react';
 
 const EditQuestionPage = () => {
     const { id } = useParams<{ id: string }>();
@@ -25,7 +25,10 @@ const EditQuestionPage = () => {
                             </Button>
                             <div className="flex items-center gap-2">
                                 <Edit3 className="h-5 w-5 text-blue-600" />
-                                <h1 className="text-xl font-bold text-gray-800">Editar Questão</h1>
+                                <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+                                  <HelpCircle className="w-8 h-8 text-blue-600" />
+                                  Editar Questão
+                                </h1>
                             </div>
                         </div>
                         <p className="text-sm text-gray-600">Faça as alterações necessárias na questão</p>
