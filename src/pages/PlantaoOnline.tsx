@@ -497,7 +497,7 @@ export default function PlantaoOnline() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="space-y-1">
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <Headset className="w-8 h-8 text-blue-500" />
+            <Headset className="w-8 h-8 text-blue-600" />
             Plantão Online
           </h1>
           <p className="text-muted-foreground">

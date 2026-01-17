@@ -988,7 +988,10 @@ export default function Curso() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Gerenciar Cursos</h1>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <GraduationCap className="w-8 h-8 text-blue-600" />
+            Gerenciar Cursos
+          </h1>
           <p className="text-muted-foreground">
             Cadastre e gerencie os cursos/etapas de ensino
           </p>

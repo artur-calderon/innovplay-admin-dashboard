@@ -1553,7 +1553,7 @@ const FormReports = () => {
   const getFormTypeInfo = (formType: string) => {
     switch (formType) {
       case 'aluno-jovem':
-        return { name: 'Aluno (Anos Iniciais)', icon: Users, color: 'bg-blue-500' };
+        return { name: 'Aluno (Anos Iniciais)', icon: Users, color: 'bg-blue-50 dark:bg-blue-950/300' };
       case 'aluno-velho':
         return { name: 'Aluno (Anos Finais)', icon: GraduationCap, color: 'bg-green-500' };
       case 'professor':
@@ -1833,7 +1833,7 @@ const FormReports = () => {
         <div className="flex items-center justify-center h-96">
           <div className="flex flex-col items-center gap-4">
             <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-            <p className="text-gray-600">Carregando dados do relatório...</p>
+            <p className="text-muted-foreground">Carregando dados do relatório...</p>
           </div>
         </div>
       );
@@ -1847,9 +1847,9 @@ const FormReports = () => {
       return (
         <div className="flex items-center justify-center h-96">
           <div className="flex flex-col items-center gap-4 text-center">
-            <FileText className="h-16 w-16 text-gray-400" />
-            <h3 className="text-lg font-medium text-gray-600">Nenhum dado disponível</h3>
-            <p className="text-sm text-gray-500">
+            <FileText className="h-16 w-16 text-muted-foreground" />
+            <h3 className="text-lg font-medium text-muted-foreground">Nenhum dado disponível</h3>
+            <p className="text-sm text-muted-foreground">
               Ainda não há respostas suficientes para gerar relatórios estatísticos.
             </p>
           </div>
@@ -1882,10 +1882,10 @@ const FormReports = () => {
           {/* Controles de Visualização */}
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-4">
-              <h3 className="text-lg font-medium text-gray-900">
+              <h3 className="text-lg font-medium text-foreground">
                 Análise por Pergunta
               </h3>
-              <span className="text-sm text-gray-500">
+              <span className="text-sm text-muted-foreground">
                 {currentQuestionIndex + 1} de {totalQuestions}
               </span>
             </div>
@@ -1923,7 +1923,7 @@ const FormReports = () => {
             <Button
               variant="outline"
               size="icon"
-              className="absolute left-2 top-1/2 -translate-y-1/2 z-10 h-12 w-12 rounded-full shadow-lg bg-white hover:bg-gray-50"
+              className="absolute left-2 top-1/2 -translate-y-1/2 z-10 h-12 w-12 rounded-full shadow-lg bg-card hover:bg-muted"
               onClick={goToPrevious}
               disabled={totalQuestions === 0}
             >
@@ -1939,7 +1939,7 @@ const FormReports = () => {
                       {currentQuestionIndex + 1}
                     </div>
                     <div className="flex-1">
-                      <h4 className="text-xl font-semibold text-gray-900">
+                      <h4 className="text-xl font-semibold text-foreground">
                         {currentQuestion.question}
                       </h4>
                       {currentQuestion.section && (
@@ -1950,7 +1950,7 @@ const FormReports = () => {
                     </div>
                   </div>
 
-                  <div className="h-[700px] w-full bg-white rounded-lg border p-6">
+                  <div className="h-[700px] w-full bg-card rounded-lg border p-6">
                     <ResponsiveContainer width="100%" height="100%">
                       {chartType === 'bar' ? (
                         <RechartsBarChart data={currentQuestion.data} margin={{ top: 20, right: 30, left: 20, bottom: 120 }}>
@@ -2024,7 +2024,7 @@ const FormReports = () => {
                     </ResponsiveContainer>
                   </div>
 
-                  <div className="text-center text-sm text-gray-500">
+                  <div className="text-center text-sm text-muted-foreground">
                     {currentQuestion.data.length} opções de resposta • {currentQuestion.data.reduce((sum, item) => sum + item.value, 0)}% do total
                   </div>
                 </div>
@@ -2035,7 +2035,7 @@ const FormReports = () => {
             <Button
               variant="outline"
               size="icon"
-              className="absolute right-2 top-1/2 -translate-y-1/2 z-10 h-12 w-12 rounded-full shadow-lg bg-white hover:bg-gray-50"
+              className="absolute right-2 top-1/2 -translate-y-1/2 z-10 h-12 w-12 rounded-full shadow-lg bg-card hover:bg-muted"
               onClick={goToNext}
               disabled={totalQuestions === 0}
             >
@@ -2052,13 +2052,13 @@ const FormReports = () => {
                 className={`h-2 rounded-full transition-all ${
                   index === currentQuestionIndex
                     ? 'w-8 bg-blue-600'
-                    : 'w-2 bg-gray-300 hover:bg-gray-400'
+                    : 'w-2 bg-muted hover:bg-muted-foreground/20'
                 }`}
                 aria-label={`Ir para pergunta ${index + 1}`}
               />
             ))}
             {totalQuestions > 20 && (
-              <span className="text-xs text-gray-500 self-center">
+              <span className="text-xs text-muted-foreground self-center">
                 ... e mais {totalQuestions - 20}
               </span>
             )}
@@ -2071,9 +2071,9 @@ const FormReports = () => {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="flex flex-col items-center gap-4 text-center">
-          <FileText className="h-16 w-16 text-gray-400" />
-          <h3 className="text-lg font-medium text-gray-600">Nenhum dado disponível</h3>
-          <p className="text-sm text-gray-500">
+          <FileText className="h-16 w-16 text-muted-foreground" />
+          <h3 className="text-lg font-medium text-muted-foreground">Nenhum dado disponível</h3>
+          <p className="text-sm text-muted-foreground">
             Ainda não há respostas suficientes para gerar relatórios estatísticos.
           </p>
         </div>
@@ -2086,8 +2086,11 @@ const FormReports = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Relatórios Socioeconômicos</h1>
-          <p className="text-gray-600 mt-2">
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <BarChart3 className="w-8 h-8 text-blue-600" />
+            Relatórios Socioeconômicos
+          </h1>
+          <p className="text-muted-foreground mt-2">
             Visualize e analise os dados dos questionários socioeconômicos
           </p>
         </div>
@@ -2118,7 +2121,7 @@ const FormReports = () => {
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="flex flex-col items-center gap-4">
             <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-            <p className="text-gray-600">Carregando formulários...</p>
+            <p className="text-muted-foreground">Carregando formulários...</p>
           </div>
         </div>
       ) : (
@@ -2137,8 +2140,8 @@ const FormReports = () => {
               </CardHeader>
               <CardContent>
                 {reports.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    <FileText className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                  <div className="text-center py-8 text-muted-foreground">
+                    <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
                     <p>Nenhum formulário enviado encontrado</p>
                     <p className="text-sm mt-2">Os formulários enviados aparecerão aqui</p>
                   </div>
@@ -2153,7 +2156,7 @@ const FormReports = () => {
                         <Card
                           key={report.id}
                           className={`cursor-pointer transition-all duration-200 hover:shadow-md flex-shrink-0 w-80 ${
-                            isSelected ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:bg-gray-50'
+                            isSelected ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-950/30' : 'hover:bg-muted'
                           }`}
                           onClick={() => handleSelectReport(report)}
                         >
@@ -2165,13 +2168,13 @@ const FormReports = () => {
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="flex-1 min-w-0">
-                                    <h4 className="font-medium text-gray-900 truncate">
+                                    <h4 className="font-medium text-foreground truncate">
                                       {report.formTitle}
                                     </h4>
-                                    <p className="text-sm text-gray-600 mt-1">
+                                    <p className="text-sm text-muted-foreground mt-1">
                                       {formInfo.name}
                                     </p>
-                                    <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                                    <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                                       <span className="flex items-center gap-1">
                                         <Users className="h-3 w-3" />
                                         {report.totalResponses} respostas
@@ -2188,7 +2191,7 @@ const FormReports = () => {
                                       >
                                         {report.status === 'active' ? 'Ativo' : 'Concluído'}
                                       </Badge>
-                                      <span className="text-xs text-gray-500">
+                                      <span className="text-xs text-muted-foreground">
                                         {report.createdAt.toLocaleDateString('pt-BR')}
                                       </span>
                                     </div>
@@ -2240,7 +2243,7 @@ const FormReports = () => {
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                  <div className="text-center p-4 bg-blue-50 rounded-lg">
+                  <div className="text-center p-4 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
                     <div className="text-2xl font-bold text-blue-600">
                       {reportData?.totalResponses || selectedReport.totalResponses}
                     </div>
@@ -2262,7 +2265,7 @@ const FormReports = () => {
 
                 {/* Lista de Escolas */}
                 <div className="mb-6">
-                  <h4 className="font-medium text-gray-900 mb-3">Escolas Participantes</h4>
+                  <h4 className="font-medium text-foreground mb-3">Escolas Participantes</h4>
                   <div className="flex flex-wrap gap-2">
                     {selectedReport.schools.map((school, index) => (
                       <Badge key={index} variant="outline" className="text-xs">
@@ -2304,11 +2307,11 @@ const FormReports = () => {
           ) : (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
-                <FileText className="h-16 w-16 text-gray-400 mb-4" />
-                <h3 className="text-lg font-medium text-gray-600 mb-2">
+                <FileText className="h-16 w-16 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-medium text-muted-foreground mb-2">
                   Selecione um Relatório
                 </h3>
-                <p className="text-sm text-gray-500 text-center">
+                <p className="text-sm text-muted-foreground text-center">
                   Escolha um questionário acima para visualizar os relatórios e gráficos
                 </p>
               </CardContent>

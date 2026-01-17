@@ -931,7 +931,10 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Minhas Avaliações</h1>
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+              <BookOpen className="w-8 h-8 text-blue-600" />
+              Minhas Avaliações
+            </h1>
             <p className="text-muted-foreground">
               Acompanhe suas avaliações agendadas e resultados
             </p>
@@ -969,14 +972,14 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
               {activeSessions.map((session) => (
                 <div
                   key={session.session_id}
-                  className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-md border border-orange-200 dark:border-orange-800"
+                  className="flex items-center justify-between p-3 bg-card rounded-md border border-orange-200 dark:border-orange-800"
                 >
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                    <p className="text-sm font-medium text-gray-900 text-foreground">
                       Sessão: {session.session_id.substring(0, 8)}...
                     </p>
                     {session.test_title && (
-                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                      <p className="text-xs text-muted-foreground">
                         {session.test_title}
                       </p>
                     )}
@@ -1269,11 +1272,11 @@ function formatDateTimeForDisplay(value?: string, timeZone?: string): string | n
       <Dialog open={showInstructions} onOpenChange={setShowInstructions}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 dark:text-gray-100">
+            <DialogTitle className="flex items-center gap-2 text-foreground">
               <Info className="h-5 w-5 text-blue-600 dark:text-blue-400" />
               Instruções da Avaliação
             </DialogTitle>
-            <DialogDescription className="dark:text-gray-400">
+            <DialogDescription className="text-muted-foreground">
               Leia atentamente antes de iniciar a avaliação
             </DialogDescription>
           </DialogHeader>

@@ -376,10 +376,10 @@ const CompeticaoExecucao = () => {
                 </div>
                 <div>
                   <div className="text-3xl mb-1">🥈</div>
-                  <div className="font-bold text-gray-600 dark:text-gray-400">
+                  <div className="font-bold text-muted-foreground">
                     {competitionInfo?.recompensas?.prata} coins
                   </div>
-                  <div className="text-xs text-gray-700 dark:text-gray-400">2º lugar</div>
+                  <div className="text-xs text-muted-foreground">2º lugar</div>
                 </div>
                 <div>
                   <div className="text-3xl mb-1">🥉</div>
@@ -609,7 +609,7 @@ const CompeticaoExecucao = () => {
                       ? 'bg-blue-600 text-white ring-2 ring-blue-300 ring-offset-2'
                       : isAnswered
                       ? 'bg-green-100 dark:bg-green-950/50 text-green-800 dark:text-green-400 hover:bg-green-200'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200'
+                      : 'bg-gray-100 dark:bg-gray-800 text-muted-foreground hover:bg-gray-200'
                   }`}
                 >
                   {index + 1}
@@ -683,8 +683,8 @@ const CompeticaoExecucao = () => {
                   </div>
                   <div className="text-xs text-muted-foreground">Erros</div>
                 </div>
-                <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                  <div className="text-xl font-bold text-gray-600 dark:text-gray-400">
+                <div className="p-3 bg-card rounded-lg">
+                  <div className="text-xl font-bold text-muted-foreground">
                     {competitionResult.blank_answers}
                   </div>
                   <div className="text-xs text-muted-foreground">Em branco</div>

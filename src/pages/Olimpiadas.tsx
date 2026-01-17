@@ -621,8 +621,8 @@ export default function Olimpiadas() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2 text-yellow-900 dark:text-yellow-100">
-            <Trophy className="h-8 w-8 text-yellow-600" />
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <Trophy className="w-8 h-8 text-blue-600" />
             Olimpíadas
           </h1>
           <p className="text-muted-foreground mt-1">
@@ -1052,7 +1052,7 @@ export default function Olimpiadas() {
                                   ? 'bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-200'
                                   : olimpiada.status === 'active'
                                   ? 'bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200'
-                                  : 'bg-gray-100 dark:bg-gray-900/20 text-gray-800 dark:text-gray-200'
+                                  : 'bg-muted text-foreground'
                               }
                             >
                               {olimpiada.status === 'completed' ? 'Concluída' :

@@ -309,7 +309,7 @@ const CompeticaoResultados = () => {
               <Badge variant="outline">{competition.disciplina_nome || competition.disciplina_id}</Badge>
               <Badge className={
                 competition.status === 'finalizada' 
-                  ? 'bg-gray-100 text-gray-800' 
+                  ? 'bg-muted text-gray-800' 
                   : 'bg-green-100 text-green-800'
               }>
                 {competition.status === 'finalizada' ? 'Finalizada' : 'Em Andamento'}
@@ -411,8 +411,8 @@ const CompeticaoResultados = () => {
               {top_3.segundo && (
                 <div className="flex flex-col items-center order-1 md:order-none">
                   <div className="text-4xl mb-2">🥈</div>
-                  <div className="w-24 h-24 bg-gray-100 dark:bg-gray-800 rounded-lg flex flex-col items-center justify-center">
-                    <span className="text-2xl font-bold text-gray-600 dark:text-gray-400">2º</span>
+                  <div className="w-24 h-24 bg-muted dark:bg-gray-800 rounded-lg flex flex-col items-center justify-center">
+                    <span className="text-2xl font-bold text-muted-foreground">2º</span>
                   </div>
                   <div className="mt-3 text-center">
                     <p className="font-semibold truncate max-w-28">{top_3.segundo.aluno_nome}</p>

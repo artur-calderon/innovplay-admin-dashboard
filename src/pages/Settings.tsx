@@ -87,14 +87,14 @@ export default function Settings() {
     <div className="container mx-auto p-4 md:p-6 max-w-4xl">
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-3">
-          <SettingsIcon className="h-8 w-8 text-primary" />
-          <div>
-            <h1 className="text-3xl font-bold">Configurações</h1>
-            <p className="text-muted-foreground mt-1">
-              Personalize a aparência e preferências do sistema
-            </p>
-          </div>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <SettingsIcon className="w-8 h-8 text-blue-600" />
+            Configurações
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Personalize a aparência e preferências do sistema
+          </p>
         </div>
 
         {/* Aviso de desenvolvimento */}
