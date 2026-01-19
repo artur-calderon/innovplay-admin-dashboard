@@ -2,15 +2,18 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardContent, CardFooter, CardDescription } from '@/components/ui/card';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { FormMultiSelect } from '@/components/ui/form-multi-select';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { api } from '@/lib/api';
-import { ExternalLink, Plus, Save, AlertCircle, CheckCircle, Loader2, Users, School, Globe } from 'lucide-react';
+import { ExternalLink, Plus, Save, AlertCircle, CheckCircle, Loader2, Users, School, Globe, GraduationCap, BookOpen, X, Check, ChevronsUpDown, MapPin, Building2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { useGamesCount } from '@/hooks/useGamesCount';
 import { useAuth } from '@/context/authContext';
 import { EvaluationResultsApiService } from '@/services/evaluationResultsApi';
@@ -41,27 +44,41 @@ const WordwallGameForm = () => {
     const [success, setSuccess] = useState('');
     
     // Estados para filtros (Diretor/Coordenador/Admin/Tecadm)
-    const [selectedState, setSelectedState] = useState('all');
-    const [selectedMunicipality, setSelectedMunicipality] = useState('all');
-    const [selectedSchool, setSelectedSchool] = useState('all'); // Para filtrar turmas/séries
-    const [selectedGrade, setSelectedGrade] = useState('all'); // Para filtrar turmas
+    const [selectedState, setSelectedState] = useState('');
+    const [selectedMunicipality, setSelectedMunicipality] = useState('');
+    const [selectedSchools, setSelectedSchools] = useState([]); // Array de escolas selecionadas
+    const [selectedGrade, setSelectedGrade] = useState('');
+    const [selectedSubject, setSelectedSubject] = useState('');
     
-    // Seleções múltiplas
-    const [selectedClassIds, setSelectedClassIds] = useState([]); // Array de IDs de turmas
-    const [selectedSchoolIds, setSelectedSchoolIds] = useState([]); // Array de IDs de escolas
-    const [selectedGradeIds, setSelectedGradeIds] = useState([]); // Array de IDs de séries
+    // Estados dos popovers
+    const [openStateCombo, setOpenStateCombo] = useState(false);
+    const [openMunicipalityCombo, setOpenMunicipalityCombo] = useState(false);
+    const [openSchoolCombo, setOpenSchoolCombo] = useState(false);
+    const [openGradeCombo, setOpenGradeCombo] = useState(false);
+    const [openSubjectCombo, setOpenSubjectCombo] = useState(false);
     
     // Estados para dados dos filtros
     const [states, setStates] = useState([]);
     const [municipalities, setMunicipalities] = useState([]);
     const [schools, setSchools] = useState([]);
+    const [filteredSchools, setFilteredSchools] = useState([]);
     const [grades, setGrades] = useState([]);
-    const [classes, setClasses] = useState([]);
+    const [subjects, setSubjects] = useState([]);
     const [isLoadingFilters, setIsLoadingFilters] = useState(false);
+    const [isLoadingStates, setIsLoadingStates] = useState(false);
+    const [isLoadingMunicipalities, setIsLoadingMunicipalities] = useState(false);
+    const [isLoadingSchools, setIsLoadingSchools] = useState(false);
+    const [isLoadingGrades, setIsLoadingGrades] = useState(false);
+    const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
     
     // Estados para preview de vinculação
     const [previewLinkedClasses, setPreviewLinkedClasses] = useState(0);
     const [isCalculatingPreview, setIsCalculatingPreview] = useState(false);
+    
+    // Estados para seleções múltiplas (diretor/coordenador)
+    const [selectedClassIds, setSelectedClassIds] = useState([]);
+    const [selectedSchoolIds, setSelectedSchoolIds] = useState([]);
+    const [selectedGradeIds, setSelectedGradeIds] = useState([]);
     
     // Estados para professor
     const [teacherClasses, setTeacherClasses] = useState([]);
@@ -70,6 +87,7 @@ const WordwallGameForm = () => {
     // Estados para diretor/coordenador
     const [userSchoolId, setUserSchoolId] = useState(null);
     const [userSchoolName, setUserSchoolName] = useState('');
+    const [classes, setClasses] = useState([]);
 
     const validateWordwallUrl = (url) => {
         try {
@@ -156,60 +174,87 @@ const WordwallGameForm = () => {
             if (context.school) {
                 setUserSchoolId(context.school.id);
                 setUserSchoolName(context.school.name);
-                setSelectedSchool(context.school.id);
+                const school = { id: context.school.id, name: context.school.name, city_id: context.school.id };
+                setSelectedSchools([school]);
             }
         } catch (error) {
             console.error('Erro ao carregar escola do usuário:', error);
         }
     }, [user]);
 
-    // Carregar estados
+    // Funções para gerenciar escolas (similar ao Play TV)
+    const handleToggleSchool = (school) => {
+        const isSelected = selectedSchools.some(s => s.id === school.id);
+        if (isSelected) {
+            setSelectedSchools(selectedSchools.filter(s => s.id !== school.id));
+        } else {
+            setSelectedSchools([...selectedSchools, school]);
+        }
+    };
+
+    const handleRemoveSchool = (schoolId) => {
+        setSelectedSchools(selectedSchools.filter(s => s.id !== schoolId));
+    };
+
+    // Carregar estados e disciplinas
     useEffect(() => {
         const loadStates = async () => {
             if (!['admin', 'tecadm'].includes(user?.role)) return;
             
             try {
-                setIsLoadingFilters(true);
+                setIsLoadingStates(true);
                 const statesData = await EvaluationResultsApiService.getFilterStates();
                 setStates(statesData.map(state => ({
                     id: state.id,
-                    name: state.nome
+                    nome: state.nome
                 })));
             } catch (error) {
                 console.error('Erro ao carregar estados:', error);
             } finally {
-                setIsLoadingFilters(false);
+                setIsLoadingStates(false);
+            }
+        };
+        
+        const loadSubjects = async () => {
+            try {
+                setIsLoadingSubjects(true);
+                const response = await api.get('/subjects');
+                setSubjects(response.data || []);
+            } catch (error) {
+                console.error('Erro ao carregar disciplinas:', error);
+                setSubjects([]);
+            } finally {
+                setIsLoadingSubjects(false);
             }
         };
         
         loadStates();
+        loadSubjects();
     }, [user?.role]);
 
     // Carregar municípios
     useEffect(() => {
         const loadMunicipalities = async () => {
-            if (selectedState === 'all' || !['admin', 'tecadm'].includes(user?.role)) {
+            if (!selectedState || !['admin', 'tecadm'].includes(user?.role)) {
                 setMunicipalities([]);
                 return;
             }
             
             try {
-                setIsLoadingFilters(true);
+                setIsLoadingMunicipalities(true);
                 const municipalitiesData = await EvaluationResultsApiService.getFilterMunicipalities(selectedState);
                 setMunicipalities(municipalitiesData.map(m => ({
                     id: m.id,
-                    name: m.nome
+                    nome: m.nome
                 })));
-                setSelectedMunicipality('all');
-                setSelectedSchool('all');
-                setSelectedGrade('all');
-                setSelectedClassIds([]);
-                setSelectedSchoolIds([]);
-                setSelectedGradeIds([]);
+                setSelectedMunicipality('');
+                setSelectedSchools([]);
+                setSelectedGrade('');
+                setFilteredSchools([]);
             } catch (error) {
                 console.error('Erro ao carregar municípios:', error);
             } finally {
-                setIsLoadingFilters(false);
+                setIsLoadingMunicipalities(false);
             }
         };
         
@@ -222,43 +267,42 @@ const WordwallGameForm = () => {
             // Para diretor/coordenador, usar escola do usuário
             if (['diretor', 'coordenador'].includes(user?.role)) {
                 if (userSchoolId) {
-                    setSchools([{ id: userSchoolId, name: userSchoolName }]);
-                    setSelectedSchool(userSchoolId);
+                    const school = { id: userSchoolId, name: userSchoolName, city_id: userSchoolId };
+                    setSchools([school]);
+                    setFilteredSchools([school]);
+                    setSelectedSchools([school]);
                 }
                 return;
             }
             
             // Para admin/tecadm
-            if (selectedMunicipality === 'all') {
+            if (!selectedMunicipality) {
                 setSchools([]);
-                setSelectedSchool('all');
-                setSelectedGrade('all');
-                setSelectedClassIds([]);
-                setSelectedSchoolIds([]);
-                setSelectedGradeIds([]);
+                setFilteredSchools([]);
+                setSelectedSchools([]);
                 return;
             }
             
             try {
-                setIsLoadingFilters(true);
-                // Usar endpoint direto como em AnswerSheetGenerator.tsx e CreateEvaluationStep1.tsx
+                setIsLoadingSchools(true);
                 const response = await api.get(`/school/city/${selectedMunicipality}`);
                 const allSchoolsData = response.data?.schools || response.data || [];
                 
-                setSchools(allSchoolsData.map(s => ({
+                const schoolsData = allSchoolsData.map(s => ({
                     id: s.id,
-                    name: s.name || s.nome || `Escola ${s.id}`
-                })));
-                setSelectedSchool('all');
-                setSelectedGrade('all');
-                setSelectedClassIds([]);
-                setSelectedSchoolIds([]);
-                setSelectedGradeIds([]);
+                    name: s.name || s.nome || `Escola ${s.id}`,
+                    city_id: selectedMunicipality
+                }));
+                
+                setSchools(schoolsData);
+                setFilteredSchools(schoolsData);
+                setSelectedSchools([]);
             } catch (error) {
                 console.error('Erro ao carregar escolas:', error);
                 setSchools([]);
+                setFilteredSchools([]);
             } finally {
-                setIsLoadingFilters(false);
+                setIsLoadingSchools(false);
             }
         };
         
@@ -276,7 +320,7 @@ const WordwallGameForm = () => {
                 }
                 
                 try {
-                    setIsLoadingFilters(true);
+                    setIsLoadingGrades(true);
                     const classesResponse = await api.get(`/classes/school/${userSchoolId}`);
                     const classesData = Array.isArray(classesResponse.data) 
                         ? classesResponse.data 
@@ -298,33 +342,24 @@ const WordwallGameForm = () => {
                     console.error('Erro ao carregar séries:', error);
                     setGrades([]);
                 } finally {
-                    setIsLoadingFilters(false);
+                    setIsLoadingGrades(false);
                 }
                 return;
             }
             
-            // Para admin/tecadm - carregar séries das escolas selecionadas ou do filtro
+            // Para admin/tecadm - carregar séries das escolas selecionadas
             if (['admin', 'tecadm'].includes(user?.role)) {
-                // Determinar quais escolas usar: filtro OU selecionadas no FormMultiSelect
-                const schoolsToLoad = [];
-                if (selectedSchool !== 'all') {
-                    schoolsToLoad.push(selectedSchool);
-                }
-                // Adicionar escolas selecionadas no FormMultiSelect (evitar duplicatas)
-                selectedSchoolIds.forEach(schoolId => {
-                    if (!schoolsToLoad.includes(schoolId)) {
-                        schoolsToLoad.push(schoolId);
-                    }
-                });
-                
-                if (schoolsToLoad.length === 0) {
+                if (selectedSchools.length === 0) {
                     setGrades([]);
+                    setSelectedGrade('');
                     return;
                 }
                 
+                const schoolsToLoad = selectedSchools.map(s => s.id);
+                
                 try {
-                    setIsLoadingFilters(true);
-                    // Carregar séries para todas as escolas (filtro + selecionadas)
+                    setIsLoadingGrades(true);
+                    // Carregar séries para todas as escolas selecionadas
                     const allGradesById = new Map();
                     const allGradesByName = new Map();
                     
@@ -367,7 +402,7 @@ const WordwallGameForm = () => {
                     console.error('Erro ao carregar séries:', error);
                     setGrades([]);
                 } finally {
-                    setIsLoadingFilters(false);
+                    setIsLoadingGrades(false);
                 }
                 return;
             }
@@ -376,7 +411,7 @@ const WordwallGameForm = () => {
         };
         
         loadGrades();
-    }, [selectedSchoolIds, selectedSchool, selectedState, selectedMunicipality, user?.role, userSchoolId]);
+    }, [selectedSchools, user?.role, userSchoolId]);
     
     // Calcular preview de turmas vinculadas
     useEffect(() => {
@@ -397,7 +432,7 @@ const WordwallGameForm = () => {
                 if (selectedGradeIds.length > 0) {
                     const schoolIdsToCheck = ['diretor', 'coordenador'].includes(user?.role) 
                         ? [userSchoolId] 
-                        : (selectedSchoolIds.length > 0 ? selectedSchoolIds : [selectedSchool !== 'all' ? selectedSchool : null]).filter(Boolean);
+                        : (selectedSchoolIds.length > 0 ? selectedSchoolIds : (selectedSchools.length > 0 ? selectedSchools.map(s => s.id) : [])).filter(Boolean);
                     
                     for (const schoolId of schoolIdsToCheck) {
                         if (!schoolId) continue;
@@ -420,8 +455,11 @@ const WordwallGameForm = () => {
                 }
                 
                 // Para escolas selecionadas (admin/tecadm), buscar todas as turmas
-                if (selectedSchoolIds.length > 0 && ['admin', 'tecadm'].includes(user?.role)) {
-                    for (const schoolId of selectedSchoolIds) {
+                const schoolIdsForPreview = ['admin', 'tecadm'].includes(user?.role) && selectedSchools.length > 0
+                    ? selectedSchools.map(s => s.id)
+                    : (selectedSchoolIds.length > 0 ? selectedSchoolIds : []);
+                if (schoolIdsForPreview.length > 0 && ['admin', 'tecadm'].includes(user?.role)) {
+                    for (const schoolId of schoolIdsForPreview) {
                         try {
                             const classesResponse = await api.get(`/classes/school/${schoolId}`);
                             const classesData = Array.isArray(classesResponse.data) 
@@ -454,7 +492,7 @@ const WordwallGameForm = () => {
         };
         
         calculatePreview();
-    }, [selectedClassIds, selectedSchoolIds, selectedGradeIds, user?.role, userSchoolId, selectedSchool, teacherClasses.length]);
+    }, [selectedClassIds, selectedSchoolIds, selectedGradeIds, selectedSchools, user?.role, userSchoolId, teacherClasses.length]);
 
     // Carregar turmas para seleção múltipla
     useEffect(() => {
@@ -488,84 +526,9 @@ const WordwallGameForm = () => {
                 return;
             }
             
-            // Para admin/tecadm, carregar turmas das escolas e séries selecionadas
+            // Para admin/tecadm, não carregar turmas (novo formulário não usa seleção múltipla de turmas)
             if (['admin', 'tecadm'].includes(user?.role)) {
-                if (selectedGradeIds.length === 0) {
-                    setClasses([]);
-                    return;
-                }
-                
-                // Determinar quais escolas usar: filtro OU selecionadas no FormMultiSelect
-                const schoolsToLoad = [];
-                if (selectedSchool !== 'all') {
-                    schoolsToLoad.push(selectedSchool);
-                }
-                // Adicionar escolas selecionadas no FormMultiSelect (evitar duplicatas)
-                selectedSchoolIds.forEach(schoolId => {
-                    if (!schoolsToLoad.includes(schoolId)) {
-                        schoolsToLoad.push(schoolId);
-                    }
-                });
-                
-                if (schoolsToLoad.length === 0) {
-                    setClasses([]);
-                    return;
-                }
-                
-                try {
-                    setIsLoadingFilters(true);
-                    // Carregar turmas para todas as combinações escola-série
-                    const allClassesById = new Map();
-                    const allClassesByName = new Map();
-                    
-                    for (const schoolId of schoolsToLoad) {
-                        try {
-                            // Buscar classes da escola
-                            const classesResponse = await api.get(`/classes/school/${schoolId}`);
-                            const classesData = Array.isArray(classesResponse.data) 
-                                ? classesResponse.data 
-                                : (classesResponse.data?.data || []);
-                            
-                            // Filtrar classes pelas séries selecionadas
-                            const filteredClasses = classesData.filter((classItem) => {
-                                const gradeId = classItem.grade_id || classItem.grade?.id;
-                                return selectedGradeIds.includes(gradeId);
-                            });
-                            
-                            // Adicionar classes únicas
-                            filteredClasses.forEach(classItem => {
-                                const className = (classItem.name || classItem.nome || '').trim();
-                                const normalizedName = className.toLowerCase().trim();
-                                const gradeId = classItem.grade_id || classItem.grade?.id;
-                                const gradeName = classItem.grade?.name || classItem.grade?.nome || '';
-                                
-                                if (!allClassesById.has(classItem.id) && !allClassesByName.has(normalizedName)) {
-                                    allClassesById.set(classItem.id, {
-                                        id: classItem.id,
-                                        name: className,
-                                        grade_id: gradeId,
-                                        grade_name: gradeName
-                                    });
-                                    allClassesByName.set(normalizedName, classItem.id);
-                                }
-                            });
-                        } catch (error) {
-                            console.error(`Erro ao carregar turmas da escola ${schoolId}:`, error);
-                        }
-                    }
-                    
-                    // Converter para array e ordenar por nome
-                    const uniqueClasses = Array.from(allClassesById.values()).sort((a, b) => 
-                        a.name.localeCompare(b.name)
-                    );
-                    
-                    setClasses(uniqueClasses);
-                } catch (error) {
-                    console.error('Erro ao carregar turmas:', error);
-                    setClasses([]);
-                } finally {
-                    setIsLoadingFilters(false);
-                }
+                setClasses([]);
                 return;
             }
             
@@ -573,7 +536,7 @@ const WordwallGameForm = () => {
         };
         
         loadClasses();
-    }, [selectedSchoolIds, selectedSchool, selectedGradeIds, user?.role, userSchoolId]);
+    }, [selectedSchools, selectedSchoolIds, selectedGradeIds, user?.role, userSchoolId]);
 
     // Carregar dados iniciais baseado na role
     useEffect(() => {
@@ -583,6 +546,14 @@ const WordwallGameForm = () => {
             loadUserSchool();
         }
     }, [user?.role, loadTeacherClasses, loadUserSchool]);
+
+    // Variáveis para exibir nomes selecionados (igual ao Play TV)
+    const selectedGradeData = selectedGrade && Array.isArray(grades) && grades.length > 0 
+        ? grades.find(g => g.id === selectedGrade) 
+        : null;
+    const selectedSubjectData = selectedSubject && Array.isArray(subjects) && subjects.length > 0 
+        ? subjects.find(s => s.id === selectedSubject) 
+        : null;
 
     // Validar campos obrigatórios
     const validateForm = () => {
@@ -604,15 +575,25 @@ const WordwallGameForm = () => {
                 return false;
             }
         } else if (['admin', 'tecadm'].includes(user?.role)) {
-            // Deve ter pelo menos uma seleção (turmas, escolas ou séries)
-            if (selectedClassIds.length === 0 && selectedSchoolIds.length === 0 && selectedGradeIds.length === 0) {
-                setError('Por favor, selecione pelo menos uma turma, uma escola ou uma série.');
+            // Deve ter estado, município, escolas, série e disciplina selecionados
+            if (!selectedState) {
+                setError('Por favor, selecione um estado.');
                 return false;
             }
-            
-            // Se selecionou séries sem escolas, precisa ter escola selecionada para filtrar
-            if (selectedGradeIds.length > 0 && selectedSchoolIds.length === 0 && selectedSchool === 'all') {
-                setError('Para vincular séries, selecione pelo menos uma escola ou use o filtro de escola.');
+            if (!selectedMunicipality) {
+                setError('Por favor, selecione um município.');
+                return false;
+            }
+            if (selectedSchools.length === 0) {
+                setError('Por favor, selecione pelo menos uma escola.');
+                return false;
+            }
+            if (!selectedGrade) {
+                setError('Por favor, selecione uma série.');
+                return false;
+            }
+            if (!selectedSubject) {
+                setError('Por favor, selecione uma disciplina.');
                 return false;
             }
         }
@@ -639,7 +620,7 @@ const WordwallGameForm = () => {
                 thumbnail: gameData.thumbnail_url,
                 author: gameData.author_name,
                 provider: 'wordwall',
-                subject: subject,
+                subject: selectedSubject || subject, // Usar selectedSubject se disponível, senão usar subject antigo
             };
             
             // Adicionar campos de vinculação baseado na role
@@ -654,16 +635,10 @@ const WordwallGameForm = () => {
                     gamePayload.grade_ids = selectedGradeIds;
                 }
             } else if (['admin', 'tecadm'].includes(user?.role)) {
-                // Enviar arrays de turmas, escolas e/ou séries
-                if (selectedClassIds.length > 0) {
-                    gamePayload.class_ids = selectedClassIds;
-                }
-                if (selectedSchoolIds.length > 0) {
-                    gamePayload.school_ids = selectedSchoolIds;
-                }
-                if (selectedGradeIds.length > 0) {
-                    gamePayload.grade_ids = selectedGradeIds;
-                }
+                // Enviar escolas, série e disciplina
+                gamePayload.school_ids = selectedSchools.map(s => s.id);
+                gamePayload.grade_id = selectedGrade;
+                gamePayload.subject_id = selectedSubject;
             }
 
             await api.post('/games', gamePayload);
@@ -673,12 +648,12 @@ const WordwallGameForm = () => {
             setSubject('Português');
             
             // Limpar filtros
-            setSelectedState('all');
-            setSelectedMunicipality('all');
-            setSelectedSchool('all');
-            setSelectedGrade('all');
+            setSelectedState('');
+            setSelectedMunicipality('');
+            setSelectedSchools([]);
+            setSelectedGrade('');
+            setSelectedSubject('');
             setSelectedClassIds([]);
-            setSelectedSchoolIds([]);
             setSelectedGradeIds([]);
 
             // Atualizar contador no sidebar
@@ -886,169 +861,348 @@ const WordwallGameForm = () => {
 
                     {/* Seção para Admin/Tecadm */}
                     {['admin', 'tecadm'].includes(user?.role) && (
-                        <div className="space-y-4 p-4 bg-muted rounded-lg border border-border">
-                            <div className="flex items-start gap-2">
-                                <Globe className="h-5 w-5 text-foreground mt-0.5 flex-shrink-0" />
-                                <div className="flex-1">
-                                    <h4 className="font-medium text-foreground mb-1">
-                                        Opções de Vinculação
-                                    </h4>
-                                    <p className="text-sm text-muted-foreground mb-4">
-                                        Selecione turmas, escolas e/ou séries para vincular este jogo. Você pode combinar múltiplas opções.
-                                    </p>
-                                    
-                                    <div className="space-y-6">
-                                        {/* Filtros hierárquicos */}
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                            {/* Estado */}
-                                            <div className="space-y-2">
-                                                <label className="text-sm font-medium">Estado *</label>
-                                                <Select
-                                                    value={selectedState}
-                                                    onValueChange={setSelectedState}
-                                                    disabled={isLoadingFilters}
-                                                >
-                                                    <SelectTrigger>
-                                                        <SelectValue placeholder="Selecione o estado" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="all">Todos</SelectItem>
-                                                        {states.map(state => (
-                                                            <SelectItem key={state.id} value={state.id}>
-                                                                {state.name}
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
-
-                                            {/* Município */}
-                                            <div className="space-y-2">
-                                                <label className="text-sm font-medium">Município *</label>
-                                                <Select
-                                                    value={selectedMunicipality}
-                                                    onValueChange={setSelectedMunicipality}
-                                                    disabled={isLoadingFilters || selectedState === 'all'}
-                                                >
-                                                    <SelectTrigger>
-                                                        <SelectValue placeholder="Selecione o município" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="all">Todos</SelectItem>
-                                                        {municipalities.map(municipality => (
-                                                            <SelectItem key={municipality.id} value={municipality.id}>
-                                                                {municipality.name}
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
-
-                                            {/* Escola (filtro para séries/turmas) */}
-                                            <div className="space-y-2">
-                                                <label className="text-sm font-medium">Escola (filtro)</label>
-                                                <Select
-                                                    value={selectedSchool}
-                                                    onValueChange={setSelectedSchool}
-                                                    disabled={isLoadingFilters || selectedMunicipality === 'all'}
-                                                >
-                                                    <SelectTrigger>
-                                                        <SelectValue placeholder="Escola (filtro)" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="all">Todas as escolas</SelectItem>
-                                                        {schools.map(school => (
-                                                            <SelectItem key={school.id} value={school.id}>
-                                                                {school.name}
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                                <p className="text-xs text-muted-foreground">
-                                                    Use este filtro para carregar séries e turmas de uma escola específica
-                                                </p>
-                                            </div>
-                                        </div>
-                                        
-                                        {/* Seleção múltipla de Escolas */}
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium">
-                                                Escolas <span className="text-muted-foreground">(opcional)</span>
-                                            </label>
-                                            <p className="text-xs text-muted-foreground mb-2">
-                                                Selecione uma ou mais escolas. Todas as turmas dessas escolas serão vinculadas.
-                                            </p>
-                                            <FormMultiSelect
-                                                options={schools.map(school => ({ id: school.id, name: school.name }))}
-                                                selected={selectedSchoolIds}
-                                                onChange={setSelectedSchoolIds}
-                                                placeholder={selectedSchoolIds.length === 0 ? "Selecione escolas (opcional)" : `${selectedSchoolIds.length} selecionada(s)`}
-                                                disabled={isLoadingFilters || selectedMunicipality === 'all'}
-                                            />
-                                        </div>
-                                        
-                                        {/* Seleção múltipla de Séries */}
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium">
-                                                Séries <span className="text-muted-foreground">(opcional)</span>
-                                            </label>
-                                            <p className="text-xs text-muted-foreground mb-2">
-                                                Selecione uma ou mais séries. Todas as turmas dessas séries serão vinculadas.
-                                            </p>
-                                            <FormMultiSelect
-                                                options={grades.map(grade => ({ id: grade.id, name: grade.name }))}
-                                                selected={selectedGradeIds}
-                                                onChange={setSelectedGradeIds}
-                                                placeholder={selectedGradeIds.length === 0 ? "Selecione séries (opcional)" : `${selectedGradeIds.length} selecionada(s)`}
-                                                disabled={isLoadingFilters || (selectedSchool === 'all' && selectedSchoolIds.length === 0)}
-                                            />
-                                        </div>
-                                        
-                                        {/* Seleção múltipla de Turmas */}
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium">
-                                                Turmas Específicas <span className="text-muted-foreground">(opcional)</span>
-                                            </label>
-                                            <p className="text-xs text-muted-foreground mb-2">
-                                                Selecione uma ou mais turmas específicas para vincular.
-                                            </p>
-                                            <FormMultiSelect
-                                                options={classes.map(classItem => ({ 
-                                                    id: classItem.id, 
-                                                    name: classItem.grade_name ? `${classItem.name} (${classItem.grade_name})` : classItem.name 
-                                                }))}
-                                                selected={selectedClassIds}
-                                                onChange={setSelectedClassIds}
-                                                placeholder={selectedClassIds.length === 0 ? "Selecione turmas (opcional)" : `${selectedClassIds.length} selecionada(s)`}
-                                                disabled={isLoadingFilters || (selectedSchool === 'all' && selectedSchoolIds.length === 0) || selectedGradeIds.length === 0}
-                                            />
-                                        </div>
-                                        
-                                        {/* Preview */}
-                                        {(selectedClassIds.length > 0 || selectedSchoolIds.length > 0 || selectedGradeIds.length > 0) && (
-                                            <div className="p-3 bg-muted rounded-md border border-border">
-                                                <p className="text-sm font-medium text-foreground">
-                                                    {isCalculatingPreview ? (
-                                                        <span className="flex items-center gap-2">
-                                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                                            Calculando...
-                                                        </span>
-                                                    ) : (
-                                                        `📊 ${previewLinkedClasses} turma(s) serão vinculadas a este jogo`
-                                                    )}
-                                                </p>
-                                            </div>
-                                        )}
-                                        
-                                        {selectedClassIds.length === 0 && selectedSchoolIds.length === 0 && selectedGradeIds.length === 0 && (
-                                            <p className="text-xs text-red-600">
-                                                Selecione pelo menos uma turma, uma escola ou uma série
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Vincular Jogo</CardTitle>
+                                <CardDescription>
+                                    Selecione estado, município, escolas, série e disciplina para vincular este jogo
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="space-y-6">
+                                    {/* Seleção de Estado */}
+                                    <div className="space-y-2">
+                                        <Label>
+                                            Estado <span className="text-red-500">*</span>
+                                        </Label>
+                                <Popover open={openStateCombo} onOpenChange={setOpenStateCombo}>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            role="combobox"
+                                            aria-expanded={openStateCombo}
+                                            className="w-full justify-between"
+                                            disabled={isLoadingStates}
+                                        >
+                                            {selectedState
+                                                ? states.find(state => state.id === selectedState)?.nome
+                                                : isLoadingStates
+                                                ? "Carregando estados..."
+                                                : "Selecione um estado..."}
+                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[400px] p-0">
+                                        <Command>
+                                            <CommandInput placeholder="Buscar estado..." />
+                                            <CommandEmpty>Nenhum estado encontrado.</CommandEmpty>
+                                            <CommandGroup className="max-h-[200px] overflow-auto">
+                                                {states.map((state) => (
+                                                    <CommandItem
+                                                        key={state.id}
+                                                        value={state.nome}
+                                                        onSelect={() => {
+                                                            setSelectedState(state.id);
+                                                            setOpenStateCombo(false);
+                                                        }}
+                                                    >
+                                                        <Check
+                                                            className={cn(
+                                                                "mr-2 h-4 w-4",
+                                                                selectedState === state.id ? "opacity-100" : "opacity-0"
+                                                            )}
+                                                        />
+                                                        <MapPin className="mr-2 h-4 w-4 text-muted-foreground" />
+                                                        <span>{state.nome}</span>
+                                                    </CommandItem>
+                                                ))}
+                                            </CommandGroup>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
                             </div>
-                        </div>
+
+                            {/* Seleção de Município */}
+                            <div className="space-y-2">
+                                <Label>
+                                    Município <span className="text-red-500">*</span>
+                                </Label>
+                                <Popover open={openMunicipalityCombo} onOpenChange={setOpenMunicipalityCombo}>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            role="combobox"
+                                            aria-expanded={openMunicipalityCombo}
+                                            className="w-full justify-between"
+                                            disabled={isLoadingMunicipalities || !selectedState}
+                                        >
+                                            {selectedMunicipality
+                                                ? municipalities.find(municipality => municipality.id === selectedMunicipality)?.nome
+                                                : !selectedState
+                                                ? "Selecione um estado primeiro..."
+                                                : isLoadingMunicipalities
+                                                ? "Carregando municípios..."
+                                                : "Selecione um município..."}
+                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[400px] p-0">
+                                        <Command>
+                                            <CommandInput placeholder="Buscar município..." />
+                                            <CommandEmpty>
+                                                {!selectedState
+                                                    ? "Selecione um estado primeiro"
+                                                    : "Nenhum município encontrado para o estado selecionado"}
+                                            </CommandEmpty>
+                                            <CommandGroup className="max-h-[200px] overflow-auto">
+                                                {municipalities.map((municipality) => (
+                                                    <CommandItem
+                                                        key={municipality.id}
+                                                        value={municipality.nome}
+                                                        onSelect={() => {
+                                                            setSelectedMunicipality(municipality.id);
+                                                            setOpenMunicipalityCombo(false);
+                                                        }}
+                                                    >
+                                                        <Check
+                                                            className={cn(
+                                                                "mr-2 h-4 w-4",
+                                                                selectedMunicipality === municipality.id ? "opacity-100" : "opacity-0"
+                                                            )}
+                                                        />
+                                                        <Building2 className="mr-2 h-4 w-4 text-muted-foreground" />
+                                                        <span>{municipality.nome}</span>
+                                                    </CommandItem>
+                                                ))}
+                                            </CommandGroup>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
+
+                            {/* Seleção de Escolas */}
+                            <div className="space-y-2">
+                                <Label>
+                                    Escolas <span className="text-red-500">*</span>
+                                </Label>
+                                <Popover open={openSchoolCombo} onOpenChange={setOpenSchoolCombo}>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            role="combobox"
+                                            aria-expanded={openSchoolCombo}
+                                            className="w-full justify-between"
+                                            disabled={isLoadingSchools || !selectedMunicipality}
+                                        >
+                                            {selectedSchools.length > 0
+                                                ? `${selectedSchools.length} escola${selectedSchools.length !== 1 ? 's' : ''} selecionada${selectedSchools.length !== 1 ? 's' : ''}`
+                                                : !selectedMunicipality
+                                                ? "Selecione um município primeiro..."
+                                                : "Selecione as escolas..."}
+                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[400px] p-0">
+                                        <Command>
+                                            <CommandInput placeholder="Buscar escola..." />
+                                            <CommandEmpty>
+                                                {!selectedMunicipality
+                                                    ? "Selecione um município primeiro"
+                                                    : "Nenhuma escola encontrada para o município selecionado"}
+                                            </CommandEmpty>
+                                            <CommandGroup className="max-h-[200px] overflow-auto">
+                                                {filteredSchools.map((school) => (
+                                                    <CommandItem
+                                                        key={school.id}
+                                                        value={school.name}
+                                                        onSelect={() => handleToggleSchool(school)}
+                                                    >
+                                                        <Check
+                                                            className={cn(
+                                                                "mr-2 h-4 w-4",
+                                                                selectedSchools.some(s => s.id === school.id) ? "opacity-100" : "opacity-0"
+                                                            )}
+                                                        />
+                                                        <School className="mr-2 h-4 w-4 text-muted-foreground" />
+                                                        <span>{school.name}</span>
+                                                    </CommandItem>
+                                                ))}
+                                            </CommandGroup>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
+                                
+                                {/* Escolas selecionadas */}
+                                {selectedSchools.length > 0 && (
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                        {selectedSchools.map((school) => (
+                                            <Badge key={school.id} variant="secondary" className="flex items-center gap-1">
+                                                {school.name}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveSchool(school.id)}
+                                                    className="ml-1 hover:bg-destructive hover:text-destructive-foreground rounded-full p-0.5"
+                                                >
+                                                    <X className="w-3 h-3" />
+                                                </button>
+                                            </Badge>
+                                        ))}
+                                    </div>
+                                )}
+                                {!selectedMunicipality && (
+                                    <p className="text-xs text-muted-foreground">
+                                        Selecione um município para visualizar as escolas disponíveis
+                                    </p>
+                                )}
+                                {selectedSchools.length > 0 && (
+                                    <p className="text-xs text-muted-foreground">
+                                        As séries serão filtradas pelas escolas selecionadas
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* Seleção de Série */}
+                            <div className="space-y-2">
+                                <Label>
+                                    Série <span className="text-red-500">*</span>
+                                </Label>
+                                <Popover open={openGradeCombo} onOpenChange={setOpenGradeCombo}>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            role="combobox"
+                                            aria-expanded={openGradeCombo}
+                                            className="w-full justify-between"
+                                            disabled={isLoadingGrades || selectedSchools.length === 0}
+                                        >
+                                            {selectedGrade && selectedGradeData
+                                                ? selectedGradeData.name
+                                                : selectedSchools.length === 0
+                                                ? "Selecione escolas primeiro..."
+                                                : isLoadingGrades
+                                                ? "Carregando séries..."
+                                                : "Selecione uma série..."}
+                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[400px] p-0">
+                                        <Command>
+                                            <CommandInput placeholder="Buscar série..." />
+                                            <CommandEmpty>
+                                                {selectedSchools.length === 0
+                                                    ? "Selecione escolas primeiro"
+                                                    : "Nenhuma série encontrada para as escolas selecionadas"}
+                                            </CommandEmpty>
+                                            <CommandGroup className="max-h-[200px] overflow-auto">
+                                                {Array.isArray(grades) && grades.length > 0 ? (
+                                                    grades.map((grade) => (
+                                                        <CommandItem
+                                                            key={grade.id}
+                                                            value={grade.name}
+                                                            onSelect={() => {
+                                                                setSelectedGrade(grade.id);
+                                                                setOpenGradeCombo(false);
+                                                            }}
+                                                        >
+                                                            <Check
+                                                                className={cn(
+                                                                    "mr-2 h-4 w-4",
+                                                                    selectedGrade === grade.id ? "opacity-100" : "opacity-0"
+                                                                )}
+                                                            />
+                                                            <GraduationCap className="mr-2 h-4 w-4 text-muted-foreground" />
+                                                            <span>{grade.name}</span>
+                                                        </CommandItem>
+                                                    ))
+                                                ) : (
+                                                    <CommandEmpty>Nenhuma série disponível</CommandEmpty>
+                                                )}
+                                            </CommandGroup>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
+                                {selectedSchools.length > 0 && grades.length === 0 && !isLoadingGrades && (
+                                    <p className="text-xs text-destructive">
+                                        Nenhuma série encontrada para as escolas selecionadas
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* Seleção de Disciplina */}
+                            <div className="space-y-2">
+                                <Label>
+                                    Disciplina <span className="text-red-500">*</span>
+                                </Label>
+                                <Popover open={openSubjectCombo} onOpenChange={setOpenSubjectCombo}>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            role="combobox"
+                                            aria-expanded={openSubjectCombo}
+                                            className="w-full justify-between"
+                                            disabled={isLoadingSubjects}
+                                        >
+                                            {selectedSubject && selectedSubjectData
+                                                ? (selectedSubjectData.name || selectedSubjectData.nome)
+                                                : "Selecione uma disciplina..."}
+                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[400px] p-0">
+                                        <Command>
+                                            <CommandInput placeholder="Buscar disciplina..." />
+                                            <CommandEmpty>Nenhuma disciplina encontrada.</CommandEmpty>
+                                            <CommandGroup className="max-h-[200px] overflow-auto">
+                                                {Array.isArray(subjects) && subjects.length > 0 ? (
+                                                    subjects.map((subject) => (
+                                                        <CommandItem
+                                                            key={subject.id}
+                                                            value={subject.name || subject.nome}
+                                                            onSelect={() => {
+                                                                setSelectedSubject(subject.id);
+                                                                setOpenSubjectCombo(false);
+                                                            }}
+                                                        >
+                                                            <Check
+                                                                className={cn(
+                                                                    "mr-2 h-4 w-4",
+                                                                    selectedSubject === subject.id ? "opacity-100" : "opacity-0"
+                                                                )}
+                                                            />
+                                                            <BookOpen className="mr-2 h-4 w-4 text-muted-foreground" />
+                                                            <span>{subject.name || subject.nome}</span>
+                                                        </CommandItem>
+                                                    ))
+                                                ) : (
+                                                    // Fallback para disciplinas hardcoded caso API não retorne
+                                                    DISCIPLINAS.map((disciplina) => (
+                                                        <CommandItem
+                                                            key={disciplina}
+                                                            value={disciplina}
+                                                            onSelect={() => {
+                                                                setSelectedSubject(disciplina);
+                                                                setOpenSubjectCombo(false);
+                                                            }}
+                                                        >
+                                                            <Check
+                                                                className={cn(
+                                                                    "mr-2 h-4 w-4",
+                                                                    selectedSubject === disciplina ? "opacity-100" : "opacity-0"
+                                                                )}
+                                                            />
+                                                            <BookOpen className="mr-2 h-4 w-4 text-muted-foreground" />
+                                                            <span>{disciplina}</span>
+                                                        </CommandItem>
+                                                    ))
+                                                )}
+                                            </CommandGroup>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
+                                </div>
+                            </CardContent>
+                        </Card>
                     )}
 
                     {error && (

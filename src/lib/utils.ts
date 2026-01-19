@@ -37,7 +37,7 @@ export function getDifficultyDotColor(difficulty: string): string {
   }
 }
 
-// Função para extrair thumbnail de URLs de vídeo
+// Função para extrair thumbnail de URLs de vídeo (mantida para compatibilidade)
 export function getVideoThumbnail(url: string): string | null {
   if (!url) return null;
 
@@ -46,6 +46,7 @@ export function getVideoThumbnail(url: string): string | null {
     if (url.includes('youtube.com/watch') || url.includes('youtu.be')) {
       const videoId = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)?.[1];
       if (videoId) {
+        // Retornar maxresdefault primeiro, mas o componente deve ter fallback
         return `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
       }
     }
@@ -84,5 +85,62 @@ export function getVideoThumbnail(url: string): string | null {
   } catch (error) {
     console.error('Erro ao extrair thumbnail:', error);
     return null;
+  }
+}
+
+// Função para obter lista de tentativas de thumbnails ordenadas por prioridade
+export function getVideoThumbnailAttempts(url: string): string[] {
+  if (!url) return [];
+
+  try {
+    // Extrair videoId do YouTube
+    let videoId: string | null = null;
+    
+    if (url.includes('youtube.com/watch') || url.includes('youtu.be')) {
+      videoId = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)?.[1] || null;
+    } else if (url.includes('youtube.com/embed/')) {
+      videoId = url.match(/youtube\.com\/embed\/([^&\n?#]+)/)?.[1] || null;
+    }
+
+    if (videoId) {
+      // Lista completa de tentativas do YouTube em ordem de prioridade
+      return [
+        `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`, // Máxima resolução
+        `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,     // Alta qualidade
+        `https://img.youtube.com/vi/${videoId}/sddefault.jpg`,     // Definição padrão
+        `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,     // Qualidade média
+        `https://img.youtube.com/vi/${videoId}/0.jpg`,             // Primeiro frame
+        `https://img.youtube.com/vi/${videoId}/1.jpg`,             // Segundo frame
+        `https://img.youtube.com/vi/${videoId}/2.jpg`,             // Terceiro frame
+        `https://img.youtube.com/vi/${videoId}/3.jpg`,             // Quarto frame
+        `https://img.youtube.com/vi/${videoId}/default.jpg`,       // Thumbnail padrão (sempre disponível)
+      ];
+    }
+
+    // Vimeo
+    let vimeoId: string | null = null;
+    if (url.includes('vimeo.com')) {
+      vimeoId = url.match(/vimeo\.com\/(?:video\/)?(\d+)/)?.[1] || null;
+    } else if (url.includes('player.vimeo.com')) {
+      vimeoId = url.match(/player\.vimeo\.com\/video\/(\d+)/)?.[1] || null;
+    }
+
+    if (vimeoId) {
+      return [
+        `https://vumbnail.com/${vimeoId}.jpg`,
+        `https://i.vimeocdn.com/video/${vimeoId}_640.jpg`,
+        `https://i.vimeocdn.com/video/${vimeoId}_295x166.jpg`,
+      ];
+    }
+
+    // Se for uma URL de imagem direta, retornar como única tentativa
+    if (url.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+      return [url];
+    }
+
+    return [];
+  } catch (error) {
+    console.error('Erro ao extrair tentativas de thumbnail:', error);
+    return [];
   }
 }
