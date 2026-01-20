@@ -20,7 +20,8 @@ export interface Certificate {
   evaluation_id: string;
   evaluation_title: string;
   grade: number;
-  template: CertificateTemplate;
+  template_id?: string;  // ID do template (opcional, pode vir do backend)
+  template: CertificateTemplate;  // Template completo aninhado
   issued_at: string;
   status: 'pending' | 'approved';
   created_at?: string;
