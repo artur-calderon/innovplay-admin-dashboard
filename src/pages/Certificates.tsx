@@ -120,31 +120,42 @@ export default function Certificates() {
 
     setIsApproving(true);
     try {
-      const studentIds = students.map(s => s.id);
-      
-      const result = await CertificatesApiService.approveCertificates({
-        evaluation_id: selectedEvaluation,
-        student_ids: studentIds,
-        template: template
+      // Primeiro, garantir que o template está salvo no backend
+      await CertificatesApiService.saveCertificateTemplate({
+        ...template,
+        evaluation_id: selectedEvaluation
       });
 
-      // Nota: O backend deve enviar notificações automaticamente.
-      // Se necessário, podemos também enviar notificações adicionais aqui.
-      // Por enquanto, assumimos que o backend cuida disso.
+      // Aprovar certificados (pode aprovar todos ou apenas os selecionados)
+      const studentIds = students.map(s => s.id);
+      const result = await CertificatesApiService.approveCertificates(
+        selectedEvaluation,
+        studentIds
+      );
 
+      // Mostrar mensagem com detalhes da resposta
+      const message = result.message || 
+        `Certificados processados: ${result.total_processed || students.length} emitidos/atualizados`;
+      
       toast({
         title: 'Sucesso',
-        description: `Certificados aprovados e enviados para ${students.length} alunos!`,
+        description: message,
       });
+
+      // Se houver erros, mostrar aviso
+      if (result.errors && result.errors.length > 0) {
+        console.warn('Alguns certificados tiveram erros:', result.errors);
+      }
 
       // Recarregar dados para atualizar status
       const updatedStudents = await CertificatesApiService.getApprovedStudents(selectedEvaluation);
       setStudents(updatedStudents);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao aprovar certificados:', error);
+      const errorMessage = error?.message || 'Não foi possível aprovar os certificados.';
       toast({
         title: 'Erro',
-        description: 'Não foi possível aprovar os certificados.',
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {

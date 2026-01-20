@@ -196,11 +196,17 @@ export function CreatePlayTvVideoForm({
       const response = await api.get('/city/states');
       const allStates = response.data || [];
       
+      // Normalizar estrutura dos dados (pode vir como 'nome' ou 'name')
+      const normalizedStates = allStates.map((state: any) => ({
+        id: state.id,
+        nome: state.nome || state.name || '',
+      }));
+      
       // Para tecadmin, filtrar apenas seu estado
       if (userRole === 'tecadm' && userEstadoId) {
-        setStates(allStates.filter((state: { id: string }) => state.id === userEstadoId));
+        setStates(normalizedStates.filter((state: { id: string }) => state.id === userEstadoId));
       } else {
-        setStates(allStates);
+        setStates(normalizedStates);
       }
     } catch (error) {
       console.error('Erro ao carregar estados:', error);
@@ -209,6 +215,7 @@ export function CreatePlayTvVideoForm({
         description: 'Não foi possível carregar a lista de estados',
         variant: 'destructive',
       });
+      setStates([]);
     } finally {
       setIsLoadingStates(false);
     }
@@ -220,7 +227,15 @@ export function CreatePlayTvVideoForm({
     setIsLoadingMunicipalities(true);
     try {
       const response = await api.get(`/city/municipalities/state/${stateId}`);
-      setMunicipalities(response.data || []);
+      const municipalitiesData = response.data || [];
+      
+      // Normalizar estrutura dos dados (pode vir como 'nome' ou 'name')
+      const normalizedMunicipalities = municipalitiesData.map((municipality: any) => ({
+        id: municipality.id,
+        nome: municipality.nome || municipality.name || '',
+      }));
+      
+      setMunicipalities(normalizedMunicipalities);
     } catch (error) {
       console.error('Erro ao carregar municípios:', error);
       toast({
@@ -549,25 +564,34 @@ export function CreatePlayTvVideoForm({
                   <CommandInput placeholder="Buscar estado..." />
                   <CommandEmpty>Nenhum estado encontrado.</CommandEmpty>
                   <CommandGroup className="max-h-[200px] overflow-auto">
-                    {states.map((state) => (
-                      <CommandItem
-                        key={state.id}
-                        value={state.nome}
-                        onSelect={() => {
-                          setSelectedState(state.id);
-                          setOpenStateCombo(false);
-                        }}
-                      >
-                        <Check
-                          className={cn(
-                            "mr-2 h-4 w-4",
-                            selectedState === state.id ? "opacity-100" : "opacity-0"
-                          )}
-                        />
-                        <MapPin className="mr-2 h-4 w-4 text-muted-foreground" />
-                        <span>{state.nome}</span>
+                    {states.length > 0 ? (
+                      states.map((state) => {
+                        const stateName = state.nome || state.name || '';
+                        return (
+                          <CommandItem
+                            key={state.id}
+                            value={stateName}
+                            onSelect={() => {
+                              setSelectedState(state.id);
+                              setOpenStateCombo(false);
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                selectedState === state.id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            <MapPin className="mr-2 h-4 w-4 text-muted-foreground" />
+                            <span className="flex-1">{stateName}</span>
+                          </CommandItem>
+                        );
+                      })
+                    ) : (
+                      <CommandItem disabled>
+                        <span className="text-muted-foreground">Nenhum estado disponível</span>
                       </CommandItem>
-                    ))}
+                    )}
                   </CommandGroup>
                 </Command>
               </PopoverContent>
@@ -607,25 +631,34 @@ export function CreatePlayTvVideoForm({
                       : "Nenhum município encontrado para o estado selecionado"}
                   </CommandEmpty>
                   <CommandGroup className="max-h-[200px] overflow-auto">
-                    {municipalities.map((municipality) => (
-                      <CommandItem
-                        key={municipality.id}
-                        value={municipality.nome}
-                        onSelect={() => {
-                          setSelectedMunicipality(municipality.id);
-                          setOpenMunicipalityCombo(false);
-                        }}
-                      >
-                        <Check
-                          className={cn(
-                            "mr-2 h-4 w-4",
-                            selectedMunicipality === municipality.id ? "opacity-100" : "opacity-0"
-                          )}
-                        />
-                        <Building2 className="mr-2 h-4 w-4 text-muted-foreground" />
-                        <span>{municipality.nome}</span>
+                    {municipalities.length > 0 ? (
+                      municipalities.map((municipality) => {
+                        const municipalityName = municipality.nome || municipality.name || '';
+                        return (
+                          <CommandItem
+                            key={municipality.id}
+                            value={municipalityName}
+                            onSelect={() => {
+                              setSelectedMunicipality(municipality.id);
+                              setOpenMunicipalityCombo(false);
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                selectedMunicipality === municipality.id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            <Building2 className="mr-2 h-4 w-4 text-muted-foreground" />
+                            <span className="flex-1">{municipalityName}</span>
+                          </CommandItem>
+                        );
+                      })
+                    ) : (
+                      <CommandItem disabled>
+                        <span className="text-muted-foreground">Nenhum município disponível</span>
                       </CommandItem>
-                    ))}
+                    )}
                   </CommandGroup>
                 </Command>
               </PopoverContent>
@@ -663,22 +696,31 @@ export function CreatePlayTvVideoForm({
                       : "Nenhuma escola encontrada para o município selecionado"}
                   </CommandEmpty>
                   <CommandGroup className="max-h-[200px] overflow-auto">
-                    {filteredSchools.map((school) => (
-                      <CommandItem
-                        key={school.id}
-                        value={school.name}
-                        onSelect={() => handleToggleSchool(school)}
-                      >
-                        <Check
-                          className={cn(
-                            "mr-2 h-4 w-4",
-                            selectedSchools.some(s => s.id === school.id) ? "opacity-100" : "opacity-0"
-                          )}
-                        />
-                        <School className="mr-2 h-4 w-4 text-muted-foreground" />
-                        <span>{school.name}</span>
+                    {filteredSchools.length > 0 ? (
+                      filteredSchools.map((school) => {
+                        const schoolName = school.name || '';
+                        return (
+                          <CommandItem
+                            key={school.id}
+                            value={schoolName}
+                            onSelect={() => handleToggleSchool(school)}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                selectedSchools.some(s => s.id === school.id) ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            <School className="mr-2 h-4 w-4 text-muted-foreground" />
+                            <span className="flex-1">{schoolName}</span>
+                          </CommandItem>
+                        );
+                      })
+                    ) : (
+                      <CommandItem disabled>
+                        <span className="text-muted-foreground">Nenhuma escola disponível</span>
                       </CommandItem>
-                    ))}
+                    )}
                   </CommandGroup>
                 </Command>
               </PopoverContent>
@@ -746,25 +788,34 @@ export function CreatePlayTvVideoForm({
                       : "Nenhuma série encontrada para as escolas selecionadas"}
                   </CommandEmpty>
                   <CommandGroup className="max-h-[200px] overflow-auto">
-                    {grades.map((grade) => (
-                      <CommandItem
-                        key={grade.id}
-                        value={grade.name}
-                        onSelect={() => {
-                          setSelectedGrade(grade.id);
-                          setOpenGradeCombo(false);
-                        }}
-                      >
-                        <Check
-                          className={cn(
-                            "mr-2 h-4 w-4",
-                            selectedGrade === grade.id ? "opacity-100" : "opacity-0"
-                          )}
-                        />
-                        <GraduationCap className="mr-2 h-4 w-4 text-muted-foreground" />
-                        <span>{grade.name}</span>
+                    {grades.length > 0 ? (
+                      grades.map((grade) => {
+                        const gradeName = grade.name || '';
+                        return (
+                          <CommandItem
+                            key={grade.id}
+                            value={gradeName}
+                            onSelect={() => {
+                              setSelectedGrade(grade.id);
+                              setOpenGradeCombo(false);
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                selectedGrade === grade.id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            <GraduationCap className="mr-2 h-4 w-4 text-muted-foreground" />
+                            <span className="flex-1">{gradeName}</span>
+                          </CommandItem>
+                        );
+                      })
+                    ) : (
+                      <CommandItem disabled>
+                        <span className="text-muted-foreground">Nenhuma série disponível</span>
                       </CommandItem>
-                    ))}
+                    )}
                   </CommandGroup>
                 </Command>
               </PopoverContent>
@@ -801,25 +852,34 @@ export function CreatePlayTvVideoForm({
                   <CommandInput placeholder="Buscar disciplina..." />
                   <CommandEmpty>Nenhuma disciplina encontrada.</CommandEmpty>
                   <CommandGroup className="max-h-[200px] overflow-auto">
-                    {subjects.map((subject) => (
-                      <CommandItem
-                        key={subject.id}
-                        value={subject.name}
-                        onSelect={() => {
-                          setSelectedSubject(subject.id);
-                          setOpenSubjectCombo(false);
-                        }}
-                      >
-                        <Check
-                          className={cn(
-                            "mr-2 h-4 w-4",
-                            selectedSubject === subject.id ? "opacity-100" : "opacity-0"
-                          )}
-                        />
-                        <BookOpen className="mr-2 h-4 w-4 text-muted-foreground" />
-                        <span>{subject.name}</span>
+                    {subjects.length > 0 ? (
+                      subjects.map((subject) => {
+                        const subjectName = subject.name || '';
+                        return (
+                          <CommandItem
+                            key={subject.id}
+                            value={subjectName}
+                            onSelect={() => {
+                              setSelectedSubject(subject.id);
+                              setOpenSubjectCombo(false);
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                selectedSubject === subject.id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            <BookOpen className="mr-2 h-4 w-4 text-muted-foreground" />
+                            <span className="flex-1">{subjectName}</span>
+                          </CommandItem>
+                        );
+                      })
+                    ) : (
+                      <CommandItem disabled>
+                        <span className="text-muted-foreground">Nenhuma disciplina disponível</span>
                       </CommandItem>
-                    ))}
+                    )}
                   </CommandGroup>
                 </Command>
               </PopoverContent>
