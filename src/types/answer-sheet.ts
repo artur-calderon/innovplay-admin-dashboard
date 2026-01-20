@@ -76,4 +76,30 @@ export interface Student {
   escola_id?: string;
 }
 
+export interface Gabarito {
+  id: string;
+  test_id: string | null;
+  class_id: string;
+  class_name: string;
+  num_questions: number;
+  use_blocks: boolean;
+  title: string;
+  school_name: string;
+  municipality: string;
+  state: string;
+  grade_name: string;
+  institution: string;
+  created_at: string;
+  created_by: string;
+  creator_name: string;
+}
+
+export interface GabaritosResponse {
+  gabaritos: Gabarito[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
+}
+
 
