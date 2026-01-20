@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,9 +29,10 @@ import {
   RefreshCw,
   Clock,
   Loader2,
+  Trash2,
 } from 'lucide-react';
 import { api } from '@/lib/api';
-import { AnswerSheetConfig, StudentAnswerSheet, School as SchoolType, Serie, Turma, Estado, Municipio } from '@/types/answer-sheet';
+import { AnswerSheetConfig, StudentAnswerSheet, School as SchoolType, Serie, Turma, Estado, Municipio, Gabarito, GabaritosResponse } from '@/types/answer-sheet';
 
 type Step = 1 | 2;
 
@@ -109,6 +110,18 @@ export default function AnswerSheetGenerator() {
     startBatchCorrection,
     reset: resetBatchCorrection,
   } = useAnswerSheetCorrection();
+
+  // Estados para cartões gerados
+  const [gabaritos, setGabaritos] = useState<Gabarito[]>([]);
+  const [isLoadingGabaritos, setIsLoadingGabaritos] = useState(false);
+  const [downloadingGabaritoId, setDownloadingGabaritoId] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [activeTab, setActiveTab] = useState('generate');
+  const [selectedGabaritos, setSelectedGabaritos] = useState<Set<string>>(new Set());
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteMode, setDeleteMode] = useState<'single' | 'multiple'>('single');
+  const [gabaritoToDelete, setGabaritoToDelete] = useState<string | null>(null);
 
   // Carregar dados iniciais ao montar
   useEffect(() => {
@@ -1133,6 +1146,274 @@ export default function AnswerSheetGenerator() {
     }
   };
 
+  // Funções para gerenciar cartões gerados
+  const fetchGabaritos = useCallback(async () => {
+    try {
+      setIsLoadingGabaritos(true);
+      const response = await api.get<GabaritosResponse>('/answer-sheets/gabaritos');
+      setGabaritos(response.data.gabaritos || []);
+    } catch (error: any) {
+      console.error('Erro ao carregar gabaritos:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível carregar os cartões gerados.',
+        variant: 'destructive',
+      });
+      setGabaritos([]);
+    } finally {
+      setIsLoadingGabaritos(false);
+    }
+  }, [toast]);
+
+  const handleDownloadGabarito = async (gabaritoId: string) => {
+    try {
+      setDownloadingGabaritoId(gabaritoId);
+      setDownloadProgress(0);
+      
+      // Simular progresso inicial
+      setDownloadProgress(10);
+      
+      const response = await api.get(`/answer-sheets/gabarito/${gabaritoId}/download`, {
+        responseType: 'blob',
+        onDownloadProgress: (progressEvent) => {
+          if (progressEvent.total) {
+            const percentCompleted = Math.round(
+              (progressEvent.loaded * 100) / progressEvent.total
+            );
+            setDownloadProgress(Math.min(percentCompleted, 90));
+          } else {
+            // Se não tiver total, incrementar gradualmente
+            setDownloadProgress(prev => Math.min(prev + 10, 80));
+          }
+        },
+      });
+      
+      setDownloadProgress(95);
+
+      if (response.data instanceof Blob && response.data.size > 0) {
+        const url = window.URL.createObjectURL(response.data);
+        const link = document.createElement('a');
+        link.href = url;
+        
+        // Tentar extrair o nome do arquivo do header Content-Disposition
+        const contentDisposition = response.headers['content-disposition'] || response.headers['Content-Disposition'];
+        let zipFileName = `gabarito_${gabaritoId}.zip`;
+        
+        if (contentDisposition) {
+          let fileNameMatch = contentDisposition.match(/filename\*?=['"]?([^'";\n]+)['"]?/i);
+          if (!fileNameMatch) {
+            fileNameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+          }
+          
+          if (fileNameMatch && fileNameMatch[1]) {
+            let extractedFileName = fileNameMatch[1].replace(/['"]/g, '');
+            if (extractedFileName.startsWith("UTF-8''")) {
+              extractedFileName = extractedFileName.replace(/^UTF-8''/, '');
+            }
+            try {
+              zipFileName = decodeURIComponent(extractedFileName);
+            } catch (e) {
+              zipFileName = extractedFileName;
+            }
+          }
+        }
+        
+        link.download = zipFileName;
+        document.body.appendChild(link);
+        link.click();
+        
+        setTimeout(() => {
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+        }, 100);
+
+        setDownloadProgress(100);
+        
+        toast({
+          title: 'Sucesso!',
+          description: `Download do gabarito iniciado (${(response.data.size / 1024 / 1024).toFixed(2)} MB).`,
+        });
+        
+        // Resetar progresso após um pequeno delay para mostrar 100%
+        setTimeout(() => {
+          setDownloadProgress(0);
+        }, 500);
+      } else {
+        throw new Error('O arquivo recebido está vazio ou é inválido.');
+      }
+    } catch (error: any) {
+      console.error('Erro ao baixar gabarito:', error);
+      
+      let errorMessage = 'Não foi possível baixar o gabarito.';
+      if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error.response?.status === 403) {
+        errorMessage = 'Você não tem permissão para acessar este gabarito.';
+      } else if (error.response?.status === 404) {
+        errorMessage = 'Gabarito não encontrado.';
+      } else if (error.response?.status === 400) {
+        errorMessage = 'Gabarito não possui turma associada.';
+      }
+      
+      toast({
+        title: 'Erro',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+      
+      setDownloadProgress(0);
+    } finally {
+      setDownloadingGabaritoId(null);
+    }
+  };
+
+  // Carregar gabaritos quando a aba "generated" for selecionada
+  useEffect(() => {
+    if (activeTab === 'generated') {
+      fetchGabaritos();
+    }
+  }, [activeTab, fetchGabaritos]);
+
+  // Funções de exclusão
+  const handleDeleteGabarito = async (gabaritoId: string) => {
+    try {
+      setIsDeleting(true);
+      const response = await api.delete(`/answer-sheets/gabarito/${gabaritoId}`);
+      
+      toast({
+        title: 'Sucesso!',
+        description: response.data?.message || 'Gabarito excluído com sucesso.',
+      });
+      
+      // Remover da lista local
+      setGabaritos(prev => prev.filter(g => g.id !== gabaritoId));
+      // Remover da seleção se estiver selecionado
+      setSelectedGabaritos(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(gabaritoId);
+        return newSet;
+      });
+    } catch (error: any) {
+      console.error('Erro ao excluir gabarito:', error);
+      
+      let errorMessage = 'Não foi possível excluir o gabarito.';
+      if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error.response?.status === 403) {
+        errorMessage = 'Você não tem permissão para excluir este gabarito.';
+      } else if (error.response?.status === 404) {
+        errorMessage = 'Gabarito não encontrado.';
+      }
+      
+      toast({
+        title: 'Erro',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteDialog(false);
+      setGabaritoToDelete(null);
+    }
+  };
+
+  const handleDeleteMultipleGabaritos = async () => {
+    if (selectedGabaritos.size === 0) return;
+    
+    try {
+      setIsDeleting(true);
+      const ids = Array.from(selectedGabaritos);
+      const response = await api.delete('/answer-sheets/gabaritos', {
+        data: { ids },
+      });
+      
+      const data = response.data;
+      const deletedCount = data.deleted_count || 0;
+      const requestedCount = data.requested_count || ids.length;
+      
+      if (deletedCount > 0) {
+        toast({
+          title: 'Sucesso!',
+          description: data.message || `${deletedCount} gabarito(s) excluído(s) com sucesso.`,
+        });
+        
+        // Remover gabaritos excluídos da lista local
+        if (data.deleted_ids && Array.isArray(data.deleted_ids)) {
+          setGabaritos(prev => prev.filter(g => !data.deleted_ids.includes(g.id)));
+        } else {
+          // Se não retornar IDs, remover todos os selecionados
+          setGabaritos(prev => prev.filter(g => !ids.includes(g.id)));
+        }
+        
+        // Limpar seleção
+        setSelectedGabaritos(new Set());
+      }
+      
+      if (data.not_found_or_unauthorized_ids && data.not_found_or_unauthorized_ids.length > 0) {
+        toast({
+          title: 'Atenção',
+          description: `${deletedCount} excluído(s), mas ${data.not_found_or_unauthorized_ids.length} não puderam ser excluídos (sem permissão ou não encontrados).`,
+          variant: 'default',
+        });
+      }
+    } catch (error: any) {
+      console.error('Erro ao excluir gabaritos:', error);
+      
+      let errorMessage = 'Não foi possível excluir os gabaritos.';
+      if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      }
+      
+      toast({
+        title: 'Erro',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteDialog(false);
+    }
+  };
+
+  const handleToggleSelectGabarito = (gabaritoId: string) => {
+    setSelectedGabaritos(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(gabaritoId)) {
+        newSet.delete(gabaritoId);
+      } else {
+        newSet.add(gabaritoId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedGabaritos.size === gabaritos.length) {
+      setSelectedGabaritos(new Set());
+    } else {
+      setSelectedGabaritos(new Set(gabaritos.map(g => g.id)));
+    }
+  };
+
+  const handleOpenDeleteDialog = (gabaritoId?: string) => {
+    if (gabaritoId) {
+      setDeleteMode('single');
+      setGabaritoToDelete(gabaritoId);
+    } else {
+      setDeleteMode('multiple');
+      setGabaritoToDelete(null);
+    }
+    setShowDeleteDialog(true);
+  };
+
+  const handleConfirmDelete = () => {
+    if (deleteMode === 'single' && gabaritoToDelete) {
+      handleDeleteGabarito(gabaritoToDelete);
+    } else if (deleteMode === 'multiple') {
+      handleDeleteMultipleGabaritos();
+    }
+  };
+
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
       {/* Header */}
@@ -1144,10 +1425,11 @@ export default function AnswerSheetGenerator() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="generate" className="space-y-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList>
           <TabsTrigger value="generate">Gerar Cartões</TabsTrigger>
           <TabsTrigger value="correct">Corrigir Cartões</TabsTrigger>
+          <TabsTrigger value="generated">Cartões Gerados</TabsTrigger>
         </TabsList>
 
         {/* Tab: Gerar Cartões */}
@@ -2209,6 +2491,258 @@ export default function AnswerSheetGenerator() {
               </Dialog>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Tab: Cartões Gerados */}
+        <TabsContent value="generated" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Cartões Gerados
+                  </CardTitle>
+                  <CardDescription>
+                    Visualize, baixe e exclua os cartões resposta que você gerou
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  {selectedGabaritos.size > 0 && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => handleOpenDeleteDialog()}
+                      disabled={isDeleting}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Excluir ({selectedGabaritos.size})
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={fetchGabaritos}
+                    disabled={isLoadingGabaritos}
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingGabaritos ? 'animate-spin' : ''}`} />
+                    Atualizar
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isLoadingGabaritos ? (
+                <div className="space-y-4">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-32 w-full" />
+                  ))}
+                </div>
+              ) : gabaritos.length === 0 ? (
+                <div className="text-center py-12">
+                  <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-lg font-medium text-muted-foreground mb-2">
+                    Nenhum cartão gerado ainda
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Os cartões que você gerar aparecerão aqui
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Header com seleção múltipla */}
+                  {gabaritos.length > 0 && (
+                    <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/50">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="select-all"
+                          checked={selectedGabaritos.size === gabaritos.length && gabaritos.length > 0}
+                          onCheckedChange={handleSelectAll}
+                        />
+                        <Label htmlFor="select-all" className="text-sm font-medium cursor-pointer">
+                          Selecionar todos ({selectedGabaritos.size}/{gabaritos.length})
+                        </Label>
+                      </div>
+                      {selectedGabaritos.size > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedGabaritos(new Set())}
+                        >
+                          Limpar seleção
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                  
+                  {gabaritos.map((gabarito) => (
+                    <Card 
+                      key={gabarito.id} 
+                      className={`hover:shadow-md transition-shadow ${
+                        selectedGabaritos.has(gabarito.id) ? 'ring-2 ring-blue-500' : ''
+                      }`}
+                    >
+                      <CardContent className="p-6">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex items-start gap-3 flex-1">
+                            <Checkbox
+                              id={`select-${gabarito.id}`}
+                              checked={selectedGabaritos.has(gabarito.id)}
+                              onCheckedChange={() => handleToggleSelectGabarito(gabarito.id)}
+                              className="mt-1"
+                            />
+                            <div className="flex-1 space-y-3">
+                            <div>
+                              <h3 className="text-lg font-semibold mb-1">{gabarito.title}</h3>
+                              <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
+                                <Badge variant="secondary" className="flex items-center gap-1">
+                                  <School className="h-3 w-3" />
+                                  {gabarito.school_name}
+                                </Badge>
+                                <Badge variant="secondary" className="flex items-center gap-1">
+                                  <Users className="h-3 w-3" />
+                                  {gabarito.class_name}
+                                </Badge>
+                                <Badge variant="secondary">
+                                  {gabarito.grade_name}
+                                </Badge>
+                                <Badge variant="outline">
+                                  {gabarito.num_questions} questões
+                                </Badge>
+                                {gabarito.use_blocks && (
+                                  <Badge variant="outline" className="border-purple-500 text-purple-700">
+                                    Com blocos
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                              <div>
+                                <p className="text-muted-foreground">Localização</p>
+                                <p className="font-medium">{gabarito.municipality}, {gabarito.state}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">Criado por</p>
+                                <p className="font-medium">{gabarito.creator_name}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">Data de criação</p>
+                                <p className="font-medium">
+                                  {new Date(gabarito.created_at).toLocaleDateString('pt-BR', {
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">Instituição</p>
+                                <p className="font-medium">{gabarito.institution}</p>
+                              </div>
+                            </div>
+                            </div>
+                          </div>
+                          
+                          <div className="flex flex-col gap-2 min-w-[140px]">
+                            <Button
+                              onClick={() => handleDownloadGabarito(gabarito.id)}
+                              disabled={downloadingGabaritoId === gabarito.id || isDeleting}
+                              className="w-full"
+                            >
+                              {downloadingGabaritoId === gabarito.id ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  Baixando... {downloadProgress > 0 && `${downloadProgress}%`}
+                                </>
+                              ) : (
+                                <>
+                                  <Download className="h-4 w-4 mr-2" />
+                                  Baixar ZIP
+                                </>
+                              )}
+                            </Button>
+                            {downloadingGabaritoId === gabarito.id && downloadProgress > 0 && (
+                              <div className="space-y-1">
+                                <Progress value={downloadProgress} className="h-2" />
+                                <p className="text-xs text-center text-muted-foreground">
+                                  Preparando download...
+                                </p>
+                              </div>
+                            )}
+                            <Button
+                              variant="destructive"
+                              onClick={() => handleOpenDeleteDialog(gabarito.id)}
+                              disabled={isDeleting || downloadingGabaritoId === gabarito.id}
+                              className="w-full"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Excluir
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Diálogo de confirmação de exclusão */}
+          <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <AlertCircle className="h-5 w-5 text-destructive" />
+                  Confirmar Exclusão
+                </DialogTitle>
+                <DialogDescription>
+                  {deleteMode === 'single' ? (
+                    <>
+                      Tem certeza que deseja excluir este gabarito? Esta ação não pode ser desfeita.
+                    </>
+                  ) : (
+                    <>
+                      Tem certeza que deseja excluir {selectedGabaritos.size} gabarito(s) selecionado(s)? 
+                      Esta ação não pode ser desfeita.
+                    </>
+                  )}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex justify-end gap-2 mt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowDeleteDialog(false);
+                    setGabaritoToDelete(null);
+                  }}
+                  disabled={isDeleting}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleConfirmDelete}
+                  disabled={isDeleting}
+                >
+                  {isDeleting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Excluindo...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Excluir
+                    </>
+                  )}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
       </Tabs>
     </div>
