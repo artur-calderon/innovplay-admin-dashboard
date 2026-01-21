@@ -26,7 +26,7 @@ export function StudentList({ evaluationId, onSelectStudent }: StudentListProps)
         const data = await CertificatesApiService.getApprovedStudents(evaluationId);
         setStudents(data);
       } catch (error) {
-        console.error('Erro ao carregar alunos aprovados:', error);
+        console.error('Erro ao carregar alunos participantes:', error);
       } finally {
         setIsLoading(false);
       }
@@ -75,7 +75,7 @@ export function StudentList({ evaluationId, onSelectStudent }: StudentListProps)
         <CardContent className="flex flex-col items-center justify-center py-12">
           <User className="h-12 w-12 text-muted-foreground mb-4" />
           <p className="text-muted-foreground text-center">
-            Nenhum aluno aprovado encontrado nesta avaliação.
+            Nenhum aluno participante encontrado nesta avaliação.
           </p>
         </CardContent>
       </Card>
@@ -87,7 +87,7 @@ export function StudentList({ evaluationId, onSelectStudent }: StudentListProps)
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <User className="h-5 w-5" />
-          Alunos Aprovados ({students.length})
+          Alunos Participantes ({students.length})
         </CardTitle>
       </CardHeader>
       <CardContent>

@@ -9,6 +9,7 @@ export interface CertificateTemplate {
   logo_url?: string;
   signature_url?: string;
   custom_date?: string;
+  font_size?: 'small' | 'medium' | 'large' | 'extra-large';
   created_at?: string;
   updated_at?: string;
 }
@@ -44,6 +45,11 @@ export interface EvaluationWithCertificates {
   approved_students_count: number;
   total_students_count: number;
   certificate_status: 'none' | 'pending' | 'approved';
+  created_by?: {
+    id: string;
+    name: string;
+  };
+  type?: 'AVALIACAO' | 'OLIMPIADA' | string;
 }
 
 export interface CertificateApprovalRequest {

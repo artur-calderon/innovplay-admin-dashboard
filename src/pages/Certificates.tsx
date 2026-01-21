@@ -3,19 +3,21 @@ import { useAuth } from '@/context/authContext';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Award, CheckCircle2 } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ArrowLeft, Award, CheckCircle2, Info } from 'lucide-react';
 import { CertificateList } from '@/components/certificates/CertificateList';
 import { StudentList } from '@/components/certificates/StudentList';
 import { CertificateCustomizer } from '@/components/certificates/CertificateCustomizer';
 import { CertificateTemplateComponent } from '@/components/certificates/CertificateTemplate';
 import { CertificatesApiService } from '@/services/certificatesApi';
 import { getUserHierarchyContext } from '@/utils/userHierarchy';
-import type { CertificateTemplate, ApprovedStudent } from '@/types/certificates';
+import type { CertificateTemplate, ApprovedStudent, EvaluationWithCertificates } from '@/types/certificates';
 
 export default function Certificates() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [selectedEvaluation, setSelectedEvaluation] = useState<string | null>(null);
+  const [selectedEvaluationData, setSelectedEvaluationData] = useState<EvaluationWithCertificates | null>(null);
   const [schoolId, setSchoolId] = useState<string | null>(null);
   const [municipalityId, setMunicipalityId] = useState<string | null>(null);
   const [students, setStudents] = useState<ApprovedStudent[]>([]);
@@ -23,6 +25,9 @@ export default function Certificates() {
   const [isLoadingHierarchy, setIsLoadingHierarchy] = useState(true);
   const [isCustomizing, setIsCustomizing] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
+
+  // Verificar se o usuário é o criador da avaliação
+  const isEvaluationCreator = selectedEvaluationData?.created_by?.id === user.id;
 
   useEffect(() => {
     const loadHierarchy = async () => {
@@ -79,13 +84,15 @@ export default function Certificates() {
     loadTemplateAndStudents();
   }, [selectedEvaluation, toast]);
 
-  const handleSelectEvaluation = (evaluationId: string) => {
+  const handleSelectEvaluation = (evaluationId: string, evaluationData?: EvaluationWithCertificates) => {
     setSelectedEvaluation(evaluationId);
+    setSelectedEvaluationData(evaluationData || null);
     setIsCustomizing(false);
   };
 
   const handleBack = () => {
     setSelectedEvaluation(null);
+    setSelectedEvaluationData(null);
     setIsCustomizing(false);
     setTemplate(null);
     setStudents([]);
@@ -202,7 +209,7 @@ export default function Certificates() {
           <p className="text-muted-foreground mt-2">
             {user.role === 'admin' 
               ? 'Visualize todas as avaliações do sistema para gerenciar certificados'
-              : 'Selecione uma avaliação para gerenciar certificados dos alunos aprovados'}
+              : 'Selecione uma avaliação para gerenciar certificados dos alunos participantes'}
           </p>
         </div>
         <CertificateList
@@ -256,7 +263,7 @@ export default function Certificates() {
               Gerenciar Certificados
             </h1>
             <p className="text-muted-foreground mt-2">
-              Personalize e aprove certificados para os alunos aprovados
+              Personalize e aprove certificados para os alunos participantes
             </p>
           </div>
         </div>
@@ -267,7 +274,7 @@ export default function Certificates() {
           >
             Personalizar Certificado
           </Button>
-          {template && students.length > 0 && (
+          {template && students.length > 0 && isEvaluationCreator && (
             <Button
               onClick={handleApproveCertificates}
               disabled={isApproving}
@@ -278,6 +285,16 @@ export default function Certificates() {
           )}
         </div>
       </div>
+
+      {/* Aviso quando o usuário não é o criador da avaliação */}
+      {!isEvaluationCreator && selectedEvaluationData?.created_by && (
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertDescription>
+            Apenas o criador desta avaliação ({selectedEvaluationData.created_by.name || 'Usuário'}) pode aprovar os certificados.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div>
@@ -290,13 +307,25 @@ export default function Certificates() {
               <CardTitle>Preview do Certificado</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="bg-gray-100 p-4 rounded-lg overflow-auto max-h-[600px]">
-                <CertificateTemplateComponent
-                  template={template}
-                  studentName="Nome do Aluno"
-                  evaluationTitle="Avaliação Exemplo"
-                  grade={8.5}
-                />
+              <div 
+                className="bg-gray-100 p-4 rounded-lg overflow-auto"
+                style={{ maxHeight: '500px' }}
+              >
+                {/* Preview em formato paisagem */}
+                <div 
+                  style={{ 
+                    width: '100%', 
+                    maxWidth: '700px',
+                    margin: '0 auto'
+                  }}
+                >
+                  <CertificateTemplateComponent
+                    template={template}
+                    studentName="Nome do Aluno"
+                    evaluationTitle="Avaliação Exemplo"
+                    grade={8.5}
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
