@@ -67,15 +67,8 @@ export class CertificatesApiService {
           const data = response.data;
           // O endpoint retorna em resultados_detalhados.avaliacoes
           if (data?.resultados_detalhados?.avaliacoes && Array.isArray(data.resultados_detalhados.avaliacoes)) {
-            // Filtrar olimpíadas
-            evaluations = data.resultados_detalhados.avaliacoes.filter((evaluation: any) => {
-              const type = evaluation.type || evaluation.tipo;
-              const title = evaluation.titulo || evaluation.title || '';
-              const isOlimpiada = type === 'OLIMPIADA' || 
-                                 title.includes('[OLIMPÍADA]') || 
-                                 title.toUpperCase().includes('OLIMPÍADA');
-              return !isOlimpiada;
-            });
+            // Incluir todas as avaliações (incluindo olimpíadas) para certificados
+            evaluations = data.resultados_detalhados.avaliacoes;
             
             // Extrair avaliações únicas do objeto evaluation dentro de cada resultado
             // Como os resultados são agregados, precisamos extrair o ID da avaliação do objeto evaluation
@@ -126,25 +119,55 @@ export class CertificatesApiService {
         const evaluationObj = evaluation.test || evaluation.evaluation || evaluation;
         const evaluationId = evaluation.id || evaluation.test_id || evaluationObj?.id;
         
-        // Contar alunos aprovados (nota >= 6) se disponível
-        // Nota: isso pode precisar ser calculado no backend ou buscado separadamente
-        let approvedCount = 0;
-        if (evaluation.approved_students_count !== undefined) {
-          approvedCount = evaluation.approved_students_count;
-        } else if (evaluation.alunos_participantes !== undefined && evaluation.media_nota !== undefined) {
-          // Estimativa: se média de nota é alta, pode ter muitos aprovados
-          // Mas isso é apenas uma estimativa - o ideal seria buscar do backend
-          approvedCount = 0; // Será calculado quando necessário
-        }
+        // Extrair total de alunos participantes de múltiplas fontes possíveis
+        const totalStudents = 
+          evaluation.total_students || 
+          evaluation.total_alunos || 
+          evaluation.alunos_participantes ||
+          evaluation.studentCount ||
+          evaluation.studentsCount ||
+          evaluation.participants_count ||
+          evaluation.totalParticipants ||
+          evaluationObj?.total_students ||
+          evaluationObj?.total_alunos ||
+          evaluationObj?.alunos_participantes ||
+          evaluationObj?.studentCount ||
+          evaluationObj?.studentsCount ||
+          0;
+        
+        // Extrair created_by da avaliação
+        const createdBy = evaluation.created_by || evaluation.createdBy || evaluationObj?.created_by || evaluationObj?.createdBy;
+        
+        // Extrair tipo da avaliação (AVALIACAO ou OLIMPIADA)
+        const evaluationType = evaluation.type || evaluation.tipo || evaluationObj?.type || evaluationObj?.tipo || 'AVALIACAO';
+        
+        // Extrair data de aplicação de múltiplas fontes possíveis
+        const appliedAt = 
+          evaluation.applied_at || 
+          evaluation.data_aplicacao ||
+          evaluation.createdAt ||                          // Campo padrão do /test/
+          evaluation.startDateTime ||                      // Campo de olimpíadas
+          evaluation.application_info?.application ||      // Campo de aplicação de olimpíadas
+          evaluationObj?.createdAt ||                      // Campo do objeto de avaliação
+          evaluationObj?.created_at ||
+          evaluationObj?.startDateTime ||
+          evaluationObj?.application_info?.application ||
+          evaluation.created_at ||
+          null;
         
         return {
           id: evaluationId,
           title: evaluation.title || evaluation.titulo || evaluationObj?.title || 'Avaliação sem título',
           subject: evaluation.subject?.name || evaluation.subject_rel?.name || evaluation.disciplina || evaluationObj?.subject_rel?.name || 'Disciplina não informada',
-          applied_at: evaluation.applied_at || evaluation.data_aplicacao || evaluationObj?.created_at || evaluation.created_at,
-          approved_students_count: approvedCount,
-          total_students_count: evaluation.total_students || evaluation.total_alunos || evaluation.alunos_participantes || 0,
-          certificate_status: evaluation.certificate_status || 'none'
+          applied_at: appliedAt,
+          approved_students_count: 0, // Será calculado quando necessário via endpoint específico
+          total_students_count: totalStudents,
+          certificate_status: evaluation.certificate_status || 'none',
+          created_by: createdBy ? {
+            id: createdBy.id || createdBy._id || '',
+            name: createdBy.name || createdBy.nome || ''
+          } : undefined,
+          type: evaluationType
         };
       });
     } catch (error: any) {

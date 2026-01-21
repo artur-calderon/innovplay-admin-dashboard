@@ -1516,17 +1516,37 @@ export default function RelatorioEscolar() {
 
         y += 18;
 
-        // Título principal
+        // Determinar o tipo de relatório baseado nos dados da API
+        const reportType = apiData.estatisticas_gerais?.tipo || (isMunicipalView ? 'municipio' : 'escola');
+        const serieFromApi = apiData.estatisticas_gerais?.serie;
+        const escolaFromApi = apiData.estatisticas_gerais?.escola;
+
+        // Título principal - ajustar de acordo com o tipo de dados
         doc.setFontSize(24);
         doc.setTextColor(...COLORS.textDark); // Preto
         doc.setFont('helvetica', 'bold');
-        doc.text('RELATÓRIO ESCOLAR', centerX, y, { align: 'center' });
+        let mainTitle = 'RELATÓRIO ESCOLAR';
+        if (reportType === 'municipio' || isMunicipalView) {
+          mainTitle = 'RELATÓRIO MUNICIPAL';
+        } else if (reportType === 'turma') {
+          mainTitle = 'RELATÓRIO POR TURMA';
+        } else if (reportType === 'serie') {
+          mainTitle = 'RELATÓRIO POR SÉRIE';
+        } else if (reportType === 'escola') {
+          mainTitle = 'RELATÓRIO POR ESCOLA';
+        }
+        doc.text(mainTitle, centerX, y, { align: 'center' });
 
         y += 20;
 
-        // Card de informações - tamanho reduzido
+        // Card de informações - tamanho dinâmico baseado nos campos a exibir
         const cardWidth = pageWidth - 120; // Reduzido: mais estreito
-        const cardHeight = 60; // Reduzido: mais baixo
+        // Calcular altura do card baseado nos campos que serão exibidos
+        let fieldsCount = 2; // Avaliação e Município são sempre exibidos
+        if (!isMunicipalView || escolaFromApi) fieldsCount++; // Escola
+        if (serieFromApi) fieldsCount++; // Série
+        if (apiData.estatisticas_gerais?.data_aplicacao) fieldsCount++; // Data
+        const cardHeight = 30 + (fieldsCount * 8); // Altura base + espaço por campo
         const cardX = (pageWidth - cardWidth) / 2;
         
         // Centralizar verticalmente melhor na página
@@ -1547,11 +1567,21 @@ export default function RelatorioEscolar() {
         // Conteúdo do card
         let cardY = y + 9;
 
-        // Título do card
+        // Título do card - ajustar de acordo com tipo de relatório
         doc.setFontSize(11);
         doc.setTextColor(...COLORS.primary); // Roxo
         doc.setFont('helvetica', 'bold');
-        doc.text('INFORMAÇÕES DA AVALIAÇÃO', centerX, cardY, { align: 'center' });
+        let cardTitle = 'INFORMAÇÕES DA AVALIAÇÃO';
+        if (reportType === 'municipio' || isMunicipalView) {
+          cardTitle = 'INFORMAÇÕES DO MUNICÍPIO';
+        } else if (reportType === 'turma') {
+          cardTitle = 'INFORMAÇÕES DA TURMA';
+        } else if (reportType === 'serie') {
+          cardTitle = 'INFORMAÇÕES DA SÉRIE';
+        } else if (reportType === 'escola') {
+          cardTitle = 'INFORMAÇÕES DA ESCOLA';
+        }
+        doc.text(cardTitle, centerX, cardY, { align: 'center' });
 
         cardY += 9;
 
@@ -1582,18 +1612,29 @@ export default function RelatorioEscolar() {
         doc.text(municipalityName || 'N/A', leftColX + labelWidth, cardY);
         cardY += 5;
 
-        // ESCOLA
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...COLORS.primary);
-        doc.text('ESCOLA:', leftColX, cardY);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...COLORS.textDark);
-        const escolaText = isMunicipalView 
-          ? 'Todas as Escolas' 
-          : (selectedSchoolInfo?.name || 'Escola Selecionada');
-        const escolaLines = doc.splitTextToSize(escolaText.toUpperCase(), cardWidth - labelWidth - 24);
-        doc.text(escolaLines, leftColX + labelWidth, cardY);
-        cardY += Math.max(5, escolaLines.length * 4);
+        // ESCOLA (exibir se escola selecionada ou se API retorna escola)
+        if (!isMunicipalView || escolaFromApi) {
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(...COLORS.primary);
+          doc.text('ESCOLA:', leftColX, cardY);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(...COLORS.textDark);
+          const escolaText = escolaFromApi || selectedSchoolInfo?.name || 'Escola Selecionada';
+          const escolaLines = doc.splitTextToSize(escolaText.toUpperCase(), cardWidth - labelWidth - 24);
+          doc.text(escolaLines, leftColX + labelWidth, cardY);
+          cardY += Math.max(5, escolaLines.length * 4);
+        }
+
+        // SÉRIE (exibir se a API retorna série)
+        if (serieFromApi) {
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(...COLORS.primary);
+          doc.text('SÉRIE:', leftColX, cardY);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(...COLORS.textDark);
+          doc.text(serieFromApi.toUpperCase(), leftColX + labelWidth, cardY);
+          cardY += 5;
+        }
 
         // DATA (se disponível)
         if (apiData.estatisticas_gerais?.data_aplicacao) {
