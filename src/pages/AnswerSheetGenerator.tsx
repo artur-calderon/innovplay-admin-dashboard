@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,6 +40,7 @@ type Step = 1 | 2;
 export default function AnswerSheetGenerator() {
   const [currentStep, setCurrentStep] = useState<Step>(1);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   // Estados da Etapa 1: Configuração
   // Filtros geográficos
@@ -122,6 +124,7 @@ export default function AnswerSheetGenerator() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteMode, setDeleteMode] = useState<'single' | 'multiple'>('single');
   const [gabaritoToDelete, setGabaritoToDelete] = useState<string | null>(null);
+
 
   // Carregar dados iniciais ao montar
   useEffect(() => {
@@ -1414,6 +1417,11 @@ export default function AnswerSheetGenerator() {
     }
   };
 
+  // Função para navegar para a página de resultados
+  const handleViewResults = (gabaritoId: string) => {
+    navigate(`/app/cartao-resposta/resultados/${gabaritoId}`);
+  };
+
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
       {/* Header */}
@@ -2673,6 +2681,15 @@ export default function AnswerSheetGenerator() {
                               </div>
                             )}
                             <Button
+                              variant="outline"
+                              onClick={() => handleViewResults(gabarito.id)}
+                              disabled={isDeleting || downloadingGabaritoId === gabarito.id}
+                              className="w-full"
+                            >
+                              <FileText className="h-4 w-4 mr-2" />
+                              Visualizar Resultados
+                            </Button>
+                            <Button
                               variant="destructive"
                               onClick={() => handleOpenDeleteDialog(gabarito.id)}
                               disabled={isDeleting || downloadingGabaritoId === gabarito.id}
@@ -2744,6 +2761,7 @@ export default function AnswerSheetGenerator() {
             </DialogContent>
           </Dialog>
         </TabsContent>
+
       </Tabs>
     </div>
   );
