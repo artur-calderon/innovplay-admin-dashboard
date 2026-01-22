@@ -25,39 +25,82 @@ export function CertificateTemplateComponent({
     }
   };
 
+  // Proporção A4 paisagem: 297mm x 210mm
+  // Aspect ratio: 297/210 = 1.414 (aproximadamente)
+  const isFullSize = className?.includes('w-full') && className?.includes('h-full');
+  
+  // Configurações de tamanho de fonte baseado na opção selecionada
+  const fontSizeConfig = {
+    'small': {
+      title: 'clamp(18px, 3vw, 32px)',
+      content: 'clamp(10px, 1.4vw, 14px)',
+      studentName: 'clamp(14px, 2.5vw, 22px)',
+      details: 'clamp(9px, 1.2vw, 12px)',
+      footer: 'clamp(8px, 1vw, 10px)'
+    },
+    'medium': {
+      title: 'clamp(24px, 4vw, 42px)',
+      content: 'clamp(12px, 1.8vw, 16px)',
+      studentName: 'clamp(18px, 3vw, 26px)',
+      details: 'clamp(11px, 1.5vw, 14px)',
+      footer: 'clamp(10px, 1.2vw, 12px)'
+    },
+    'large': {
+      title: 'clamp(28px, 5vw, 52px)',
+      content: 'clamp(14px, 2.2vw, 20px)',
+      studentName: 'clamp(22px, 3.5vw, 32px)',
+      details: 'clamp(13px, 1.8vw, 16px)',
+      footer: 'clamp(11px, 1.4vw, 14px)'
+    },
+    'extra-large': {
+      title: 'clamp(32px, 6vw, 62px)',
+      content: 'clamp(16px, 2.6vw, 24px)',
+      studentName: 'clamp(26px, 4vw, 38px)',
+      details: 'clamp(15px, 2vw, 18px)',
+      footer: 'clamp(12px, 1.6vw, 16px)'
+    }
+  };
+  
+  const fontSize = fontSizeConfig[template.font_size || 'medium'];
+
   return (
     <div
       className={`certificate-template ${className}`}
       style={{
         backgroundColor: template.background_color || '#ffffff',
         color: template.text_color || '#000000',
-        minHeight: '600px',
-        padding: '60px',
+        // Layout paisagem A4 com proporções corretas
+        width: '100%',
+        height: isFullSize ? '100%' : 'auto',
+        aspectRatio: isFullSize ? 'auto' : '297 / 210', // Proporção A4 paisagem (só se não for full size)
+        maxWidth: isFullSize ? 'none' : '1000px', // Sem limite se for full size
+        padding: '5%',
         position: 'relative',
-        border: `8px solid ${template.accent_color || '#1e40af'}`,
-        borderRadius: '8px',
-        boxShadow: '0 10px 40px rgba(0, 0, 0, 0.1)',
+        border: `6px solid ${template.accent_color || '#1e40af'}`,
+        borderRadius: '4px',
+        boxShadow: isFullSize ? 'none' : '0 10px 40px rgba(0, 0, 0, 0.1)',
         fontFamily: 'serif',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
         backgroundImage: template.logo_url ? `url(${template.logo_url})` : 'none',
-        backgroundSize: '200px',
+        backgroundSize: '15%',
         backgroundPosition: 'top center',
         backgroundRepeat: 'no-repeat',
-        paddingTop: template.logo_url ? '180px' : '60px'
+        paddingTop: template.logo_url ? '15%' : '5%',
+        boxSizing: 'border-box'
       }}
     >
-      {/* Decorative border elements */}
+      {/* Decorative border elements - ajustados para paisagem */}
       <div
         style={{
           position: 'absolute',
-          top: '20px',
-          left: '20px',
-          width: '60px',
-          height: '60px',
-          border: `3px solid ${template.accent_color || '#1e40af'}`,
+          top: '15px',
+          left: '15px',
+          width: '50px',
+          height: '50px',
+          border: `2px solid ${template.accent_color || '#1e40af'}`,
           borderRight: 'none',
           borderBottom: 'none'
         }}
@@ -65,11 +108,11 @@ export function CertificateTemplateComponent({
       <div
         style={{
           position: 'absolute',
-          top: '20px',
-          right: '20px',
-          width: '60px',
-          height: '60px',
-          border: `3px solid ${template.accent_color || '#1e40af'}`,
+          top: '15px',
+          right: '15px',
+          width: '50px',
+          height: '50px',
+          border: `2px solid ${template.accent_color || '#1e40af'}`,
           borderLeft: 'none',
           borderBottom: 'none'
         }}
@@ -77,11 +120,11 @@ export function CertificateTemplateComponent({
       <div
         style={{
           position: 'absolute',
-          bottom: '20px',
-          left: '20px',
-          width: '60px',
-          height: '60px',
-          border: `3px solid ${template.accent_color || '#1e40af'}`,
+          bottom: '15px',
+          left: '15px',
+          width: '50px',
+          height: '50px',
+          border: `2px solid ${template.accent_color || '#1e40af'}`,
           borderRight: 'none',
           borderTop: 'none'
         }}
@@ -89,37 +132,39 @@ export function CertificateTemplateComponent({
       <div
         style={{
           position: 'absolute',
-          bottom: '20px',
-          right: '20px',
-          width: '60px',
-          height: '60px',
-          border: `3px solid ${template.accent_color || '#1e40af'}`,
+          bottom: '15px',
+          right: '15px',
+          width: '50px',
+          height: '50px',
+          border: `2px solid ${template.accent_color || '#1e40af'}`,
           borderLeft: 'none',
           borderTop: 'none'
         }}
       />
 
-      {/* Main content */}
+      {/* Main content - layout otimizado para paisagem */}
       <div
         style={{
           textAlign: 'center',
-          maxWidth: '800px',
           width: '100%',
+          height: '100%',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: '40px'
+          justifyContent: 'space-between',
+          gap: '15px',
+          padding: '10px 20px'
         }}
       >
         {/* Title */}
         <h1
           style={{
-            fontSize: '48px',
+            fontSize: fontSize.title,
             fontWeight: 'bold',
             margin: 0,
             color: template.accent_color || '#1e40af',
             textTransform: 'uppercase',
-            letterSpacing: '4px'
+            letterSpacing: '3px'
           }}
         >
           {template.title || 'Certificado'}
@@ -128,39 +173,40 @@ export function CertificateTemplateComponent({
         {/* Main text content */}
         <div
           style={{
-            fontSize: '18px',
-            lineHeight: '1.8',
+            fontSize: fontSize.content,
+            lineHeight: '1.6',
             color: template.text_color || '#000000',
-            marginBottom: '20px'
+            maxWidth: '90%'
           }}
           dangerouslySetInnerHTML={{ __html: template.text_content }}
         />
 
         {/* Student information */}
         {studentName && (
-          <div style={{ marginTop: '40px', width: '100%' }}>
+          <div style={{ width: '100%' }}>
             <div
               style={{
-                fontSize: '28px',
+                fontSize: fontSize.studentName,
                 fontWeight: 'bold',
                 color: template.accent_color || '#1e40af',
-                marginBottom: '20px',
+                marginBottom: '10px',
                 borderBottom: `2px solid ${template.accent_color || '#1e40af'}`,
-                paddingBottom: '10px',
+                paddingBottom: '8px',
                 display: 'inline-block',
-                minWidth: '400px'
+                minWidth: '300px',
+                maxWidth: '80%'
               }}
             >
               {studentName}
             </div>
-            <div style={{ fontSize: '16px', marginTop: '20px' }}>
+            <div style={{ fontSize: fontSize.details, marginTop: '10px' }}>
               {evaluationTitle && (
-                <p style={{ margin: '5px 0' }}>
+                <p style={{ margin: '3px 0' }}>
                   <strong>Avaliação:</strong> {evaluationTitle}
                 </p>
               )}
               {grade !== undefined && (
-                <p style={{ margin: '5px 0' }}>
+                <p style={{ margin: '3px 0' }}>
                   <strong>Nota:</strong> {grade.toFixed(1)}
                 </p>
               )}
@@ -168,54 +214,60 @@ export function CertificateTemplateComponent({
           </div>
         )}
 
-        {/* Date */}
+        {/* Footer: Date and Signature */}
         <div
           style={{
-            marginTop: '60px',
-            fontSize: '14px',
-            color: template.text_color || '#000000',
-            opacity: 0.7
+            width: '100%',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-end',
+            paddingTop: '10px'
           }}
         >
-          Data de emissão: {formatDate(template.custom_date)}
-        </div>
-
-        {/* Signature */}
-        {template.signature_url && (
+          {/* Date */}
           <div
             style={{
-              marginTop: '80px',
-              width: '100%',
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              flexDirection: 'column',
-              gap: '10px'
+              fontSize: fontSize.footer,
+              color: template.text_color || '#000000',
+              opacity: 0.7
             }}
           >
-            <img
-              src={template.signature_url}
-              alt="Assinatura"
-              style={{
-                maxWidth: '200px',
-                maxHeight: '100px',
-                objectFit: 'contain'
-              }}
-            />
+            Data de emissão: {formatDate(template.custom_date)}
+          </div>
+
+          {/* Signature */}
+          {template.signature_url && (
             <div
               style={{
-                borderTop: `2px solid ${template.text_color || '#000000'}`,
-                width: '200px',
-                marginTop: '10px',
-                paddingTop: '10px',
-                fontSize: '14px',
-                fontWeight: 'bold'
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '5px'
               }}
             >
-              Diretor
+              <img
+                src={template.signature_url}
+                alt="Assinatura"
+                style={{
+                  maxWidth: '150px',
+                  maxHeight: '60px',
+                  objectFit: 'contain'
+                }}
+              />
+              <div
+                style={{
+                  borderTop: `1px solid ${template.text_color || '#000000'}`,
+                  width: '150px',
+                  paddingTop: '5px',
+                  fontSize: fontSize.footer,
+                  fontWeight: 'bold'
+                }}
+              >
+                Diretor
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

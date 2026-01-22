@@ -20,7 +20,8 @@ import {
     User,
     Globe,
     Search,
-    School
+    School,
+    BookOpen
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useAuth } from '@/context/authContext';
@@ -709,91 +710,113 @@ const GamesManagement = () => {
                         </p>
                     </CardContent>
                 </Card>
-            ) : (
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {filterGamesByName(games).map((game) => {
-                        const canEdit = canEditGame(game);
-                        return (
-                            <Card key={game.id} className="hover:shadow-md transition-shadow">
-                                <CardHeader>
-                                    <div className="flex justify-between items-start">
-                                        <CardTitle className="text-lg line-clamp-2">{game.title}</CardTitle>
-                                        <Badge variant="secondary">{game.subject}</Badge>
-                                    </div>
-                                    {activeTab === 'all_games' && game.userId !== user.id && (
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                            Criado por outro usuário
-                                        </p>
-                                    )}
-                                    {/* Mostrar turmas vinculadas */}
-                                    {game.classes && Array.isArray(game.classes) && game.classes.length > 0 && (
-                                        <div className="mt-2">
-                                            <p className="text-xs text-muted-foreground mb-1">
-                                                Vinculado a:
-                                            </p>
-                                            <div className="flex flex-wrap gap-1">
-                                                {game.classes.map((classItem) => (
-                                                    <Badge key={classItem.id} variant="outline" className="text-xs">
-                                                        {classItem.name || classItem.nome || `Turma ${classItem.id}`}
-                                                    </Badge>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="aspect-video bg-muted rounded-lg overflow-hidden">
-                                        {game.thumbnail ? (
-                                            <img
-                                                src={game.thumbnail}
-                                                alt={game.title}
-                                                className="w-full h-full object-cover"
-                                            />
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center">
-                                                <Gamepad2 className="w-8 h-8 text-muted-foreground" />
-                                            </div>
-                                        )}
-                                    </div>
+            ) : (() => {
+                // Agrupar jogos por disciplina
+                const filteredGames = filterGamesByName(games);
+                const gamesBySubject = filteredGames.reduce((acc, game) => {
+                    const subjectName = game.subject || 'Sem disciplina';
+                    if (!acc[subjectName]) {
+                        acc[subjectName] = [];
+                    }
+                    acc[subjectName].push(game);
+                    return acc;
+                }, {});
 
-                                    <div className="flex gap-2">
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => openGame(game.id)}
-                                            className="flex-1"
-                                        >
-                                            <ExternalLink className="w-4 h-4 mr-1" />
-                                            Jogar
-                                        </Button>
-                                        {canEdit && (
-                                            <>
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => openEditModal(game)}
-                                                    title="Editar jogo"
-                                                >
-                                                    <Edit className="w-4 h-4" />
-                                                </Button>
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => openDeleteModal(game)}
-                                                    className="text-destructive hover:text-destructive"
-                                                    title="Excluir jogo"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </Button>
-                                            </>
-                                        )}
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        );
-                    })}
-                </div>
-            )}
+                return (
+                    <div className="space-y-8">
+                        {Object.entries(gamesBySubject).map(([subjectName, subjectGames]) => (
+                            <div key={subjectName} className="space-y-4">
+                                <h3 className="text-xl font-semibold text-foreground flex items-center gap-2">
+                                    <BookOpen className="w-5 h-5 text-blue-600" />
+                                    {subjectName}
+                                </h3>
+                                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                                    {subjectGames.map((game) => {
+                                        const canEdit = canEditGame(game);
+                                        return (
+                                            <Card key={game.id} className="hover:shadow-md transition-shadow">
+                                                <CardHeader>
+                                                    <div className="flex justify-between items-start">
+                                                        <CardTitle className="text-lg line-clamp-2">{game.title}</CardTitle>
+                                                    </div>
+                                                    {activeTab === 'all_games' && game.userId !== user.id && (
+                                                        <p className="text-xs text-muted-foreground mt-1">
+                                                            Criado por outro usuário
+                                                        </p>
+                                                    )}
+                                                    {/* Mostrar turmas vinculadas */}
+                                                    {game.classes && Array.isArray(game.classes) && game.classes.length > 0 && (
+                                                        <div className="mt-2">
+                                                            <p className="text-xs text-muted-foreground mb-1">
+                                                                Vinculado a:
+                                                            </p>
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {game.classes.map((classItem) => (
+                                                                    <Badge key={classItem.id} variant="outline" className="text-xs">
+                                                                        {classItem.name || classItem.nome || `Turma ${classItem.id}`}
+                                                                    </Badge>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </CardHeader>
+                                                <CardContent className="space-y-4">
+                                                    <div className="aspect-video bg-muted rounded-lg overflow-hidden">
+                                                        {game.thumbnail ? (
+                                                            <img
+                                                                src={game.thumbnail}
+                                                                alt={game.title}
+                                                                className="w-full h-full object-cover"
+                                                            />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center">
+                                                                <Gamepad2 className="w-8 h-8 text-muted-foreground" />
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="flex gap-2">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => openGame(game.id)}
+                                                            className="flex-1"
+                                                        >
+                                                            <ExternalLink className="w-4 h-4 mr-1" />
+                                                            Jogar
+                                                        </Button>
+                                                        {canEdit && (
+                                                            <>
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    onClick={() => openEditModal(game)}
+                                                                    title="Editar jogo"
+                                                                >
+                                                                    <Edit className="w-4 h-4" />
+                                                                </Button>
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    onClick={() => openDeleteModal(game)}
+                                                                    className="text-destructive hover:text-destructive"
+                                                                    title="Excluir jogo"
+                                                                >
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                </Button>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </CardContent>
+                                            </Card>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                );
+            })()}
 
             {/* Modal de Edição */}
             <Dialog open={!!editingGame} onOpenChange={() => {
