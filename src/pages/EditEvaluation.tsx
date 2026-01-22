@@ -1,18 +1,11 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, Save, Loader2, FileCheck } from "lucide-react";
-import { CreateEvaluationStep1 } from "@/components/evaluations/CreateEvaluationStep1";
-import { CreateEvaluationStep2 } from "@/components/evaluations/CreateEvaluationStep2";
-import { EvaluationFormData, Question as FormQuestion, Question } from "@/components/evaluations/types";
-import { useAuth } from "@/context/authContext";
+import { ArrowLeft, Loader2, FileCheck } from "lucide-react";
+import { CreateEvaluationModal } from "@/components/evaluations/CreateEvaluationModal";
+import { EvaluationFormData, Question as FormQuestion } from "@/components/evaluations/types";
 import { useToast } from "@/hooks/use-toast";
-import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
-import { useQuestionActions } from "@/stores/useEvaluationStore";
-import { useEvaluations } from "@/hooks/use-cache";
-import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/components/evaluations/results/constants";
 
 interface Municipality {
     id: string;
@@ -77,23 +70,12 @@ interface Evaluation {
 
 const EditEvaluation = () => {
     const { id } = useParams<{ id: string }>();
-    const [currentStep, setCurrentStep] = useState(1);
     const [evaluationData, setEvaluationData] = useState<EvaluationFormData | null>(null);
     const [originalEvaluation, setOriginalEvaluation] = useState<Evaluation | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [isSaving, setIsSaving] = useState(false);
+    const [showModal, setShowModal] = useState(false);
     const { toast } = useToast();
     const navigate = useNavigate();
-    const { user } = useAuth();
-    const { clearQuestions } = useQuestionActions();
-    const { invalidateAfterCRUD } = useEvaluations();
-
-    // Limpar questões do store ao sair da página
-    useEffect(() => {
-        return () => {
-            clearQuestions();
-        };
-    }, [clearQuestions]);
 
     // Carregar dados da avaliação existente
     useEffect(() => {
@@ -171,11 +153,12 @@ const EditEvaluation = () => {
                 }
 
                 setEvaluationData(formData);
+                setShowModal(true);
             } catch (error) {
                 console.error("Erro ao buscar avaliação:", error);
                 toast({
                     title: "Erro",
-                    description: ERROR_MESSAGES.EVALUATION_LOAD_FAILED,
+                    description: "Erro ao carregar avaliação",
                     variant: "destructive",
                 });
                 navigate("/app/avaliacoes");
@@ -187,162 +170,13 @@ const EditEvaluation = () => {
         fetchEvaluation();
     }, [id, toast, navigate]);
 
-    const handleNext = (data: EvaluationFormData) => {
-        // Preservar questões originais ao ir para Step2
-        const updatedData = {
-            ...data,
-            questions: evaluationData?.questions || [],
-        };
-        setEvaluationData(updatedData);
-        setCurrentStep(2);
+    const handleSuccess = () => {
+        setShowModal(false);
+        navigate(`/app/avaliacao/${id}`);
     };
 
-    const handleBack = () => {
-        setCurrentStep(1);
-    };
-
-    // Função para confirmar exclusão antes de recriar
-    const confirmDeletion = async (testId: string, maxAttempts = 10, delayMs = 500): Promise<boolean> => {
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-                await api.get(`/test/${testId}`);
-                // Se chegou aqui, a avaliação ainda existe
-                if (attempt === maxAttempts) {
-                    console.warn(`Avaliação ${testId} ainda existe após ${maxAttempts} tentativas`);
-                    return false;
-                }
-                // Aguardar antes da próxima tentativa
-                await new Promise(resolve => setTimeout(resolve, delayMs));
-            } catch (error: unknown) {
-                // Se for 404/410, a exclusão foi bem-sucedida
-                if ((error as ApiError)?.response?.status === 404 || (error as ApiError)?.response?.status === 410) {
-                    console.log(`Avaliação ${testId} confirmada como excluída na tentativa ${attempt}`);
-                    return true;
-                }
-                // Outros erros são tratados como falha
-                console.error(`Erro ao verificar exclusão da avaliação ${testId}:`, error);
-                return false;
-            }
-        }
-        return false;
-    };
-
-    const handleEvaluationComplete = async (updatedQuestions?: Question[]) => {
-        if (!evaluationData || !id) return;
-
-        try {
-            setIsSaving(true);
-
-            // Usar questões atualizadas se fornecidas, senão usar as do evaluationData
-            const finalQuestions = updatedQuestions || evaluationData.questions || [];
-
-            // Atualizar dados básicos via PUT
-            await api.put(`/test/${id}`, {
-                title: evaluationData.title,
-                description: evaluationData.description,
-                municipalities: evaluationData.municipalities,
-                schools: evaluationData.schools,
-                course: evaluationData.course,
-                grade: evaluationData.grade,
-                type: evaluationData.type,
-                model: evaluationData.model,
-                subjects: evaluationData.subjects,
-                subject: evaluationData.subject,
-                time_limit: evaluationData.startDateTime,
-                duration: evaluationData.duration ? parseInt(evaluationData.duration) : undefined,
-                classes: evaluationData.classes,
-            });
-
-            // Verificar se questões mudaram para decidir entre PUT ou delete+recreate
-            if (finalQuestions && finalQuestions.length > 0) {
-                const originalQuestions = originalEvaluation?.questions || [];
-                const questionsChanged = JSON.stringify(originalQuestions) !== JSON.stringify(finalQuestions);
-                
-                if (questionsChanged) {
-                    console.log("🔄 Questões alteradas detectadas, iniciando recriação segura...");
-                    
-                    const currentEvalResponse = await api.get(`/test/${id}`);
-                    const currentEval = currentEvalResponse.data;
-                    
-                    const completePayload = {
-                        title: evaluationData.title,
-                        description: evaluationData.description,
-                        municipalities: evaluationData.municipalities,
-                        schools: evaluationData.schools,
-                        course: evaluationData.course,
-                        grade: evaluationData.grade,
-                        type: evaluationData.type,
-                        model: evaluationData.model,
-                        subjects: evaluationData.subjects,
-                        subject: evaluationData.subject,
-                        time_limit: evaluationData.startDateTime,
-                        duration: evaluationData.duration ? parseInt(evaluationData.duration) : undefined,
-                        classes: evaluationData.classes,
-                        questions: finalQuestions,
-                        created_by: currentEval.created_by || user.id,
-                        max_score: currentEval.max_score,
-                        evaluation_mode: currentEval.evaluation_mode,
-                        intructions: currentEval.intructions
-                    };
-
-                    // 1. Excluir avaliação existente
-                    console.log(`🗑️ Excluindo avaliação ${id}...`);
-                    await api.delete(`/test/${id}`);
-                    
-                    // 2. Confirmar exclusão antes de recriar
-                    console.log("⏳ Confirmando exclusão...");
-                    const deletionConfirmed = await confirmDeletion(id);
-                    
-                    if (!deletionConfirmed) {
-                        toast({
-                            title: "Erro",
-                            description: ERROR_MESSAGES.EVALUATION_DELETE_FAILED,
-                            variant: "destructive",
-                        });
-                        return;
-                    }
-                    
-                    // 3. Recriar avaliação
-                    console.log("🔄 Recriando avaliação...");
-                    const newEvalResponse = await api.post('/test', completePayload);
-                    const newEvalId = newEvalResponse.data.test_id || newEvalResponse.data.id;
-                    
-                    // 4. Invalidar caches
-                    console.log("🗑️ Invalidando caches...");
-                    await invalidateAfterCRUD();
-                    
-                    toast({
-                        title: SUCCESS_MESSAGES.EVALUATION_UPDATED,
-                        description: SUCCESS_MESSAGES.QUESTIONS_SAVED,
-                    });
-
-                    navigate(`/app/avaliacao/${newEvalId}`);
-                    return;
-                }
-            }
-
-            // Invalidar caches após atualização
-            await invalidateAfterCRUD();
-            
-            toast({
-                title: SUCCESS_MESSAGES.EVALUATION_UPDATED,
-                description: SUCCESS_MESSAGES.EVALUATION_UPDATED,
-            });
-
-            navigate(`/app/avaliacao/${id}`);
-        } catch (error) {
-            console.error("Erro ao atualizar avaliação:", error);
-            toast({
-                title: "Erro",
-                description: ERROR_MESSAGES.EVALUATION_UPDATE_FAILED,
-                variant: "destructive",
-            });
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const handleCancel = () => {
+    const handleClose = () => {
+        setShowModal(false);
         navigate(`/app/avaliacao/${id}`);
     };
 
@@ -374,134 +208,35 @@ const EditEvaluation = () => {
 
     return (
         <div className="container max-w-5xl mx-auto py-6">
-            {/* Aviso destacado no topo */}
-            <div className="mb-6 p-4 bg-amber-100 border-2 border-amber-300 rounded-lg">
-                <div className="flex items-center gap-3">
-                    <div className="flex-shrink-0">
-                        <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center">
-                            <span className="text-white font-bold text-lg">⚠</span>
-                        </div>
-                    </div>
-                    <div>
-                        <h3 className="text-lg font-bold text-amber-900">Modo de Edição Ativo</h3>
-                        <p className="text-amber-800">
-                            Você está editando a avaliação <strong>"{originalEvaluation.title}"</strong>. 
-                            Algumas alterações podem afetar avaliações já aplicadas às turmas.
-                        </p>
-                    </div>
-                </div>
-            </div>
-
             <div className="mb-6">
                 <Button
                     variant="ghost"
-                    onClick={handleCancel}
+                    onClick={handleClose}
                     className="mb-4"
                 >
                     <ArrowLeft className="mr-2 h-4 w-4" />
                     Voltar
                 </Button>
                 
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-                          <FileCheck className="w-8 h-8 text-blue-600" />
-                          Editar Avaliação
-                        </h1>
-                        <p className="text-muted-foreground">
-                            Edite as informações da avaliação "{originalEvaluation.title}"
-                        </p>
-                    </div>
-                    
-                    <div className="flex items-center gap-2">
-                        <Badge variant="outline">
-                            Etapa {currentStep} de 2
-                        </Badge>
-                        {isSaving && (
-                            <Badge variant="secondary">
-                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                                Salvando...
-                            </Badge>
-                        )}
-                    </div>
-                </div>
-
-                {/* Barra de progresso */}
-                <div className="mt-4">
-                    <div className="flex items-center space-x-4">
-                        <div className="flex items-center">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                                currentStep >= 1 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-500'
-                            }`}>
-                                1
-                            </div>
-                            <span className={`ml-2 text-sm ${currentStep >= 1 ? 'text-blue-600 font-medium' : 'text-gray-500'}`}>
-                                Configuração
-                            </span>
-                        </div>
-                        
-                        <div className={`flex-1 h-1 rounded ${currentStep >= 2 ? 'bg-blue-600' : 'bg-gray-200'}`} />
-                        
-                        <div className="flex items-center">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                                currentStep >= 2 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-500'
-                            }`}>
-                                2
-                            </div>
-                            <span className={`ml-2 text-sm ${currentStep >= 2 ? 'text-blue-600 font-medium' : 'text-gray-500'}`}>
-                                Questões
-                            </span>
-                        </div>
-                    </div>
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+                        <FileCheck className="w-8 h-8 text-blue-600" />
+                        Editar Avaliação
+                    </h1>
+                    <p className="text-muted-foreground">
+                        {originalEvaluation ? `Edite as informações da avaliação "${originalEvaluation.title}"` : 'Carregando...'}
+                    </p>
                 </div>
             </div>
 
-            <Card>
-                <CardContent className="pt-6">
-                    {currentStep === 1 && (
-                        <CreateEvaluationStep1 
-                            onNext={handleNext}
-                            initialData={evaluationData}
-                        />
-                    )}
-
-                    {currentStep === 2 && evaluationData && (
-                        <CreateEvaluationStep2
-                            data={evaluationData}
-                            onBack={handleBack}
-                            onComplete={handleEvaluationComplete}
-                            editMode={true}
-                            evaluationId={id}
-                        />
-                    )}
-                </CardContent>
-            </Card>
-
-            {/* Informações de ajuda */}
-            {currentStep === 1 && (
-                <Card className="mt-4 bg-blue-50 border-blue-200">
-                    <CardContent className="pt-4">
-                        <h3 className="font-medium text-blue-900 mb-2">💡 Dicas para Edição</h3>
-                        <ul className="text-sm text-blue-800 space-y-1">
-                            <li>• Todos os campos marcados com * são obrigatórios</li>
-                            <li>• Alterações em município/escola podem afetar turmas selecionadas</li>
-                            <li>• Verifique cuidadosamente os dados antes de prosseguir</li>
-                        </ul>
-                    </CardContent>
-                </Card>
-            )}
-
-            {currentStep === 2 && (
-                <Card className="mt-4 bg-green-50 border-green-200">
-                    <CardContent className="pt-4">
-                        <h3 className="font-medium text-green-900 mb-2">📚 Editando questões</h3>
-                        <ul className="text-sm text-green-800 space-y-1">
-                            <li>• Você pode adicionar, remover ou reordenar questões</li>
-                            <li>• Use o filtro por disciplina para encontrar questões específicas</li>
-                            <li>• Questões duplicadas não serão adicionadas</li>
-                        </ul>
-                    </CardContent>
-                </Card>
+            {showModal && evaluationData && (
+                <CreateEvaluationModal
+                    isOpen={showModal}
+                    onClose={handleClose}
+                    onSuccess={handleSuccess}
+                    evaluationId={id}
+                    initialData={evaluationData}
+                />
             )}
         </div>
     );
