@@ -100,33 +100,110 @@ const EditEvaluation = () => {
                     }
                 }
 
+                // Buscar questões completas da avaliação
+                let questionsData: FormQuestion[] = [];
+                try {
+                    // Tentar buscar questões do endpoint de questões
+                    const questionsResponse = await api.get(`/questions?test_id=${id}`);
+                    if (Array.isArray(questionsResponse.data) && questionsResponse.data.length > 0) {
+                        questionsData = questionsResponse.data.map((q: any) => ({
+                            id: q.id,
+                            text: q.text || q.formattedText || '',
+                            formattedText: q.formattedText || q.text || '',
+                            title: q.title || q.command || '',
+                            type: q.type === 'multiple_choice' ? 'multipleChoice' : (q.type === 'open' || q.type === 'essay' ? 'dissertativa' : 'multipleChoice'),
+                            subjectId: q.subject?.id || q.subject_id || '',
+                            subject: q.subject,
+                            grade: q.grade,
+                            difficulty: q.difficulty || '',
+                            value: q.value || q.points || 0,
+                            solution: q.solution || '',
+                            formattedSolution: q.formattedSolution || q.solution || '',
+                            options: q.alternatives?.map((alt: any) => ({
+                                id: alt.id,
+                                text: alt.text,
+                                isCorrect: alt.isCorrect || false,
+                            })) || q.options || [],
+                            secondStatement: q.secondStatement || q.secondstatement || '',
+                            skills: q.skills || '',
+                        })) as FormQuestion[];
+                    }
+                } catch (error) {
+                    console.error("Erro ao buscar questões:", error);
+                    // Se falhar, usar questões do evaluation se disponíveis
+                    if (evaluation.questions && Array.isArray(evaluation.questions) && evaluation.questions.length > 0) {
+                        questionsData = evaluation.questions as unknown as FormQuestion[];
+                    }
+                }
+
+                // Converter escolas para o formato correto
+                const schoolsFormatted = evaluation.schools?.map((s: School | string) => {
+                    if (typeof s === 'string') {
+                        return { id: s, name: s };
+                    }
+                    return { id: s.id, name: s.name };
+                }) || [];
+
+                // Converter turmas - tentar de applied_classes primeiro, depois de classes
+                let classesFormatted: Array<{ id: string; name: string; school?: { id: string; name: string } }> = [];
+                
+                if (evaluation.applied_classes && evaluation.applied_classes.length > 0) {
+                    // Usar applied_classes que tem informações completas
+                    classesFormatted = evaluation.applied_classes.map((ac: AppliedClass) => ({
+                        id: ac.class.id,
+                        name: ac.class.name,
+                        school: ac.class.school,
+                    }));
+                } else if (evaluation.classes && evaluation.classes.length > 0) {
+                    // Se não tiver applied_classes, carregar informações das turmas
+                    try {
+                        const classesPromises = (Array.isArray(evaluation.classes) ? evaluation.classes : [evaluation.classes]).map(async (classId: string) => {
+                            try {
+                                const classRes = await api.get(`/classes/${classId}`);
+                                return {
+                                    id: classRes.data.id,
+                                    name: classRes.data.name,
+                                    school: classRes.data.school ? {
+                                        id: classRes.data.school.id,
+                                        name: classRes.data.school.name,
+                                    } : undefined,
+                                };
+                            } catch {
+                                return { id: classId, name: `Turma ${classId}` };
+                            }
+                        });
+                        classesFormatted = await Promise.all(classesPromises);
+                    } catch (error) {
+                        console.error("Erro ao carregar informações das turmas:", error);
+                    }
+                }
+
                 // Converter dados da avaliação para o formato do formulário
                 const formData: EvaluationFormData = {
                     title: evaluation.title || "",
                     description: evaluation.description || "",
                     municipalities: evaluation.municipalities?.map((m: Municipality | string) => 
                         typeof m === 'string' ? m : m.id) || [],
-                    schools: evaluation.schools?.map((s: School | string) => 
-                        typeof s === 'string' ? s : s.id) || [],
+                    schools: schoolsFormatted.map(s => s.id),
                     course: evaluation.course?.id || "",
                     grade: evaluation.grade?.id || "",
-                    classId: "",
+                    classId: classesFormatted[0]?.id || "",
                     type: evaluation.type || "AVALIACAO",
                     model: (evaluation.model === "SAEB" || evaluation.model === "PROVA" || evaluation.model === "AVALIE") 
                         ? evaluation.model 
                         : "SAEB",
                     subjects: evaluation.subjects || evaluation.subjects_info || (evaluation.subject ? [evaluation.subject] : []),
                     subject: evaluation.subject?.id || "",
-                    questions: (evaluation.questions || []) as unknown as FormQuestion[],
+                    questions: questionsData,
                     startDateTime: evaluation.time_limit || "",
                     duration: evaluation.duration?.toString() || "",
-                    classes: evaluation.classes || [],
+                    classes: classesFormatted.map(c => c.id),
                     state: stateName,
                     municipality: typeof evaluation.municipalities?.[0] === 'string' 
                         ? evaluation.municipalities[0] 
                         : evaluation.municipalities?.[0]?.id || "",
-                    selectedSchools: evaluation.schools || [],
-                    selectedClasses: evaluation.applied_classes?.map((ac: AppliedClass) => ac.class) || [],
+                    selectedSchools: schoolsFormatted,
+                    selectedClasses: classesFormatted,
                 };
 
                 // ✅ DEBUG: Log dos dados carregados para edição
@@ -136,7 +213,9 @@ const EditEvaluation = () => {
                     selectedSchools: formData.selectedSchools,
                     selectedClasses: formData.selectedClasses,
                     state: formData.state,
-                    municipality: formData.municipality
+                    municipality: formData.municipality,
+                    questionsCount: formData.questions?.length || 0,
+                    questions: formData.questions
                 });
 
                 // ✅ VALIDAÇÃO: Verificar se dados são consistentes
@@ -171,23 +250,27 @@ const EditEvaluation = () => {
     }, [id, toast, navigate]);
 
     const handleSuccess = () => {
+        // Fechar o modal primeiro
         setShowModal(false);
-        navigate(`/app/avaliacao/${id}`);
+        // Aguardar um pouco para garantir que o modal feche antes de navegar
+        setTimeout(() => {
+            // Usar replace: true para evitar problemas de navegação e histórico
+            navigate(`/app/avaliacao/${id}`, { replace: true });
+        }, 100);
     };
 
     const handleClose = () => {
         setShowModal(false);
-        navigate(`/app/avaliacao/${id}`);
+        // Usar replace: true para evitar problemas de navegação
+        navigate(`/app/avaliacao/${id}`, { replace: true });
     };
 
     if (isLoading) {
         return (
-            <div className="container max-w-5xl mx-auto py-6">
-                <div className="flex items-center justify-center min-h-[400px]">
-                    <div className="text-center">
-                        <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
-                        <p className="text-muted-foreground">Carregando avaliação...</p>
-                    </div>
+            <div className="min-h-screen flex items-center justify-center">
+                <div className="text-center">
+                    <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
+                    <p className="text-muted-foreground">Carregando avaliação...</p>
                 </div>
             </div>
         );
@@ -195,10 +278,10 @@ const EditEvaluation = () => {
 
     if (!originalEvaluation || !evaluationData) {
         return (
-            <div className="container max-w-5xl mx-auto py-6">
+            <div className="min-h-screen flex items-center justify-center">
                 <div className="text-center">
-                    <p className="text-muted-foreground">Avaliação não encontrada.</p>
-                    <Button onClick={() => navigate("/app/avaliacoes")} className="mt-4">
+                    <p className="text-muted-foreground mb-4">Avaliação não encontrada.</p>
+                    <Button onClick={() => navigate("/app/avaliacoes")}>
                         Voltar para Avaliações
                     </Button>
                 </div>
@@ -207,38 +290,13 @@ const EditEvaluation = () => {
     }
 
     return (
-        <div className="container max-w-5xl mx-auto py-6">
-            <div className="mb-6">
-                <Button
-                    variant="ghost"
-                    onClick={handleClose}
-                    className="mb-4"
-                >
-                    <ArrowLeft className="mr-2 h-4 w-4" />
-                    Voltar
-                </Button>
-                
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-                        <FileCheck className="w-8 h-8 text-blue-600" />
-                        Editar Avaliação
-                    </h1>
-                    <p className="text-muted-foreground">
-                        {originalEvaluation ? `Edite as informações da avaliação "${originalEvaluation.title}"` : 'Carregando...'}
-                    </p>
-                </div>
-            </div>
-
-            {showModal && evaluationData && (
-                <CreateEvaluationModal
-                    isOpen={showModal}
-                    onClose={handleClose}
-                    onSuccess={handleSuccess}
-                    evaluationId={id}
-                    initialData={evaluationData}
-                />
-            )}
-        </div>
+        <CreateEvaluationModal
+            isOpen={showModal}
+            onClose={handleClose}
+            onSuccess={handleSuccess}
+            evaluationId={id}
+            initialData={evaluationData}
+        />
     );
 };
 

@@ -107,14 +107,35 @@ export function CreateEvaluationModal({
   const allQuestions = useQuestions();
   const { setQuestions, clearQuestions, addQuestion } = useQuestionActions();
   const { updateAfterCRUD } = useEvaluationsManager();
+  
+  // Estado para rastrear se as questões já foram carregadas (evita limpeza acidental)
+  const [questionsLoaded, setQuestionsLoaded] = useState(false);
+  
+  // Estado para rastrear se está navegando (evita dupla navegação)
+  const [isNavigating, setIsNavigating] = useState(false);
 
   // Carregar dados iniciais
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      // Não limpar questões quando o modal fechar, apenas quando realmente necessário
+      return;
+    }
     
     const loadInitialData = async () => {
       setLoadingData(true);
       try {
+        // PRIMEIRO: Se estiver editando, carregar dados da avaliação (incluindo questões) ANTES de qualquer outra coisa
+        if (evaluationId || initialData) {
+          console.log('🔄 Carregando dados da avaliação para edição...');
+          await loadEvaluationData(evaluationId, initialData);
+        } else {
+          // Apenas limpar questões se não estiver editando
+          console.log('🧹 Limpando questões (criação nova)');
+          clearQuestions();
+          setQuestionsLoaded(false);
+        }
+        
+        // DEPOIS: Carregar dados básicos (cursos, disciplinas, estados)
         const [coursesRes, subjectsRes, statesRes] = await Promise.all([
           api.get('/education_stages'),
           api.get('/subjects'),
@@ -124,11 +145,6 @@ export function CreateEvaluationModal({
         setCourses(coursesRes.data || []);
         setAllSubjects(subjectsRes.data || []);
         setStates(statesRes.data || []);
-        
-        // Se estiver editando, carregar dados da avaliação
-        if (evaluationId || initialData) {
-          await loadEvaluationData(evaluationId, initialData);
-        }
       } catch (error) {
         console.error('Erro ao carregar dados:', error);
         toast({
@@ -142,10 +158,11 @@ export function CreateEvaluationModal({
     };
     
     loadInitialData();
-  }, [isOpen, evaluationId, initialData, toast]);
+  }, [isOpen, evaluationId, initialData, toast, clearQuestions]);
 
   // Carregar dados da avaliação para edição
   const loadEvaluationData = async (id?: string, data?: EvaluationFormData | null) => {
+    console.log('🔄 loadEvaluationData chamado:', { id, hasData: !!data, questionsInData: data?.questions?.length || 0 });
     try {
       if (data) {
         // Usar initialData se fornecido
@@ -173,8 +190,59 @@ export function CreateEvaluationModal({
         setSelectedClasses(data.selectedClasses || []);
         setSelectedSubjects(data.subjects || []);
         
-        if (data.questions) {
+        // Carregar questões se disponíveis - PRIORIDADE MÁXIMA
+        if (data.questions && data.questions.length > 0) {
+          console.log('📚 Carregando questões do initialData:', data.questions.length, data.questions);
+          // Garantir que as questões sejam setadas imediatamente
           setQuestions(data.questions);
+          setQuestionsLoaded(true);
+          console.log('✅ Questões setadas no store e marcadas como carregadas');
+        } else if (id) {
+          // Se não houver questões no initialData, tentar buscar da API
+          console.log('📚 Buscando questões da API para avaliação:', id);
+          try {
+            const questionsResponse = await api.get(`/questions?test_id=${id}`);
+            console.log('📚 Resposta da API:', questionsResponse.data?.length || 0);
+            if (Array.isArray(questionsResponse.data) && questionsResponse.data.length > 0) {
+              console.log('📚 Carregando questões da API:', questionsResponse.data.length);
+              const questionsData = questionsResponse.data.map((q: any) => ({
+                id: q.id,
+                text: q.text || q.formattedText || '',
+                formattedText: q.formattedText || q.text || '',
+                title: q.title || q.command || '',
+                type: q.type === 'multiple_choice' ? 'multipleChoice' : (q.type === 'open' || q.type === 'essay' ? 'dissertativa' : 'multipleChoice'),
+                subjectId: q.subject?.id || q.subject_id || '',
+                subject: q.subject,
+                grade: q.grade,
+                difficulty: q.difficulty || '',
+                value: q.value || q.points || 0,
+                solution: q.solution || '',
+                formattedSolution: q.formattedSolution || q.solution || '',
+                options: q.alternatives?.map((alt: any) => ({
+                  id: alt.id,
+                  text: alt.text,
+                  isCorrect: alt.isCorrect || false,
+                })) || q.options || [],
+                secondStatement: q.secondStatement || q.secondstatement || '',
+                skills: q.skills || '',
+              }));
+              setQuestions(questionsData);
+              setQuestionsLoaded(true);
+              console.log('✅ Questões da API setadas no store e marcadas como carregadas');
+            } else {
+              console.warn('⚠️ Nenhuma questão encontrada na API');
+            }
+          } catch (err) {
+            console.error('❌ Erro ao buscar questões do initialData:', err);
+          }
+        } else {
+          console.warn('⚠️ Nenhuma questão disponível no initialData e sem ID para buscar');
+        }
+        
+        // Carregar escolas quando município e série estiverem definidos
+        if (data.municipality && data.municipality !== 'all' && data.grade) {
+          // O useEffect já vai carregar as escolas, mas precisamos garantir que as selecionadas sejam preservadas
+          // Isso será feito pelo useEffect que carrega escolas
         }
       } else if (id) {
         // Carregar da API se tiver ID
@@ -238,6 +306,55 @@ export function CreateEvaluationModal({
             console.error('Erro ao carregar estado do município:', err);
           }
         }
+        
+        // Carregar questões da avaliação
+        try {
+          console.log('📚 Buscando questões para avaliação:', id);
+          const questionsResponse = await api.get(`/questions?test_id=${id}`);
+          console.log('📚 Resposta da API de questões:', questionsResponse.data?.length || 0);
+          
+          if (Array.isArray(questionsResponse.data) && questionsResponse.data.length > 0) {
+            const questionsData = questionsResponse.data.map((q: any) => ({
+              id: q.id,
+              text: q.text || q.formattedText || '',
+              formattedText: q.formattedText || q.text || '',
+              title: q.title || q.command || '',
+              type: q.type === 'multiple_choice' ? 'multipleChoice' : (q.type === 'open' || q.type === 'essay' ? 'dissertativa' : 'multipleChoice'),
+              subjectId: q.subject?.id || q.subject_id || '',
+              subject: q.subject,
+              grade: q.grade,
+              difficulty: q.difficulty || '',
+              value: q.value || q.points || 0,
+              solution: q.solution || '',
+              formattedSolution: q.formattedSolution || q.solution || '',
+              options: q.alternatives?.map((alt: any) => ({
+                id: alt.id,
+                text: alt.text,
+                isCorrect: alt.isCorrect || false,
+              })) || q.options || [],
+              secondStatement: q.secondStatement || q.secondstatement || '',
+              skills: q.skills || '',
+            }));
+            console.log('📚 Carregando questões da API:', questionsData.length);
+            setQuestions(questionsData);
+            setQuestionsLoaded(true);
+          } else if (evaluation.questions && Array.isArray(evaluation.questions) && evaluation.questions.length > 0) {
+            // Fallback: usar questões do evaluation se disponíveis
+            console.log('📚 Usando questões do evaluation (fallback):', evaluation.questions.length);
+            setQuestions(evaluation.questions as unknown as Question[]);
+            setQuestionsLoaded(true);
+          } else {
+            console.warn('⚠️ Nenhuma questão encontrada para a avaliação');
+          }
+        } catch (err) {
+          console.error('❌ Erro ao carregar questões:', err);
+          // Se falhar, tentar usar questões do evaluation se disponíveis
+          if (evaluation.questions && Array.isArray(evaluation.questions) && evaluation.questions.length > 0) {
+            console.log('📚 Usando questões do evaluation após erro:', evaluation.questions.length);
+            setQuestions(evaluation.questions as unknown as Question[]);
+            setQuestionsLoaded(true);
+          }
+        }
       }
     } catch (error) {
       console.error('Erro ao carregar avaliação:', error);
@@ -251,10 +368,14 @@ export function CreateEvaluationModal({
 
   // Carregar séries quando curso mudar
   useEffect(() => {
+    // Não limpar se estiver carregando dados iniciais
+    if (loadingData) return;
+    
     if (!course) {
       setGrades([]);
       setGrade('');
       setSchools([]);
+      // Só limpar escolas e turmas se realmente não houver curso
       setSelectedSchools([]);
       setSelectedClasses([]);
       return;
@@ -271,33 +392,26 @@ export function CreateEvaluationModal({
     };
     
     loadGrades();
-  }, [course]);
+  }, [course, loadingData]);
 
   // Carregar municípios quando estado mudar
   useEffect(() => {
     // Não limpar se estiver carregando dados iniciais
     if (loadingData) return;
     
-    setMunicipalities([]);
     if (!state || state === 'all') {
+      setMunicipalities([]);
       setMunicipality('');
-      setSchools([]);
-      setSelectedSchools([]);
-      setSelectedClasses([]);
+      // Só limpar escolas e turmas se realmente não houver estado
+      if (!state) {
+        setSchools([]);
+        setSelectedSchools([]);
+        setSelectedClasses([]);
+      }
       return;
     }
     
-    // Limpar apenas se o estado realmente mudou (não na inicialização)
-    const currentMunicipality = municipality;
-    if (currentMunicipality) {
-      // Verificar se o município atual pertence ao novo estado
-      // Se não, limpar
-      setMunicipality('');
-      setSchools([]);
-      setSelectedSchools([]);
-      setSelectedClasses([]);
-    }
-    
+    // Carregar municípios do estado
     api.get(`/city/municipalities/state/${state}`)
       .then(res => setMunicipalities(res.data || []))
       .catch(err => {
@@ -362,7 +476,18 @@ export function CreateEvaluationModal({
         
         setSchools(schoolsData);
         
-        if (selectedSchools.length > 0) {
+        // Se estiver carregando dados iniciais, preservar escolas selecionadas mesmo que não estejam na lista
+        if (loadingData && selectedSchools.length > 0) {
+          // Adicionar escolas selecionadas que não estão na lista disponível
+          const selectedSchoolIds = new Set(selectedSchools.map(s => s.id));
+          const availableSchoolIds = new Set(schoolsData.map((s: School) => s.id));
+          
+          const missingSchools = selectedSchools.filter(s => !availableSchoolIds.has(s.id));
+          if (missingSchools.length > 0) {
+            setSchools([...schoolsData, ...missingSchools]);
+          }
+        } else if (selectedSchools.length > 0) {
+          // Validar escolas selecionadas apenas se não estiver carregando dados iniciais
           const validSchools = selectedSchools.filter(school =>
             schoolsData.find((s: School) => s.id === school.id)
           );
@@ -387,11 +512,16 @@ export function CreateEvaluationModal({
   // Carregar turmas quando escolas, série e município estiverem selecionados
   useEffect(() => {
     const loadClasses = async () => {
-      // Não executar se estiver carregando dados iniciais
-      if (loadingData) return;
+      // Se estiver carregando dados iniciais e já tiver turmas selecionadas, não carregar novamente
+      if (loadingData && selectedClasses.length > 0) {
+        return;
+      }
       
       if (!selectedSchools.length || !grade || !municipality) {
-        setAvailableClasses([]);
+        // Se estiver carregando dados iniciais e tiver turmas selecionadas, não limpar
+        if (!loadingData || selectedClasses.length === 0) {
+          setAvailableClasses([]);
+        }
         return;
       }
 
@@ -434,16 +564,31 @@ export function CreateEvaluationModal({
         }
 
         setAvailableClasses(allClasses);
+        
+        // Se estiver carregando dados iniciais, preservar turmas selecionadas mesmo que não estejam na lista
+        if (loadingData && selectedClasses.length > 0) {
+          // Adicionar turmas selecionadas que não estão na lista disponível
+          const selectedClassIds = new Set(selectedClasses.map(c => c.id));
+          const availableClassIds = new Set(allClasses.map(c => c.id));
+          
+          const missingClasses = selectedClasses.filter(c => !availableClassIds.has(c.id));
+          if (missingClasses.length > 0) {
+            setAvailableClasses([...allClasses, ...missingClasses]);
+          }
+        }
       } catch (error) {
         console.error('Erro ao carregar turmas:', error);
-        setAvailableClasses([]);
+        // Se estiver carregando dados iniciais e tiver turmas selecionadas, não limpar
+        if (!loadingData || selectedClasses.length === 0) {
+          setAvailableClasses([]);
+        }
       } finally {
         setLoadingClasses(false);
       }
     };
 
     loadClasses();
-  }, [selectedSchools, grade, municipality, loadingData]);
+  }, [selectedSchools, grade, municipality, loadingData, selectedClasses]);
 
   const handleNext = () => {
     if (step === 1) {
@@ -588,8 +733,19 @@ export function CreateEvaluationModal({
       }
 
       clearQuestions();
-      onSuccess();
-      handleClose();
+      setQuestionsLoaded(false);
+      
+      // Marcar que está navegando para evitar dupla navegação
+      setIsNavigating(true);
+      
+      // Fechar o modal primeiro
+      onClose();
+      
+      // Aguardar um pouco para o modal fechar antes de navegar
+      setTimeout(() => {
+        onSuccess();
+        setIsNavigating(false);
+      }, 150);
     } catch (error: unknown) {
       const apiError = error as { response?: { data?: { message?: string; error?: string } }; message?: string };
       
@@ -634,6 +790,8 @@ export function CreateEvaluationModal({
     setSelectedSubjectForQuestion("");
     setPreviewQuestion(null);
     clearQuestions();
+    setQuestionsLoaded(false);
+    // Chamar onClose que vai fechar o modal e navegar
     onClose();
   };
 
@@ -733,13 +891,79 @@ export function CreateEvaluationModal({
   };
 
   const getQuestionsForSubject = (subjectId: string) => {
-    return allQuestions.filter(q => {
+    const filtered = allQuestions.filter(q => {
       const questionWithSubjectId = q as { subjectId?: string; subject?: { id?: string }; subject_id?: string };
       return questionWithSubjectId.subjectId === subjectId || 
              questionWithSubjectId.subject?.id === subjectId ||
              questionWithSubjectId.subject_id === subjectId;
     });
+    return filtered;
   };
+
+  // Debug: Log das questões quando mudarem
+  useEffect(() => {
+    if (allQuestions.length > 0) {
+      console.log('📚 Questões no store:', allQuestions.length, allQuestions.map(q => ({ id: q.id, subjectId: (q as any).subjectId || (q as any).subject?.id })));
+    } else {
+      console.log('⚠️ Nenhuma questão no store');
+    }
+  }, [allQuestions]);
+
+  // Garantir que questões sejam carregadas quando o modal abrir para edição
+  // Este useEffect serve como fallback caso as questões não sejam carregadas no loadEvaluationData
+  useEffect(() => {
+    // Aguardar um pouco para garantir que loadEvaluationData terminou
+    if (!isOpen || loadingData) return;
+    
+    // Se há dados iniciais ou evaluationId mas não há questões no store após um tempo, tentar carregar
+    if ((evaluationId || initialData) && allQuestions.length === 0) {
+      const timer = setTimeout(() => {
+        // Verificar novamente se ainda não há questões
+        if (allQuestions.length === 0) {
+          console.log('🔄 Fallback: Tentando recarregar questões após delay...');
+          if (initialData?.questions && initialData.questions.length > 0) {
+            console.log('📚 Fallback: Recarregando questões do initialData');
+            setQuestions(initialData.questions);
+          } else if (evaluationId) {
+            // Tentar buscar questões da API novamente
+            api.get(`/questions?test_id=${evaluationId}`)
+              .then(questionsResponse => {
+                if (Array.isArray(questionsResponse.data) && questionsResponse.data.length > 0) {
+                  console.log('📚 Fallback: Recarregando questões da API');
+                  const questionsData = questionsResponse.data.map((q: any) => ({
+                    id: q.id,
+                    text: q.text || q.formattedText || '',
+                    formattedText: q.formattedText || q.text || '',
+                    title: q.title || q.command || '',
+                    type: q.type === 'multiple_choice' ? 'multipleChoice' : (q.type === 'open' || q.type === 'essay' ? 'dissertativa' : 'multipleChoice'),
+                    subjectId: q.subject?.id || q.subject_id || '',
+                    subject: q.subject,
+                    grade: q.grade,
+                    difficulty: q.difficulty || '',
+                    value: q.value || q.points || 0,
+                    solution: q.solution || '',
+                    formattedSolution: q.formattedSolution || q.solution || '',
+                    options: q.alternatives?.map((alt: any) => ({
+                      id: alt.id,
+                      text: alt.text,
+                      isCorrect: alt.isCorrect || false,
+                    })) || q.options || [],
+                    secondStatement: q.secondStatement || q.secondstatement || '',
+                    skills: q.skills || '',
+                  }));
+                  setQuestions(questionsData);
+                }
+              })
+              .catch(err => {
+                console.error('❌ Erro ao recarregar questões (fallback):', err);
+              });
+          }
+        }
+      }, 500); // Aguardar 500ms para garantir que loadEvaluationData terminou
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, evaluationId, initialData, allQuestions.length, loadingData, setQuestions]);
 
   // Validações para o indicador de progresso
   const isTitleValid = title && title.trim().length >= 3;
@@ -754,6 +978,10 @@ export function CreateEvaluationModal({
 
   const handleDialogOpenChange = (open: boolean) => {
     if (!open && isOpen) {
+      // Se já está navegando (após sucesso), não chamar handleClose novamente
+      if (isNavigating) {
+        return;
+      }
       // Quando o dialog fechar (por qualquer motivo), chamar handleClose
       // Usar setTimeout para garantir que o estado do dialog seja atualizado primeiro
       setTimeout(() => {
