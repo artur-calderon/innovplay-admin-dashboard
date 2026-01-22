@@ -41,12 +41,12 @@ export default function AdminAgendaOptimized() {
   const { user } = useAuth();
   const [currentEvents, setCurrentEvents] = useState<CustomEventInput[]>([]);
   const calendarRef = useRef<FullCalendar>(null);
-  
+
   // Proteção contra eventos duplicados no FullCalendar (mobile)
   const lastOpenTimeRef = useRef<number>(0);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  
+
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isSuccessOpen, setIsSuccessOpen] = useState(false);
@@ -56,7 +56,7 @@ export default function AdminAgendaOptimized() {
   // Estados para targets da API
   const [targetsData, setTargetsData] = useState<CalendarTargetsResponse>({});
   const [isLoadingTargets, setIsLoadingTargets] = useState(false);
-  
+
   // Estados separados para cada nível de seleção (agora arrays para múltiplos)
   const [selectedMunicipioIds, setSelectedMunicipioIds] = useState<string[]>([]);
   const [selectedEscolaIds, setSelectedEscolaIds] = useState<string[]>([]);
@@ -89,7 +89,7 @@ export default function AdminAgendaOptimized() {
         resetTargetsForm();
         return;
       }
-      
+
       setIsLoadingTargets(true);
       try {
         const data = await CalendarService.getTargets();
@@ -101,7 +101,7 @@ export default function AdminAgendaOptimized() {
         setIsLoadingTargets(false);
       }
     };
-    
+
     loadTargets();
   }, [isCreateOpen]);
 
@@ -125,7 +125,7 @@ export default function AdminAgendaOptimized() {
     }
 
     // Filtrar escolas que pertencem a qualquer um dos municípios selecionados
-    return targetsData.escolas.filter(escola => 
+    return targetsData.escolas.filter(escola =>
       escola.city_id && selectedMunicipioIds.includes(escola.city_id)
     );
   }, [targetsData.escolas, selectedMunicipioIds]);
@@ -141,15 +141,15 @@ export default function AdminAgendaOptimized() {
     // Se há escolas selecionadas, filtrar por escolas (prioridade)
     if (selectedEscolaIds.length > 0) {
       turmas = turmas.filter(t => t.escola_id && selectedEscolaIds.includes(t.escola_id));
-    } 
+    }
     // Se há municípios selecionados mas não há escolas, filtrar por municípios
     else if (selectedMunicipioIds.length > 0) {
       // Obter IDs de escolas dos municípios selecionados usando city_id
-      const escolasDosMunicipios = targetsData.escolas?.filter(e => 
+      const escolasDosMunicipios = targetsData.escolas?.filter(e =>
         e.city_id && selectedMunicipioIds.includes(e.city_id)
       ) || [];
       const escolasIds = new Set(escolasDosMunicipios.map(e => e.id));
-      
+
       // Filtrar turmas de escolas dos municípios
       turmas = turmas.filter(t => t.escola_id && escolasIds.has(t.escola_id));
     }
@@ -164,13 +164,13 @@ export default function AdminAgendaOptimized() {
     targets: Array<{ target_type: 'MUNICIPALITY' | 'SCHOOL' | 'GRADE' | 'CLASS'; target_id: string }>;
   } => {
     // Prioridade: Turmas > Escolas > Municípios
-    
+
     // Se há turmas selecionadas, usar apenas turmas
     if (selectedTurmaIds.length > 0) {
-      const turmasSelecionadas = targetsData.turmas?.filter(t => 
+      const turmasSelecionadas = targetsData.turmas?.filter(t =>
         selectedTurmaIds.includes(t.id)
       ) || [];
-      
+
       if (turmasSelecionadas.length > 0) {
         return {
           visibility_scope: 'CLASS',
@@ -181,13 +181,13 @@ export default function AdminAgendaOptimized() {
         };
       }
     }
-    
+
     // Se há escolas selecionadas (e não é professor), usar apenas escolas
     if (selectedEscolaIds.length > 0 && user?.role !== 'professor') {
-      const escolasSelecionadas = targetsData.escolas?.filter(e => 
+      const escolasSelecionadas = targetsData.escolas?.filter(e =>
         selectedEscolaIds.includes(e.id)
       ) || [];
-      
+
       if (escolasSelecionadas.length > 0) {
         return {
           visibility_scope: 'SCHOOL',
@@ -198,21 +198,21 @@ export default function AdminAgendaOptimized() {
         };
       }
     }
-    
+
     // Para Diretor/Coordenador: se não há turmas selecionadas mas há turmas disponíveis,
     // significa que quer enviar para toda a escola
     // Neste caso, precisamos obter a escola_id das turmas disponíveis
-    if ((user?.role === 'diretor' || user?.role === 'coordenador') && 
-        selectedTurmaIds.length === 0 && 
-        targetsData.turmas && 
-        targetsData.turmas.length > 0) {
+    if ((user?.role === 'diretor' || user?.role === 'coordenador') &&
+      selectedTurmaIds.length === 0 &&
+      targetsData.turmas &&
+      targetsData.turmas.length > 0) {
       // Obter escola_id das turmas disponíveis (devem ser todas da mesma escola)
       const escolaIds = new Set(
         targetsData.turmas
           .map(t => t.escola_id)
           .filter((id): id is string => !!id)
       );
-      
+
       // Se há apenas uma escola, enviar para ela
       if (escolaIds.size === 1) {
         const escolaId = Array.from(escolaIds)[0];
@@ -225,13 +225,13 @@ export default function AdminAgendaOptimized() {
         };
       }
     }
-    
+
     // Se há municípios selecionados, usar municípios
     if (selectedMunicipioIds.length > 0) {
-      const municipiosSelecionados = targetsData.municipios?.filter(m => 
+      const municipiosSelecionados = targetsData.municipios?.filter(m =>
         selectedMunicipioIds.includes(m.id)
       ) || [];
-      
+
       if (municipiosSelecionados.length > 0) {
         return {
           visibility_scope: 'CITY',
@@ -252,25 +252,25 @@ export default function AdminAgendaOptimized() {
       toast.error('Título é obrigatório');
       return false;
     }
-    
+
     if (!formData.startTime || !formData.endTime) {
       toast.error('Data de início e fim são obrigatórias');
       return false;
     }
-    
+
     // Validar que professor só pode selecionar turmas (CLASS)
     if (user?.role === 'professor') {
       if (selectedTurmaIds.length === 0) {
         toast.error('Professores só podem criar eventos para turmas específicas. Selecione pelo menos uma turma.');
         return false;
       }
-    } 
+    }
     // Para Diretor/Coordenador: pode não selecionar turmas (enviará para toda a escola)
     // ou selecionar turmas específicas
     else if (user?.role === 'diretor' || user?.role === 'coordenador') {
       // Não precisa validar - se não há turmas selecionadas, enviará para toda a escola
       // Se há turmas selecionadas, enviará apenas para essas turmas
-    } 
+    }
     // Para outros roles (Admin, Tecadm), deve ter pelo menos um target selecionado
     else {
       if (selectedTurmaIds.length === 0 && selectedEscolaIds.length === 0 && selectedMunicipioIds.length === 0) {
@@ -278,7 +278,7 @@ export default function AdminAgendaOptimized() {
         return false;
       }
     }
-    
+
     return true;
   };
 
@@ -288,9 +288,9 @@ export default function AdminAgendaOptimized() {
     if (now - lastOpenTimeRef.current < 300) {
       return;
     }
-    
+
     lastOpenTimeRef.current = now;
-    
+
     const start = new Date(selectInfo.start);
     const end = new Date(selectInfo.end);
     setFormData((f) => ({
@@ -302,7 +302,7 @@ export default function AdminAgendaOptimized() {
       endTime: end.toISOString().slice(0, 16),
       allDay: !!selectInfo.allDay,
     }));
-    
+
     setIsCreateOpen(true);
     selectInfo.view.calendar.unselect();
   };
@@ -314,15 +314,15 @@ export default function AdminAgendaOptimized() {
     if (now - lastOpenTimeRef.current < 300) {
       return;
     }
-    
+
     lastOpenTimeRef.current = now;
-    
+
     // Criar um intervalo de 1 dia (início e fim do mesmo dia)
     const start = new Date(clickInfo.date);
     start.setHours(0, 0, 0, 0);
     const end = new Date(clickInfo.date);
     end.setHours(23, 59, 59, 999);
-    
+
     setFormData((f) => ({
       ...f,
       title: '',
@@ -332,7 +332,7 @@ export default function AdminAgendaOptimized() {
       endTime: end.toISOString().slice(0, 16),
       allDay: clickInfo.allDay,
     }));
-    
+
     setIsCreateOpen(true);
   };
 
@@ -345,7 +345,7 @@ export default function AdminAgendaOptimized() {
 
   const handleEventClick = (clickInfo: EventClickArg) => {
     const e = clickInfo.event;
-    
+
     setSelected({
       id: e.id,
       title: e.title,
@@ -372,15 +372,15 @@ export default function AdminAgendaOptimized() {
     try {
       const startISO = toLocalOffsetISO(new Date(formData.startTime));
       const endISO = toLocalOffsetISO(new Date(formData.endTime));
-      
+
       // Verificar se há hora nos campos (se contém 'T' e ':' após a data)
       const hasTimeInStart = hasTimeInfo(formData.startTime);
       const hasTimeInEnd = hasTimeInfo(formData.endTime);
       const hasTime = hasTimeInStart || hasTimeInEnd;
-      
+
       // Se houver hora, forçar all_day: false
       const allDayValue = hasTime ? false : !!formData.allDay;
-      
+
       const created = await CalendarService.createEvent({
         title: formData.title,
         description: formData.description,
@@ -436,15 +436,15 @@ export default function AdminAgendaOptimized() {
     try {
       const startISO = toLocalOffsetISO(new Date(formData.startTime));
       const endISO = toLocalOffsetISO(new Date(formData.endTime));
-      
+
       // Verificar se há hora nos campos
       const hasTimeInStart = hasTimeInfo(formData.startTime);
       const hasTimeInEnd = hasTimeInfo(formData.endTime);
       const hasTime = hasTimeInStart || hasTimeInEnd;
-      
+
       // Se houver hora, forçar all_day: false
       const allDayValue = hasTime ? false : !!formData.allDay;
-      
+
       await CalendarService.updateEvent(String(selected.id), {
         title: formData.title,
         description: formData.description,
@@ -540,7 +540,7 @@ export default function AdminAgendaOptimized() {
       {/* Criar evento */}
       <Dialog open={isCreateOpen} onOpenChange={(open) => {
         setIsCreateOpen(open);
-        
+
         if (!open) {
           resetTargetsForm();
           setFormData({
@@ -555,7 +555,7 @@ export default function AdminAgendaOptimized() {
           });
         }
       }}>
-        <DialogContent 
+        <DialogContent
           className="max-w-2xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full !top-[50%] !left-[50%] !translate-x-[-50%] !translate-y-[-50%]"
           onInteractOutside={(e) => {
             // No mobile, prevenir fechamento acidental por toque fora
@@ -612,7 +612,7 @@ export default function AdminAgendaOptimized() {
             {/* Seção de Destinatários */}
             <div className="space-y-4 p-4 border rounded-lg bg-muted">
               <Label className="text-base font-semibold">Destinatário</Label>
-              
+
               {isLoadingTargets ? (
                 <div className="text-sm text-muted-foreground flex items-center gap-2">
                   <AlertCircle className="h-4 w-4 animate-spin" />
@@ -660,9 +660,9 @@ export default function AdminAgendaOptimized() {
                             {user?.role === 'professor' && <span className="text-muted-foreground text-xs ml-2">(selecione para filtrar turmas)</span>}
                           </label>
                           <FormMultiSelect
-                            options={filteredEscolas.map(e => ({ 
-                              id: e.id, 
-                              name: e.municipio_nome ? `${e.nome} (${e.municipio_nome})` : e.nome 
+                            options={filteredEscolas.map(e => ({
+                              id: e.id,
+                              name: e.municipio_nome ? `${e.nome} (${e.municipio_nome})` : e.nome
                             }))}
                             selected={selectedEscolaIds}
                             onChange={(values) => {
@@ -673,12 +673,12 @@ export default function AdminAgendaOptimized() {
                             }}
                             placeholder={
                               filteredEscolas.length === 0
-                                ? (selectedMunicipioIds.length > 0 
-                                    ? "Nenhuma escola disponível para os municípios selecionados"
-                                    : "Nenhuma escola disponível")
-                                : (selectedEscolaIds.length === 0 
-                                    ? "Selecione escola(s)" 
-                                    : `${selectedEscolaIds.length} selecionada(s)`)
+                                ? (selectedMunicipioIds.length > 0
+                                  ? "Nenhuma escola disponível para os municípios selecionados"
+                                  : "Nenhuma escola disponível")
+                                : (selectedEscolaIds.length === 0
+                                  ? "Selecione escola(s)"
+                                  : `${selectedEscolaIds.length} selecionada(s)`)
                             }
                             className={filteredEscolas.length === 0 ? "opacity-50" : ""}
                           />
@@ -694,7 +694,7 @@ export default function AdminAgendaOptimized() {
                           )}
                         </div>
                       )}
-                      
+
                       {/* Escolas - Professor: Select simples apenas para filtrar turmas */}
                       {targetsData.escolas && targetsData.escolas.length > 0 && user?.role === 'professor' && (
                         <div className="space-y-2">
@@ -730,7 +730,7 @@ export default function AdminAgendaOptimized() {
                           </Select>
                         </div>
                       )}
-                      
+
                       {/* Escolas - Diretor/Coordenador: não mostra (só vê turmas da sua escola) */}
 
                       {/* Turmas - Todos os roles podem selecionar múltiplas turmas */}
@@ -745,8 +745,8 @@ export default function AdminAgendaOptimized() {
                             )}
                           </label>
                           <FormMultiSelect
-                            options={filteredTurmas.map(t => ({ 
-                              id: t.id, 
+                            options={filteredTurmas.map(t => ({
+                              id: t.id,
                               name: `${t.nome}${t.serie_nome ? ` - ${t.serie_nome}` : ''}${t.escola_nome ? ` (${t.escola_nome})` : ''}`
                             }))}
                             selected={selectedTurmaIds}
@@ -757,15 +757,15 @@ export default function AdminAgendaOptimized() {
                             placeholder={
                               filteredTurmas.length === 0
                                 ? (user?.role === 'professor' && selectedEscolaIds.length === 0
-                                    ? "Selecione uma escola primeiro"
-                                    : selectedMunicipioIds.length > 0 && selectedEscolaIds.length === 0
+                                  ? "Selecione uma escola primeiro"
+                                  : selectedMunicipioIds.length > 0 && selectedEscolaIds.length === 0
                                     ? "Selecione uma escola primeiro"
                                     : "Nenhuma turma disponível")
-                                : (selectedTurmaIds.length === 0 
-                                    ? (user?.role === 'diretor' || user?.role === 'coordenador'
-                                        ? "Selecione turma(s) ou deixe vazio para toda a escola"
-                                        : "Selecione turma(s)")
-                                    : `${selectedTurmaIds.length} selecionada(s)`)
+                                : (selectedTurmaIds.length === 0
+                                  ? (user?.role === 'diretor' || user?.role === 'coordenador'
+                                    ? "Selecione turma(s) ou deixe vazio para toda a escola"
+                                    : "Selecione turma(s)")
+                                  : `${selectedTurmaIds.length} selecionada(s)`)
                             }
                             className={filteredTurmas.length === 0 ? "opacity-50" : ""}
                           />

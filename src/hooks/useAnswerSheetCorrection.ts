@@ -106,7 +106,12 @@ export function useAnswerSheetCorrection() {
         error: null,
       }));
 
-      const response = await api.post('/answer-sheets/correct', {
+      // NOVA ROTA - POST /answer-sheets/correct-new
+      // Usa o NOVO pipeline robusto
+      // Suporta alternativas variáveis
+      // Validação rigorosa
+      // Grid matemático baseado no JSON
+      const response = await api.post('/answer-sheets/correct-new', {
         image: image
       });
 

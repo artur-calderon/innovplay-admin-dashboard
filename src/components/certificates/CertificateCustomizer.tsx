@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Save, Upload, Palette, Type, Calendar, Image as ImageIcon } from 'lucide-react';
 import { CertificateTemplateComponent } from './CertificateTemplate';
 import type { CertificateTemplate } from '@/types/certificates';
@@ -35,7 +36,8 @@ export function CertificateCustomizer({
     accent_color: initialTemplate?.accent_color || '#1e40af',
     logo_url: initialTemplate?.logo_url,
     signature_url: initialTemplate?.signature_url,
-    custom_date: initialTemplate?.custom_date || new Date().toISOString().split('T')[0]
+    custom_date: initialTemplate?.custom_date || new Date().toISOString().split('T')[0],
+    font_size: initialTemplate?.font_size || 'medium'
   });
 
   const editor = useEditor({
@@ -142,6 +144,26 @@ export function CertificateCustomizer({
                 <p className="text-sm text-muted-foreground">
                   Use <strong>{'{{nome_aluno}}'}</strong> para inserir o nome do aluno dinamicamente.
                 </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="font-size">Tamanho do Texto</Label>
+                <Select
+                  value={template.font_size || 'medium'}
+                  onValueChange={(value: 'small' | 'medium' | 'large' | 'extra-large') => 
+                    setTemplate(prev => ({ ...prev, font_size: value }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o tamanho" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="small">Pequeno</SelectItem>
+                    <SelectItem value="medium">Médio</SelectItem>
+                    <SelectItem value="large">Grande</SelectItem>
+                    <SelectItem value="extra-large">Extra Grande</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">

@@ -18,8 +18,9 @@ export function CertificatePDF({ certificate, template }: CertificatePDFProps) {
     if (!certificateRef.current) return;
 
     try {
+      // Capturar com escala alta para qualidade
       const canvas = await html2canvas(certificateRef.current, {
-        scale: 2,
+        scale: 3,
         useCORS: true,
         logging: false,
         backgroundColor: certificate.template.background_color || '#ffffff',
@@ -28,23 +29,20 @@ export function CertificatePDF({ certificate, template }: CertificatePDFProps) {
       });
 
       const imgData = canvas.toDataURL('image/png');
+      
+      // PDF A4 paisagem
       const pdf = new jsPDF({
         orientation: 'landscape',
         unit: 'mm',
         format: 'a4',
       });
 
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      const imgWidth = canvas.width;
-      const imgHeight = canvas.height;
-      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-      const imgScaledWidth = imgWidth * ratio;
-      const imgScaledHeight = imgHeight * ratio;
-      const xOffset = (pdfWidth - imgScaledWidth) / 2;
-      const yOffset = (pdfHeight - imgScaledHeight) / 2;
-
-      pdf.addImage(imgData, 'PNG', xOffset, yOffset, imgScaledWidth, imgScaledHeight);
+      // Dimensões do PDF A4 paisagem: 297mm x 210mm
+      const pdfWidth = pdf.internal.pageSize.getWidth();   // 297mm
+      const pdfHeight = pdf.internal.pageSize.getHeight(); // 210mm
+      
+      // Preencher toda a página sem margens (full page)
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
       pdf.save(`certificado-${certificate.student_name.replace(/\s+/g, '-')}.pdf`);
     } catch (error) {
       console.error('Erro ao gerar PDF:', error);
@@ -57,7 +55,7 @@ export function CertificatePDF({ certificate, template }: CertificatePDFProps) {
 
     try {
       const canvas = await html2canvas(certificateRef.current, {
-        scale: 2,
+        scale: 3,
         useCORS: true,
         logging: false,
         backgroundColor: certificate.template.background_color || '#ffffff',
@@ -72,21 +70,41 @@ export function CertificatePDF({ certificate, template }: CertificatePDFProps) {
             <head>
               <title>Certificado - ${certificate.student_name}</title>
               <style>
-                body {
+                @page {
+                  size: A4 landscape;
                   margin: 0;
-                  padding: 20px;
+                }
+                * {
+                  margin: 0;
+                  padding: 0;
+                  box-sizing: border-box;
+                }
+                html, body {
+                  width: 100%;
+                  height: 100%;
+                  margin: 0;
+                  padding: 0;
+                }
+                body {
                   display: flex;
                   justify-content: center;
                   align-items: center;
                   min-height: 100vh;
+                  background: white;
                 }
                 img {
-                  max-width: 100%;
-                  height: auto;
+                  width: 100vw;
+                  height: 100vh;
+                  object-fit: fill;
                 }
                 @media print {
                   body {
-                    padding: 0;
+                    background: white;
+                  }
+                  img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: fill;
                   }
                 }
               </style>
@@ -95,7 +113,9 @@ export function CertificatePDF({ certificate, template }: CertificatePDFProps) {
               <img src="${imgData}" alt="Certificado" />
               <script>
                 window.onload = function() {
-                  window.print();
+                  setTimeout(function() {
+                    window.print();
+                  }, 500);
                 };
               </script>
             </body>
@@ -127,15 +147,16 @@ export function CertificatePDF({ certificate, template }: CertificatePDFProps) {
         </Button>
       </div>
 
+      {/* Container com proporção A4 paisagem para preview e captura */}
       <div
         ref={certificateRef}
         className="certificate-container"
         style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          padding: '20px',
-          backgroundColor: '#f5f5f5'
+          width: '100%',
+          aspectRatio: '297 / 210', // Proporção A4 paisagem
+          margin: '0 auto',
+          backgroundColor: usedTemplate.background_color || '#ffffff',
+          overflow: 'hidden'
         }}
       >
         <CertificateTemplateComponent
@@ -146,6 +167,7 @@ export function CertificatePDF({ certificate, template }: CertificatePDFProps) {
           studentName={certificate.student_name}
           evaluationTitle={certificate.evaluation_title}
           grade={certificate.grade}
+          className="w-full h-full"
         />
       </div>
     </div>
