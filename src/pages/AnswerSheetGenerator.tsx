@@ -1409,84 +1409,31 @@ export default function AnswerSheetGenerator() {
   const handleDownloadGabarito = async (gabaritoId: string) => {
     try {
       setDownloadingGabaritoId(gabaritoId);
-      setDownloadProgress(0);
       
-      // Simular progresso inicial
-      setDownloadProgress(10);
-      
-      const response = await api.get(`/answer-sheets/gabarito/${gabaritoId}/download`, {
-        responseType: 'blob',
-        onDownloadProgress: (progressEvent) => {
-          if (progressEvent.total) {
-            const percentCompleted = Math.round(
-              (progressEvent.loaded * 100) / progressEvent.total
-            );
-            setDownloadProgress(Math.min(percentCompleted, 90));
-          } else {
-            // Se não tiver total, incrementar gradualmente
-            setDownloadProgress(prev => Math.min(prev + 10, 80));
-          }
-        },
-      });
-      
-      setDownloadProgress(95);
+      // 1. Solicitar URL de download (JSON response com URL pré-assinada do MinIO)
+      const response = await api.get(`/answer-sheets/gabarito/${gabaritoId}/download`);
 
-      if (response.data instanceof Blob && response.data.size > 0) {
-        const url = window.URL.createObjectURL(response.data);
-        const link = document.createElement('a');
-        link.href = url;
-        
-        // Tentar extrair o nome do arquivo do header Content-Disposition
-        const contentDisposition = response.headers['content-disposition'] || response.headers['Content-Disposition'];
-        let zipFileName = `gabarito_${gabaritoId}.zip`;
-        
-        if (contentDisposition) {
-          let fileNameMatch = contentDisposition.match(/filename\*?=['"]?([^'";\n]+)['"]?/i);
-          if (!fileNameMatch) {
-            fileNameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-          }
-          
-          if (fileNameMatch && fileNameMatch[1]) {
-            let extractedFileName = fileNameMatch[1].replace(/['"]/g, '');
-            if (extractedFileName.startsWith("UTF-8''")) {
-              extractedFileName = extractedFileName.replace(/^UTF-8''/, '');
-            }
-            try {
-              zipFileName = decodeURIComponent(extractedFileName);
-            } catch (e) {
-              zipFileName = extractedFileName;
-            }
-          }
-        }
-        
-        link.download = zipFileName;
-        document.body.appendChild(link);
-        link.click();
-        
-        setTimeout(() => {
-          document.body.removeChild(link);
-          window.URL.revokeObjectURL(url);
-        }, 100);
+      // 2. Verificar se retornou URL de download
+      if (response.data.download_url) {
+        // 3. Redirecionar para URL pré-assinada (download direto do MinIO)
+        window.location.href = response.data.download_url;
 
-        setDownloadProgress(100);
-        
         toast({
-          title: 'Sucesso!',
-          description: `Download do gabarito iniciado (${(response.data.size / 1024 / 1024).toFixed(2)} MB).`,
+          title: 'Download iniciado',
+          description: `O arquivo ZIP está sendo baixado. Link expira em ${response.data.expires_in || '1 hora'}.`,
         });
-        
-        // Resetar progresso após um pequeno delay para mostrar 100%
-        setTimeout(() => {
-          setDownloadProgress(0);
-        }, 500);
       } else {
-        throw new Error('O arquivo recebido está vazio ou é inválido.');
+        throw new Error('URL de download não disponível');
       }
     } catch (error: any) {
       console.error('Erro ao baixar gabarito:', error);
       
       let errorMessage = 'Não foi possível baixar o gabarito.';
-      if (error.response?.data?.error) {
+      
+      // Tratar erro específico: ZIP ainda não gerado
+      if (error.response?.data?.status === 'not_generated') {
+        errorMessage = 'Os cartões ainda não foram gerados. Gere primeiro ou aguarde a conclusão da geração.';
+      } else if (error.response?.data?.error) {
         errorMessage = error.response.data.error;
       } else if (error.response?.status === 403) {
         errorMessage = 'Você não tem permissão para acessar este gabarito.';
@@ -1501,8 +1448,6 @@ export default function AnswerSheetGenerator() {
         description: errorMessage,
         variant: 'destructive',
       });
-      
-      setDownloadProgress(0);
     } finally {
       setDownloadingGabaritoId(null);
     }
@@ -3038,7 +2983,7 @@ export default function AnswerSheetGenerator() {
                               {downloadingGabaritoId === gabarito.id ? (
                                 <>
                                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                  Baixando... {downloadProgress > 0 && `${downloadProgress}%`}
+                                  Preparando download...
                                 </>
                               ) : (
                                 <>
@@ -3047,14 +2992,6 @@ export default function AnswerSheetGenerator() {
                                 </>
                               )}
                             </Button>
-                            {downloadingGabaritoId === gabarito.id && downloadProgress > 0 && (
-                              <div className="space-y-1">
-                                <Progress value={downloadProgress} className="h-2" />
-                                <p className="text-xs text-center text-muted-foreground">
-                                  Preparando download...
-                                </p>
-                              </div>
-                            )}
                             <Button
                               variant="outline"
                               onClick={() => handleViewResults(gabarito.id)}
