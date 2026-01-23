@@ -714,36 +714,39 @@ export default function PhysicalTestPage() {
     if (!id) return;
 
     try {
-      const response = await api.get(`/physical-tests/test/${id}/download-all`, {
-        responseType: 'blob'
-      });
+      // 1. Solicitar URL de download (JSON response com URL pré-assinada do MinIO)
+      const response = await api.get(`/physical-tests/test/${id}/download-all`);
 
-      const blob = new Blob([response.data], { type: 'application/zip' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
+      // 2. Verificar se retornou URL de download
+      if (response.data.download_url) {
+        // 3. Redirecionar para URL pré-assinada (download direto do MinIO)
+        window.location.href = response.data.download_url;
 
-      // Nome do arquivo com timestamp
-      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-      const testTitle = testStatus?.test_title?.replace(/\s+/g, '_') || 'Avaliacao';
-      link.download = `Avaliacoes_${testTitle}_${timestamp}.zip`;
-
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
-      toast({
-        title: "Download iniciado",
-        description: "O arquivo ZIP está sendo baixado.",
-      });
-    } catch (error) {
+        toast({
+          title: "Download iniciado",
+          description: `O arquivo ZIP está sendo baixado. Link expira em ${response.data.expires_in || '1 hora'}.`,
+        });
+      } else {
+        throw new Error('URL de download não disponível');
+      }
+    } catch (error: any) {
       console.error("Erro ao baixar todos os formulários:", error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível baixar os formulários.",
-        variant: "destructive",
-      });
+      
+      // Tratar erro específico: ZIP ainda não gerado
+      if (error.response?.data?.status === 'not_generated') {
+        toast({
+          title: "Aviso",
+          description: "O ZIP ainda não foi gerado. Aguarde a conclusão da geração dos formulários.",
+          variant: "destructive",
+        });
+      } else {
+        // Outros erros
+        toast({
+          title: "Erro",
+          description: error.response?.data?.error || "Não foi possível baixar os formulários.",
+          variant: "destructive",
+        });
+      }
     }
   };
 
