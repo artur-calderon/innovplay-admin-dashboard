@@ -104,6 +104,9 @@ export default function AnswerSheetGenerator() {
   // Estados da Etapa 2: Geração e Download
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
+  const [taskId, setTaskId] = useState<string | null>(null);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [generatedSheets, setGeneratedSheets] = useState<any[]>([]);
 
   // Estados para correção
   const [uploadedImage, setUploadedImage] = useState<File | null>(null);
@@ -166,6 +169,15 @@ export default function AnswerSheetGenerator() {
     };
     fetchInitialData();
   }, [toast]);
+
+  // Cleanup do polling interval ao desmontar componente
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
+  }, []);
 
   // Carregar municípios quando estado for selecionado
   useEffect(() => {
@@ -1005,6 +1017,110 @@ export default function AnswerSheetGenerator() {
     return { isValid: !hasCriticalError, warnings };
   };
 
+  const startPolling = (taskId: string) => {
+    setGenerationProgress(20);
+
+    // Limpar intervalo anterior se existir
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+    }
+
+    // Iniciar polling a cada 2 segundos
+    pollingIntervalRef.current = setInterval(async () => {
+      try {
+        const response = await api.get(`/answer-sheets/task/${taskId}/status`);
+        const data = response.data;
+
+        console.log("📊 Status do polling:", data.status);
+
+        // Atualizar progresso visual
+        if (data.status === 'processing' || data.status === 'pending') {
+          setGenerationProgress(prev => Math.min(prev + 5, 80));
+        }
+
+        // SUCESSO: parar polling e exibir resultado
+        if (data.status === 'completed') {
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+
+          setGenerationProgress(100);
+          setIsGenerating(false);
+
+          // Processar resultado
+          const result = data.result;
+          
+          // Armazenar cartões gerados
+          setGeneratedSheets(result.sheets || []);
+
+          toast({
+            title: "✅ Cartões gerados com sucesso!",
+            description: `${result.generated_sheets || 0} cartões foram gerados para ${result.total_students || 0} alunos.`,
+          });
+
+          // Recarregar lista de gabaritos
+          await fetchGabaritos();
+
+          setGenerationProgress(0);
+        }
+
+        // ERRO: parar polling e exibir erro
+        if (data.status === 'failed') {
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+
+          setIsGenerating(false);
+          setGenerationProgress(0);
+
+          toast({
+            title: "❌ Erro ao gerar cartões",
+            description: data.error || "Erro desconhecido ao gerar cartões de resposta",
+            variant: "destructive",
+          });
+        }
+
+      } catch (error: any) {
+        console.error("Erro ao verificar status da geração:", error);
+        
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+
+        setIsGenerating(false);
+        setGenerationProgress(0);
+
+        toast({
+          title: "Erro",
+          description: "Erro ao verificar status da geração. Tente novamente.",
+          variant: "destructive",
+        });
+      }
+    }, 2000); // Polling a cada 2 segundos
+
+    // Timeout de segurança (20 minutos para turmas grandes)
+    setTimeout(() => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+
+      if (isGenerating) {
+        setIsGenerating(false);
+        setGenerationProgress(0);
+        
+        toast({
+          title: "⚠️ Timeout",
+          description: "A geração está demorando mais do que o esperado. Por favor, verifique a lista de gabaritos ou tente novamente.",
+          variant: "destructive",
+        });
+      }
+    }, 20 * 60 * 1000); // 20 minutos
+  };
+
   const handleGenerateCards = async () => {
     if (!selectedTurma) {
       toast({
@@ -1017,7 +1133,8 @@ export default function AnswerSheetGenerator() {
 
     try {
       setIsGenerating(true);
-      setGenerationProgress(0);
+      setGenerationProgress(10);
+      setGeneratedSheets([]);
 
       const municipioData = municipios.find(m => m.id === selectedMunicipio);
       const schoolData = schools.find(s => s.id === selectedSchool);
@@ -1081,134 +1198,44 @@ export default function AnswerSheetGenerator() {
         payload.use_blocks = false;
       }
 
-      // Simular progresso
-      const progressInterval = setInterval(() => {
-        setGenerationProgress(prev => Math.min(prev + 10, 90));
-      }, 200);
-
-      // Enviar dados para o backend gerar os cartões
-      // O backend agora retorna um arquivo ZIP diretamente
+      // 1. DISPARAR GERAÇÃO (retorna imediatamente com 202)
       const response = await api.post('/answer-sheets/generate', payload, {
-        responseType: 'blob', // Esperar um arquivo binário (ZIP)
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
 
-      clearInterval(progressInterval);
-      setGenerationProgress(95);
-
-      console.log('📦 Resposta do backend (ZIP):', {
-        type: response.data.type,
-        size: response.data.size,
-        sizeMB: (response.data.size / 1024 / 1024).toFixed(2)
-      });
-
-      // Verificar se a resposta é um Blob válido
-      if (response.data instanceof Blob) {
-        setGenerationProgress(98);
-        
-        // Verificar se o blob não está vazio
-        if (response.data.size === 0) {
-          throw new Error('O arquivo ZIP recebido está vazio. Verifique se os cartões foram gerados corretamente.');
-        }
-
-        // Criar URL para o blob
-        const url = window.URL.createObjectURL(response.data);
-        const link = document.createElement('a');
-        link.href = url;
-        
-        // Sanitizar nome da turma para o nome do arquivo
-        const sanitizedTurmaName = (turmaData?.name || 'turma')
-          .normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, '')
-          .replace(/[^a-zA-Z0-9\s]/g, '')
-          .replace(/\s+/g, '_');
-        
-        // Sanitizar título da prova para o nome do arquivo
-        const sanitizedProvaTitle = provaTitulo
-          .normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, '')
-          .replace(/[^a-zA-Z0-9\s]/g, '')
-          .replace(/\s+/g, '_')
-          .substring(0, 50); // Limitar tamanho
-        
-        // Tentar extrair o nome do arquivo do header Content-Disposition se disponível
-        const contentDisposition = response.headers['content-disposition'] || response.headers['Content-Disposition'];
-        let zipFileName = `cartoes_resposta_${sanitizedProvaTitle}_${sanitizedTurmaName}_${new Date().toISOString().slice(0, 10)}.zip`;
-        
-        if (contentDisposition) {
-          console.log('📋 Content-Disposition header:', contentDisposition);
-          // Tentar diferentes padrões de Content-Disposition
-          // Padrão 1: filename="arquivo.zip"
-          // Padrão 2: filename*=UTF-8''arquivo.zip
-          // Padrão 3: filename=arquivo.zip
-          let fileNameMatch = contentDisposition.match(/filename\*?=['"]?([^'";\n]+)['"]?/i);
-          if (!fileNameMatch) {
-            fileNameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-          }
-          
-          if (fileNameMatch && fileNameMatch[1]) {
-            let extractedFileName = fileNameMatch[1].replace(/['"]/g, '');
-            // Decodificar URI se necessário (para formato filename*=UTF-8''...)
-            if (extractedFileName.startsWith("UTF-8''")) {
-              extractedFileName = extractedFileName.replace(/^UTF-8''/, '');
-            }
-            try {
-              zipFileName = decodeURIComponent(extractedFileName);
-            } catch (e) {
-              // Se falhar, usar o nome extraído sem decodificar
-              zipFileName = extractedFileName;
-            }
-            console.log('📋 Nome do arquivo extraído do header:', zipFileName);
-          }
-        }
-        
-        link.download = zipFileName;
-        
-        console.log(`📥 Iniciando download: ${zipFileName} (${(response.data.size / 1024 / 1024).toFixed(2)} MB)`);
-        
-        // Adicionar link ao DOM temporariamente
-        document.body.appendChild(link);
-        
-        // Tentar fazer download
-        try {
-          link.click();
-          console.log('✅ Download iniciado com sucesso');
-        } catch (downloadError) {
-          console.error('❌ Erro ao iniciar download automático:', downloadError);
-          // Fallback: abrir em nova aba
-          window.open(url, '_blank');
-          toast({
-            title: 'Download iniciado',
-            description: 'O arquivo ZIP foi aberto em uma nova aba. Se o download não iniciar automaticamente, clique com o botão direito e selecione "Salvar como".',
-          });
-        }
-        
-        // Remover link após um pequeno delay para garantir que o download foi iniciado
-        setTimeout(() => {
-          document.body.removeChild(link);
-          window.URL.revokeObjectURL(url);
-        }, 100);
-
-        setGenerationProgress(100);
-
+      // Verificar se a resposta é 202 Accepted (assíncrono)
+      if (response.status === 202) {
+        const data = response.data;
+        setTaskId(data.task_id);
 
         toast({
-          title: 'Sucesso!',
-          description: `Cartões resposta foram gerados e estão sendo baixados (${(response.data.size / 1024 / 1024).toFixed(2)} MB).`,
+          title: "⏳ Geração iniciada",
+          description: `Os cartões de resposta estão sendo gerados em background. Isso pode levar vários minutos (cerca de 40s por aluno).`,
         });
+
+        // 2. INICIAR POLLING
+        startPolling(data.task_id);
       } else {
-        console.error('❌ Resposta do servidor não é um arquivo ZIP válido:', {
-          dataType: typeof response.data,
-          isBlob: response.data instanceof Blob,
-          data: response.data
+        // Resposta não esperada
+        console.warn('⚠️ Resposta não é 202 Accepted:', response.status);
+        
+        setIsGenerating(false);
+        setGenerationProgress(0);
+
+        toast({
+          title: 'Aviso',
+          description: 'A geração foi iniciada, mas o formato de resposta não é o esperado. Verifique a lista de gabaritos.',
         });
-        throw new Error('O servidor não retornou um arquivo ZIP válido. Verifique a resposta do servidor.');
       }
+
     } catch (error: any) {
-      console.error('❌ Erro completo ao gerar cartões:', error);
-      console.error('❌ Erro response:', error.response);
-      console.error('❌ Erro data:', error.response?.data);
-      console.error('❌ Erro message:', error.message);
+      console.error('❌ Erro ao gerar cartões:', error);
       
+      setIsGenerating(false);
+      setGenerationProgress(0);
+
       let errorMessage = 'Não foi possível gerar os cartões resposta.';
       
       if (error.response?.data?.error) {
@@ -1224,9 +1251,6 @@ export default function AnswerSheetGenerator() {
         description: errorMessage,
         variant: 'destructive',
       });
-    } finally {
-      setIsGenerating(false);
-      setGenerationProgress(0);
     }
   };
 
@@ -2524,17 +2548,20 @@ export default function AnswerSheetGenerator() {
                   </Badge>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Os cartões resposta serão gerados automaticamente para todos os alunos da turma selecionada e disponibilizados para download em um arquivo ZIP.
+                  Os cartões resposta serão gerados automaticamente para todos os alunos da turma selecionada. Após a conclusão, você poderá acessá-los na aba "Cartões Gerados".
                 </p>
               </div>
 
               {isGenerating && (
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span>Gerando cartões resposta...</span>
+                    <span>⏳ Gerando cartões PDF em background...</span>
                     <span>{generationProgress}%</span>
                   </div>
                   <Progress value={generationProgress} />
+                  <p className="text-xs text-muted-foreground text-center">
+                    Isso pode levar vários minutos (~40s por aluno). Não feche esta página.
+                  </p>
                 </div>
               )}
 
@@ -2545,7 +2572,7 @@ export default function AnswerSheetGenerator() {
                 className="w-full"
               >
                 <Download className="h-5 w-5 mr-2" />
-                {isGenerating ? 'Enviando para o servidor...' : 'Gerar Cartões no Servidor'}
+                {isGenerating ? 'Gerando cartões...' : 'Gerar Cartões no Servidor'}
               </Button>
             </CardContent>
           </Card>
