@@ -118,6 +118,7 @@ interface GeneratedForm {
   generated_at?: string;
   corrected_at?: string | null;
   processed_at?: string | null;
+  answer_sheet_sent_at?: string | null;
 }
 
 export default function PhysicalTestPage() {
@@ -427,24 +428,8 @@ export default function PhysicalTestPage() {
           use_blocks: true,
           separate_by_subject: true
         };
-        // Se separar por disciplina, enviar blocks_config com separate_by_subject
-        payload.blocks_config = {
-          use_blocks: true,
-          separate_by_subject: true
-        };
       } else if (useBlocks) {
         // Se usar blocos normais, enviar configurações de blocos
-        payload.blocks_config = {
-          use_blocks: true,
-          num_blocks: numBlocks,
-          questions_per_block: questionsPerBlock,
-          separate_by_subject: false
-        };
-      } else {
-        // Se não usar blocos, enviar blocks_config com use_blocks: false
-        payload.blocks_config = {
-          use_blocks: false
-        };
         payload.blocks_config = {
           use_blocks: true,
           num_blocks: numBlocks,
