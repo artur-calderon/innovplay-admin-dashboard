@@ -89,6 +89,18 @@ export default function AnswerSheetGenerator() {
   const [questionsPerBlock, setQuestionsPerBlock] = useState(5);
   const [separateBySubject, setSeparateBySubject] = useState(false);
 
+  // Estados para separação por disciplina
+  const [disciplines, setDisciplines] = useState<{id: string; name: string}[]>([]);
+  const [isLoadingDisciplines, setIsLoadingDisciplines] = useState(false);
+  const [blocksByDiscipline, setBlocksByDiscipline] = useState<Array<{
+    block_id: number;
+    subject_name: string;
+    subject_id: string;
+    questions_count: number;
+    start_question: number;
+    end_question: number;
+  }>>([]);
+
   // Estados da Etapa 2: Geração e Download
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
@@ -226,6 +238,146 @@ export default function AnswerSheetGenerator() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSchool]);
+
+  // Carregar disciplinas quando separateBySubject for ativado
+  useEffect(() => {
+    if (separateBySubject && disciplines.length === 0) {
+      fetchDisciplines();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [separateBySubject]);
+
+  // Limpar blocos quando desativar separateBySubject
+  useEffect(() => {
+    if (!separateBySubject) {
+      setBlocksByDiscipline([]);
+    }
+  }, [separateBySubject]);
+
+  const fetchDisciplines = async () => {
+    try {
+      setIsLoadingDisciplines(true);
+      const response = await api.get('/subjects');
+      setDisciplines(response.data || []);
+    } catch (error) {
+      console.error('Erro ao carregar disciplinas:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível carregar as disciplinas.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingDisciplines(false);
+    }
+  };
+
+  // Funções para gerenciar blocos por disciplina
+  const handleAddDisciplineBlock = (disciplineId: string, disciplineName: string) => {
+    const currentTotalQuestions = blocksByDiscipline.reduce((sum, block) => sum + block.questions_count, 0);
+    
+    if (blocksByDiscipline.length >= 4) {
+      toast({ 
+        title: 'Limite atingido', 
+        description: 'Máximo de 4 blocos permitidos.', 
+        variant: 'destructive' 
+      });
+      return;
+    }
+    
+    if (currentTotalQuestions >= totalQuestoes) {
+      toast({ 
+        title: 'Limite atingido', 
+        description: 'Todas as questões já foram distribuídas nos blocos.', 
+        variant: 'destructive' 
+      });
+      return;
+    }
+    
+    const startQuestion = currentTotalQuestions + 1;
+    const remainingQuestions = totalQuestoes - currentTotalQuestions;
+    const defaultQuestionsCount = Math.min(26, remainingQuestions);
+    
+    const newBlock = {
+      block_id: blocksByDiscipline.length + 1,
+      subject_name: disciplineName,
+      subject_id: disciplineId,
+      questions_count: defaultQuestionsCount,
+      start_question: startQuestion,
+      end_question: startQuestion + defaultQuestionsCount - 1
+    };
+    
+    setBlocksByDiscipline([...blocksByDiscipline, newBlock]);
+  };
+
+  const handleRemoveDisciplineBlock = (blockId: number) => {
+    const filteredBlocks = blocksByDiscipline.filter(b => b.block_id !== blockId);
+    
+    // Recalcular IDs e posições dos blocos
+    const updatedBlocks = filteredBlocks.map((block, index) => {
+      const previousBlocks = filteredBlocks.slice(0, index);
+      const startQuestion = previousBlocks.reduce((sum, b) => sum + b.questions_count, 0) + 1;
+      return {
+        ...block,
+        block_id: index + 1,
+        start_question: startQuestion,
+        end_question: startQuestion + block.questions_count - 1
+      };
+    });
+    
+    setBlocksByDiscipline(updatedBlocks);
+  };
+
+  const handleUpdateBlockQuestions = (blockId: number, newCount: number) => {
+    const maxPerBlock = 26;
+    const validCount = Math.min(Math.max(1, newCount), maxPerBlock);
+    
+    const blockIndex = blocksByDiscipline.findIndex(b => b.block_id === blockId);
+    if (blockIndex === -1) return;
+    
+    // Calcular quantas questões estão sendo usadas por outros blocos
+    const otherBlocksTotal = blocksByDiscipline
+      .filter(b => b.block_id !== blockId)
+      .reduce((sum, b) => sum + b.questions_count, 0);
+    
+    // Verificar se a nova contagem não ultrapassa o total de questões disponível
+    if (otherBlocksTotal + validCount > totalQuestoes) {
+      toast({
+        title: 'Limite excedido',
+        description: `Você só pode distribuir até ${totalQuestoes} questões no total.`,
+        variant: 'destructive'
+      });
+      return;
+    }
+    
+    // Atualizar blocos recalculando as posições
+    const updatedBlocks = blocksByDiscipline.map((block, index) => {
+      if (block.block_id === blockId) {
+        const previousBlocks = blocksByDiscipline.slice(0, index);
+        const startQuestion = previousBlocks.reduce((sum, b) => sum + b.questions_count, 0) + 1;
+        return {
+          ...block,
+          questions_count: validCount,
+          start_question: startQuestion,
+          end_question: startQuestion + validCount - 1
+        };
+      }
+      
+      // Recalcular blocos subsequentes
+      if (index > blockIndex) {
+        const previousBlocks = updatedBlocks.slice(0, index);
+        const startQuestion = previousBlocks.reduce((sum, b) => sum + b.questions_count, 0) + 1;
+        return {
+          ...block,
+          start_question: startQuestion,
+          end_question: startQuestion + block.questions_count - 1
+        };
+      }
+      
+      return block;
+    });
+    
+    setBlocksByDiscipline(updatedBlocks);
+  };
 
   const fetchMunicipios = async () => {
     if (!selectedEstado) return;
@@ -729,6 +881,14 @@ export default function AnswerSheetGenerator() {
       }
     }
 
+    // Validar blocos por disciplina se estiver ativado
+    if (separateBySubject) {
+      const validation = validateDisciplineBlocks();
+      if (!validation.isValid) {
+        return false;
+      }
+    }
+
     return true;
   };
 
@@ -744,14 +904,49 @@ export default function AnswerSheetGenerator() {
     }
   };
 
+  // Função para validar configurações de blocos por disciplina
+  const validateDisciplineBlocks = (): { isValid: boolean; warnings: string[] } => {
+    const warnings: string[] = [];
+    
+    if (blocksByDiscipline.length === 0) {
+      warnings.push('❌ Adicione pelo menos uma disciplina aos blocos.');
+      return { isValid: false, warnings };
+    }
+    
+    if (blocksByDiscipline.length > 4) {
+      warnings.push('❌ Máximo de 4 blocos permitidos.');
+      return { isValid: false, warnings };
+    }
+    
+    const totalBlockQuestions = blocksByDiscipline.reduce((sum, b) => sum + b.questions_count, 0);
+    if (totalBlockQuestions !== totalQuestoes) {
+      warnings.push(`❌ A soma das questões nos blocos (${totalBlockQuestions}) deve ser igual ao total de questões (${totalQuestoes}).`);
+      return { isValid: false, warnings };
+    }
+    
+    const hasInvalidBlock = blocksByDiscipline.some(b => b.questions_count > 26);
+    if (hasInvalidBlock) {
+      warnings.push('❌ Máximo de 26 questões por bloco.');
+      return { isValid: false, warnings };
+    }
+    
+    const hasInvalidBlockCount = blocksByDiscipline.some(b => b.questions_count <= 0);
+    if (hasInvalidBlockCount) {
+      warnings.push('❌ Cada bloco deve ter pelo menos 1 questão.');
+      return { isValid: false, warnings };
+    }
+    
+    return { isValid: true, warnings };
+  };
+
   // Função para validar configurações de blocos
   const validateBlockSettings = (): { isValid: boolean; warnings: string[] } => {
     const warnings: string[] = [];
     let hasCriticalError = false;
 
-    // Se separar por disciplina, não precisa validar configurações de blocos
+    // Se separar por disciplina, usar validação específica
     if (separateBySubject) {
-      return { isValid: true, warnings: [] };
+      return validateDisciplineBlocks();
     }
 
     if (!useBlocks) {
@@ -852,9 +1047,28 @@ export default function AnswerSheetGenerator() {
 
       // Configurar blocos
       if (separateBySubject) {
+        const validation = validateDisciplineBlocks();
+        if (!validation.isValid) {
+          toast({ 
+            title: 'Erro na configuração de blocos', 
+            description: validation.warnings.join(' '), 
+            variant: 'destructive' 
+          });
+          setIsGenerating(false);
+          return;
+        }
+        
         payload.use_blocks = true;
         payload.blocks_config = {
-          separate_by_subject: true
+          use_blocks: true,
+          num_blocks: blocksByDiscipline.length,
+          blocks: blocksByDiscipline.map(block => ({
+            block_id: block.block_id,
+            subject_name: block.subject_name,
+            questions_count: block.questions_count,
+            start_question: block.start_question,
+            end_question: block.end_question
+          }))
         };
       } else if (useBlocks) {
         payload.use_blocks = true;
@@ -2056,9 +2270,143 @@ export default function AnswerSheetGenerator() {
               </div>
 
               {separateBySubject && (
-                <p className="text-xs text-muted-foreground pl-6">
-                  Quando ativado, cada disciplina terá seu próprio bloco.
-                </p>
+                <div className="space-y-4 pl-6 border-l-2 border-blue-200 mt-4">
+                  <div className="space-y-2">
+                    <Label>Disciplinas e Distribuição de Questões</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Configure quantas questões cada disciplina terá. Máximo de 4 disciplinas, 26 questões por disciplina.
+                    </p>
+                  </div>
+                  
+                  {/* Lista de blocos configurados */}
+                  {blocksByDiscipline.length > 0 && (
+                    <div className="space-y-3">
+                      {blocksByDiscipline.map((block) => (
+                        <Card key={block.block_id} className="p-4">
+                          <div className="flex items-center gap-4">
+                            <Badge variant="outline" className="shrink-0">Bloco {block.block_id}</Badge>
+                            <div className="flex-1 grid grid-cols-2 gap-3">
+                              <div>
+                                <Label className="text-xs text-muted-foreground">Disciplina</Label>
+                                <p className="font-medium text-sm">{block.subject_name}</p>
+                              </div>
+                              <div>
+                                <Label className="text-xs text-muted-foreground">Questões</Label>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  max="26"
+                                  value={block.questions_count}
+                                  onChange={(e) => handleUpdateBlockQuestions(block.block_id, parseInt(e.target.value) || 1)}
+                                  className="h-8"
+                                />
+                              </div>
+                            </div>
+                            <div className="text-xs text-muted-foreground shrink-0">
+                              Q{block.start_question}-{block.end_question}
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveDisciplineBlock(block.block_id)}
+                              className="shrink-0"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* Botão para adicionar disciplina */}
+                  {blocksByDiscipline.length < 4 && totalQuestoes > 0 && (
+                    <div>
+                      {isLoadingDisciplines ? (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Carregando disciplinas...
+                        </div>
+                      ) : disciplines.length > 0 ? (
+                        <Select
+                          onValueChange={(value) => {
+                            const discipline = disciplines.find(d => d.id === value);
+                            if (discipline) {
+                              handleAddDisciplineBlock(discipline.id, discipline.name);
+                            }
+                          }}
+                          value=""
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="+ Adicionar Disciplina" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {disciplines
+                              .filter(d => !blocksByDiscipline.some(b => b.subject_id === d.id))
+                              .map(discipline => (
+                                <SelectItem key={discipline.id} value={discipline.id}>
+                                  {discipline.name}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          Nenhuma disciplina disponível para adicionar.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {totalQuestoes === 0 && (
+                    <Alert>
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>
+                        Defina a quantidade total de questões antes de configurar os blocos por disciplina.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  
+                  {/* Resumo e validação */}
+                  {totalQuestoes > 0 && (
+                    <div className="p-3 bg-muted/50 rounded-lg text-sm space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Total de questões:</span>
+                        <span className={`font-semibold ${
+                          blocksByDiscipline.reduce((sum, b) => sum + b.questions_count, 0) === totalQuestoes 
+                            ? 'text-green-600' 
+                            : 'text-orange-600'
+                        }`}>
+                          {blocksByDiscipline.reduce((sum, b) => sum + b.questions_count, 0)} / {totalQuestoes}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Blocos configurados:</span>
+                        <span className="font-semibold">{blocksByDiscipline.length} / 4</span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Avisos de validação */}
+                  {totalQuestoes > 0 && (() => {
+                    const validation = validateDisciplineBlocks();
+                    if (validation.warnings.length > 0) {
+                      return (
+                        <Alert variant={validation.isValid ? "default" : "destructive"}>
+                          <AlertCircle className="h-4 w-4" />
+                          <AlertDescription>
+                            <div className="space-y-2">
+                              {validation.warnings.map((warning, index) => (
+                                <p key={index} className="text-sm">{warning}</p>
+                              ))}
+                            </div>
+                          </AlertDescription>
+                        </Alert>
+                      );
+                    }
+                    return null;
+                  })()}
+                </div>
               )}
 
               {/* Configurações de blocos (apenas se useBlocks estiver ativado) */}
