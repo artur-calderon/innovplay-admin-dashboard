@@ -76,8 +76,16 @@ export class OlimpiadasApiService {
 
       // ✅ NOVO: Adicionar alunos individuais selecionados se houver
       if (data.selected_students && Array.isArray(data.selected_students) && data.selected_students.length > 0) {
-        payload.selected_students = data.selected_students;
-        console.log('📤 Incluindo alunos individuais no payload:', data.selected_students);
+        // ✅ VALIDAÇÃO CRÍTICA: Garantir que estamos enviando apenas os IDs selecionados, não todos os alunos
+        const studentsToSend = data.selected_students.map((id: any) => String(id));
+        payload.selected_students = studentsToSend;
+        console.log('📤 [olimpiadasApi] Incluindo alunos individuais no payload:', {
+          count: studentsToSend.length,
+          ids: studentsToSend,
+          warning: studentsToSend.length > 10 ? '⚠️ Muitos alunos selecionados - verifique se está correto' : 'OK'
+        });
+      } else {
+        console.log('ℹ️ [olimpiadasApi] Nenhum aluno individual selecionado - olimpíada será aplicada por turma');
       }
 
       console.log('📤 Payload para criar olimpíada (salvando como OLIMPIADA):', payload);
@@ -174,6 +182,8 @@ export class OlimpiadasApiService {
   /**
    * Buscar olimpíada por ID
    * Usa o mesmo endpoint de avaliação
+   * IMPORTANTE: O backend não armazena selected_students na tabela test,
+   * então buscamos os alunos aplicados individualmente da tabela student_test_olimpics
    */
   static async getOlimpiada(id: string): Promise<Olimpiada> {
     try {
@@ -222,19 +232,46 @@ export class OlimpiadasApiService {
         }
       }
 
-      // ✅ NOVO: Garantir que selected_students seja retornado se existir
-      if (result.selected_students) {
-        result.selected_students = Array.isArray(result.selected_students) 
-          ? result.selected_students.map((id: any) => String(id))
-          : [];
-        
-        console.log('📥 [olimpiadasApi] getOlimpiada retornou selected_students:', {
-          count: result.selected_students.length,
-          ids: result.selected_students,
-          raw: result.selected_students
+      // ✅ NOVO: Buscar alunos aplicados individualmente da tabela student_test_olimpics
+      // O backend não armazena selected_students na tabela test, então precisamos buscar
+      // os alunos que têm a olimpíada aplicada individualmente
+      let selectedStudentsFromBackend: string[] = [];
+      
+      // Primeiro, verificar se o backend retornou selected_students diretamente
+      if (result.selected_students && Array.isArray(result.selected_students)) {
+        selectedStudentsFromBackend = result.selected_students.map((id: any) => String(id));
+        console.log('📥 [olimpiadasApi] Backend retornou selected_students diretamente:', {
+          count: selectedStudentsFromBackend.length,
+          ids: selectedStudentsFromBackend
         });
       } else {
-        console.log('ℹ️ [olimpiadasApi] getOlimpiada não retornou selected_students');
+        // Se não retornou, buscar da tabela student_test_olimpics
+        try {
+          const appliedStudents = await this.getIndividualAppliedStudents(id);
+          if (appliedStudents.length > 0) {
+            selectedStudentsFromBackend = appliedStudents;
+            console.log('📥 [olimpiadasApi] Buscou alunos aplicados individualmente da tabela student_test_olimpics:', {
+              count: selectedStudentsFromBackend.length,
+              ids: selectedStudentsFromBackend
+            });
+          } else {
+            console.log('ℹ️ [olimpiadasApi] Nenhum aluno aplicado individualmente encontrado');
+          }
+        } catch (error) {
+          console.warn('⚠️ [olimpiadasApi] Erro ao buscar alunos aplicados individualmente:', error);
+          // Continuar sem selected_students
+        }
+      }
+      
+      // ✅ Definir selected_students no resultado
+      result.selected_students = selectedStudentsFromBackend;
+      
+      // ✅ AVISO: Se encontrou muitos alunos, pode estar incorreto
+      if (selectedStudentsFromBackend.length > 10) {
+        console.warn('⚠️ [olimpiadasApi] ATENÇÃO: Muitos alunos encontrados. Verifique se está correto:', {
+          count: selectedStudentsFromBackend.length,
+          ids: selectedStudentsFromBackend
+        });
       }
       
       return result;
@@ -307,11 +344,18 @@ export class OlimpiadasApiService {
       // ✅ NOVO: Adicionar alunos individuais selecionados se houver
       if (data.selected_students !== undefined) {
         if (Array.isArray(data.selected_students) && data.selected_students.length > 0) {
-          payload.selected_students = data.selected_students;
-          console.log('📤 Incluindo alunos individuais no payload de atualização:', data.selected_students);
+          // ✅ VALIDAÇÃO CRÍTICA: Garantir que estamos enviando apenas os IDs selecionados
+          const studentsToSend = data.selected_students.map((id: any) => String(id));
+          payload.selected_students = studentsToSend;
+          console.log('📤 [olimpiadasApi] Incluindo alunos individuais no payload de atualização:', {
+            count: studentsToSend.length,
+            ids: studentsToSend,
+            warning: studentsToSend.length > 10 ? '⚠️ Muitos alunos selecionados - verifique se está correto' : 'OK'
+          });
         } else {
-          // Se for array vazio, enviar para limpar
+          // Se for array vazio, enviar para limpar (voltar para modo turma)
           payload.selected_students = [];
+          console.log('ℹ️ [olimpiadasApi] Limpando alunos individuais - olimpíada voltará a ser aplicada por turma');
         }
       }
 
@@ -560,39 +604,67 @@ export class OlimpiadasApiService {
   /**
    * Buscar lista de alunos individuais aplicados via apply-olympics
    * Retorna array de IDs de alunos que foram aplicados individualmente
+   * IMPORTANTE: Não chama getOlimpiada para evitar recursão
    */
   static async getIndividualAppliedStudents(olimpiadaId: string): Promise<string[]> {
     try {
-      // Buscar informações da olimpíada para verificar se há alunos individuais
-      const olimpiada = await this.getOlimpiada(olimpiadaId);
-      
-      // Se não houver application_info, não há alunos individuais
-      if (!olimpiada.application_info) {
-        return [];
-      }
-
       // Tentar buscar lista de alunos individuais aplicados
       // O backend pode retornar isso em diferentes formatos
       try {
         // Tentar endpoint específico para alunos individuais (se existir)
         const response = await api.get(`/test/${olimpiadaId}/applied-students`);
         if (response.data && Array.isArray(response.data.students)) {
-          return response.data.students.map((s: any) => String(s.id || s.student_id || s));
+          const students = response.data.students.map((s: any) => String(s.id || s.student_id || s));
+          console.log('📥 [olimpiadasApi] getIndividualAppliedStudents - endpoint /applied-students retornou:', {
+            count: students.length,
+            ids: students
+          });
+          return students;
         }
         if (response.data && Array.isArray(response.data)) {
-          return response.data.map((s: any) => String(s.id || s.student_id || s));
+          const students = response.data.map((s: any) => String(s.id || s.student_id || s));
+          console.log('📥 [olimpiadasApi] getIndividualAppliedStudents - endpoint /applied-students retornou (array direto):', {
+            count: students.length,
+            ids: students
+          });
+          return students;
         }
-      } catch (error) {
+      } catch (error: any) {
         // Endpoint não existe, continuar com método alternativo
-        console.log('Endpoint /test/{id}/applied-students não disponível, usando método alternativo');
+        if (error.response?.status === 404) {
+          console.log('ℹ️ [olimpiadasApi] Endpoint /test/{id}/applied-students não disponível (404), usando método alternativo');
+        } else {
+          console.warn('⚠️ [olimpiadasApi] Erro ao buscar /applied-students:', error);
+        }
       }
 
-      // Método alternativo: buscar via /test/my-class/tests e verificar application_info
-      // Isso funciona para identificar alunos individuais quando há student_test_olimpics_id
-      // Nota: Este método pode não funcionar para admin, então vamos usar outra abordagem
+      // Método alternativo: buscar via relatório detalhado e identificar alunos individuais
+      // pelos registros que têm student_test_olimpics_id
+      try {
+        const response = await api.get(`/evaluation-results/relatorio-detalhado/${olimpiadaId}`);
+        const alunos = response.data?.alunos || [];
+        
+        // Filtrar apenas alunos que têm student_test_olimpics_id (aplicação individual)
+        const alunosIndividuais = alunos.filter((aluno: any) => {
+          return aluno.application_info?.student_test_olimpics_id || 
+                 aluno.student_test_olimpics_id ||
+                 (aluno.application_info && !aluno.application_info.class_test_id && aluno.application_info.student_test_olimpics_id);
+        });
+        
+        if (alunosIndividuais.length > 0) {
+          const studentIds = alunosIndividuais.map((aluno: any) => String(aluno.id || aluno.student_id || ''));
+          console.log('📥 [olimpiadasApi] getIndividualAppliedStudents - identificados via relatório detalhado:', {
+            count: studentIds.length,
+            ids: studentIds
+          });
+          return studentIds;
+        }
+      } catch (error) {
+        console.warn('⚠️ [olimpiadasApi] Erro ao buscar via relatório detalhado:', error);
+      }
       
       // Se chegou aqui, não conseguimos identificar alunos individuais diretamente
-      // Vamos retornar array vazio e o filtro será aplicado no relatório detalhado
+      console.log('ℹ️ [olimpiadasApi] Nenhum aluno individual identificado');
       return [];
     } catch (error) {
       console.error('Erro ao buscar alunos individuais aplicados:', error);
