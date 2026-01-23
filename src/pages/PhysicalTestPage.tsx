@@ -323,7 +323,7 @@ export default function PhysicalTestPage() {
 
           // Processar resultado
           const result = data.result;
-          
+
           // Mapear form_id para id para compatibilidade
           const mappedForms = (result.forms || []).map((form: any) => ({
             ...form,
@@ -333,7 +333,7 @@ export default function PhysicalTestPage() {
             status: 'gerado',
             answer_sheet_sent_at: form.answer_sheet_sent_at || null
           }));
-          
+
           setGeneratedForms(mappedForms);
 
           toast({
@@ -371,7 +371,7 @@ export default function PhysicalTestPage() {
 
       } catch (error: any) {
         console.error("Erro ao verificar status da geração:", error);
-        
+
         if (pollingIntervalRef.current) {
           clearInterval(pollingIntervalRef.current);
           pollingIntervalRef.current = null;
@@ -398,7 +398,7 @@ export default function PhysicalTestPage() {
       if (isGenerating) {
         setIsGenerating(false);
         setCorrectionProgress(0);
-        
+
         toast({
           title: "⚠️ Timeout",
           description: "A geração está demorando mais do que o esperado. Por favor, verifique o status manualmente ou tente novamente.",
@@ -427,8 +427,24 @@ export default function PhysicalTestPage() {
           use_blocks: true,
           separate_by_subject: true
         };
+        // Se separar por disciplina, enviar blocks_config com separate_by_subject
+        payload.blocks_config = {
+          use_blocks: true,
+          separate_by_subject: true
+        };
       } else if (useBlocks) {
         // Se usar blocos normais, enviar configurações de blocos
+        payload.blocks_config = {
+          use_blocks: true,
+          num_blocks: numBlocks,
+          questions_per_block: questionsPerBlock,
+          separate_by_subject: false
+        };
+      } else {
+        // Se não usar blocos, enviar blocks_config com use_blocks: false
+        payload.blocks_config = {
+          use_blocks: false
+        };
         payload.blocks_config = {
           use_blocks: true,
           num_blocks: numBlocks,
@@ -489,7 +505,7 @@ export default function PhysicalTestPage() {
 
     } catch (error: any) {
       console.error("Erro ao gerar formulários:", error);
-      
+
       setIsGenerating(false);
       setCorrectionProgress(0);
 
@@ -519,14 +535,14 @@ export default function PhysicalTestPage() {
   // Função auxiliar para formatar mensagens de erro da correção
   const formatCorrectionError = (error: any): string => {
     const errorData = error.response?.data;
-    
+
     if (!errorData) {
       return "Não foi possível processar a correção. Tente novamente.";
     }
 
     // Extrair mensagem de erro
     const errorMessage = errorData.error || "Erro desconhecido na correção";
-    
+
     // Adicionar informação do sistema se disponível
     const system = errorData.system;
     if (system) {
@@ -584,10 +600,10 @@ export default function PhysicalTestPage() {
 
     } catch (error: any) {
       console.error("Erro ao processar correção:", error);
-      
+
       const errorMessage = formatCorrectionError(error);
       const statusCode = error.response?.status;
-      
+
       // Determinar título baseado no status
       let title = "Erro";
       if (statusCode === 401 || statusCode === 403) {
@@ -642,7 +658,7 @@ export default function PhysicalTestPage() {
     );
 
     setBatchImages(prev => [...prev, ...newImages]);
-    
+
     // Limpar input para permitir selecionar os mesmos arquivos novamente
     if (batchFileInputRef.current) {
       batchFileInputRef.current.value = '';
@@ -663,7 +679,7 @@ export default function PhysicalTestPage() {
     try {
       // Converter imagens para base64
       const base64Images = batchImages.map(img => img.preview);
-      
+
       // Iniciar correção em lote
       await startBatchCorrection(id, base64Images);
     } catch (error) {
@@ -1521,7 +1537,7 @@ export default function PhysicalTestPage() {
                 Processe múltiplas provas de uma vez. Selecione várias imagens de gabaritos preenchidos
                 e o sistema irá corrigir todas automaticamente.
               </p>
-              
+
               <Dialog open={showBatchCorrectionDialog} onOpenChange={(open) => {
                 if (!open && !isBatchProcessing) {
                   handleCloseBatchDialog();
@@ -1658,12 +1674,11 @@ export default function PhysicalTestPage() {
                             {Object.entries(batchProgress.items || {}).map(([index, item]) => (
                               <div
                                 key={index}
-                                className={`flex items-center justify-between p-2 rounded text-sm ${
-                                  item.status === 'pending' ? 'bg-gray-100' :
-                                  item.status === 'processing' ? 'bg-yellow-50 border border-yellow-200' :
-                                  item.status === 'done' ? 'bg-green-50 border border-green-200' :
-                                  'bg-red-50 border border-red-200'
-                                }`}
+                                className={`flex items-center justify-between p-2 rounded text-sm ${item.status === 'pending' ? 'bg-gray-100' :
+                                    item.status === 'processing' ? 'bg-yellow-50 border border-yellow-200' :
+                                      item.status === 'done' ? 'bg-green-50 border border-green-200' :
+                                        'bg-red-50 border border-red-200'
+                                  }`}
                               >
                                 <span className="flex items-center gap-2">
                                   {item.status === 'pending' && <Clock className="h-4 w-4 text-gray-400" />}

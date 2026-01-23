@@ -198,52 +198,48 @@ export default function Login() {
   return (
     <div 
       data-auth-page="login"
-      className={`min-h-screen w-full flex flex-col lg:flex-row transition-all duration-500 fixed inset-0 z-50 ${
-        isDark 
-          ? "bg-[#240046]" 
-          : "bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50"
-      }`}
+      className={`min-h-screen w-full flex flex-col lg:flex-row transition-all duration-500 fixed inset-0 z-50 bg-[#240046]`}
     >
-      {/* Lado esquerdo (gradiente Afirme Play) */}
-      <div className={`text-white w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12 relative overflow-hidden transition-all duration-500 ${
-        isDark 
-          ? "bg-[#240046]" 
-          : "bg-gradient-to-br from-purple-600 via-blue-600 to-indigo-600"
-      }`}>
-        {/* Elementos decorativos de fundo */}
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-20 left-20 w-72 h-72 bg-white rounded-full blur-3xl"></div>
-          <div className="absolute bottom-20 right-20 w-96 h-96 bg-purple-300 rounded-full blur-3xl"></div>
-        </div>
-        
-        <div className="max-w-md flex flex-col items-center text-center relative z-10">
-          {/* Ilustração centralizada */}
-          <div className={`mb-8 w-32 h-32 md:w-full md:h-full flex items-center justify-center flex-col transition-opacity duration-300 ${
-            isMounted ? "animate-fade-in-up opacity-100" : "opacity-0"
-          }`}>
-            <div className="relative">
-              <div className="absolute inset-0 bg-white/20 rounded-full blur-2xl animate-pulse"></div>
-              <img 
-                src={isDark ? LOGO_WHITE : LOGO} 
-                alt="Logo" 
-                className="relative w-[300px] max-w-full h-auto drop-shadow-2xl" 
-              />
-            </div>
-            <p className={`text-lg md:text-xl text-white/90 font-medium tracking-wide mt-6 transition-opacity duration-300 ${
-              isMounted ? "animate-fade-in-delay opacity-100" : "opacity-0"
+      {/* Lado esquerdo (gradiente Afirme Play) - apenas no modo escuro */}
+      {isDark && (
+        <div className="text-white w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12 relative overflow-hidden transition-all duration-500 bg-[#240046]">
+          {/* Elementos decorativos de fundo */}
+          <div className="absolute inset-0 opacity-10">
+            <div className="absolute top-20 left-20 w-72 h-72 bg-white rounded-full blur-3xl"></div>
+            <div className="absolute bottom-20 right-20 w-96 h-96 bg-purple-300 rounded-full blur-3xl"></div>
+          </div>
+          
+          <div className="max-w-md flex flex-col items-center text-center relative z-10">
+            {/* Ilustração centralizada */}
+            <div className={`mb-8 w-32 h-32 md:w-full md:h-full flex items-center justify-center flex-col transition-opacity duration-300 ${
+              isMounted ? "animate-fade-in-up opacity-100" : "opacity-0"
             }`}>
-              APRENDIZAGEM E RESULTADO
-            </p>
-            <div className={`mt-6 w-24 h-1 rounded-full transition-opacity duration-300 ${
-              isDark ? "bg-purple-400/50" : "bg-white/30"
-            } ${isMounted ? "animate-fade-in-delay-2 opacity-100" : "opacity-0"}`}></div>
+              <div className="relative">
+                <div className="absolute inset-0 bg-white/20 rounded-full blur-2xl animate-pulse"></div>
+                <img 
+                  src={LOGO_WHITE} 
+                  alt="Logo" 
+                  className="relative w-[300px] max-w-full h-auto drop-shadow-2xl" 
+                />
+              </div>
+              <p className={`text-lg md:text-xl text-white/90 font-medium tracking-wide mt-6 transition-opacity duration-300 ${
+                isMounted ? "animate-fade-in-delay opacity-100" : "opacity-0"
+              }`}>
+                APRENDIZAGEM E RESULTADO
+              </p>
+              <div className={`mt-6 w-24 h-1 rounded-full transition-opacity duration-300 bg-purple-400/50 ${
+                isMounted ? "animate-fade-in-delay-2 opacity-100" : "opacity-0"
+              }`}></div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Lado direito (card sobre o gradiente) */}
-      <div className="w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12">
-        <div className="w-full max-w-md">
+      {/* Lado direito (card sobre o gradiente) - ocupa toda a largura no modo claro */}
+      <div className={`flex flex-col justify-center items-center p-6 lg:p-12 ${
+        isDark ? "w-full lg:w-1/2" : "w-full"
+      }`}>
+        <div className={`w-full ${isDark ? "max-w-md" : "max-w-md mx-auto"}`}>
           <div className={`relative flex flex-col transition-all duration-300 ${
             isDark 
               ? "bg-gradient-to-br from-[#240046] to-[#2d0052] shadow-[7px_7px_10px_3px_rgba(36,0,70,0.16)] border border-purple-500/20" 
@@ -435,7 +431,7 @@ export default function Login() {
           <div className={`mt-6 text-center text-xs transition-opacity duration-300 ${
             isDark ? "text-white/60" : "text-gray-500"
           } ${isMounted ? "animate-fade-in-delay-3 opacity-100" : "opacity-0"}`}>
-            © 2025 Afirme Play - JESUS CRISTO É O SENHOR
+            © {new Date().getFullYear()} Afirme Play - JESUS CRISTO É O SENHOR
           </div>
         </div>
       </div>
