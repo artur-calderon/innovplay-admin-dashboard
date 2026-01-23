@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -458,6 +458,22 @@ export function CreateOlimpiadaModal({
     }
   };
 
+  // Limpar turmas selecionadas quando mudar para modo "students"
+  // Usar useRef para rastrear o modo anterior e limpar apenas na transição
+  const prevApplicationModeRef = useRef<'classes' | 'students'>(applicationMode);
+  
+  useEffect(() => {
+    // Limpar apenas quando mudar DE 'classes' PARA 'students'
+    if (prevApplicationModeRef.current === 'classes' && applicationMode === 'students') {
+      // Limpar turmas selecionadas para permitir seleção manual
+      setSelectedClasses([]);
+      setAvailableStudents([]);
+      setSelectedStudentIds([]);
+    }
+    // Atualizar referência do modo anterior
+    prevApplicationModeRef.current = applicationMode;
+  }, [applicationMode]);
+
   // Carregar alunos quando turmas forem selecionadas e modo for alunos individuais
   useEffect(() => {
     if (applicationMode === 'students' && selectedClasses.length > 0) {
@@ -498,6 +514,7 @@ export function CreateOlimpiadaModal({
   const handleSubmit = async () => {
     // Validar baseado no modo de aplicação
     if (applicationMode === 'classes') {
+      // Modo por turmas: validar turmas selecionadas
       if (selectedClasses.length === 0) {
         toast({
           title: 'Turmas obrigatórias',
@@ -506,13 +523,26 @@ export function CreateOlimpiadaModal({
         });
         return;
       }
-    } else {
+    } else if (applicationMode === 'students') {
+      // Modo por alunos individuais: validar alunos selecionados (turmas são apenas para filtrar)
       if (selectedStudentIds.length === 0) {
         toast({
           title: 'Alunos obrigatórios',
-          description: 'Selecione pelo menos um aluno',
+          description: 'Selecione pelo menos um aluno individual antes de criar a olimpíada',
           variant: 'destructive',
         });
+        setLoading(false);
+        return;
+      }
+      
+      // ✅ VALIDAÇÃO: Verificar se há alunos disponíveis para seleção
+      if (availableStudents.length === 0) {
+        toast({
+          title: 'Nenhum aluno disponível',
+          description: 'Selecione pelo menos uma turma para carregar os alunos disponíveis',
+          variant: 'destructive',
+        });
+        setLoading(false);
         return;
       }
     }
@@ -538,20 +568,20 @@ export function CreateOlimpiadaModal({
           return exists;
         });
         
-        // ✅ VALIDAÇÃO FINAL: Não permitir salvar se não houver alunos selecionados
+        // ✅ VALIDAÇÃO: Verificar se após filtrar ainda há alunos válidos (segurança adicional)
         if (studentsToSave.length === 0) {
           toast({
-            title: 'Erro',
-            description: 'Selecione pelo menos um aluno antes de salvar',
+            title: 'Erro na validação',
+            description: 'Nenhum aluno válido encontrado. Por favor, selecione novamente os alunos.',
             variant: 'destructive',
           });
           setLoading(false);
           return;
         }
         
-        // ✅ VALIDAÇÃO: Não permitir salvar todos os alunos se o usuário selecionou apenas alguns
+        // ✅ AVISO: Informar se todos os alunos estão selecionados (pode ser intencional)
         if (studentsToSave.length === availableStudents.length && availableStudents.length > 1) {
-          console.warn('⚠️ [CreateOlimpiadaModal] Todos os alunos da turma estão selecionados. Verifique se isso é intencional.');
+          console.log('ℹ️ [CreateOlimpiadaModal] Todos os alunos disponíveis estão selecionados.');
         }
       }
       
@@ -575,8 +605,9 @@ export function CreateOlimpiadaModal({
         subjects: selectedSubjects,
         schools: selectedSchools,
         municipalities: [municipality],
-        classes: selectedClasses.map(c => c.id), // Manter classes para referência
-        selectedClasses,
+        // ✅ CORREÇÃO: Quando há alunos individuais, não enviar classes (aplicação será por aluno, não por turma)
+        classes: applicationMode === 'students' ? [] : selectedClasses.map(c => c.id),
+        selectedClasses: applicationMode === 'students' ? [] : selectedClasses,
         selected_students: studentsToSave, // ✅ Alunos individuais se modo for students
         questions: selectedQuestions.map(q => q.id),
         startDateTime: now.toISOString(), // Valor padrão, não será usado
@@ -1040,7 +1071,10 @@ export function CreateOlimpiadaModal({
 
                     {/* Seleção de turmas para carregar alunos */}
                     <div className="space-y-2">
-                      <Label>Turmas (para carregar alunos) *</Label>
+                      <Label>Turmas (para filtrar e carregar alunos disponíveis)</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Selecione as turmas para visualizar e escolher os alunos individuais. As turmas não serão aplicadas na olimpíada.
+                      </p>
                       <ClassSelector
                         selectedClasses={selectedClasses}
                         onClassesChange={setSelectedClasses}
