@@ -135,6 +135,8 @@ export default function PhysicalTestPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [correctionProgress, setCorrectionProgress] = useState(0);
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
+  const [taskId, setTaskId] = useState<string | null>(null);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Estados para configuração de blocos
   const [useBlocks, setUseBlocks] = useState(false);
@@ -186,6 +188,15 @@ export default function PhysicalTestPage() {
       loadTestData();
     }
   }, [id]);
+
+  // Cleanup do polling interval ao desmontar componente
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
+  }, []);
 
   const loadTestData = async () => {
     try {
@@ -277,21 +288,138 @@ export default function PhysicalTestPage() {
     }
   };
 
+  const startPolling = (taskId: string) => {
+    if (!id) return;
+
+    setCorrectionProgress(20);
+
+    // Limpar intervalo anterior se existir
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+    }
+
+    // Iniciar polling a cada 3 segundos
+    pollingIntervalRef.current = setInterval(async () => {
+      try {
+        const response = await api.get(`/physical-tests/task/${taskId}/status`);
+        const data = response.data;
+
+        console.log("📊 Status do polling:", data.status);
+
+        // Atualizar progresso visual
+        if (data.status === 'processing') {
+          setCorrectionProgress(prev => Math.min(prev + 5, 80));
+        }
+
+        // SUCESSO: parar polling e exibir resultado
+        if (data.status === 'completed') {
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+
+          setCorrectionProgress(100);
+          setIsGenerating(false);
+
+          // Processar resultado
+          const result = data.result;
+          
+          // Mapear form_id para id para compatibilidade
+          const mappedForms = (result.forms || []).map((form: any) => ({
+            ...form,
+            id: form.form_id || form.id,
+            created_at: form.created_at || new Date().toISOString(),
+            updated_at: form.created_at || new Date().toISOString(),
+            status: 'gerado',
+            answer_sheet_sent_at: form.answer_sheet_sent_at || null
+          }));
+          
+          setGeneratedForms(mappedForms);
+
+          toast({
+            title: "✅ Avaliações geradas com sucesso!",
+            description: `${result.generated_forms || result.forms?.length || 0} avaliações foram geradas para ${result.total_students} alunos.`,
+          });
+
+          setCorrectionProgress(0);
+        }
+
+        // ERRO: parar polling e exibir erro
+        if (data.status === 'failed') {
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+
+          setIsGenerating(false);
+          setCorrectionProgress(0);
+
+          toast({
+            title: "❌ Erro ao gerar formulários",
+            description: data.error || "Erro desconhecido ao gerar avaliações",
+            variant: "destructive",
+          });
+        }
+
+        // RETRYING: mostrar mensagem
+        if (data.status === 'retrying') {
+          toast({
+            title: "🔄 Tentando novamente...",
+            description: `Erro detectado. Tentativa ${data.retry_count || 1}/2...`,
+          });
+        }
+
+      } catch (error: any) {
+        console.error("Erro ao verificar status da geração:", error);
+        
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+
+        setIsGenerating(false);
+        setCorrectionProgress(0);
+
+        toast({
+          title: "Erro",
+          description: "Erro ao verificar status da geração. Tente novamente.",
+          variant: "destructive",
+        });
+      }
+    }, 3000); // Polling a cada 3 segundos
+
+    // Timeout de segurança (15 minutos)
+    setTimeout(() => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+
+      if (isGenerating) {
+        setIsGenerating(false);
+        setCorrectionProgress(0);
+        
+        toast({
+          title: "⚠️ Timeout",
+          description: "A geração está demorando mais do que o esperado. Por favor, verifique o status manualmente ou tente novamente.",
+          variant: "destructive",
+        });
+      }
+    }, 15 * 60 * 1000); // 15 minutos
+  };
+
   const handleGenerateForms = async () => {
     if (!id) return;
 
     try {
       setIsGenerating(true);
-      setCorrectionProgress(0);
+      setCorrectionProgress(10);
       setShowGenerateDialog(false); // Fechar dialog ao iniciar geração
 
-      // Simular progresso
-      const progressInterval = setInterval(() => {
-        setCorrectionProgress(prev => Math.min(prev + 10, 90));
-      }, 200);
-
       // Preparar payload com parâmetros de blocos no formato esperado pelo backend
-      const payload: any = {};
+      const payload: any = {
+        force_regenerate: false // Adicionar parâmetro force_regenerate
+      };
 
       if (separateBySubject) {
         // Se separar por disciplina, enviar blocks_config com separate_by_subject
@@ -317,41 +445,59 @@ export default function PhysicalTestPage() {
       // Adicionar use_hybrid ao payload
       payload.use_hybrid = true;
 
+      // 1. DISPARAR GERAÇÃO (retorna imediatamente com 202)
       const response = await api.post(`/physical-tests/test/${id}/generate-forms`, payload, {
         headers: {
           'Content-Type': 'application/json',
         },
       });
 
-      clearInterval(progressInterval);
-      setCorrectionProgress(100);
+      // Verificar se a resposta é 202 Accepted (assíncrono)
+      if (response.status === 202) {
+        const data = response.data;
+        setTaskId(data.task_id);
 
-      // Mapear form_id para id para compatibilidade
-      const mappedForms = (response.data.forms || []).map((form: any) => ({
-        ...form,
-        id: form.form_id || form.id, // Mapear form_id para id (ou usar id se já existir)
-        created_at: form.created_at || new Date().toISOString(), // Usar created_at da API ou adicionar timestamp
-        updated_at: form.created_at || new Date().toISOString(), // Usar created_at como updated_at se não existir
-        status: 'gerado', // Definir status como gerado
-        answer_sheet_sent_at: form.answer_sheet_sent_at || null // Preservar campo de envio se existir
-      }));
-      setGeneratedForms(mappedForms);
+        toast({
+          title: "⏳ Geração iniciada",
+          description: "Os formulários estão sendo gerados em background. Isso pode levar alguns minutos.",
+        });
 
-      toast({
-        title: "Avaliações geradas!",
-        description: `${response.data.generated_forms || response.data.forms?.length || 0} avaliações foram geradas com sucesso.`,
-      });
+        // 2. INICIAR POLLING
+        startPolling(data.task_id);
+      } else {
+        // Resposta síncrona (fallback para compatibilidade)
+        setCorrectionProgress(100);
+
+        const mappedForms = (response.data.forms || []).map((form: any) => ({
+          ...form,
+          id: form.form_id || form.id,
+          created_at: form.created_at || new Date().toISOString(),
+          updated_at: form.created_at || new Date().toISOString(),
+          status: 'gerado',
+          answer_sheet_sent_at: form.answer_sheet_sent_at || null
+        }));
+        setGeneratedForms(mappedForms);
+
+        toast({
+          title: "Avaliações geradas!",
+          description: `${response.data.generated_forms || response.data.forms?.length || 0} avaliações foram geradas com sucesso.`,
+        });
+
+        setIsGenerating(false);
+        setCorrectionProgress(0);
+      }
 
     } catch (error: any) {
       console.error("Erro ao gerar formulários:", error);
-      toast({
-        title: "Erro",
-        description: error.response?.data?.error || "Erro ao gerar avaliações",
-        variant: "destructive",
-      });
-    } finally {
+      
       setIsGenerating(false);
       setCorrectionProgress(0);
+
+      toast({
+        title: "Erro",
+        description: error.response?.data?.error || "Erro ao iniciar geração de avaliações",
+        variant: "destructive",
+      });
     }
   };
 
@@ -1135,7 +1281,10 @@ export default function PhysicalTestPage() {
                           <div className="space-y-2">
                             <Progress value={correctionProgress} className="w-full" />
                             <p className="text-sm text-muted-foreground text-center">
-                              Gerando avaliações... {correctionProgress}%
+                              ⏳ Gerando formulários PDF em background... {correctionProgress}%
+                            </p>
+                            <p className="text-xs text-muted-foreground text-center">
+                              Isso pode levar alguns minutos. Não feche esta página.
                             </p>
                           </div>
                         )}
@@ -1175,8 +1324,14 @@ export default function PhysicalTestPage() {
             </CardHeader>
             <CardContent>
               {isGenerating && (
-                <div className="mb-4">
+                <div className="mb-4 space-y-2">
                   <Progress value={correctionProgress} className="w-full" />
+                  <p className="text-sm text-muted-foreground text-center">
+                    ⏳ Gerando formulários PDF em background... {correctionProgress}%
+                  </p>
+                  <p className="text-xs text-muted-foreground text-center">
+                    Isso pode levar alguns minutos. Não feche esta página.
+                  </p>
                 </div>
               )}
 
