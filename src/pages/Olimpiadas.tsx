@@ -92,16 +92,6 @@ export default function Olimpiadas() {
             }
           }
 
-          // ✅ CORREÇÃO: Se há alunos individuais selecionados e totalStudents é 0, usar o tamanho do array
-          if (selectedStudents.length > 0 && totalStudents === 0) {
-            totalStudents = selectedStudents.length;
-            console.log('📊 [Olimpiadas] Usando selected_students.length como totalStudents:', {
-              olimpiadaId: olimpiada.id,
-              totalStudents,
-              selectedStudentsCount: selectedStudents.length
-            });
-          }
-
           return {
             id: olimpiada.id,
             title: olimpiada.title,
@@ -473,14 +463,7 @@ export default function Olimpiadas() {
                                      Array.isArray(olimpiada.selected_students) && 
                                      olimpiada.selected_students.length > 0;
       
-      console.log('🔍 [Olimpiadas] Verificando modo de aplicação:', {
-        hasIndividualStudents,
-        selectedStudentsCount: hasIndividualStudents ? olimpiada.selected_students.length : 0,
-        hasClasses: olimpiada.classes && Array.isArray(olimpiada.classes) && olimpiada.classes.length > 0,
-        classesCount: olimpiada.classes && Array.isArray(olimpiada.classes) ? olimpiada.classes.length : 0
-      });
-      
-      // Se houver alunos individuais, aplicar APENAS para eles (não tentar turmas)
+      // Se houver alunos individuais, aplicar para eles
       if (hasIndividualStudents) {
         const studentIds = olimpiada.selected_students.map((id: any) => String(id));
         
@@ -548,173 +531,170 @@ export default function Olimpiadas() {
         setApplyingOlimpiada(null);
         loadOlimpiadas();
         setIsApplying(false);
-        return; // ✅ GARANTIR: Retornar aqui para não tentar aplicar para turmas
+        return;
       }
 
       // Modo turmas (código original) - aplicar para todas as turmas
-      // ✅ VALIDAÇÃO: Só tentar aplicar para turmas se NÃO houver alunos individuais
-      if (!hasIndividualStudents) {
-        // Processar classes no mesmo formato usado em ViewEvaluation.tsx
-        let classIds: string[] = [];
-        
-        if (olimpiada.classes && Array.isArray(olimpiada.classes) && olimpiada.classes.length > 0) {
-          const firstItem = olimpiada.classes[0];
-          // Verificar se é array de objetos com propriedade id
-          if (typeof firstItem === 'object' && firstItem !== null && 'id' in firstItem) {
-            classIds = olimpiada.classes.map((item: any) => String(item.id));
-          } else {
-            // Array direto de strings/números
-            classIds = olimpiada.classes.map((item: any) => String(item));
-          }
-        } else if (olimpiada.applied_classes && Array.isArray(olimpiada.applied_classes)) {
-          // Usar applied_classes como fallback
-          const firstItem = olimpiada.applied_classes[0];
-          if (typeof firstItem === 'object' && firstItem !== null && 'id' in firstItem) {
-            classIds = olimpiada.applied_classes.map((item: any) => String(item.id));
-          } else {
-            classIds = olimpiada.applied_classes.map((item: any) => String(item));
-          }
-        }
-        
-        // Verificar se temos classes
-        if (classIds.length === 0) {
-          toast({
-            title: 'Erro',
-            description: 'A olimpíada não possui turmas associadas. Selecione turmas ou alunos individuais na criação da olimpíada.',
-            variant: 'destructive',
-          });
-          setIsApplying(false);
-          return;
-        }
-
-        // ✅ USAR HORÁRIO ATUAL DO NAVEGADOR (não do formulário)
-        // Capturar data/hora exata no momento do clique
-        const now = new Date();
-        
-        // Data de início: agora
-        const startDateTime = now;
-        
-        // Data de término: usar a data do formulário se fornecida, caso contrário usar duração padrão
-        let endDateTime: Date;
-        if (applyEndDateTime) {
-          // Se o admin forneceu data de término, converter de datetime-local para Date
-          // datetime-local vem sem timezone, então interpretar como hora local
-          endDateTime = new Date(applyEndDateTime);
-          
-          // Validar que a data de término é posterior à de início
-          if (endDateTime <= now) {
-            toast({
-              title: 'Erro',
-              description: 'A data de término deve ser posterior ao momento atual',
-              variant: 'destructive',
-            });
-            setIsApplying(false);
-            return;
-          }
+      // Processar classes no mesmo formato usado em ViewEvaluation.tsx
+      let classIds: string[] = [];
+      
+      if (olimpiada.classes && Array.isArray(olimpiada.classes) && olimpiada.classes.length > 0) {
+        const firstItem = olimpiada.classes[0];
+        // Verificar se é array de objetos com propriedade id
+        if (typeof firstItem === 'object' && firstItem !== null && 'id' in firstItem) {
+          classIds = olimpiada.classes.map((item: any) => String(item.id));
         } else {
-          // Caso contrário, usar duração da olimpíada + margem de segurança
-          // Adicionar 30 minutos extras além da duração para garantir que não expire durante a realização
-          const durationMinutes = olimpiada.duration || 120;
-          const safetyMarginMinutes = 30; // Margem de segurança
-          const totalMinutes = durationMinutes + safetyMarginMinutes;
-          const durationMs = totalMinutes * 60 * 1000; // converter minutos para ms
-          endDateTime = new Date(now.getTime() + durationMs);
-          
-          console.log('⏰ Calculando data de término:', {
-            duracao_olimpiada_minutos: durationMinutes,
-            margem_seguranca_minutos: safetyMarginMinutes,
-            total_minutos: totalMinutes,
-            inicio: now.toLocaleString('pt-BR'),
-            termino_calculado: endDateTime.toLocaleString('pt-BR'),
-            diferenca_minutos: totalMinutes
-          });
+          // Array direto de strings/números
+          classIds = olimpiada.classes.map((item: any) => String(item));
         }
+      } else if (olimpiada.applied_classes && Array.isArray(olimpiada.applied_classes)) {
+        // Usar applied_classes como fallback
+        const firstItem = olimpiada.applied_classes[0];
+        if (typeof firstItem === 'object' && firstItem !== null && 'id' in firstItem) {
+          classIds = olimpiada.applied_classes.map((item: any) => String(item.id));
+        } else {
+          classIds = olimpiada.applied_classes.map((item: any) => String(item));
+        }
+      }
+      
+      // Verificar se temos classes
+      if (classIds.length === 0) {
+        toast({
+          title: 'Erro',
+          description: 'A olimpíada não possui turmas associadas',
+          variant: 'destructive',
+        });
+        setIsApplying(false);
+        return;
+      }
+
+      // ✅ USAR HORÁRIO ATUAL DO NAVEGADOR (não do formulário)
+      // Capturar data/hora exata no momento do clique
+      const now = new Date();
+      
+      // Data de início: agora
+      const startDateTime = now;
+      
+      // Data de término: usar a data do formulário se fornecida, caso contrário usar duração padrão
+      let endDateTime: Date;
+      if (applyEndDateTime) {
+        // Se o admin forneceu data de término, converter de datetime-local para Date
+        // datetime-local vem sem timezone, então interpretar como hora local
+        endDateTime = new Date(applyEndDateTime);
         
-        // Converter para ISO com timezone usando a função que preserva o horário local
-        const startDateTimeISO = convertDateTimeLocalToISO(
-          `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-        );
-        
-        const endDateTimeISO = convertDateTimeLocalToISO(
-          `${endDateTime.getFullYear()}-${String(endDateTime.getMonth() + 1).padStart(2, '0')}-${String(endDateTime.getDate()).padStart(2, '0')}T${String(endDateTime.getHours()).padStart(2, '0')}:${String(endDateTime.getMinutes()).padStart(2, '0')}`
-        );
-        
-        // ✅ VALIDAÇÃO CRÍTICA: Verificar se a data de término é posterior à de início
-        const startDateObj = new Date(startDateTimeISO);
-        const endDateObj = new Date(endDateTimeISO);
-        
-        if (endDateObj <= startDateObj) {
+        // Validar que a data de término é posterior à de início
+        if (endDateTime <= now) {
           toast({
             title: 'Erro',
-            description: 'A data de término deve ser posterior à data de início',
+            description: 'A data de término deve ser posterior ao momento atual',
             variant: 'destructive',
           });
           setIsApplying(false);
           return;
         }
-
-        // Obter timezone do usuário
-        const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-        // Log SUPER detalhado para debug de timezone
-        console.log('🚀 Aplicando olimpíada (Olimpiadas.tsx) - USANDO HORÁRIO ATUAL:');
-        console.log('1️⃣ Horário no momento do clique:');
-        console.log('   - Data/hora atual:', now.toISOString());
-        console.log('   - Hora local:', now.toLocaleString('pt-BR'));
-        console.log('   - Timezone do navegador:', userTimezone);
-        console.log('   - Offset (minutos):', now.getTimezoneOffset());
+      } else {
+        // Caso contrário, usar duração da olimpíada + margem de segurança
+        // Adicionar 30 minutos extras além da duração para garantir que não expire durante a realização
+        const durationMinutes = olimpiada.duration || 120;
+        const safetyMarginMinutes = 30; // Margem de segurança
+        const totalMinutes = durationMinutes + safetyMarginMinutes;
+        const durationMs = totalMinutes * 60 * 1000; // converter minutos para ms
+        endDateTime = new Date(now.getTime() + durationMs);
         
-        console.log('2️⃣ Datas calculadas:');
-        console.log('   - Início:', {
-          local: startDateTime.toLocaleString('pt-BR'),
-          iso: startDateTime.toISOString(),
-          timestamp: startDateTime.getTime()
+        console.log('⏰ Calculando data de término:', {
+          duracao_olimpiada_minutos: durationMinutes,
+          margem_seguranca_minutos: safetyMarginMinutes,
+          total_minutos: totalMinutes,
+          inicio: now.toLocaleString('pt-BR'),
+          termino_calculado: endDateTime.toLocaleString('pt-BR'),
+          diferenca_minutos: totalMinutes
         });
-        console.log('   - Término:', {
-          local: endDateTime.toLocaleString('pt-BR'),
-          iso: endDateTime.toISOString(),
-          timestamp: endDateTime.getTime(),
-          diferenca_minutos: (endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60)
-        });
-        
-        console.log('3️⃣ Conversão para ISO com timezone:');
-        console.log('   - Início convertido:', startDateTimeISO);
-        console.log('   - Término convertido:', endDateTimeISO);
-        console.log('   - Validação:', {
-          startDateObj: new Date(startDateTimeISO).toISOString(),
-          endDateObj: new Date(endDateTimeISO).toISOString(),
-          isEndAfterStart: new Date(endDateTimeISO) > new Date(startDateTimeISO),
-          diferenca_minutos: (new Date(endDateTimeISO).getTime() - new Date(startDateTimeISO).getTime()) / (1000 * 60)
-        });
-        
-        console.log('4️⃣ Dados que serão enviados ao backend:', {
-          olimpiadaId: applyingOlimpiadaId,
-          classes: classIds,
-          startDateTime: startDateTimeISO,
-          endDateTime: endDateTimeISO,
-          timezone: userTimezone
-        });
-
-        // Aplicar a olimpíada com as datas selecionadas
-        await OlimpiadasApiService.applyOlimpiada(
-          applyingOlimpiadaId,
-          classIds,
-          startDateTimeISO,
-          endDateTimeISO,
-          userTimezone
-        );
-
+      }
+      
+      // Converter para ISO com timezone usando a função que preserva o horário local
+      const startDateTimeISO = convertDateTimeLocalToISO(
+        `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+      );
+      
+      const endDateTimeISO = convertDateTimeLocalToISO(
+        `${endDateTime.getFullYear()}-${String(endDateTime.getMonth() + 1).padStart(2, '0')}-${String(endDateTime.getDate()).padStart(2, '0')}T${String(endDateTime.getHours()).padStart(2, '0')}:${String(endDateTime.getMinutes()).padStart(2, '0')}`
+      );
+      
+      // ✅ VALIDAÇÃO CRÍTICA: Verificar se a data de término é posterior à de início
+      const startDateObj = new Date(startDateTimeISO);
+      const endDateObj = new Date(endDateTimeISO);
+      
+      if (endDateObj <= startDateObj) {
         toast({
-          title: 'Olimpíada aplicada!',
-          description: 'A olimpíada foi enviada para os alunos',
+          title: 'Erro',
+          description: 'A data de término deve ser posterior à data de início',
+          variant: 'destructive',
         });
-        setShowApplyDialog(false);
-        setApplyingOlimpiadaId(null);
-        setApplyStartDateTime('');
-        setApplyEndDateTime('');
-        setApplyingOlimpiada(null);
-        loadOlimpiadas();
-      } // Fim do bloco if (!hasIndividualStudents)
+        setIsApplying(false);
+        return;
+      }
+
+      // Obter timezone do usuário
+      const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+      // Log SUPER detalhado para debug de timezone
+      console.log('🚀 Aplicando olimpíada (Olimpiadas.tsx) - USANDO HORÁRIO ATUAL:');
+      console.log('1️⃣ Horário no momento do clique:');
+      console.log('   - Data/hora atual:', now.toISOString());
+      console.log('   - Hora local:', now.toLocaleString('pt-BR'));
+      console.log('   - Timezone do navegador:', userTimezone);
+      console.log('   - Offset (minutos):', now.getTimezoneOffset());
+      
+      console.log('2️⃣ Datas calculadas:');
+      console.log('   - Início:', {
+        local: startDateTime.toLocaleString('pt-BR'),
+        iso: startDateTime.toISOString(),
+        timestamp: startDateTime.getTime()
+      });
+      console.log('   - Término:', {
+        local: endDateTime.toLocaleString('pt-BR'),
+        iso: endDateTime.toISOString(),
+        timestamp: endDateTime.getTime(),
+        diferenca_minutos: (endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60)
+      });
+      
+      console.log('3️⃣ Conversão para ISO com timezone:');
+      console.log('   - Início convertido:', startDateTimeISO);
+      console.log('   - Término convertido:', endDateTimeISO);
+      console.log('   - Validação:', {
+        startDateObj: new Date(startDateTimeISO).toISOString(),
+        endDateObj: new Date(endDateTimeISO).toISOString(),
+        isEndAfterStart: new Date(endDateTimeISO) > new Date(startDateTimeISO),
+        diferenca_minutos: (new Date(endDateTimeISO).getTime() - new Date(startDateTimeISO).getTime()) / (1000 * 60)
+      });
+      
+      console.log('4️⃣ Dados que serão enviados ao backend:', {
+        olimpiadaId: applyingOlimpiadaId,
+        classes: classIds,
+        startDateTime: startDateTimeISO,
+        endDateTime: endDateTimeISO,
+        timezone: userTimezone
+      });
+
+      // Aplicar a olimpíada com as datas selecionadas
+      await OlimpiadasApiService.applyOlimpiada(
+        applyingOlimpiadaId,
+        classIds,
+        startDateTimeISO,
+        endDateTimeISO,
+        userTimezone
+      );
+
+      toast({
+        title: 'Olimpíada aplicada!',
+        description: 'A olimpíada foi enviada para os alunos',
+      });
+      setShowApplyDialog(false);
+      setApplyingOlimpiadaId(null);
+      setApplyStartDateTime('');
+      setApplyEndDateTime('');
+      setApplyingOlimpiada(null);
+      loadOlimpiadas();
     } catch (error) {
       console.error('Erro ao aplicar olimpíada:', error);
       toast({

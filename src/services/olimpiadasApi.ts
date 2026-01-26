@@ -49,21 +49,6 @@ export class OlimpiadasApiService {
         ? data.classes 
         : (data.classes ? [data.classes] : []);
 
-      // ✅ VALIDAÇÃO: Verificar se escolas e municípios estão presentes
-      if (schoolsArray.length === 0) {
-        console.warn('⚠️ [olimpiadasApi] ATENÇÃO: Nenhuma escola enviada no payload!', {
-          dataSchools: data.schools,
-          schoolsArray
-        });
-      }
-      
-      if (municipalitiesArray.length === 0) {
-        console.warn('⚠️ [olimpiadasApi] ATENÇÃO: Nenhum município enviado no payload!', {
-          dataMunicipalities: data.municipalities,
-          municipalitiesArray
-        });
-      }
-
       // Enviar título sem modificações (sem prefixo [OLIMPÍADA])
       const payload: Record<string, unknown> = {
         title: data.title,
@@ -94,36 +79,16 @@ export class OlimpiadasApiService {
         // ✅ VALIDAÇÃO CRÍTICA: Garantir que estamos enviando apenas os IDs selecionados, não todos os alunos
         const studentsToSend = data.selected_students.map((id: any) => String(id));
         payload.selected_students = studentsToSend;
-        // ✅ CORREÇÃO: Quando há alunos individuais, não enviar classes (aplicação será por aluno, não por turma)
-        const classesBeforeRemoval = payload.classes;
-        payload.classes = [];
         console.log('📤 [olimpiadasApi] Incluindo alunos individuais no payload:', {
           count: studentsToSend.length,
           ids: studentsToSend,
-          warning: studentsToSend.length > 10 ? '⚠️ Muitos alunos selecionados - verifique se está correto' : 'OK',
-          note: 'Classes removidas do payload pois aplicação será por aluno individual',
-          classesRemoved: Array.isArray(classesBeforeRemoval) ? classesBeforeRemoval.length : 0,
-          classesAfterRemoval: payload.classes.length
+          warning: studentsToSend.length > 10 ? '⚠️ Muitos alunos selecionados - verifique se está correto' : 'OK'
         });
       } else {
         console.log('ℹ️ [olimpiadasApi] Nenhum aluno individual selecionado - olimpíada será aplicada por turma');
       }
 
-      // ✅ LOG DETALHADO: Verificar se escolas e municípios estão no payload final
-      console.log('📤 Payload para criar olimpíada (salvando como OLIMPIADA):', {
-        ...payload,
-        // Destacar escolas e municípios
-        _validation: {
-          hasSchools: !!payload.schools && Array.isArray(payload.schools) && payload.schools.length > 0,
-          schoolsCount: Array.isArray(payload.schools) ? payload.schools.length : 0,
-          schools: payload.schools,
-          hasMunicipalities: !!payload.municipalities && Array.isArray(payload.municipalities) && payload.municipalities.length > 0,
-          municipalitiesCount: Array.isArray(payload.municipalities) ? payload.municipalities.length : 0,
-          municipalities: payload.municipalities,
-          hasSelectedStudents: !!payload.selected_students && Array.isArray(payload.selected_students) && payload.selected_students.length > 0,
-          selectedStudentsCount: Array.isArray(payload.selected_students) ? payload.selected_students.length : 0
-        }
-      });
+      console.log('📤 Payload para criar olimpíada (salvando como OLIMPIADA):', payload);
 
       const response = await api.post('/test', payload);
       
@@ -133,21 +98,10 @@ export class OlimpiadasApiService {
         // Adicionar flag para identificar como olimpíada no frontend
         result.type = 'OLIMPIADA';
         
-        // ✅ CORREÇÃO: Preservar selected_students se foi enviado no payload
-        // O backend pode não retornar esse campo, então preservamos do payload
-        if (payload.selected_students && Array.isArray(payload.selected_students) && payload.selected_students.length > 0) {
-          result.selected_students = payload.selected_students as string[];
-          console.log('✅ [olimpiadasApi] Preservando selected_students na resposta de criação:', {
-            count: result.selected_students.length,
-            ids: result.selected_students
-          });
-        }
-        
         console.log('✅ Olimpíada criada com sucesso:', {
           id: result.id,
           title: result.title,
-          type: result.type,
-          hasSelectedStudents: !!(result.selected_students && result.selected_students.length > 0)
+          type: result.type
         });
 
         // ✅ REMOVIDO: Aplicação automática após criação
@@ -284,16 +238,14 @@ export class OlimpiadasApiService {
       let selectedStudentsFromBackend: string[] = [];
       
       // Primeiro, verificar se o backend retornou selected_students diretamente
-      // ✅ CORREÇÃO: Verificar se é array E tem elementos (não apenas se existe)
-      if (result.selected_students && Array.isArray(result.selected_students) && result.selected_students.length > 0) {
+      if (result.selected_students && Array.isArray(result.selected_students)) {
         selectedStudentsFromBackend = result.selected_students.map((id: any) => String(id));
         console.log('📥 [olimpiadasApi] Backend retornou selected_students diretamente:', {
           count: selectedStudentsFromBackend.length,
           ids: selectedStudentsFromBackend
         });
       } else {
-        // Se não retornou ou retornou array vazio, tentar buscar da tabela student_test_olimpics
-        // Isso só funciona se a olimpíada já foi aplicada
+        // Se não retornou, buscar da tabela student_test_olimpics
         try {
           const appliedStudents = await this.getIndividualAppliedStudents(id);
           if (appliedStudents.length > 0) {
@@ -303,14 +255,7 @@ export class OlimpiadasApiService {
               ids: selectedStudentsFromBackend
             });
           } else {
-            // ✅ Se não encontrou alunos aplicados, verificar se o backend retornou array vazio
-            // Isso pode indicar que a olimpíada foi criada sem alunos individuais OU
-            // que o backend não está salvando/retornando selected_students
-            if (result.selected_students && Array.isArray(result.selected_students) && result.selected_students.length === 0) {
-              console.log('ℹ️ [olimpiadasApi] Backend retornou selected_students como array vazio - olimpíada pode ter sido criada sem alunos individuais ou backend não retorna esse campo');
-            } else {
-              console.log('ℹ️ [olimpiadasApi] Nenhum aluno aplicado individualmente encontrado e backend não retornou selected_students');
-            }
+            console.log('ℹ️ [olimpiadasApi] Nenhum aluno aplicado individualmente encontrado');
           }
         } catch (error) {
           console.warn('⚠️ [olimpiadasApi] Erro ao buscar alunos aplicados individualmente:', error);
@@ -372,7 +317,6 @@ export class OlimpiadasApiService {
             weight: Math.round(100 / data.subjects.length)
           }))
         }),
-        // ✅ IMPORTANTE: Sempre enviar escolas e municípios, mesmo quando há alunos individuais
         ...(data.schools && { 
           schools: Array.isArray(data.schools) ? data.schools : [data.schools] 
         }),
@@ -415,21 +359,7 @@ export class OlimpiadasApiService {
         }
       }
 
-      // ✅ LOG DETALHADO: Verificar se escolas e municípios estão no payload final
-      console.log('📤 Payload para atualizar olimpíada (salvando como OLIMPIADA):', {
-        ...payload,
-        // Destacar escolas e municípios
-        _validation: {
-          hasSchools: !!payload.schools && Array.isArray(payload.schools) && payload.schools.length > 0,
-          schoolsCount: Array.isArray(payload.schools) ? payload.schools.length : 0,
-          schools: payload.schools,
-          hasMunicipalities: !!payload.municipalities && Array.isArray(payload.municipalities) && payload.municipalities.length > 0,
-          municipalitiesCount: Array.isArray(payload.municipalities) ? payload.municipalities.length : 0,
-          municipalities: payload.municipalities,
-          hasSelectedStudents: !!payload.selected_students && Array.isArray(payload.selected_students) && payload.selected_students.length > 0,
-          selectedStudentsCount: Array.isArray(payload.selected_students) ? payload.selected_students.length : 0
-        }
-      });
+      console.log('📤 Payload para atualizar olimpíada (salvando como OLIMPIADA):', payload);
 
       const response = await api.put(`/test/${id}`, payload);
       
@@ -550,47 +480,19 @@ export class OlimpiadasApiService {
    * Aplicar/enviar olimpíada para alunos
    * Usa o mesmo endpoint de avaliação
    * @param id - ID da olimpíada
-   * @param classes - Array de IDs das turmas (strings) ou objetos com propriedade id
+   * @param classes - Array de IDs das turmas
    * @param startDateTime - Data/hora de início (ISO ou datetime-local)
    * @param endDateTime - Data/hora de fim (ISO ou datetime-local)
    * @param timezone - Timezone do usuário (opcional, será detectado automaticamente se não fornecido)
    */
   static async applyOlimpiada(
     id: string,
-    classes: string[] | any[],
+    classes: string[],
     startDateTime: string,
     endDateTime: string,
     timezone?: string
   ): Promise<void> {
     try {
-      // ✅ VALIDAÇÃO CRÍTICA: Garantir que classes seja um array de strings (IDs)
-      let classIds: string[] = [];
-      if (Array.isArray(classes) && classes.length > 0) {
-        const firstItem = classes[0];
-        // Verificar se é array de objetos com propriedade id
-        if (typeof firstItem === 'object' && firstItem !== null && 'id' in firstItem) {
-          classIds = classes.map((item: any) => String(item.id));
-          console.warn('⚠️ [olimpiadasApi] applyOlimpiada recebeu objetos em vez de IDs. Convertendo...', {
-            original: classes,
-            converted: classIds
-          });
-        } else {
-          // Array direto de strings/números
-          classIds = classes.map((item: any) => String(item));
-        }
-      }
-      
-      if (classIds.length === 0) {
-        throw new Error('Nenhuma turma fornecida para aplicar a olimpíada');
-      }
-      
-      console.log('📡 [olimpiadasApi] Aplicando olimpíada para turmas:', {
-        olimpiadaId: id,
-        classIds,
-        classIdsCount: classIds.length,
-        originalClasses: classes
-      });
-      
       // Obter timezone se não fornecido
       const userTimezone = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -611,17 +513,11 @@ export class OlimpiadasApiService {
         : convertDateTimeLocalToISO(endDateTime);
 
       // Formatar classes no mesmo formato usado para avaliações
-      // ✅ Usar classIds (já convertidos para strings) em vez de classes
-      const classesData = classIds.map(classId => ({
-        class_id: String(classId), // Garantir que seja string
+      const classesData = classes.map(classId => ({
+        class_id: classId,
         application: startDateTimeISO,
         expiration: endDateTimeISO
       }));
-      
-      console.log('📤 [olimpiadasApi] Dados das turmas sendo enviados:', {
-        classesData,
-        count: classesData.length
-      });
 
       // ✅ VALIDAÇÃO: Verificar se as datas estão corretas antes de enviar
       const startDateObj = new Date(startDateTimeISO);

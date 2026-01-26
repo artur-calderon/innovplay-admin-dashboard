@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Pencil, Trash2, ArrowLeft, Eye, Users, BookOpen, FileText, Calendar, User, MapPin, School, Play, UserCheck } from "lucide-react";
+import { Pencil, Trash2, ArrowLeft, Eye, Users, BookOpen, FileText, Calendar, User, MapPin, School, Play } from "lucide-react";
 import { api } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -96,9 +96,6 @@ export default function ViewEvaluation() {
     description: string;
     source: 'database' | 'question';
   }>>>({});
-  
-  // Estado para informações dos alunos individuais selecionados
-  const [selectedStudentsInfo, setSelectedStudentsInfo] = useState<Array<{ id: string; name: string }>>([]);
 
   useEffect(() => {
     const fetchEvaluation = async () => {
@@ -169,41 +166,6 @@ export default function ViewEvaluation() {
 
     fetchEvaluation();
   }, [id, toast]);
-
-  // Buscar informações dos alunos individuais selecionados
-  useEffect(() => {
-    const loadSelectedStudentsInfo = async () => {
-      if (evaluation?.selected_students && Array.isArray(evaluation.selected_students) && evaluation.selected_students.length > 0) {
-        try {
-          // Buscar informações dos alunos
-          const studentsPromises = evaluation.selected_students.map(async (studentId: string) => {
-            try {
-              const response = await api.get(`/students/${studentId}`);
-              return {
-                id: studentId,
-                name: response.data?.name || response.data?.nome || 'Aluno não encontrado'
-              };
-            } catch (error) {
-              console.error(`Erro ao buscar aluno ${studentId}:`, error);
-              return {
-                id: studentId,
-                name: 'Aluno não encontrado'
-              };
-            }
-          });
-          
-          const studentsInfo = await Promise.all(studentsPromises);
-          setSelectedStudentsInfo(studentsInfo);
-        } catch (error) {
-          console.error('Erro ao carregar informações dos alunos selecionados:', error);
-        }
-      } else {
-        setSelectedStudentsInfo([]);
-      }
-    };
-    
-    loadSelectedStudentsInfo();
-  }, [evaluation?.selected_students]);
 
   // Função auxiliar para verificar se é uma olimpíada
   const isOlimpiada = () => {
@@ -991,42 +953,8 @@ export default function ViewEvaluation() {
             </div>
           </CardContent>
         </Card>
-      </div>
 
-      {/* Alunos Individuais Selecionados */}
-      {evaluation?.selected_students && evaluation.selected_students.length > 0 && (
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <UserCheck className="h-5 w-5" />
-              Alunos Individuais Selecionados
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Esta olimpíada foi criada para {evaluation.selected_students.length} aluno{evaluation.selected_students.length !== 1 ? 's' : ''} específico{evaluation.selected_students.length !== 1 ? 's' : ''}:
-              </p>
-              {selectedStudentsInfo.length > 0 ? (
-                <ul className="list-disc list-inside space-y-1">
-                  {selectedStudentsInfo.map((student) => (
-                    <li key={student.id} className="text-sm">
-                      {student.name}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Carregando informações dos alunos...
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Turmas Selecionadas */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+        {/* Turmas Selecionadas */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

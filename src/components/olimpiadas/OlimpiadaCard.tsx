@@ -13,8 +13,7 @@ import {
   Eye,
   Play,
   Trash2,
-  RefreshCw,
-  UserCheck
+  RefreshCw
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -255,16 +254,6 @@ export function OlimpiadaCard({
             )}
           </div>
         </div>
-
-        {/* Alunos Individuais Selecionados */}
-        {olimpiada.selected_students && olimpiada.selected_students.length > 0 && (
-          <div className="flex items-center gap-2 text-xs sm:text-sm">
-            <UserCheck className="h-3 w-3 sm:h-4 sm:w-4 text-yellow-600 dark:text-yellow-400 flex-shrink-0" />
-            <span className="text-yellow-900 dark:text-yellow-100">
-              {olimpiada.selected_students.length} aluno{olimpiada.selected_students.length !== 1 ? 's' : ''} individual{olimpiada.selected_students.length !== 1 ? 'is' : ''} selecionado{olimpiada.selected_students.length !== 1 ? 's' : ''}
-            </span>
-          </div>
-        )}
 
         {/* Progress bar */}
         {displayTotal > 0 ? (
