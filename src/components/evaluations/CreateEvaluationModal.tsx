@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -146,24 +146,42 @@ export function CreateEvaluationModal({
         setAllSubjects(subjectsRes.data || []);
         setStates(statesRes.data || []);
       } catch (error) {
-        console.error('Erro ao carregar dados:', error);
+        console.error('❌ Erro ao carregar dados:', error);
+        // ✅ CORREÇÃO: Tratamento de erro mais robusto para evitar crash
         toast({
           title: 'Erro',
-          description: 'Erro ao carregar dados iniciais',
+          description: error instanceof Error ? error.message : 'Erro ao carregar dados iniciais',
           variant: 'destructive',
         });
+        // Não fechar o modal em caso de erro, apenas mostrar o toast
       } finally {
         setLoadingData(false);
       }
     };
     
-    loadInitialData();
+    // ✅ CORREÇÃO: Adicionar try-catch externo para capturar erros de inicialização
+    try {
+      loadInitialData();
+    } catch (error) {
+      console.error('❌ Erro crítico ao inicializar modal:', error);
+      toast({
+        title: 'Erro crítico',
+        description: 'Não foi possível inicializar o modal. Tente novamente.',
+        variant: 'destructive',
+      });
+      setLoadingData(false);
+    }
   }, [isOpen, evaluationId, initialData, toast, clearQuestions]);
 
   // Carregar dados da avaliação para edição
   const loadEvaluationData = async (id?: string, data?: EvaluationFormData | null) => {
     console.log('🔄 loadEvaluationData chamado:', { id, hasData: !!data, questionsInData: data?.questions?.length || 0 });
     try {
+      // ✅ CORREÇÃO: Validar dados antes de processar
+      if (!data && !id) {
+        console.warn('⚠️ loadEvaluationData chamado sem dados nem ID');
+        return;
+      }
       if (data) {
         // Usar initialData se fornecido
         setTitle(data.title || '');
@@ -187,50 +205,130 @@ export function CreateEvaluationModal({
         
         setMunicipality(data.municipality || '');
         setSelectedSchools(data.selectedSchools || []);
+        // ✅ CORREÇÃO: Log das turmas ao carregar dados
+        console.log('📋 Carregando turmas do initialData:', {
+          count: data.selectedClasses?.length || 0,
+          classes: data.selectedClasses?.map((c: any) => ({ id: c.id, name: c.name })) || []
+        });
         setSelectedClasses(data.selectedClasses || []);
         setSelectedSubjects(data.subjects || []);
         
         // Carregar questões se disponíveis - PRIORIDADE MÁXIMA
         if (data.questions && data.questions.length > 0) {
           console.log('📚 Carregando questões do initialData:', data.questions.length, data.questions);
+          // ✅ CORREÇÃO: Garantir que todas as questões tenham subjectId definido
+          const questionsWithSubjectId = data.questions.map((q: any) => {
+            const subjectId = q.subjectId || 
+                             q.subject?.id || 
+                             q.subject_id || 
+                             data.subjects?.[0]?.id || 
+                             '';
+            return {
+              ...q,
+              subjectId: subjectId,
+              subject: q.subject || (subjectId ? { id: subjectId } : undefined)
+            };
+          });
           // Garantir que as questões sejam setadas imediatamente
-          setQuestions(data.questions);
+          setQuestions(questionsWithSubjectId);
           setQuestionsLoaded(true);
-          console.log('✅ Questões setadas no store e marcadas como carregadas');
+          console.log('✅ Questões setadas no store e marcadas como carregadas:', questionsWithSubjectId.map((q: any) => ({
+            id: q.id,
+            subjectId: q.subjectId
+          })));
         } else if (id) {
           // Se não houver questões no initialData, tentar buscar da API
           console.log('📚 Buscando questões da API para avaliação:', id);
           try {
             const questionsResponse = await api.get(`/questions?test_id=${id}`);
-            console.log('📚 Resposta da API:', questionsResponse.data?.length || 0);
+            console.log('📚 Resposta da API:', {
+              isArray: Array.isArray(questionsResponse.data),
+              length: questionsResponse.data?.length || 0,
+              data: questionsResponse.data
+            });
+            
             if (Array.isArray(questionsResponse.data) && questionsResponse.data.length > 0) {
               console.log('📚 Carregando questões da API:', questionsResponse.data.length);
-              const questionsData = questionsResponse.data.map((q: any) => ({
-                id: q.id,
-                text: q.text || q.formattedText || '',
-                formattedText: q.formattedText || q.text || '',
-                title: q.title || q.command || '',
-                type: q.type === 'multiple_choice' ? 'multipleChoice' : (q.type === 'open' || q.type === 'essay' ? 'dissertativa' : 'multipleChoice'),
-                subjectId: q.subject?.id || q.subject_id || '',
-                subject: q.subject,
-                grade: q.grade,
-                difficulty: q.difficulty || '',
-                value: q.value || q.points || 0,
-                solution: q.solution || '',
-                formattedSolution: q.formattedSolution || q.solution || '',
-                options: q.alternatives?.map((alt: any) => ({
-                  id: alt.id,
-                  text: alt.text,
-                  isCorrect: alt.isCorrect || false,
-                })) || q.options || [],
-                secondStatement: q.secondStatement || q.secondstatement || '',
-                skills: q.skills || '',
-              }));
+              // ✅ CORREÇÃO: Garantir que todas as questões tenham subjectId definido
+              const questionsData = questionsResponse.data.map((q: any) => {
+                const subjectId = q.subject?.id || q.subject_id || q.subjectId || data.subjects?.[0]?.id || '';
+                return {
+                  id: q.id,
+                  text: q.text || q.formattedText || '',
+                  formattedText: q.formattedText || q.text || '',
+                  title: q.title || q.command || '',
+                  type: q.type === 'multiple_choice' ? 'multipleChoice' : (q.type === 'open' || q.type === 'essay' ? 'dissertativa' : 'multipleChoice'),
+                  subjectId: subjectId,
+                  subject: q.subject || (subjectId ? { id: subjectId } : undefined),
+                  grade: q.grade,
+                  difficulty: q.difficulty || '',
+                  value: q.value || q.points || 0,
+                  solution: q.solution || '',
+                  formattedSolution: q.formattedSolution || q.solution || '',
+                  options: q.alternatives?.map((alt: any) => ({
+                    id: alt.id,
+                    text: alt.text,
+                    isCorrect: alt.isCorrect || false,
+                  })) || q.options || [],
+                  secondStatement: q.secondStatement || q.secondstatement || '',
+                  skills: q.skills || '',
+                };
+              });
               setQuestions(questionsData);
               setQuestionsLoaded(true);
-              console.log('✅ Questões da API setadas no store e marcadas como carregadas');
+              console.log('✅ Questões da API setadas no store e marcadas como carregadas:', questionsData.map((q: any) => ({
+                id: q.id,
+                subjectId: q.subjectId
+              })));
             } else {
-              console.warn('⚠️ Nenhuma questão encontrada na API');
+              console.warn('⚠️ Nenhuma questão encontrada na API, tentando buscar evaluation completo...');
+              // ✅ CORREÇÃO: Se API não retornou questões, buscar evaluation completo para verificar evaluation.questions
+              try {
+                const evaluationResponse = await api.get(`/test/${id}`);
+                const evaluation = evaluationResponse.data;
+                console.log('📊 Evaluation completo:', {
+                  hasQuestions: !!evaluation.questions,
+                  questionsLength: evaluation.questions?.length || 0,
+                  questions: evaluation.questions
+                });
+                
+                if (evaluation.questions && Array.isArray(evaluation.questions) && evaluation.questions.length > 0) {
+                  console.log('📚 Usando questões do evaluation (fallback):', evaluation.questions.length);
+                  // Mapear questões do evaluation para o formato esperado
+                  // ✅ CORREÇÃO: Garantir que todas as questões tenham subjectId
+                  const mappedQuestions = evaluation.questions.map((q: any) => {
+                    const subjectId = q.subject?.id || q.subject_id || q.subjectId || evaluation.subjects?.[0]?.id || '';
+                    return {
+                      id: q.id || q.question_id || `temp-${Date.now()}-${Math.random()}`,
+                      text: q.text || q.formattedText || '',
+                      formattedText: q.formattedText || q.text || '',
+                      title: q.title || q.command || '',
+                      type: q.type === 'multiple_choice' ? 'multipleChoice' : (q.type === 'open' || q.type === 'essay' ? 'dissertativa' : 'multipleChoice'),
+                      subjectId: subjectId,
+                      subject: q.subject || (subjectId ? { id: subjectId } : undefined),
+                      grade: q.grade,
+                      difficulty: q.difficulty || '',
+                      value: q.value || q.points || 0,
+                      solution: q.solution || '',
+                      formattedSolution: q.formattedSolution || q.solution || '',
+                      options: q.alternatives?.map((alt: any) => ({
+                        id: alt.id,
+                        text: alt.text,
+                        isCorrect: alt.isCorrect || false,
+                      })) || q.options || [],
+                      secondStatement: q.secondStatement || q.secondstatement || '',
+                      skills: q.skills || '',
+                    };
+                  });
+                  setQuestions(mappedQuestions);
+                  setQuestionsLoaded(true);
+                  console.log('✅ Questões do evaluation setadas no store');
+                } else {
+                  console.warn('⚠️ Nenhuma questão encontrada em nenhuma fonte');
+                }
+              } catch (evalErr) {
+                console.error('❌ Erro ao buscar evaluation completo:', evalErr);
+              }
             }
           } catch (err) {
             console.error('❌ Erro ao buscar questões do initialData:', err);
@@ -313,31 +411,39 @@ export function CreateEvaluationModal({
           const questionsResponse = await api.get(`/questions?test_id=${id}`);
           console.log('📚 Resposta da API de questões:', questionsResponse.data?.length || 0);
           
-          if (Array.isArray(questionsResponse.data) && questionsResponse.data.length > 0) {
-            const questionsData = questionsResponse.data.map((q: any) => ({
-              id: q.id,
-              text: q.text || q.formattedText || '',
-              formattedText: q.formattedText || q.text || '',
-              title: q.title || q.command || '',
-              type: q.type === 'multiple_choice' ? 'multipleChoice' : (q.type === 'open' || q.type === 'essay' ? 'dissertativa' : 'multipleChoice'),
-              subjectId: q.subject?.id || q.subject_id || '',
-              subject: q.subject,
-              grade: q.grade,
-              difficulty: q.difficulty || '',
-              value: q.value || q.points || 0,
-              solution: q.solution || '',
-              formattedSolution: q.formattedSolution || q.solution || '',
-              options: q.alternatives?.map((alt: any) => ({
-                id: alt.id,
-                text: alt.text,
-                isCorrect: alt.isCorrect || false,
-              })) || q.options || [],
-              secondStatement: q.secondStatement || q.secondstatement || '',
-              skills: q.skills || '',
-            }));
-            console.log('📚 Carregando questões da API:', questionsData.length);
-            setQuestions(questionsData);
-            setQuestionsLoaded(true);
+            if (Array.isArray(questionsResponse.data) && questionsResponse.data.length > 0) {
+              // ✅ CORREÇÃO: Garantir que todas as questões tenham subjectId
+              const questionsData = questionsResponse.data.map((q: any) => {
+                const subjectId = q.subject?.id || q.subject_id || q.subjectId || evaluation.subjects?.[0]?.id || '';
+                return {
+                  id: q.id,
+                  text: q.text || q.formattedText || '',
+                  formattedText: q.formattedText || q.text || '',
+                  title: q.title || q.command || '',
+                  type: q.type === 'multiple_choice' ? 'multipleChoice' : (q.type === 'open' || q.type === 'essay' ? 'dissertativa' : 'multipleChoice'),
+                  subjectId: subjectId,
+                  subject: q.subject || (subjectId ? { id: subjectId } : undefined),
+                  grade: q.grade,
+                  difficulty: q.difficulty || '',
+                  value: q.value || q.points || 0,
+                  solution: q.solution || '',
+                  formattedSolution: q.formattedSolution || q.solution || '',
+                  options: q.alternatives?.map((alt: any) => ({
+                    id: alt.id,
+                    text: alt.text,
+                    isCorrect: alt.isCorrect || false,
+                  })) || q.options || [],
+                  secondStatement: q.secondStatement || q.secondstatement || '',
+                  skills: q.skills || '',
+                };
+              });
+              console.log('📚 Carregando questões da API:', questionsData.length);
+              setQuestions(questionsData);
+              setQuestionsLoaded(true);
+              console.log('✅ Questões da API setadas (fallback evaluation):', questionsData.map((q: any) => ({
+                id: q.id,
+                subjectId: q.subjectId
+              })));
           } else if (evaluation.questions && Array.isArray(evaluation.questions) && evaluation.questions.length > 0) {
             // Fallback: usar questões do evaluation se disponíveis
             console.log('📚 Usando questões do evaluation (fallback):', evaluation.questions.length);
@@ -357,12 +463,15 @@ export function CreateEvaluationModal({
         }
       }
     } catch (error) {
-      console.error('Erro ao carregar avaliação:', error);
+      console.error('❌ Erro ao carregar avaliação:', error);
+      // ✅ CORREÇÃO: Tratamento de erro mais robusto
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido ao carregar dados da avaliação';
       toast({
         title: 'Erro',
-        description: 'Erro ao carregar dados da avaliação',
+        description: errorMessage,
         variant: 'destructive',
       });
+      // Não propagar o erro para evitar crash - apenas logar e mostrar toast
     }
   };
 
@@ -421,9 +530,17 @@ export function CreateEvaluationModal({
   }, [state, loadingData]);
 
   // Carregar escolas quando município ou série mudar
+  // ✅ CORREÇÃO: Usar useRef para evitar loop infinito
+  const schoolsValidationRef = useRef(false);
+  
   useEffect(() => {
+    // Resetar flag quando município ou grade mudarem
+    schoolsValidationRef.current = false;
+    
     // Não executar se estiver carregando dados iniciais
-    if (loadingData) return;
+    if (loadingData) {
+      return;
+    }
     
     const loadSchools = async () => {
       if (!municipality || municipality === 'all') {
@@ -486,8 +603,9 @@ export function CreateEvaluationModal({
           if (missingSchools.length > 0) {
             setSchools([...schoolsData, ...missingSchools]);
           }
-        } else if (selectedSchools.length > 0) {
-          // Validar escolas selecionadas apenas se não estiver carregando dados iniciais
+        } else if (selectedSchools.length > 0 && !schoolsValidationRef.current) {
+          // Validar escolas selecionadas apenas uma vez para evitar loop
+          schoolsValidationRef.current = true;
           const validSchools = selectedSchools.filter(school =>
             schoolsData.find((s: School) => s.id === school.id)
           );
@@ -507,7 +625,7 @@ export function CreateEvaluationModal({
     };
     
     loadSchools();
-  }, [municipality, grade, selectedSchools, loadingData]);
+  }, [municipality, grade, loadingData]); // ✅ CORREÇÃO: Removido selectedSchools das dependências
 
   // Carregar turmas quando escolas, série e município estiverem selecionados
   useEffect(() => {
@@ -620,6 +738,76 @@ export function CreateEvaluationModal({
         return;
       }
       
+      // ✅ CORREÇÃO: Se estiver em modo de edição, garantir que questões foram carregadas
+      if (evaluationId || initialData) {
+        // Se não há questões no store mas deveria haver (modo edição), tentar recarregar
+          if (allQuestions.length === 0 && (initialData?.questions?.length || 0) > 0) {
+            console.log('🔄 Recarregando questões antes de ir para step 2...');
+            if (initialData?.questions && initialData.questions.length > 0) {
+              // ✅ CORREÇÃO: Garantir que todas as questões tenham subjectId
+              const questionsWithSubjectId = initialData.questions.map((q: any) => {
+                const subjectId = q.subjectId || 
+                                 q.subject?.id || 
+                                 q.subject_id || 
+                                 selectedSubjects[0]?.id || 
+                                 '';
+                return {
+                  ...q,
+                  subjectId: subjectId,
+                  subject: q.subject || (subjectId ? { id: subjectId } : undefined)
+                };
+              });
+              setQuestions(questionsWithSubjectId);
+              setQuestionsLoaded(true);
+              console.log('✅ Questões recarregadas do initialData:', questionsWithSubjectId.length, questionsWithSubjectId.map((q: any) => ({
+                id: q.id,
+                subjectId: q.subjectId
+              })));
+          } else if (evaluationId) {
+            // Tentar buscar da API
+            api.get(`/questions?test_id=${evaluationId}`)
+              .then(questionsResponse => {
+                if (Array.isArray(questionsResponse.data) && questionsResponse.data.length > 0) {
+                  // ✅ CORREÇÃO: Garantir que todas as questões tenham subjectId
+                  const questionsData = questionsResponse.data.map((q: any) => {
+                    const subjectId = q.subject?.id || q.subject_id || q.subjectId || selectedSubjects[0]?.id || '';
+                    return {
+                      id: q.id,
+                      text: q.text || q.formattedText || '',
+                      formattedText: q.formattedText || q.text || '',
+                      title: q.title || q.command || '',
+                      type: q.type === 'multiple_choice' ? 'multipleChoice' : (q.type === 'open' || q.type === 'essay' ? 'dissertativa' : 'multipleChoice'),
+                      subjectId: subjectId,
+                      subject: q.subject || (subjectId ? { id: subjectId } : undefined),
+                      grade: q.grade,
+                      difficulty: q.difficulty || '',
+                      value: q.value || q.points || 0,
+                      solution: q.solution || '',
+                      formattedSolution: q.formattedSolution || q.solution || '',
+                      options: q.alternatives?.map((alt: any) => ({
+                        id: alt.id,
+                        text: alt.text,
+                        isCorrect: alt.isCorrect || false,
+                      })) || q.options || [],
+                      secondStatement: q.secondStatement || q.secondstatement || '',
+                      skills: q.skills || '',
+                    };
+                  });
+                  setQuestions(questionsData);
+                  setQuestionsLoaded(true);
+                  console.log('✅ Questões recarregadas da API:', questionsData.length, questionsData.map((q: any) => ({
+                    id: q.id,
+                    subjectId: q.subjectId
+                  })));
+                }
+              })
+              .catch(err => {
+                console.error('❌ Erro ao recarregar questões:', err);
+              });
+          }
+        }
+      }
+      
       setStep(2);
     }
   };
@@ -655,6 +843,14 @@ export function CreateEvaluationModal({
       const classesToSend = selectedClasses.map(c => c.id);
       const schoolsToSend = selectedSchools.map(s => s.id);
       
+      // ✅ CORREÇÃO: Log das turmas antes de enviar
+      console.log('📋 Turmas selecionadas para envio:', {
+        count: selectedClasses.length,
+        classes: selectedClasses.map(c => ({ id: c.id, name: c.name, school: c.school?.id })),
+        classesToSend: classesToSend,
+        initialDataClasses: initialData?.selectedClasses?.map((c: any) => ({ id: c.id, name: c.name })) || []
+      });
+      
       const backendEvaluationData = {
         title,
         description: description || "",
@@ -663,8 +859,13 @@ export function CreateEvaluationModal({
         course,
         grade,
         subject: selectedSubjects[0]?.id || "",
-        time_limit: new Date().toISOString(),
-        end_time: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+        // ✅ CORREÇÃO: Em modo de edição, usar valores existentes ao invés de gerar novos
+        time_limit: evaluationId && initialData?.startDateTime 
+          ? initialData.startDateTime 
+          : new Date().toISOString(),
+        end_time: evaluationId && initialData?.startDateTime && initialData?.duration
+          ? new Date(new Date(initialData.startDateTime).getTime() + (parseInt(initialData.duration, 10) || 60) * 60 * 1000).toISOString()
+          : new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
         duration: parseInt(duration, 10) || 60,
         evaluation_mode: "virtual",
         municipalities: municipality === 'all' ? [] : [municipality],
@@ -677,31 +878,111 @@ export function CreateEvaluationModal({
         })),
         created_by: user?.id || "",
         questions: allQuestions.map((question, index) => {
-          if (question.id && question.id !== 'preview') {
+          // ✅ CORREÇÃO: Garantir que subjectId seja sempre definido
+          const questionSubjectId = question.subjectId || 
+                                    question.subject?.id || 
+                                    question.subject_id || 
+                                    selectedSubjects[0]?.id || 
+                                    '';
+          
+          // ✅ CORREÇÃO: Log para debug
+          console.log(`📝 Processando questão ${index + 1}:`, {
+            id: question.id,
+            hasId: !!question.id,
+            isPreview: question.id === 'preview',
+            isTemp: question.id?.startsWith('temp-'),
+            subjectId: questionSubjectId,
+            originalSubjectId: question.subjectId,
+            subject: question.subject?.id,
+            title: question.title,
+            text: question.text?.substring(0, 50)
+          });
+          
+          // ✅ CORREÇÃO: Verificar se é questão existente que já está na avaliação
+          // Questões existentes são aquelas que foram carregadas do initialData
+          const initialQuestions = initialData?.questions || [];
+          const initialQuestionIds = new Set(
+            initialQuestions
+              .map((q: any) => {
+                // Normalizar ID - pode estar em diferentes formatos
+                const id = q.id || (q as any).question_id || (q as any).questionId;
+                return id ? String(id).trim() : null;
+              })
+              .filter(Boolean)
+          );
+          
+          // Normalizar ID da questão atual para comparação
+          const questionIdNormalized = question.id 
+            ? String(question.id).trim() 
+            : null;
+          
+          // ✅ CORREÇÃO: Log detalhado para debug (apenas na primeira questão para não poluir o console)
+          if (index === 0) {
+            console.log('🔍 Debug verificação de questões existentes:', {
+              totalInitialQuestions: initialQuestions.length,
+              initialQuestionIds: Array.from(initialQuestionIds),
+              allQuestionIds: allQuestions.map(q => q.id).filter(Boolean),
+              initialQuestionsDetails: initialQuestions.map((q: any) => ({
+                id: q.id || (q as any).question_id || (q as any).questionId,
+                hasId: !!(q.id || (q as any).question_id || (q as any).questionId)
+              }))
+            });
+          }
+          
+          const isExistingQuestion = questionIdNormalized && 
+                                     questionIdNormalized !== 'preview' && 
+                                     !questionIdNormalized.startsWith('temp-') &&
+                                     initialQuestionIds.has(questionIdNormalized);
+          
+          if (isExistingQuestion) {
+            // Questão existente que já está na avaliação - apenas referência
+            console.log(`✅ Questão ${index + 1} é existente (referência):`, questionIdNormalized);
+            // ✅ CORREÇÃO: Garantir que apenas id e number são enviados (sem outros campos)
             return {
-              id: question.id,
+              id: questionIdNormalized,
               number: index + 1
             };
           }
 
-          return {
+          // ✅ CORREÇÃO: Questões com ID válido que não estão no initialData
+          // Se a questão tem ID mas não estava no initialData, ela foi adicionada do banco de questões
+          // Nesse caso, o backend precisa criar a associação. Para questões que já existem no banco,
+          // o backend pode precisar apenas da referência {id, number}, mas como não estava na avaliação,
+          // vamos tentar enviar como referência primeiro (igual às existentes)
+          // Se isso não funcionar, o backend pode precisar de um formato diferente
+          if (questionIdNormalized && 
+              questionIdNormalized !== 'preview' && 
+              !questionIdNormalized.startsWith('temp-')) {
+            // Questão existe no banco mas não estava no initialData
+            // Tentar enviar como referência (mesmo formato das existentes)
+            // O backend deve criar a associação baseado no ID
+            console.log(`✅ Questão ${index + 1} existe no banco mas não estava na avaliação (nova associação - referência):`, questionIdNormalized);
+            return {
+              id: questionIdNormalized,
+              number: index + 1
+            };
+          }
+
+          // ✅ CORREÇÃO: Questão verdadeiramente nova (sem ID válido) - criar completa
+          // Questões novas NÃO devem incluir 'id' no payload completo
+          const newQuestion: any = {
             number: index + 1,
-            text: question.text,
-            formattedText: question.formattedText || question.text,
-            subjectId: question.subjectId,
-            title: question.title,
-            description: question.title,
-            command: question.title,
-            subtitle: question.title,
+            text: question.text || '',
+            formattedText: question.formattedText || question.text || '',
+            subjectId: questionSubjectId, // ✅ CORREÇÃO: Usar subjectId garantido
+            title: question.title || '',
+            description: question.title || '',
+            command: question.title || '',
+            subtitle: question.title || '',
             secondStatement: question.secondStatement || '',
             options: question.options?.map((opt, optIndex) => ({
               id: String.fromCharCode(65 + optIndex),
-              text: opt.text,
-              isCorrect: opt.isCorrect
+              text: opt.text || '',
+              isCorrect: opt.isCorrect || false
             })) || [],
             skills: question.skills || "",
             grade: question.grade?.id || grade,
-            difficulty: question.difficulty,
+            difficulty: question.difficulty || '',
             solution: question.solution || "",
             formattedSolution: question.formattedSolution || question.solution || "",
             type: question.type === 'multipleChoice' ? 'multiple_choice' : 'open',
@@ -710,25 +991,240 @@ export function CreateEvaluationModal({
             educationStageId: course,
             created_by: user?.id || "",
             lastModifiedBy: user?.id || ""
+            // ✅ CORREÇÃO: NÃO incluir 'id' aqui - questões novas não devem ter ID no payload
           };
+          
+          console.log(`✅ Questão ${index + 1} preparada para envio (nova):`, {
+            number: newQuestion.number,
+            title: newQuestion.title,
+            subjectId: newQuestion.subjectId,
+            text: newQuestion.text.substring(0, 50) + '...',
+            optionsCount: newQuestion.options.length,
+            hasId: false
+          });
+          return newQuestion;
         })
       };
+      
+      // ✅ CORREÇÃO: Validação final - garantir que questões existentes não têm campos extras
+      const validatedQuestions = backendEvaluationData.questions.map((q: any) => {
+        // Se a questão tem apenas 'id' e 'number', é uma referência (correto)
+        const keys = Object.keys(q);
+        const isReference = keys.length === 2 && keys.includes('id') && keys.includes('number');
+        
+        if (isReference) {
+          // Garantir que apenas id e number estão presentes
+          return {
+            id: q.id,
+            number: q.number
+          };
+        }
+        
+        // Se não é referência, é questão nova (deve ter todos os campos)
+        return q;
+      });
+      
+      backendEvaluationData.questions = validatedQuestions;
+
+      // ✅ CORREÇÃO: Log completo do payload JSON antes de enviar
+      console.log('📤 Payload final que será enviado (resumo):', {
+        evaluationId,
+        questionsCount: backendEvaluationData.questions.length,
+        classesCount: backendEvaluationData.classes.length,
+        classes: backendEvaluationData.classes,
+        schoolsCount: backendEvaluationData.schools.length,
+        questions: backendEvaluationData.questions.map((q: any, idx: number) => ({
+          index: idx + 1,
+          hasId: !!q.id,
+          id: q.id,
+          number: q.number,
+          isReference: !q.text && !!q.id, // Se tem ID mas não tem text, é apenas referência
+          isNew: !!q.text, // Se tem text, é questão nova
+          title: q.title || 'Sem título',
+          subjectId: q.subjectId
+        }))
+      });
+      
+      // ✅ CORREÇÃO: Log completo do payload JSON (stringify completo)
+      try {
+        console.log('📤 Payload JSON completo:', JSON.stringify(backendEvaluationData, null, 2));
+      } catch (error) {
+        console.error('❌ Erro ao serializar payload:', error);
+      }
 
       if (evaluationId) {
-        await api.put(`/test/${evaluationId}`, backendEvaluationData);
-        toast({
-          title: SUCCESS_MESSAGES.EVALUATION_UPDATED || 'Avaliação atualizada!',
-          description: `A avaliação "${title}" foi atualizada com sucesso!`,
+        // ✅ CORREÇÃO: Log do payload antes de enviar
+        console.log('📤 Enviando PUT para atualizar avaliação:', {
+          evaluationId,
+          questionsCount: backendEvaluationData.questions.length,
+          questionsSummary: backendEvaluationData.questions.map((q: any) => ({
+            number: q.number,
+            hasId: !!q.id,
+            id: q.id,
+            isReference: !q.text && !!q.id,
+            isNew: !!q.text,
+            subjectId: q.subjectId,
+            title: q.title || 'Sem título'
+          }))
         });
-      } else {
-        const response = await api.post("/test", backendEvaluationData);
         
-        if (response.status === 201 || response.status === 200) {
-          await updateAfterCRUD();
-          toast({
-            title: SUCCESS_MESSAGES.EVALUATION_CREATED,
-            description: `Avaliação "${title}" criada com sucesso!`,
+        let response;
+        try {
+          response = await api.put(`/test/${evaluationId}`, backendEvaluationData);
+          
+          // ✅ CORREÇÃO: Log completo da resposta da API
+          console.log('✅ Resposta da API após atualizar (resumo):', {
+            status: response.status,
+            statusText: response.statusText,
+            questionsInResponse: response.data?.questions?.length || 0,
+            hasData: !!response.data
           });
+          
+          // ✅ CORREÇÃO: Log completo da resposta JSON
+          try {
+            console.log('✅ Resposta JSON completa:', JSON.stringify(response.data, null, 2));
+          } catch (error) {
+            console.error('❌ Erro ao serializar resposta:', error);
+          }
+          
+          // ✅ CORREÇÃO: Verificar se as questões e turmas foram salvas
+          try {
+            // Verificar questões
+            const verifyQuestionsResponse = await api.get(`/questions?test_id=${evaluationId}`);
+            const questionsCount = Array.isArray(verifyQuestionsResponse.data) ? verifyQuestionsResponse.data.length : 0;
+            const expectedQuestionsCount = backendEvaluationData.questions.length;
+            
+            // Verificar turmas através da avaliação
+            const verifyEvaluationResponse = await api.get(`/test/${evaluationId}`);
+            const savedClasses = verifyEvaluationResponse.data?.classes || [];
+            const savedClassesCount = Array.isArray(savedClasses) ? savedClasses.length : 0;
+            const expectedClassesCount = backendEvaluationData.classes.length;
+            
+            console.log('🔍 Verificação: Questões e turmas após atualização:', {
+              questoes: {
+                count: questionsCount,
+                expected: expectedQuestionsCount,
+                isArray: Array.isArray(verifyQuestionsResponse.data)
+              },
+              turmas: {
+                count: savedClassesCount,
+                expected: expectedClassesCount,
+                saved: savedClasses,
+                enviadas: backendEvaluationData.classes
+              }
+            });
+            
+            // ✅ CORREÇÃO: Avisar se as questões não foram salvas
+            if (questionsCount !== expectedQuestionsCount) {
+              console.error('❌ PROBLEMA: Questões não foram salvas corretamente!', {
+                esperado: expectedQuestionsCount,
+                encontrado: questionsCount,
+                payloadEnviado: backendEvaluationData.questions.length,
+                questoesEnviadas: backendEvaluationData.questions.map((q: any) => ({
+                  id: q.id,
+                  number: q.number,
+                  isReference: !q.text && !!q.id
+                }))
+              });
+              
+              toast({
+                title: 'Aviso',
+                description: `A avaliação foi atualizada, mas apenas ${questionsCount} de ${expectedQuestionsCount} questões foram salvas. Isso pode ser um problema no backend.`,
+                variant: 'destructive',
+              });
+            }
+            
+            // ✅ CORREÇÃO: Avisar se as turmas não foram salvas
+            if (savedClassesCount !== expectedClassesCount) {
+              console.error('❌ PROBLEMA: Turmas não foram salvas corretamente!', {
+                esperado: expectedClassesCount,
+                encontrado: savedClassesCount,
+                payloadEnviado: backendEvaluationData.classes,
+                turmasSalvas: savedClasses
+              });
+              
+              toast({
+                title: 'Aviso',
+                description: `A avaliação foi atualizada, mas apenas ${savedClassesCount} de ${expectedClassesCount} turma(s) foram salvas. Isso pode ser um problema no backend.`,
+                variant: 'destructive',
+              });
+            }
+          } catch (verifyError) {
+            console.warn('⚠️ Não foi possível verificar questões e turmas após atualização:', verifyError);
+          }
+          
+          toast({
+            title: SUCCESS_MESSAGES.EVALUATION_UPDATED || 'Avaliação atualizada!',
+            description: `A avaliação "${title}" foi atualizada com sucesso!`,
+          });
+        } catch (error: any) {
+          // ✅ CORREÇÃO: Tratamento de erro mais detalhado
+          console.error('❌ Erro ao atualizar avaliação:', {
+            message: error?.message,
+            response: error?.response?.data,
+            status: error?.response?.status,
+            statusText: error?.response?.statusText,
+            fullError: error
+          });
+          
+          // Log completo do erro se disponível
+          if (error?.response?.data) {
+            try {
+              console.error('❌ Detalhes do erro do backend:', JSON.stringify(error.response.data, null, 2));
+            } catch (e) {
+              console.error('❌ Erro ao serializar detalhes do erro:', e);
+            }
+          }
+          
+          toast({
+            title: 'Erro ao atualizar avaliação',
+            description: error?.response?.data?.message || error?.message || 'Erro desconhecido ao atualizar a avaliação',
+            variant: 'destructive',
+          });
+          throw error; // Re-throw para que o código não continue
+        }
+      } else {
+        try {
+          const response = await api.post("/test", backendEvaluationData);
+          
+          // ✅ CORREÇÃO: Log da resposta ao criar
+          console.log('✅ Resposta da API após criar:', {
+            status: response.status,
+            statusText: response.statusText,
+            data: response.data
+          });
+          
+          if (response.status === 201 || response.status === 200) {
+            await updateAfterCRUD();
+            toast({
+              title: SUCCESS_MESSAGES.EVALUATION_CREATED,
+              description: `Avaliação "${title}" criada com sucesso!`,
+            });
+          }
+        } catch (error: any) {
+          // ✅ CORREÇÃO: Tratamento de erro ao criar
+          console.error('❌ Erro ao criar avaliação:', {
+            message: error?.message,
+            response: error?.response?.data,
+            status: error?.response?.status,
+            statusText: error?.response?.statusText,
+            fullError: error
+          });
+          
+          if (error?.response?.data) {
+            try {
+              console.error('❌ Detalhes do erro do backend:', JSON.stringify(error.response.data, null, 2));
+            } catch (e) {
+              console.error('❌ Erro ao serializar detalhes do erro:', e);
+            }
+          }
+          
+          toast({
+            title: 'Erro ao criar avaliação',
+            description: error?.response?.data?.message || error?.message || 'Erro desconhecido ao criar a avaliação',
+            variant: 'destructive',
+          });
+          throw error;
         }
       }
 
@@ -771,24 +1267,9 @@ export function CreateEvaluationModal({
   };
 
   const handleClose = () => {
+    // ✅ CORREÇÃO: Apenas fechar o modal e voltar ao menu principal
+    // Limpar estados apenas se necessário
     setStep(1);
-    setTitle('');
-    setDescription('');
-    setDuration('60');
-    setType('AVALIACAO');
-    setModel('SAEB');
-    setCourse('');
-    setGrade('');
-    setState('');
-    setMunicipality('');
-    setSelectedSchools([]);
-    setSelectedClasses([]);
-    setSelectedSubjects([]);
-    setShowQuestionBank(false);
-    setShowQuestionPreview(false);
-    setShowCreateQuestion(false);
-    setSelectedSubjectForQuestion("");
-    setPreviewQuestion(null);
     clearQuestions();
     setQuestionsLoaded(false);
     // Chamar onClose que vai fechar o modal e navegar
@@ -846,16 +1327,89 @@ export function CreateEvaluationModal({
   };
 
   const handleQuestionCreated = (question: Question) => {
-    addQuestion(question);
-    setShowCreateQuestion(false);
-    toast({
-      title: "Questão criada",
-      description: "Nova questão adicionada à avaliação",
+    console.log('📝 handleQuestionCreated chamado:', {
+      questionId: question.id,
+      questionSubjectId: question.subjectId,
+      selectedSubjectForQuestion,
+      allQuestionsCount: allQuestions.length
     });
+    
+    // ✅ CORREÇÃO: Verificar se a questão já existe e garantir subjectId correto
+    const questionId = question.id;
+    
+    // Verificar duplicatas apenas se tiver ID válido
+    if (questionId && questionId !== '' && !questionId.startsWith('temp-')) {
+      if (allQuestions.some(q => q.id === questionId)) {
+        console.warn('⚠️ Questão já existe no store:', questionId);
+        toast({
+          title: "Questão já adicionada",
+          description: "Esta questão já está na avaliação",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    
+    // Garantir que o subjectId está correto
+    const questionWithSubject = {
+      ...question,
+      subjectId: selectedSubjectForQuestion || question.subjectId || question.subject?.id || question.subject_id || '',
+      subject: question.subject || (selectedSubjectForQuestion ? { id: selectedSubjectForQuestion } : undefined),
+    };
+    
+    console.log('✅ Adicionando questão ao store:', {
+      id: questionWithSubject.id,
+      subjectId: questionWithSubject.subjectId,
+      title: questionWithSubject.title
+    });
+    
+    try {
+      addQuestion(questionWithSubject);
+      setShowCreateQuestion(false);
+      toast({
+        title: "Questão criada",
+        description: "Nova questão adicionada à avaliação",
+      });
+    } catch (error) {
+      console.error('❌ Erro ao adicionar questão:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível adicionar a questão",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleQuestionSelected = (question: Question) => {
-    addQuestion(question);
+    // ✅ CORREÇÃO: Verificar se a questão já existe antes de adicionar
+    const questionId = question.id;
+    if (!questionId) {
+      toast({
+        title: "Erro",
+        description: "Questão inválida - sem ID",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Verificar se a questão já foi adicionada
+    if (allQuestions.some(q => q.id === questionId)) {
+      toast({
+        title: "Questão já adicionada",
+        description: "Esta questão já está na avaliação",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // ✅ CORREÇÃO: Garantir que o subjectId está correto
+    const questionWithSubject = {
+      ...question,
+      subjectId: selectedSubjectForQuestion || question.subjectId || question.subject?.id || question.subject_id || '',
+      subject: question.subject || (selectedSubjectForQuestion ? { id: selectedSubjectForQuestion } : undefined),
+    };
+    
+    addQuestion(questionWithSubject);
     toast({
       title: "Questão adicionada",
       description: "Questão adicionada à avaliação",
@@ -893,10 +1447,16 @@ export function CreateEvaluationModal({
   const getQuestionsForSubject = (subjectId: string) => {
     const filtered = allQuestions.filter(q => {
       const questionWithSubjectId = q as { subjectId?: string; subject?: { id?: string }; subject_id?: string };
-      return questionWithSubjectId.subjectId === subjectId || 
-             questionWithSubjectId.subject?.id === subjectId ||
-             questionWithSubjectId.subject_id === subjectId;
+      // ✅ CORREÇÃO: Melhorar comparação para lidar com diferentes formatos
+      const qSubjectId = questionWithSubjectId.subjectId || 
+                         questionWithSubjectId.subject?.id || 
+                         questionWithSubjectId.subject_id ||
+                         (questionWithSubjectId.subject as any)?.id;
+      
+      // Comparar como strings para garantir match correto
+      return String(qSubjectId || '').trim() === String(subjectId || '').trim();
     });
+    console.log(`🔍 getQuestionsForSubject(${subjectId}): encontradas ${filtered.length} questões de ${allQuestions.length} totais`);
     return filtered;
   };
 
@@ -909,35 +1469,171 @@ export function CreateEvaluationModal({
     }
   }, [allQuestions]);
 
+  // ✅ CORREÇÃO: Garantir que questões sejam preservadas quando step 2 é acessado
+  // Usar useRef para evitar loop infinito
+  const step2QuestionsLoadedRef = useRef(false);
+  
+  useEffect(() => {
+    // Quando o step 2 é acessado e está em modo de edição, garantir que questões estejam carregadas
+    // Resetar a flag quando mudar de step
+    if (step !== 2) {
+      step2QuestionsLoadedRef.current = false;
+      return;
+    }
+    
+    // Se já tentou carregar para este step, não tentar novamente
+    if (step2QuestionsLoadedRef.current) {
+      return;
+    }
+    
+    if (step === 2 && (evaluationId || initialData)) {
+      console.log('📋 Step 2 acessado - Verificando questões:', {
+        allQuestionsCount: allQuestions.length,
+        initialDataQuestionsCount: initialData?.questions?.length || 0,
+        questionsLoaded,
+        evaluationId
+      });
+      
+      // Marcar que já tentou carregar para evitar loops
+      step2QuestionsLoadedRef.current = true;
+      
+      // Se não há questões no store mas deveria haver, recarregar
+      if (allQuestions.length === 0 && (initialData?.questions?.length || 0) > 0) {
+        console.log('🔄 Step 2: Recarregando questões do initialData...');
+        // ✅ CORREÇÃO: Garantir que todas as questões tenham subjectId
+        const questionsWithSubjectId = initialData.questions.map((q: any) => {
+          const subjectId = q.subjectId || 
+                           q.subject?.id || 
+                           q.subject_id || 
+                           selectedSubjects[0]?.id || 
+                           '';
+          return {
+            ...q,
+            subjectId: subjectId,
+            subject: q.subject || (subjectId ? { id: subjectId } : undefined)
+          };
+        });
+        setQuestions(questionsWithSubjectId);
+        setQuestionsLoaded(true);
+        console.log('✅ Step 2: Questões do initialData recarregadas:', questionsWithSubjectId.map((q: any) => ({
+          id: q.id,
+          subjectId: q.subjectId
+        })));
+      } else if (allQuestions.length === 0 && evaluationId && !questionsLoaded) {
+        // Tentar buscar da API se não foram carregadas ainda
+        console.log('🔄 Step 2: Buscando questões da API...');
+        api.get(`/questions?test_id=${evaluationId}`)
+          .then(questionsResponse => {
+            if (Array.isArray(questionsResponse.data) && questionsResponse.data.length > 0) {
+              // ✅ CORREÇÃO: Garantir que todas as questões tenham subjectId
+              const questionsData = questionsResponse.data.map((q: any) => {
+                const subjectId = q.subject?.id || q.subject_id || q.subjectId || selectedSubjects[0]?.id || '';
+                return {
+                  id: q.id,
+                  text: q.text || q.formattedText || '',
+                  formattedText: q.formattedText || q.text || '',
+                  title: q.title || q.command || '',
+                  type: q.type === 'multiple_choice' ? 'multipleChoice' : (q.type === 'open' || q.type === 'essay' ? 'dissertativa' : 'multipleChoice'),
+                  subjectId: subjectId,
+                  subject: q.subject || (subjectId ? { id: subjectId } : undefined),
+                  grade: q.grade,
+                  difficulty: q.difficulty || '',
+                  value: q.value || q.points || 0,
+                  solution: q.solution || '',
+                  formattedSolution: q.formattedSolution || q.solution || '',
+                  options: q.alternatives?.map((alt: any) => ({
+                    id: alt.id,
+                    text: alt.text,
+                    isCorrect: alt.isCorrect || false,
+                  })) || q.options || [],
+                  secondStatement: q.secondStatement || q.secondstatement || '',
+                  skills: q.skills || '',
+                };
+              });
+              setQuestions(questionsData);
+              setQuestionsLoaded(true);
+              console.log('✅ Step 2: Questões carregadas da API:', questionsData.length, questionsData.map((q: any) => ({
+                id: q.id,
+                subjectId: q.subjectId
+              })));
+            }
+          })
+          .catch(err => {
+            console.error('❌ Erro ao buscar questões no step 2:', err);
+            // Resetar flag em caso de erro para permitir nova tentativa
+            step2QuestionsLoadedRef.current = false;
+          });
+      } else if (allQuestions.length > 0) {
+        console.log('✅ Step 2: Questões já estão carregadas:', allQuestions.length);
+      }
+    }
+  }, [step, evaluationId, initialData, questionsLoaded, setQuestions]); // Removido allQuestions.length das dependências
+
   // Garantir que questões sejam carregadas quando o modal abrir para edição
   // Este useEffect serve como fallback caso as questões não sejam carregadas no loadEvaluationData
+  // Usar useRef para evitar loop infinito
+  const fallbackQuestionsLoadedRef = useRef(false);
+  
   useEffect(() => {
     // Aguardar um pouco para garantir que loadEvaluationData terminou
-    if (!isOpen || loadingData) return;
+    if (!isOpen || loadingData) {
+      // Resetar flag quando modal fechar
+      if (!isOpen) {
+        fallbackQuestionsLoadedRef.current = false;
+      }
+      return;
+    }
+    
+    // Se já tentou carregar, não tentar novamente
+    if (fallbackQuestionsLoadedRef.current) {
+      return;
+    }
     
     // Se há dados iniciais ou evaluationId mas não há questões no store após um tempo, tentar carregar
-    if ((evaluationId || initialData) && allQuestions.length === 0) {
+    if ((evaluationId || initialData)) {
+      // Marcar que já tentou carregar
+      fallbackQuestionsLoadedRef.current = true;
+      
       const timer = setTimeout(() => {
-        // Verificar novamente se ainda não há questões
-        if (allQuestions.length === 0) {
-          console.log('🔄 Fallback: Tentando recarregar questões após delay...');
-          if (initialData?.questions && initialData.questions.length > 0) {
-            console.log('📚 Fallback: Recarregando questões do initialData');
-            setQuestions(initialData.questions);
-          } else if (evaluationId) {
-            // Tentar buscar questões da API novamente
-            api.get(`/questions?test_id=${evaluationId}`)
-              .then(questionsResponse => {
-                if (Array.isArray(questionsResponse.data) && questionsResponse.data.length > 0) {
-                  console.log('📚 Fallback: Recarregando questões da API');
-                  const questionsData = questionsResponse.data.map((q: any) => ({
+        console.log('🔄 Fallback: Tentando recarregar questões após delay...');
+        if (initialData?.questions && initialData.questions.length > 0) {
+          console.log('📚 Fallback: Recarregando questões do initialData');
+          // ✅ CORREÇÃO: Garantir que todas as questões tenham subjectId
+          const questionsWithSubjectId = initialData.questions.map((q: any) => {
+            const subjectId = q.subjectId || 
+                             q.subject?.id || 
+                             q.subject_id || 
+                             selectedSubjects[0]?.id || 
+                             '';
+            return {
+              ...q,
+              subjectId: subjectId,
+              subject: q.subject || (subjectId ? { id: subjectId } : undefined)
+            };
+          });
+          setQuestions(questionsWithSubjectId);
+          setQuestionsLoaded(true);
+          console.log('✅ Fallback: Questões do initialData recarregadas:', questionsWithSubjectId.map((q: any) => ({
+            id: q.id,
+            subjectId: q.subjectId
+          })));
+        } else if (evaluationId) {
+          // Tentar buscar questões da API novamente
+          api.get(`/questions?test_id=${evaluationId}`)
+            .then(questionsResponse => {
+              if (Array.isArray(questionsResponse.data) && questionsResponse.data.length > 0) {
+                console.log('📚 Fallback: Recarregando questões da API');
+                // ✅ CORREÇÃO: Garantir que todas as questões tenham subjectId
+                const questionsData = questionsResponse.data.map((q: any) => {
+                  const subjectId = q.subject?.id || q.subject_id || q.subjectId || selectedSubjects[0]?.id || '';
+                  return {
                     id: q.id,
                     text: q.text || q.formattedText || '',
                     formattedText: q.formattedText || q.text || '',
                     title: q.title || q.command || '',
                     type: q.type === 'multiple_choice' ? 'multipleChoice' : (q.type === 'open' || q.type === 'essay' ? 'dissertativa' : 'multipleChoice'),
-                    subjectId: q.subject?.id || q.subject_id || '',
-                    subject: q.subject,
+                    subjectId: subjectId,
+                    subject: q.subject || (subjectId ? { id: subjectId } : undefined),
                     grade: q.grade,
                     difficulty: q.difficulty || '',
                     value: q.value || q.points || 0,
@@ -950,20 +1646,27 @@ export function CreateEvaluationModal({
                     })) || q.options || [],
                     secondStatement: q.secondStatement || q.secondstatement || '',
                     skills: q.skills || '',
-                  }));
-                  setQuestions(questionsData);
-                }
-              })
-              .catch(err => {
-                console.error('❌ Erro ao recarregar questões (fallback):', err);
-              });
-          }
+                  };
+                });
+                setQuestions(questionsData);
+                setQuestionsLoaded(true);
+                console.log('✅ Fallback: Questões recarregadas da API:', questionsData.length, questionsData.map((q: any) => ({
+                  id: q.id,
+                  subjectId: q.subjectId
+                })));
+              }
+            })
+            .catch(err => {
+              console.error('❌ Erro ao recarregar questões (fallback):', err);
+              // Resetar flag em caso de erro para permitir nova tentativa
+              fallbackQuestionsLoadedRef.current = false;
+            });
         }
       }, 500); // Aguardar 500ms para garantir que loadEvaluationData terminou
       
       return () => clearTimeout(timer);
     }
-  }, [isOpen, evaluationId, initialData, allQuestions.length, loadingData, setQuestions]);
+  }, [isOpen, evaluationId, initialData, loadingData, setQuestions]); // Removido allQuestions.length das dependências
 
   // Validações para o indicador de progresso
   const isTitleValid = title && title.trim().length >= 3;
@@ -1447,6 +2150,23 @@ export function CreateEvaluationModal({
                   </div>
                 </div>
 
+                {/* ✅ CORREÇÃO: Verificação adicional para modo de edição */}
+                {step === 2 && (evaluationId || initialData) && allQuestions.length === 0 && (initialData?.questions?.length || 0) > 0 && (
+                  <div className="bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 mb-4">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+                      <div>
+                        <p className="text-sm font-medium text-yellow-800 dark:text-yellow-300">
+                          Carregando questões da avaliação...
+                        </p>
+                        <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-1">
+                          Aguarde enquanto as questões são carregadas.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {selectedSubjects.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     <Book className="h-8 w-8 mx-auto mb-2 opacity-50" />
@@ -1457,6 +2177,18 @@ export function CreateEvaluationModal({
                   <div className="space-y-6">
                     {selectedSubjects.map((subject) => {
                       const subjectQuestions = getQuestionsForSubject(subject.id);
+                      
+                      // ✅ CORREÇÃO: Log para debug quando não há questões mas deveria haver
+                      if ((evaluationId || initialData) && subjectQuestions.length === 0 && allQuestions.length > 0) {
+                        console.log(`⚠️ Nenhuma questão encontrada para disciplina ${subject.name} (${subject.id})`, {
+                          allQuestions: allQuestions.map(q => ({
+                            id: q.id,
+                            subjectId: (q as any).subjectId,
+                            subject: (q as any).subject?.id,
+                            subject_id: (q as any).subject_id
+                          }))
+                        });
+                      }
                       
                       return (
                         <Card key={subject.id}>
@@ -1497,9 +2229,12 @@ export function CreateEvaluationModal({
                                   <p className="text-sm">Use os botões acima para adicionar questões</p>
                                 </div>
                               ) : (
-                                subjectQuestions.map((question, index) => (
+                                subjectQuestions.map((question, index) => {
+                                  // ✅ CORREÇÃO: Criar chave única combinando ID da questão com ID da disciplina e índice
+                                  const uniqueKey = `${subject.id}-${question.id || `temp-${index}`}-${index}`;
+                                  return (
                                   <div
-                                    key={question.id || index}
+                                    key={uniqueKey}
                                     className="flex items-center justify-between p-3 border rounded-lg bg-muted"
                                   >
                                     <div className="flex-1">
@@ -1535,7 +2270,8 @@ export function CreateEvaluationModal({
                                       </Button>
                                     </div>
                                   </div>
-                                ))
+                                  );
+                                })
                               )}
                             </div>
                           </CardContent>
