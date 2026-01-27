@@ -104,37 +104,66 @@ const EditEvaluation = () => {
                 let questionsData: FormQuestion[] = [];
                 try {
                     // Tentar buscar questões do endpoint de questões
+                    console.log(`🔍 EditEvaluation: Buscando questões para test_id=${id}`);
                     const questionsResponse = await api.get(`/questions?test_id=${id}`);
+                    console.log(`📊 EditEvaluation: Resposta da API de questões:`, {
+                        isArray: Array.isArray(questionsResponse.data),
+                        length: questionsResponse.data?.length || 0,
+                        data: questionsResponse.data
+                    });
+                    
                     if (Array.isArray(questionsResponse.data) && questionsResponse.data.length > 0) {
-                        questionsData = questionsResponse.data.map((q: any) => ({
+                        questionsData = questionsResponse.data.map((q: any) => {
+                            // ✅ CORREÇÃO: Garantir que subjectId seja sempre definido corretamente
+                            const subjectId = q.subject?.id || q.subject_id || q.subjectId || '';
+                            
+                            return {
+                                id: q.id,
+                                text: q.text || q.formattedText || '',
+                                formattedText: q.formattedText || q.text || '',
+                                title: q.title || q.command || '',
+                                type: q.type === 'multiple_choice' ? 'multipleChoice' : (q.type === 'open' || q.type === 'essay' ? 'dissertativa' : 'multipleChoice'),
+                                subjectId: subjectId,
+                                subject: q.subject || (subjectId ? { id: subjectId } : undefined),
+                                grade: q.grade,
+                                difficulty: q.difficulty || '',
+                                value: q.value || q.points || 0,
+                                solution: q.solution || '',
+                                formattedSolution: q.formattedSolution || q.solution || '',
+                                options: q.alternatives?.map((alt: any) => ({
+                                    id: alt.id,
+                                    text: alt.text,
+                                    isCorrect: alt.isCorrect || false,
+                                })) || q.options || [],
+                                secondStatement: q.secondStatement || q.secondstatement || '',
+                                skills: q.skills || '',
+                            };
+                        }) as FormQuestion[];
+                        
+                        console.log("✅ EditEvaluation: Questões mapeadas com subjectId:", questionsData.map(q => ({
                             id: q.id,
-                            text: q.text || q.formattedText || '',
-                            formattedText: q.formattedText || q.text || '',
-                            title: q.title || q.command || '',
-                            type: q.type === 'multiple_choice' ? 'multipleChoice' : (q.type === 'open' || q.type === 'essay' ? 'dissertativa' : 'multipleChoice'),
-                            subjectId: q.subject?.id || q.subject_id || '',
-                            subject: q.subject,
-                            grade: q.grade,
-                            difficulty: q.difficulty || '',
-                            value: q.value || q.points || 0,
-                            solution: q.solution || '',
-                            formattedSolution: q.formattedSolution || q.solution || '',
-                            options: q.alternatives?.map((alt: any) => ({
-                                id: alt.id,
-                                text: alt.text,
-                                isCorrect: alt.isCorrect || false,
-                            })) || q.options || [],
-                            secondStatement: q.secondStatement || q.secondstatement || '',
-                            skills: q.skills || '',
-                        })) as FormQuestion[];
+                            subjectId: (q as any).subjectId,
+                            subject: (q as any).subject?.id
+                        })));
+                    } else {
+                        console.warn("⚠️ EditEvaluation: API retornou array vazio ou inválido");
                     }
                 } catch (error) {
-                    console.error("Erro ao buscar questões:", error);
+                    console.error("❌ EditEvaluation: Erro ao buscar questões:", error);
                     // Se falhar, usar questões do evaluation se disponíveis
                     if (evaluation.questions && Array.isArray(evaluation.questions) && evaluation.questions.length > 0) {
+                        console.log(`📚 EditEvaluation: Usando questões do evaluation como fallback: ${evaluation.questions.length} questões`);
                         questionsData = evaluation.questions as unknown as FormQuestion[];
                     }
                 }
+                
+                // ✅ CORREÇÃO: Se ainda não há questões, verificar se evaluation.questions tem dados
+                if (questionsData.length === 0 && evaluation.questions && Array.isArray(evaluation.questions) && evaluation.questions.length > 0) {
+                    console.log(`📚 EditEvaluation: Usando questões do evaluation (fallback final): ${evaluation.questions.length} questões`);
+                    questionsData = evaluation.questions as unknown as FormQuestion[];
+                }
+                
+                console.log(`📋 EditEvaluation: Total de questões carregadas: ${questionsData.length}`);
 
                 // Converter escolas para o formato correto
                 const schoolsFormatted = evaluation.schools?.map((s: School | string) => {
@@ -215,7 +244,14 @@ const EditEvaluation = () => {
                     state: formData.state,
                     municipality: formData.municipality,
                     questionsCount: formData.questions?.length || 0,
-                    questions: formData.questions
+                    questions: formData.questions?.map(q => ({
+                        id: q.id,
+                        subjectId: (q as any).subjectId,
+                        subject: (q as any).subject?.id,
+                        subject_id: (q as any).subject_id,
+                        title: (q as any).title
+                    })),
+                    subjects: formData.subjects?.map(s => ({ id: s.id, name: s.name }))
                 });
 
                 // ✅ VALIDAÇÃO: Verificar se dados são consistentes
@@ -261,8 +297,8 @@ const EditEvaluation = () => {
 
     const handleClose = () => {
         setShowModal(false);
-        // Usar replace: true para evitar problemas de navegação
-        navigate(`/app/avaliacao/${id}`, { replace: true });
+        // ✅ CORREÇÃO: Voltar para o menu principal (lista de avaliações)
+        navigate('/app/avaliacoes', { replace: true });
     };
 
     if (isLoading) {
@@ -284,6 +320,18 @@ const EditEvaluation = () => {
                     <Button onClick={() => navigate("/app/avaliacoes")}>
                         Voltar para Avaliações
                     </Button>
+                </div>
+            </div>
+        );
+    }
+
+    // ✅ CORREÇÃO: Adicionar verificação de segurança antes de renderizar
+    if (!evaluationData) {
+        return (
+            <div className="min-h-screen flex items-center justify-center">
+                <div className="text-center">
+                    <p className="text-muted-foreground mb-4">Carregando dados da avaliação...</p>
+                    <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
                 </div>
             </div>
         );

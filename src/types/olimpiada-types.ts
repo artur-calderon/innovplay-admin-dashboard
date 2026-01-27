@@ -53,6 +53,7 @@ export interface OlimpiadaFormData {
   municipalities: string[];
   classes: string[]; // IDs das turmas selecionadas
   selectedClasses?: ClassInfo[]; // Informações completas das turmas
+  selected_students?: string[]; // IDs dos alunos individuais selecionados (para aplicação individual)
   questions: string[]; // IDs das questões
   startDateTime?: string;
   endDateTime?: string;
@@ -126,6 +127,7 @@ export interface OlimpiadaCardData {
   completedStudents?: number;
   subjects?: Subject[];
   created_at?: string;
+  selected_students?: string[]; // ✅ Alunos individuais selecionados
   // Informações adicionais para filtros
   estado?: string | null;
   municipio?: string | null;
