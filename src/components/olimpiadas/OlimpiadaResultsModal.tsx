@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, Medal, Trophy, TrendingUp, Users, X, Download, BarChart3, Table2, PieChart, School, MapPin, Target, Award, CheckCircle2, UserCheck, AlertCircle, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { EvaluationResultsApiService } from '@/services/evaluationResultsApi';
+import { OlimpiadasApiService } from '@/services/olimpiadasApi';
 import { ResultsCharts } from '@/components/evaluations/ResultsCharts';
 import { DisciplineTables } from '@/components/evaluations/DisciplineTables';
 import { ClassStatistics } from '@/components/evaluations/ClassStatistics';
@@ -202,6 +203,10 @@ export function OlimpiadaResultsModal({
     setError(null);
     
     try {
+      // ✅ NOVO: Buscar lista de alunos individuais aplicados primeiro
+      const individualStudentIds = await OlimpiadasApiService.getIndividualAppliedStudents(olimpiadaId);
+      const hasIndividualStudents = individualStudentIds.length > 0;
+
       // Usar endpoint direto de relatório detalhado que funciona para olimpíadas
       const detailedReport = await EvaluationResultsApiService.getDetailedReport(olimpiadaId);
       
@@ -209,17 +214,52 @@ export function OlimpiadaResultsModal({
         throw new Error('A olimpíada ainda não possui resultados disponíveis.');
       }
 
-      // Mapear dados do relatorio-detalhado para formato esperado pelos componentes
-      const mappedData = mapDetailedReportToApiData(detailedReport);
+      // ✅ FILTRAR: Se há alunos individuais aplicados, filtrar apenas esses alunos
+      let alunosFiltrados = detailedReport.alunos;
+      
+      if (hasIndividualStudents) {
+        console.log(`🔍 [OlimpiadaResultsModal] Filtrando resultados para ${individualStudentIds.length} alunos individuais aplicados`);
+        alunosFiltrados = detailedReport.alunos.filter((aluno: any) => {
+          const alunoId = String(aluno.id || '');
+          return individualStudentIds.includes(alunoId);
+        });
+        console.log(`✅ [OlimpiadaResultsModal] ${alunosFiltrados.length} alunos individuais encontrados nos resultados`);
+      } else {
+        // Tentar identificar alunos individuais pelo application_info no relatório
+        // Se o aluno tem student_test_olimpics_id no application_info, é individual
+        const alunosIndividuais = detailedReport.alunos.filter((aluno: any) => {
+          // Verificar se há indicação de aplicação individual
+          // O backend pode retornar isso de diferentes formas
+          return aluno.application_info?.student_test_olimpics_id || 
+                 aluno.student_test_olimpics_id ||
+                 (aluno.application_info && !aluno.application_info.class_test_id);
+        });
+
+        if (alunosIndividuais.length > 0) {
+          console.log(`🔍 [OlimpiadaResultsModal] Identificados ${alunosIndividuais.length} alunos individuais pelo application_info`);
+          alunosFiltrados = alunosIndividuais;
+        } else {
+          console.log('ℹ️ [OlimpiadaResultsModal] Nenhum aluno individual identificado, usando todos os alunos (compatibilidade)');
+        }
+      }
+
+      // Criar relatório filtrado apenas com alunos individuais
+      const filteredReport = {
+        ...detailedReport,
+        alunos: alunosFiltrados
+      };
+
+      // Mapear dados do relatorio-detalhado filtrado para formato esperado pelos componentes
+      const mappedData = mapDetailedReportToApiData(filteredReport);
       setApiData(mappedData);
 
-      // Criar resumo da olimpíada
+      // Criar resumo da olimpíada (apenas alunos individuais)
       const resumo: EvaluationInfoSummary = {
         id: olimpiadaId,
         titulo: detailedReport.avaliacao?.titulo || 'Olimpíada',
-        total_alunos: detailedReport.alunos.length,
-        alunos_participantes: detailedReport.alunos.filter(a => a.status === 'concluida').length,
-        alunos_ausentes: detailedReport.alunos.length - detailedReport.alunos.filter(a => a.status === 'concluida').length,
+        total_alunos: alunosFiltrados.length, // ✅ Total de alunos individuais aplicados
+        alunos_participantes: alunosFiltrados.filter(a => a.status === 'concluida').length,
+        alunos_ausentes: alunosFiltrados.length - alunosFiltrados.filter(a => a.status === 'concluida').length,
         media_nota: mappedData.estatisticas_gerais.media_nota_geral || 0,
         media_proficiencia: mappedData.estatisticas_gerais.media_proficiencia_geral || 0,
         escola: detailedReport.avaliacao?.escola,

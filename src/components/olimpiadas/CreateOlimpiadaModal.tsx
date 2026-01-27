@@ -18,7 +18,11 @@ import { EvaluationFormData, Question } from '@/components/evaluations/types';
 import { QuestionBank } from '@/components/evaluations/QuestionBank';
 import QuestionPreview from '@/components/evaluations/questions/QuestionPreview';
 import QuestionFormReadOnly from '@/components/evaluations/questions/QuestionFormReadOnly';
-import { Book, Eye, Trash2 } from 'lucide-react';
+import { Book, Eye, Trash2, Users, UserCheck } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface CreateOlimpiadaModalProps {
   isOpen: boolean;
@@ -83,6 +87,12 @@ export function CreateOlimpiadaModal({
   const [showCreateQuestion, setShowCreateQuestion] = useState(false);
   const [selectedSubjectForQuestion, setSelectedSubjectForQuestion] = useState<string>("");
   const [previewQuestion, setPreviewQuestion] = useState<Question | null>(null);
+  
+  // ✅ NOVO: Modo de aplicação e seleção de alunos individuais
+  const [applicationMode, setApplicationMode] = useState<'classes' | 'students'>('classes');
+  const [availableStudents, setAvailableStudents] = useState<Array<{ id: string; name: string; class_name?: string }>>([]);
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+  const [loadingStudents, setLoadingStudents] = useState(false);
   
   // Opções
   const [courses, setCourses] = useState<Course[]>([]);
@@ -340,6 +350,24 @@ export function CreateOlimpiadaModal({
           : [];
         setSelectedQuestions(questions);
       }
+
+      // ✅ NOVO: Carregar alunos individuais selecionados se existirem
+      if (data.selected_students && Array.isArray(data.selected_students) && data.selected_students.length > 0) {
+        const loadedStudentIds = data.selected_students.map((id: any) => String(id));
+        console.log('📥 [CreateOlimpiadaModal] Carregando olimpíada com alunos individuais:', {
+          count: loadedStudentIds.length,
+          ids: loadedStudentIds,
+          raw: data.selected_students
+        });
+        setApplicationMode('students');
+        setSelectedStudentIds(loadedStudentIds);
+        // Carregar dados dos alunos para exibir nomes
+        // Isso será feito quando as turmas forem carregadas
+      } else {
+        console.log('ℹ️ [CreateOlimpiadaModal] Olimpíada sem alunos individuais, modo: classes');
+        setApplicationMode('classes');
+        setSelectedStudentIds([]);
+      }
     } catch (error) {
       console.error('Erro ao carregar olimpíada:', error);
     }
@@ -390,14 +418,103 @@ export function CreateOlimpiadaModal({
     }
   };
 
-  const handleSubmit = async () => {
+  // Função para carregar alunos das turmas selecionadas
+  const loadStudentsFromClasses = async () => {
     if (selectedClasses.length === 0) {
-      toast({
-        title: 'Turmas obrigatórias',
-        description: 'Selecione pelo menos uma turma',
-        variant: 'destructive',
-      });
+      setAvailableStudents([]);
       return;
+    }
+
+    setLoadingStudents(true);
+    try {
+      const allStudents: Array<{ id: string; name: string; class_name?: string }> = [];
+      
+      for (const classItem of selectedClasses) {
+        try {
+          // Buscar alunos da turma
+          const response = await api.get(`/students/classes/${classItem.id}`);
+          const students = Array.isArray(response.data) 
+            ? response.data 
+            : (response.data?.alunos || response.data?.students || []);
+          
+          students.forEach((student: any) => {
+            allStudents.push({
+              id: String(student.id || student.student_id || ''),
+              name: String(student.name || student.nome || 'Nome não informado'),
+              class_name: classItem.name
+            });
+          });
+        } catch (error) {
+          console.error(`Erro ao buscar alunos da turma ${classItem.id}:`, error);
+        }
+      }
+      
+      setAvailableStudents(allStudents);
+    } catch (error) {
+      console.error('Erro ao carregar alunos:', error);
+      setAvailableStudents([]);
+    } finally {
+      setLoadingStudents(false);
+    }
+  };
+
+  // Carregar alunos quando turmas forem selecionadas e modo for alunos individuais
+  useEffect(() => {
+    if (applicationMode === 'students' && selectedClasses.length > 0) {
+      // ✅ IMPORTANTE: Preservar alunos já selecionados antes de carregar
+      const previouslySelected = [...selectedStudentIds];
+      
+      const loadAndPreserve = async () => {
+        await loadStudentsFromClasses();
+        // ✅ Restaurar apenas os alunos que ainda existem na lista carregada
+        // Usar um pequeno delay para garantir que o estado foi atualizado
+        setTimeout(() => {
+          setSelectedStudentIds(prev => {
+            // Se havia alunos selecionados anteriormente, filtrar apenas os que existem na lista atual
+            if (previouslySelected.length > 0) {
+              // Buscar os IDs disponíveis do estado atual (que foi atualizado pelo loadStudentsFromClasses)
+              const currentAvailableIds = availableStudents.map(s => s.id);
+              const validSelected = previouslySelected.filter(id => currentAvailableIds.includes(id));
+              console.log('🔄 [CreateOlimpiadaModal] Preservando alunos selecionados:', {
+                previouslySelected,
+                currentAvailableIds,
+                validSelected
+              });
+              return validSelected.length > 0 ? validSelected : prev;
+            }
+            return prev;
+          });
+        }, 50);
+      };
+      
+      loadAndPreserve();
+    } else if (applicationMode === 'classes') {
+      setAvailableStudents([]);
+      setSelectedStudentIds([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClasses, applicationMode]);
+
+  const handleSubmit = async () => {
+    // Validar baseado no modo de aplicação
+    if (applicationMode === 'classes') {
+      if (selectedClasses.length === 0) {
+        toast({
+          title: 'Turmas obrigatórias',
+          description: 'Selecione pelo menos uma turma',
+          variant: 'destructive',
+        });
+        return;
+      }
+    } else {
+      if (selectedStudentIds.length === 0) {
+        toast({
+          title: 'Alunos obrigatórios',
+          description: 'Selecione pelo menos um aluno',
+          variant: 'destructive',
+        });
+        return;
+      }
     }
 
     setLoading(true);
@@ -405,6 +522,48 @@ export function CreateOlimpiadaModal({
       // Usar datas padrão (não serão usadas na criação, apenas na aplicação)
       const now = new Date();
       const defaultEndDateTime = new Date(now.getTime() + parseInt(duration, 10) * 60000);
+
+      // ✅ VALIDAÇÃO CRÍTICA: Garantir que apenas os alunos selecionados sejam salvos
+      // NÃO salvar todos os alunos da turma, apenas os que foram explicitamente selecionados
+      let studentsToSave: string[] | undefined = undefined;
+      
+      if (applicationMode === 'students') {
+        // ✅ GARANTIR: Apenas os IDs que estão em selectedStudentIds (não todos os availableStudents)
+        studentsToSave = selectedStudentIds.filter(id => {
+          // Verificar se o ID existe na lista de alunos disponíveis (validação de segurança)
+          const exists = availableStudents.some(s => s.id === id);
+          if (!exists) {
+            console.warn(`⚠️ [CreateOlimpiadaModal] Aluno ${id} selecionado mas não encontrado na lista disponível`);
+          }
+          return exists;
+        });
+        
+        // ✅ VALIDAÇÃO FINAL: Não permitir salvar se não houver alunos selecionados
+        if (studentsToSave.length === 0) {
+          toast({
+            title: 'Erro',
+            description: 'Selecione pelo menos um aluno antes de salvar',
+            variant: 'destructive',
+          });
+          setLoading(false);
+          return;
+        }
+        
+        // ✅ VALIDAÇÃO: Não permitir salvar todos os alunos se o usuário selecionou apenas alguns
+        if (studentsToSave.length === availableStudents.length && availableStudents.length > 1) {
+          console.warn('⚠️ [CreateOlimpiadaModal] Todos os alunos da turma estão selecionados. Verifique se isso é intencional.');
+        }
+      }
+      
+      console.log('💾 [CreateOlimpiadaModal] Salvando olimpíada:', {
+        applicationMode,
+        selectedStudentIdsCount: selectedStudentIds.length,
+        selectedStudentIds,
+        studentsToSaveCount: studentsToSave?.length || 0,
+        studentsToSave,
+        availableStudentsCount: availableStudents.length,
+        availableStudentIds: availableStudents.map(s => s.id)
+      });
 
       const formData: OlimpiadaFormData = {
         title,
@@ -416,8 +575,9 @@ export function CreateOlimpiadaModal({
         subjects: selectedSubjects,
         schools: selectedSchools,
         municipalities: [municipality],
-        classes: selectedClasses.map(c => c.id),
+        classes: selectedClasses.map(c => c.id), // Manter classes para referência
         selectedClasses,
+        selected_students: studentsToSave, // ✅ Alunos individuais se modo for students
         questions: selectedQuestions.map(q => q.id),
         startDateTime: now.toISOString(), // Valor padrão, não será usado
         endDateTime: defaultEndDateTime.toISOString(), // Valor padrão, não será usado
@@ -456,7 +616,10 @@ export function CreateOlimpiadaModal({
 
   const handleClose = () => {
     setStep(1);
-      setTitle('');
+    setTitle('');
+    setApplicationMode('classes');
+    setSelectedStudentIds([]);
+    setAvailableStudents([]);
       setDescription('');
       setDuration('60');
       setCourse('');
@@ -505,7 +668,7 @@ export function CreateOlimpiadaModal({
           <DialogDescription>
             {step === 1 && 'Configure os dados básicos da olimpíada'}
             {step === 2 && 'Selecione as questões do banco'}
-            {step === 3 && 'Selecione as turmas que participarão da olimpíada'}
+            {step === 3 && 'Selecione como a olimpíada será aplicada (turmas ou alunos individuais)'}
           </DialogDescription>
         </DialogHeader>
 
@@ -838,14 +1001,134 @@ export function CreateOlimpiadaModal({
             {/* Step 3: Seleção de Turmas */}
             {step === 3 && (
               <div className="space-y-4">
-                <ClassSelector
-                  selectedClasses={selectedClasses}
-                  onClassesChange={setSelectedClasses}
-                  initialState={state}
-                  initialMunicipality={municipality}
-                  initialSchool={selectedSchools[0]}
-                  initialGrade={grade}
-                />
+                <Tabs value={applicationMode} onValueChange={(value) => setApplicationMode(value as 'classes' | 'students')}>
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="classes">
+                      <Users className="h-4 w-4 mr-2" />
+                      Por Turmas
+                    </TabsTrigger>
+                    <TabsTrigger value="students">
+                      <UserCheck className="h-4 w-4 mr-2" />
+                      Alunos Individuais
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="classes" className="space-y-4 mt-4">
+                    <Alert>
+                      <Users className="h-4 w-4" />
+                      <AlertDescription>
+                        Selecione as turmas que participarão da olimpíada. Todos os alunos das turmas selecionadas terão acesso.
+                      </AlertDescription>
+                    </Alert>
+                    <ClassSelector
+                      selectedClasses={selectedClasses}
+                      onClassesChange={setSelectedClasses}
+                      initialState={state}
+                      initialMunicipality={municipality}
+                      initialSchool={selectedSchools[0]}
+                      initialGrade={grade}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="students" className="space-y-4 mt-4">
+                    <Alert>
+                      <UserCheck className="h-4 w-4" />
+                      <AlertDescription>
+                        Primeiro selecione as turmas para carregar os alunos, depois escolha os alunos específicos que participarão da olimpíada.
+                      </AlertDescription>
+                    </Alert>
+
+                    {/* Seleção de turmas para carregar alunos */}
+                    <div className="space-y-2">
+                      <Label>Turmas (para carregar alunos) *</Label>
+                      <ClassSelector
+                        selectedClasses={selectedClasses}
+                        onClassesChange={setSelectedClasses}
+                        initialState={state}
+                        initialMunicipality={municipality}
+                        initialSchool={selectedSchools[0]}
+                        initialGrade={grade}
+                      />
+                    </div>
+
+                    {/* Seleção de alunos individuais */}
+                    {selectedClasses.length > 0 && (
+                      <div className="space-y-2">
+                        <Label>Selecionar Alunos Individuais *</Label>
+                        {loadingStudents ? (
+                          <div className="flex items-center justify-center py-8">
+                            <Loader2 className="h-6 w-6 animate-spin text-yellow-600" />
+                            <span className="ml-2 text-sm text-muted-foreground">Carregando alunos...</span>
+                          </div>
+                        ) : availableStudents.length === 0 ? (
+                          <div className="text-center py-8 text-muted-foreground border rounded-md">
+                            <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                            <p>Nenhum aluno encontrado nas turmas selecionadas</p>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm text-muted-foreground">
+                                {selectedStudentIds.length} de {availableStudents.length} aluno(s) selecionado(s)
+                              </span>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setSelectedStudentIds(availableStudents.map(s => s.id))}
+                                >
+                                  Selecionar Todos
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setSelectedStudentIds([])}
+                                >
+                                  Limpar
+                                </Button>
+                              </div>
+                            </div>
+                            <ScrollArea className="h-[300px] border rounded-md p-4">
+                              <div className="space-y-2">
+                                {availableStudents.map((student) => (
+                                  <div
+                                    key={student.id}
+                                    className="flex items-center space-x-2 p-2 hover:bg-muted rounded-md"
+                                  >
+                                    <Checkbox
+                                      id={`student-${student.id}`}
+                                      checked={selectedStudentIds.includes(student.id)}
+                                      onCheckedChange={(checked) => {
+                                        if (checked) {
+                                          setSelectedStudentIds([...selectedStudentIds, student.id]);
+                                        } else {
+                                          setSelectedStudentIds(selectedStudentIds.filter(id => id !== student.id));
+                                        }
+                                      }}
+                                    />
+                                    <label
+                                      htmlFor={`student-${student.id}`}
+                                      className="flex-1 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                                    >
+                                      <div className="flex items-center justify-between">
+                                        <span>{student.name}</span>
+                                        {student.class_name && (
+                                          <Badge variant="outline" className="ml-2 text-xs">
+                                            {student.class_name}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    </label>
+                                  </div>
+                                ))}
+                              </div>
+                            </ScrollArea>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </TabsContent>
+                </Tabs>
               </div>
             )}
 

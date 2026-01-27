@@ -572,10 +572,30 @@ export const useEvaluationStore = create<EvaluationStore>()(
       },
 
       addQuestion: (question: Question) => {
-        set(state => ({
-          ...state,
-          questions: [...state.questions, question],
-        }));
+        set(state => {
+          // ✅ CORREÇÃO: Verificar se a questão já existe antes de adicionar
+          const questionId = question.id;
+          
+          // Permitir questões temporárias (sem ID ou com ID temp-) mas verificar duplicatas apenas para questões com ID válido
+          if (questionId && questionId !== '' && !questionId.startsWith('temp-')) {
+            // Verificar se a questão já existe (apenas para questões com ID válido)
+            const questionExists = state.questions.some(q => q.id === questionId);
+            if (questionExists) {
+              console.warn('⚠️ Questão já existe no store:', questionId);
+              return state; // Não adicionar duplicatas
+            }
+          }
+          
+          // Se não tem ID, gerar um temporário para evitar problemas
+          const questionWithId = question.id 
+            ? question 
+            : { ...question, id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` };
+          
+          return {
+            ...state,
+            questions: [...state.questions, questionWithId],
+          };
+        });
       },
 
       removeQuestion: (questionId: string) => {

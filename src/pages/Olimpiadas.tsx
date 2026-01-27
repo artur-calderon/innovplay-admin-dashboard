@@ -61,6 +61,17 @@ export default function Olimpiadas() {
       // Mapear dados das olimpíadas e buscar informações das turmas para filtros
       const olimpiadasData = await Promise.all(
         olimpiadasArray.map(async (olimpiada: any) => {
+          // ✅ LOG: Verificar o que está vindo do backend na lista
+          if (olimpiada.selected_students) {
+            console.log('📋 [Olimpiadas] Olimpíada na lista com selected_students:', {
+              id: olimpiada.id,
+              title: olimpiada.title,
+              selected_students_count: Array.isArray(olimpiada.selected_students) ? olimpiada.selected_students.length : 'não é array',
+              selected_students: olimpiada.selected_students,
+              classes: olimpiada.classes
+            });
+          }
+          
           // Tentar obter dados do backend primeiro
           let totalStudents = olimpiada.total_students || 
                              olimpiada.total_alunos || 
@@ -70,6 +81,16 @@ export default function Olimpiadas() {
                                  olimpiada.alunos_participantes || 
                                  olimpiada.completedStudents || 
                                  0;
+
+          // ✅ IMPORTANTE: Garantir que selected_students seja um array de strings
+          let selectedStudents: string[] = [];
+          if (olimpiada.selected_students) {
+            if (Array.isArray(olimpiada.selected_students)) {
+              selectedStudents = olimpiada.selected_students.map((id: any) => String(id));
+            } else {
+              console.warn('⚠️ [Olimpiadas] selected_students não é array:', olimpiada.selected_students);
+            }
+          }
 
           return {
             id: olimpiada.id,
@@ -85,6 +106,7 @@ export default function Olimpiadas() {
             classes: olimpiada.classes || [],
             schools: olimpiada.schools || [],
             municipalities: olimpiada.municipalities || [],
+            selected_students: selectedStudents, // ✅ Alunos individuais selecionados (garantido como array)
           };
         })
       );
@@ -363,7 +385,12 @@ export default function Olimpiadas() {
     // Buscar dados da olimpíada para preencher datas padrão
     try {
       const olimpiada = await OlimpiadasApiService.getOlimpiada(id);
-      setApplyingOlimpiada(olimpiadas.find(o => o.id === id) || null);
+      const olimpiadaCard = olimpiadas.find(o => o.id === id);
+      // ✅ Garantir que selected_students seja incluído
+      setApplyingOlimpiada(olimpiadaCard ? {
+        ...olimpiadaCard,
+        selected_students: olimpiada.selected_students || []
+      } : null);
       
       // Preencher datas padrão se existirem
       if (olimpiada.startDateTime && olimpiada.endDateTime) {
@@ -428,9 +455,86 @@ export default function Olimpiadas() {
     setIsApplying(true);
 
     try {
-      // Buscar dados completos da olimpíada para obter classes
+      // Buscar dados completos da olimpíada
       const olimpiada = await OlimpiadasApiService.getOlimpiada(applyingOlimpiadaId);
       
+      // ✅ DETECTAR AUTOMATICAMENTE: Verificar se há alunos individuais selecionados
+      const hasIndividualStudents = olimpiada.selected_students && 
+                                     Array.isArray(olimpiada.selected_students) && 
+                                     olimpiada.selected_students.length > 0;
+      
+      // Se houver alunos individuais, aplicar para eles
+      if (hasIndividualStudents) {
+        const studentIds = olimpiada.selected_students.map((id: any) => String(id));
+        
+        // Validar datas
+        if (!applyStartDateTime || !applyEndDateTime) {
+          toast({
+            title: 'Erro',
+            description: 'Preencha as datas de início e término',
+            variant: 'destructive',
+          });
+          setIsApplying(false);
+          return;
+        }
+
+        // Converter datas para ISO
+        const isISOFormat = (dateStr: string) => /[+-]\d{2}:\d{2}$/.test(dateStr);
+        const startDateTimeISO = isISOFormat(applyStartDateTime)
+          ? applyStartDateTime
+          : convertDateTimeLocalToISO(applyStartDateTime);
+        const endDateTimeISO = isISOFormat(applyEndDateTime)
+          ? applyEndDateTime
+          : convertDateTimeLocalToISO(applyEndDateTime);
+
+        // Validar datas
+        const startDateObj = new Date(startDateTimeISO);
+        const endDateObj = new Date(endDateTimeISO);
+        const now = new Date();
+
+        if (endDateObj <= now) {
+          toast({
+            title: 'Erro',
+            description: 'A data de término deve ser posterior ao momento atual',
+            variant: 'destructive',
+          });
+          setIsApplying(false);
+          return;
+        }
+
+        if (endDateObj <= startDateObj) {
+          toast({
+            title: 'Erro',
+            description: 'A data de término deve ser posterior à data de início',
+            variant: 'destructive',
+          });
+          setIsApplying(false);
+          return;
+        }
+
+        // Aplicar para alunos individuais
+        await OlimpiadasApiService.applyOlimpiadaToStudents(
+          applyingOlimpiadaId,
+          studentIds,
+          startDateTimeISO,
+          endDateTimeISO
+        );
+
+        toast({
+          title: 'Olimpíada aplicada!',
+          description: `A olimpíada foi enviada para ${studentIds.length} aluno(s) selecionado(s)`,
+        });
+        setShowApplyDialog(false);
+        setApplyingOlimpiadaId(null);
+        setApplyStartDateTime('');
+        setApplyEndDateTime('');
+        setApplyingOlimpiada(null);
+        loadOlimpiadas();
+        setIsApplying(false);
+        return;
+      }
+
+      // Modo turmas (código original) - aplicar para todas as turmas
       // Processar classes no mesmo formato usado em ViewEvaluation.tsx
       let classIds: string[] = [];
       
@@ -1123,7 +1227,9 @@ export default function Olimpiadas() {
             <Alert>
               <Medal className="h-4 w-4" />
               <AlertDescription>
-                A olimpíada será enviada para todos os alunos das turmas selecionadas no período configurado.
+                {applyingOlimpiada && applyingOlimpiada.selected_students && applyingOlimpiada.selected_students.length > 0
+                  ? `A olimpíada será enviada para ${applyingOlimpiada.selected_students.length} aluno(s) selecionado(s) no período configurado.`
+                  : 'A olimpíada será enviada para todos os alunos das turmas selecionadas no período configurado.'}
               </AlertDescription>
             </Alert>
 
