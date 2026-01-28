@@ -20,6 +20,7 @@ interface StudentEvaluation {
   serie: string;
   escola: string;
   turma?: string;
+  type?: string;
 }
 
 // Interface para dados específicos de uma avaliação
@@ -578,7 +579,8 @@ const StudentDashboard = () => {
       data_aplicacao: evaluation.application_info.application,
       serie: evaluation.grade.name,
       escola: apiData.student.name,
-      turma: evaluation.grade.name
+      turma: evaluation.grade.name,
+      type: evaluation.type
     }));
   };
 
@@ -592,12 +594,19 @@ const StudentDashboard = () => {
     console.log('📊 Dados completados:', completedData);
     console.log('📊 Total de avaliações completadas:', completedData.total_completed);
     console.log('📊 Avaliações retornadas:', completedData.returned_count);
-    
+
     // Mapear os dados da nova API para o formato esperado
     const mappedEvaluations = mapCompletedToEvaluations(completedData);
+
+    // Remover olimpíadas da lista de avaliações usadas no dashboard do aluno
+    const filteredEvaluations = mappedEvaluations.filter((evaluation) => {
+      const type = evaluation.type?.toLowerCase() ?? '';
+      // Considera qualquer tipo que contenha "olimpi" (olimpíada, olimpiada, etc.) como olimpíada
+      return !type.includes('olimpi');
+    });
     
-    console.log('📊 Avaliações mapeadas:', mappedEvaluations);
-    return mappedEvaluations;
+    console.log('📊 Avaliações mapeadas (sem olimpíadas):', filteredEvaluations);
+    return filteredEvaluations;
   }, []);
 
   // Função para buscar dados específicos de uma avaliação
@@ -737,6 +746,19 @@ const StudentDashboard = () => {
       return;
     }
     
+    // Impedir carregamento de olimpíadas na avaliação específica do dashboard
+    const evaluation = evaluations.find(e => e.id === evaluationId);
+    if (evaluation) {
+      const type = evaluation.type?.toLowerCase() ?? '';
+      if (type.includes('olimpi')) {
+        console.log('⚠️ Ignorando carregamento de avaliação do tipo olimpíada no dashboard do aluno:', {
+          evaluationId,
+          type: evaluation.type,
+        });
+        return;
+      }
+    }
+
     // Validação: garantir que o evaluationId corresponde ao selectedEvaluation
     if (evaluationId !== selectedEvaluation) {
       console.warn('⚠️ Tentativa de carregar avaliação diferente da selecionada:', {
@@ -897,18 +919,33 @@ const StudentDashboard = () => {
 
   // Função para carregar dados de comparação
   const loadComparisonData = useCallback(async () => {
-    if (!user?.id || evaluations.length < 2) {
-      console.log('⚠️ Dados insuficientes para comparação:', { userId: user?.id, evaluationsCount: evaluations.length });
-      return;
-    }
-    
     try {
+      if (!user?.id) {
+        console.log('⚠️ Usuário não encontrado para comparação');
+        return;
+      }
+
+      // Filtrar avaliações que não são de olimpíadas
+      const evaluationsForComparison = evaluations.filter((evaluation) => {
+        const type = evaluation.type?.toLowerCase() ?? '';
+        // Considera qualquer tipo que contenha "olimpi" (olimpíada, olimpiada, etc.) como olimpíada
+        return !type.includes('olimpi');
+      });
+
+      if (evaluationsForComparison.length < 2) {
+        console.log('⚠️ Avaliações suficientes para comparação apenas sem olimpíadas:', {
+          totalEvaluations: evaluations.length,
+          evaluationsForComparison: evaluationsForComparison.length,
+        });
+        return;
+      }
+
       setIsLoadingComparison(true);
       console.log('🔍 Carregando dados de comparação...');
       
       // Pegar os IDs das avaliações disponíveis
-      const testIds = evaluations.map(evaluation => evaluation.id);
-      console.log('📊 IDs das avaliações para comparação:', testIds);
+      const testIds = evaluationsForComparison.map(evaluation => evaluation.id);
+      console.log('📊 IDs das avaliações para comparação (sem olimpíadas):', testIds);
       
       const comparisonResponse = await fetchStudentComparison(user.id, testIds);
       setComparisonData(comparisonResponse);

@@ -41,7 +41,7 @@ const SimpleHtmlRenderer = ({ content }: { content: string | null | undefined })
     
     return (
         <div 
-            className="prose prose-sm max-w-none question-content-html"
+            className="prose prose-sm max-w-none question-content-html dark:prose-invert"
             dangerouslySetInnerHTML={{ __html: cleanHtml }}
         />
     );
@@ -236,7 +236,7 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
                                             {option.text}
                                         </div>
                                         {option.isCorrect && (
-                                            <Badge variant="outline" className="mt-2 text-xs bg-green-50 text-green-700 border-green-200 hover:bg-green-100">
+                                            <Badge variant="outline" className="mt-2 text-xs bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-950/50">
                                                 ✓ Resposta Correta
                                             </Badge>
                                         )}
@@ -245,9 +245,9 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
                             ))}
                         </div>
                     ) : (
-                        <div className="text-center p-8 border-2 border-dashed border-yellow-300 rounded-xl bg-yellow-50">
-                            <div className="text-yellow-800 font-semibold text-lg mb-2">⚠️ Alternativas não disponíveis</div>
-                            <p className="text-yellow-700 text-sm leading-relaxed">
+                        <div className="text-center p-8 border-2 border-dashed border-yellow-300 dark:border-yellow-700 rounded-xl bg-yellow-50 dark:bg-yellow-950/20">
+                            <div className="text-yellow-800 dark:text-yellow-400 font-semibold text-lg mb-2">⚠️ Alternativas não disponíveis</div>
+                            <p className="text-yellow-700 dark:text-yellow-500 text-sm leading-relaxed">
                                 Esta questão está marcada como múltipla escolha mas não possui alternativas cadastradas.
                             </p>
                         </div>
@@ -283,7 +283,7 @@ const QuestionPreview: React.FC<QuestionPreviewProps> = ({ question: initialQues
                         <span className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm">💡</span>
                         Resolução
                     </h4>
-                    <div className="resolution-content bg-blue-50 border border-blue-200 rounded-xl p-6">
+                    <div className="resolution-content bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6">
                         <div className="text-base leading-relaxed text-foreground">
                             <SimpleHtmlRenderer content={question.formattedSolution || question.solution} />
                         </div>
