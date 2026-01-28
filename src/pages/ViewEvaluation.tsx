@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { EvaluationResultsApiService } from "@/services/evaluationResultsApi";
+import { OlimpiadasApiService } from "@/services/olimpiadasApi";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -87,6 +88,7 @@ export default function ViewEvaluation() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showStartEvaluationModal, setShowStartEvaluationModal] = useState(false);
+  const [individualStudentNamesMap, setIndividualStudentNamesMap] = useState<Record<string, string>>({});
   
   // Estados para mapeamento de habilidades
   const [skillsMapping, setSkillsMapping] = useState<Record<string, string>>({});
@@ -101,15 +103,100 @@ export default function ViewEvaluation() {
     const fetchEvaluation = async () => {
       if (!id) return;
       try {
-        const response = await api.get(`/test/${id}`);
-        console.log("Resposta da API:", response.data);
-        console.log("Campo secondStatement nas questões:", response.data.questions?.map(q => ({
-          id: q.id,
-          secondStatement: q.secondStatement,
-          text: q.text,
-          formattedText: q.formattedText
-        })));
-        setEvaluation(response.data);
+        // Buscar base para identificar se é olimpíada
+        const baseResponse = await api.get(`/test/${id}`);
+        const base = baseResponse.data;
+
+        const isOlimpiadaFromBase =
+          base?.type === "OLIMPIADA" ||
+          base?.title?.includes("[OLIMPÍADA]") ||
+          base?.title?.toUpperCase?.().includes("OLIMPÍADA");
+
+        // Para olimpíada: usar serviço que enriquece selected_students/aplicação individual
+        const data = isOlimpiadaFromBase ? await OlimpiadasApiService.getOlimpiada(id) : base;
+
+        console.log("Resposta da API:", data);
+        console.log(
+          "Campo secondStatement nas questões:",
+          data.questions?.map((q: any) => ({
+            id: q.id,
+            secondStatement: q.secondStatement,
+            text: q.text,
+            formattedText: q.formattedText,
+          }))
+        );
+        setEvaluation(data);
+
+        // ✅ Se houver aplicação individual, buscar nomes dos alunos para exibir no detalhe
+        if (isOlimpiadaFromBase && Array.isArray((data as any).selected_students) && (data as any).selected_students.length > 0) {
+          try {
+            const selectedIds: string[] = (data as any).selected_students.map((s: any) => String(s));
+            const namesMap: Record<string, string> = {};
+            
+            // Tentar buscar do relatório detalhado primeiro (pode ter alunos que já fizeram)
+            try {
+              const detailedReport = await EvaluationResultsApiService.getDetailedReport(id);
+              if (detailedReport?.alunos) {
+                selectedIds.forEach((studentId) => {
+                  const student = detailedReport.alunos.find(
+                    (s: any) => String(s.id || s.student_id || "") === String(studentId)
+                  );
+                  if (student) {
+                    namesMap[studentId] = (student as any)?.nome || (student as any)?.name || studentId;
+                  }
+                });
+              }
+            } catch (err) {
+              // Continuar com método alternativo
+            }
+            
+            // Para alunos que não foram encontrados, buscar das turmas da olimpíada
+            const missingIds = selectedIds.filter((id) => !namesMap[id]);
+            if (missingIds.length > 0 && data.classes && Array.isArray(data.classes) && data.classes.length > 0) {
+              for (const classItem of data.classes) {
+                if (missingIds.length === 0) break;
+                try {
+                  const classId = typeof classItem === 'object' && classItem !== null && 'id' in classItem 
+                    ? classItem.id 
+                    : String(classItem);
+                  const response = await api.get(`/students/classes/${classId}`);
+                  const students = Array.isArray(response.data) 
+                    ? response.data 
+                    : (response.data?.alunos || response.data?.students || []);
+                  
+                  missingIds.forEach((studentId) => {
+                    const student = students.find(
+                      (s: any) => String(s.id || s.student_id || "") === String(studentId)
+                    );
+                    if (student) {
+                      namesMap[studentId] = String(student.name || student.nome || studentId);
+                    }
+                  });
+                } catch (err) {
+                  // Continuar para próxima turma
+                }
+              }
+            }
+            
+            // Fallback: usar ID para alunos não encontrados
+            selectedIds.forEach((studentId) => {
+              if (!namesMap[studentId]) {
+                namesMap[studentId] = studentId;
+              }
+            });
+            
+            setIndividualStudentNamesMap(namesMap);
+          } catch (err) {
+            console.warn('Erro ao buscar nomes dos alunos:', err);
+            // fallback: manter IDs
+            const selectedIds: string[] = (data as any).selected_students.map((s: any) => String(s));
+            const fallbackMap: Record<string, string> = {};
+            selectedIds.forEach((sid) => (fallbackMap[sid] = sid));
+            setIndividualStudentNamesMap(fallbackMap);
+          }
+        } else {
+          setIndividualStudentNamesMap({});
+        }
         
         // Buscar skills da avaliação para mapeamento
         try {
@@ -562,8 +649,14 @@ export default function ViewEvaluation() {
   const subjectsCount = getEvaluationSubjectsCount(evaluation);
   const municipalitiesCount = evaluation.municipalities_count || evaluation.municipalities?.length || 0;
   const schoolsCount = evaluation.schools_count || evaluation.schools?.length || 0;
-  const totalStudents = evaluation.total_students || 0;
+  const hasIndividualSelected =
+    Array.isArray((evaluation as any).selected_students) &&
+    (evaluation as any).selected_students.length > 0;
+  const totalStudents = hasIndividualSelected
+    ? (evaluation as any).selected_students.length
+    : (evaluation.total_students || 0);
   const appliedClassesCount = evaluation.applied_classes_count || 0;
+  const isAppliedForDisplay = Boolean((evaluation as any).is_applied) || hasIndividualSelected;
 
   return (
     <div className="container mx-auto px-2 md:px-4 py-4 md:py-6 space-y-6">
@@ -658,9 +751,7 @@ export default function ViewEvaluation() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600 dark:text-green-400">{totalStudents}</div>
-            <p className="text-xs text-muted-foreground">
-              {appliedClassesCount > 0 ? `Em ${appliedClassesCount} turmas` : 'Prova entregue'}
-            </p>
+            <p className="text-xs text-muted-foreground">Total de alunos</p>
           </CardContent>
         </Card>
         
@@ -789,13 +880,13 @@ export default function ViewEvaluation() {
             {/* Status de Aplicação */}
             <div className="flex items-center gap-3 mb-4">
                              <Badge 
-                 variant={evaluation.is_applied ? "default" : "secondary"}
-                 className={evaluation.is_applied 
+                 variant={isAppliedForDisplay ? "default" : "secondary"}
+                 className={isAppliedForDisplay 
                    ? "bg-green-100 dark:bg-green-950/30 text-green-800 dark:text-green-300 border-green-200 dark:border-green-800" 
                    : "bg-yellow-100 dark:bg-yellow-950/30 text-yellow-800 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800"
                  }
                >
-                 {evaluation.is_applied ? "✅ Aplicada" : "❌ Não aplicada"}
+                 {isAppliedForDisplay ? "✅ Aplicada" : "❌ Não aplicada"}
                </Badge>
               {evaluation.status && (
                 <Badge variant="outline" className="text-xs">
@@ -805,7 +896,7 @@ export default function ViewEvaluation() {
             </div>
 
             {/* Informações de aplicação */}
-            {evaluation.is_applied && evaluation.applied_classes && evaluation.applied_classes.length > 0 && (
+            {evaluation.is_applied && !hasIndividualSelected && evaluation.applied_classes && evaluation.applied_classes.length > 0 && (
               <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Users className="h-5 w-5 text-green-600 dark:text-green-400" />
@@ -856,8 +947,42 @@ export default function ViewEvaluation() {
               </div>
             )}
 
+            {/* ✅ Aplicação individual (alunos) */}
+            {hasIndividualSelected && (
+              <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Users className="h-5 w-5 text-green-600 dark:text-green-400" />
+                  <span className="font-semibold text-green-800 dark:text-green-300">
+                    Aplicada para {totalStudents} aluno{totalStudents === 1 ? "" : "s"} (individual)
+                  </span>
+                </div>
+                <p className="text-sm text-green-700 dark:text-green-400">
+                  Esta {entityName} foi enviada apenas para alunos selecionados (sem distribuição por turma).
+                </p>
+
+                {/* Lista de alunos selecionados (mostrar nome) */}
+                <div className="mt-3">
+                  <label className="text-sm font-medium text-green-700 dark:text-green-400 mb-2 block">
+                    Aluno(s) selecionado(s):
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {((evaluation as any).selected_students as string[]).map((studentId) => (
+                      <Badge
+                        key={studentId}
+                        variant="outline"
+                        className="text-xs bg-white/80 dark:bg-card/80 text-green-800 dark:text-green-300 border-green-200 dark:border-green-800"
+                        title={studentId}
+                      >
+                        {individualStudentNamesMap[String(studentId)] || String(studentId).slice(0, 8) + "…"}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Turmas pendentes */}
-            {!evaluation.is_applied && evaluation.applied_classes && evaluation.applied_classes.length > 0 && (
+            {!evaluation.is_applied && !hasIndividualSelected && evaluation.applied_classes && evaluation.applied_classes.length > 0 && (
               <div className="bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Users className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
@@ -898,7 +1023,7 @@ export default function ViewEvaluation() {
             )}
 
             {/* Quando não há turmas aplicadas ou agendadas */}
-            {(!evaluation.applied_classes || evaluation.applied_classes.length === 0) && (
+            {(!evaluation.applied_classes || evaluation.applied_classes.length === 0) && !hasIndividualSelected && (
               <div className="bg-gray-50 dark:bg-muted/50 border border-gray-200 dark:border-gray-800 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <Users className="h-5 w-5 text-gray-500 dark:text-gray-400" />

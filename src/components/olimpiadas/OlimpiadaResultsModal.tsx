@@ -220,10 +220,18 @@ export function OlimpiadaResultsModal({
       if (hasIndividualStudents) {
         console.log(`🔍 [OlimpiadaResultsModal] Filtrando resultados para ${individualStudentIds.length} alunos individuais aplicados`);
         alunosFiltrados = detailedReport.alunos.filter((aluno: any) => {
-          const alunoId = String(aluno.id || '');
-          return individualStudentIds.includes(alunoId);
+          const alunoId = String(aluno.id || aluno.student_id || '');
+          // Comparar de forma mais flexível (com e sem hífens, case-insensitive)
+          return individualStudentIds.some((selectedId) => {
+            const normalizedSelected = String(selectedId).toLowerCase().replace(/-/g, '');
+            const normalizedAluno = alunoId.toLowerCase().replace(/-/g, '');
+            return normalizedSelected === normalizedAluno || String(selectedId) === alunoId;
+          });
         });
-        console.log(`✅ [OlimpiadaResultsModal] ${alunosFiltrados.length} alunos individuais encontrados nos resultados`);
+        console.log(`✅ [OlimpiadaResultsModal] ${alunosFiltrados.length} alunos individuais encontrados nos resultados`, {
+          individualStudentIds,
+          alunosEncontrados: alunosFiltrados.map((a: any) => String(a.id || a.student_id))
+        });
       } else {
         // Tentar identificar alunos individuais pelo application_info no relatório
         // Se o aluno tem student_test_olimpics_id no application_info, é individual
