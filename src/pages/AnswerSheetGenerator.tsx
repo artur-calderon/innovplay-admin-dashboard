@@ -1312,6 +1312,18 @@ export default function AnswerSheetGenerator() {
       setPreviewImage(null);
     } catch (error: any) {
       console.error('Erro ao processar correção:', error);
+      
+      // O hook já exibe o toast, mas garantimos que o erro do backend seja exibido corretamente
+      // Se o hook não exibiu (erro não HTTP), exibimos aqui
+      if (!error.response) {
+        const errorMessage = error.message || "Não foi possível processar a correção. Tente novamente.";
+        toast({
+          title: 'Erro',
+          description: errorMessage,
+          variant: 'destructive',
+        });
+      }
+      // Se for erro HTTP, o hook já exibiu o toast com error.response?.data?.error
     } finally {
       setIsProcessingSingle(false);
       setCorrectionProgress(0);

@@ -60,7 +60,13 @@ api.interceptors.response.use(
             // ✅ CORRIGIDO: Preservar erro original para endpoints críticos
             // Endpoints que precisam de tratamento específico de erro
             const url = error.config?.url || '';
-            const criticalEndpoints = ['/student-answers/submit', '/student-answers/save-partial'];
+            const criticalEndpoints = ['/student-answers/submit', '/student-answers/save-partial', '/answer-sheets/correct-new'];
+            
+            // Se o erro tem uma mensagem específica no campo 'error', preservar o erro original
+            if (error.response?.data?.error) {
+                // Preservar o erro original com response para tratamento específico
+                return Promise.reject(error);
+            }
             
             if (criticalEndpoints.some(endpoint => url.includes(endpoint))) {
                 // Preservar o erro original com response para tratamento específico
