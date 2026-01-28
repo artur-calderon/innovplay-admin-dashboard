@@ -81,7 +81,7 @@ const EditEvaluation = () => {
     useEffect(() => {
         const fetchEvaluation = async () => {
             if (!id) return;
-            
+
             try {
                 setIsLoading(true);
                 const response = await api.get(`/test/${id}`);
@@ -175,7 +175,7 @@ const EditEvaluation = () => {
 
                 // Converter turmas - tentar de applied_classes primeiro, depois de classes
                 let classesFormatted: Array<{ id: string; name: string; school?: { id: string; name: string } }> = [];
-                
+
                 if (evaluation.applied_classes && evaluation.applied_classes.length > 0) {
                     // Usar applied_classes que tem informações completas
                     classesFormatted = evaluation.applied_classes.map((ac: AppliedClass) => ({
@@ -211,15 +211,15 @@ const EditEvaluation = () => {
                 const formData: EvaluationFormData = {
                     title: evaluation.title || "",
                     description: evaluation.description || "",
-                    municipalities: evaluation.municipalities?.map((m: Municipality | string) => 
+                    municipalities: evaluation.municipalities?.map((m: Municipality | string) =>
                         typeof m === 'string' ? m : m.id) || [],
                     schools: schoolsFormatted.map(s => s.id),
                     course: evaluation.course?.id || "",
                     grade: evaluation.grade?.id || "",
                     classId: classesFormatted[0]?.id || "",
                     type: evaluation.type || "AVALIACAO",
-                    model: (evaluation.model === "SAEB" || evaluation.model === "PROVA" || evaluation.model === "AVALIE") 
-                        ? evaluation.model 
+                    model: (evaluation.model === "SAEB" || evaluation.model === "PROVA" || evaluation.model === "AVALIE")
+                        ? evaluation.model
                         : "SAEB",
                     subjects: evaluation.subjects || evaluation.subjects_info || (evaluation.subject ? [evaluation.subject] : []),
                     subject: evaluation.subject?.id || "",
@@ -228,8 +228,8 @@ const EditEvaluation = () => {
                     duration: evaluation.duration?.toString() || "",
                     classes: classesFormatted.map(c => c.id),
                     state: stateName,
-                    municipality: typeof evaluation.municipalities?.[0] === 'string' 
-                        ? evaluation.municipalities[0] 
+                    municipality: typeof evaluation.municipalities?.[0] === 'string'
+                        ? evaluation.municipalities[0]
                         : evaluation.municipalities?.[0]?.id || "",
                     selectedSchools: schoolsFormatted,
                     selectedClasses: classesFormatted,
@@ -260,7 +260,7 @@ const EditEvaluation = () => {
                     formData.selectedSchools = [];
                     formData.selectedClasses = [];
                 }
-                
+
                 if (formData.municipality && formData.municipality !== 'all' && (!formData.state || formData.state === 'all')) {
                     console.warn("⚠️ Município selecionado mas sem estado válido, limpando escolas");
                     formData.selectedSchools = [];
